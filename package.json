@@ -1,24 +1,12 @@
 {
-  "name": "chatkit-sample",
-  "version": "0.1.0",
+  "name": "chatkit-root",
   "private": true,
-  "type": "module",
   "scripts": {
-    "backend": "uv run uvicorn server:app --reload",
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "@openai/chatkit-react": "^0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
-  },
-  "devDependencies": {
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^5.0.4",
-    "typescript": "^5.4.5",
-    "vite": "^5.2.0"
+    "frontend:install": "npm install --prefix frontend",
+    "frontend:dev": "npm run --prefix frontend dev",
+    "frontend:build": "npm run --prefix frontend build",
+    "frontend:preview": "npm run --prefix frontend preview",
+    "backend:sync": "sh -c 'if command -v uv >/dev/null; then uv sync --project backend; else python3 -m pip install -r backend/requirements.txt; fi'",
+    "backend:dev": "sh -c 'if command -v uv >/dev/null; then uv run --project backend uvicorn server:app --reload --app-dir backend; else python3 -m uvicorn server:app --reload --app-dir backend; fi'"
   }
 }

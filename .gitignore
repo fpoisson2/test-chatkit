@@ -5,3 +5,7 @@
 /.npm-cache
 /node_modules
 ..env.swp
+/.vite
+/backend/venv
+/frontend/node_modules
+*.pyc
