@@ -1,0 +1,7 @@
+
+/venv
+/__pycache__
+.env
+/.npm-cache
+/node_modules
+..env.swp
