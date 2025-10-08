@@ -182,7 +182,7 @@ export function MyChat() {
     setIsSidebarOpen(false);
   }, []);
 
-  const handleMainClick = useCallback(() => {
+  const handleMainInteraction = useCallback(() => {
     if (isSidebarOpen) {
       closeSidebar();
     }
@@ -430,7 +430,11 @@ export function MyChat() {
           </footer>
         </aside>
       )}
-      <div className="chatkit-layout__main" onClick={handleMainClick}>
+      <div
+        className="chatkit-layout__main"
+        onClick={handleMainInteraction}
+        onPointerDown={handleMainInteraction}
+      >
         <div className="chatkit-layout__widget">
           <ChatKit
             control={control}

@@ -206,14 +206,14 @@ button {
   flex-direction: column;
   gap: 24px;
   padding: 28px 24px;
-  animation: chatkit-sidebar-enter 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: chatkit-sidebar-enter 0.75s cubic-bezier(0.22, 1, 0.36, 1);
   animation-fill-mode: both;
   overflow-y: auto;
 }
 
 @keyframes chatkit-sidebar-enter {
   from {
-    transform: translateX(-32px);
+    transform: translateX(-48px);
     opacity: 0;
   }
   to {
