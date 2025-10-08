@@ -10,6 +10,7 @@ import {
   WORKFLOW_ID,
 } from "@/lib/config";
 import { ErrorOverlay } from "./ErrorOverlay";
+import { getWeather } from "@/lib/weather";
 import type { ColorScheme } from "@/hooks/useColorScheme";
 
 export type FactAction = {
@@ -310,6 +311,22 @@ export function ChatKitPanel({
           factText: text.replace(/\s+/g, " ").trim(),
         });
         return { success: true };
+      }
+
+      if (invocation.name === "get_weather") {
+        try {
+          const weather = await getWeather(invocation.params);
+          return { success: true, weather };
+        } catch (error) {
+          console.error("[ChatKitPanel] get_weather failed", error);
+          return {
+            success: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Unable to fetch weather right now.",
+          };
+        }
       }
 
       return { success: false };
