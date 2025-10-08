@@ -4,19 +4,20 @@ import logging
 import os
 import secrets
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 import time
 
 import httpx
 import jwt
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import Boolean, DateTime, Integer, String, create_engine, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.exc import OperationalError
+from starlette.responses import StreamingResponse
 
 
 class SessionRequest(BaseModel):
@@ -145,6 +146,37 @@ class User(Base):
 _engine = create_engine(_database_url, future=True)
 _SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
 _http_bearer = HTTPBearer(auto_error=False)
+
+_HOP_BY_HOP_HEADERS = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailers",
+    "transfer-encoding",
+    "upgrade",
+}
+
+
+def _sanitize_forward_headers(
+    headers: Iterable[tuple[str, str]],
+    *,
+    include_chatkit_beta: bool,
+) -> list[tuple[str, str]]:
+    sanitized: list[tuple[str, str]] = []
+    seen_lower: set[str] = set()
+    for key, value in headers:
+        lower_key = key.lower()
+        if lower_key in _HOP_BY_HOP_HEADERS or lower_key == "content-length":
+            continue
+        sanitized.append((key, value))
+        seen_lower.add(lower_key)
+
+    if include_chatkit_beta and "openai-beta" not in seen_lower:
+        sanitized.append(("OpenAI-Beta", "chatkit_beta=v1"))
+
+    return sanitized
 
 
 _WEATHER_CODE_DESCRIPTIONS: dict[int, str] = {
@@ -421,6 +453,59 @@ async def _create_chatkit_session(user_id: str) -> dict:
             },
         )
     return response.json()
+
+
+@app.api_route(
+    "/api/chatkit/proxy/{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+)
+async def proxy_chatkit(path: str, request: Request):
+    if request.method == "OPTIONS":
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    relative_path = path.lstrip("/")
+    upstream_path = f"/v1/chatkit/{relative_path}" if relative_path else "/v1/chatkit"
+    if request.url.query:
+        upstream_path = f"{upstream_path}?{request.url.query}"
+
+    try:
+        body = await request.body()
+    except Exception:  # pragma: no cover - lecture du flux
+        body = b""
+
+    upstream_headers = _sanitize_forward_headers(
+        request.headers.items(),
+        include_chatkit_beta=True,
+    )
+
+    timeout = httpx.Timeout(60.0, read=None)
+    try:
+        async with httpx.AsyncClient(base_url=_chatkit_api_base, timeout=timeout) as client:
+            async with client.stream(
+                request.method,
+                upstream_path,
+                headers=upstream_headers,
+                content=body or None,
+            ) as upstream_response:
+                response = StreamingResponse(
+                    upstream_response.aiter_raw(),
+                    status_code=upstream_response.status_code,
+                    media_type=upstream_response.headers.get("content-type"),
+                )
+                for key, value in _sanitize_forward_headers(
+                    upstream_response.headers.items(),
+                    include_chatkit_beta=False,
+                ):
+                    if key.lower() == "content-type":
+                        continue
+                    response.headers.append(key, value)
+                return response
+    except httpx.RequestError as exc:  # pragma: no cover - remontée d'erreur réseau
+        logger.error("ChatKit proxy request failed", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="ChatKit upstream request failed",
+        ) from exc
 
 
 @app.on_event("startup")
