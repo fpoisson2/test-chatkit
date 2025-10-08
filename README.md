@@ -33,6 +33,7 @@ Update `.env.local` with the variables that match your setup.
 - `OPENAI_API_KEY` — API key created **within the same org & project as your Agent Builder**
 - `NEXT_PUBLIC_CHATKIT_WORKFLOW_ID` — the workflow you created in [Agent Builder](https://platform.openai.com/agent-builder)
 - (optional) `CHATKIT_API_BASE` - customizable base URL for the ChatKit API endpoint
+- (optional) `OPENAI_DOMAIN_VERIFICATION_TOKEN` — token provided in the [domain allowlist settings](https://platform.openai.com/settings/organization/security/domain-allowlist) so the app can expose the verification meta tag and `/.well-known/openai-domain-verification` file automatically
 
 ### 4. Run the app
 
