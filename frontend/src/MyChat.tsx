@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
@@ -179,7 +180,53 @@ const getDesktopLayoutPreference = () => {
     return false;
   }
 
-  return window.matchMedia(DESKTOP_MEDIA_QUERY).matches;
+  if (typeof window.matchMedia === "function") {
+    return window.matchMedia(DESKTOP_MEDIA_QUERY).matches;
+  }
+
+  return window.innerWidth >= 1024;
+};
+
+const useIsDesktopLayout = () => {
+  const getSnapshot = useCallback(() => getDesktopLayoutPreference(), []);
+
+  const subscribe = useCallback((callback: () => void) => {
+    if (typeof window === "undefined") {
+      return () => {};
+    }
+
+    const handleChange = () => {
+      callback();
+    };
+
+    let mediaQuery: MediaQueryList | null = null;
+
+    if (typeof window.matchMedia === "function") {
+      mediaQuery = window.matchMedia(DESKTOP_MEDIA_QUERY);
+
+      if (typeof mediaQuery.addEventListener === "function") {
+        mediaQuery.addEventListener("change", handleChange);
+      } else if (typeof mediaQuery.addListener === "function") {
+        mediaQuery.addListener(handleChange);
+      }
+    }
+
+    window.addEventListener("resize", handleChange);
+
+    return () => {
+      if (mediaQuery) {
+        if (typeof mediaQuery.removeEventListener === "function") {
+          mediaQuery.removeEventListener("change", handleChange);
+        } else if (typeof mediaQuery.removeListener === "function") {
+          mediaQuery.removeListener(handleChange);
+        }
+      }
+
+      window.removeEventListener("resize", handleChange);
+    };
+  }, []);
+
+  return useSyncExternalStore(subscribe, getSnapshot, () => false);
 };
 
 export function MyChat() {
@@ -188,40 +235,13 @@ export function MyChat() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [isDesktopLayout, setIsDesktopLayout] = useState(getDesktopLayoutPreference);
+  const isDesktopLayout = useIsDesktopLayout();
   const [isSidebarOpen, setIsSidebarOpen] = useState(getDesktopLayoutPreference);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const mediaQuery = window.matchMedia(DESKTOP_MEDIA_QUERY);
-
-    const updateLayout = (matches: boolean) => {
-      setIsDesktopLayout(matches);
-      setIsSidebarOpen(matches);
-    };
-
-    updateLayout(mediaQuery.matches);
-
-    const handleChange = (event: MediaQueryListEvent) => {
-      updateLayout(event.matches);
-    };
-
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", handleChange);
-      return () => {
-        mediaQuery.removeEventListener("change", handleChange);
-      };
-    }
-
-    mediaQuery.addListener(handleChange);
-    return () => {
-      mediaQuery.removeListener(handleChange);
-    };
-  }, []);
+    setIsSidebarOpen(isDesktopLayout);
+  }, [isDesktopLayout]);
 
   const openSidebar = useCallback(() => {
     setIsSidebarOpen(true);
