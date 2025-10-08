@@ -11,8 +11,15 @@ services:
       CHATKIT_API_BASE: ${CHATKIT_API_BASE:-https://api.openai.com}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       CHATKIT_WORKFLOW_ID: ${CHATKIT_WORKFLOW_ID:-}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://chatkit:chatkit@db:5432/chatkit}
+      AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-change-me}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-120}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-adminpass}
     ports:
       - "8000:8000"
+    depends_on:
+      - db
   frontend:
     image: node:20
     working_dir: /app
@@ -32,5 +39,16 @@ services:
       - "${VITE_PORT:-5183}:${VITE_PORT:-5183}"
     depends_on:
       - backend
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chatkit}
+      POSTGRES_USER: ${POSTGRES_USER:-chatkit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatkit}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
 volumes:
   frontend-node_modules:
+  postgres-data:

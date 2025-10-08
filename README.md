@@ -1,6 +1,12 @@
 # ChatKit Sample
 
-This repository mirrors the walkthrough in `chatkit.md`, providing a FastAPI backend endpoint for issuing ChatKit client secrets and a React/Vite frontend that embeds the ChatKit widget. The codebase is now split into two apps: `backend/` and `frontend/`.
+This repository mirrors the walkthrough in `chatkit.md`, providing a FastAPI backend endpoint for issuing ChatKit client secrets and a React/Vite frontend that embeds the ChatKit widget. La base de code est scindée entre `backend/` et `frontend/` et inclut désormais une authentification basique (connexion + rôles) ainsi qu'un panneau d'administration pour gérer les utilisateurs.
+
+## Authentification et administration
+
+- La connexion se fait depuis `/login` et repose sur un token JWT signé côté backend.
+- Un compte administrateur (créé via variables d'environnement) peut gérer les utilisateurs depuis `/admin` : création, promotion/déclassement, réinitialisation de mot de passe et suppression.
+- Les requêtes vers `/api/chatkit/session` utilisent automatiquement l'identité de l'utilisateur connecté si un token est présent dans les en-têtes.
 
 ## Commandes depuis la racine
 
@@ -16,20 +22,27 @@ Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi
 ## Backend (`backend/`)
 
 - Install dependencies via [uv](https://github.com/astral-sh/uv): `uv sync` (ou `npm run backend:sync` à la racine)
-- Create a `.env` file inside `backend/` with:
-  - `OPENAI_API_KEY` – the API key with access to the ChatKit beta
-  - `CHATKIT_WORKFLOW_ID` – the workflow identifier (example from the docs: `wf_68e517bc3df4819095eb9f252c9f097d057110cbe8192cd9`)
+- Créez un fichier `.env` dans `backend/` avec au minimum :
+  - `OPENAI_API_KEY` – clé API autorisée sur la bêta ChatKit
+  - `CHATKIT_WORKFLOW_ID` – identifiant du workflow (exemple : `wf_68e517bc3df4819095eb9f252c9f097d057110cbe8192cd9`)
+  - `DATABASE_URL` – URL SQLAlchemy vers PostgreSQL (ex. `postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit`)
+  - `AUTH_SECRET_KEY` – clé secrète utilisée pour signer les tokens JWT
+  - Optionnel : `ACCESS_TOKEN_EXPIRE_MINUTES` pour ajuster la durée de validité du token (par défaut 120 min)
+  - Optionnel : `ADMIN_EMAIL` et `ADMIN_PASSWORD` pour provisionner automatiquement un compte administrateur au démarrage
+  - Optionnel : `DATABASE_CONNECT_RETRIES` / `DATABASE_CONNECT_DELAY` pour ajuster la stratégie d'attente au démarrage
 - Start the dev server from the `backend/` directory: `uv run uvicorn server:app --reload` (ou `npm run backend:dev` à la racine)
 
-The `/api/chatkit/session` route makes an HTTP request to `https://api.openai.com/v1/chatkit/sessions` using `httpx`, mirroring the official starter app. It accepts an optional `user` id and returns the `client_secret` (and `expires_after` if present). A `requirements.txt` remains available for `pip install -r requirements.txt`.
+The `/api/chatkit/session` route makes an HTTP request to `https://api.openai.com/v1/chatkit/sessions` using `httpx`, mirroring the official starter app. Si un utilisateur est authentifié, son identifiant interne est réutilisé pour générer la session. A `requirements.txt` remains available for `pip install -r requirements.txt`.
 
 ## Frontend (`frontend/`)
 
 - Install JavaScript dependencies from within `frontend/`: `npm install` (ou `npm run frontend:install` à la racine)
 - Start the Vite dev server (also from `frontend/`): `npm run dev` (default URL `http://localhost:5173`; alias racine `npm run frontend:dev`)
-- The ChatKit widget is rendered by `src/MyChat.tsx` and mounted from `src/main.tsx`
+- `src/App.tsx` définit le routage entre l'accueil (`/`), la page de connexion (`/login`) et le panneau d'administration (`/admin`)
+- Le widget ChatKit reste géré par `src/MyChat.tsx`, désormais capable d'inclure automatiquement le token d'un utilisateur connecté
 - The project depends on React 19, matching the official starter app requirements for `@openai/chatkit-react`
 - `vite.config.ts` proxies `/api/chatkit/session` requests to the FastAPI backend running on port 8000
+- `VITE_BACKEND_URL` définit l'URL cible du backend pour l'ensemble des appels `/api/*`
 - `VITE_ALLOWED_HOSTS` permet d'ajouter une liste d'hôtes supplémentaires autorisés par le serveur Vite (séparés par des virgules)
 - `index.html` already loads the ChatKit CDN script: `<script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>`
 - If you want to call OpenAI directly from the browser, `src/chatkit.ts` shows the fetch helper that uses `import.meta.env.VITE_OPENAI_API_SECRET_KEY`
@@ -45,6 +58,11 @@ Depuis la racine du dépôt, vous pouvez orchestrer le backend FastAPI et le fro
    ```env
    OPENAI_API_KEY="sk-..."
    CHATKIT_WORKFLOW_ID="wf_..."
+   AUTH_SECRET_KEY="change-me"
+   ADMIN_EMAIL="admin@example.com"
+   ADMIN_PASSWORD="adminpass"
+   # Optionnel : ajustez la connexion PostgreSQL (défaut : postgresql+psycopg://chatkit:chatkit@db:5432/chatkit)
+   # DATABASE_URL="postgresql+psycopg://user:password@host:5432/chatkit"
    # Optionnel : ajustez le port d'exposition du frontend
    VITE_PORT=5183
    # Optionnel : ajustez le hostname utilisé par le HMR (utile derrière un tunnel/proxy)
@@ -53,10 +71,10 @@ Depuis la racine du dépôt, vous pouvez orchestrer le backend FastAPI et le fro
    # VITE_ALLOWED_HOSTS="chatkit.example.com"
    ```
    Les autres variables d'environnement exposées dans `docker-compose.yml` disposent de valeurs par défaut (`VITE_ALLOWED_HOSTS`, `VITE_HMR_PROTOCOL`, `VITE_HMR_CLIENT_PORT`, `VITE_BACKEND_URL`, etc.) que vous pouvez également surcharger dans `.env` si nécessaire.
-2. Depuis la racine du projet, lancez `docker compose up` pour démarrer les deux services. Le backend répond sur `http://localhost:8000` et le frontend sur `http://localhost:${VITE_PORT}`.
+2. Depuis la racine du projet, lancez `docker compose up` pour démarrer les trois services (backend, frontend, base PostgreSQL). Le backend répond sur `http://localhost:8000`, la base de données sur `localhost:5432` et le frontend sur `http://localhost:${VITE_PORT}`.
 3. Utilisez `docker compose down` pour arrêter l'environnement de développement, puis relancez `docker compose up --build` si vous modifiez les dépendances système.
 
-Les volumes montés vous permettent de modifier le code localement tout en profitant du rafraîchissement à chaud côté frontend (`npm run dev -- --host 0.0.0.0`) et du rechargement automatique d'Uvicorn.
+Les volumes montés vous permettent de modifier le code localement tout en profitant du rafraîchissement à chaud côté frontend (`npm run dev -- --host 0.0.0.0`) et du rechargement automatique d'Uvicorn. Le volume nommé `postgres-data` conserve l'état de la base entre deux relances.
 
 ### Exemple derrière un reverse proxy Nginx
 

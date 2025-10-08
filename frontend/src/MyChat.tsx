@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
 
+import { useAuth } from "./auth";
+
 const DEVICE_ID_STORAGE_KEY = "chatkit-device-id";
 
 const getOrCreateDeviceId = () => {
@@ -17,6 +19,7 @@ const getOrCreateDeviceId = () => {
 };
 
 export function MyChat() {
+  const { token, user } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
@@ -31,12 +34,17 @@ export function MyChat() {
     setError(null);
 
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
       const res = await fetch("/api/chatkit/session", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ user: deviceId }),
+        headers,
+        body: JSON.stringify({ user: user?.email ?? deviceId }),
       });
 
       if (!res.ok) {
@@ -62,7 +70,7 @@ export function MyChat() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [token, user]);
 
   const chatkitOptions = useMemo(
     () => ({

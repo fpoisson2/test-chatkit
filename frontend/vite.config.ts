@@ -32,7 +32,7 @@ export default defineConfig({
     },
     ...(allowedHosts?.length ? { allowedHosts } : {}),
     proxy: {
-      "/api/chatkit/session": {
+      "/api": {
         target: backendTarget,
         changeOrigin: true,
       },
