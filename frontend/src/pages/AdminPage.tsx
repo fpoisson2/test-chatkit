@@ -62,7 +62,7 @@ export const AdminPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [headers, token]);
+  }, [headers, logout, token]);
 
   useEffect(() => {
     void fetchUsers();
@@ -185,214 +185,148 @@ export const AdminPage = () => {
     }
   };
 
+  const userCountLabel = users.length
+    ? ` · ${users.length} utilisateur${users.length > 1 ? "s" : ""}`
+    : "";
+
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#f8fafc" }}>
-      <header
-        style={{
-          padding: "16px 24px",
-          backgroundColor: "white",
-          borderBottom: "1px solid #e2e8f0",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-        }}
-      >
-        <div>
-          <h1 style={{ margin: 0, fontSize: "1.75rem", color: "#0f172a" }}>Administration des utilisateurs</h1>
-          <p style={{ margin: "4px 0 0", color: "#475569" }}>
-            Gérez les comptes autorisés à accéder au widget ChatKit.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-          <span style={{ color: "#475569" }}>{currentUser?.email}</span>
-          <button
-            type="button"
-            onClick={logout}
-            style={{
-              backgroundColor: "#0f172a",
-              color: "white",
-              border: "none",
-              borderRadius: "8px",
-              padding: "10px 14px",
-              cursor: "pointer",
-            }}
-          >
-            Déconnexion
-          </button>
-        </div>
-      </header>
-
-      <main style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "24px" }}>
-        {error && (
-          <div style={{ color: "#b91c1c", backgroundColor: "#fee2e2", padding: "12px", borderRadius: "8px" }}>
-            {error}
+    <div className="admin-layout">
+      <div className="admin-shell">
+        <header className="admin-shell__header">
+          <div>
+            <h1 className="admin-shell__title">Administration des utilisateurs</h1>
+            <p className="admin-shell__subtitle">
+              Gérez les accès autorisés au widget ChatKit et pilotez les rôles en un clin d'œil.
+            </p>
           </div>
-        )}
-
-        <section
-          style={{
-            backgroundColor: "white",
-            borderRadius: "12px",
-            padding: "24px",
-            boxShadow: "0 10px 30px rgba(15, 23, 42, 0.05)",
-          }}
-        >
-          <h2 style={{ marginTop: 0, color: "#0f172a" }}>Créer un utilisateur</h2>
-          <form onSubmit={handleCreate} style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
-            <label style={{ flex: "1 1 220px", display: "flex", flexDirection: "column", gap: "6px" }}>
-              E-mail
-              <input
-                type="email"
-                required
-                value={createPayload.email}
-                onChange={(event) => setCreatePayload((prev) => ({ ...prev, email: event.target.value }))}
-                placeholder="nouvel.utilisateur@example.com"
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid #cbd5f5",
-                }}
-              />
-            </label>
-            <label style={{ flex: "1 1 200px", display: "flex", flexDirection: "column", gap: "6px" }}>
-              Mot de passe
-              <input
-                type="text"
-                required
-                value={createPayload.password}
-                onChange={(event) => setCreatePayload((prev) => ({ ...prev, password: event.target.value }))}
-                placeholder="Mot de passe temporaire"
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: "8px",
-                  border: "1px solid #cbd5f5",
-                }}
-              />
-            </label>
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                paddingTop: "24px",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={createPayload.is_admin}
-                onChange={(event) =>
-                  setCreatePayload((prev) => ({ ...prev, is_admin: event.target.checked }))
-                }
-              />
-              Administrateur
-            </label>
-            <button
-              type="submit"
-              style={{
-                backgroundColor: "#2563eb",
-                color: "white",
-                border: "none",
-                borderRadius: "8px",
-                padding: "12px 20px",
-                cursor: "pointer",
-                alignSelf: "flex-end",
-              }}
-            >
-              Ajouter
+          <div className="admin-shell__toolbar">
+            <span className="admin-shell__chips">
+              {currentUser?.email ?? "Administrateur"}
+              {userCountLabel}
+            </span>
+            <button className="button button--ghost" type="button" onClick={logout}>
+              Déconnexion
             </button>
-          </form>
-        </section>
+          </div>
+        </header>
 
-        <section
-          style={{
-            backgroundColor: "white",
-            borderRadius: "12px",
-            padding: "24px",
-            boxShadow: "0 10px 30px rgba(15, 23, 42, 0.05)",
-          }}
-        >
-          <h2 style={{ marginTop: 0, color: "#0f172a" }}>Utilisateurs</h2>
-          {isLoading ? (
-            <p>Chargement des utilisateurs…</p>
-          ) : users.length === 0 ? (
-            <p>Aucun utilisateur pour le moment.</p>
-          ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ textAlign: "left", color: "#475569" }}>
-                    <th style={{ padding: "12px" }}>E-mail</th>
-                    <th style={{ padding: "12px" }}>Rôle</th>
-                    <th style={{ padding: "12px" }}>Créé le</th>
-                    <th style={{ padding: "12px" }}>Mis à jour le</th>
-                    <th style={{ padding: "12px" }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((editableUser) => (
-                    <tr key={editableUser.id} style={{ borderTop: "1px solid #e2e8f0" }}>
-                      <td style={{ padding: "12px" }}>{editableUser.email}</td>
-                      <td style={{ padding: "12px" }}>
-                        {editableUser.is_admin ? "Administrateur" : "Utilisateur"}
-                      </td>
-                      <td style={{ padding: "12px" }}>
-                        {new Date(editableUser.created_at).toLocaleString()}
-                      </td>
-                      <td style={{ padding: "12px" }}>
-                        {new Date(editableUser.updated_at).toLocaleString()}
-                      </td>
-                      <td style={{ padding: "12px", display: "flex", gap: "8px" }}>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleAdmin(editableUser)}
-                          style={{
-                            backgroundColor: "#1d4ed8",
-                            color: "white",
-                            border: "none",
-                            borderRadius: "6px",
-                            padding: "8px 12px",
-                            cursor: "pointer",
-                          }}
-                        >
-                          {editableUser.is_admin ? "Retirer admin" : "Promouvoir"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleResetPassword(editableUser)}
-                          style={{
-                            backgroundColor: "#0f172a",
-                            color: "white",
-                            border: "none",
-                            borderRadius: "6px",
-                            padding: "8px 12px",
-                            cursor: "pointer",
-                          }}
-                        >
-                          Réinitialiser le mot de passe
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(editableUser)}
-                          style={{
-                            backgroundColor: "#dc2626",
-                            color: "white",
-                            border: "none",
-                            borderRadius: "6px",
-                            padding: "8px 12px",
-                            cursor: "pointer",
-                          }}
-                        >
-                          Supprimer
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {error && <div className="alert alert--danger">{error}</div>}
+
+        <div className="admin-grid">
+          <section className="admin-card">
+            <div>
+              <h2 className="admin-card__title">Créer un utilisateur</h2>
+              <p className="admin-card__subtitle">
+                Invitez un collaborateur et attribuez-lui un rôle adapté à son usage de ChatKit.
+              </p>
             </div>
-          )}
-        </section>
-      </main>
+            <form className="admin-form" onSubmit={handleCreate}>
+              <div className="admin-form__row">
+                <label className="label">
+                  E-mail
+                  <input
+                    className="input"
+                    type="email"
+                    required
+                    value={createPayload.email}
+                    onChange={(event) => setCreatePayload((prev) => ({ ...prev, email: event.target.value }))}
+                    placeholder="nouvel.utilisateur@example.com"
+                  />
+                </label>
+                <label className="label">
+                  Mot de passe temporaire
+                  <input
+                    className="input"
+                    type="text"
+                    required
+                    value={createPayload.password}
+                    onChange={(event) => setCreatePayload((prev) => ({ ...prev, password: event.target.value }))}
+                    placeholder="Mot de passe temporaire"
+                  />
+                </label>
+              </div>
+              <label className="checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={createPayload.is_admin}
+                  onChange={(event) =>
+                    setCreatePayload((prev) => ({ ...prev, is_admin: event.target.checked }))
+                  }
+                />
+                Administrateur
+              </label>
+              <div className="admin-form__actions">
+                <button className="button" type="submit">
+                  Ajouter
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <section className="admin-card">
+            <div>
+              <h2 className="admin-card__title">Utilisateurs</h2>
+              <p className="admin-card__subtitle">
+                Consultez les accès existants et appliquez des actions rapides pour chaque compte.
+              </p>
+            </div>
+            {isLoading ? (
+              <p className="admin-card__subtitle">Chargement des utilisateurs…</p>
+            ) : users.length === 0 ? (
+              <p className="admin-card__subtitle">Aucun utilisateur pour le moment.</p>
+            ) : (
+              <div className="admin-table-wrapper">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>E-mail</th>
+                      <th>Rôle</th>
+                      <th>Créé le</th>
+                      <th>Mis à jour le</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((editableUser) => (
+                      <tr key={editableUser.id}>
+                        <td>{editableUser.email}</td>
+                        <td>{editableUser.is_admin ? "Administrateur" : "Utilisateur"}</td>
+                        <td>{new Date(editableUser.created_at).toLocaleString()}</td>
+                        <td>{new Date(editableUser.updated_at).toLocaleString()}</td>
+                        <td>
+                          <div className="admin-table__actions">
+                            <button
+                              className="button button--subtle button--sm"
+                              type="button"
+                              onClick={() => handleToggleAdmin(editableUser)}
+                            >
+                              {editableUser.is_admin ? "Retirer admin" : "Promouvoir"}
+                            </button>
+                            <button
+                              className="button button--ghost button--sm"
+                              type="button"
+                              onClick={() => handleResetPassword(editableUser)}
+                            >
+                              Réinitialiser
+                            </button>
+                            <button
+                              className="button button--danger button--sm"
+                              type="button"
+                              onClick={() => handleDelete(editableUser)}
+                            >
+                              Supprimer
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
     </div>
   );
 };
