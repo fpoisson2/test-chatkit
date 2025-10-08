@@ -471,6 +471,121 @@ button {
   gap: 8px;
 }
 
+.settings-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 5vw, 32px);
+}
+
+.settings-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(6px);
+}
+
+.settings-modal__panel {
+  position: relative;
+  z-index: 1;
+  width: min(420px, 100%);
+  background: var(--surface-strong);
+  border-radius: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  box-shadow: var(--shadow-card);
+  padding: clamp(24px, 5vw, 32px);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.settings-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.settings-modal__title {
+  margin: 0;
+  font-size: clamp(1.15rem, 2.8vw, 1.4rem);
+  color: var(--text-color);
+}
+
+.settings-modal__subtitle {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.settings-modal__close {
+  border: none;
+  background: rgba(15, 23, 42, 0.08);
+  color: var(--text-color);
+  border-radius: 999px;
+  width: 36px;
+  height: 36px;
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.settings-modal__close:hover,
+.settings-modal__close:focus-visible {
+  background: rgba(15, 23, 42, 0.15);
+  transform: translateY(-1px);
+}
+
+.settings-modal__content {
+  display: block;
+}
+
+.settings-modal__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.settings-modal__item button {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 16px;
+  padding: 14px 18px;
+  background: rgba(37, 99, 235, 0.08);
+  color: var(--text-color);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.settings-modal__item button:hover,
+.settings-modal__item button:focus-visible {
+  background: rgba(37, 99, 235, 0.16);
+  border-color: rgba(37, 99, 235, 0.35);
+  transform: translateY(-1px);
+}
+
+.settings-modal__item--danger {
+  background: rgba(220, 38, 38, 0.08);
+  color: var(--danger-hover);
+}
+
+button.settings-modal__item--danger:hover,
+button.settings-modal__item--danger:focus-visible {
+  background: rgba(220, 38, 38, 0.14);
+  border-color: rgba(220, 38, 38, 0.4);
+}
+
 @media (max-width: 768px) {
   .app-shell__header-inner {
     flex-direction: column;

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
 import type { ChatKitOptions } from "@openai/chatkit";
 
@@ -165,10 +166,39 @@ type WeatherToolCall = {
 type ClientToolCall = WeatherToolCall;
 
 export function MyChat() {
-  const { token, user } = useAuth();
+  const { token, user, logout } = useAuth();
+  const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
+
+  const openProfileSettings = useCallback(() => {
+    setIsSettingsModalOpen(true);
+  }, []);
+
+  const closeProfileSettings = useCallback(() => {
+    setIsSettingsModalOpen(false);
+  }, []);
+
+  const goToHome = useCallback(() => {
+    navigate("/");
+  }, [navigate]);
+
+  const handleHomeFromModal = useCallback(() => {
+    closeProfileSettings();
+    goToHome();
+  }, [closeProfileSettings, goToHome]);
+
+  const handleGoToAdmin = useCallback(() => {
+    closeProfileSettings();
+    navigate("/admin");
+  }, [closeProfileSettings, navigate]);
+
+  const handleLogout = useCallback(() => {
+    closeProfileSettings();
+    logout();
+  }, [closeProfileSettings, logout]);
 
   const getClientSecret = useCallback(async (currentSecret: string | null) => {
     if (currentSecret) {
@@ -223,6 +253,16 @@ export function MyChat() {
       ({
         api: {
           getClientSecret,
+        },
+        header: {
+          leftAction: {
+            icon: "settings-cog",
+            onClick: openProfileSettings,
+          },
+          rightAction: {
+            icon: "home",
+            onClick: goToHome,
+          },
         },
         theme: {
           colorScheme: "light" as const,
@@ -295,7 +335,7 @@ export function MyChat() {
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
         },
       }) satisfies ChatKitOptions,
-    [getClientSecret]
+    [getClientSecret, goToHome, openProfileSettings]
   );
 
   const { control } = useChatKit(chatkitOptions);
@@ -324,6 +364,57 @@ export function MyChat() {
         />
       </div>
       <div className={statusClassName}>{statusMessage}</div>
+      {isSettingsModalOpen && (
+        <div
+          className="settings-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="settings-modal-title"
+        >
+          <div className="settings-modal__backdrop" onClick={closeProfileSettings} />
+          <div className="settings-modal__panel" role="document">
+            <header className="settings-modal__header">
+              <div>
+                <h2 id="settings-modal-title" className="settings-modal__title">
+                  Paramètres rapides
+                </h2>
+                <p className="settings-modal__subtitle">
+                  Accédez rapidement aux sections clés de votre espace.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="settings-modal__close"
+                onClick={closeProfileSettings}
+                aria-label="Fermer les paramètres"
+              >
+                ×
+              </button>
+            </header>
+            <nav className="settings-modal__content" aria-label="Menu des paramètres">
+              <ul className="settings-modal__list">
+                <li className="settings-modal__item">
+                  <button type="button" onClick={handleHomeFromModal}>
+                    Retour à l'accueil
+                  </button>
+                </li>
+                {user?.is_admin && (
+                  <li className="settings-modal__item">
+                    <button type="button" onClick={handleGoToAdmin}>
+                      Administration
+                    </button>
+                  </li>
+                )}
+                <li className="settings-modal__item">
+                  <button type="button" onClick={handleLogout} className="settings-modal__item--danger">
+                    Déconnexion
+                  </button>
+                </li>
+              </ul>
+            </nav>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
