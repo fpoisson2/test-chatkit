@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
 import type { ChatKitOptions } from "@openai/chatkit";
@@ -172,6 +172,7 @@ export function MyChat() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const sidebarRef = useRef<HTMLElement | null>(null);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
 
   const openSidebar = useCallback(() => {
@@ -385,10 +386,47 @@ export function MyChat() {
     .filter(Boolean)
     .join(" ");
 
+  useEffect(() => {
+    if (!isSidebarOpen || typeof document === "undefined") {
+      return;
+    }
+
+    const handleDocumentInteraction = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (!sidebarRef.current?.contains(target)) {
+        closeSidebar();
+      }
+    };
+
+    document.addEventListener("pointerdown", handleDocumentInteraction, true);
+    document.addEventListener("click", handleDocumentInteraction, true);
+
+    const supportsTouch = typeof window !== "undefined" && "ontouchstart" in window;
+    if (supportsTouch) {
+      document.addEventListener("touchstart", handleDocumentInteraction, true);
+    }
+
+    return () => {
+      document.removeEventListener("pointerdown", handleDocumentInteraction, true);
+      document.removeEventListener("click", handleDocumentInteraction, true);
+      if (supportsTouch) {
+        document.removeEventListener("touchstart", handleDocumentInteraction, true);
+      }
+    };
+  }, [closeSidebar, isSidebarOpen]);
+
   return (
     <div className={`chatkit-layout${isSidebarOpen ? " chatkit-layout--sidebar-open" : ""}`}>
       {isSidebarOpen && (
-        <aside className="chatkit-sidebar" aria-labelledby="chatkit-sidebar-title">
+        <aside
+          ref={sidebarRef}
+          className="chatkit-sidebar"
+          aria-labelledby="chatkit-sidebar-title"
+        >
           <header className="chatkit-sidebar__header">
             <h2 id="chatkit-sidebar-title" className="chatkit-sidebar__title">
               Navigation
@@ -434,6 +472,7 @@ export function MyChat() {
         className="chatkit-layout__main"
         onClick={handleMainInteraction}
         onPointerDown={handleMainInteraction}
+        onTouchStart={handleMainInteraction}
       >
         <div className="chatkit-layout__widget">
           <ChatKit
