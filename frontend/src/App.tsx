@@ -48,50 +48,29 @@ const HomePage = () => {
   }
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
-      <header
-        style={{
-          padding: "12px 16px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          borderBottom: "1px solid #e2e8f0",
-          backgroundColor: "#f8fafc",
-        }}
-      >
-        <div>
-          <strong>ChatKit Demo</strong>
-          <span style={{ marginLeft: "8px", color: "#475569" }}>
-            Connecté en tant que {user.email}
-          </span>
-        </div>
-        <div style={{ display: "flex", gap: "8px" }}>
-          {user?.is_admin && (
-            <Link to="/admin" style={{ color: "#2563eb", textDecoration: "none" }}>
-              Administration
-            </Link>
-          )}
-          {user && (
-            <button
-              type="button"
-              onClick={logout}
-              style={{
-                backgroundColor: "#dc2626",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                padding: "6px 12px",
-                cursor: "pointer",
-              }}
-            >
+    <div className="app-shell">
+      <header className="app-shell__header">
+        <div className="app-shell__header-inner">
+          <div className="branding">
+            <h1 className="branding__title">ChatKit Demo</h1>
+            <p className="branding__subtitle">Connecté en tant que {user.email}</p>
+          </div>
+          <div className="header-actions">
+            <span className="header-actions__pill">Session sécurisée</span>
+            {user?.is_admin && (
+              <Link className="button button--ghost" to="/admin">
+                Administration
+              </Link>
+            )}
+            <button className="button button--danger" type="button" onClick={logout}>
               Déconnexion
             </button>
-          )}
+          </div>
         </div>
       </header>
-      <div style={{ flex: "1 1 auto" }}>
+      <main className="app-shell__main">
         <MyChat />
-      </div>
+      </main>
     </div>
   );
 };
