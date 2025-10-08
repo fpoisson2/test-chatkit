@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
 import type { ChatKitOptions } from "@openai/chatkit";
+import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "./auth";
 
@@ -164,11 +165,181 @@ type WeatherToolCall = {
 
 type ClientToolCall = WeatherToolCall;
 
+type SettingsSection = "navigation" | "preferences" | "session";
+type StatusVariant = "ready" | "loading" | "warning" | "error";
+type PlaceholderState = {
+  variant: "loading" | "warning" | "error";
+  title: string;
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void;
+} | null;
+
 export function MyChat() {
-  const { token, user } = useAuth();
+  const { token, user, logout } = useAuth();
+  const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSection>("navigation");
+  const [showTips, setShowTips] = useState(true);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const [chatKitReadyState, setChatKitReadyState] = useState<"loading" | "ready" | "error">("loading");
+  const [widgetError, setWidgetError] = useState<string | null>(null);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
+  const modalTitleId = useId();
+  const modalDescriptionId = useId();
+
+  const openSettings = useCallback(() => {
+    setActiveSettingsSection("navigation");
+    setIsSettingsOpen(true);
+  }, []);
+
+  const closeSettings = useCallback(() => {
+    setIsSettingsOpen(false);
+  }, []);
+
+  const goHome = useCallback(() => {
+    navigate("/");
+    closeSettings();
+  }, [closeSettings, navigate]);
+
+  const goToAdmin = useCallback(() => {
+    navigate("/admin");
+    closeSettings();
+  }, [closeSettings, navigate]);
+
+  const reloadPage = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.location.reload();
+    }
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    closeSettings();
+    logout();
+  }, [closeSettings, logout]);
+
+  useEffect(() => {
+    if (!isSettingsOpen) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeSettings();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [closeSettings, isSettingsOpen]);
+
+  const settingsSections = useMemo(
+    () => [
+      {
+        id: "navigation" as const,
+        label: "Navigation",
+        description: "Accédez rapidement aux différentes sections de l'application.",
+      },
+      {
+        id: "preferences" as const,
+        label: "Préférences",
+        description: "Personnalisez votre expérience de discussion.",
+      },
+      {
+        id: "session" as const,
+        label: "Session",
+        description: "Gérez votre session et vos informations utilisateur.",
+      },
+    ],
+    [],
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const devWindow = window as typeof window & {
+      openChatSettings?: () => void;
+    };
+
+    if (import.meta.env.DEV) {
+      devWindow.openChatSettings = openSettings;
+      return () => {
+        delete devWindow.openChatSettings;
+      };
+    }
+
+    return () => {
+      delete devWindow.openChatSettings;
+    };
+  }, [openSettings]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!("customElements" in window)) {
+      setWidgetError(
+        "Ce navigateur ne permet pas d'afficher le widget ChatKit (Web Components non pris en charge).",
+      );
+      setChatKitReadyState("error");
+      return;
+    }
+
+    if (window.customElements.get("openai-chatkit")) {
+      setChatKitReadyState("ready");
+      setWidgetError(null);
+      return;
+    }
+
+    let isCancelled = false;
+    setChatKitReadyState("loading");
+    setWidgetError(null);
+
+    const timeoutId = window.setTimeout(() => {
+      if (isCancelled) {
+        return;
+      }
+      setWidgetError(
+        "Le chargement du widget ChatKit est plus long que prévu. Vérifiez votre connexion ou réessayez.",
+      );
+    }, 5000);
+
+    window.customElements
+      .whenDefined("openai-chatkit")
+      .then(() => {
+        window.clearTimeout(timeoutId);
+        if (isCancelled) {
+          return;
+        }
+        setChatKitReadyState("ready");
+        setWidgetError(null);
+      })
+      .catch((err) => {
+        window.clearTimeout(timeoutId);
+        if (isCancelled) {
+          return;
+        }
+        setChatKitReadyState("error");
+        setWidgetError(
+          err instanceof Error
+            ? `Impossible de charger le widget ChatKit : ${err.message}`
+            : "Impossible de charger le widget ChatKit.",
+        );
+      });
+
+    return () => {
+      isCancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, []);
 
   const getClientSecret = useCallback(async (currentSecret: string | null) => {
     if (currentSecret) {
@@ -223,6 +394,20 @@ export function MyChat() {
       ({
         api: {
           getClientSecret,
+        },
+        header: {
+          title: "Assistant ChatKit",
+          subtitle: user ? `Connecté en tant que ${user.email}` : undefined,
+          leftAction: {
+            icon: "settings-cog",
+            label: "Ouvrir les paramètres",
+            onClick: openSettings,
+          },
+          rightAction: {
+            icon: "home",
+            label: "Revenir à l'accueil",
+            onClick: goHome,
+          },
         },
         theme: {
           colorScheme: "light" as const,
@@ -295,35 +480,262 @@ export function MyChat() {
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
         },
       }) satisfies ChatKitOptions,
-    [getClientSecret]
+    [getClientSecret, goHome, openSettings, user?.email]
   );
 
   const { control } = useChatKit(chatkitOptions);
 
-  const statusMessage = error
-    ? error
-    : isLoading
-      ? "Initialisation de la session…"
-      : "Votre assistant est prêt à répondre.";
+  const isChatKitReady = chatKitReadyState === "ready";
+
+  const placeholder: PlaceholderState = (() => {
+    if (error) {
+      return {
+        variant: "error",
+        title: "Impossible d'initialiser la session",
+        message: error,
+        actionLabel: "Recharger la page",
+        onAction: reloadPage,
+      };
+    }
+
+    if (chatKitReadyState === "error" && widgetError) {
+      return {
+        variant: "error",
+        title: "Impossible de charger le widget ChatKit",
+        message: widgetError,
+        actionLabel: "Recharger la page",
+        onAction: reloadPage,
+      };
+    }
+
+    if (!isChatKitReady) {
+      return {
+        variant: widgetError ? "warning" : "loading",
+        title: "Initialisation de ChatKit",
+        message:
+          widgetError ??
+          "Nous préparons l'interface de discussion. Cette opération ne prend généralement que quelques secondes.",
+      };
+    }
+
+    if (isLoading) {
+      return {
+        variant: "loading",
+        title: "Connexion en cours",
+        message: "Nous sécurisons votre session auprès de ChatKit…",
+      };
+    }
+
+    return null;
+  })();
+
+  const statusDetails = (() => {
+    if (error) {
+      return { message: error, variant: "error" as StatusVariant };
+    }
+
+    if (chatKitReadyState === "error" && widgetError) {
+      return { message: widgetError, variant: "error" as StatusVariant };
+    }
+
+    if (!isChatKitReady) {
+      return {
+        message:
+          widgetError ??
+          "Chargement du widget ChatKit…",
+        variant: (widgetError ? "warning" : "loading") as StatusVariant,
+      };
+    }
+
+    if (isLoading) {
+      return { message: "Initialisation de la session…", variant: "loading" as StatusVariant };
+    }
+
+    return { message: "Votre assistant est prêt à répondre.", variant: "ready" as StatusVariant };
+  })();
 
   const statusClassName = [
     "status-banner",
-    error ? "status-banner--error" : "",
-    !error && isLoading ? "status-banner--loading" : "",
+    statusDetails.variant === "error" ? "status-banner--error" : "",
+    statusDetails.variant === "loading" || statusDetails.variant === "warning"
+      ? "status-banner--loading"
+      : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   return (
-    <div className="app-shell__content">
-      <div className="chat-card">
-        <ChatKit
-          control={control}
-          className="chatkit-host"
-          style={{ width: "100%", height: "100%" }}
-        />
+    <div className="chat-layout">
+      <div className="chat-layout__canvas" aria-busy={!isChatKitReady || isLoading}>
+        <div className="chat-layout__surface">
+          <ChatKit
+            control={control}
+            className="chatkit-host"
+            style={{ width: "100%", height: "100%" }}
+          />
+          {placeholder && (
+            <div
+              className={`chat-placeholder chat-placeholder--${placeholder.variant}`}
+              role={placeholder.variant === "error" ? "alert" : "status"}
+              aria-live={placeholder.variant === "error" ? "assertive" : "polite"}
+            >
+              <div className="chat-placeholder__panel">
+                <h2 className="chat-placeholder__title">{placeholder.title}</h2>
+                <p className="chat-placeholder__message">{placeholder.message}</p>
+                {placeholder.variant === "loading" && (
+                  <div className="chat-placeholder__loader" aria-hidden="true">
+                    <span className="chat-placeholder__dot" />
+                    <span className="chat-placeholder__dot" />
+                    <span className="chat-placeholder__dot" />
+                  </div>
+                )}
+                {placeholder.variant === "error" && placeholder.onAction && placeholder.actionLabel && (
+                  <div className="chat-placeholder__actions">
+                    <button type="button" className="button button--subtle" onClick={placeholder.onAction}>
+                      {placeholder.actionLabel}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-      <div className={statusClassName}>{statusMessage}</div>
+      <div className="chat-layout__status" aria-live="polite">
+        <div className={statusClassName}>{statusDetails.message}</div>
+      </div>
+      {isSettingsOpen && (
+        <div
+          className="settings-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={modalTitleId}
+          aria-describedby={modalDescriptionId}
+        >
+          <div className="settings-modal__dialog">
+            <header className="settings-modal__header">
+              <div className="settings-modal__intro">
+                <h2 className="settings-modal__title" id={modalTitleId}>
+                  Paramètres de la session
+                </h2>
+                <p className="settings-modal__subtitle" id={modalDescriptionId}>
+                  Configurez l'assistant et accédez aux outils d'administration.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="settings-modal__close"
+                onClick={closeSettings}
+                aria-label="Fermer les paramètres"
+              >
+                ×
+              </button>
+            </header>
+            <div className="settings-modal__body">
+              <nav className="settings-modal__menu" aria-label="Sous-menus des paramètres">
+                {settingsSections.map((section) => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    className={`settings-modal__menu-item${
+                      activeSettingsSection === section.id ? " settings-modal__menu-item--active" : ""
+                    }`}
+                    onClick={() => setActiveSettingsSection(section.id)}
+                  >
+                    <span className="settings-modal__menu-label">{section.label}</span>
+                    <span className="settings-modal__menu-description">{section.description}</span>
+                  </button>
+                ))}
+              </nav>
+              <section className="settings-modal__content">
+                {activeSettingsSection === "navigation" && (
+                  <div className="settings-panel" data-section="navigation">
+                    <h3 className="settings-panel__title">Navigation rapide</h3>
+                    <p className="settings-panel__description">
+                      Utilisez ces raccourcis pour rejoindre les zones principales de l'application sans quitter votre conversation.
+                    </p>
+                    <div className="settings-panel__actions">
+                      <button type="button" className="button" onClick={goHome}>
+                        Retour à l'accueil
+                      </button>
+                      {user?.is_admin ? (
+                        <button type="button" className="button button--ghost" onClick={goToAdmin}>
+                          Ouvrir l'administration
+                        </button>
+                      ) : (
+                        <p className="settings-panel__helper">
+                          Vous n'avez pas accès à l'administration. Contactez un administrateur pour obtenir les droits nécessaires.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {activeSettingsSection === "preferences" && (
+                  <div className="settings-panel" data-section="preferences">
+                    <h3 className="settings-panel__title">Préférences d'affichage</h3>
+                    <p className="settings-panel__description">
+                      Ajustez quelques options visuelles pour adapter l'interface à vos habitudes.
+                    </p>
+                    <div className="settings-panel__option">
+                      <label className="settings-toggle">
+                        <input
+                          type="checkbox"
+                          checked={showTips}
+                          onChange={(event) => setShowTips(event.target.checked)}
+                        />
+                        <span>
+                          Afficher les astuces de conversation
+                          <small>
+                            Lorsque cette option est activée, l'assistant suggère ponctuellement des conseils pour aller plus loin.
+                          </small>
+                        </span>
+                      </label>
+                    </div>
+                    <div className="settings-panel__option">
+                      <label className="settings-toggle">
+                        <input
+                          type="checkbox"
+                          checked={reduceMotion}
+                          onChange={(event) => setReduceMotion(event.target.checked)}
+                        />
+                        <span>
+                          Réduire les animations
+                          <small>
+                            Limite certains effets de transition afin d'améliorer le confort visuel et l'accessibilité.
+                          </small>
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+                {activeSettingsSection === "session" && (
+                  <div className="settings-panel" data-section="session">
+                    <h3 className="settings-panel__title">Informations de session</h3>
+                    <p className="settings-panel__description">
+                      Retrouvez un résumé de votre connexion actuelle et terminez votre session si nécessaire.
+                    </p>
+                    <dl className="settings-panel__details">
+                      <div>
+                        <dt>Utilisateur</dt>
+                        <dd>{user?.email ?? "Utilisateur invité"}</dd>
+                      </div>
+                      <div>
+                        <dt>Statut</dt>
+                        <dd>{user?.is_admin ? "Administrateur" : "Collaborateur"}</dd>
+                      </div>
+                    </dl>
+                    <div className="settings-panel__actions">
+                      <button type="button" className="button button--danger" onClick={handleLogout}>
+                        Déconnexion
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
