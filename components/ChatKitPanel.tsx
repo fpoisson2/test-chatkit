@@ -11,6 +11,7 @@ import {
 } from "@/lib/config";
 import { ErrorOverlay } from "./ErrorOverlay";
 import { getWeather } from "@/lib/weather";
+import { installChatKitConversationProxy } from "@/lib/chatkitConversationProxy";
 import type { ColorScheme } from "@/hooks/useColorScheme";
 
 export type FactAction = {
@@ -69,6 +70,13 @@ export function ChatKitPanel({
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const removeProxy = installChatKitConversationProxy();
+    return () => {
+      removeProxy();
     };
   }, []);
 
