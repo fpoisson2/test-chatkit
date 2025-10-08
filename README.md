@@ -66,6 +66,10 @@ Le composant React `MyChat` enregistre un gestionnaire `onClientTool` pour l'out
 - The project depends on React 19, matching the official starter app requirements for `@openai/chatkit-react`
 - `vite.config.ts` proxies `/api/chatkit/session` requests to the FastAPI backend running on port 8000
 - `VITE_BACKEND_URL` définit l'URL cible du backend pour l'ensemble des appels `/api/*`
+- `VITE_HMR_HOST` doit se limiter à un nom d'hôte (avec éventuellement un port). Une faute de frappe du type `https//mon-domaine`
+  conduit le navigateur à tenter de joindre `https://https//mon-domaine`, ce qui se traduit par une erreur DNS (`net::ERR_NAME_NOT_RESOLVED`).
+  Le fichier `vite.config.ts` nettoie désormais automatiquement ce genre d'entrée, mais il est préférable de corriger la valeur dans
+  votre `.env` pour éviter toute ambiguïté.
 - Les requêtes de connexion basculent automatiquement sur `/api/auth/login` (même origine) puis, en cas d'échec réseau, réessaient avec `VITE_BACKEND_URL` ; cela évite les erreurs « Failed to fetch » lorsque le navigateur n'a pas de résolution DNS pour `backend` en environnement Docker.
 - `VITE_ALLOWED_HOSTS` permet d'ajouter une liste d'hôtes supplémentaires autorisés par le serveur Vite (séparés par des virgules)
 - `index.html` already loads the ChatKit CDN script: `<script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>`
