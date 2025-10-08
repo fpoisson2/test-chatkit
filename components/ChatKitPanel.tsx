@@ -211,6 +211,7 @@ export function ChatKitPanel({
 
         const raw = await response.text();
         const contentType = response.headers.get("content-type") ?? "";
+        const responseHeaders = Object.fromEntries(response.headers.entries());
 
         if (isDev) {
           console.info("[ChatKitPanel] createSession response", {
@@ -227,7 +228,11 @@ export function ChatKitPanel({
           } catch (parseError) {
             console.error(
               "Failed to parse create-session response",
-              parseError
+              {
+                error: parseError,
+                rawBodyPreview: raw.slice(0, 2000),
+                contentType,
+              }
             );
           }
         } else if (raw && isDev) {
@@ -243,7 +248,10 @@ export function ChatKitPanel({
             : extractFallbackErrorDetail(raw, response.statusText);
           console.error("Create session request failed", {
             status: response.status,
+            statusText: response.statusText,
+            headers: responseHeaders,
             body: data,
+            rawBodyPreview: raw.slice(0, 2000),
           });
           throw new Error(detail);
         }
