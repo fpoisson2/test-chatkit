@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -15,6 +16,8 @@ const DEVICE_ID_STORAGE_KEY = "chatkit-device-id";
 
 const OPENAI_CHATKIT_BASE_URL = "https://api.openai.com/v1/chatkit/";
 const CHATKIT_PROXY_PREFIX = "/api/chatkit/proxy/";
+
+const DESKTOP_MEDIA_QUERY = "(min-width: 1024px)";
 
 const _disallowedForwardHeaders = new Set([
   "content-length",
@@ -171,14 +174,54 @@ type WeatherToolCall = {
 
 type ClientToolCall = WeatherToolCall;
 
+const getDesktopLayoutPreference = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return window.matchMedia(DESKTOP_MEDIA_QUERY).matches;
+};
+
 export function MyChat() {
   const { token, user, logout } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isDesktopLayout, setIsDesktopLayout] = useState(getDesktopLayoutPreference);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(getDesktopLayoutPreference);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia(DESKTOP_MEDIA_QUERY);
+
+    const updateLayout = (matches: boolean) => {
+      setIsDesktopLayout(matches);
+      setIsSidebarOpen(matches);
+    };
+
+    updateLayout(mediaQuery.matches);
+
+    const handleChange = (event: MediaQueryListEvent) => {
+      updateLayout(event.matches);
+    };
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleChange);
+      return () => {
+        mediaQuery.removeEventListener("change", handleChange);
+      };
+    }
+
+    mediaQuery.addListener(handleChange);
+    return () => {
+      mediaQuery.removeListener(handleChange);
+    };
+  }, []);
 
   const openSidebar = useCallback(() => {
     setIsSidebarOpen(true);
@@ -189,10 +232,10 @@ export function MyChat() {
   }, []);
 
   const handleMainInteraction = useCallback(() => {
-    if (isSidebarOpen) {
+    if (isSidebarOpen && !isDesktopLayout) {
       closeSidebar();
     }
-  }, [closeSidebar, isSidebarOpen]);
+  }, [closeSidebar, isDesktopLayout, isSidebarOpen]);
 
   const openProfileSettings = useCallback(() => {
     setIsSettingsModalOpen(true);
@@ -203,18 +246,22 @@ export function MyChat() {
   }, []);
 
   const handleSidebarSettings = useCallback(() => {
-    closeSidebar();
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
     openProfileSettings();
-  }, [closeSidebar, openProfileSettings]);
+  }, [closeSidebar, isDesktopLayout, openProfileSettings]);
 
   const goToHome = useCallback(() => {
     navigate("/");
   }, [navigate]);
 
   const handleSidebarHome = useCallback(() => {
-    closeSidebar();
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
     goToHome();
-  }, [closeSidebar, goToHome]);
+  }, [closeSidebar, goToHome, isDesktopLayout]);
 
   const handleHomeFromModal = useCallback(() => {
     closeProfileSettings();
@@ -232,14 +279,18 @@ export function MyChat() {
   }, [closeProfileSettings, logout]);
 
   const handleSidebarAdmin = useCallback(() => {
-    closeSidebar();
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
     navigate("/admin");
-  }, [closeSidebar, navigate]);
+  }, [closeSidebar, isDesktopLayout, navigate]);
 
   const handleSidebarLogout = useCallback(() => {
-    closeSidebar();
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
     logout();
-  }, [closeSidebar, logout]);
+  }, [closeSidebar, isDesktopLayout, logout]);
 
   const getClientSecret = useCallback(async (currentSecret: string | null) => {
     if (currentSecret) {
@@ -395,15 +446,26 @@ export function MyChat() {
 
   const handleScrimPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (isDesktopLayout) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       closeSidebar();
     },
-    [closeSidebar],
+    [closeSidebar, isDesktopLayout],
   );
 
+  const layoutClassName = [
+    "chatkit-layout",
+    isSidebarOpen ? "chatkit-layout--sidebar-open" : "",
+    isDesktopLayout ? "chatkit-layout--desktop" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className={`chatkit-layout${isSidebarOpen ? " chatkit-layout--sidebar-open" : ""}`}>
+    <div className={layoutClassName}>
       <aside
         className={`chatkit-sidebar${isSidebarOpen ? " chatkit-sidebar--open" : ""}`}
         aria-labelledby="chatkit-sidebar-title"
@@ -457,11 +519,15 @@ export function MyChat() {
       <button
         type="button"
         className={`chatkit-layout__scrim${isSidebarOpen ? " chatkit-layout__scrim--active" : ""}`}
-        aria-hidden={!isSidebarOpen}
+        aria-hidden={!isSidebarOpen || isDesktopLayout}
         aria-label="Fermer la barre latérale"
         onPointerDown={handleScrimPointerDown}
-        onClick={closeSidebar}
-        tabIndex={isSidebarOpen ? 0 : -1}
+        onClick={() => {
+          if (!isDesktopLayout) {
+            closeSidebar();
+          }
+        }}
+        tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}
       />
       <div
         className="chatkit-layout__main"

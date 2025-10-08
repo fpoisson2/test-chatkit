@@ -254,6 +254,39 @@ button {
   pointer-events: auto;
 }
 
+.chatkit-layout--desktop {
+  display: grid;
+  grid-template-columns: 0 1fr;
+  align-items: stretch;
+  transition: grid-template-columns 0.95s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.chatkit-layout--desktop.chatkit-layout--sidebar-open {
+  grid-template-columns: minmax(0, var(--chatkit-sidebar-width)) 1fr;
+}
+
+.chatkit-layout--desktop .chatkit-sidebar {
+  position: relative;
+  inset: auto;
+  height: 100%;
+  transform: none;
+  box-shadow: none;
+}
+
+.chatkit-layout--desktop .chatkit-sidebar--open {
+  transform: none;
+}
+
+.chatkit-layout--desktop .chatkit-layout__main {
+  grid-column: 2;
+  transform: none;
+  transition: none;
+}
+
+.chatkit-layout--desktop .chatkit-layout__scrim {
+  display: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chatkit-layout__main,
   .chatkit-layout__scrim,
