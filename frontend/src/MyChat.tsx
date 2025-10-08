@@ -171,7 +171,16 @@ export function MyChat() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
+
+  const openSidebar = useCallback(() => {
+    setIsSidebarOpen(true);
+  }, []);
+
+  const closeSidebar = useCallback(() => {
+    setIsSidebarOpen(false);
+  }, []);
 
   const openProfileSettings = useCallback(() => {
     setIsSettingsModalOpen(true);
@@ -181,9 +190,19 @@ export function MyChat() {
     setIsSettingsModalOpen(false);
   }, []);
 
+  const handleSidebarSettings = useCallback(() => {
+    closeSidebar();
+    openProfileSettings();
+  }, [closeSidebar, openProfileSettings]);
+
   const goToHome = useCallback(() => {
     navigate("/");
   }, [navigate]);
+
+  const handleSidebarHome = useCallback(() => {
+    closeSidebar();
+    goToHome();
+  }, [closeSidebar, goToHome]);
 
   const handleHomeFromModal = useCallback(() => {
     closeProfileSettings();
@@ -199,6 +218,16 @@ export function MyChat() {
     closeProfileSettings();
     logout();
   }, [closeProfileSettings, logout]);
+
+  const handleSidebarAdmin = useCallback(() => {
+    closeSidebar();
+    navigate("/admin");
+  }, [closeSidebar, navigate]);
+
+  const handleSidebarLogout = useCallback(() => {
+    closeSidebar();
+    logout();
+  }, [closeSidebar, logout]);
 
   const getClientSecret = useCallback(async (currentSecret: string | null) => {
     if (currentSecret) {
@@ -256,12 +285,12 @@ export function MyChat() {
         },
         header: {
           leftAction: {
-            icon: "settings-cog",
-            onClick: openProfileSettings,
+            icon: "menu",
+            onClick: openSidebar,
           },
           rightAction: {
-            icon: "home",
-            onClick: goToHome,
+            icon: "settings-cog",
+            onClick: openProfileSettings,
           },
         },
         theme: {
@@ -335,7 +364,7 @@ export function MyChat() {
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
         },
       }) satisfies ChatKitOptions,
-    [getClientSecret, goToHome, openProfileSettings]
+    [getClientSecret, openProfileSettings, openSidebar]
   );
 
   const { control } = useChatKit(chatkitOptions);
@@ -362,6 +391,57 @@ export function MyChat() {
       {statusMessage && (
         <div className={statusClassName} role="status" aria-live="polite">
           {statusMessage}
+        </div>
+      )}
+      {isSidebarOpen && (
+        <div
+          className="chatkit-sidebar"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="chatkit-sidebar-title"
+        >
+          <div className="chatkit-sidebar__backdrop" onClick={closeSidebar} />
+          <aside className="chatkit-sidebar__panel" role="document">
+            <header className="chatkit-sidebar__header">
+              <h2 id="chatkit-sidebar-title" className="chatkit-sidebar__title">
+                Navigation
+              </h2>
+              <p className="chatkit-sidebar__subtitle">
+                Accédez rapidement aux sections principales de la plateforme.
+              </p>
+            </header>
+            <nav className="chatkit-sidebar__nav" aria-label="Menu principal">
+              <ul className="chatkit-sidebar__list">
+                <li className="chatkit-sidebar__item">
+                  <button type="button" onClick={handleSidebarHome}>
+                    Accueil
+                  </button>
+                </li>
+                {user?.is_admin && (
+                  <li className="chatkit-sidebar__item">
+                    <button type="button" onClick={handleSidebarAdmin}>
+                      Administration
+                    </button>
+                  </li>
+                )}
+                <li className="chatkit-sidebar__item">
+                  <button type="button" onClick={handleSidebarSettings}>
+                    Paramètres rapides
+                  </button>
+                </li>
+                <li className="chatkit-sidebar__item chatkit-sidebar__item--danger">
+                  <button type="button" onClick={handleSidebarLogout}>
+                    Déconnexion
+                  </button>
+                </li>
+              </ul>
+            </nav>
+            <footer className="chatkit-sidebar__footer">
+              <button type="button" className="chatkit-sidebar__close" onClick={closeSidebar}>
+                Fermer
+              </button>
+            </footer>
+          </aside>
         </div>
       )}
       {isSettingsModalOpen && (
