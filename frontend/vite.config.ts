@@ -12,6 +12,9 @@ const hmrHost = process.env.VITE_HMR_HOST ?? "test.ve2fpd.com";
 const hmrProtocol = process.env.VITE_HMR_PROTOCOL ?? "wss";
 const backendTarget =
   process.env.VITE_BACKEND_URL ?? "http://127.0.0.1:8000";
+const allowedHosts = process.env.VITE_ALLOWED_HOSTS?.split(",")
+  .map((host) => host.trim())
+  .filter((host) => host.length > 0);
 
 export default defineConfig({
   server: {
@@ -23,6 +26,7 @@ export default defineConfig({
       host: hmrHost,
       protocol: hmrProtocol,
     },
+    ...(allowedHosts?.length ? { allowedHosts } : {}),
     proxy: {
       "/api/chatkit/session": {
         target: backendTarget,

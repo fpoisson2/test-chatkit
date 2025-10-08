@@ -25,6 +25,7 @@ services:
       VITE_BACKEND_URL: http://backend:8000
       VITE_PORT: ${VITE_PORT:-5183}
       VITE_HMR_HOST: ${VITE_HMR_HOST:-localhost}
+      VITE_ALLOWED_HOSTS: ${VITE_ALLOWED_HOSTS:-}
       VITE_HMR_CLIENT_PORT: ${VITE_HMR_CLIENT_PORT:-5183}
       VITE_HMR_PROTOCOL: ${VITE_HMR_PROTOCOL:-ws}
     ports:

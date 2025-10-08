@@ -30,6 +30,7 @@ The `/api/chatkit/session` route makes an HTTP request to `https://api.openai.co
 - The ChatKit widget is rendered by `src/MyChat.tsx` and mounted from `src/main.tsx`
 - The project depends on React 19, matching the official starter app requirements for `@openai/chatkit-react`
 - `vite.config.ts` proxies `/api/chatkit/session` requests to the FastAPI backend running on port 8000
+- `VITE_ALLOWED_HOSTS` permet d'ajouter une liste d'hôtes supplémentaires autorisés par le serveur Vite (séparés par des virgules)
 - `index.html` already loads the ChatKit CDN script: `<script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>`
 - If you want to call OpenAI directly from the browser, `src/chatkit.ts` shows the fetch helper that uses `import.meta.env.VITE_OPENAI_API_SECRET_KEY`
 - If `npm` complains about cache permissions, this repo ships with a local `.npmrc` pointing the cache to `.npm-cache/`; leave it in place or run `npm install --cache .npm-cache`
@@ -48,8 +49,10 @@ Depuis la racine du dépôt, vous pouvez orchestrer le backend FastAPI et le fro
    VITE_PORT=5183
    # Optionnel : ajustez le hostname utilisé par le HMR (utile derrière un tunnel/proxy)
    VITE_HMR_HOST=localhost
+   # Optionnel : alignez la liste d'hôtes autorisés par Vite (séparés par des virgules)
+   # VITE_ALLOWED_HOSTS="chatkit.example.com"
    ```
-   Les autres variables d'environnement exposées dans `docker-compose.yml` disposent de valeurs par défaut (`VITE_HMR_PROTOCOL`, `VITE_HMR_CLIENT_PORT`, `VITE_BACKEND_URL`, etc.) que vous pouvez également surcharger dans `.env` si nécessaire.
+   Les autres variables d'environnement exposées dans `docker-compose.yml` disposent de valeurs par défaut (`VITE_ALLOWED_HOSTS`, `VITE_HMR_PROTOCOL`, `VITE_HMR_CLIENT_PORT`, `VITE_BACKEND_URL`, etc.) que vous pouvez également surcharger dans `.env` si nécessaire.
 2. Depuis la racine du projet, lancez `docker compose up` pour démarrer les deux services. Le backend répond sur `http://localhost:8000` et le frontend sur `http://localhost:${VITE_PORT}`.
 3. Utilisez `docker compose down` pour arrêter l'environnement de développement, puis relancez `docker compose up --build` si vous modifiez les dépendances système.
 
@@ -60,7 +63,7 @@ Les volumes montés vous permettent de modifier le code localement tout en profi
 Si vous exposez l'environnement de développement via Nginx (par exemple sur `https://chatkit.example.com`), configurez d'abord `.env` à la racine :
 
 - `VITE_BACKEND_URL="https://chatkit.example.com/api"` pour forcer le frontend à appeler le backend via le reverse proxy.
-- `VITE_HMR_HOST="chatkit.example.com"`, `VITE_HMR_PROTOCOL="wss"` et `VITE_HMR_CLIENT_PORT=443` afin que le hot reload Vite continue de fonctionner à travers le proxy.
+- `VITE_HMR_HOST="chatkit.example.com"`, `VITE_ALLOWED_HOSTS="chatkit.example.com"`, `VITE_HMR_PROTOCOL="wss"` et `VITE_HMR_CLIENT_PORT=443` afin que le hot reload Vite continue de fonctionner à travers le proxy.
 
 Ensuite, adaptez votre bloc `server` Nginx (fichier `sites-available/chatkit.conf`, à activer via `ln -s` depuis `/etc/nginx/sites-enabled/`). Les fichiers de certificats TLS ne doivent **pas** être créés à la main : laissez `certbot` générer et renouveler `/etc/letsencrypt/live/...` pour vous (`sudo certbot --nginx -d chatkit.example.com` ou `sudo certbot certonly --nginx …`). Une fois le certificat obtenu, référencez simplement les chemins fournis par `certbot` dans votre configuration :
 
