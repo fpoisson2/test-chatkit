@@ -20,6 +20,16 @@ const RequireAdmin = ({ children }: { children: ReactElement }) => {
   return children;
 };
 
+const RequireAuth = ({ children }: { children: ReactElement }) => {
+  const { user } = useAuth();
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+};
+
 const RequireGuest = ({ children }: { children: ReactElement }) => {
   const { user } = useAuth();
 
@@ -32,6 +42,10 @@ const RequireGuest = ({ children }: { children: ReactElement }) => {
 
 const HomePage = () => {
   const { user, logout } = useAuth();
+
+  if (!user) {
+    return null;
+  }
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
@@ -47,22 +61,11 @@ const HomePage = () => {
       >
         <div>
           <strong>ChatKit Demo</strong>
-          {user ? (
-            <span style={{ marginLeft: "8px", color: "#475569" }}>
-              Connecté en tant que {user.email}
-            </span>
-          ) : (
-            <span style={{ marginLeft: "8px", color: "#475569" }}>
-              Session invitée
-            </span>
-          )}
+          <span style={{ marginLeft: "8px", color: "#475569" }}>
+            Connecté en tant que {user.email}
+          </span>
         </div>
         <div style={{ display: "flex", gap: "8px" }}>
-          {!user && (
-            <Link to="/login" style={{ color: "#2563eb", textDecoration: "none" }}>
-              Connexion
-            </Link>
-          )}
           {user?.is_admin && (
             <Link to="/admin" style={{ color: "#2563eb", textDecoration: "none" }}>
               Administration
@@ -95,7 +98,14 @@ const HomePage = () => {
 
 export const App = () => (
   <Routes>
-    <Route path="/" element={<HomePage />} />
+    <Route
+      path="/"
+      element={(
+        <RequireAuth>
+          <HomePage />
+        </RequireAuth>
+      )}
+    />
     <Route
       path="/login"
       element={
