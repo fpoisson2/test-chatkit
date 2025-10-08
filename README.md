@@ -30,6 +30,7 @@ Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi
     environnement Docker Compose, utilisez le hostname du service PostgreSQL (`db`) plutôt que `localhost`, par exemple
     `postgresql+psycopg://chatkit:chatkit@db:5432/chatkit`.
   - `AUTH_SECRET_KEY` – clé secrète utilisée pour signer les tokens JWT
+  - Optionnel : `ALLOWED_ORIGINS` pour lister les origines autorisées par CORS (séparées par des virgules, par défaut `*`)
   - Optionnel : `ACCESS_TOKEN_EXPIRE_MINUTES` pour ajuster la durée de validité du token (par défaut 120 min)
   - Optionnel : `ADMIN_EMAIL` et `ADMIN_PASSWORD` pour provisionner automatiquement un compte administrateur au démarrage
   - Optionnel : `DATABASE_CONNECT_RETRIES` / `DATABASE_CONNECT_DELAY` pour ajuster la stratégie d'attente au démarrage
