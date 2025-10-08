@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
 import {
   STARTER_PROMPTS,
@@ -73,7 +79,7 @@ export function ChatKitPanel({
     };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const removeProxy = installChatKitConversationProxy();
     return () => {
       removeProxy();

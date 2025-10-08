@@ -47,7 +47,15 @@ export async function POST(request: Request): Promise<Response> {
     });
 
     const responseHeaders = filterResponseHeaders(upstreamResponse.headers);
-    const responseBody = await upstreamResponse.text();
+    const responseBody = upstreamResponse.body;
+
+    if (!responseBody) {
+      const fallbackText = await upstreamResponse.text();
+      return new Response(fallbackText, {
+        status: upstreamResponse.status,
+        headers: responseHeaders,
+      });
+    }
 
     return new Response(responseBody, {
       status: upstreamResponse.status,
@@ -69,11 +77,22 @@ export async function OPTIONS(): Promise<Response> {
 
 function filterResponseHeaders(headers: Headers): Headers {
   const filtered = new Headers();
-  const contentType = headers.get("content-type");
-  if (contentType) {
-    filtered.set("Content-Type", contentType);
-  }
+  copyHeaderIfPresent(headers, filtered, "content-type", "Content-Type");
+  copyHeaderIfPresent(headers, filtered, "cache-control", "Cache-Control");
+  copyHeaderIfPresent(headers, filtered, "connection", "Connection");
   return filtered;
+}
+
+function copyHeaderIfPresent(
+  source: Headers,
+  target: Headers,
+  name: string,
+  overrideName?: string
+): void {
+  const value = source.get(name);
+  if (value) {
+    target.set(overrideName ?? name, value);
+  }
 }
 
 function buildJsonResponse(payload: unknown, status: number): Response {
