@@ -11,6 +11,7 @@ import httpx
 import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import Boolean, DateTime, Integer, String, create_engine, select, text
@@ -64,6 +65,21 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("chatkit.server")
 
 app = FastAPI()
+
+_allowed_origins_raw = os.environ.get("ALLOWED_ORIGINS")
+if _allowed_origins_raw:
+    _allowed_origins = [origin.strip() for origin in _allowed_origins_raw.split(",") if origin.strip()]
+    if not _allowed_origins:
+        _allowed_origins = ["*"]
+else:
+    _allowed_origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_allowed_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _openai_api_key = os.environ.get("OPENAI_API_KEY")
 if not _openai_api_key:
