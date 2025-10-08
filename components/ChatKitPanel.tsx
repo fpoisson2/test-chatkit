@@ -196,6 +196,7 @@ export function ChatKitPanel({
         });
 
         const raw = await response.text();
+        const contentType = response.headers.get("content-type") ?? "";
 
         if (isDev) {
           console.info("[ChatKitPanel] createSession response", {
@@ -205,8 +206,8 @@ export function ChatKitPanel({
           });
         }
 
-        let data: Record<string, unknown> = {};
-        if (raw) {
+        let data: Record<string, unknown> | undefined;
+        if (raw && contentType.includes("application/json")) {
           try {
             data = JSON.parse(raw) as Record<string, unknown>;
           } catch (parseError) {
@@ -215,10 +216,17 @@ export function ChatKitPanel({
               parseError
             );
           }
+        } else if (raw && isDev) {
+          console.warn(
+            "[ChatKitPanel] createSession response is not JSON",
+            contentType
+          );
         }
 
         if (!response.ok) {
-          const detail = extractErrorDetail(data, response.statusText);
+          const detail = data
+            ? extractErrorDetail(data, response.statusText)
+            : extractFallbackErrorDetail(raw, response.statusText);
           console.error("Create session request failed", {
             status: response.status,
             body: data,
@@ -432,4 +440,16 @@ function extractErrorDetail(
   }
 
   return fallback;
+}
+
+function extractFallbackErrorDetail(raw: string, fallback: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+
+  const withoutTags = trimmed.replace(/<[^>]*>/g, " ");
+  const normalized = withoutTags.replace(/\s+/g, " ").trim();
+
+  return normalized || fallback;
 }
