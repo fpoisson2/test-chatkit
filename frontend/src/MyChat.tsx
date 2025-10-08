@@ -182,6 +182,12 @@ export function MyChat() {
     setIsSidebarOpen(false);
   }, []);
 
+  const handleMainClick = useCallback(() => {
+    if (isSidebarOpen) {
+      closeSidebar();
+    }
+  }, [closeSidebar, isSidebarOpen]);
+
   const openProfileSettings = useCallback(() => {
     setIsSettingsModalOpen(true);
   }, []);
@@ -424,7 +430,7 @@ export function MyChat() {
           </footer>
         </aside>
       )}
-      <div className="chatkit-layout__main">
+      <div className="chatkit-layout__main" onClick={handleMainClick}>
         <div className="chatkit-layout__widget">
           <ChatKit
             control={control}
