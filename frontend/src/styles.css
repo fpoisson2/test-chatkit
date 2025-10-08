@@ -135,21 +135,50 @@ button {
   width: 100%;
   background: transparent;
   --chatkit-sidebar-width: min(320px, 85vw);
-  display: grid;
-  grid-template-columns: 0 minmax(0, 1fr);
-  transition: grid-template-columns 0.9s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.chatkit-layout--sidebar-open {
-  grid-template-columns: var(--chatkit-sidebar-width) minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .chatkit-layout__main {
-  grid-column: 2;
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
   height: 100%;
+  width: 100%;
+  transform: translate3d(0, 0, 0);
+  transition: transform 0.95s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+  z-index: 0;
+  backface-visibility: hidden;
+}
+
+.chatkit-layout--sidebar-open .chatkit-layout__main {
+  transform: translate3d(var(--chatkit-sidebar-width), 0, 0);
+}
+
+.chatkit-layout__scrim {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+  z-index: 1;
+  appearance: none;
+}
+
+.chatkit-layout__scrim:focus-visible {
+  outline: 2px solid var(--primary-hover);
+  outline-offset: 4px;
+}
+
+.chatkit-layout--sidebar-open .chatkit-layout__scrim {
+  pointer-events: auto;
+  opacity: 1;
 }
 
 .chatkit-layout__widget {
@@ -199,8 +228,9 @@ button {
 }
 
 .chatkit-sidebar {
-  position: relative;
-  z-index: 1;
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 2;
   width: var(--chatkit-sidebar-width);
   max-width: 100%;
   min-height: 100%;
@@ -211,20 +241,23 @@ button {
   flex-direction: column;
   gap: 24px;
   padding: 28px 24px;
-  animation: chatkit-sidebar-enter 1.2s cubic-bezier(0.16, 1, 0.3, 1);
-  animation-fill-mode: both;
   overflow-y: auto;
-  grid-column: 1;
+  transform: translateX(calc(-1 * var(--chatkit-sidebar-width)));
+  transition: transform 0.95s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: none;
 }
 
-@keyframes chatkit-sidebar-enter {
-  from {
-    transform: translateX(-160px);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
+.chatkit-sidebar--open {
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chatkit-layout__main,
+  .chatkit-layout__scrim,
+  .chatkit-sidebar {
+    transition-duration: 0.001ms !important;
+    animation-duration: 0.001ms !important;
   }
 }
 

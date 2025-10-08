@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
 import type { ChatKitOptions } from "@openai/chatkit";
@@ -172,7 +172,6 @@ export function MyChat() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const sidebarRef = useRef<HTMLElement | null>(null);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
 
   const openSidebar = useCallback(() => {
@@ -386,88 +385,68 @@ export function MyChat() {
     .filter(Boolean)
     .join(" ");
 
-  useEffect(() => {
-    if (!isSidebarOpen || typeof document === "undefined") {
-      return;
-    }
-
-    const handleDocumentInteraction = (event: Event) => {
-      const target = event.target;
-      if (!(target instanceof Node)) {
-        return;
-      }
-
-      if (!sidebarRef.current?.contains(target)) {
-        closeSidebar();
-      }
-    };
-
-    document.addEventListener("pointerdown", handleDocumentInteraction, true);
-    document.addEventListener("click", handleDocumentInteraction, true);
-
-    const supportsTouch = typeof window !== "undefined" && "ontouchstart" in window;
-    if (supportsTouch) {
-      document.addEventListener("touchstart", handleDocumentInteraction, true);
-    }
-
-    return () => {
-      document.removeEventListener("pointerdown", handleDocumentInteraction, true);
-      document.removeEventListener("click", handleDocumentInteraction, true);
-      if (supportsTouch) {
-        document.removeEventListener("touchstart", handleDocumentInteraction, true);
-      }
-    };
-  }, [closeSidebar, isSidebarOpen]);
+  const sidebarTabIndex = isSidebarOpen ? 0 : -1;
 
   return (
     <div className={`chatkit-layout${isSidebarOpen ? " chatkit-layout--sidebar-open" : ""}`}>
-      {isSidebarOpen && (
-        <aside
-          ref={sidebarRef}
-          className="chatkit-sidebar"
-          aria-labelledby="chatkit-sidebar-title"
-        >
-          <header className="chatkit-sidebar__header">
-            <h2 id="chatkit-sidebar-title" className="chatkit-sidebar__title">
-              Navigation
-            </h2>
-            <p className="chatkit-sidebar__subtitle">
-              Accédez rapidement aux sections principales de la plateforme.
-            </p>
-          </header>
-          <nav className="chatkit-sidebar__nav" aria-label="Menu principal">
-            <ul className="chatkit-sidebar__list">
+      <aside
+        className={`chatkit-sidebar${isSidebarOpen ? " chatkit-sidebar--open" : ""}`}
+        aria-labelledby="chatkit-sidebar-title"
+        aria-hidden={!isSidebarOpen}
+      >
+        <header className="chatkit-sidebar__header">
+          <h2 id="chatkit-sidebar-title" className="chatkit-sidebar__title">
+            Navigation
+          </h2>
+          <p className="chatkit-sidebar__subtitle">
+            Accédez rapidement aux sections principales de la plateforme.
+          </p>
+        </header>
+        <nav className="chatkit-sidebar__nav" aria-label="Menu principal">
+          <ul className="chatkit-sidebar__list">
+            <li className="chatkit-sidebar__item">
+              <button type="button" onClick={handleSidebarHome} tabIndex={sidebarTabIndex}>
+                Accueil
+              </button>
+            </li>
+            {user?.is_admin && (
               <li className="chatkit-sidebar__item">
-                <button type="button" onClick={handleSidebarHome}>
-                  Accueil
+                <button type="button" onClick={handleSidebarAdmin} tabIndex={sidebarTabIndex}>
+                  Administration
                 </button>
               </li>
-              {user?.is_admin && (
-                <li className="chatkit-sidebar__item">
-                  <button type="button" onClick={handleSidebarAdmin}>
-                    Administration
-                  </button>
-                </li>
-              )}
-              <li className="chatkit-sidebar__item">
-                <button type="button" onClick={handleSidebarSettings}>
-                  Paramètres rapides
-                </button>
-              </li>
-              <li className="chatkit-sidebar__item chatkit-sidebar__item--danger">
-                <button type="button" onClick={handleSidebarLogout}>
-                  Déconnexion
-                </button>
-              </li>
-            </ul>
-          </nav>
-          <footer className="chatkit-sidebar__footer">
-            <button type="button" className="chatkit-sidebar__close" onClick={closeSidebar}>
-              Fermer
-            </button>
-          </footer>
-        </aside>
-      )}
+            )}
+            <li className="chatkit-sidebar__item">
+              <button type="button" onClick={handleSidebarSettings} tabIndex={sidebarTabIndex}>
+                Paramètres rapides
+              </button>
+            </li>
+            <li className="chatkit-sidebar__item chatkit-sidebar__item--danger">
+              <button type="button" onClick={handleSidebarLogout} tabIndex={sidebarTabIndex}>
+                Déconnexion
+              </button>
+            </li>
+          </ul>
+        </nav>
+        <footer className="chatkit-sidebar__footer">
+          <button
+            type="button"
+            className="chatkit-sidebar__close"
+            onClick={closeSidebar}
+            tabIndex={sidebarTabIndex}
+          >
+            Fermer
+          </button>
+        </footer>
+      </aside>
+      <button
+        type="button"
+        className={`chatkit-layout__scrim${isSidebarOpen ? " chatkit-layout__scrim--active" : ""}`}
+        aria-hidden={!isSidebarOpen}
+        aria-label="Fermer la barre latérale"
+        onClick={closeSidebar}
+        tabIndex={isSidebarOpen ? 0 : -1}
+      />
       <div
         className="chatkit-layout__main"
         onClick={handleMainInteraction}
