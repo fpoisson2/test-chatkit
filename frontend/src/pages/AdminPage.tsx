@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { AuthUser, useAuth } from "../auth";
 
-const backendUrl = import.meta.env.VITE_BACKEND_URL ?? "";
+const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 
 type EditableUser = AuthUser;
 
@@ -23,6 +23,15 @@ export const AdminPage = () => {
     is_admin: false,
   });
 
+  const apiBases = useMemo(() => {
+    const normalizedBackendUrl = backendUrl.replace(/\/+$/, "");
+    const bases = [""];
+    if (normalizedBackendUrl.length > 0) {
+      bases.push(normalizedBackendUrl);
+    }
+    return Array.from(new Set(bases));
+  }, [backendUrl]);
+
   const headers = useMemo(() => {
     const base: Record<string, string> = {
       "Content-Type": "application/json",
@@ -33,6 +42,42 @@ export const AdminPage = () => {
     return base;
   }, [token]);
 
+  const requestWithFallback = useCallback(
+    async (path: string, init?: RequestInit) => {
+      let lastError: Error | null = null;
+      for (const base of apiBases) {
+        const url = base ? `${base}${path}` : path;
+        try {
+          const response = await fetch(url, init);
+          if (!response.ok && base.length === 0 && apiBases.length > 1) {
+            let detail = `${response.status} ${response.statusText}`;
+            try {
+              const body = await response.clone().json();
+              if (body?.detail) {
+                detail = String(body.detail);
+              }
+            } catch (parseError) {
+              if (parseError instanceof Error) {
+                detail = parseError.message;
+              }
+            }
+            lastError = new Error(detail);
+            continue;
+          }
+          return response;
+        } catch (networkError) {
+          if (networkError instanceof Error) {
+            lastError = networkError;
+          } else {
+            lastError = new Error("Une erreur inattendue est survenue");
+          }
+        }
+      }
+      throw lastError ?? new Error("Impossible de joindre le backend d'administration");
+    },
+    [apiBases],
+  );
+
   const fetchUsers = useCallback(async () => {
     if (!token) {
       return;
@@ -40,7 +85,7 @@ export const AdminPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${backendUrl}/api/admin/users`, {
+      const response = await requestWithFallback("/api/admin/users", {
         headers,
       });
       if (response.status === 401) {
@@ -62,7 +107,7 @@ export const AdminPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [headers, logout, token]);
+  }, [headers, logout, requestWithFallback, token]);
 
   useEffect(() => {
     void fetchUsers();
@@ -75,7 +120,7 @@ export const AdminPage = () => {
     }
 
     try {
-      const response = await fetch(`${backendUrl}/api/admin/users`, {
+      const response = await requestWithFallback("/api/admin/users", {
         method: "POST",
         headers,
         body: JSON.stringify(createPayload),
@@ -102,7 +147,7 @@ export const AdminPage = () => {
 
   const handleToggleAdmin = async (editableUser: EditableUser) => {
     try {
-      const response = await fetch(`${backendUrl}/api/admin/users/${editableUser.id}`, {
+      const response = await requestWithFallback(`/api/admin/users/${editableUser.id}`, {
         method: "PATCH",
         headers,
         body: JSON.stringify({ is_admin: !editableUser.is_admin }),
@@ -132,7 +177,7 @@ export const AdminPage = () => {
     }
 
     try {
-      const response = await fetch(`${backendUrl}/api/admin/users/${editableUser.id}`, {
+      const response = await requestWithFallback(`/api/admin/users/${editableUser.id}`, {
         method: "DELETE",
         headers,
       });
@@ -161,7 +206,7 @@ export const AdminPage = () => {
     }
 
     try {
-      const response = await fetch(`${backendUrl}/api/admin/users/${editableUser.id}`, {
+      const response = await requestWithFallback(`/api/admin/users/${editableUser.id}`, {
         method: "PATCH",
         headers,
         body: JSON.stringify({ password: newPassword }),
