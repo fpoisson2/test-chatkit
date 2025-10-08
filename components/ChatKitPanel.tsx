@@ -16,7 +16,7 @@ import {
   WORKFLOW_ID,
 } from "@/lib/config";
 import { ErrorOverlay } from "./ErrorOverlay";
-import { getWeather } from "@/lib/weather";
+import { getWeather, type WeatherResult } from "@/lib/weather";
 import { installChatKitConversationProxy } from "@/lib/chatkitConversationProxy";
 import type { ColorScheme } from "@/hooks/useColorScheme";
 
@@ -346,9 +346,22 @@ export function ChatKitPanel({
       if (invocation.name === "get_weather") {
         try {
           const weather = await getWeather(invocation.params);
-          return { success: true, weather };
+          const message = formatWeatherMessage(weather);
+          await chatkit.sendUserMessage({ text: message });
+          return { success: true };
         } catch (error) {
           console.error("[ChatKitPanel] get_weather failed", error);
+          try {
+            await chatkit.sendUserMessage({
+              text:
+                "I'm sorry, but I couldn't retrieve the weather right now. Please try again in a moment.",
+            });
+          } catch (sendError) {
+            console.error(
+              "[ChatKitPanel] failed to send weather error message",
+              sendError
+            );
+          }
           return {
             success: false,
             error:
@@ -413,6 +426,132 @@ export function ChatKitPanel({
       />
     </div>
   );
+}
+
+function formatWeatherMessage(weather: WeatherResult): string {
+  const locationLabel = buildLocationLabel(weather);
+  const lines: string[] = [`Weather for ${locationLabel}:`];
+
+  if (weather.current.description) {
+    lines.push(`• Conditions: ${weather.current.description}`);
+  }
+
+  const temperatureLine = buildTemperatureLine(weather);
+  if (temperatureLine) {
+    lines.push(`• Temperature: ${temperatureLine}`);
+  }
+
+  const feelsLikeLine = buildFeelsLikeLine(weather);
+  if (feelsLikeLine) {
+    lines.push(`• Feels like: ${feelsLikeLine}`);
+  }
+
+  if (typeof weather.current.relativeHumidity === "number") {
+    lines.push(`• Humidity: ${weather.current.relativeHumidity}%`);
+  }
+
+  if (typeof weather.current.windSpeedKph === "number") {
+    lines.push(`• Wind: ${weather.current.windSpeedKph} km/h`);
+  }
+
+  const observationLine = buildObservationLine(weather);
+  if (observationLine) {
+    lines.push(`• Observation time: ${observationLine}`);
+  }
+
+  return lines.join("\n");
+}
+
+function buildLocationLabel(weather: WeatherResult): string {
+  const parts = [
+    weather.location.name,
+    weather.location.region,
+    weather.location.country,
+  ].filter((part): part is string => Boolean(part?.trim()));
+
+  if (parts.length) {
+    return parts.join(", ");
+  }
+
+  const coordinates = [
+    formatCoordinate(weather.location.latitude, "N", "S"),
+    formatCoordinate(weather.location.longitude, "E", "W"),
+  ].filter((value): value is string => Boolean(value));
+
+  if (coordinates.length) {
+    return coordinates.join(" ");
+  }
+
+  return "the requested location";
+}
+
+function buildTemperatureLine(weather: WeatherResult): string | null {
+  const temperatures: string[] = [];
+
+  if (typeof weather.current.temperatureCelsius === "number") {
+    temperatures.push(`${weather.current.temperatureCelsius}°C`);
+  }
+
+  if (typeof weather.current.temperatureFahrenheit === "number") {
+    temperatures.push(`${weather.current.temperatureFahrenheit}°F`);
+  }
+
+  return temperatures.length ? temperatures.join(" / ") : null;
+}
+
+function buildFeelsLikeLine(weather: WeatherResult): string | null {
+  const feelsLike: string[] = [];
+
+  if (typeof weather.current.apparentTemperatureCelsius === "number") {
+    feelsLike.push(`${weather.current.apparentTemperatureCelsius}°C`);
+  }
+
+  if (typeof weather.current.apparentTemperatureFahrenheit === "number") {
+    feelsLike.push(`${weather.current.apparentTemperatureFahrenheit}°F`);
+  }
+
+  return feelsLike.length ? feelsLike.join(" / ") : null;
+}
+
+function buildObservationLine(weather: WeatherResult): string | null {
+  if (!weather.current.time) {
+    return null;
+  }
+
+  try {
+    const date = new Date(weather.current.time);
+    if (Number.isNaN(date.getTime())) {
+      return weather.current.time;
+    }
+
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: weather.location.timezone ?? undefined,
+    });
+    return formatter.format(date);
+  } catch (error) {
+    console.warn(
+      "[ChatKitPanel] Failed to format weather observation time",
+      error
+    );
+  }
+
+  return weather.current.time;
+}
+
+function formatCoordinate(
+  value: number | null,
+  positiveSuffix: string,
+  negativeSuffix: string
+): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+
+  const suffix = value >= 0 ? positiveSuffix : negativeSuffix;
+  const normalized = Math.abs(Math.round(value * 100) / 100);
+  return `${normalized}°${suffix}`;
 }
 
 function extractErrorDetail(
