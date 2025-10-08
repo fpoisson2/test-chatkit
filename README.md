@@ -37,6 +37,33 @@ Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi
 
 The `/api/chatkit/session` route makes an HTTP request to `https://api.openai.com/v1/chatkit/sessions` using `httpx`, mirroring the official starter app. Si un utilisateur est authentifié, son identifiant interne est réutilisé pour générer la session. A `requirements.txt` remains available for `pip install -r requirements.txt`.
 
+### Exemple : déclarer un tool Python
+
+Le fichier `backend/weather_agent.py` fournit une démonstration minimale de l'utilisation d'un `Agent` ChatKit et d'un outil Python décoré avec `@function_tool`. L'agent possède un outil `get_weather` qui renvoie une météo fictive en fonction de la ville demandée, puis `Runner.run_sync` est utilisé pour traiter plusieurs questions successives.
+
+Pour lancer l'exemple, exécutez depuis le dossier `backend/` :
+
+```bash
+uv run python weather_agent.py
+```
+
+Si `uv` n'est pas disponible, vous pouvez remplacer la commande par `python3 weather_agent.py` dans le même répertoire.
+
+### Exposer l'agent météo via ChatKit
+
+Le module `backend/weather_chatkit_server.py` fournit une implémentation FastAPI du protocole ChatKit en s'appuyant sur un magasin en mémoire et le même agent météo. Le point d'entrée `POST /chatkit/weather` restitue les événements SSE attendus par le widget ChatKit.
+
+1. Depuis `backend/`, démarrez le serveur :
+
+   ```bash
+   uv run uvicorn weather_chatkit_server:app --reload
+   ```
+
+   Sans `uv`, utilisez `python3 -m uvicorn weather_chatkit_server:app --reload` dans ce dossier.
+2. Côté client, configurez `apiURL` sur `http://localhost:8000/chatkit/weather` (ou l'URL exposée par votre reverse proxy) pour consommer l'agent météo directement depuis ChatKit.
+
+Le stockage étant purement en mémoire, chaque redémarrage du serveur réinitialise les fils de discussion. Adaptez l'implémentation du `Store` si vous souhaitez connecter une base de données persistante.
+
 ## Frontend (`frontend/`)
 
 - Install JavaScript dependencies from within `frontend/`: `npm install` (ou `npm run frontend:install` à la racine)
