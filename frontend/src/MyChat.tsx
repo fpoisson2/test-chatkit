@@ -1,4 +1,10 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
 import type { ChatKitOptions } from "@openai/chatkit";
@@ -387,6 +393,15 @@ export function MyChat() {
 
   const sidebarTabIndex = isSidebarOpen ? 0 : -1;
 
+  const handleScrimPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      closeSidebar();
+    },
+    [closeSidebar],
+  );
+
   return (
     <div className={`chatkit-layout${isSidebarOpen ? " chatkit-layout--sidebar-open" : ""}`}>
       <aside
@@ -444,6 +459,7 @@ export function MyChat() {
         className={`chatkit-layout__scrim${isSidebarOpen ? " chatkit-layout__scrim--active" : ""}`}
         aria-hidden={!isSidebarOpen}
         aria-label="Fermer la barre latérale"
+        onPointerDown={handleScrimPointerDown}
         onClick={closeSidebar}
         tabIndex={isSidebarOpen ? 0 : -1}
       />
