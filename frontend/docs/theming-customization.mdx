@@ -1,0 +1,26 @@
+---
+title: Personnaliser l'en-tête de ChatKit
+---
+
+# Personnaliser l'en-tête de ChatKit
+
+Pour ajouter des actions personnalisées dans l'en-tête du widget, utilisez les champs `leftAction` et `rightAction` de la configuration `header`. Chaque action accepte au minimum une icône (propriété `icon`) et un gestionnaire `onClick`. Vous pouvez optionnellement fournir un libellé accessible via la propriété `label`.
+
+```ts
+const options: Partial<ChatKitOptions> = {
+  header: {
+    leftAction: {
+      icon: "settings-cog",
+      label: "Ouvrir les paramètres",
+      onClick: () => openProfileSettings(),
+    },
+    rightAction: {
+      icon: "home",
+      label: "Aller à l'accueil",
+      onClick: () => openHomePage(),
+    },
+  },
+};
+```
+
+> 💡 Les anciennes propriétés `customButtonLeft` et `customButtonRight` ne sont plus supportées et doivent être remplacées par `leftAction` et `rightAction`.

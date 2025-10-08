@@ -398,12 +398,12 @@ export function MyChat() {
         header: {
           title: "Assistant ChatKit",
           subtitle: user ? `Connecté en tant que ${user.email}` : undefined,
-          customButtonLeft: {
+          leftAction: {
             icon: "settings-cog",
             label: "Ouvrir les paramètres",
             onClick: openSettings,
           },
-          customButtonRight: {
+          rightAction: {
             icon: "home",
             label: "Revenir à l'accueil",
             onClick: goHome,
