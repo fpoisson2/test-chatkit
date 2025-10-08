@@ -70,12 +70,24 @@ export async function POST(request: Request): Promise<Response> {
       console.info("[create-session] upstream response", {
         status: upstreamResponse.status,
         statusText: upstreamResponse.statusText,
+        headers: Object.fromEntries(upstreamResponse.headers.entries()),
       });
     }
 
-    const upstreamJson = (await upstreamResponse.json().catch(() => ({}))) as
-      | Record<string, unknown>
-      | undefined;
+    const upstreamText = await upstreamResponse.text();
+    let upstreamJson: Record<string, unknown> | undefined;
+    if (upstreamText) {
+      try {
+        upstreamJson = JSON.parse(upstreamText) as Record<string, unknown>;
+      } catch (parseError) {
+        console.error("[create-session] Failed to parse upstream response", {
+          error: parseError,
+          bodyPreview: upstreamText.slice(0, 2000),
+          headers: Object.fromEntries(upstreamResponse.headers.entries()),
+          status: upstreamResponse.status,
+        });
+      }
+    }
 
     if (!upstreamResponse.ok) {
       const upstreamError = extractUpstreamError(upstreamJson);
@@ -83,6 +95,8 @@ export async function POST(request: Request): Promise<Response> {
         status: upstreamResponse.status,
         statusText: upstreamResponse.statusText,
         body: upstreamJson,
+        headers: Object.fromEntries(upstreamResponse.headers.entries()),
+        rawBodyPreview: upstreamText.slice(0, 2000),
       });
       return buildJsonResponse(
         {
