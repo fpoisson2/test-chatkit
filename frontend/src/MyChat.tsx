@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
+import type { ChatKitOptions } from "@openai/chatkit";
 
 import { useAuth } from "./auth";
 
@@ -17,6 +18,16 @@ const getOrCreateDeviceId = () => {
   }
   return existing;
 };
+
+type WeatherToolCall = {
+  name: "get_weather";
+  params: {
+    city: string;
+    country?: string | null;
+  };
+};
+
+type ClientToolCall = WeatherToolCall;
 
 export function MyChat() {
   const { token, user } = useAuth();
@@ -73,50 +84,82 @@ export function MyChat() {
   }, [token, user]);
 
   const chatkitOptions = useMemo(
-    () => ({
-      api: {
-        getClientSecret,
-      },
-      theme: {
-        colorScheme: "light" as const,
-      },
-      composer: {
-        placeholder: "Posez votre question...",
-      },
-      onError: ({ error }: { error: Error }) => {
-        console.groupCollapsed("[ChatKit] onError");
-        console.error("error:", error);
-        if (lastThreadSnapshotRef.current) {
-          console.log("thread snapshot:", lastThreadSnapshotRef.current);
-        }
-        console.groupEnd();
-        setError(error.message);
-      },
-      onResponseStart: () => {
-        setError(null);
-      },
-      onResponseEnd: () => {
-        console.debug("[ChatKit] response end");
-      },
-      onThreadChange: ({ threadId }: { threadId: string | null }) => {
-        console.debug("[ChatKit] thread change", { threadId });
-      },
-      onThreadLoadStart: ({ threadId }: { threadId: string }) => {
-        console.debug("[ChatKit] thread load start", { threadId });
-      },
-      onThreadLoadEnd: ({ threadId }: { threadId: string }) => {
-        console.debug("[ChatKit] thread load end", { threadId });
-      },
-      onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
-        if (entry?.data && typeof entry.data === "object") {
-          const data = entry.data as Record<string, unknown>;
-          if ("thread" in data && data.thread) {
-            lastThreadSnapshotRef.current = data.thread as Record<string, unknown>;
+    () =>
+      ({
+        api: {
+          getClientSecret,
+        },
+        theme: {
+          colorScheme: "light" as const,
+        },
+        composer: {
+          placeholder: "Posez votre question...",
+        },
+        onClientTool: async (toolCall) => {
+          const { name, params } = toolCall as ClientToolCall;
+
+          switch (name) {
+            case "get_weather": {
+              const city = params?.city?.trim();
+              const country = params?.country?.trim();
+
+              if (!city) {
+                throw new Error("Le paramètre 'city' est requis pour l'outil météo.");
+              }
+
+              const searchParams = new URLSearchParams({ city });
+              if (country) {
+                searchParams.set("country", country);
+              }
+
+              const response = await fetch(`/api/tools/weather?${searchParams.toString()}`);
+              if (!response.ok) {
+                const details = await response.text();
+                throw new Error(
+                  `Échec de l'appel météo (${response.status}) : ${details || "réponse vide"}`
+                );
+              }
+
+              return response.json();
+            }
+            default:
+              throw new Error(`Outil client non pris en charge : ${name}`);
           }
-        }
-        console.debug("[ChatKit] log", entry.name, entry.data ?? {});
-      },
-    }),
+        },
+        onError: ({ error }: { error: Error }) => {
+          console.groupCollapsed("[ChatKit] onError");
+          console.error("error:", error);
+          if (lastThreadSnapshotRef.current) {
+            console.log("thread snapshot:", lastThreadSnapshotRef.current);
+          }
+          console.groupEnd();
+          setError(error.message);
+        },
+        onResponseStart: () => {
+          setError(null);
+        },
+        onResponseEnd: () => {
+          console.debug("[ChatKit] response end");
+        },
+        onThreadChange: ({ threadId }: { threadId: string | null }) => {
+          console.debug("[ChatKit] thread change", { threadId });
+        },
+        onThreadLoadStart: ({ threadId }: { threadId: string }) => {
+          console.debug("[ChatKit] thread load start", { threadId });
+        },
+        onThreadLoadEnd: ({ threadId }: { threadId: string }) => {
+          console.debug("[ChatKit] thread load end", { threadId });
+        },
+        onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
+          if (entry?.data && typeof entry.data === "object") {
+            const data = entry.data as Record<string, unknown>;
+            if ("thread" in data && data.thread) {
+              lastThreadSnapshotRef.current = data.thread as Record<string, unknown>;
+            }
+          }
+          console.debug("[ChatKit] log", entry.name, entry.data ?? {});
+        },
+      }) satisfies ChatKitOptions,
     [getClientSecret]
   );
 

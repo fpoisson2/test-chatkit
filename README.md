@@ -38,6 +38,25 @@ Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi
 
 The `/api/chatkit/session` route makes an HTTP request to `https://api.openai.com/v1/chatkit/sessions` using `httpx`, mirroring the official starter app. Si un utilisateur est authentifié, son identifiant interne est réutilisé pour générer la session. A `requirements.txt` remains available for `pip install -r requirements.txt`.
 
+### Outil météo exposé au workflow ChatKit
+
+Le backend expose également un point d'entrée `GET /api/tools/weather` qui interroge l'API libre [Open-Meteo](https://open-meteo.com/) pour fournir les conditions actuelles d'une ville donnée. Cette route est pensée pour être appelée depuis un outil de workflow ChatKit, mais elle reste publique afin de faciliter les tests manuels.
+
+- Paramètres : `city` (obligatoire) et `country` (optionnel, code ou nom du pays pour affiner la recherche).
+- Réponse : température, vitesse du vent, code météo, description et fuseau horaire de la mesure.
+
+Pour vérifier manuellement la réponse, démarrez le serveur FastAPI puis, **depuis la racine du dépôt**, exécutez par exemple :
+
+```bash
+curl "http://localhost:8000/api/tools/weather?city=Lyon"
+```
+
+La charge utile retournée est sérialisable en JSON et peut être consommée directement par un outil ChatKit (fonction Python, workflow Agent Builder, etc.).
+
+### Intégration côté widget ChatKit
+
+Le composant React `MyChat` enregistre un gestionnaire `onClientTool` pour l'outil client `get_weather`. Lorsque le workflow déclenche cet outil, le navigateur appelle automatiquement `GET /api/tools/weather` avec les paramètres fournis, puis renvoie la réponse JSON au backend ChatKit. Aucune configuration supplémentaire n'est nécessaire dans l'interface : il suffit que le workflow émette un appel d'outil nommé `get_weather` avec au minimum `{ "city": "Paris" }`.
+
 ## Frontend (`frontend/`)
 
 - Install JavaScript dependencies from within `frontend/`: `npm install` (ou `npm run frontend:install` à la racine)
