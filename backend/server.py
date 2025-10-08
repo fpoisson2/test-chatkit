@@ -10,7 +10,7 @@ import time
 import httpx
 import jwt
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Response, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
@@ -57,6 +57,20 @@ class UserResponse(BaseModel):
 
 
 TokenResponse.model_rebuild()
+
+
+class WeatherResponse(BaseModel):
+    city: str
+    country: str | None
+    latitude: float
+    longitude: float
+    temperature_celsius: float
+    wind_speed_kmh: float
+    weather_code: int
+    weather_description: str
+    observation_time: str
+    timezone: str | None
+    source: str = "open-meteo"
 
 
 load_dotenv()
@@ -133,6 +147,38 @@ _SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False)
 _http_bearer = HTTPBearer(auto_error=False)
 
 
+_WEATHER_CODE_DESCRIPTIONS: dict[int, str] = {
+    0: "Ciel dégagé",
+    1: "Principalement dégagé",
+    2: "Partiellement nuageux",
+    3: "Couvert",
+    45: "Brouillard",
+    48: "Brouillard givrant",
+    51: "Bruine légère",
+    53: "Bruine modérée",
+    55: "Bruine dense",
+    56: "Bruine verglaçante légère",
+    57: "Bruine verglaçante dense",
+    61: "Pluie faible",
+    63: "Pluie modérée",
+    65: "Pluie forte",
+    66: "Pluie verglaçante légère",
+    67: "Pluie verglaçante forte",
+    71: "Chute de neige faible",
+    73: "Chute de neige modérée",
+    75: "Chute de neige forte",
+    77: "Grains de neige",
+    80: "Averses faibles",
+    81: "Averses modérées",
+    82: "Averses fortes",
+    85: "Averses de neige faibles",
+    86: "Averses de neige fortes",
+    95: "Orage",
+    96: "Orage avec grêle légère",
+    99: "Orage avec grêle forte",
+}
+
+
 def _hash_password(password: str, salt: str | None = None) -> str:
     if not salt:
         salt = secrets.token_hex(16)
@@ -148,6 +194,10 @@ def _verify_password(password: str, stored_hash: str) -> bool:
         return False
     expected = _hash_password(password, salt)
     return secrets.compare_digest(expected, stored_hash)
+
+
+def _describe_weather_code(code: int) -> str:
+    return _WEATHER_CODE_DESCRIPTIONS.get(code, "Conditions météo inconnues")
 
 
 def _create_access_token(user: User) -> str:
@@ -190,6 +240,108 @@ def _wait_for_database() -> None:
             )
             time.sleep(delay)
     raise RuntimeError("Database connection failed after retries")
+
+
+async def _fetch_weather(city: str, country: str | None = None) -> WeatherResponse:
+    timeout = httpx.Timeout(15.0, connect=5.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        geocode_params: dict[str, str] = {
+            "name": city,
+            "count": "1",
+            "language": "fr",
+            "format": "json",
+        }
+        if country:
+            geocode_params["country"] = country
+
+        geocode_response = await client.get(
+            "https://geocoding-api.open-meteo.com/v1/search",
+            params=geocode_params,
+        )
+        if geocode_response.status_code >= 400:
+            logger.error(
+                "Weather geocoding failed (%s): %s",
+                geocode_response.status_code,
+                geocode_response.text,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Le service de géocodage météo est indisponible.",
+            )
+
+        geocode_payload = geocode_response.json()
+        results = geocode_payload.get("results") or []
+        if not results:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Aucune localité correspondante n'a été trouvée pour cette recherche.",
+            )
+
+        location = results[0]
+        latitude = location.get("latitude")
+        longitude = location.get("longitude")
+        if latitude is None or longitude is None:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Les coordonnées de la localité sont introuvables dans la réponse météo.",
+            )
+
+        weather_params = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "current_weather": "true",
+            "timezone": "auto",
+            "temperature_unit": "celsius",
+            "windspeed_unit": "kmh",
+        }
+
+        weather_response = await client.get(
+            "https://api.open-meteo.com/v1/forecast",
+            params=weather_params,
+        )
+        if weather_response.status_code >= 400:
+            logger.error(
+                "Weather forecast failed (%s): %s",
+                weather_response.status_code,
+                weather_response.text,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Le service météo est indisponible pour le moment.",
+            )
+
+        weather_payload = weather_response.json()
+        current = weather_payload.get("current_weather") or {}
+        if not current:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="La réponse météo ne contient pas de conditions actuelles.",
+            )
+
+        temperature = current.get("temperature")
+        windspeed = current.get("windspeed")
+        observation_time = current.get("time")
+        if temperature is None or windspeed is None or observation_time is None:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Les données météo actuelles sont incomplètes dans la réponse du fournisseur.",
+            )
+
+        code = int(current.get("weathercode", -1))
+        description = _describe_weather_code(code)
+
+        return WeatherResponse(
+            city=str(location.get("name") or city),
+            country=location.get("country_code") or location.get("country"),
+            latitude=float(latitude),
+            longitude=float(longitude),
+            temperature_celsius=float(temperature),
+            wind_speed_kmh=float(windspeed),
+            weather_code=code,
+            weather_description=description,
+            observation_time=str(observation_time),
+            timezone=weather_payload.get("timezone"),
+        )
 
 
 async def get_current_user(
@@ -403,3 +555,22 @@ async def delete_user(
     session.delete(user)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@app.get("/api/tools/weather", response_model=WeatherResponse)
+async def get_weather(
+    city: str = Query(..., min_length=1, description="Ville ou localité à rechercher"),
+    country: str | None = Query(
+        None,
+        min_length=2,
+        description="Optionnel : pays ou code pays ISO pour affiner la recherche",
+    ),
+):
+    try:
+        return await _fetch_weather(city, country)
+    except httpx.HTTPError as exc:
+        logger.error("Weather lookup failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="La requête vers le fournisseur météo a échoué.",
+        ) from exc
