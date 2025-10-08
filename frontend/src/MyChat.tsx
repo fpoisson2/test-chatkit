@@ -166,6 +166,14 @@ type WeatherToolCall = {
 type ClientToolCall = WeatherToolCall;
 
 type SettingsSection = "navigation" | "preferences" | "session";
+type StatusVariant = "ready" | "loading" | "warning" | "error";
+type PlaceholderState = {
+  variant: "loading" | "warning" | "error";
+  title: string;
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void;
+} | null;
 
 export function MyChat() {
   const { token, user, logout } = useAuth();
@@ -176,6 +184,8 @@ export function MyChat() {
   const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSection>("navigation");
   const [showTips, setShowTips] = useState(true);
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [chatKitReadyState, setChatKitReadyState] = useState<"loading" | "ready" | "error">("loading");
+  const [widgetError, setWidgetError] = useState<string | null>(null);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const modalTitleId = useId();
   const modalDescriptionId = useId();
@@ -198,6 +208,12 @@ export function MyChat() {
     navigate("/admin");
     closeSettings();
   }, [closeSettings, navigate]);
+
+  const reloadPage = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.location.reload();
+    }
+  }, []);
 
   const handleLogout = useCallback(() => {
     closeSettings();
@@ -263,6 +279,67 @@ export function MyChat() {
       delete devWindow.openChatSettings;
     };
   }, [openSettings]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!("customElements" in window)) {
+      setWidgetError(
+        "Ce navigateur ne permet pas d'afficher le widget ChatKit (Web Components non pris en charge).",
+      );
+      setChatKitReadyState("error");
+      return;
+    }
+
+    if (window.customElements.get("openai-chatkit")) {
+      setChatKitReadyState("ready");
+      setWidgetError(null);
+      return;
+    }
+
+    let isCancelled = false;
+    setChatKitReadyState("loading");
+    setWidgetError(null);
+
+    const timeoutId = window.setTimeout(() => {
+      if (isCancelled) {
+        return;
+      }
+      setWidgetError(
+        "Le chargement du widget ChatKit est plus long que prévu. Vérifiez votre connexion ou réessayez.",
+      );
+    }, 5000);
+
+    window.customElements
+      .whenDefined("openai-chatkit")
+      .then(() => {
+        window.clearTimeout(timeoutId);
+        if (isCancelled) {
+          return;
+        }
+        setChatKitReadyState("ready");
+        setWidgetError(null);
+      })
+      .catch((err) => {
+        window.clearTimeout(timeoutId);
+        if (isCancelled) {
+          return;
+        }
+        setChatKitReadyState("error");
+        setWidgetError(
+          err instanceof Error
+            ? `Impossible de charger le widget ChatKit : ${err.message}`
+            : "Impossible de charger le widget ChatKit.",
+        );
+      });
+
+    return () => {
+      isCancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, []);
 
   const getClientSecret = useCallback(async (currentSecret: string | null) => {
     if (currentSecret) {
@@ -408,31 +485,124 @@ export function MyChat() {
 
   const { control } = useChatKit(chatkitOptions);
 
-  const statusMessage = error
-    ? error
-    : isLoading
-      ? "Initialisation de la session…"
-      : "Votre assistant est prêt à répondre.";
+  const isChatKitReady = chatKitReadyState === "ready";
+
+  const placeholder: PlaceholderState = (() => {
+    if (error) {
+      return {
+        variant: "error",
+        title: "Impossible d'initialiser la session",
+        message: error,
+        actionLabel: "Recharger la page",
+        onAction: reloadPage,
+      };
+    }
+
+    if (chatKitReadyState === "error" && widgetError) {
+      return {
+        variant: "error",
+        title: "Impossible de charger le widget ChatKit",
+        message: widgetError,
+        actionLabel: "Recharger la page",
+        onAction: reloadPage,
+      };
+    }
+
+    if (!isChatKitReady) {
+      return {
+        variant: widgetError ? "warning" : "loading",
+        title: "Initialisation de ChatKit",
+        message:
+          widgetError ??
+          "Nous préparons l'interface de discussion. Cette opération ne prend généralement que quelques secondes.",
+      };
+    }
+
+    if (isLoading) {
+      return {
+        variant: "loading",
+        title: "Connexion en cours",
+        message: "Nous sécurisons votre session auprès de ChatKit…",
+      };
+    }
+
+    return null;
+  })();
+
+  const statusDetails = (() => {
+    if (error) {
+      return { message: error, variant: "error" as StatusVariant };
+    }
+
+    if (chatKitReadyState === "error" && widgetError) {
+      return { message: widgetError, variant: "error" as StatusVariant };
+    }
+
+    if (!isChatKitReady) {
+      return {
+        message:
+          widgetError ??
+          "Chargement du widget ChatKit…",
+        variant: (widgetError ? "warning" : "loading") as StatusVariant,
+      };
+    }
+
+    if (isLoading) {
+      return { message: "Initialisation de la session…", variant: "loading" as StatusVariant };
+    }
+
+    return { message: "Votre assistant est prêt à répondre.", variant: "ready" as StatusVariant };
+  })();
 
   const statusClassName = [
     "status-banner",
-    error ? "status-banner--error" : "",
-    !error && isLoading ? "status-banner--loading" : "",
+    statusDetails.variant === "error" ? "status-banner--error" : "",
+    statusDetails.variant === "loading" || statusDetails.variant === "warning"
+      ? "status-banner--loading"
+      : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   return (
     <div className="chat-layout">
-      <div className="chat-layout__canvas">
-        <ChatKit
-          control={control}
-          className="chatkit-host"
-          style={{ width: "100%", height: "100%" }}
-        />
+      <div className="chat-layout__canvas" aria-busy={!isChatKitReady || isLoading}>
+        <div className="chat-layout__surface">
+          <ChatKit
+            control={control}
+            className="chatkit-host"
+            style={{ width: "100%", height: "100%" }}
+          />
+          {placeholder && (
+            <div
+              className={`chat-placeholder chat-placeholder--${placeholder.variant}`}
+              role={placeholder.variant === "error" ? "alert" : "status"}
+              aria-live={placeholder.variant === "error" ? "assertive" : "polite"}
+            >
+              <div className="chat-placeholder__panel">
+                <h2 className="chat-placeholder__title">{placeholder.title}</h2>
+                <p className="chat-placeholder__message">{placeholder.message}</p>
+                {placeholder.variant === "loading" && (
+                  <div className="chat-placeholder__loader" aria-hidden="true">
+                    <span className="chat-placeholder__dot" />
+                    <span className="chat-placeholder__dot" />
+                    <span className="chat-placeholder__dot" />
+                  </div>
+                )}
+                {placeholder.variant === "error" && placeholder.onAction && placeholder.actionLabel && (
+                  <div className="chat-placeholder__actions">
+                    <button type="button" className="button button--subtle" onClick={placeholder.onAction}>
+                      {placeholder.actionLabel}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       <div className="chat-layout__status" aria-live="polite">
-        <div className={statusClassName}>{statusMessage}</div>
+        <div className={statusClassName}>{statusDetails.message}</div>
       </div>
       {isSettingsOpen && (
         <div
