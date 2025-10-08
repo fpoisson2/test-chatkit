@@ -6,6 +6,141 @@ import { useAuth } from "./auth";
 
 const DEVICE_ID_STORAGE_KEY = "chatkit-device-id";
 
+const OPENAI_CHATKIT_BASE_URL = "https://api.openai.com/v1/chatkit/";
+const CHATKIT_PROXY_PREFIX = "/api/chatkit/proxy/";
+
+const _disallowedForwardHeaders = new Set([
+  "content-length",
+  "host",
+]);
+
+const sanitizeHeaders = (headers: Headers) => {
+  _disallowedForwardHeaders.forEach((header) => headers.delete(header));
+  return headers;
+};
+
+type NormalizedRequest = {
+  url: string;
+  init: RequestInit;
+};
+
+type MaybeDuplexRequestInit = RequestInit & { duplex?: "half" | "full" };
+
+const buildRequestInitFromRequest = async (
+  request: Request,
+  override?: RequestInit,
+): Promise<MaybeDuplexRequestInit> => {
+  const method = (override?.method ?? request.method ?? "GET").toUpperCase();
+  const headers = new Headers(override?.headers ?? request.headers ?? {});
+
+  let body: Exclude<RequestInit["body"], undefined> | undefined;
+  if (override && Object.prototype.hasOwnProperty.call(override, "body")) {
+    body = override.body as Exclude<RequestInit["body"], undefined>;
+  } else if (method !== "GET" && method !== "HEAD") {
+    body = await request.arrayBuffer();
+  }
+
+  const init: MaybeDuplexRequestInit = {
+    method,
+    headers,
+    cache: override?.cache ?? request.cache,
+    credentials: override?.credentials ?? request.credentials,
+    integrity: override?.integrity ?? request.integrity,
+    keepalive: override?.keepalive ?? request.keepalive,
+    mode: override?.mode ?? request.mode,
+    redirect: override?.redirect ?? request.redirect,
+    referrer: override?.referrer ?? request.referrer,
+    referrerPolicy: override?.referrerPolicy ?? request.referrerPolicy,
+    signal: override?.signal ?? request.signal,
+  };
+
+  if (body !== undefined) {
+    init.body = body;
+  }
+
+  if (override && "duplex" in override) {
+    (init as MaybeDuplexRequestInit).duplex = (override as MaybeDuplexRequestInit).duplex;
+  } else if ("duplex" in request) {
+    (init as MaybeDuplexRequestInit).duplex = (request as MaybeDuplexRequestInit).duplex;
+  }
+
+  if (override && "priority" in override) {
+    (init as typeof init & { priority?: unknown }).priority = (override as {
+      priority?: unknown;
+    }).priority;
+  }
+
+  return init;
+};
+
+const normalizeFetchArguments = async (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<NormalizedRequest | null> => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  if (typeof input === "string" || input instanceof URL) {
+    const url = input instanceof URL ? input.toString() : input;
+    return {
+      url,
+      init: {
+        ...(init ?? {}),
+      },
+    };
+  }
+
+  if (typeof Request !== "undefined" && input instanceof Request) {
+    const cloned = input.clone();
+    const initFromRequest = await buildRequestInitFromRequest(cloned, init);
+    return {
+      url: cloned.url,
+      init: initFromRequest,
+    };
+  }
+
+  return null;
+};
+
+let fetchProxyInstalled = false;
+
+const installChatKitFetchProxy = () => {
+  if (fetchProxyInstalled || typeof window === "undefined" || typeof window.fetch !== "function") {
+    return;
+  }
+
+  const originalFetch = window.fetch.bind(window);
+
+  window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const normalized = await normalizeFetchArguments(input, init);
+    if (!normalized) {
+      return originalFetch(input as RequestInfo, init);
+    }
+
+    const targetUrl = normalized.url;
+    if (targetUrl.startsWith(OPENAI_CHATKIT_BASE_URL)) {
+      const url = new URL(targetUrl);
+      const relativePath = url.pathname.replace(/^\/v1\/chatkit\/?/, "");
+      const proxiedUrl = `${CHATKIT_PROXY_PREFIX}${relativePath}${url.search}`;
+      const headers = sanitizeHeaders(new Headers(normalized.init.headers ?? {}));
+      const proxiedInit: MaybeDuplexRequestInit = {
+        ...normalized.init,
+        headers,
+      };
+      return originalFetch(proxiedUrl, proxiedInit);
+    }
+
+    return originalFetch(input as RequestInfo, init);
+  }) as typeof fetch;
+
+  fetchProxyInstalled = true;
+};
+
+if (typeof window !== "undefined") {
+  installChatKitFetchProxy();
+}
+
 const getOrCreateDeviceId = () => {
   if (typeof window === "undefined") {
     return crypto.randomUUID();

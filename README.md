@@ -38,6 +38,8 @@ Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi
 
 The `/api/chatkit/session` route makes an HTTP request to `https://api.openai.com/v1/chatkit/sessions` using `httpx`, mirroring the official starter app. Si un utilisateur est authentifié, son identifiant interne est réutilisé pour générer la session. A `requirements.txt` remains available for `pip install -r requirements.txt`.
 
+> ℹ️ **CORS et flux de conversation** — l'API hébergée ChatKit ne renvoie pas systématiquement d'en-têtes `Access-Control-Allow-Origin`, ce qui provoque un blocage navigateur lors de la diffusion des réponses (SSE). Le backend expose donc un proxy de streaming `OPTIONS|POST /api/chatkit/proxy/{path:path}` qui relaie l'intégralité des requêtes `https://api.openai.com/v1/chatkit/*` vers OpenAI et renvoie un flux compatible navigateur.
+
 ### Outil météo exposé au workflow ChatKit
 
 Le backend expose également un point d'entrée `GET /api/tools/weather` qui interroge l'API libre [Open-Meteo](https://open-meteo.com/) pour fournir les conditions actuelles d'une ville donnée. Cette route est pensée pour être appelée depuis un outil de workflow ChatKit, mais elle reste publique afin de faciliter les tests manuels.
@@ -56,6 +58,8 @@ La charge utile retournée est sérialisable en JSON et peut être consommée di
 ### Intégration côté widget ChatKit
 
 Le composant React `MyChat` enregistre un gestionnaire `onClientTool` pour l'outil client `get_weather`. Lorsque le workflow déclenche cet outil, le navigateur appelle automatiquement `GET /api/tools/weather` avec les paramètres fournis, puis renvoie la réponse JSON au backend ChatKit. Aucune configuration supplémentaire n'est nécessaire dans l'interface : il suffit que le workflow émette un appel d'outil nommé `get_weather` avec au minimum `{ "city": "Paris" }`.
+
+Pour contourner le problème CORS mentionné plus haut, `src/MyChat.tsx` installe une surcharge légère de `window.fetch` qui redirige les appels `https://api.openai.com/v1/chatkit/...` vers le proxy FastAPI (`/api/chatkit/proxy/*`). Le widget conserve ainsi les flux SSE natifs tout en restant servi depuis votre domaine.
 
 ## Frontend (`frontend/`)
 
