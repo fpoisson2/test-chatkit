@@ -4,9 +4,9 @@ type ResolvedCoordinates = {
   latitude: number;
   longitude: number;
   name: string;
-  region?: string | null;
-  country?: string | null;
-  timezone?: string | null;
+  region: string | null;
+  country: string | null;
+  timezone: string | null;
 };
 
 type WeatherApiResponse = {
@@ -21,17 +21,17 @@ type WeatherApiResponse = {
   timezone?: string;
 };
 
-type WeatherResult = {
+export type WeatherResult = {
   location: {
     name: string;
-    region?: string | null;
-    country?: string | null;
+    region: string | null;
+    country: string | null;
     latitude: number;
     longitude: number;
-    timezone?: string | null;
+    timezone: string | null;
   };
   current: {
-    time?: string;
+    time: string | null;
     temperatureCelsius: number | null;
     temperatureFahrenheit: number | null;
     apparentTemperatureCelsius: number | null;
@@ -113,7 +113,7 @@ export async function getWeather(
       timezone: coordinates.timezone ?? data?.timezone ?? null,
     },
     current: {
-      time: typeof current?.time === "string" ? current?.time : undefined,
+      time: typeof current?.time === "string" ? current?.time : null,
       temperatureCelsius: temperatureC,
       temperatureFahrenheit: convertToFahrenheit(temperatureC),
       apparentTemperatureCelsius: apparentC,
@@ -137,7 +137,14 @@ async function resolveCoordinates(
 
   if (typeof latitude === "number" && typeof longitude === "number") {
     const name = inferNameFromParams(params) ?? "Provided coordinates";
-    return { latitude, longitude, name };
+    return {
+      latitude,
+      longitude,
+      name,
+      region: null,
+      country: null,
+      timezone: null,
+    };
   }
 
   const location = inferLocationName(params);
