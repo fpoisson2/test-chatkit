@@ -25,10 +25,11 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: var(--app-gradient);
+  background: #ffffff;
   color: var(--text-color);
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  justify-content: flex-start;
   align-items: stretch;
   padding: 0;
   width: 100%;
@@ -39,6 +40,7 @@ body {
   min-height: 100vh;
   width: 100%;
   display: flex;
+  flex-direction: column;
 }
 
 a {
@@ -128,24 +130,22 @@ button {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: clamp(16px, 4vw, 32px);
-  gap: clamp(16px, 3vh, 24px);
   width: 100%;
+  background: transparent;
 }
 
 .chatkit-layout__widget {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  background: var(--surface-strong);
-  border-radius: clamp(18px, 3vw, 26px);
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  box-shadow: var(--shadow-card);
+  background: transparent;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
   overflow: hidden;
-  min-height: clamp(420px, 70dvh, 820px);
-  width: min(1080px, 100%);
-  margin: 0 auto;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
 }
 
 .chatkit-layout__widget .chatkit-host {
