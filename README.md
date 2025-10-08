@@ -62,7 +62,7 @@ Si vous exposez l'environnement de développement via Nginx (par exemple sur `ht
 - `VITE_BACKEND_URL="https://chatkit.example.com/api"` pour forcer le frontend à appeler le backend via le reverse proxy.
 - `VITE_HMR_HOST="chatkit.example.com"`, `VITE_HMR_PROTOCOL="wss"` et `VITE_HMR_CLIENT_PORT=443` afin que le hot reload Vite continue de fonctionner à travers le proxy.
 
-Ensuite, adaptez votre bloc `server` Nginx (fichier `sites-available/chatkit.conf`, à activer via `ln -s` depuis `/etc/nginx/sites-enabled/`) :
+Ensuite, adaptez votre bloc `server` Nginx (fichier `sites-available/chatkit.conf`, à activer via `ln -s` depuis `/etc/nginx/sites-enabled/`). Les fichiers de certificats TLS ne doivent **pas** être créés à la main : laissez `certbot` générer et renouveler `/etc/letsencrypt/live/...` pour vous (`sudo certbot --nginx -d chatkit.example.com` ou `sudo certbot certonly --nginx …`). Une fois le certificat obtenu, référencez simplement les chemins fournis par `certbot` dans votre configuration :
 
 ```nginx
 map $http_upgrade $connection_upgrade {
@@ -75,7 +75,7 @@ server {
   listen 443 ssl;
   server_name chatkit.example.com;
 
-  # Certificats TLS gérés via certbot/letsencrypt, à ajuster selon votre stack
+  # Certificats TLS gérés automatiquement par certbot/letsencrypt
   ssl_certificate     /etc/letsencrypt/live/chatkit.example.com/fullchain.pem;
   ssl_certificate_key /etc/letsencrypt/live/chatkit.example.com/privkey.pem;
 
@@ -102,3 +102,5 @@ server {
 ```
 
 Redémarrez ensuite Nginx (`sudo systemctl reload nginx`) et relancez `docker compose up` depuis la racine si nécessaire. Le proxy transférera les requêtes HTTP classiques sur `/` vers Vite et les appels API `/api/…` vers FastAPI, tout en préservant les websockets nécessaires au HMR.
+
+`certbot` créera et renouvellera automatiquement les fichiers dans `/etc/letsencrypt/live/chatkit.example.com/`; vous n'avez donc rien à ajouter manuellement dans votre dépôt ou sur le serveur. Pensez simplement à vérifier que le timer `certbot.timer` est actif (`systemctl status certbot.timer`) pour garantir le renouvellement périodique des certificats.
