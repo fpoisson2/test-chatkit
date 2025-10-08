@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type HTMLAttributes,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
@@ -237,10 +238,21 @@ export function MyChat() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const isDesktopLayout = useIsDesktopLayout();
   const [isSidebarOpen, setIsSidebarOpen] = useState(getDesktopLayoutPreference);
+  const previousIsDesktopRef = useRef(isDesktopLayout);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
 
   useEffect(() => {
-    setIsSidebarOpen(isDesktopLayout);
+    const wasDesktop = previousIsDesktopRef.current;
+
+    if (isDesktopLayout) {
+      if (!wasDesktop) {
+        setIsSidebarOpen(true);
+      }
+    } else {
+      setIsSidebarOpen(false);
+    }
+
+    previousIsDesktopRef.current = isDesktopLayout;
   }, [isDesktopLayout]);
 
   const openSidebar = useCallback(() => {
@@ -252,10 +264,10 @@ export function MyChat() {
   }, []);
 
   const handleMainInteraction = useCallback(() => {
-    if (isSidebarOpen && !isDesktopLayout) {
+    if (!isDesktopLayout) {
       closeSidebar();
     }
-  }, [closeSidebar, isDesktopLayout, isSidebarOpen]);
+  }, [closeSidebar, isDesktopLayout]);
 
   const openProfileSettings = useCallback(() => {
     setIsSettingsModalOpen(true);
@@ -484,6 +496,20 @@ export function MyChat() {
     .filter(Boolean)
     .join(" ");
 
+  const mainInteractionHandlers = useMemo<
+    Partial<HTMLAttributes<HTMLDivElement>>
+  >(() => {
+    if (isDesktopLayout) {
+      return {};
+    }
+
+    return {
+      onClick: handleMainInteraction,
+      onPointerDown: handleMainInteraction,
+      onTouchStart: handleMainInteraction,
+    };
+  }, [handleMainInteraction, isDesktopLayout]);
+
   return (
     <div className={layoutClassName}>
       <aside
@@ -549,12 +575,7 @@ export function MyChat() {
         }}
         tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}
       />
-      <div
-        className="chatkit-layout__main"
-        onClick={handleMainInteraction}
-        onPointerDown={handleMainInteraction}
-        onTouchStart={handleMainInteraction}
-      >
+      <div className="chatkit-layout__main" {...mainInteractionHandlers}>
         <div className="chatkit-layout__widget">
           <ChatKit
             control={control}
