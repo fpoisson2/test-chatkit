@@ -380,70 +380,64 @@ export function MyChat() {
     .join(" ");
 
   return (
-    <div className="chatkit-layout">
-      <div className="chatkit-layout__widget">
-        <ChatKit
-          control={control}
-          className="chatkit-host"
-          style={{ width: "100%", height: "100%" }}
-        />
-      </div>
-      {statusMessage && (
-        <div className={statusClassName} role="status" aria-live="polite">
-          {statusMessage}
-        </div>
-      )}
+    <div className={`chatkit-layout${isSidebarOpen ? " chatkit-layout--sidebar-open" : ""}`}>
       {isSidebarOpen && (
-        <div
-          className="chatkit-sidebar"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="chatkit-sidebar-title"
-        >
-          <div className="chatkit-sidebar__backdrop" onClick={closeSidebar} />
-          <aside className="chatkit-sidebar__panel" role="document">
-            <header className="chatkit-sidebar__header">
-              <h2 id="chatkit-sidebar-title" className="chatkit-sidebar__title">
-                Navigation
-              </h2>
-              <p className="chatkit-sidebar__subtitle">
-                Accédez rapidement aux sections principales de la plateforme.
-              </p>
-            </header>
-            <nav className="chatkit-sidebar__nav" aria-label="Menu principal">
-              <ul className="chatkit-sidebar__list">
+        <aside className="chatkit-sidebar" aria-labelledby="chatkit-sidebar-title">
+          <header className="chatkit-sidebar__header">
+            <h2 id="chatkit-sidebar-title" className="chatkit-sidebar__title">
+              Navigation
+            </h2>
+            <p className="chatkit-sidebar__subtitle">
+              Accédez rapidement aux sections principales de la plateforme.
+            </p>
+          </header>
+          <nav className="chatkit-sidebar__nav" aria-label="Menu principal">
+            <ul className="chatkit-sidebar__list">
+              <li className="chatkit-sidebar__item">
+                <button type="button" onClick={handleSidebarHome}>
+                  Accueil
+                </button>
+              </li>
+              {user?.is_admin && (
                 <li className="chatkit-sidebar__item">
-                  <button type="button" onClick={handleSidebarHome}>
-                    Accueil
+                  <button type="button" onClick={handleSidebarAdmin}>
+                    Administration
                   </button>
                 </li>
-                {user?.is_admin && (
-                  <li className="chatkit-sidebar__item">
-                    <button type="button" onClick={handleSidebarAdmin}>
-                      Administration
-                    </button>
-                  </li>
-                )}
-                <li className="chatkit-sidebar__item">
-                  <button type="button" onClick={handleSidebarSettings}>
-                    Paramètres rapides
-                  </button>
-                </li>
-                <li className="chatkit-sidebar__item chatkit-sidebar__item--danger">
-                  <button type="button" onClick={handleSidebarLogout}>
-                    Déconnexion
-                  </button>
-                </li>
-              </ul>
-            </nav>
-            <footer className="chatkit-sidebar__footer">
-              <button type="button" className="chatkit-sidebar__close" onClick={closeSidebar}>
-                Fermer
-              </button>
-            </footer>
-          </aside>
-        </div>
+              )}
+              <li className="chatkit-sidebar__item">
+                <button type="button" onClick={handleSidebarSettings}>
+                  Paramètres rapides
+                </button>
+              </li>
+              <li className="chatkit-sidebar__item chatkit-sidebar__item--danger">
+                <button type="button" onClick={handleSidebarLogout}>
+                  Déconnexion
+                </button>
+              </li>
+            </ul>
+          </nav>
+          <footer className="chatkit-sidebar__footer">
+            <button type="button" className="chatkit-sidebar__close" onClick={closeSidebar}>
+              Fermer
+            </button>
+          </footer>
+        </aside>
       )}
+      <div className="chatkit-layout__main">
+        <div className="chatkit-layout__widget">
+          <ChatKit
+            control={control}
+            className="chatkit-host"
+            style={{ width: "100%", height: "100%" }}
+          />
+        </div>
+        {statusMessage && (
+          <div className={statusClassName} role="status" aria-live="polite">
+            {statusMessage}
+          </div>
+        )}
+      </div>
       {isSettingsModalOpen && (
         <div
           className="settings-modal"
