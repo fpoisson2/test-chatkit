@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
 import type { ChatKitOptions } from "@openai/chatkit";
+import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "./auth";
 
@@ -165,10 +166,55 @@ type WeatherToolCall = {
 type ClientToolCall = WeatherToolCall;
 
 export function MyChat() {
-  const { token, user } = useAuth();
+  const { token, user, logout } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [activeSettingsSection, setActiveSettingsSection] = useState<
+    "navigation" | "profil" | "support"
+  >("navigation");
+  const navigate = useNavigate();
+
+  const openProfileSettings = useCallback(() => {
+    setActiveSettingsSection("navigation");
+    setIsSettingsModalOpen(true);
+  }, []);
+
+  const closeProfileSettings = useCallback(() => {
+    setIsSettingsModalOpen(false);
+  }, []);
+
+  const openHomePage = useCallback(() => {
+    navigate("/");
+  }, [navigate]);
+
+  const goToAdmin = useCallback(() => {
+    setIsSettingsModalOpen(false);
+    navigate("/admin");
+  }, [navigate]);
+
+  const handleLogout = useCallback(() => {
+    setIsSettingsModalOpen(false);
+    logout();
+  }, [logout]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleOpen = () => openProfileSettings();
+    const handleClose = () => closeProfileSettings();
+
+    window.addEventListener("chatkit:open-settings", handleOpen);
+    window.addEventListener("chatkit:close-settings", handleClose);
+
+    return () => {
+      window.removeEventListener("chatkit:open-settings", handleOpen);
+      window.removeEventListener("chatkit:close-settings", handleClose);
+    };
+  }, [closeProfileSettings, openProfileSettings]);
 
   const getClientSecret = useCallback(async (currentSecret: string | null) => {
     if (currentSecret) {
@@ -223,6 +269,18 @@ export function MyChat() {
       ({
         api: {
           getClientSecret,
+        },
+        header: {
+          leftAction: {
+            icon: "settings-cog",
+            label: "Paramètres",
+            onClick: openProfileSettings,
+          },
+          rightAction: {
+            icon: "home",
+            label: "Accueil",
+            onClick: openHomePage,
+          },
         },
         theme: {
           colorScheme: "light" as const,
@@ -295,7 +353,7 @@ export function MyChat() {
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
         },
       }) satisfies ChatKitOptions,
-    [getClientSecret]
+    [getClientSecret, openHomePage, openProfileSettings]
   );
 
   const { control } = useChatKit(chatkitOptions);
@@ -315,15 +373,121 @@ export function MyChat() {
     .join(" ");
 
   return (
-    <div className="app-shell__content">
-      <div className="chat-card">
-        <ChatKit
-          control={control}
-          className="chatkit-host"
-          style={{ width: "100%", height: "100%" }}
-        />
-      </div>
+    <div className="chat-fullscreen">
+      <ChatKit
+        control={control}
+        className="chatkit-host"
+        style={{ width: "100%", height: "100%" }}
+      />
       <div className={statusClassName}>{statusMessage}</div>
+      {isSettingsModalOpen && (
+        <div className="settings-modal" role="dialog" aria-modal="true">
+          <div className="settings-modal__backdrop" onClick={closeProfileSettings} />
+          <div className="settings-modal__panel">
+            <header className="settings-modal__header">
+              <h2 className="settings-modal__title">Paramètres rapides</h2>
+              <p className="settings-modal__subtitle">
+                Gérez votre expérience ou accédez aux outils d'administration.
+              </p>
+              <button
+                type="button"
+                className="settings-modal__close"
+                onClick={closeProfileSettings}
+                aria-label="Fermer les paramètres"
+              >
+                ✕
+              </button>
+            </header>
+            <div className="settings-modal__content">
+              <nav className="settings-modal__nav" aria-label="Sous-menus des paramètres">
+                <button
+                  type="button"
+                  className={
+                    activeSettingsSection === "navigation"
+                      ? "settings-modal__nav-button settings-modal__nav-button--active"
+                      : "settings-modal__nav-button"
+                  }
+                  onClick={() => setActiveSettingsSection("navigation")}
+                >
+                  Navigation
+                </button>
+                <button
+                  type="button"
+                  className={
+                    activeSettingsSection === "profil"
+                      ? "settings-modal__nav-button settings-modal__nav-button--active"
+                      : "settings-modal__nav-button"
+                  }
+                  onClick={() => setActiveSettingsSection("profil")}
+                >
+                  Profil
+                </button>
+                <button
+                  type="button"
+                  className={
+                    activeSettingsSection === "support"
+                      ? "settings-modal__nav-button settings-modal__nav-button--active"
+                      : "settings-modal__nav-button"
+                  }
+                  onClick={() => setActiveSettingsSection("support")}
+                >
+                  Support
+                </button>
+              </nav>
+              <section className="settings-modal__details">
+                {activeSettingsSection === "navigation" && (
+                  <div className="settings-section">
+                    <h3>Navigation rapide</h3>
+                    <p>
+                      Accédez aux pages clés de la démonstration sans quitter la conversation.
+                    </p>
+                    <div className="settings-section__actions">
+                      <button
+                        type="button"
+                        className="button"
+                        onClick={goToAdmin}
+                        disabled={!user?.is_admin}
+                      >
+                        Ouvrir l'administration
+                      </button>
+                      <button type="button" className="button button--subtle" onClick={openHomePage}>
+                        Retour à l'accueil
+                      </button>
+                    </div>
+                    {!user?.is_admin && (
+                      <p className="settings-section__hint">
+                        Vous devez disposer des droits administrateur pour accéder à cette section.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {activeSettingsSection === "profil" && (
+                  <div className="settings-section">
+                    <h3>Profil utilisateur</h3>
+                    <p>
+                      Connecté en tant que <strong>{user?.email ?? "invité"}</strong>.
+                    </p>
+                    <p>Pour modifier vos informations, veuillez contacter un administrateur.</p>
+                    <button type="button" className="button button--danger" onClick={handleLogout}>
+                      Déconnexion
+                    </button>
+                  </div>
+                )}
+                {activeSettingsSection === "support" && (
+                  <div className="settings-section">
+                    <h3>Support &amp; ressources</h3>
+                    <ul>
+                      <li>Consultez la FAQ intégrée à ChatKit pour démarrer.</li>
+                      <li>Besoin d'une assistance ? Contactez l'équipe démo à demo@example.com.</li>
+                      <li>Explorez la documentation produit depuis le tableau de bord OpenAI.</li>
+                    </ul>
+                  </div>
+                )}
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
