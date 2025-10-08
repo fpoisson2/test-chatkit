@@ -24,11 +24,14 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const chatKitScriptSrc =
+    process.env.NEXT_PUBLIC_CHATKIT_SCRIPT_URL?.trim() ??
+    "https://chatkit.ve2fpd.com/deployments/chatkit/chatkit.js";
   return (
     <html lang="en">
       <head>
         <Script
-          src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js"
+          src={chatKitScriptSrc}
           strategy="beforeInteractive"
         />
       </head>
