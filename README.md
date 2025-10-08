@@ -5,6 +5,7 @@ This repository mirrors the walkthrough in `chatkit.md`, providing a FastAPI bac
 ## Authentification et administration
 
 - La connexion se fait depuis `/login` et repose sur un token JWT signé côté backend.
+- L'accueil (`/`) est protégé : sans authentification valide, l'utilisateur est redirigé vers la page de connexion avant d'accéder au widget ChatKit.
 - Un compte administrateur (créé via variables d'environnement) peut gérer les utilisateurs depuis `/admin` : création, promotion/déclassement, réinitialisation de mot de passe et suppression.
 - Les requêtes vers `/api/chatkit/session` utilisent automatiquement l'identité de l'utilisateur connecté si un token est présent dans les en-têtes.
 
@@ -25,7 +26,9 @@ Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi
 - Créez un fichier `.env` dans `backend/` avec au minimum :
   - `OPENAI_API_KEY` – clé API autorisée sur la bêta ChatKit
   - `CHATKIT_WORKFLOW_ID` – identifiant du workflow (exemple : `wf_68e517bc3df4819095eb9f252c9f097d057110cbe8192cd9`)
-  - `DATABASE_URL` – URL SQLAlchemy vers PostgreSQL (ex. `postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit`)
+  - `DATABASE_URL` – URL SQLAlchemy vers PostgreSQL (ex. `postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit`). En
+    environnement Docker Compose, utilisez le hostname du service PostgreSQL (`db`) plutôt que `localhost`, par exemple
+    `postgresql+psycopg://chatkit:chatkit@db:5432/chatkit`.
   - `AUTH_SECRET_KEY` – clé secrète utilisée pour signer les tokens JWT
   - Optionnel : `ACCESS_TOKEN_EXPIRE_MINUTES` pour ajuster la durée de validité du token (par défaut 120 min)
   - Optionnel : `ADMIN_EMAIL` et `ADMIN_PASSWORD` pour provisionner automatiquement un compte administrateur au démarrage
@@ -43,6 +46,7 @@ The `/api/chatkit/session` route makes an HTTP request to `https://api.openai.co
 - The project depends on React 19, matching the official starter app requirements for `@openai/chatkit-react`
 - `vite.config.ts` proxies `/api/chatkit/session` requests to the FastAPI backend running on port 8000
 - `VITE_BACKEND_URL` définit l'URL cible du backend pour l'ensemble des appels `/api/*`
+- Les requêtes de connexion basculent automatiquement sur `/api/auth/login` (même origine) puis, en cas d'échec réseau, réessaient avec `VITE_BACKEND_URL` ; cela évite les erreurs « Failed to fetch » lorsque le navigateur n'a pas de résolution DNS pour `backend` en environnement Docker.
 - `VITE_ALLOWED_HOSTS` permet d'ajouter une liste d'hôtes supplémentaires autorisés par le serveur Vite (séparés par des virgules)
 - `index.html` already loads the ChatKit CDN script: `<script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>`
 - If you want to call OpenAI directly from the browser, `src/chatkit.ts` shows the fetch helper that uses `import.meta.env.VITE_OPENAI_API_SECRET_KEY`
@@ -61,7 +65,8 @@ Depuis la racine du dépôt, vous pouvez orchestrer le backend FastAPI et le fro
    AUTH_SECRET_KEY="change-me"
    ADMIN_EMAIL="admin@example.com"
    ADMIN_PASSWORD="adminpass"
-   # Optionnel : ajustez la connexion PostgreSQL (défaut : postgresql+psycopg://chatkit:chatkit@db:5432/chatkit)
+   # Optionnel : ajustez la connexion PostgreSQL (défaut : postgresql+psycopg://chatkit:chatkit@db:5432/chatkit).
+   # En Docker Compose, laissez `db` comme hostname ou omettez complètement cette variable pour conserver la valeur par défaut.
    # DATABASE_URL="postgresql+psycopg://user:password@host:5432/chatkit"
    # Optionnel : ajustez le port d'exposition du frontend
    VITE_PORT=5183

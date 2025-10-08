@@ -1,9 +1,9 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { AuthUser, useAuth } from "../auth";
 
-const backendUrl = import.meta.env.VITE_BACKEND_URL ?? "";
+const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 
 export const LoginPage = () => {
   const { login } = useAuth();
@@ -13,26 +13,66 @@ export const LoginPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setSubmitting] = useState(false);
 
+  const loginEndpoints = useMemo(() => {
+    const normalizedBackendUrl = backendUrl.replace(/\/+$/, "");
+    const endpoints = ["/api/auth/login"];
+    if (normalizedBackendUrl.length > 0) {
+      endpoints.push(`${normalizedBackendUrl}/api/auth/login`);
+    }
+    return Array.from(new Set(endpoints));
+  }, [backendUrl]);
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitting(true);
     setError(null);
 
     try {
-      const response = await fetch(`${backendUrl}/api/auth/login`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      });
+      const payload = JSON.stringify({ email, password });
+      let lastError: Error | null = null;
+      let data: { access_token: string; user: AuthUser } | null = null;
 
-      if (!response.ok) {
-        const { detail } = await response.json();
-        throw new Error(detail ?? "Échec de la connexion");
+      for (const endpoint of loginEndpoints) {
+        try {
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: payload,
+          });
+
+          if (!response.ok) {
+            let detail = "Échec de la connexion";
+            try {
+              const body = await response.json();
+              if (body?.detail) {
+                detail = String(body.detail);
+              } else {
+                detail = `${response.status} ${response.statusText}`;
+              }
+            } catch (parseError) {
+              detail = `${response.status} ${response.statusText}`;
+            }
+            lastError = new Error(detail);
+            continue;
+          }
+
+          data = (await response.json()) as { access_token: string; user: AuthUser };
+          break;
+        } catch (networkError) {
+          if (networkError instanceof Error) {
+            lastError = networkError;
+          } else {
+            lastError = new Error("Une erreur inattendue est survenue");
+          }
+        }
       }
 
-      const data: { access_token: string; user: AuthUser } = await response.json();
+      if (!data) {
+        throw lastError ?? new Error("Impossible de joindre le backend d'authentification");
+      }
+
       login(data.access_token, data.user);
       navigate(data.user.is_admin ? "/admin" : "/");
     } catch (err) {
