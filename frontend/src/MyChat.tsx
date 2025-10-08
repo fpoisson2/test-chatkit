@@ -340,30 +340,30 @@ export function MyChat() {
 
   const { control } = useChatKit(chatkitOptions);
 
-  const statusMessage = error
-    ? error
-    : isLoading
-      ? "Initialisation de la session…"
-      : "Votre assistant est prêt à répondre.";
+  const statusMessage = error ?? (isLoading ? "Initialisation de la session…" : null);
 
   const statusClassName = [
-    "status-banner",
-    error ? "status-banner--error" : "",
-    !error && isLoading ? "status-banner--loading" : "",
+    "chatkit-status",
+    error ? "chatkit-status--error" : "",
+    !error && isLoading ? "chatkit-status--loading" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
   return (
-    <div className="app-shell__content">
-      <div className="chat-card">
+    <div className="chatkit-layout">
+      <div className="chatkit-layout__widget">
         <ChatKit
           control={control}
           className="chatkit-host"
           style={{ width: "100%", height: "100%" }}
         />
       </div>
-      <div className={statusClassName}>{statusMessage}</div>
+      {statusMessage && (
+        <div className={statusClassName} role="status" aria-live="polite">
+          {statusMessage}
+        </div>
+      )}
       {isSettingsModalOpen && (
         <div
           className="settings-modal"
