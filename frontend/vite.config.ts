@@ -12,9 +12,13 @@ const hmrHost = process.env.VITE_HMR_HOST ?? "test.ve2fpd.com";
 const hmrProtocol = process.env.VITE_HMR_PROTOCOL ?? "wss";
 const backendTarget =
   process.env.VITE_BACKEND_URL ?? "http://127.0.0.1:8000";
-const allowedHosts = process.env.VITE_ALLOWED_HOSTS?.split(",")
+const defaultAllowedHosts = ["chatkit.ve2fpd.com"];
+const envAllowedHosts = process.env.VITE_ALLOWED_HOSTS?.split(",")
   .map((host) => host.trim())
   .filter((host) => host.length > 0);
+const allowedHosts = envAllowedHosts?.length
+  ? Array.from(new Set([...envAllowedHosts, ...defaultAllowedHosts]))
+  : defaultAllowedHosts;
 
 export default defineConfig({
   server: {
