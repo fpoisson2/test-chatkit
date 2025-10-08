@@ -125,31 +125,65 @@ export function MyChat() {
   return (
     <div
       style={{
-        position: "fixed",
-        inset: 0,
-        display: "flex",
-        flexDirection: "column",
+        minHeight: "100dvh",
         backgroundColor: "#f8fafc",
+        paddingTop: "calc(16px + env(safe-area-inset-top, 0px))",
+        paddingBottom: "calc(16px + env(safe-area-inset-bottom, 0px))",
+        paddingLeft: "calc(16px + env(safe-area-inset-left, 0px))",
+        paddingRight: "calc(16px + env(safe-area-inset-right, 0px))",
+        boxSizing: "border-box",
       }}
     >
-      <ChatKit
-        control={control}
-        style={{
-          flex: "1 1 auto",
-          width: "100%",
-          height: "100%",
-        }}
-      />
       <div
         style={{
-          padding: "8px 16px",
-          fontSize: "0.9rem",
-          color: error ? "#dc2626" : "#475569",
-          backgroundColor: "#ffffffcc",
-          borderTop: "1px solid #e2e8f0",
+          margin: "0 auto",
+          maxWidth: "960px",
+          width: "100%",
+          minHeight:
+            "calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))",
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+          paddingLeft: "clamp(8px, 4vw, 16px)",
+          paddingRight: "clamp(8px, 4vw, 16px)",
+          boxSizing: "border-box",
         }}
       >
-        {error ? error : isLoading ? "Initialisation de la session…" : "\u00A0"}
+        <div
+          style={{
+            flex: "1 1 auto",
+            minHeight: "0",
+            borderRadius: "18px",
+            overflow: "hidden",
+            boxShadow: "0 12px 30px rgba(15, 23, 42, 0.12)",
+            backgroundColor: "#ffffff",
+            display: "flex",
+          }}
+        >
+          <ChatKit
+            control={control}
+            style={{
+              flex: "1 1 auto",
+              width: "100%",
+              height: "100%",
+              minHeight: "clamp(260px, calc(100dvh - 160px), 720px)",
+            }}
+          />
+        </div>
+        <div
+          style={{
+            padding: "10px 18px",
+            fontSize: "0.9rem",
+            color: error ? "#dc2626" : "#475569",
+            backgroundColor: "#ffffffcc",
+            border: "1px solid #e2e8f0",
+            borderRadius: "12px",
+            backdropFilter: "blur(4px)",
+            textAlign: "center",
+          }}
+        >
+          {error ? error : isLoading ? "Initialisation de la session…" : "\u00A0"}
+        </div>
       </div>
     </div>
   );
