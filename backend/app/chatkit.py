@@ -56,6 +56,20 @@ async def create_chatkit_session(user_id: str) -> dict:
             json={
                 "workflow": {"id": settings.workflow_id},
                 "user": user_id,
+                "chatkit_configuration": {
+                    "file_upload": {
+                        "enabled": True,
+                    }
+                },
+                # L'API ChatKit impose actuellement un maximum de 600 secondes
+                # (10 minutes) pour l'expiration des sessions. Nous visons une
+                # durée plus longue mais nous conformons à cette limite pour
+                # éviter un échec 400 en production.
+                "expires_after": {
+                    "anchor": "created_at",
+                    "seconds": 600,
+                },
+                "rate_limits": {"max_requests_per_1_minute": 50},
             },
         )
     if response.status_code >= 400:
