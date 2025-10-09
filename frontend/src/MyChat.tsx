@@ -4,291 +4,17 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type HTMLAttributes,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
 import type { ChatKitOptions } from "@openai/chatkit";
 
 import { useAuth } from "./auth";
-
-const DEVICE_ID_STORAGE_KEY = "chatkit-device-id";
-
-const OPENAI_CHATKIT_BASE_URL = "https://api.openai.com/v1/chatkit/";
-const CHATKIT_PROXY_PREFIX = "/api/chatkit/proxy/";
-
-const DESKTOP_BREAKPOINT = 1024;
-const DESKTOP_MEDIA_QUERY = "(min-width: 1024px)";
-const COARSE_POINTER_QUERY = "(pointer: coarse)";
-
-type SidebarIconName = "logo" | "home" | "admin" | "settings" | "logout";
-
-const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
-  logo: (
-    <>
-      <circle cx="12" cy="12" r="9" fill="currentColor" opacity="0.15" />
-      <path
-        d="M9 9.75c0-1.24 1-2.25 2.25-2.25h2.5A2.25 2.25 0 0 1 16 9.75v1.25a2.25 2.25 0 0 1-2.25 2.25H12l-2.5 2v-2H11.25A2.25 2.25 0 0 1 9 10.75Z"
-        fill="currentColor"
-      />
-    </>
-  ),
-  home: (
-    <>
-      <path
-        d="M2.25 12 12 2.25 21.75 12"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M4.5 9.75v10.5A1.5 1.5 0 0 0 6 21.75h3.75V15h4.5v6.75H18a1.5 1.5 0 0 0 1.5-1.5V9.75"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </>
-  ),
-  admin: (
-    <>
-      <path
-        d="M12 21a9 9 0 0 0 9-9V7.286a1 1 0 0 0-.469-.853l-8.25-5.156a1 1 0 0 0-1.062 0L3.969 6.433A1 1 0 0 0 3.5 7.286V12a9 9 0 0 0 9 9Z"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="m9 12.75 2.25 2.25L15 9.75"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </>
-  ),
-  settings: (
-    <>
-      <path
-        d="M21 12a2.25 2.25 0 0 0-1.125-1.95l-1.755-1.012a7.01 7.01 0 0 0-.366-.884l.34-1.962A2.25 2.25 0 0 0 15.877 3.5h-3.754a2.25 2.25 0 0 0-2.217 1.692l-.34 1.962c-.13.287-.25.582-.366.884L7.463 10.05A2.25 2.25 0 0 0 6.338 12c0 .76.395 1.464 1.125 1.95l1.755 1.012c.117.302.237.597.366.884l-.34 1.962a2.25 2.25 0 0 0 2.217 2.692h3.754a2.25 2.25 0 0 0 2.217-1.692l.34-1.962c.13-.287.25-.582.366-.884l1.755-1.012A2.25 2.25 0 0 0 21 12Z"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </>
-  ),
-  logout: (
-    <>
-      <path
-        d="M9 8.25 4.5 12 9 15.75"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M4.5 12h12.75"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M15.75 19.5h1.5A2.25 2.25 0 0 0 19.5 17.25V6.75A2.25 2.25 0 0 0 17.25 4.5h-1.5"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </>
-  ),
-};
-
-const SidebarIcon = ({
-  name,
-  className,
-}: {
-  name: SidebarIconName;
-  className?: string;
-}) => (
-  <svg
-    viewBox="0 0 24 24"
-    width={24}
-    height={24}
-    aria-hidden="true"
-    focusable="false"
-    className={className}
-  >
-    {SIDEBAR_ICONS[name]}
-  </svg>
-);
-
-const _disallowedForwardHeaders = new Set([
-  "content-length",
-  "host",
-]);
-
-const sanitizeHeaders = (headers: Headers) => {
-  _disallowedForwardHeaders.forEach((header) => headers.delete(header));
-  return headers;
-};
-
-type NormalizedRequest = {
-  url: string;
-  init: RequestInit;
-};
-
-type MaybeDuplexRequestInit = RequestInit & { duplex?: "half" | "full" };
-
-const buildRequestInitFromRequest = async (
-  request: Request,
-  override?: RequestInit,
-): Promise<MaybeDuplexRequestInit> => {
-  const method = (override?.method ?? request.method ?? "GET").toUpperCase();
-  const headers = new Headers(override?.headers ?? request.headers ?? {});
-
-  let body: Exclude<RequestInit["body"], undefined> | undefined;
-  if (override && Object.prototype.hasOwnProperty.call(override, "body")) {
-    body = override.body as Exclude<RequestInit["body"], undefined>;
-  } else if (method !== "GET" && method !== "HEAD") {
-    body = await request.arrayBuffer();
-  }
-
-  const init: MaybeDuplexRequestInit = {
-    method,
-    headers,
-    cache: override?.cache ?? request.cache,
-    credentials: override?.credentials ?? request.credentials,
-    integrity: override?.integrity ?? request.integrity,
-    keepalive: override?.keepalive ?? request.keepalive,
-    mode: override?.mode ?? request.mode,
-    redirect: override?.redirect ?? request.redirect,
-    referrer: override?.referrer ?? request.referrer,
-    referrerPolicy: override?.referrerPolicy ?? request.referrerPolicy,
-    signal: override?.signal ?? request.signal,
-  };
-
-  if (body !== undefined) {
-    init.body = body;
-  }
-
-  if (override && "duplex" in override) {
-    (init as MaybeDuplexRequestInit).duplex = (override as MaybeDuplexRequestInit).duplex;
-  } else if ("duplex" in request) {
-    (init as MaybeDuplexRequestInit).duplex = (request as MaybeDuplexRequestInit).duplex;
-  }
-
-  if (override && "priority" in override) {
-    (init as typeof init & { priority?: unknown }).priority = (override as {
-      priority?: unknown;
-    }).priority;
-  }
-
-  return init;
-};
-
-const normalizeFetchArguments = async (
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<NormalizedRequest | null> => {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  if (typeof input === "string" || input instanceof URL) {
-    const url = input instanceof URL ? input.toString() : input;
-    return {
-      url,
-      init: {
-        ...(init ?? {}),
-      },
-    };
-  }
-
-  if (typeof Request !== "undefined" && input instanceof Request) {
-    const cloned = input.clone();
-    const initFromRequest = await buildRequestInitFromRequest(cloned, init);
-    return {
-      url: cloned.url,
-      init: initFromRequest,
-    };
-  }
-
-  return null;
-};
-
-let fetchProxyInstalled = false;
-
-const installChatKitFetchProxy = () => {
-  if (fetchProxyInstalled || typeof window === "undefined" || typeof window.fetch !== "function") {
-    return;
-  }
-
-  const originalFetch = window.fetch.bind(window);
-
-  window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const normalized = await normalizeFetchArguments(input, init);
-    if (!normalized) {
-      return originalFetch(input as RequestInfo, init);
-    }
-
-    const targetUrl = normalized.url;
-    if (targetUrl.startsWith(OPENAI_CHATKIT_BASE_URL)) {
-      const url = new URL(targetUrl);
-      const relativePath = url.pathname.replace(/^\/v1\/chatkit\/?/, "");
-      const proxiedUrl = `${CHATKIT_PROXY_PREFIX}${relativePath}${url.search}`;
-      const headers = sanitizeHeaders(new Headers(normalized.init.headers ?? {}));
-      const proxiedInit: MaybeDuplexRequestInit = {
-        ...normalized.init,
-        headers,
-      };
-      return originalFetch(proxiedUrl, proxiedInit);
-    }
-
-    return originalFetch(input as RequestInfo, init);
-  }) as typeof fetch;
-
-  fetchProxyInstalled = true;
-};
-
-if (typeof window !== "undefined") {
-  installChatKitFetchProxy();
-}
-
-const getOrCreateDeviceId = () => {
-  if (typeof window === "undefined") {
-    return crypto.randomUUID();
-  }
-
-  let existing = window.localStorage.getItem(DEVICE_ID_STORAGE_KEY);
-  if (!existing) {
-    existing = crypto.randomUUID();
-    window.localStorage.setItem(DEVICE_ID_STORAGE_KEY, existing);
-  }
-  return existing;
-};
+import { SidebarIcon, type SidebarIconName } from "./components/SidebarIcon";
+import { getDesktopLayoutPreference, useIsDesktopLayout } from "./hooks/useDesktopLayout";
+import { getOrCreateDeviceId } from "./utils/device";
 
 type WeatherToolCall = {
   name: "get_weather";
@@ -300,183 +26,80 @@ type WeatherToolCall = {
 
 type ClientToolCall = WeatherToolCall;
 
-type NavigatorWithUA = Navigator & {
-  userAgentData?: {
-    mobile?: boolean;
-    addEventListener?: (type: "change", listener: () => void) => void;
-    removeEventListener?: (type: "change", listener: () => void) => void;
-    onchange?: ((event: Event) => void) | null;
-  };
+type NavigationItem = {
+  key: string;
+  label: string;
+  icon: SidebarIconName;
+  onClick: () => void;
 };
 
-const getNavigator = () => {
-  if (typeof navigator === "undefined") {
-    return null;
-  }
-
-  return navigator as NavigatorWithUA;
-};
-
-const getViewportWidthCandidates = () => {
-  if (typeof window === "undefined") {
-    return [] as number[];
-  }
-
-  const candidates: number[] = [
-    window.innerWidth,
-    window.document?.documentElement?.clientWidth ?? 0,
+const buildNavigationItems = ({
+  isAdmin,
+  handleSidebarHome,
+  handleSidebarAdmin,
+  handleSidebarSettings,
+  handleSidebarLogout,
+}: {
+  isAdmin: boolean;
+  handleSidebarHome: () => void;
+  handleSidebarAdmin: () => void;
+  handleSidebarSettings: () => void;
+  handleSidebarLogout: () => void;
+}) => {
+  const items: NavigationItem[] = [
+    {
+      key: "home",
+      label: "Accueil",
+      icon: "home",
+      onClick: handleSidebarHome,
+    },
   ];
 
-  if (window.visualViewport) {
-    const { width, scale } = window.visualViewport;
-
-    if (typeof width === "number" && Number.isFinite(width)) {
-      candidates.push(width);
-
-      if (typeof scale === "number" && Number.isFinite(scale) && scale > 0) {
-        candidates.push(width * scale);
-        candidates.push(width / scale);
-      }
-    }
+  if (isAdmin) {
+    items.push({
+      key: "admin",
+      label: "Administration",
+      icon: "admin",
+      onClick: handleSidebarAdmin,
+    });
   }
 
-  return candidates.filter((value) => Number.isFinite(value) && value > 0);
+  items.push(
+    {
+      key: "settings",
+      label: "Paramètres rapides",
+      icon: "settings",
+      onClick: handleSidebarSettings,
+    },
+    {
+      key: "logout",
+      label: "Déconnexion",
+      icon: "logout",
+      onClick: handleSidebarLogout,
+    },
+  );
+
+  return items;
 };
 
-const isDesktopForcedByBrowser = () => {
-  const nav = getNavigator();
-  if (!nav) {
-    return false;
-  }
-
-  const uaData = nav.userAgentData;
-  if (!uaData || typeof uaData.mobile !== "boolean") {
-    return false;
-  }
-
-  if (uaData.mobile) {
-    return false;
-  }
-
-  const maxTouchPoints = typeof nav.maxTouchPoints === "number" ? nav.maxTouchPoints : 0;
-  const pointerIsCoarse =
-    typeof window !== "undefined" && typeof window.matchMedia === "function"
-      ? window.matchMedia(COARSE_POINTER_QUERY).matches
-      : maxTouchPoints > 1;
-
-  return pointerIsCoarse || maxTouchPoints > 1;
-};
-
-const getDesktopLayoutPreference = () => {
-  if (typeof window === "undefined") {
-    return false;
-  }
-
-  if (typeof window.matchMedia === "function" && window.matchMedia(DESKTOP_MEDIA_QUERY).matches) {
-    return true;
-  }
-
-  const candidates = getViewportWidthCandidates();
-  if (candidates.some((value) => value >= DESKTOP_BREAKPOINT)) {
-    return true;
-  }
-
-  if (isDesktopForcedByBrowser()) {
-    return true;
-  }
-
-  return false;
-};
-
-const useIsDesktopLayout = () => {
-  const getSnapshot = useCallback(() => getDesktopLayoutPreference(), []);
-
-  const subscribe = useCallback((callback: () => void) => {
-    if (typeof window === "undefined") {
-      return () => {};
+const useSidebarInteractions = ({
+  isDesktopLayout,
+  onInteract,
+}: {
+  isDesktopLayout: boolean;
+  onInteract: () => void;
+}) =>
+  useMemo<Partial<HTMLAttributes<HTMLDivElement>>>(() => {
+    if (isDesktopLayout) {
+      return {};
     }
 
-    const handleChange = () => {
-      callback();
+    return {
+      onClick: onInteract,
+      onPointerDown: onInteract,
+      onTouchStart: onInteract,
     };
-
-    const cleanups: Array<() => void> = [];
-
-    let mediaQuery: MediaQueryList | null = null;
-    let coarsePointerQuery: MediaQueryList | null = null;
-
-    if (typeof window.matchMedia === "function") {
-      mediaQuery = window.matchMedia(DESKTOP_MEDIA_QUERY);
-
-      if (typeof mediaQuery.addEventListener === "function") {
-        mediaQuery.addEventListener("change", handleChange);
-        cleanups.push(() => mediaQuery?.removeEventListener("change", handleChange));
-      } else if (typeof mediaQuery.addListener === "function") {
-        mediaQuery.addListener(handleChange);
-        cleanups.push(() => mediaQuery?.removeListener(handleChange));
-      }
-
-      coarsePointerQuery = window.matchMedia(COARSE_POINTER_QUERY);
-      if (coarsePointerQuery) {
-        if (typeof coarsePointerQuery.addEventListener === "function") {
-          coarsePointerQuery.addEventListener("change", handleChange);
-          cleanups.push(() => coarsePointerQuery?.removeEventListener("change", handleChange));
-        } else if (typeof coarsePointerQuery.addListener === "function") {
-          coarsePointerQuery.addListener(handleChange);
-          cleanups.push(() => coarsePointerQuery?.removeListener(handleChange));
-        }
-      }
-    }
-
-    window.addEventListener("resize", handleChange);
-    cleanups.push(() => window.removeEventListener("resize", handleChange));
-
-    if (window.visualViewport) {
-      const handleViewportChange = () => {
-        callback();
-      };
-      window.visualViewport.addEventListener("resize", handleViewportChange);
-      window.visualViewport.addEventListener("scroll", handleViewportChange);
-      cleanups.push(() => {
-        window.visualViewport?.removeEventListener("resize", handleViewportChange);
-        window.visualViewport?.removeEventListener("scroll", handleViewportChange);
-      });
-    }
-
-    const nav = getNavigator();
-    if (nav?.userAgentData) {
-      const handleUAChange = () => {
-        callback();
-      };
-
-      const { userAgentData } = nav;
-      if (typeof userAgentData.addEventListener === "function") {
-        userAgentData.addEventListener("change", handleUAChange);
-        cleanups.push(() => userAgentData.removeEventListener?.("change", handleUAChange));
-      } else if ("onchange" in userAgentData) {
-        const previous = userAgentData.onchange;
-        const fallbackHandler = (event: Event) => {
-          previous?.call(userAgentData, event);
-          handleUAChange();
-        };
-        userAgentData.onchange = fallbackHandler;
-        cleanups.push(() => {
-          if (userAgentData.onchange === fallbackHandler) {
-            userAgentData.onchange = previous ?? null;
-          }
-        });
-      }
-    }
-
-    return () => {
-      cleanups.forEach((cleanup) => {
-        cleanup();
-      });
-    };
-  }, []);
-
-  return useSyncExternalStore(subscribe, getSnapshot, () => false);
-};
+  }, [isDesktopLayout, onInteract]);
 
 export function MyChat() {
   const { token, user, logout } = useAuth();
@@ -663,7 +286,7 @@ export function MyChat() {
               if (!response.ok) {
                 const details = await response.text();
                 throw new Error(
-                  `Échec de l'appel météo (${response.status}) : ${details || "réponse vide"}`
+                  `Échec de l'appel météo (${response.status}) : ${details || "réponse vide"}`,
                 );
               }
 
@@ -707,7 +330,7 @@ export function MyChat() {
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
         },
       }) satisfies ChatKitOptions,
-    [getClientSecret, openProfileSettings, openSidebar]
+    [getClientSecret, openProfileSettings, openSidebar],
   );
 
   const { control } = useChatKit(chatkitOptions);
@@ -727,48 +350,21 @@ export function MyChat() {
   const sidebarTabIndex = isSidebarOpen || isDesktopLayout ? 0 : -1;
 
   const navigationItems = useMemo(
-    () => {
-      const items: Array<{
-        key: string;
-        label: string;
-        icon: SidebarIconName;
-        onClick: () => void;
-      }> = [
-        {
-          key: "home",
-          label: "Accueil",
-          icon: "home",
-          onClick: handleSidebarHome,
-        },
-      ];
-
-      if (user?.is_admin) {
-        items.push({
-          key: "admin",
-          label: "Administration",
-          icon: "admin",
-          onClick: handleSidebarAdmin,
-        });
-      }
-
-      items.push(
-        {
-          key: "settings",
-          label: "Paramètres rapides",
-          icon: "settings",
-          onClick: handleSidebarSettings,
-        },
-        {
-          key: "logout",
-          label: "Déconnexion",
-          icon: "logout",
-          onClick: handleSidebarLogout,
-        },
-      );
-
-      return items;
-    },
-    [handleSidebarAdmin, handleSidebarHome, handleSidebarLogout, handleSidebarSettings, user?.is_admin],
+    () =>
+      buildNavigationItems({
+        isAdmin: Boolean(user?.is_admin),
+        handleSidebarHome,
+        handleSidebarAdmin,
+        handleSidebarSettings,
+        handleSidebarLogout,
+      }),
+    [
+      handleSidebarAdmin,
+      handleSidebarHome,
+      handleSidebarLogout,
+      handleSidebarSettings,
+      user?.is_admin,
+    ],
   );
 
   const handleScrimPointerDown = useCallback(
@@ -791,19 +387,10 @@ export function MyChat() {
     .filter(Boolean)
     .join(" ");
 
-  const mainInteractionHandlers = useMemo<
-    Partial<HTMLAttributes<HTMLDivElement>>
-  >(() => {
-    if (isDesktopLayout) {
-      return {};
-    }
-
-    return {
-      onClick: handleMainInteraction,
-      onPointerDown: handleMainInteraction,
-      onTouchStart: handleMainInteraction,
-    };
-  }, [handleMainInteraction, isDesktopLayout]);
+  const mainInteractionHandlers = useSidebarInteractions({
+    isDesktopLayout,
+    onInteract: handleMainInteraction,
+  });
 
   const sidebarClassName = [
     "chatkit-sidebar",
