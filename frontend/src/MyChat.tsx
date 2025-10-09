@@ -264,6 +264,16 @@ export function MyChat() {
         },
         composer: {
           placeholder: "Posez votre question...",
+          attachments: {
+            enabled: true,
+            maxCount: 4,
+            maxSize: 10 * 1024 * 1024,
+            accept: {
+              "image/*": [".png", ".jpg", ".jpeg", ".gif", ".webp"],
+              "application/pdf": [".pdf"],
+              "text/plain": [".txt", ".md"],
+            },
+          },
         },
         onClientTool: async (toolCall) => {
           const { name, params } = toolCall as ClientToolCall;

@@ -59,6 +59,8 @@ La charge utile retournée est sérialisable en JSON et peut être consommée di
 
 Le composant React `MyChat` enregistre un gestionnaire `onClientTool` pour l'outil client `get_weather`. Lorsque le workflow déclenche cet outil, le navigateur appelle automatiquement `GET /api/tools/weather` avec les paramètres fournis, puis renvoie la réponse JSON au backend ChatKit. Aucune configuration supplémentaire n'est nécessaire dans l'interface : il suffit que le workflow émette un appel d'outil nommé `get_weather` avec au minimum `{ "city": "Paris" }`.
 
+Le champ de composition autorise désormais l'ajout de pièces jointes (images, PDF, texte brut jusqu'à 10 Mo, quatre fichiers maximum), ce qui reflète les capacités de la session générée côté backend.
+
 Pour contourner le problème CORS mentionné plus haut, `src/MyChat.tsx` installe une surcharge légère de `window.fetch` qui redirige les appels `https://api.openai.com/v1/chatkit/...` vers le proxy FastAPI (`/api/chatkit/proxy/*`). Le widget conserve ainsi les flux SSE natifs tout en restant servi depuis votre domaine.
 
 ## Frontend (`frontend/`)
