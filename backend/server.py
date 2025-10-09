@@ -2,10 +2,12 @@ import datetime
 import hashlib
 import logging
 import os
+import re
 import secrets
+import time
 import uuid
 from collections.abc import Iterable, Iterator
-import time
+from decimal import Decimal, InvalidOperation
 
 import httpx
 import jwt
@@ -63,11 +65,11 @@ TokenResponse.model_rebuild()
 class WeatherResponse(BaseModel):
     city: str
     country: str | None
-    latitude: float
-    longitude: float
-    temperature_celsius: float
-    wind_speed_kmh: float
-    weather_code: int
+    latitude: str
+    longitude: str
+    temperature_celsius: str
+    wind_speed_kmh: str
+    weather_code: str
     weather_description: str
     observation_time: str
     timezone: str | None
@@ -209,6 +211,123 @@ _WEATHER_CODE_DESCRIPTIONS: dict[int, str] = {
     96: "Orage avec grêle légère",
     99: "Orage avec grêle forte",
 }
+
+_DIGIT_WORDS = {
+    "0": "zéro",
+    "1": "un",
+    "2": "deux",
+    "3": "trois",
+    "4": "quatre",
+    "5": "cinq",
+    "6": "six",
+    "7": "sept",
+    "8": "huit",
+    "9": "neuf",
+}
+
+_MONTH_NAMES = {
+    1: "janvier",
+    2: "février",
+    3: "mars",
+    4: "avril",
+    5: "mai",
+    6: "juin",
+    7: "juillet",
+    8: "août",
+    9: "septembre",
+    10: "octobre",
+    11: "novembre",
+    12: "décembre",
+}
+
+
+def _spell_out_number(value: float | int) -> str:
+    try:
+        decimal_value = Decimal(str(value))
+    except InvalidOperation:
+        decimal_value = Decimal(value)
+
+    if decimal_value == 0:
+        return "zéro"
+
+    normalized = decimal_value.normalize()
+    text = format(normalized, "f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    if not text:
+        text = "0"
+
+    tokens: list[str] = []
+    for char in text:
+        if char == "-":
+            tokens.append("moins")
+        elif char == ".":
+            tokens.append("virgule")
+        elif char.isdigit():
+            tokens.append(_DIGIT_WORDS[char])
+        else:
+            tokens.append(char)
+
+    return " ".join(token for token in tokens if token)
+
+
+def _sanitize_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    if not any(char.isdigit() for char in value):
+        return value
+
+    replaced = re.sub(
+        r"\\d",
+        lambda match: f" {_DIGIT_WORDS[match.group(0)]} ",
+        value,
+    )
+    return " ".join(part for part in replaced.split() if part)
+
+
+def _describe_timezone(timezone: str | None) -> str | None:
+    if timezone is None:
+        return None
+
+    sanitized = _sanitize_text(timezone) or timezone
+    sanitized = sanitized.replace("+", " plus ")
+    sanitized = sanitized.replace("-", " moins ")
+    sanitized = sanitized.replace("/", " slash ")
+    sanitized = sanitized.replace(":", " deux points ")
+    sanitized = sanitized.replace("_", " soulignement ")
+    return " ".join(part for part in sanitized.split() if part)
+
+
+def _format_observation_time(observation_time: str, timezone: str | None) -> str:
+    try:
+        parsed = datetime.datetime.fromisoformat(observation_time)
+    except ValueError:
+        fallback = _sanitize_text(observation_time) or observation_time
+        if timezone:
+            return f"{fallback} selon le fuseau {timezone}"
+        return fallback
+
+    month_name = _MONTH_NAMES.get(parsed.month, "mois inconnu")
+    day_words = _spell_out_number(parsed.day)
+    year_words = _spell_out_number(parsed.year)
+    hour_words = _spell_out_number(parsed.hour)
+    minute_words = _spell_out_number(parsed.minute)
+
+    sentence = (
+        f"observation effectuée le {day_words} {month_name} {year_words}"
+        f" à {hour_words} heures"
+    )
+
+    if parsed.minute:
+        sentence += f" et {minute_words} minutes"
+    else:
+        sentence += " pile"
+
+    if timezone:
+        sentence += f" selon le fuseau {timezone}"
+
+    return sentence
 
 
 def _hash_password(password: str, salt: str | None = None) -> str:
@@ -362,17 +481,18 @@ async def _fetch_weather(city: str, country: str | None = None) -> WeatherRespon
         code = int(current.get("weathercode", -1))
         description = _describe_weather_code(code)
 
+        timezone_text = _describe_timezone(weather_payload.get("timezone"))
         return WeatherResponse(
-            city=str(location.get("name") or city),
-            country=location.get("country_code") or location.get("country"),
-            latitude=float(latitude),
-            longitude=float(longitude),
-            temperature_celsius=float(temperature),
-            wind_speed_kmh=float(windspeed),
-            weather_code=code,
+            city=_sanitize_text(str(location.get("name") or city)) or str(location.get("name") or city),
+            country=_sanitize_text(location.get("country_code") or location.get("country")),
+            latitude=_spell_out_number(float(latitude)),
+            longitude=_spell_out_number(float(longitude)),
+            temperature_celsius=_spell_out_number(float(temperature)),
+            wind_speed_kmh=_spell_out_number(float(windspeed)),
+            weather_code=_spell_out_number(code),
             weather_description=description,
-            observation_time=str(observation_time),
-            timezone=weather_payload.get("timezone"),
+            observation_time=_format_observation_time(str(observation_time), timezone_text),
+            timezone=timezone_text,
         )
 
 
