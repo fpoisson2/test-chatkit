@@ -7,6 +7,7 @@ import {
   useSyncExternalStore,
   type HTMLAttributes,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
@@ -22,6 +23,127 @@ const CHATKIT_PROXY_PREFIX = "/api/chatkit/proxy/";
 const DESKTOP_BREAKPOINT = 1024;
 const DESKTOP_MEDIA_QUERY = "(min-width: 1024px)";
 const COARSE_POINTER_QUERY = "(pointer: coarse)";
+
+type SidebarIconName = "logo" | "home" | "admin" | "settings" | "logout";
+
+const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
+  logo: (
+    <>
+      <circle cx="12" cy="12" r="9" fill="currentColor" opacity="0.15" />
+      <path
+        d="M9 9.75c0-1.24 1-2.25 2.25-2.25h2.5A2.25 2.25 0 0 1 16 9.75v1.25a2.25 2.25 0 0 1-2.25 2.25H12l-2.5 2v-2H11.25A2.25 2.25 0 0 1 9 10.75Z"
+        fill="currentColor"
+      />
+    </>
+  ),
+  home: (
+    <>
+      <path
+        d="M2.25 12 12 2.25 21.75 12"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M4.5 9.75v10.5A1.5 1.5 0 0 0 6 21.75h3.75V15h4.5v6.75H18a1.5 1.5 0 0 0 1.5-1.5V9.75"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </>
+  ),
+  admin: (
+    <>
+      <path
+        d="M12 21a9 9 0 0 0 9-9V7.286a1 1 0 0 0-.469-.853l-8.25-5.156a1 1 0 0 0-1.062 0L3.969 6.433A1 1 0 0 0 3.5 7.286V12a9 9 0 0 0 9 9Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="m9 12.75 2.25 2.25L15 9.75"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </>
+  ),
+  settings: (
+    <>
+      <path
+        d="M21 12a2.25 2.25 0 0 0-1.125-1.95l-1.755-1.012a7.01 7.01 0 0 0-.366-.884l.34-1.962A2.25 2.25 0 0 0 15.877 3.5h-3.754a2.25 2.25 0 0 0-2.217 1.692l-.34 1.962c-.13.287-.25.582-.366.884L7.463 10.05A2.25 2.25 0 0 0 6.338 12c0 .76.395 1.464 1.125 1.95l1.755 1.012c.117.302.237.597.366.884l-.34 1.962a2.25 2.25 0 0 0 2.217 2.692h3.754a2.25 2.25 0 0 0 2.217-1.692l.34-1.962c.13-.287.25-.582.366-.884l1.755-1.012A2.25 2.25 0 0 0 21 12Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </>
+  ),
+  logout: (
+    <>
+      <path
+        d="M9 8.25 4.5 12 9 15.75"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M4.5 12h12.75"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M15.75 19.5h1.5A2.25 2.25 0 0 0 19.5 17.25V6.75A2.25 2.25 0 0 0 17.25 4.5h-1.5"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </>
+  ),
+};
+
+const SidebarIcon = ({
+  name,
+  className,
+}: {
+  name: SidebarIconName;
+  className?: string;
+}) => (
+  <svg
+    viewBox="0 0 24 24"
+    width={24}
+    height={24}
+    aria-hidden="true"
+    focusable="false"
+    className={className}
+  >
+    {SIDEBAR_ICONS[name]}
+  </svg>
+);
 
 const _disallowedForwardHeaders = new Set([
   "content-length",
@@ -600,7 +722,56 @@ export function MyChat() {
     .filter(Boolean)
     .join(" ");
 
-  const sidebarTabIndex = isSidebarOpen ? 0 : -1;
+  const isSidebarCollapsed = isDesktopLayout && !isSidebarOpen;
+
+  const sidebarTabIndex = isSidebarOpen || isDesktopLayout ? 0 : -1;
+
+  const navigationItems = useMemo(
+    () => {
+      const items: Array<{
+        key: string;
+        label: string;
+        icon: SidebarIconName;
+        onClick: () => void;
+        danger?: boolean;
+      }> = [
+        {
+          key: "home",
+          label: "Accueil",
+          icon: "home",
+          onClick: handleSidebarHome,
+        },
+      ];
+
+      if (user?.is_admin) {
+        items.push({
+          key: "admin",
+          label: "Administration",
+          icon: "admin",
+          onClick: handleSidebarAdmin,
+        });
+      }
+
+      items.push(
+        {
+          key: "settings",
+          label: "Paramètres rapides",
+          icon: "settings",
+          onClick: handleSidebarSettings,
+        },
+        {
+          key: "logout",
+          label: "Déconnexion",
+          icon: "logout",
+          onClick: handleSidebarLogout,
+          danger: true,
+        },
+      );
+
+      return items;
+    },
+    [handleSidebarAdmin, handleSidebarHome, handleSidebarLogout, handleSidebarSettings, user?.is_admin],
+  );
 
   const handleScrimPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -636,45 +807,55 @@ export function MyChat() {
     };
   }, [handleMainInteraction, isDesktopLayout]);
 
+  const sidebarClassName = [
+    "chatkit-sidebar",
+    isSidebarOpen ? "chatkit-sidebar--open" : "",
+    isSidebarCollapsed ? "chatkit-sidebar--collapsed" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <div className={layoutClassName}>
       <aside
-        className={`chatkit-sidebar${isSidebarOpen ? " chatkit-sidebar--open" : ""}`}
+        className={sidebarClassName}
         aria-labelledby="chatkit-sidebar-title"
-        aria-hidden={!isSidebarOpen}
+        aria-hidden={!isSidebarOpen && !isDesktopLayout}
       >
         <header className="chatkit-sidebar__header">
-          <h2 id="chatkit-sidebar-title" className="chatkit-sidebar__title">
-            Navigation
-          </h2>
-          <p className="chatkit-sidebar__subtitle">
-            Accédez rapidement aux sections principales de la plateforme.
-          </p>
+          <div className="chatkit-sidebar__brand">
+            <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
+            <span className="chatkit-sidebar__brand-text">ChatKit Demo</span>
+          </div>
+          <div className="chatkit-sidebar__meta">
+            <h2 id="chatkit-sidebar-title" className="chatkit-sidebar__title">
+              Navigation
+            </h2>
+            <p className="chatkit-sidebar__subtitle">
+              Accédez rapidement aux sections principales de la plateforme.
+            </p>
+          </div>
         </header>
         <nav className="chatkit-sidebar__nav" aria-label="Menu principal">
           <ul className="chatkit-sidebar__list">
-            <li className="chatkit-sidebar__item">
-              <button type="button" onClick={handleSidebarHome} tabIndex={sidebarTabIndex}>
-                Accueil
-              </button>
-            </li>
-            {user?.is_admin && (
-              <li className="chatkit-sidebar__item">
-                <button type="button" onClick={handleSidebarAdmin} tabIndex={sidebarTabIndex}>
-                  Administration
+            {navigationItems.map((item) => (
+              <li
+                key={item.key}
+                className={`chatkit-sidebar__item${
+                  item.danger ? " chatkit-sidebar__item--danger" : ""
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={item.onClick}
+                  tabIndex={sidebarTabIndex}
+                  aria-label={item.label}
+                >
+                  <SidebarIcon name={item.icon} className="chatkit-sidebar__icon" />
+                  <span className="chatkit-sidebar__label">{item.label}</span>
                 </button>
               </li>
-            )}
-            <li className="chatkit-sidebar__item">
-              <button type="button" onClick={handleSidebarSettings} tabIndex={sidebarTabIndex}>
-                Paramètres rapides
-              </button>
-            </li>
-            <li className="chatkit-sidebar__item chatkit-sidebar__item--danger">
-              <button type="button" onClick={handleSidebarLogout} tabIndex={sidebarTabIndex}>
-                Déconnexion
-              </button>
-            </li>
+            ))}
           </ul>
         </nav>
         <footer className="chatkit-sidebar__footer">

@@ -135,6 +135,7 @@ button {
   width: 100%;
   background: transparent;
   --chatkit-sidebar-width: min(320px, 85vw);
+  --chatkit-sidebar-collapsed-width: clamp(68px, 12vw, 96px);
   overflow: hidden;
 }
 
@@ -254,9 +255,16 @@ button {
   pointer-events: auto;
 }
 
+.chatkit-sidebar--collapsed {
+  width: var(--chatkit-sidebar-collapsed-width);
+  padding: 28px 18px;
+  gap: 20px;
+  pointer-events: auto;
+}
+
 .chatkit-layout--desktop {
   display: grid;
-  grid-template-columns: 0 1fr;
+  grid-template-columns: minmax(0, var(--chatkit-sidebar-collapsed-width)) 1fr;
   align-items: stretch;
   transition: grid-template-columns 0.95s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -271,6 +279,7 @@ button {
   height: 100%;
   transform: none;
   box-shadow: none;
+  pointer-events: auto;
 }
 
 .chatkit-layout--desktop .chatkit-sidebar--open {
@@ -299,7 +308,31 @@ button {
 .chatkit-sidebar__header {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
+}
+
+.chatkit-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chatkit-sidebar__logo {
+  width: 24px;
+  height: 24px;
+  color: var(--primary-hover);
+}
+
+.chatkit-sidebar__brand-text {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--text-color);
+}
+
+.chatkit-sidebar__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .chatkit-sidebar__title {
@@ -330,6 +363,10 @@ button {
 
 .chatkit-sidebar__item button {
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
   text-align: left;
   background: rgba(37, 99, 235, 0.08);
   border: 1px solid rgba(37, 99, 235, 0.25);
@@ -347,6 +384,17 @@ button {
   transform: translateX(4px);
 }
 
+.chatkit-sidebar__icon {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+}
+
+.chatkit-sidebar__label {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
 .chatkit-sidebar__item--danger button {
   background: rgba(220, 38, 38, 0.12);
   border-color: rgba(220, 38, 38, 0.25);
@@ -361,6 +409,37 @@ button {
 .chatkit-sidebar__footer {
   display: flex;
   justify-content: flex-end;
+}
+
+.chatkit-sidebar--collapsed {
+  align-items: center;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__brand {
+  justify-content: center;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__brand-text,
+.chatkit-sidebar--collapsed .chatkit-sidebar__meta,
+.chatkit-sidebar--collapsed .chatkit-sidebar__label,
+.chatkit-sidebar--collapsed .chatkit-sidebar__footer {
+  display: none;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__list {
+  width: 100%;
+  align-items: center;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__item button {
+  justify-content: center;
+  padding: 12px;
+  transform: none;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__item button:hover,
+.chatkit-sidebar--collapsed .chatkit-sidebar__item button:focus-visible {
+  transform: none;
 }
 
 .chatkit-sidebar__close {
