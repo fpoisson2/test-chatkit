@@ -733,7 +733,6 @@ export function MyChat() {
         label: string;
         icon: SidebarIconName;
         onClick: () => void;
-        danger?: boolean;
       }> = [
         {
           key: "home",
@@ -764,7 +763,6 @@ export function MyChat() {
           label: "Déconnexion",
           icon: "logout",
           onClick: handleSidebarLogout,
-          danger: true,
         },
       );
 
@@ -819,32 +817,32 @@ export function MyChat() {
     <div className={layoutClassName}>
       <aside
         className={sidebarClassName}
-        aria-labelledby="chatkit-sidebar-title"
+        aria-label="Navigation principale"
         aria-hidden={!isSidebarOpen && !isDesktopLayout}
       >
         <header className="chatkit-sidebar__header">
-          <div className="chatkit-sidebar__brand">
-            <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
-            <span className="chatkit-sidebar__brand-text">ChatKit Demo</span>
-          </div>
-          <div className="chatkit-sidebar__meta">
-            <h2 id="chatkit-sidebar-title" className="chatkit-sidebar__title">
-              Navigation
-            </h2>
-            <p className="chatkit-sidebar__subtitle">
-              Accédez rapidement aux sections principales de la plateforme.
-            </p>
+          <div className="chatkit-sidebar__topline">
+            <div className="chatkit-sidebar__brand">
+              <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
+              <span className="chatkit-sidebar__brand-text">ChatKit Demo</span>
+            </div>
+            {isSidebarOpen && (
+              <button
+                type="button"
+                className="chatkit-sidebar__dismiss"
+                onClick={closeSidebar}
+                tabIndex={sidebarTabIndex}
+                aria-label="Fermer la barre latérale"
+              >
+                ×
+              </button>
+            )}
           </div>
         </header>
         <nav className="chatkit-sidebar__nav" aria-label="Menu principal">
           <ul className="chatkit-sidebar__list">
             {navigationItems.map((item) => (
-              <li
-                key={item.key}
-                className={`chatkit-sidebar__item${
-                  item.danger ? " chatkit-sidebar__item--danger" : ""
-                }`}
-              >
+              <li key={item.key} className="chatkit-sidebar__item">
                 <button
                   type="button"
                   onClick={item.onClick}
@@ -858,16 +856,6 @@ export function MyChat() {
             ))}
           </ul>
         </nav>
-        <footer className="chatkit-sidebar__footer">
-          <button
-            type="button"
-            className="chatkit-sidebar__close"
-            onClick={closeSidebar}
-            tabIndex={sidebarTabIndex}
-          >
-            Fermer
-          </button>
-        </footer>
       </aside>
       <button
         type="button"
