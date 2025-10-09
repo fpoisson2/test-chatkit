@@ -48,11 +48,11 @@ TokenResponse.model_rebuild()
 class WeatherResponse(BaseModel):
     city: str
     country: str | None
-    latitude: str
-    longitude: str
-    temperature_celsius: str
-    wind_speed_kmh: str
-    weather_code: str
+    latitude: float
+    longitude: float
+    temperature_celsius: float
+    wind_speed_kmh: float
+    weather_code: int
     weather_description: str
     observation_time: str
     timezone: str | None
