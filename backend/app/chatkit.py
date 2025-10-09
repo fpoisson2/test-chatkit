@@ -63,7 +63,7 @@ async def create_chatkit_session(user_id: str) -> dict:
                 },
                 "expires_after": {
                     "anchor": "created_at",
-                    "seconds": 3600,
+                    "seconds": 600,
                 },
                 "rate_limits": {"max_requests_per_1_minute": 50},
             },
