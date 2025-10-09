@@ -1,4 +1,14 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type HTMLAttributes,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
 import type { ChatKitOptions } from "@openai/chatkit";
@@ -9,6 +19,131 @@ const DEVICE_ID_STORAGE_KEY = "chatkit-device-id";
 
 const OPENAI_CHATKIT_BASE_URL = "https://api.openai.com/v1/chatkit/";
 const CHATKIT_PROXY_PREFIX = "/api/chatkit/proxy/";
+
+const DESKTOP_BREAKPOINT = 1024;
+const DESKTOP_MEDIA_QUERY = "(min-width: 1024px)";
+const COARSE_POINTER_QUERY = "(pointer: coarse)";
+
+type SidebarIconName = "logo" | "home" | "admin" | "settings" | "logout";
+
+const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
+  logo: (
+    <>
+      <circle cx="12" cy="12" r="9" fill="currentColor" opacity="0.15" />
+      <path
+        d="M9 9.75c0-1.24 1-2.25 2.25-2.25h2.5A2.25 2.25 0 0 1 16 9.75v1.25a2.25 2.25 0 0 1-2.25 2.25H12l-2.5 2v-2H11.25A2.25 2.25 0 0 1 9 10.75Z"
+        fill="currentColor"
+      />
+    </>
+  ),
+  home: (
+    <>
+      <path
+        d="M2.25 12 12 2.25 21.75 12"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M4.5 9.75v10.5A1.5 1.5 0 0 0 6 21.75h3.75V15h4.5v6.75H18a1.5 1.5 0 0 0 1.5-1.5V9.75"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </>
+  ),
+  admin: (
+    <>
+      <path
+        d="M12 21a9 9 0 0 0 9-9V7.286a1 1 0 0 0-.469-.853l-8.25-5.156a1 1 0 0 0-1.062 0L3.969 6.433A1 1 0 0 0 3.5 7.286V12a9 9 0 0 0 9 9Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="m9 12.75 2.25 2.25L15 9.75"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </>
+  ),
+  settings: (
+    <>
+      <path
+        d="M21 12a2.25 2.25 0 0 0-1.125-1.95l-1.755-1.012a7.01 7.01 0 0 0-.366-.884l.34-1.962A2.25 2.25 0 0 0 15.877 3.5h-3.754a2.25 2.25 0 0 0-2.217 1.692l-.34 1.962c-.13.287-.25.582-.366.884L7.463 10.05A2.25 2.25 0 0 0 6.338 12c0 .76.395 1.464 1.125 1.95l1.755 1.012c.117.302.237.597.366.884l-.34 1.962a2.25 2.25 0 0 0 2.217 2.692h3.754a2.25 2.25 0 0 0 2.217-1.692l.34-1.962c.13-.287.25-.582.366-.884l1.755-1.012A2.25 2.25 0 0 0 21 12Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </>
+  ),
+  logout: (
+    <>
+      <path
+        d="M9 8.25 4.5 12 9 15.75"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M4.5 12h12.75"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M15.75 19.5h1.5A2.25 2.25 0 0 0 19.5 17.25V6.75A2.25 2.25 0 0 0 17.25 4.5h-1.5"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </>
+  ),
+};
+
+const SidebarIcon = ({
+  name,
+  className,
+}: {
+  name: SidebarIconName;
+  className?: string;
+}) => (
+  <svg
+    viewBox="0 0 24 24"
+    width={24}
+    height={24}
+    aria-hidden="true"
+    focusable="false"
+    className={className}
+  >
+    {SIDEBAR_ICONS[name]}
+  </svg>
+);
 
 const _disallowedForwardHeaders = new Set([
   "content-length",
@@ -165,13 +300,222 @@ type WeatherToolCall = {
 
 type ClientToolCall = WeatherToolCall;
 
+type NavigatorWithUA = Navigator & {
+  userAgentData?: {
+    mobile?: boolean;
+    addEventListener?: (type: "change", listener: () => void) => void;
+    removeEventListener?: (type: "change", listener: () => void) => void;
+    onchange?: ((event: Event) => void) | null;
+  };
+};
+
+const getNavigator = () => {
+  if (typeof navigator === "undefined") {
+    return null;
+  }
+
+  return navigator as NavigatorWithUA;
+};
+
+const getViewportWidthCandidates = () => {
+  if (typeof window === "undefined") {
+    return [] as number[];
+  }
+
+  const candidates: number[] = [
+    window.innerWidth,
+    window.document?.documentElement?.clientWidth ?? 0,
+  ];
+
+  if (window.visualViewport) {
+    const { width, scale } = window.visualViewport;
+
+    if (typeof width === "number" && Number.isFinite(width)) {
+      candidates.push(width);
+
+      if (typeof scale === "number" && Number.isFinite(scale) && scale > 0) {
+        candidates.push(width * scale);
+        candidates.push(width / scale);
+      }
+    }
+  }
+
+  return candidates.filter((value) => Number.isFinite(value) && value > 0);
+};
+
+const isDesktopForcedByBrowser = () => {
+  const nav = getNavigator();
+  if (!nav) {
+    return false;
+  }
+
+  const uaData = nav.userAgentData;
+  if (!uaData || typeof uaData.mobile !== "boolean") {
+    return false;
+  }
+
+  if (uaData.mobile) {
+    return false;
+  }
+
+  const maxTouchPoints = typeof nav.maxTouchPoints === "number" ? nav.maxTouchPoints : 0;
+  const pointerIsCoarse =
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia(COARSE_POINTER_QUERY).matches
+      : maxTouchPoints > 1;
+
+  return pointerIsCoarse || maxTouchPoints > 1;
+};
+
+const getDesktopLayoutPreference = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  if (typeof window.matchMedia === "function" && window.matchMedia(DESKTOP_MEDIA_QUERY).matches) {
+    return true;
+  }
+
+  const candidates = getViewportWidthCandidates();
+  if (candidates.some((value) => value >= DESKTOP_BREAKPOINT)) {
+    return true;
+  }
+
+  if (isDesktopForcedByBrowser()) {
+    return true;
+  }
+
+  return false;
+};
+
+const useIsDesktopLayout = () => {
+  const getSnapshot = useCallback(() => getDesktopLayoutPreference(), []);
+
+  const subscribe = useCallback((callback: () => void) => {
+    if (typeof window === "undefined") {
+      return () => {};
+    }
+
+    const handleChange = () => {
+      callback();
+    };
+
+    const cleanups: Array<() => void> = [];
+
+    let mediaQuery: MediaQueryList | null = null;
+    let coarsePointerQuery: MediaQueryList | null = null;
+
+    if (typeof window.matchMedia === "function") {
+      mediaQuery = window.matchMedia(DESKTOP_MEDIA_QUERY);
+
+      if (typeof mediaQuery.addEventListener === "function") {
+        mediaQuery.addEventListener("change", handleChange);
+        cleanups.push(() => mediaQuery?.removeEventListener("change", handleChange));
+      } else if (typeof mediaQuery.addListener === "function") {
+        mediaQuery.addListener(handleChange);
+        cleanups.push(() => mediaQuery?.removeListener(handleChange));
+      }
+
+      coarsePointerQuery = window.matchMedia(COARSE_POINTER_QUERY);
+      if (coarsePointerQuery) {
+        if (typeof coarsePointerQuery.addEventListener === "function") {
+          coarsePointerQuery.addEventListener("change", handleChange);
+          cleanups.push(() => coarsePointerQuery?.removeEventListener("change", handleChange));
+        } else if (typeof coarsePointerQuery.addListener === "function") {
+          coarsePointerQuery.addListener(handleChange);
+          cleanups.push(() => coarsePointerQuery?.removeListener(handleChange));
+        }
+      }
+    }
+
+    window.addEventListener("resize", handleChange);
+    cleanups.push(() => window.removeEventListener("resize", handleChange));
+
+    if (window.visualViewport) {
+      const handleViewportChange = () => {
+        callback();
+      };
+      window.visualViewport.addEventListener("resize", handleViewportChange);
+      window.visualViewport.addEventListener("scroll", handleViewportChange);
+      cleanups.push(() => {
+        window.visualViewport?.removeEventListener("resize", handleViewportChange);
+        window.visualViewport?.removeEventListener("scroll", handleViewportChange);
+      });
+    }
+
+    const nav = getNavigator();
+    if (nav?.userAgentData) {
+      const handleUAChange = () => {
+        callback();
+      };
+
+      const { userAgentData } = nav;
+      if (typeof userAgentData.addEventListener === "function") {
+        userAgentData.addEventListener("change", handleUAChange);
+        cleanups.push(() => userAgentData.removeEventListener?.("change", handleUAChange));
+      } else if ("onchange" in userAgentData) {
+        const previous = userAgentData.onchange;
+        const fallbackHandler = (event: Event) => {
+          previous?.call(userAgentData, event);
+          handleUAChange();
+        };
+        userAgentData.onchange = fallbackHandler;
+        cleanups.push(() => {
+          if (userAgentData.onchange === fallbackHandler) {
+            userAgentData.onchange = previous ?? null;
+          }
+        });
+      }
+    }
+
+    return () => {
+      cleanups.forEach((cleanup) => {
+        cleanup();
+      });
+    };
+  }, []);
+
+  return useSyncExternalStore(subscribe, getSnapshot, () => false);
+};
+
 export function MyChat() {
   const { token, user, logout } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const isDesktopLayout = useIsDesktopLayout();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(getDesktopLayoutPreference);
+  const previousIsDesktopRef = useRef(isDesktopLayout);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
+
+  useEffect(() => {
+    const wasDesktop = previousIsDesktopRef.current;
+
+    if (isDesktopLayout) {
+      if (!wasDesktop) {
+        setIsSidebarOpen(true);
+      }
+    } else {
+      setIsSidebarOpen(false);
+    }
+
+    previousIsDesktopRef.current = isDesktopLayout;
+  }, [isDesktopLayout]);
+
+  const openSidebar = useCallback(() => {
+    setIsSidebarOpen(true);
+  }, []);
+
+  const closeSidebar = useCallback(() => {
+    setIsSidebarOpen(false);
+  }, []);
+
+  const handleMainInteraction = useCallback(() => {
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
+  }, [closeSidebar, isDesktopLayout]);
 
   const openProfileSettings = useCallback(() => {
     setIsSettingsModalOpen(true);
@@ -181,9 +525,23 @@ export function MyChat() {
     setIsSettingsModalOpen(false);
   }, []);
 
+  const handleSidebarSettings = useCallback(() => {
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
+    openProfileSettings();
+  }, [closeSidebar, isDesktopLayout, openProfileSettings]);
+
   const goToHome = useCallback(() => {
     navigate("/");
   }, [navigate]);
+
+  const handleSidebarHome = useCallback(() => {
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
+    goToHome();
+  }, [closeSidebar, goToHome, isDesktopLayout]);
 
   const handleHomeFromModal = useCallback(() => {
     closeProfileSettings();
@@ -199,6 +557,20 @@ export function MyChat() {
     closeProfileSettings();
     logout();
   }, [closeProfileSettings, logout]);
+
+  const handleSidebarAdmin = useCallback(() => {
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
+    navigate("/admin");
+  }, [closeSidebar, isDesktopLayout, navigate]);
+
+  const handleSidebarLogout = useCallback(() => {
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
+    logout();
+  }, [closeSidebar, isDesktopLayout, logout]);
 
   const getClientSecret = useCallback(async (currentSecret: string | null) => {
     if (currentSecret) {
@@ -256,12 +628,12 @@ export function MyChat() {
         },
         header: {
           leftAction: {
-            icon: "settings-cog",
-            onClick: openProfileSettings,
+            icon: "menu",
+            onClick: openSidebar,
           },
           rightAction: {
-            icon: "home",
-            onClick: goToHome,
+            icon: "settings-cog",
+            onClick: openProfileSettings,
           },
         },
         theme: {
@@ -335,7 +707,7 @@ export function MyChat() {
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
         },
       }) satisfies ChatKitOptions,
-    [getClientSecret, goToHome, openProfileSettings]
+    [getClientSecret, openProfileSettings, openSidebar]
   );
 
   const { control } = useChatKit(chatkitOptions);
@@ -350,20 +722,168 @@ export function MyChat() {
     .filter(Boolean)
     .join(" ");
 
+  const isSidebarCollapsed = isDesktopLayout && !isSidebarOpen;
+
+  const sidebarTabIndex = isSidebarOpen || isDesktopLayout ? 0 : -1;
+
+  const navigationItems = useMemo(
+    () => {
+      const items: Array<{
+        key: string;
+        label: string;
+        icon: SidebarIconName;
+        onClick: () => void;
+      }> = [
+        {
+          key: "home",
+          label: "Accueil",
+          icon: "home",
+          onClick: handleSidebarHome,
+        },
+      ];
+
+      if (user?.is_admin) {
+        items.push({
+          key: "admin",
+          label: "Administration",
+          icon: "admin",
+          onClick: handleSidebarAdmin,
+        });
+      }
+
+      items.push(
+        {
+          key: "settings",
+          label: "Paramètres rapides",
+          icon: "settings",
+          onClick: handleSidebarSettings,
+        },
+        {
+          key: "logout",
+          label: "Déconnexion",
+          icon: "logout",
+          onClick: handleSidebarLogout,
+        },
+      );
+
+      return items;
+    },
+    [handleSidebarAdmin, handleSidebarHome, handleSidebarLogout, handleSidebarSettings, user?.is_admin],
+  );
+
+  const handleScrimPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (isDesktopLayout) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      closeSidebar();
+    },
+    [closeSidebar, isDesktopLayout],
+  );
+
+  const layoutClassName = [
+    "chatkit-layout",
+    isSidebarOpen ? "chatkit-layout--sidebar-open" : "",
+    isDesktopLayout ? "chatkit-layout--desktop" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const mainInteractionHandlers = useMemo<
+    Partial<HTMLAttributes<HTMLDivElement>>
+  >(() => {
+    if (isDesktopLayout) {
+      return {};
+    }
+
+    return {
+      onClick: handleMainInteraction,
+      onPointerDown: handleMainInteraction,
+      onTouchStart: handleMainInteraction,
+    };
+  }, [handleMainInteraction, isDesktopLayout]);
+
+  const sidebarClassName = [
+    "chatkit-sidebar",
+    isSidebarOpen ? "chatkit-sidebar--open" : "",
+    isSidebarCollapsed ? "chatkit-sidebar--collapsed" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <div className="chatkit-layout">
-      <div className="chatkit-layout__widget">
-        <ChatKit
-          control={control}
-          className="chatkit-host"
-          style={{ width: "100%", height: "100%" }}
-        />
-      </div>
-      {statusMessage && (
-        <div className={statusClassName} role="status" aria-live="polite">
-          {statusMessage}
+    <div className={layoutClassName}>
+      <aside
+        className={sidebarClassName}
+        aria-label="Navigation principale"
+        aria-hidden={!isSidebarOpen && !isDesktopLayout}
+      >
+        <header className="chatkit-sidebar__header">
+          <div className="chatkit-sidebar__topline">
+            <div className="chatkit-sidebar__brand">
+              <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
+              <span className="chatkit-sidebar__brand-text">ChatKit Demo</span>
+            </div>
+            {isSidebarOpen && (
+              <button
+                type="button"
+                className="chatkit-sidebar__dismiss"
+                onClick={closeSidebar}
+                tabIndex={sidebarTabIndex}
+                aria-label="Fermer la barre latérale"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </header>
+        <nav className="chatkit-sidebar__nav" aria-label="Menu principal">
+          <ul className="chatkit-sidebar__list">
+            {navigationItems.map((item) => (
+              <li key={item.key} className="chatkit-sidebar__item">
+                <button
+                  type="button"
+                  onClick={item.onClick}
+                  tabIndex={sidebarTabIndex}
+                  aria-label={item.label}
+                >
+                  <SidebarIcon name={item.icon} className="chatkit-sidebar__icon" />
+                  <span className="chatkit-sidebar__label">{item.label}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </aside>
+      <button
+        type="button"
+        className={`chatkit-layout__scrim${isSidebarOpen ? " chatkit-layout__scrim--active" : ""}`}
+        aria-hidden={!isSidebarOpen || isDesktopLayout}
+        aria-label="Fermer la barre latérale"
+        onPointerDown={handleScrimPointerDown}
+        onClick={() => {
+          if (!isDesktopLayout) {
+            closeSidebar();
+          }
+        }}
+        tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}
+      />
+      <div className="chatkit-layout__main" {...mainInteractionHandlers}>
+        <div className="chatkit-layout__widget">
+          <ChatKit
+            control={control}
+            className="chatkit-host"
+            style={{ width: "100%", height: "100%" }}
+          />
         </div>
-      )}
+        {statusMessage && (
+          <div className={statusClassName} role="status" aria-live="polite">
+            {statusMessage}
+          </div>
+        )}
+      </div>
       {isSettingsModalOpen && (
         <div
           className="settings-modal"
