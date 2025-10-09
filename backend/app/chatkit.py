@@ -56,6 +56,16 @@ async def create_chatkit_session(user_id: str) -> dict:
             json={
                 "workflow": {"id": settings.workflow_id},
                 "user": user_id,
+                "chatkit_configuration": {
+                    "file_upload": {
+                        "enabled": True,
+                    }
+                },
+                "expires_after": {
+                    "anchor": "created_at",
+                    "seconds": 3600,
+                },
+                "rate_limits": {"max_requests_per_1_minute": 50},
             },
         )
     if response.status_code >= 400:

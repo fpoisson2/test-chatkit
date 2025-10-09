@@ -36,7 +36,7 @@ Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi
   - Optionnel : `DATABASE_CONNECT_RETRIES` / `DATABASE_CONNECT_DELAY` pour ajuster la stratégie d'attente au démarrage
 - Start the dev server from the `backend/` directory: `uv run uvicorn server:app --reload` (ou `npm run backend:dev` à la racine)
 
-The `/api/chatkit/session` route makes an HTTP request to `https://api.openai.com/v1/chatkit/sessions` using `httpx`, mirroring the official starter app. Si un utilisateur est authentifié, son identifiant interne est réutilisé pour générer la session. A `requirements.txt` remains available for `pip install -r requirements.txt`.
+The `/api/chatkit/session` route makes an HTTP request to `https://api.openai.com/v1/chatkit/sessions` using `httpx`, mirroring the official starter app. Si un utilisateur est authentifié, son identifiant interne est réutilisé pour générer la session. La session résultante autorise désormais l'envoi de fichiers, prolonge l'expiration à une heure et porte la limite de requêtes à 50 par minute. A `requirements.txt` remains available for `pip install -r requirements.txt`.
 
 > ℹ️ **CORS et flux de conversation** — l'API hébergée ChatKit ne renvoie pas systématiquement d'en-têtes `Access-Control-Allow-Origin`, ce qui provoque un blocage navigateur lors de la diffusion des réponses (SSE). Le backend expose donc un proxy de streaming `OPTIONS|POST /api/chatkit/proxy/{path:path}` qui relaie l'intégralité des requêtes `https://api.openai.com/v1/chatkit/*` vers OpenAI et renvoie un flux compatible navigateur.
 
