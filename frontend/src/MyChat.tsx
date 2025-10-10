@@ -171,6 +171,7 @@ export function MyChat() {
     const skipDomainVerification =
       import.meta.env.VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION?.trim().toLowerCase() ===
       "true";
+    const shouldBypassDomainCheck = skipDomainVerification || !domainKey;
     const explicitCustomUrl = import.meta.env.VITE_CHATKIT_API_URL?.trim();
     const customApiUrl = explicitCustomUrl || "/api/chatkit";
     const useHostedFlow = forceHosted;
@@ -221,7 +222,7 @@ export function MyChat() {
         headers.set("Authorization", `Bearer ${token}`);
       }
 
-      if (skipDomainVerification) {
+      if (shouldBypassDomainCheck) {
         const target =
           typeof resource === "string"
             ? resource
@@ -229,9 +230,7 @@ export function MyChat() {
               ? resource.href
               : resource?.url;
         if (typeof target === "string" && target.includes("/domain_keys/verify")) {
-          console.info(
-            "[ChatKit] Vérification de domaine ignorée (VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION=true).",
-          );
+          console.info("[ChatKit] Vérification de domaine ignorée (mode développement).");
           return Promise.resolve(
             new Response(
               JSON.stringify({ status: "skipped" }),
@@ -250,18 +249,24 @@ export function MyChat() {
       });
     };
 
-    const baseApiConfig = {
-      url: customApiUrl,
-      fetch: authFetch,
-      ...(domainKey ? { domainKey } : {}),
-    };
+    if (!domainKey) {
+      console.info(
+        "[ChatKit] VITE_CHATKIT_DOMAIN_KEY non défini : la vérification de domaine est désactivée au profit d'un usage backend auto-hébergé.",
+      );
+    }
 
     const customApiConfig = uploadStrategy
       ? ({
-          ...baseApiConfig,
+          url: customApiUrl,
+          fetch: authFetch,
           uploadStrategy,
+          ...(domainKey ? { domainKey } : {}),
         } as ChatKitOptions["api"])
-      : (baseApiConfig as ChatKitOptions["api"]);
+      : ({
+          url: customApiUrl,
+          fetch: authFetch,
+          ...(domainKey ? { domainKey } : {}),
+        } as ChatKitOptions["api"]);
 
     return {
       apiConfig: customApiConfig,
