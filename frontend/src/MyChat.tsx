@@ -172,8 +172,8 @@ export function MyChat() {
       import.meta.env.VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION?.trim().toLowerCase() ===
       "true";
     const explicitCustomUrl = import.meta.env.VITE_CHATKIT_API_URL?.trim();
-    const customApiUrl = explicitCustomUrl || (domainKey ? "/api/chatkit" : null);
-    const useHostedFlow = forceHosted || !domainKey || !customApiUrl;
+    const customApiUrl = explicitCustomUrl || "/api/chatkit";
+    const useHostedFlow = forceHosted;
 
     if (useHostedFlow) {
       return {
@@ -250,18 +250,18 @@ export function MyChat() {
       });
     };
 
+    const baseApiConfig = {
+      url: customApiUrl,
+      fetch: authFetch,
+      ...(domainKey ? { domainKey } : {}),
+    };
+
     const customApiConfig = uploadStrategy
       ? ({
-          url: customApiUrl,
-          fetch: authFetch,
-          domainKey,
+          ...baseApiConfig,
           uploadStrategy,
         } as ChatKitOptions["api"])
-      : ({
-          url: customApiUrl,
-          fetch: authFetch,
-          domainKey,
-        } as ChatKitOptions["api"]);
+      : (baseApiConfig as ChatKitOptions["api"]);
 
     return {
       apiConfig: customApiConfig,
