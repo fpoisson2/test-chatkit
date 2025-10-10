@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import uuid
-
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 
@@ -9,7 +7,7 @@ from chatkit.server import StreamingResult
 
 from ..chatkit_sessions import create_chatkit_session, proxy_chatkit_request
 from ..chatkit import ChatKitRequestContext, get_chatkit_server
-from ..dependencies import get_optional_user
+from ..dependencies import get_current_user
 from ..models import User
 from ..schemas import SessionRequest
 
@@ -19,12 +17,9 @@ router = APIRouter()
 @router.post("/api/chatkit/session")
 async def create_session(
     req: SessionRequest,
-    current_user: User | None = Depends(get_optional_user),
+    current_user: User = Depends(get_current_user),
 ):
-    if current_user:
-        user_id = f"user:{current_user.id}"
-    else:
-        user_id = req.user or str(uuid.uuid4())
+    user_id = req.user or f"user:{current_user.id}"
 
     session_payload = await create_chatkit_session(user_id)
     client_secret = session_payload.get("client_secret")
@@ -46,20 +41,20 @@ async def create_session(
     "/api/chatkit/proxy/{path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
 )
-async def proxy_chatkit(path: str, request: Request):
+async def proxy_chatkit(path: str, request: Request, _current_user: User = Depends(get_current_user)):
     return await proxy_chatkit_request(path, request)
 
 
 @router.post("/api/chatkit")
 async def chatkit_endpoint(
     request: Request,
-    current_user: User | None = Depends(get_optional_user),
+    current_user: User = Depends(get_current_user),
 ):
     server = get_chatkit_server()
     payload = await request.body()
     context = ChatKitRequestContext(
-        user_id=str(current_user.id) if current_user else None,
-        email=current_user.email if current_user else None,
+        user_id=str(current_user.id),
+        email=current_user.email,
         authorization=request.headers.get("Authorization"),
     )
 

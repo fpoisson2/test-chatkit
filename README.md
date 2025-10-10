@@ -9,6 +9,7 @@ This repository mirrors the walkthrough in `chatkit.md`, providing both the lega
 - Un compte administrateur (créé via variables d'environnement) peut gérer les utilisateurs depuis `/admin` : création, promotion/déclassement, réinitialisation de mot de passe et suppression.
 - Les requêtes vers `/api/chatkit/session` utilisent automatiquement l'identité de l'utilisateur connecté si un token est présent dans les en-têtes.
 - Une implémentation ChatKit auto‑hébergée est disponible sur `/api/chatkit`. Elle orchestre l'Agents SDK en local pour répondre via le widget sans passer par un workflow hébergé.
+- Les endpoints `/api/chatkit/session`, `/api/chatkit` et `/api/chatkit/proxy/*` exigent désormais un JWT valide : toute tentative non authentifiée renvoie `401` avant même de contacter l'API ChatKit.
 
 ## Commandes depuis la racine
 
@@ -44,7 +45,7 @@ Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi
 
 Le backend expose deux intégrations complémentaires :
 
-- `/api/chatkit` est un serveur ChatKit auto‑hébergé basé sur `openai-chatkit`. Il utilise un store en mémoire (`InMemoryChatKitStore`) et invoque directement le workflow `run_workflow` défini dans `backend/workflows/agents.py`, lequel délègue l'appel de l'outil client `get_weather`. Vous pouvez toujours le personnaliser en fournissant `CHATKIT_AGENT_MODEL` / `CHATKIT_AGENT_INSTRUCTIONS`.
+- `/api/chatkit` est un serveur ChatKit auto‑hébergé basé sur `openai-chatkit`. Il persiste désormais les fils, messages et pièces jointes dans PostgreSQL via `PostgresChatKitStore`, tout en invoquant le workflow `run_workflow` défini dans `backend/workflows/agents.py` pour déléguer l'appel de l'outil client `get_weather`. Vous pouvez toujours le personnaliser en fournissant `CHATKIT_AGENT_MODEL` / `CHATKIT_AGENT_INSTRUCTIONS`.
 - `/api/chatkit/session` conserve le flux historique de l'application d'origine : un appel `httpx` vers `https://api.openai.com/v1/chatkit/sessions` pour récupérer un `client_secret`. Cette route reste disponible pour tester rapidement un workflow existant (nécessite `CHATKIT_WORKFLOW_ID`).
 
 > ℹ️ **CORS et flux de conversation** — l'API ChatKit hébergée ne renvoie pas systématiquement d'en-têtes `Access-Control-Allow-Origin`, ce qui provoque un blocage lors de la diffusion SSE. Le backend expose donc un proxy `OPTIONS|POST /api/chatkit/proxy/{path:path}` qui relaie `https://api.openai.com/v1/chatkit/*`. Le serveur custom n'en a pas besoin mais le proxy reste utile pour le mode hébergé ou pour récupérer des logs bruts.
@@ -105,7 +106,7 @@ With both servers running (`uv run uvicorn server:app --reload` in `backend/` an
 
 ### Utiliser votre propre backend ChatKit
 
-Ce dépôt embarque déjà une implémentation de référence (`DemoChatKitServer`) accessible sur `/api/chatkit`. Elle s'appuie sur `openai-chatkit`, un store en mémoire et l'Agents SDK pour exécuter `run_workflow` (défini dans `backend/workflows/agents.py`). Vous pouvez la conserver telle quelle, la personnaliser (instructions, modèle, persistance) ou repartir d'un projet vierge suivant les étapes ci-dessous.
+Ce dépôt embarque déjà une implémentation de référence (`DemoChatKitServer`) accessible sur `/api/chatkit`. Elle s'appuie sur `openai-chatkit`, un store PostgreSQL (`PostgresChatKitStore`) et l'Agents SDK pour exécuter `run_workflow` (défini dans `backend/workflows/agents.py`). Vous pouvez la conserver telle quelle, la personnaliser (instructions, modèle, persistance) ou repartir d'un projet vierge suivant les étapes ci-dessous.
 
 Pour les intégrations avancées, vous pouvez auto‑héberger ChatKit et piloter le widget via votre propre serveur. Cette approche vous permet de gérer l'authentification, l'orchestration d'outils et la résidence des données selon vos exigences.
 
