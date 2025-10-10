@@ -286,7 +286,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         created_at=datetime.now(),
                         content=[
                             AssistantMessageContent(
-                                type="text",
+                                type="output_text",
                                 text=output_text,
                             )
                         ],
