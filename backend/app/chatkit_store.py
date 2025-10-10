@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 from collections.abc import Callable
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from pydantic import TypeAdapter
 from sqlalchemy import delete, select
@@ -16,6 +16,8 @@ from .models import ChatAttachment, ChatThread, ChatThreadItem
 
 if TYPE_CHECKING:
     from .chatkit import ChatKitRequestContext
+else:  # pragma: no cover - utilisé uniquement pour éviter les imports circulaires
+    ChatKitRequestContext = Any
 
 _T = TypeVar("_T")
 
