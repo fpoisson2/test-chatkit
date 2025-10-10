@@ -17,7 +17,7 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-adminpass}
     ports:
-      - "8000:8000"
+      - "0.0.0.0:8000:8000"
     depends_on:
       - db
   frontend:
