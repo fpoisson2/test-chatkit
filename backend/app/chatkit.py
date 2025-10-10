@@ -300,6 +300,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     yield ThreadItemDoneEvent(item=assistant_message)
                     yield EndOfTurnItem(
                         id=self.store.generate_item_id("message", thread, context),
+                        thread_id=thread.id,
                         created_at=datetime.now(),
                     )
 
