@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, AsyncIterator, Sequence
@@ -27,6 +28,7 @@ from chatkit.types import (
 from openai.types.shared.reasoning import Reasoning
 
 from .config import Settings, get_settings
+from ..workflows.get_weather import agent as weather_workflow_agent
 
 logger = logging.getLogger("chatkit.server")
 
@@ -219,15 +221,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     def __init__(self, settings: Settings) -> None:
         super().__init__(InMemoryChatKitStore())
         self._settings = settings
-        self.agent = Agent(
-            name="ChatKit Demo",
-            instructions=settings.chatkit_agent_instructions,
-            model=settings.chatkit_agent_model,
-            model_settings=ModelSettings(
-                store=True,
-                reasoning=Reasoning(effort="minimal", summary="auto"),
-            ),
-        )
+        self.agent = _build_weather_agent(settings)
 
     async def respond(
         self,
@@ -312,6 +306,29 @@ def _extract_text(final_output: Any) -> str:
     if hasattr(final_output, "text"):
         return getattr(final_output, "text")
     return str(final_output)
+
+
+def _build_weather_agent(settings: Settings) -> Agent:
+    """Construit l'agent principal en se basant sur le workflow météo."""
+    base_agent = weather_workflow_agent
+    base_settings = getattr(base_agent, "model_settings", None)
+    if base_settings is None:
+        model_settings = ModelSettings(
+            store=True,
+            reasoning=Reasoning(effort="minimal", summary="auto"),
+        )
+    else:
+        model_settings = deepcopy(base_settings)
+
+    return Agent(
+        name=getattr(base_agent, "name", "Agent météo"),
+        instructions=(
+            settings.chatkit_agent_instructions
+            or getattr(base_agent, "instructions", "Fournis la météo à l'utilisateur")
+        ),
+        model=settings.chatkit_agent_model or getattr(base_agent, "model", "gpt-5"),
+        model_settings=model_settings,
+    )
 
 
 _server: DemoChatKitServer | None = None

@@ -33,7 +33,7 @@ Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi
     `postgresql+psycopg://chatkit:chatkit@db:5432/chatkit`.
   - `AUTH_SECRET_KEY` – clé secrète utilisée pour signer les tokens JWT
   - Optionnel : `CHATKIT_WORKFLOW_ID` si vous souhaitez toujours pouvoir émettre un `client_secret` via l'API hébergée.
-  - Optionnel : `CHATKIT_AGENT_MODEL` / `CHATKIT_AGENT_INSTRUCTIONS` pour personnaliser l'agent exécuté par `/api/chatkit`.
+  - Optionnel : `CHATKIT_AGENT_MODEL` / `CHATKIT_AGENT_INSTRUCTIONS` pour personnaliser l'agent exécuté par `/api/chatkit` (par défaut, le dépôt charge l'agent météo de `backend/workflows/get_weather.py`).
   - Optionnel : `ALLOWED_ORIGINS` pour lister les origines autorisées par CORS (séparées par des virgules, par défaut `*`)
   - Optionnel : `ACCESS_TOKEN_EXPIRE_MINUTES` pour ajuster la durée de validité du token (par défaut 120 min)
   - Optionnel : `ADMIN_EMAIL` et `ADMIN_PASSWORD` pour provisionner automatiquement un compte administrateur au démarrage
@@ -44,7 +44,7 @@ Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi
 
 Le backend expose deux intégrations complémentaires :
 
-- `/api/chatkit` est un serveur ChatKit auto‑hébergé basé sur `openai-chatkit`. Il utilise un store en mémoire (`InMemoryChatKitStore`) et un agent paramétrable via `CHATKIT_AGENT_MODEL` / `CHATKIT_AGENT_INSTRUCTIONS`. C'est la route à privilégier pour piloter vos propres agents sans dépendre d'un workflow hébergé.
+- `/api/chatkit` est un serveur ChatKit auto‑hébergé basé sur `openai-chatkit`. Il utilise un store en mémoire (`InMemoryChatKitStore`) et réutilise par défaut l'agent météo défini dans `backend/workflows/get_weather.py` afin de déléguer l'appel de l'outil client `get_weather`. Vous pouvez toujours le personnaliser en fournissant `CHATKIT_AGENT_MODEL` / `CHATKIT_AGENT_INSTRUCTIONS`.
 - `/api/chatkit/session` conserve le flux historique de l'application d'origine : un appel `httpx` vers `https://api.openai.com/v1/chatkit/sessions` pour récupérer un `client_secret`. Cette route reste disponible pour tester rapidement un workflow existant (nécessite `CHATKIT_WORKFLOW_ID`).
 
 > ℹ️ **CORS et flux de conversation** — l'API ChatKit hébergée ne renvoie pas systématiquement d'en-têtes `Access-Control-Allow-Origin`, ce qui provoque un blocage lors de la diffusion SSE. Le backend expose donc un proxy `OPTIONS|POST /api/chatkit/proxy/{path:path}` qui relaie `https://api.openai.com/v1/chatkit/*`. Le serveur custom n'en a pas besoin mais le proxy reste utile pour le mode hébergé ou pour récupérer des logs bruts.
@@ -66,7 +66,10 @@ La charge utile retournée est sérialisable en JSON et peut être consommée di
 
 ### Exemple d'agent Python dédié
 
-Le dossier `backend/workflows/` contient désormais un exemple minimal `weather_agent.py` basé sur la librairie Python `agents`. L'agent "Fournis la météo à l'utilisateur" illustre comment instancier un `Agent`, lancer un `Runner` avec un historique de conversation initial et renvoyer la sortie finale formattée (`output_text`). Vous pouvez vous en servir comme point de départ pour héberger votre workflow Agent Builder dans votre propre codebase, puis l'adapter (gestion d'état, appels d'API météo, etc.) avant de le connecter à votre serveur ChatKit.
+Le dossier `backend/workflows/` regroupe deux exemples basés sur la librairie Python `agents` :
+
+- `get_weather.py` fournit l'agent météo utilisé par défaut par le serveur ChatKit auto‑hébergé (`/api/chatkit`). Il guide le modèle `gpt-5` pour déclencher l'outil client `get_weather` côté navigateur et formater la réponse retournée par `/api/tools/weather`.
+- `weather_agent.py` reste un exemple minimal pour Agent Builder : il instancie un `Agent`, lance un `Runner` avec un historique de conversation initial puis renvoie la sortie finale formatée (`output_text`). Servez-vous en comme point de départ si vous souhaitez publier un workflow hébergé et le raccorder à votre propre backend.
 
 ### Intégration côté widget ChatKit
 
@@ -101,7 +104,7 @@ With both servers running (`uv run uvicorn server:app --reload` in `backend/` an
 
 ### Utiliser votre propre backend ChatKit
 
-Ce dépôt embarque déjà une implémentation de référence (`DemoChatKitServer`) accessible sur `/api/chatkit`. Elle s'appuie sur `openai-chatkit`, un store en mémoire et l'Agents SDK pour orchestrer un agent générique. Vous pouvez la conserver telle quelle, la personnaliser (instructions, modèle, persistance) ou repartir d'un projet vierge suivant les étapes ci-dessous.
+Ce dépôt embarque déjà une implémentation de référence (`DemoChatKitServer`) accessible sur `/api/chatkit`. Elle s'appuie sur `openai-chatkit`, un store en mémoire et l'Agents SDK pour orchestrer un agent météo (celui de `backend/workflows/get_weather.py`). Vous pouvez la conserver telle quelle, la personnaliser (instructions, modèle, persistance) ou repartir d'un projet vierge suivant les étapes ci-dessous.
 
 Pour les intégrations avancées, vous pouvez auto‑héberger ChatKit et piloter le widget via votre propre serveur. Cette approche vous permet de gérer l'authentification, l'orchestration d'outils et la résidence des données selon vos exigences.
 

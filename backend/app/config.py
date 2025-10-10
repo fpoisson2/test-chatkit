@@ -7,6 +7,8 @@ from typing import Mapping
 
 from dotenv import load_dotenv
 
+from ..workflows.get_weather import agent as weather_workflow_agent
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -45,10 +47,17 @@ class Settings:
             openai_api_key=require("OPENAI_API_KEY"),
             chatkit_workflow_id=env.get("CHATKIT_WORKFLOW_ID"),
             chatkit_api_base=env.get("CHATKIT_API_BASE", "https://api.openai.com"),
-            chatkit_agent_model=env.get("CHATKIT_AGENT_MODEL", "gpt-5-mini"),
+            chatkit_agent_model=env.get(
+                "CHATKIT_AGENT_MODEL",
+                getattr(weather_workflow_agent, "model", "gpt-5"),
+            ),
             chatkit_agent_instructions=env.get(
                 "CHATKIT_AGENT_INSTRUCTIONS",
-                "Tu es un assistant conversationnel chargé d'aider l'utilisateur depuis l'interface ChatKit.",
+                getattr(
+                    weather_workflow_agent,
+                    "instructions",
+                    "Fournis la météo à l'utilisateur",
+                ),
             ),
             database_url=require(
                 "DATABASE_URL",
