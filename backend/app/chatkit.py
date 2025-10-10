@@ -24,7 +24,7 @@ from chatkit.types import (
 )
 
 from .config import Settings, get_settings
-from workflows.agents import WorkflowInput, agent as workflow_agent, run_workflow
+from workflows.agents import WorkflowInput, run_workflow
 
 logger = logging.getLogger("chatkit.server")
 
@@ -324,13 +324,9 @@ def _resolve_user_input_text(
 
 def _apply_agent_overrides(settings: Settings) -> None:
     """Applique les surcharges d'environnement sur l'agent global du workflow."""
-    model_override = getattr(settings, "chatkit_agent_model", None)
-    if model_override:
-        setattr(workflow_agent, "model", model_override)
-
-    instructions_override = getattr(settings, "chatkit_agent_instructions", None)
-    if instructions_override:
-        setattr(workflow_agent, "instructions", instructions_override)
+    # Le workflow dans agents.py gère sa propre configuration
+    # Les overrides ne sont plus nécessaires car run_workflow utilise le workflow complet
+    pass
 
 
 _server: DemoChatKitServer | None = None
