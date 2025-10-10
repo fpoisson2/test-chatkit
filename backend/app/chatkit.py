@@ -27,7 +27,7 @@ from agents import Runner
 from chatkit.agents import stream_agent_response, AgentContext, simple_to_agent_input
 
 from .config import Settings, get_settings
-from workflows.agents import triage, get_data_from_user, GetDataFromUserContext
+from workflows.agents import triage, get_data_from_user, GetDataFromUserContext, run_workflow, WorkflowInput
 
 logger = logging.getLogger("chatkit.server")
 
@@ -261,22 +261,49 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             request_context=context,
         )
 
-        # Convertir le message utilisateur en input pour l'agent
-        agent_input = await simple_to_agent_input(input_user_message) if input_user_message else []
-
         try:
-            # Exécuter l'agent de triage avec streaming
-            result = Runner.run_streamed(
-                triage,
-                input=agent_input,
-            )
+            # Exécuter le workflow complet avec streaming simulé via des progress updates
+            workflow_input = WorkflowInput(input_as_text=user_text)
 
-            # Stream les événements de l'agent vers ChatKit
-            async for event in stream_agent_response(agent_context, result):
-                yield event
+            # Note: Le workflow n'est pas nativement streamé, donc nous allons
+            # afficher des messages de progression et attendre le résultat
+            from chatkit.types import ProgressUpdateEvent
+
+            yield ProgressUpdateEvent(text="Analyse de votre demande en cours...")
+
+            # Exécuter le workflow de manière asynchrone
+            result = await run_workflow(workflow_input)
+
+            # Le résultat contient le plan-cadre généré ou une demande d'infos
+            # Convertir le résultat en message assistant
+            if result:
+                output_text = result.get("output_text", "")
+                if output_text:
+                    # Créer un message assistant avec le résultat
+                    message_id = self.store.generate_item_id("message", thread, context)
+                    assistant_message = AssistantMessageItem(
+                        id=message_id,
+                        created_at=datetime.now(),
+                        content=[
+                            AssistantMessageContent(
+                                type="text",
+                                text=output_text,
+                            )
+                        ],
+                    )
+
+                    # Sauvegarder le message
+                    await self.store.add_thread_item(thread.id, assistant_message, context)
+
+                    # Yielder l'événement de fin
+                    yield ThreadItemDoneEvent(item=assistant_message)
+                    yield EndOfTurnItem(
+                        id=self.store.generate_item_id("message", thread, context),
+                        created_at=datetime.now(),
+                    )
 
         except Exception as exc:  # pragma: no cover - erreurs runtime workflow
-            logger.exception("Agent execution failed")
+            logger.exception("Workflow execution failed")
             yield ErrorEvent(
                 code=ErrorCode.STREAM_ERROR,
                 message=str(exc),
