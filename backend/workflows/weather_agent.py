@@ -51,7 +51,7 @@ async def run_workflow(workflow_input: WorkflowInput) -> dict[str, Any]:
     agent_result_temp = await Runner.run(
         agent,
         input=conversation_history,
-        config=RunConfig(
+        run_config=RunConfig(
             trace_metadata={
                 "__trace_source__": "agent-builder",
                 "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae",
@@ -75,4 +75,3 @@ async def run_workflow(workflow_input: WorkflowInput) -> dict[str, Any]:
         "state": state,
         "conversation_history": conversation_history,
     }
-

@@ -260,7 +260,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             agent_result = await Runner.run(
                 self.agent,
                 input=agent_input,
-                config=RunConfig(trace_metadata=trace_metadata),
+                run_config=RunConfig(trace_metadata=trace_metadata),
             )
         except Exception as exc:  # pragma: no cover - erreurs runtime Agents
             logger.exception("Agent execution failed")
