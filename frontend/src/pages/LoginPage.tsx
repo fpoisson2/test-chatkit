@@ -2,6 +2,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { AuthUser, useAuth } from "../auth";
+import { makeApiEndpointCandidates } from "../utils/backend";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 
@@ -13,14 +14,10 @@ export const LoginPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setSubmitting] = useState(false);
 
-  const loginEndpoints = useMemo(() => {
-    const normalizedBackendUrl = backendUrl.replace(/\/+$/, "");
-    const endpoints = ["/api/auth/login"];
-    if (normalizedBackendUrl.length > 0) {
-      endpoints.push(`${normalizedBackendUrl}/api/auth/login`);
-    }
-    return Array.from(new Set(endpoints));
-  }, [backendUrl]);
+  const loginEndpoints = useMemo(
+    () => makeApiEndpointCandidates(backendUrl, "/api/auth/login"),
+    [backendUrl],
+  );
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

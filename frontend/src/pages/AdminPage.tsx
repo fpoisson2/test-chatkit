@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { AuthUser, useAuth } from "../auth";
+import { makeApiEndpointCandidates } from "../utils/backend";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 
@@ -23,15 +24,6 @@ export const AdminPage = () => {
     is_admin: false,
   });
 
-  const apiBases = useMemo(() => {
-    const normalizedBackendUrl = backendUrl.replace(/\/+$/, "");
-    const bases = [""];
-    if (normalizedBackendUrl.length > 0) {
-      bases.push(normalizedBackendUrl);
-    }
-    return Array.from(new Set(bases));
-  }, [backendUrl]);
-
   const headers = useMemo(() => {
     const base: Record<string, string> = {
       "Content-Type": "application/json",
@@ -44,12 +36,15 @@ export const AdminPage = () => {
 
   const requestWithFallback = useCallback(
     async (path: string, init?: RequestInit) => {
+      const endpoints = makeApiEndpointCandidates(backendUrl, path);
       let lastError: Error | null = null;
-      for (const base of apiBases) {
-        const url = base ? `${base}${path}` : path;
+
+      for (const endpoint of endpoints) {
         try {
-          const response = await fetch(url, init);
-          if (!response.ok && base.length === 0 && apiBases.length > 1) {
+          const response = await fetch(endpoint, init);
+          const isSameOriginEndpoint = endpoint.startsWith("/");
+
+          if (!response.ok && isSameOriginEndpoint && endpoints.length > 1) {
             let detail = `${response.status} ${response.statusText}`;
             try {
               const body = await response.clone().json();
@@ -64,6 +59,7 @@ export const AdminPage = () => {
             lastError = new Error(detail);
             continue;
           }
+
           return response;
         } catch (networkError) {
           if (networkError instanceof Error) {
@@ -73,9 +69,10 @@ export const AdminPage = () => {
           }
         }
       }
+
       throw lastError ?? new Error("Impossible de joindre le backend d'administration");
     },
-    [apiBases],
+    [backendUrl],
   );
 
   const fetchUsers = useCallback(async () => {
