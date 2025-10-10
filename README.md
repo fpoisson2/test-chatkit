@@ -80,6 +80,7 @@ Lorsque vous définissez `VITE_CHATKIT_API_URL`, `src/MyChat.tsx` fournit une fo
 - Le widget ChatKit reste géré par `src/MyChat.tsx`, désormais capable d'inclure automatiquement le token d'un utilisateur connecté
 - The project depends on React 19, matching the official starter app requirements for `@openai/chatkit-react`
 - `vite.config.ts` proxies toutes les routes `/api/*` (dont `/api/chatkit`) vers le backend FastAPI exposé sur le port 8000
+- Le composant `MyChat` se branche par défaut sur `/api/chatkit`. Pour forcer le mode hébergé (client secret), définissez `VITE_CHATKIT_FORCE_HOSTED=true` dans votre `.env`. Pensez à ajouter `VITE_CHATKIT_DOMAIN_KEY` si vous exposez votre propre domaine.
 - `VITE_BACKEND_URL` définit l'URL cible du backend pour l'ensemble des appels `/api/*`
 - `VITE_HMR_HOST` doit se limiter à un nom d'hôte (avec éventuellement un port). Une faute de frappe du type `https//mon-domaine`
   conduit le navigateur à tenter de joindre `https://https//mon-domaine`, ce qui se traduit par une erreur DNS (`net::ERR_NAME_NOT_RESOLVED`).
@@ -152,9 +153,10 @@ Une fois votre serveur en place, pointez le widget ChatKit (via `apiURL`) vers v
 4. **Choisissez la stratégie d'upload** via `VITE_CHATKIT_UPLOAD_STRATEGY` :
    - `two_phase` si votre serveur fournit des URL signées via un échange en deux temps.
    - `direct` si le serveur accepte un upload direct. Dans ce cas, précisez aussi `VITE_CHATKIT_DIRECT_UPLOAD_URL`.
-5. **Redémarrez le serveur Vite** (`npm run frontend:dev` depuis la racine) pour recharger les nouvelles variables.
+5. **Optionnel : forcer le mode hébergé** – définissez `VITE_CHATKIT_FORCE_HOSTED=true` si vous souhaitez ignorer le serveur custom et générer un `client_secret` (utile lorsque vous testez un workflow existant).
+6. **Redémarrez le serveur Vite** (`npm run frontend:dev` depuis la racine) pour recharger les nouvelles variables.
 
-Lorsque ces variables sont définies, le composant `MyChat` n'appelle plus `/api/chatkit/session` et utilise directement votre serveur via l'API ChatKit. Sans configuration explicite, l'application conserve le comportement hébergé par OpenAI (récupération d'un `client_secret` côté backend). Si aucune stratégie d'upload n'est fournie, les pièces jointes sont automatiquement désactivées pour éviter les erreurs de configuration.
+Lorsque ces variables sont définies, le composant `MyChat` n'appelle plus `/api/chatkit/session` et utilise directement votre serveur via l'API ChatKit. Sans configuration explicite, l'application se branche sur `/api/chatkit`, ce qui vous permet d'orchestrer votre agent maison. Pour revenir au comportement hébergé, activez `VITE_CHATKIT_FORCE_HOSTED=true`. Si aucune stratégie d'upload n'est fournie, les pièces jointes sont automatiquement désactivées afin d'éviter les erreurs de configuration.
 
 ## Lancement via Docker Compose
 

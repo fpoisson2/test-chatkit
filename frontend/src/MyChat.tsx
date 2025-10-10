@@ -164,15 +164,19 @@ export function MyChat() {
     apiConfig: ChatKitOptions["api"];
     attachmentsEnabled: boolean;
   }>(() => {
-    const customApiUrl = import.meta.env.VITE_CHATKIT_API_URL?.trim();
-    const domainKey = import.meta.env.VITE_CHATKIT_DOMAIN_KEY?.trim();
+    const forceHosted =
+      import.meta.env.VITE_CHATKIT_FORCE_HOSTED?.trim().toLowerCase() === "true";
 
-    if (!customApiUrl || !domainKey) {
+    if (forceHosted) {
       return {
         apiConfig: { getClientSecret },
         attachmentsEnabled: true,
       };
     }
+
+    const customApiUrl =
+      import.meta.env.VITE_CHATKIT_API_URL?.trim() || "/api/chatkit";
+    const domainKey = import.meta.env.VITE_CHATKIT_DOMAIN_KEY?.trim();
 
     const normalizedStrategy = import.meta.env.VITE_CHATKIT_UPLOAD_STRATEGY
       ?.trim()
@@ -218,9 +222,24 @@ export function MyChat() {
       });
     };
 
-    const customApiConfig: ChatKitOptions["api"] = uploadStrategy
-      ? { url: customApiUrl, domainKey, uploadStrategy, fetch: authFetch }
-      : { url: customApiUrl, domainKey, fetch: authFetch };
+    if (!domainKey) {
+      console.warn(
+        "[ChatKit] VITE_CHATKIT_DOMAIN_KEY manquant : en environnement local cela peut fonctionner, mais pensez à enregistrer votre domaine avant la mise en production.",
+      );
+    }
+
+    const customApiConfig = uploadStrategy
+      ? ({
+          url: customApiUrl,
+          fetch: authFetch,
+          uploadStrategy,
+          ...(domainKey ? { domainKey } : {}),
+        } satisfies ChatKitOptions["api"])
+      : ({
+          url: customApiUrl,
+          fetch: authFetch,
+          ...(domainKey ? { domainKey } : {}),
+        } satisfies ChatKitOptions["api"]);
 
     return {
       apiConfig: customApiConfig,
