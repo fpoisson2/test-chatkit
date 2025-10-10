@@ -1,8 +1,9 @@
 const STORAGE_PREFIX = "chatkit:session";
 const EXPIRATION_GRACE_MS = 5 * 1000;
+const REFRESH_THRESHOLD_MS = 60 * 1000;
 const DEFAULT_SESSION_TTL_MS = 9 * 60 * 1000;
 
-type StoredChatKitSession = {
+export type StoredChatKitSession = {
   secret: string;
   expiresAt: number | null;
   storedAt: number;
@@ -101,30 +102,50 @@ export const inferChatKitSessionExpiration = (payload: unknown): number | null =
   return now + DEFAULT_SESSION_TTL_MS;
 };
 
-export const loadStoredChatKitSecret = (ownerId: string): string | null => {
+const isSessionExpired = (session: StoredChatKitSession, now: number) =>
+  Boolean(session.expiresAt && session.expiresAt - EXPIRATION_GRACE_MS <= now);
+
+const shouldRefreshSession = (session: StoredChatKitSession, now: number) =>
+  Boolean(session.expiresAt && session.expiresAt - REFRESH_THRESHOLD_MS <= now);
+
+export const readStoredChatKitSession = (
+  ownerId: string,
+): { session: StoredChatKitSession | null; shouldRefresh: boolean } => {
   if (typeof window === "undefined") {
-    return null;
+    return { session: null, shouldRefresh: false };
   }
 
   const key = buildStorageKey(ownerId);
   const raw = window.localStorage.getItem(key);
   if (!raw) {
-    return null;
+    return { session: null, shouldRefresh: false };
   }
 
   try {
     const stored = JSON.parse(raw) as StoredChatKitSession;
-    if (stored.expiresAt && stored.expiresAt - EXPIRATION_GRACE_MS <= Date.now()) {
+    const now = Date.now();
+    if (isSessionExpired(stored, now)) {
       window.localStorage.removeItem(key);
-      return null;
+      return { session: null, shouldRefresh: false };
     }
-    return stored.secret;
+    return { session: stored, shouldRefresh: shouldRefreshSession(stored, now) };
   } catch (error) {
     console.warn("[ChatKit] Échec de la lecture du secret stocké", error);
     window.localStorage.removeItem(key);
-    return null;
+    return { session: null, shouldRefresh: false };
   }
 };
+
+export const loadStoredChatKitSession = (ownerId: string): StoredChatKitSession | null =>
+  readStoredChatKitSession(ownerId).session;
+
+export const loadStoredChatKitSecret = (ownerId: string): string | null => {
+  const { session } = readStoredChatKitSession(ownerId);
+  return session ? session.secret : null;
+};
+
+export const shouldRefreshStoredChatKitSession = (ownerId: string): boolean =>
+  readStoredChatKitSession(ownerId).shouldRefresh;
 
 export const persistChatKitSecret = (
   ownerId: string,

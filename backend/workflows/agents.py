@@ -2,6 +2,8 @@ from agents import WebSearchTool, Agent, ModelSettings, RunContextWrapper, TResp
 from pydantic import BaseModel
 from openai.types.shared.reasoning import Reasoning
 
+from ..app.token_sanitizer import sanitize_model_like
+
 # Tool definitions
 web_search_preview = WebSearchTool(
   search_context_size="medium",
@@ -129,6 +131,10 @@ class Triage2Schema(BaseModel):
   details_manquants: str
 
 
+def _model_settings(**kwargs):
+  return sanitize_model_like(ModelSettings(**kwargs))
+
+
 triage = Agent(
   name="Triage",
   instructions="""Ton rôle : Vérifier si toutes les informations nécessaires sont présentes pour générer un plan-cadre.
@@ -155,7 +161,7 @@ competence_nom:               # Pour la section Description des compétences dé
 Une idée générale de ce qui devrait se retrouver dans le cours.""",
   model="gpt-5",
   output_type=TriageSchema,
-  model_settings=ModelSettings(
+  model_settings=_model_settings(
     store=True,
     reasoning=Reasoning(
       effort="minimal",
@@ -446,7 +452,7 @@ Générez les autres sections exactement comme décrit, sans ajout ni omission s
 """,
   model="gpt-4.1-mini",
   output_type=RDacteurSchema,
-  model_settings=ModelSettings(
+  model_settings=_model_settings(
     temperature=1,
     top_p=1,
     store=True
@@ -488,7 +494,7 @@ get_data_from_web = Agent(
   tools=[
     web_search_preview
   ],
-  model_settings=ModelSettings(
+  model_settings=_model_settings(
     store=True,
     reasoning=Reasoning(
       effort="medium",
@@ -532,7 +538,7 @@ triage_2 = Agent(
   instructions=triage_2_instructions,
   model="gpt-5",
   output_type=Triage2Schema,
-  model_settings=ModelSettings(
+  model_settings=_model_settings(
     store=True,
     reasoning=Reasoning(
       effort="minimal",
@@ -557,7 +563,7 @@ get_data_from_user = Agent(
   name="Get data from user",
   instructions=get_data_from_user_instructions,
   model="gpt-5-nano",
-  model_settings=ModelSettings(
+  model_settings=_model_settings(
     store=True,
     reasoning=Reasoning(
       effort="medium",
