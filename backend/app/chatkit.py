@@ -283,6 +283,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     message_id = self.store.generate_item_id("message", thread, context)
                     assistant_message = AssistantMessageItem(
                         id=message_id,
+                        thread_id=thread.id,
                         created_at=datetime.now(),
                         content=[
                             AssistantMessageContent(
