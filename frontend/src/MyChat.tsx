@@ -167,11 +167,12 @@ export function MyChat() {
     const forceHosted =
       import.meta.env.VITE_CHATKIT_FORCE_HOSTED?.trim().toLowerCase() === "true";
 
-    const domainKey = import.meta.env.VITE_CHATKIT_DOMAIN_KEY?.trim();
+    const rawDomainKey = import.meta.env.VITE_CHATKIT_DOMAIN_KEY?.trim();
+    const domainKey = rawDomainKey || "domain_pk_localhost_dev";
     const skipDomainVerification =
       import.meta.env.VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION?.trim().toLowerCase() ===
       "true";
-    const shouldBypassDomainCheck = skipDomainVerification || !domainKey;
+    const shouldBypassDomainCheck = skipDomainVerification || !rawDomainKey;
     const explicitCustomUrl = import.meta.env.VITE_CHATKIT_API_URL?.trim();
     const customApiUrl = explicitCustomUrl || "/api/chatkit";
     const useHostedFlow = forceHosted;
@@ -249,9 +250,9 @@ export function MyChat() {
       });
     };
 
-    if (!domainKey) {
+    if (!rawDomainKey) {
       console.info(
-        "[ChatKit] VITE_CHATKIT_DOMAIN_KEY non défini : la vérification de domaine est désactivée au profit d'un usage backend auto-hébergé.",
+        "[ChatKit] VITE_CHATKIT_DOMAIN_KEY non défini : utilisation du jeton de domaine de développement.",
       );
     }
 
