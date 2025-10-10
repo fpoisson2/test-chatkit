@@ -168,23 +168,19 @@ export function MyChat() {
       import.meta.env.VITE_CHATKIT_FORCE_HOSTED?.trim().toLowerCase() === "true";
 
     const domainKey = import.meta.env.VITE_CHATKIT_DOMAIN_KEY?.trim();
+    const useDomainKey =
+      import.meta.env.VITE_CHATKIT_USE_DOMAIN_KEY?.trim().toLowerCase() === "true";
     const explicitCustomUrl = import.meta.env.VITE_CHATKIT_API_URL?.trim();
-    const customApiUrl = explicitCustomUrl || (domainKey ? "/api/chatkit" : null);
-    const useHostedFlow = forceHosted || !domainKey || !customApiUrl;
+    const customApiUrl = explicitCustomUrl || "/api/chatkit";
+    const effectiveDomainKey = useDomainKey && domainKey ? domainKey : null;
+    const useHostedFlow = forceHosted;
 
     if (useHostedFlow) {
-      if (!forceHosted && explicitCustomUrl && !domainKey) {
-        console.warn(
-          "[ChatKit] VITE_CHATKIT_API_URL défini sans VITE_CHATKIT_DOMAIN_KEY : repli automatique sur le flux client_secret hébergé.",
-        );
-      }
       return {
         apiConfig: { getClientSecret },
         attachmentsEnabled: true,
       };
     }
-
-    const ensuredDomainKey = domainKey!;
 
     const normalizedStrategy = import.meta.env.VITE_CHATKIT_UPLOAD_STRATEGY
       ?.trim()
@@ -230,18 +226,24 @@ export function MyChat() {
       });
     };
 
+    if (!effectiveDomainKey && domainKey && !useDomainKey) {
+      console.info(
+        "[ChatKit] VITE_CHATKIT_DOMAIN_KEY détecté mais non utilisé (activez VITE_CHATKIT_USE_DOMAIN_KEY=true pour lancer la vérification de domaine).",
+      );
+    }
+
     const customApiConfig = uploadStrategy
       ? ({
           url: customApiUrl,
           fetch: authFetch,
-          domainKey: ensuredDomainKey,
+          ...(effectiveDomainKey ? { domainKey: effectiveDomainKey } : {}),
           uploadStrategy,
-        } satisfies ChatKitOptions["api"])
+        } as ChatKitOptions["api"])
       : ({
           url: customApiUrl,
           fetch: authFetch,
-          domainKey: ensuredDomainKey,
-        } satisfies ChatKitOptions["api"]);
+          ...(effectiveDomainKey ? { domainKey: effectiveDomainKey } : {}),
+        } as ChatKitOptions["api"]);
 
     return {
       apiConfig: customApiConfig,

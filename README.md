@@ -149,14 +149,14 @@ Une fois votre serveur en place, pointez le widget ChatKit (via `apiURL`) vers v
 
 1. **Créez un fichier `.env` à la racine** en dupliquant `.env.example`.
 2. **Renseignez `VITE_CHATKIT_API_URL`** avec l'URL publique de votre serveur ChatKit (par exemple `https://chatkit.example.com/chatkit`).
-3. **Indiquez `VITE_CHATKIT_DOMAIN_KEY`** : la clé de domaine générée lors de l'enregistrement de votre intégration côté serveur.
+3. **Optionnel : activez la vérification de domaine** — si vous disposez d'une clé enregistrée auprès d'OpenAI, définissez `VITE_CHATKIT_DOMAIN_KEY` et ajoutez `VITE_CHATKIT_USE_DOMAIN_KEY=true`. Sans ce drapeau, la clé est ignorée afin d'éviter les appels `domain_keys` lorsque l'API distante n'est pas disponible.
 4. **Choisissez la stratégie d'upload** via `VITE_CHATKIT_UPLOAD_STRATEGY` :
    - `two_phase` si votre serveur fournit des URL signées via un échange en deux temps.
    - `direct` si le serveur accepte un upload direct. Dans ce cas, précisez aussi `VITE_CHATKIT_DIRECT_UPLOAD_URL`.
 5. **Optionnel : forcer le mode hébergé** – définissez `VITE_CHATKIT_FORCE_HOSTED=true` si vous souhaitez ignorer le serveur custom et générer un `client_secret` (utile lorsque vous testez un workflow existant).
 6. **Redémarrez le serveur Vite** (`npm run frontend:dev` depuis la racine) pour recharger les nouvelles variables.
 
-Lorsque ces variables sont définies, le composant `MyChat` n'appelle plus `/api/chatkit/session` et dialogue directement avec votre serveur via l'API ChatKit. En l'absence de clé de domaine, le frontend conserve désormais le flux hébergé : il récupère un `client_secret` via `/api/chatkit/session`, ce qui évite les options invalides côté widget. Vous pouvez toujours forcer ce comportement en définissant `VITE_CHATKIT_FORCE_HOSTED=true`. Dans le mode auto-hébergé, si aucune stratégie d'upload n'est fournie, les pièces jointes sont automatiquement désactivées afin d'éviter les erreurs de configuration.
+Lorsque ces variables sont définies, le composant `MyChat` n'appelle plus `/api/chatkit/session` et dialogue directement avec votre serveur via l'API ChatKit. Par défaut, aucune vérification de domaine n'est déclenchée (aucune requête `domain_keys`), mais vous pouvez la réactiver via `VITE_CHATKIT_USE_DOMAIN_KEY=true` si votre environnement y a accès. Vous pouvez à tout moment forcer le flux hébergé en définissant `VITE_CHATKIT_FORCE_HOSTED=true`. Dans le mode auto-hébergé, si aucune stratégie d'upload n'est fournie, les pièces jointes sont automatiquement désactivées afin d'éviter les erreurs de configuration.
 
 ## Lancement via Docker Compose
 
