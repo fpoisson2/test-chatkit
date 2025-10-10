@@ -12,8 +12,10 @@ from dotenv import load_dotenv
 class Settings:
     allowed_origins: list[str]
     openai_api_key: str
-    workflow_id: str
+    chatkit_workflow_id: str | None
     chatkit_api_base: str
+    chatkit_agent_model: str
+    chatkit_agent_instructions: str
     database_url: str
     auth_secret_key: str
     access_token_expire_minutes: int
@@ -41,8 +43,13 @@ class Settings:
         return cls(
             allowed_origins=cls._parse_allowed_origins(env.get("ALLOWED_ORIGINS")),
             openai_api_key=require("OPENAI_API_KEY"),
-            workflow_id=require("CHATKIT_WORKFLOW_ID"),
+            chatkit_workflow_id=env.get("CHATKIT_WORKFLOW_ID"),
             chatkit_api_base=env.get("CHATKIT_API_BASE", "https://api.openai.com"),
+            chatkit_agent_model=env.get("CHATKIT_AGENT_MODEL", "gpt-4.1-mini"),
+            chatkit_agent_instructions=env.get(
+                "CHATKIT_AGENT_INSTRUCTIONS",
+                "Tu es un assistant conversationnel chargé d'aider l'utilisateur depuis l'interface ChatKit.",
+            ),
             database_url=require(
                 "DATABASE_URL",
                 message="DATABASE_URL environment variable is required for PostgreSQL access",

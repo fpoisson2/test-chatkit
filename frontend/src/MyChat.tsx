@@ -207,15 +207,26 @@ export function MyChat() {
       );
     }
 
+    const authFetch: typeof fetch = (resource, init) => {
+      const headers = new Headers(init?.headers ?? {});
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
+      }
+      return fetch(resource, {
+        ...init,
+        headers,
+      });
+    };
+
     const customApiConfig: ChatKitOptions["api"] = uploadStrategy
-      ? { url: customApiUrl, domainKey, uploadStrategy }
-      : { url: customApiUrl, domainKey };
+      ? { url: customApiUrl, domainKey, uploadStrategy, fetch: authFetch }
+      : { url: customApiUrl, domainKey, fetch: authFetch };
 
     return {
       apiConfig: customApiConfig,
       attachmentsEnabled: attachmentsAreEnabled,
     };
-  }, [getClientSecret]);
+  }, [getClientSecret, token]);
 
   const attachmentsConfig = useMemo(
     () =>

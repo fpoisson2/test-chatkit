@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import StreamingResponse
 
-from ..chatkit import create_chatkit_session, proxy_chatkit_request
+from chatkit.server import StreamingResult
+
+from ..chatkit_sessions import create_chatkit_session, proxy_chatkit_request
+from ..chatkit import ChatKitRequestContext, get_chatkit_server
 from ..dependencies import get_optional_user
 from ..models import User
 from ..schemas import SessionRequest
@@ -21,11 +25,12 @@ async def create_session(
         user_id = f"user:{current_user.id}"
     else:
         user_id = req.user or str(uuid.uuid4())
+
     session_payload = await create_chatkit_session(user_id)
     client_secret = session_payload.get("client_secret")
     if not client_secret:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error": "ChatKit response missing client_secret",
                 "details": session_payload,
@@ -43,3 +48,22 @@ async def create_session(
 )
 async def proxy_chatkit(path: str, request: Request):
     return await proxy_chatkit_request(path, request)
+
+
+@router.post("/api/chatkit")
+async def chatkit_endpoint(
+    request: Request,
+    current_user: User | None = Depends(get_optional_user),
+):
+    server = get_chatkit_server()
+    payload = await request.body()
+    context = ChatKitRequestContext(
+        user_id=str(current_user.id) if current_user else None,
+        email=current_user.email if current_user else None,
+        authorization=request.headers.get("Authorization"),
+    )
+
+    result = await server.process(payload, context)
+    if isinstance(result, StreamingResult):
+        return StreamingResponse(result, media_type="text/event-stream")
+    return Response(content=result.json, media_type="application/json")

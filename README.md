@@ -1,6 +1,6 @@
 # ChatKit Sample
 
-This repository mirrors the walkthrough in `chatkit.md`, providing a FastAPI backend endpoint for issuing ChatKit client secrets and a React/Vite frontend that embeds the ChatKit widget. La base de code est scindée entre `backend/` et `frontend/` et inclut désormais une authentification basique (connexion + rôles) ainsi qu'un panneau d'administration pour gérer les utilisateurs.
+This repository mirrors the walkthrough in `chatkit.md`, providing both the legacy FastAPI endpoint that issues ChatKit client secrets and a lightweight ChatKit server (`/api/chatkit`) driven by the Python SDK. La base de code est scindée entre `backend/` et `frontend/` et inclut désormais une authentification basique (connexion + rôles) ainsi qu'un panneau d'administration pour gérer les utilisateurs.
 
 ## Authentification et administration
 
@@ -8,6 +8,7 @@ This repository mirrors the walkthrough in `chatkit.md`, providing a FastAPI bac
 - L'accueil (`/`) est protégé : sans authentification valide, l'utilisateur est redirigé vers la page de connexion avant d'accéder au widget ChatKit.
 - Un compte administrateur (créé via variables d'environnement) peut gérer les utilisateurs depuis `/admin` : création, promotion/déclassement, réinitialisation de mot de passe et suppression.
 - Les requêtes vers `/api/chatkit/session` utilisent automatiquement l'identité de l'utilisateur connecté si un token est présent dans les en-têtes.
+- Une implémentation ChatKit auto‑hébergée est disponible sur `/api/chatkit`. Elle orchestre l'Agents SDK en local pour répondre via le widget sans passer par un workflow hébergé.
 
 ## Commandes depuis la racine
 
@@ -25,20 +26,24 @@ Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi
 - Install dependencies via [uv](https://github.com/astral-sh/uv): `uv sync` (ou `npm run backend:sync` à la racine)
 - Créez un fichier `.env` dans `backend/` avec au minimum :
   - `OPENAI_API_KEY` – clé API autorisée sur la bêta ChatKit
-  - `CHATKIT_WORKFLOW_ID` – identifiant du workflow (exemple : `wf_68e517bc3df4819095eb9f252c9f097d057110cbe8192cd9`)
   - `DATABASE_URL` – URL SQLAlchemy vers PostgreSQL (ex. `postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit`). En
     environnement Docker Compose, utilisez le hostname du service PostgreSQL (`db`) plutôt que `localhost`, par exemple
     `postgresql+psycopg://chatkit:chatkit@db:5432/chatkit`.
   - `AUTH_SECRET_KEY` – clé secrète utilisée pour signer les tokens JWT
+  - Optionnel : `CHATKIT_WORKFLOW_ID` si vous souhaitez toujours pouvoir émettre un `client_secret` via l'API hébergée.
+  - Optionnel : `CHATKIT_AGENT_MODEL` / `CHATKIT_AGENT_INSTRUCTIONS` pour personnaliser l'agent exécuté par `/api/chatkit`.
   - Optionnel : `ALLOWED_ORIGINS` pour lister les origines autorisées par CORS (séparées par des virgules, par défaut `*`)
   - Optionnel : `ACCESS_TOKEN_EXPIRE_MINUTES` pour ajuster la durée de validité du token (par défaut 120 min)
   - Optionnel : `ADMIN_EMAIL` et `ADMIN_PASSWORD` pour provisionner automatiquement un compte administrateur au démarrage
   - Optionnel : `DATABASE_CONNECT_RETRIES` / `DATABASE_CONNECT_DELAY` pour ajuster la stratégie d'attente au démarrage
 - Start the dev server from the `backend/` directory: `uv run uvicorn server:app --reload` (ou `npm run backend:dev` à la racine)
 
-The `/api/chatkit/session` route makes an HTTP request to `https://api.openai.com/v1/chatkit/sessions` using `httpx`, mirroring the official starter app. Si un utilisateur est authentifié, son identifiant interne est réutilisé pour générer la session. La session résultante autorise désormais l'envoi de fichiers, prolonge l'expiration à une heure et porte la limite de requêtes à 50 par minute. A `requirements.txt` remains available for `pip install -r requirements.txt`.
+Le backend expose deux intégrations complémentaires :
 
-> ℹ️ **CORS et flux de conversation** — l'API hébergée ChatKit ne renvoie pas systématiquement d'en-têtes `Access-Control-Allow-Origin`, ce qui provoque un blocage navigateur lors de la diffusion des réponses (SSE). Le backend expose donc un proxy de streaming `OPTIONS|POST /api/chatkit/proxy/{path:path}` qui relaie l'intégralité des requêtes `https://api.openai.com/v1/chatkit/*` vers OpenAI et renvoie un flux compatible navigateur.
+- `/api/chatkit` est un serveur ChatKit auto‑hébergé basé sur `openai-chatkit`. Il utilise un store en mémoire (`InMemoryChatKitStore`) et un agent paramétrable via `CHATKIT_AGENT_MODEL` / `CHATKIT_AGENT_INSTRUCTIONS`. C'est la route à privilégier pour piloter vos propres agents sans dépendre d'un workflow hébergé.
+- `/api/chatkit/session` conserve le flux historique de l'application d'origine : un appel `httpx` vers `https://api.openai.com/v1/chatkit/sessions` pour récupérer un `client_secret`. Cette route reste disponible pour tester rapidement un workflow existant (nécessite `CHATKIT_WORKFLOW_ID`).
+
+> ℹ️ **CORS et flux de conversation** — l'API ChatKit hébergée ne renvoie pas systématiquement d'en-têtes `Access-Control-Allow-Origin`, ce qui provoque un blocage lors de la diffusion SSE. Le backend expose donc un proxy `OPTIONS|POST /api/chatkit/proxy/{path:path}` qui relaie `https://api.openai.com/v1/chatkit/*`. Le serveur custom n'en a pas besoin mais le proxy reste utile pour le mode hébergé ou pour récupérer des logs bruts.
 
 ### Outil météo exposé au workflow ChatKit
 
@@ -65,7 +70,7 @@ Le composant React `MyChat` enregistre un gestionnaire `onClientTool` pour l'out
 
 Le champ de composition autorise désormais l'ajout de pièces jointes (images, PDF, texte brut jusqu'à 10 Mo, quatre fichiers maximum), ce qui reflète les capacités de la session générée côté backend.
 
-Pour contourner le problème CORS mentionné plus haut, `src/MyChat.tsx` installe une surcharge légère de `window.fetch` qui redirige les appels `https://api.openai.com/v1/chatkit/...` vers le proxy FastAPI (`/api/chatkit/proxy/*`). Le widget conserve ainsi les flux SSE natifs tout en restant servi depuis votre domaine.
+Lorsque vous définissez `VITE_CHATKIT_API_URL`, `src/MyChat.tsx` fournit une fonction `fetch` personnalisée qui ajoute automatiquement le jeton JWT à chaque appel `fetch`, ce qui permet au serveur `/api/chatkit` d'identifier l'utilisateur côté backend. Si vous restez sur l'API hébergée, le composant continue d'utiliser `/api/chatkit/session` et peut s'appuyer sur le proxy `/api/chatkit/proxy/*` pour contourner les restrictions CORS lors du streaming SSE.
 
 ## Frontend (`frontend/`)
 
@@ -74,7 +79,7 @@ Pour contourner le problème CORS mentionné plus haut, `src/MyChat.tsx` install
 - `src/App.tsx` définit le routage entre l'accueil (`/`), la page de connexion (`/login`) et le panneau d'administration (`/admin`)
 - Le widget ChatKit reste géré par `src/MyChat.tsx`, désormais capable d'inclure automatiquement le token d'un utilisateur connecté
 - The project depends on React 19, matching the official starter app requirements for `@openai/chatkit-react`
-- `vite.config.ts` proxies `/api/chatkit/session` requests to the FastAPI backend running on port 8000
+- `vite.config.ts` proxies toutes les routes `/api/*` (dont `/api/chatkit`) vers le backend FastAPI exposé sur le port 8000
 - `VITE_BACKEND_URL` définit l'URL cible du backend pour l'ensemble des appels `/api/*`
 - `VITE_HMR_HOST` doit se limiter à un nom d'hôte (avec éventuellement un port). Une faute de frappe du type `https//mon-domaine`
   conduit le navigateur à tenter de joindre `https://https//mon-domaine`, ce qui se traduit par une erreur DNS (`net::ERR_NAME_NOT_RESOLVED`).
@@ -86,9 +91,11 @@ Pour contourner le problème CORS mentionné plus haut, `src/MyChat.tsx` install
 - If you want to call OpenAI directly from the browser, `src/chatkit.ts` shows the fetch helper that uses `import.meta.env.VITE_OPENAI_API_SECRET_KEY`
 - If `npm` complains about cache permissions, this repo ships with a local `.npmrc` pointing the cache to `.npm-cache/`; leave it in place or run `npm install --cache .npm-cache`
 
-With both servers running (`uv run uvicorn server:app --reload` in `backend/` and `npm run dev` inside `frontend/`), navigating to the Vite dev URL displays the embedded ChatKit widget backed by your Agent Builder workflow.
+With both servers running (`uv run uvicorn server:app --reload` in `backend/` and `npm run dev` inside `frontend/`), navigating to the Vite dev URL displays the embedded ChatKit widget, alimenté soit par votre agent local (`/api/chatkit`), soit par le workflow hébergé si vous avez conservé le mode `client_secret`.
 
 ### Utiliser votre propre backend ChatKit
+
+Ce dépôt embarque déjà une implémentation de référence (`DemoChatKitServer`) accessible sur `/api/chatkit`. Elle s'appuie sur `openai-chatkit`, un store en mémoire et l'Agents SDK pour orchestrer un agent générique. Vous pouvez la conserver telle quelle, la personnaliser (instructions, modèle, persistance) ou repartir d'un projet vierge suivant les étapes ci-dessous.
 
 Pour les intégrations avancées, vous pouvez auto‑héberger ChatKit et piloter le widget via votre propre serveur. Cette approche vous permet de gérer l'authentification, l'orchestration d'outils et la résidence des données selon vos exigences.
 
@@ -156,13 +163,17 @@ Depuis la racine du dépôt, vous pouvez orchestrer le backend FastAPI et le fro
 1. Créez un fichier `.env` à la racine (au même niveau que `docker-compose.yml`) en vous basant sur `.env.example` et renseignez au minimum :
    ```env
    OPENAI_API_KEY="sk-..."
-   CHATKIT_WORKFLOW_ID="wf_..."
    AUTH_SECRET_KEY="change-me"
    ADMIN_EMAIL="admin@example.com"
    ADMIN_PASSWORD="adminpass"
    # Optionnel : ajustez la connexion PostgreSQL (défaut : postgresql+psycopg://chatkit:chatkit@db:5432/chatkit).
    # En Docker Compose, laissez `db` comme hostname ou omettez complètement cette variable pour conserver la valeur par défaut.
    # DATABASE_URL="postgresql+psycopg://user:password@host:5432/chatkit"
+   # Optionnel : activez le mode workflow hébergé
+   # CHATKIT_WORKFLOW_ID="wf_..."
+   # Optionnel : personnalisez l'agent exécuté par /api/chatkit
+   # CHATKIT_AGENT_MODEL="gpt-4.1-mini"
+   # CHATKIT_AGENT_INSTRUCTIONS="Tu es un assistant conversationnel…"
    # Optionnel : ajustez le port d'exposition du frontend
    VITE_PORT=5183
    # Optionnel : ajustez le hostname utilisé par le HMR (utile derrière un tunnel/proxy)
