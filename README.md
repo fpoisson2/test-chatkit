@@ -55,6 +55,10 @@ curl "http://localhost:8000/api/tools/weather?city=Lyon"
 
 La charge utile retournée est sérialisable en JSON et peut être consommée directement par un outil ChatKit (fonction Python, workflow Agent Builder, etc.).
 
+### Exemple d'agent TypeScript dédié
+
+Le dossier `frontend/src/workflows/` contient désormais un exemple minimal `weatherAgent.ts` basé sur `@openai/agents`. L'agent "Fournis la météo à l'utilisateur" illustre comment instancier un `Agent`, lancer un `Runner` avec un historique de conversation initial et renvoyer la sortie finale formattée (`output_text`). Vous pouvez vous en servir comme point de départ pour héberger votre workflow Agent Builder dans votre propre codebase, puis l'adapter (gestion d'état, appels d'API météo, etc.) avant de le connecter à votre serveur ChatKit.
+
 ### Intégration côté widget ChatKit
 
 Le composant React `MyChat` enregistre un gestionnaire `onClientTool` pour l'outil client `get_weather`. Lorsque le workflow déclenche cet outil, le navigateur appelle automatiquement `GET /api/tools/weather` avec les paramètres fournis, puis renvoie la réponse JSON au backend ChatKit. Aucune configuration supplémentaire n'est nécessaire dans l'interface : il suffit que le workflow émette un appel d'outil nommé `get_weather` avec au minimum `{ "city": "Paris" }`.
@@ -83,6 +87,67 @@ Pour contourner le problème CORS mentionné plus haut, `src/MyChat.tsx` install
 - If `npm` complains about cache permissions, this repo ships with a local `.npmrc` pointing the cache to `.npm-cache/`; leave it in place or run `npm install --cache .npm-cache`
 
 With both servers running (`uv run uvicorn server:app --reload` in `backend/` and `npm run dev` inside `frontend/`), navigating to the Vite dev URL displays the embedded ChatKit widget backed by your Agent Builder workflow.
+
+### Utiliser votre propre backend ChatKit
+
+Pour les intégrations avancées, vous pouvez auto‑héberger ChatKit et piloter le widget via votre propre serveur. Cette approche vous permet de gérer l'authentification, l'orchestration d'outils et la résidence des données selon vos exigences.
+
+1. **Installer le serveur ChatKit** — Depuis le répertoire de votre projet serveur (par exemple `backend/` ou un dépôt dédié) et dans un environnement Python virtuel (créé via `uv` ou `python -m venv`), installez la dépendance :
+   ```bash
+   pip install openai-chatkit
+   ```
+2. **Implémenter une classe de serveur** — Créez un module (par exemple `my_chatkit_server.py`) qui hérite de `ChatKitServer` et surcharge la méthode `respond`. Vous pouvez réutiliser l'exemple suivant en l'adaptant à vos agents et à vos outils :
+   ```python
+   class MyChatKitServer(ChatKitServer):
+       assistant_agent = Agent[AgentContext](
+           model="gpt-4.1",
+           name="Assistant",
+           instructions="Vous êtes un assistant utile",
+       )
+
+       async def respond(self, thread, input, context):
+           agent_context = AgentContext(thread=thread, store=self.store, request_context=context)
+           result = Runner.run_streamed(
+               self.assistant_agent,
+               await to_input_item(input, self.to_message_content),
+               context=agent_context,
+           )
+           async for event in stream_agent_response(agent_context, result):
+               yield event
+   ```
+   Adaptez `to_message_content` si vous acceptez des fichiers ou des images.
+3. **Exposer l'endpoint HTTP** — Avec FastAPI, servez votre instance via un point d'entrée `POST /chatkit` et relayez les réponses `StreamingResult` en SSE :
+   ```python
+   app = FastAPI()
+   data_store = SQLiteStore()
+   file_store = DiskFileStore(data_store)
+   server = MyChatKitServer(data_store, file_store)
+
+   @app.post("/chatkit")
+   async def chatkit_endpoint(request: Request):
+       result = await server.process(await request.body(), {})
+       if isinstance(result, StreamingResult):
+           return StreamingResponse(result, media_type="text/event-stream")
+       return Response(content=result.json, media_type="application/json")
+   ```
+4. **Persister les données** — Implémentez l'interface `chatkit.store.Store` pour conserver les fils, messages et fichiers selon votre base de données (PostgreSQL, DynamoDB, etc.).
+5. **Gérer les fichiers** — Fournissez un `FileStore` si vous autorisez les uploads (directs ou en deux temps via URL signée) et exposez les prévisualisations nécessaires au widget.
+6. **Déclencher des outils côté client** — Enregistrez vos outils à la fois sur l'agent et côté client, puis déclenchez‑les via `ctx.context.client_tool_call` lorsque l'agent doit renvoyer un travail au navigateur.
+7. **Exploiter le contexte serveur** — Passez un objet `context` personnalisé à `server.process(body, context)` pour propager l'identité de l'utilisateur, ses rôles ou toute autre métadonnée requise par vos règles métier.
+
+Une fois votre serveur en place, pointez le widget ChatKit (via `apiURL`) vers votre nouvelle route `/chatkit`. Vous bénéficiez alors d'un contrôle complet sur la session, la stratégie d'authentification et l'exécution des outils tout en conservant l'ergonomie du composant ChatKit.
+
+### Configurer le frontend Vite pour un serveur ChatKit personnalisé
+
+1. **Créez un fichier `.env` à la racine** en dupliquant `.env.example`.
+2. **Renseignez `VITE_CHATKIT_API_URL`** avec l'URL publique de votre serveur ChatKit (par exemple `https://chatkit.example.com/chatkit`).
+3. **Indiquez `VITE_CHATKIT_DOMAIN_KEY`** : la clé de domaine générée lors de l'enregistrement de votre intégration côté serveur.
+4. **Choisissez la stratégie d'upload** via `VITE_CHATKIT_UPLOAD_STRATEGY` :
+   - `two_phase` si votre serveur fournit des URL signées via un échange en deux temps.
+   - `direct` si le serveur accepte un upload direct. Dans ce cas, précisez aussi `VITE_CHATKIT_DIRECT_UPLOAD_URL`.
+5. **Redémarrez le serveur Vite** (`npm run frontend:dev` depuis la racine) pour recharger les nouvelles variables.
+
+Lorsque ces variables sont définies, le composant `MyChat` n'appelle plus `/api/chatkit/session` et utilise directement votre serveur via l'API ChatKit. Sans configuration explicite, l'application conserve le comportement hébergé par OpenAI (récupération d'un `client_secret` côté backend). Si aucune stratégie d'upload n'est fournie, les pièces jointes sont automatiquement désactivées pour éviter les erreurs de configuration.
 
 ## Lancement via Docker Compose
 

@@ -112,6 +112,80 @@ export function MyChat() {
   const previousIsDesktopRef = useRef(isDesktopLayout);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
 
+  const { apiConfig, attachmentsEnabled } = useMemo<{
+    apiConfig: ChatKitOptions["api"];
+    attachmentsEnabled: boolean;
+  }>(() => {
+    const customApiUrl = import.meta.env.VITE_CHATKIT_API_URL?.trim();
+    const domainKey = import.meta.env.VITE_CHATKIT_DOMAIN_KEY?.trim();
+
+    if (!customApiUrl || !domainKey) {
+      return {
+        apiConfig: { getClientSecret },
+        attachmentsEnabled: true,
+      };
+    }
+
+    const normalizedStrategy = import.meta.env.VITE_CHATKIT_UPLOAD_STRATEGY
+      ?.trim()
+      .toLowerCase();
+
+    let attachmentsAreEnabled = false;
+    let uploadStrategy:
+      | { type: "two_phase" }
+      | { type: "direct"; uploadUrl: string }
+      | undefined;
+
+    if (!normalizedStrategy) {
+      console.warn(
+        "[ChatKit] VITE_CHATKIT_API_URL détecté sans VITE_CHATKIT_UPLOAD_STRATEGY : les pièces jointes seront désactivées.",
+      );
+    } else if (normalizedStrategy === "two_phase" || normalizedStrategy === "two-phase") {
+      uploadStrategy = { type: "two_phase" };
+      attachmentsAreEnabled = true;
+    } else if (normalizedStrategy === "direct") {
+      const directUploadUrl = import.meta.env.VITE_CHATKIT_DIRECT_UPLOAD_URL?.trim();
+      if (directUploadUrl) {
+        uploadStrategy = { type: "direct", uploadUrl: directUploadUrl };
+        attachmentsAreEnabled = true;
+      } else {
+        console.warn(
+          "[ChatKit] VITE_CHATKIT_UPLOAD_STRATEGY=direct nécessite VITE_CHATKIT_DIRECT_UPLOAD_URL. Les pièces jointes restent désactivées.",
+        );
+      }
+    } else {
+      console.warn(
+        `[ChatKit] Stratégie d'upload inconnue : "${normalizedStrategy}". Les pièces jointes restent désactivées.`,
+      );
+    }
+
+    const customApiConfig: ChatKitOptions["api"] = uploadStrategy
+      ? { url: customApiUrl, domainKey, uploadStrategy }
+      : { url: customApiUrl, domainKey };
+
+    return {
+      apiConfig: customApiConfig,
+      attachmentsEnabled: attachmentsAreEnabled,
+    };
+  }, [getClientSecret]);
+
+  const attachmentsConfig = useMemo(
+    () =>
+      attachmentsEnabled
+        ? {
+            enabled: true,
+            maxCount: 4,
+            maxSize: 10 * 1024 * 1024,
+            accept: {
+              "image/*": [".png", ".jpg", ".jpeg", ".gif", ".webp"],
+              "application/pdf": [".pdf"],
+              "text/plain": [".txt", ".md"],
+            },
+          }
+        : { enabled: false },
+    [attachmentsEnabled],
+  );
+
   useEffect(() => {
     const wasDesktop = previousIsDesktopRef.current;
 
@@ -246,9 +320,7 @@ export function MyChat() {
   const chatkitOptions = useMemo(
     () =>
       ({
-        api: {
-          getClientSecret,
-        },
+        api: apiConfig,
         header: {
           leftAction: {
             icon: "menu",
@@ -264,16 +336,7 @@ export function MyChat() {
         },
         composer: {
           placeholder: "Posez votre question...",
-          attachments: {
-            enabled: true,
-            maxCount: 4,
-            maxSize: 10 * 1024 * 1024,
-            accept: {
-              "image/*": [".png", ".jpg", ".jpeg", ".gif", ".webp"],
-              "application/pdf": [".pdf"],
-              "text/plain": [".txt", ".md"],
-            },
-          },
+          attachments: attachmentsConfig,
         },
         onClientTool: async (toolCall) => {
           const { name, params } = toolCall as ClientToolCall;
@@ -340,7 +403,7 @@ export function MyChat() {
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
         },
       }) satisfies ChatKitOptions,
-    [getClientSecret, openProfileSettings, openSidebar],
+    [apiConfig, attachmentsConfig, openProfileSettings, openSidebar],
   );
 
   const { control } = useChatKit(chatkitOptions);
