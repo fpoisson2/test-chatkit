@@ -7,7 +7,7 @@ from typing import Mapping
 
 from dotenv import load_dotenv
 
-from workflows.agents import agent as workflow_agent
+from workflows.agents import run_workflow
 
 
 @dataclass(frozen=True)
@@ -49,15 +49,11 @@ class Settings:
             chatkit_api_base=env.get("CHATKIT_API_BASE", "https://api.openai.com"),
             chatkit_agent_model=env.get(
                 "CHATKIT_AGENT_MODEL",
-                getattr(workflow_agent, "model", "gpt-5"),
+                "gpt-5",
             ),
             chatkit_agent_instructions=env.get(
                 "CHATKIT_AGENT_INSTRUCTIONS",
-                getattr(
-                    workflow_agent,
-                    "instructions",
-                    "Fournis la météo à l'utilisateur",
-                ),
+                "Assistant conversationnel",
             ),
             database_url=require(
                 "DATABASE_URL",
