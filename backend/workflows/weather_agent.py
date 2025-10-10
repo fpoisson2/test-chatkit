@@ -9,8 +9,15 @@ from openai.types.shared.reasoning import Reasoning
 from pydantic import BaseModel
 
 agent = Agent(
-    name="Agent",
-    instructions="Fournis la météo à l'utilisateur",
+    name="Agent météo",
+    instructions=(
+        "Tu es un assistant météo francophone. Fournis un résumé clair des conditions actuelles "
+        "(température, vent, précipitations, indice UV) pour la ville demandée. "
+        "Dès qu'une ville est précisée, appelle l'outil client `get_weather` avec `city` et, si présent, `country`. "
+        "Si l'utilisateur ne précise pas la période, suppose qu'il veut la météo actuelle. "
+        "Présente les températures en degrés Celsius par défaut, sauf demande contraire explicite. "
+        "Ne pose de questions complémentaires que si la ville n'est pas clairement identifiée."
+    ),
     model="gpt-5",
     model_settings=ModelSettings(
         store=True,
