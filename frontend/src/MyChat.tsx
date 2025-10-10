@@ -125,6 +125,7 @@ export function MyChat() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(getDesktopLayoutPreference);
   const previousIsDesktopRef = useRef(isDesktopLayout);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
+  const lastVisibilityRefreshRef = useRef(0);
 
   const getClientSecret = useCallback(async (currentSecret: string | null) => {
     if (currentSecret) {
@@ -550,7 +551,57 @@ export function MyChat() {
     [apiConfig, attachmentsConfig, openProfileSettings, openSidebar],
   );
 
-  const { control } = useChatKit(chatkitOptions);
+  const { control, fetchUpdates } = useChatKit(chatkitOptions);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+
+    let rafHandle: number | null = null;
+
+    const refreshConversation = () => {
+      const now = Date.now();
+      if (now - lastVisibilityRefreshRef.current < 500) {
+        return;
+      }
+      lastVisibilityRefreshRef.current = now;
+
+      fetchUpdates().catch((err) => {
+        if (import.meta.env.DEV) {
+          console.warn("[ChatKit] Échec de la synchronisation après retour d'onglet", err);
+        }
+      });
+    };
+
+    const scheduleRefresh = () => {
+      if (rafHandle !== null) {
+        cancelAnimationFrame(rafHandle);
+      }
+      rafHandle = requestAnimationFrame(refreshConversation);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        scheduleRefresh();
+      }
+    };
+
+    const handleWindowFocus = () => {
+      scheduleRefresh();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
+      if (rafHandle !== null) {
+        cancelAnimationFrame(rafHandle);
+      }
+    };
+  }, [fetchUpdates]);
 
   const statusMessage = error ?? (isLoading ? "Initialisation de la session…" : null);
 
