@@ -1,4 +1,4 @@
-from openai_agents import WebSearchTool, Agent, ModelSettings, RunContextWrapper, TResponseInputItem, Runner, RunConfig
+from agents import WebSearchTool, Agent, ModelSettings, RunContextWrapper, TResponseInputItem, Runner, RunConfig
 from pydantic import BaseModel
 from openai.types.shared.reasoning import Reasoning
 
