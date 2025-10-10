@@ -449,7 +449,6 @@ Générez les autres sections exactement comme décrit, sans ajout ni omission s
   model_settings=ModelSettings(
     temperature=1,
     top_p=1,
-    max_tokens=2048,
     store=True
   )
 )
