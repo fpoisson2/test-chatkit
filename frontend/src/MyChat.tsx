@@ -15,6 +15,12 @@ import { useAuth } from "./auth";
 import { SidebarIcon, type SidebarIconName } from "./components/SidebarIcon";
 import { getDesktopLayoutPreference, useIsDesktopLayout } from "./hooks/useDesktopLayout";
 import { getOrCreateDeviceId } from "./utils/device";
+import {
+  clearStoredChatKitSecret,
+  inferChatKitSessionExpiration,
+  loadStoredChatKitSecret,
+  persistChatKitSecret,
+} from "./utils/chatkitSession";
 
 type WeatherToolCall = {
   name: "get_weather";
@@ -121,18 +127,34 @@ export function MyChat() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [deviceId] = useState(() => getOrCreateDeviceId());
   const isDesktopLayout = useIsDesktopLayout();
   const [isSidebarOpen, setIsSidebarOpen] = useState(getDesktopLayoutPreference);
   const previousIsDesktopRef = useRef(isDesktopLayout);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const lastVisibilityRefreshRef = useRef(0);
+  const previousSessionOwnerRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const sessionOwner = user?.email ?? deviceId;
+    const previousOwner = previousSessionOwnerRef.current;
+    if (previousOwner && previousOwner !== sessionOwner) {
+      clearStoredChatKitSecret(previousOwner);
+    }
+    previousSessionOwnerRef.current = sessionOwner;
+  }, [deviceId, user?.email]);
 
   const getClientSecret = useCallback(async (currentSecret: string | null) => {
     if (currentSecret) {
       return currentSecret;
     }
 
-    const deviceId = getOrCreateDeviceId();
+    const sessionOwner = user?.email ?? deviceId;
+    const cachedSecret = loadStoredChatKitSecret(sessionOwner);
+    if (cachedSecret) {
+      return cachedSecret;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -147,7 +169,7 @@ export function MyChat() {
       const res = await fetch("/api/chatkit/session", {
         method: "POST",
         headers,
-        body: JSON.stringify({ user: user?.email ?? deviceId }),
+        body: JSON.stringify({ user: sessionOwner }),
       });
 
       if (!res.ok) {
@@ -164,16 +186,20 @@ export function MyChat() {
         throw new Error(errorMessage);
       }
 
+      const expiresAt = inferChatKitSessionExpiration(data);
+      persistChatKitSecret(sessionOwner, data.client_secret, expiresAt);
+
       return data.client_secret;
     } catch (err) {
       if (err instanceof Error) {
         setError(err.message);
       }
+      clearStoredChatKitSecret(sessionOwner);
       throw err;
     } finally {
       setIsLoading(false);
     }
-  }, [token, user]);
+  }, [deviceId, token, user]);
 
   const { apiConfig, attachmentsEnabled } = useMemo<{
     apiConfig: ChatKitOptions["api"];
