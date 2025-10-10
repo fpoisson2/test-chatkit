@@ -1,4 +1,4 @@
-agents
+openai-agents
 fastapi
 openai
 openai-chatkit
