@@ -168,12 +168,12 @@ export function MyChat() {
       import.meta.env.VITE_CHATKIT_FORCE_HOSTED?.trim().toLowerCase() === "true";
 
     const domainKey = import.meta.env.VITE_CHATKIT_DOMAIN_KEY?.trim();
-    const useDomainKey =
-      import.meta.env.VITE_CHATKIT_USE_DOMAIN_KEY?.trim().toLowerCase() === "true";
+    const skipDomainVerification =
+      import.meta.env.VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION?.trim().toLowerCase() ===
+      "true";
     const explicitCustomUrl = import.meta.env.VITE_CHATKIT_API_URL?.trim();
-    const customApiUrl = explicitCustomUrl || "/api/chatkit";
-    const effectiveDomainKey = useDomainKey && domainKey ? domainKey : null;
-    const useHostedFlow = forceHosted;
+    const customApiUrl = explicitCustomUrl || (domainKey ? "/api/chatkit" : null);
+    const useHostedFlow = forceHosted || !domainKey || !customApiUrl;
 
     if (useHostedFlow) {
       return {
@@ -220,29 +220,47 @@ export function MyChat() {
       if (token) {
         headers.set("Authorization", `Bearer ${token}`);
       }
+
+      if (skipDomainVerification) {
+        const target =
+          typeof resource === "string"
+            ? resource
+            : resource instanceof URL
+              ? resource.href
+              : resource?.url;
+        if (typeof target === "string" && target.includes("/domain_keys/verify")) {
+          console.info(
+            "[ChatKit] Vérification de domaine ignorée (VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION=true).",
+          );
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ status: "skipped" }),
+              {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+              },
+            ),
+          );
+        }
+      }
+
       return fetch(resource, {
         ...init,
         headers,
       });
     };
 
-    if (!effectiveDomainKey && domainKey && !useDomainKey) {
-      console.info(
-        "[ChatKit] VITE_CHATKIT_DOMAIN_KEY détecté mais non utilisé (activez VITE_CHATKIT_USE_DOMAIN_KEY=true pour lancer la vérification de domaine).",
-      );
-    }
-
     const customApiConfig = uploadStrategy
       ? ({
           url: customApiUrl,
           fetch: authFetch,
-          ...(effectiveDomainKey ? { domainKey: effectiveDomainKey } : {}),
+          domainKey,
           uploadStrategy,
         } as ChatKitOptions["api"])
       : ({
           url: customApiUrl,
           fetch: authFetch,
-          ...(effectiveDomainKey ? { domainKey: effectiveDomainKey } : {}),
+          domainKey,
         } as ChatKitOptions["api"]);
 
     return {
