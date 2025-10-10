@@ -28,7 +28,7 @@ from chatkit.types import (
 from openai.types.shared.reasoning import Reasoning
 
 from .config import Settings, get_settings
-from workflows.weather_agent import agent as weather_workflow_agent
+from workflows.agents import agent as workflow_agent
 
 logger = logging.getLogger("chatkit.server")
 
@@ -317,7 +317,7 @@ def _extract_text(final_output: Any) -> str:
 
 def _build_weather_agent(settings: Settings) -> Agent:
     """Construit l'agent principal en se basant sur le workflow météo."""
-    base_agent = weather_workflow_agent
+    base_agent = workflow_agent
     base_settings = getattr(base_agent, "model_settings", None)
     if base_settings is None:
         model_settings = ModelSettings(
@@ -334,6 +334,7 @@ def _build_weather_agent(settings: Settings) -> Agent:
             or getattr(base_agent, "instructions", "Fournis la météo à l'utilisateur")
         ),
         model=settings.chatkit_agent_model or getattr(base_agent, "model", "gpt-5"),
+        tools=list(getattr(base_agent, "tools", [])),
         model_settings=model_settings,
     )
 
