@@ -28,7 +28,7 @@ from chatkit.types import (
 from openai.types.shared.reasoning import Reasoning
 
 from .config import Settings, get_settings
-from ..workflows.get_weather import agent as weather_workflow_agent
+from workflows.weather_agent import agent as weather_workflow_agent
 
 logger = logging.getLogger("chatkit.server")
 

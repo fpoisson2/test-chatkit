@@ -7,7 +7,7 @@ from typing import Mapping
 
 from dotenv import load_dotenv
 
-from ..workflows.get_weather import agent as weather_workflow_agent
+from workflows.weather_agent import agent as weather_workflow_agent
 
 
 @dataclass(frozen=True)
