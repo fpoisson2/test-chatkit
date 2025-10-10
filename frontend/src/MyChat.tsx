@@ -231,37 +231,98 @@ export function MyChat() {
       );
     }
 
-    const authFetch: typeof fetch = (resource, init) => {
+    const resolveResourceUrl = (resource: Parameters<typeof fetch>[0]): string | null => {
+      if (typeof resource === "string") {
+        return resource;
+      }
+      if (resource instanceof URL) {
+        return resource.href;
+      }
+      if (resource && typeof resource === "object" && "url" in resource) {
+        const { url } = resource as { url?: string };
+        return typeof url === "string" ? url : null;
+      }
+      return null;
+    };
+
+    const buildServerErrorMessage = (
+      url: string | null,
+      status: number,
+      statusText: string,
+      details: string | null,
+    ) => {
+      const baseUrl = url ?? "l'endpoint ChatKit";
+      const normalizedText = statusText || "Erreur serveur";
+      const mainMessage = `Le serveur ChatKit (${baseUrl}) a renvoyé ${status} ${normalizedText}.`;
+
+      const hint =
+        status === 502
+          ? " Vérifiez que votre implémentation auto-hébergée est accessible et que la variable VITE_CHATKIT_API_URL pointe vers la bonne URL."
+          : "";
+
+      const extraDetails = details ? ` Détails : ${details}` : "";
+
+      return `${mainMessage}${hint}${extraDetails}`.trim();
+    };
+
+    const authFetch: typeof fetch = async (resource, init) => {
       const headers = new Headers(init?.headers ?? {});
       if (token) {
         headers.set("Authorization", `Bearer ${token}`);
       }
 
-      if (shouldBypassDomainCheck) {
-        const target =
-          typeof resource === "string"
-            ? resource
-            : resource instanceof URL
-              ? resource.href
-              : resource?.url;
-        if (typeof target === "string" && target.includes("/domain_keys/verify")) {
-          console.info("[ChatKit] Vérification de domaine ignorée (mode développement).");
-          return Promise.resolve(
-            new Response(
-              JSON.stringify({ status: "skipped" }),
-              {
-                status: 200,
-                headers: { "Content-Type": "application/json" },
-              },
-            ),
-          );
-        }
+      const targetUrl = resolveResourceUrl(resource);
+
+      if (shouldBypassDomainCheck && targetUrl?.includes("/domain_keys/verify")) {
+        console.info("[ChatKit] Vérification de domaine ignorée (mode développement).");
+        return new Response(
+          JSON.stringify({ status: "skipped" }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
       }
 
-      return fetch(resource, {
-        ...init,
-        headers,
-      });
+      try {
+        const response = await fetch(resource, {
+          ...init,
+          headers,
+        });
+
+        if (!response.ok) {
+          let responseDetails: string | null = null;
+          try {
+            responseDetails = await response.clone().text();
+          } catch (cloneError) {
+            if (import.meta.env.DEV) {
+              console.warn("[ChatKit] Impossible de lire le corps de la réponse d'erreur", cloneError);
+            }
+          }
+
+          const errorMessage = buildServerErrorMessage(
+            targetUrl,
+            response.status,
+            response.statusText,
+            responseDetails?.trim() ? responseDetails : null,
+          );
+
+          const enhancedError = new Error(errorMessage);
+          (enhancedError as Error & { response?: Response }).response = response;
+          throw enhancedError;
+        }
+
+        return response;
+      } catch (err) {
+        if (err instanceof TypeError) {
+          const connectivityMessage = targetUrl
+            ? `Impossible de contacter ${targetUrl}. Vérifiez votre connexion réseau ou la disponibilité du serveur ChatKit.`
+            : "Impossible de joindre le serveur ChatKit. Vérifiez votre connexion réseau.";
+          throw new Error(connectivityMessage, { cause: err });
+        }
+
+        throw err;
+      }
     };
 
     if (!rawDomainKey) {

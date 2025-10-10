@@ -7,6 +7,7 @@
     "frontend:build": "npm run --prefix frontend build",
     "frontend:preview": "npm run --prefix frontend preview",
     "backend:sync": "sh -c 'if command -v uv >/dev/null; then uv sync --project backend; else python3 -m pip install -r backend/requirements.txt; fi'",
-    "backend:dev": "sh -c 'if command -v uv >/dev/null; then uv run --project backend uvicorn server:app --reload --app-dir backend; else python3 -m uvicorn server:app --reload --app-dir backend; fi'"
+    "backend:dev": "sh -c 'if command -v uv >/dev/null; then uv run --project backend uvicorn server:app --reload --app-dir backend; else python3 -m uvicorn server:app --reload --app-dir backend; fi'",
+    "diagnostic:env": "node scripts/check-env.js"
   }
 }
