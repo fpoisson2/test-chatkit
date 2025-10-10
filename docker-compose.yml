@@ -16,6 +16,7 @@ services:
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-120}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-adminpass}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5183}
     ports:
       - "0.0.0.0:8000:8000"
     depends_on:
@@ -52,7 +53,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-chatkit}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatkit}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
 volumes:
