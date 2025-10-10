@@ -265,7 +265,14 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
             return
 
+        new_items = getattr(agent_result, "new_items", None)
+        if new_items:
+            logger.info(
+                "Agent new_items: %s",
+                [getattr(item, "type", type(item).__name__) for item in new_items],
+            )
         final_output = getattr(agent_result, "final_output", None)
+        logger.info("Agent final_output type: %s", type(final_output).__name__)
         if final_output is None:
             yield ErrorEvent(
                 code=ErrorCode.STREAM_ERROR,
