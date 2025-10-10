@@ -23,8 +23,11 @@ from chatkit.types import (
     UserMessageItem,
 )
 
+from agents import Runner
+from chatkit.agents import stream_agent_response, AgentContext, simple_to_agent_input
+
 from .config import Settings, get_settings
-from workflows.agents import WorkflowInput, run_workflow
+from workflows.agents import triage, get_data_from_user, GetDataFromUserContext
 
 logger = logging.getLogger("chatkit.server")
 
@@ -251,45 +254,35 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
             return
 
+        # Créer le contexte pour l'agent
+        agent_context = AgentContext(
+            thread=thread,
+            store=self.store,
+            request_context=context,
+        )
+
+        # Convertir le message utilisateur en input pour l'agent
+        agent_input = await simple_to_agent_input(input_user_message) if input_user_message else []
+
         try:
-            workflow_result = await run_workflow(
-                WorkflowInput(input_as_text=user_text)
+            # Exécuter l'agent de triage avec streaming
+            result = Runner.run_streamed(
+                triage,
+                input=agent_input,
             )
+
+            # Stream les événements de l'agent vers ChatKit
+            async for event in stream_agent_response(agent_context, result):
+                yield event
+
         except Exception as exc:  # pragma: no cover - erreurs runtime workflow
-            logger.exception("Workflow execution failed")
+            logger.exception("Agent execution failed")
             yield ErrorEvent(
                 code=ErrorCode.STREAM_ERROR,
                 message=str(exc),
                 allow_retry=True,
             )
             return
-
-        message_text = workflow_result.get("output_text")
-        if not message_text:
-            yield ErrorEvent(
-                code=ErrorCode.STREAM_ERROR,
-                message="La réponse du workflow est vide.",
-                allow_retry=False,
-            )
-            return
-
-        if not isinstance(message_text, str):
-            message_text = str(message_text)
-
-        assistant_item = AssistantMessageItem(
-            id=self.store.generate_item_id("message", thread, context),
-            thread_id=thread.id,
-            created_at=datetime.now(),
-            content=[AssistantMessageContent(text=message_text)],
-        )
-        yield ThreadItemDoneEvent(item=assistant_item)
-
-        end_of_turn = EndOfTurnItem(
-            id=self.store.generate_item_id("message", thread, context),
-            thread_id=thread.id,
-            created_at=datetime.now(),
-        )
-        yield ThreadItemDoneEvent(item=end_of_turn)
 
 
 def _collect_user_text(message: UserMessageItem | None) -> str:
