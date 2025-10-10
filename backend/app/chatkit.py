@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import AsyncIterator, Sequence
 
-from chatkit.store import NotFoundError, Store
+from chatkit.store import NotFoundError
 from chatkit.server import ChatKitServer
 from chatkit.types import (
-    Attachment,
     AssistantMessageContent,
     AssistantMessageItem,
     EndOfTurnItem,
@@ -27,6 +25,8 @@ from agents import Runner
 from chatkit.agents import stream_agent_response, AgentContext, simple_to_agent_input
 
 from .config import Settings, get_settings
+from .chatkit_store import PostgresChatKitStore
+from .database import SessionLocal
 from workflows.agents import triage, get_data_from_user, GetDataFromUserContext, run_workflow, WorkflowInput
 
 logger = logging.getLogger("chatkit.server")
@@ -50,175 +50,11 @@ class ChatKitRequestContext:
         return metadata
 
 
-class InMemoryChatKitStore(Store[ChatKitRequestContext]):
-    """Implémentation en mémoire du Store ChatKit.
-
-    Elle conserve les fils, messages et pièces jointes pour la durée de vie du
-    processus FastAPI. En production, remplacez-la par une persistance durable.
-    """
-
-    def __init__(self) -> None:
-        self._threads: dict[str, ThreadMetadata] = {}
-        self._items: dict[str, list[ThreadItem]] = {}
-        self._attachments: dict[str, Attachment] = {}
-        self._lock = asyncio.Lock()
-
-    async def load_thread(self, thread_id: str, context: ChatKitRequestContext) -> ThreadMetadata:
-        async with self._lock:
-            if thread_id not in self._threads:
-                raise NotFoundError(f"Thread {thread_id} not found")
-            return self._threads[thread_id].model_copy(deep=True)
-
-    async def save_thread(self, thread: ThreadMetadata, context: ChatKitRequestContext) -> None:
-        async with self._lock:
-            payload = thread.model_dump()
-            payload.pop("items", None)
-            metadata = ThreadMetadata(**payload)
-            self._threads[thread.id] = metadata
-            self._items.setdefault(thread.id, [])
-
-    async def load_thread_items(
-        self,
-        thread_id: str,
-        after: str | None,
-        limit: int,
-        order: str,
-        context: ChatKitRequestContext,
-    ) -> Page[ThreadItem]:
-        async with self._lock:
-            if thread_id not in self._threads:
-                raise NotFoundError(f"Thread {thread_id} not found")
-
-            items = list(self._items.get(thread_id, []))
-            ordered = list(reversed(items)) if order == "desc" else items[:]
-
-            start_index = 0
-            if after:
-                for idx, item in enumerate(ordered):
-                    if item.id == after:
-                        start_index = idx + 1
-                        break
-
-            effective_limit = limit or len(ordered) - start_index
-            sliced = ordered[start_index : start_index + effective_limit]
-            has_more = start_index + effective_limit < len(ordered)
-            next_after = sliced[-1].id if has_more and sliced else None
-
-            return Page(
-                data=[item.model_copy(deep=True) for item in sliced],
-                has_more=has_more,
-                after=next_after,
-            )
-
-    async def save_attachment(self, attachment: Attachment, context: ChatKitRequestContext) -> None:
-        async with self._lock:
-            self._attachments[attachment.id] = attachment.model_copy(deep=True)
-
-    async def load_attachment(self, attachment_id: str, context: ChatKitRequestContext) -> Attachment:
-        async with self._lock:
-            attachment = self._attachments.get(attachment_id)
-            if attachment is None:
-                raise NotFoundError(f"Attachment {attachment_id} not found")
-            return attachment.model_copy(deep=True)
-
-    async def delete_attachment(self, attachment_id: str, context: ChatKitRequestContext) -> None:
-        async with self._lock:
-            self._attachments.pop(attachment_id, None)
-
-    async def load_threads(
-        self,
-        limit: int,
-        after: str | None,
-        order: str,
-        context: ChatKitRequestContext,
-    ) -> Page[ThreadMetadata]:
-        async with self._lock:
-            threads = list(self._threads.values())
-            threads.sort(key=lambda item: item.created_at, reverse=order == "desc")
-
-            start_index = 0
-            if after:
-                for idx, thread in enumerate(threads):
-                    if thread.id == after:
-                        start_index = idx + 1
-                        break
-
-            effective_limit = limit or len(threads) - start_index
-            sliced = threads[start_index : start_index + effective_limit]
-            has_more = start_index + effective_limit < len(threads)
-            next_after = sliced[-1].id if has_more and sliced else None
-
-            return Page(
-                data=[thread.model_copy(deep=True) for thread in sliced],
-                has_more=has_more,
-                after=next_after,
-            )
-
-    async def add_thread_item(
-        self,
-        thread_id: str,
-        item: ThreadItem,
-        context: ChatKitRequestContext,
-    ) -> None:
-        async with self._lock:
-            if thread_id not in self._threads:
-                raise NotFoundError(f"Thread {thread_id} not found")
-            items = self._items.setdefault(thread_id, [])
-            items.append(item.model_copy(deep=True))
-
-    async def save_item(
-        self,
-        thread_id: str,
-        item: ThreadItem,
-        context: ChatKitRequestContext,
-    ) -> None:
-        async with self._lock:
-            items = self._items.get(thread_id)
-            if not items:
-                raise NotFoundError(f"Thread {thread_id} not found")
-            for idx, existing in enumerate(items):
-                if existing.id == item.id:
-                    items[idx] = item.model_copy(deep=True)
-                    break
-            else:
-                raise NotFoundError(f"Item {item.id} not found in thread {thread_id}")
-
-    async def load_item(
-        self,
-        thread_id: str,
-        item_id: str,
-        context: ChatKitRequestContext,
-    ) -> ThreadItem:
-        async with self._lock:
-            items = self._items.get(thread_id, [])
-            for existing in items:
-                if existing.id == item_id:
-                    return existing.model_copy(deep=True)
-            raise NotFoundError(f"Item {item_id} not found in thread {thread_id}")
-
-    async def delete_thread(self, thread_id: str, context: ChatKitRequestContext) -> None:
-        async with self._lock:
-            self._threads.pop(thread_id, None)
-            self._items.pop(thread_id, None)
-
-    async def delete_thread_item(
-        self,
-        thread_id: str,
-        item_id: str,
-        context: ChatKitRequestContext,
-    ) -> None:
-        async with self._lock:
-            items = self._items.get(thread_id)
-            if not items:
-                return
-            self._items[thread_id] = [item for item in items if item.id != item_id]
-
-
 class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     """Serveur ChatKit piloté par un workflow local."""
 
     def __init__(self, settings: Settings) -> None:
-        super().__init__(InMemoryChatKitStore())
+        super().__init__(PostgresChatKitStore(SessionLocal))
         self._settings = settings
         _apply_agent_overrides(settings)
 
