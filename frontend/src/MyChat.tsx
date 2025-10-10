@@ -112,6 +112,54 @@ export function MyChat() {
   const previousIsDesktopRef = useRef(isDesktopLayout);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
 
+  const getClientSecret = useCallback(async (currentSecret: string | null) => {
+    if (currentSecret) {
+      return currentSecret;
+    }
+
+    const deviceId = getOrCreateDeviceId();
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      const res = await fetch("/api/chatkit/session", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ user: user?.email ?? deviceId }),
+      });
+
+      if (!res.ok) {
+        const message = await res.text();
+        const errorMessage = `Failed to fetch client secret: ${res.status} ${message}`;
+        setError(errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      const data = await res.json();
+      if (!data?.client_secret) {
+        const errorMessage = "Missing client_secret in ChatKit session response";
+        setError(errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      return data.client_secret;
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
+      }
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [token, user]);
+
   const { apiConfig, attachmentsEnabled } = useMemo<{
     apiConfig: ChatKitOptions["api"];
     attachmentsEnabled: boolean;
@@ -268,54 +316,6 @@ export function MyChat() {
     }
     logout();
   }, [closeSidebar, isDesktopLayout, logout]);
-
-  const getClientSecret = useCallback(async (currentSecret: string | null) => {
-    if (currentSecret) {
-      return currentSecret;
-    }
-
-    const deviceId = getOrCreateDeviceId();
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-
-      const res = await fetch("/api/chatkit/session", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ user: user?.email ?? deviceId }),
-      });
-
-      if (!res.ok) {
-        const message = await res.text();
-        const errorMessage = `Failed to fetch client secret: ${res.status} ${message}`;
-        setError(errorMessage);
-        throw new Error(errorMessage);
-      }
-
-      const data = await res.json();
-      if (!data?.client_secret) {
-        const errorMessage = "Missing client_secret in ChatKit session response";
-        setError(errorMessage);
-        throw new Error(errorMessage);
-      }
-
-      return data.client_secret;
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      }
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [token, user]);
 
   const chatkitOptions = useMemo(
     () =>
