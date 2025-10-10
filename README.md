@@ -172,16 +172,23 @@ Depuis la racine du dépôt, vous pouvez orchestrer le backend FastAPI et le fro
    # Optionnel : ajustez la connexion PostgreSQL (défaut : postgresql+psycopg://chatkit:chatkit@db:5432/chatkit).
    # En Docker Compose, laissez `db` comme hostname ou omettez complètement cette variable pour conserver la valeur par défaut.
    # DATABASE_URL="postgresql+psycopg://user:password@host:5432/chatkit"
-   # Optionnel : activez le mode workflow hébergé
+   # Optionnel : activez le mode workflow hébergé
    # CHATKIT_WORKFLOW_ID="wf_..."
-   # Optionnel : personnalisez l'agent exécuté par /api/chatkit
+   # Optionnel : personnalisez l'agent exécuté par /api/chatkit
    # CHATKIT_AGENT_MODEL="gpt-4.1-mini"
    # CHATKIT_AGENT_INSTRUCTIONS="Tu es un assistant conversationnel…"
-   # Optionnel : ajustez le port d'exposition du frontend
+   # Optionnel : alignez le frontend sur votre endpoint ChatKit
+   # VITE_CHATKIT_API_URL="https://chatkit.example.com/api/chatkit"
+   # VITE_CHATKIT_DOMAIN_KEY="domain_pk_..."
+   # VITE_CHATKIT_FORCE_HOSTED="false"
+   # VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION="true"
+   # VITE_CHATKIT_UPLOAD_STRATEGY="two_phase"
+   # VITE_CHATKIT_DIRECT_UPLOAD_URL="https://chatkit.example.com/upload"
+   # Optionnel : ajustez le port d'exposition du frontend
    VITE_PORT=5183
-   # Optionnel : ajustez le hostname utilisé par le HMR (utile derrière un tunnel/proxy)
+   # Optionnel : ajustez le hostname utilisé par le HMR (utile derrière un tunnel/proxy)
    VITE_HMR_HOST=localhost
-   # Optionnel : alignez la liste d'hôtes autorisés par Vite (séparés par des virgules)
+   # Optionnel : alignez la liste d'hôtes autorisés par Vite (séparés par des virgules)
    # VITE_ALLOWED_HOSTS="chatkit.example.com"
    ```
    Les autres variables d'environnement exposées dans `docker-compose.yml` disposent de valeurs par défaut (`VITE_ALLOWED_HOSTS`, `VITE_HMR_PROTOCOL`, `VITE_HMR_CLIENT_PORT`, `VITE_BACKEND_URL`, etc.) que vous pouvez également surcharger dans `.env` si nécessaire.
