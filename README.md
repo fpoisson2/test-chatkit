@@ -55,9 +55,9 @@ curl "http://localhost:8000/api/tools/weather?city=Lyon"
 
 La charge utile retournée est sérialisable en JSON et peut être consommée directement par un outil ChatKit (fonction Python, workflow Agent Builder, etc.).
 
-### Exemple d'agent TypeScript dédié
+### Exemple d'agent Python dédié
 
-Le dossier `frontend/src/workflows/` contient désormais un exemple minimal `weatherAgent.ts` basé sur `@openai/agents`. L'agent "Fournis la météo à l'utilisateur" illustre comment instancier un `Agent`, lancer un `Runner` avec un historique de conversation initial et renvoyer la sortie finale formattée (`output_text`). Vous pouvez vous en servir comme point de départ pour héberger votre workflow Agent Builder dans votre propre codebase, puis l'adapter (gestion d'état, appels d'API météo, etc.) avant de le connecter à votre serveur ChatKit.
+Le dossier `backend/workflows/` contient désormais un exemple minimal `weather_agent.py` basé sur la librairie Python `agents`. L'agent "Fournis la météo à l'utilisateur" illustre comment instancier un `Agent`, lancer un `Runner` avec un historique de conversation initial et renvoyer la sortie finale formattée (`output_text`). Vous pouvez vous en servir comme point de départ pour héberger votre workflow Agent Builder dans votre propre codebase, puis l'adapter (gestion d'état, appels d'API météo, etc.) avant de le connecter à votre serveur ChatKit.
 
 ### Intégration côté widget ChatKit
 

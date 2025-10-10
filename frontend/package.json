@@ -9,7 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@openai/agents": "^0.1.9",
     "@openai/chatkit-react": "^0.0.0",
     "react-router-dom": "^6.28.0",
     "react": "^19.0.0",
