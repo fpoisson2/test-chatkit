@@ -14,7 +14,7 @@ web_search_preview = WebSearchTool(
 )
 class TriageSchema(BaseModel):
   has_all_details: bool
-  details manquants: str
+  details_manquants: str
 
 
 class RDacteurSchema__IntroPlaceCours(BaseModel):
@@ -126,7 +126,7 @@ class RDacteurSchema(BaseModel):
 
 class Triage2Schema(BaseModel):
   has_all_details: bool
-  details manquants: str
+  details_manquants: str
 
 
 triage = Agent(
