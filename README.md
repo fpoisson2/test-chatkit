@@ -78,6 +78,8 @@ Le champ de composition autorise désormais l'ajout de pièces jointes (images, 
 
 Lorsque vous définissez `VITE_CHATKIT_API_URL`, `src/MyChat.tsx` fournit une fonction `fetch` personnalisée qui ajoute automatiquement le jeton JWT à chaque appel `fetch`, ce qui permet au serveur `/api/chatkit` d'identifier l'utilisateur côté backend. Si vous restez sur l'API hébergée, le composant continue d'utiliser `/api/chatkit/session` et peut s'appuyer sur le proxy `/api/chatkit/proxy/*` pour contourner les restrictions CORS lors du streaming SSE.
 
+> ❗ **Erreurs 502 sur un serveur externe** — si le navigateur affiche `Failed to load resource: 502 (Bad Gateway)` lors d'un appel vers `VITE_CHATKIT_API_URL`, cela signifie que l'URL configurée ne répond pas ou que le reverse proxy renvoie une erreur. Le widget remontera désormais un message d'erreur explicite dans l'interface ; vérifiez que votre serveur ChatKit auto‑hébergé est joignable et que la variable `VITE_CHATKIT_API_URL` pointe bien vers l'endpoint `/api/chatkit` exposé.
+
 ## Frontend (`frontend/`)
 
 - Install JavaScript dependencies from within `frontend/`: `npm install` (ou `npm run frontend:install` à la racine)
@@ -165,6 +167,23 @@ Une fois votre serveur en place, pointez le widget ChatKit (via `apiURL`) vers v
 7. **Redémarrez le serveur Vite** (`npm run frontend:dev` depuis la racine) pour recharger les nouvelles variables.
 
  Lorsque ces variables sont définies, le composant `MyChat` n'appelle plus `/api/chatkit/session` et dialogue directement avec votre serveur via l'API ChatKit fournie par le backend FastAPI. Sans clé de domaine, le frontend ignore la vérification distante et reste pleinement fonctionnel en mode auto-hébergé. Si `VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION=true`, la requête correspondante est neutralisée et le widget s'exécute sans dépendre de l'endpoint OpenAI `domain_keys/verify_hosted`. Vous pouvez à tout moment forcer le flux hébergé en définissant `VITE_CHATKIT_FORCE_HOSTED=true`. Dans le mode auto-hébergé, si aucune stratégie d'upload n'est fournie, les pièces jointes sont automatiquement désactivées afin d'éviter les erreurs de configuration.
+
+### Vérifier rapidement votre fichier `.env`
+
+Un doute sur la configuration appliquée ? Depuis la **racine du dépôt**, lancez :
+
+```bash
+npm run diagnostic:env
+```
+
+Le script `scripts/check-env.js` parcourt votre fichier `.env` et signale les oublis les plus fréquents :
+
+- présence et format de `OPENAI_API_KEY` ;
+- correspondance des URL (`VITE_BACKEND_URL`, `VITE_CHATKIT_API_URL`) ;
+- stratégie d'upload et variables associées ;
+- clé de domaine et options de forçage du mode hébergé.
+
+En sortie, chaque ligne est préfixée par ✅ ou ⚠️ selon que le paramètre semble correct ou nécessite votre attention. En cas d'erreur 502 persistante, le script rappelle également la commande `curl -i <URL>` à exécuter pour vérifier que votre reverse proxy relaie bien l'endpoint `/api/chatkit`.
 
 ## Lancement via Docker Compose
 
