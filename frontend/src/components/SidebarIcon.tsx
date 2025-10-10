@@ -1,6 +1,12 @@
 import type { ReactNode } from "react";
 
-export type SidebarIconName = "logo" | "home" | "admin" | "settings" | "logout";
+export type SidebarIconName =
+  | "logo"
+  | "home"
+  | "admin"
+  | "settings"
+  | "login"
+  | "logout";
 
 const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
   logo: (
@@ -64,6 +70,34 @@ const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
       />
       <path
         d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </>
+  ),
+  login: (
+    <>
+      <path
+        d="M15 8.25 19.5 12 15 15.75"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M19.5 12H6.75"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M8.25 4.5h-1.5A2.25 2.25 0 0 0 4.5 6.75v10.5A2.25 2.25 0 0 0 6.75 19.5h1.5"
         fill="none"
         stroke="currentColor"
         strokeLinecap="round"

@@ -34,16 +34,20 @@ type NavigationItem = {
 };
 
 const buildNavigationItems = ({
+  isAuthenticated,
   isAdmin,
   handleSidebarHome,
   handleSidebarAdmin,
   handleSidebarSettings,
+  handleSidebarLogin,
   handleSidebarLogout,
 }: {
+  isAuthenticated: boolean;
   isAdmin: boolean;
   handleSidebarHome: () => void;
   handleSidebarAdmin: () => void;
   handleSidebarSettings: () => void;
+  handleSidebarLogin: () => void;
   handleSidebarLogout: () => void;
 }) => {
   const items: NavigationItem[] = [
@@ -64,20 +68,29 @@ const buildNavigationItems = ({
     });
   }
 
-  items.push(
-    {
-      key: "settings",
-      label: "Paramètres rapides",
-      icon: "settings",
-      onClick: handleSidebarSettings,
-    },
-    {
-      key: "logout",
-      label: "Déconnexion",
-      icon: "logout",
-      onClick: handleSidebarLogout,
-    },
-  );
+  if (isAuthenticated) {
+    items.push(
+      {
+        key: "settings",
+        label: "Paramètres rapides",
+        icon: "settings",
+        onClick: handleSidebarSettings,
+      },
+      {
+        key: "logout",
+        label: "Déconnexion",
+        icon: "logout",
+        onClick: handleSidebarLogout,
+      },
+    );
+  } else {
+    items.push({
+      key: "login",
+      label: "Connexion",
+      icon: "login",
+      onClick: handleSidebarLogin,
+    });
+  }
 
   return items;
 };
@@ -104,6 +117,7 @@ const useSidebarInteractions = ({
 export function MyChat() {
   const { token, user, logout } = useAuth();
   const navigate = useNavigate();
+  const isAuthenticated = Boolean(user);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -321,8 +335,12 @@ export function MyChat() {
   }, [closeSidebar, isDesktopLayout]);
 
   const openProfileSettings = useCallback(() => {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
     setIsSettingsModalOpen(true);
-  }, []);
+  }, [navigate, user]);
 
   const closeProfileSettings = useCallback(() => {
     setIsSettingsModalOpen(false);
@@ -366,6 +384,13 @@ export function MyChat() {
       closeSidebar();
     }
     navigate("/admin");
+  }, [closeSidebar, isDesktopLayout, navigate]);
+
+  const handleSidebarLogin = useCallback(() => {
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
+    navigate("/login");
   }, [closeSidebar, isDesktopLayout, navigate]);
 
   const handleSidebarLogout = useCallback(() => {
@@ -483,17 +508,21 @@ export function MyChat() {
   const navigationItems = useMemo(
     () =>
       buildNavigationItems({
+        isAuthenticated,
         isAdmin: Boolean(user?.is_admin),
         handleSidebarHome,
         handleSidebarAdmin,
         handleSidebarSettings,
+        handleSidebarLogin,
         handleSidebarLogout,
       }),
     [
+      isAuthenticated,
       handleSidebarAdmin,
       handleSidebarHome,
       handleSidebarLogout,
       handleSidebarSettings,
+      handleSidebarLogin,
       user?.is_admin,
     ],
   );

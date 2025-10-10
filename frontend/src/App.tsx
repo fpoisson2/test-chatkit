@@ -20,16 +20,6 @@ const RequireAdmin = ({ children }: { children: ReactElement }) => {
   return children;
 };
 
-const RequireAuth = ({ children }: { children: ReactElement }) => {
-  const { user } = useAuth();
-
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return children;
-};
-
 const RequireGuest = ({ children }: { children: ReactElement }) => {
   const { user } = useAuth();
 
@@ -40,25 +30,13 @@ const RequireGuest = ({ children }: { children: ReactElement }) => {
   return children;
 };
 
-const HomePage = () => {
-  const { user } = useAuth();
-
-  if (!user) {
-    return null;
-  }
-
-  return <MyChat />;
-};
+const HomePage = () => <MyChat />;
 
 export const App = () => (
   <Routes>
     <Route
       path="/"
-      element={(
-        <RequireAuth>
-          <HomePage />
-        </RequireAuth>
-      )}
+      element={<HomePage />}
     />
     <Route
       path="/login"
