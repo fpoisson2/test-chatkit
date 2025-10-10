@@ -9,16 +9,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@openai/chatkit-react": "^0.0.0",
-    "react-router-dom": "^6.28.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "@openai/chatkit-react": "*",
+    "react-router-dom": "*",
+    "react": "*",
+    "react-dom": "*"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^5.0.4",
-    "typescript": "^5.4.5",
-    "vite": "^5.2.0"
+    "@types/react": "*",
+    "@types/react-dom": "*",
+    "@vitejs/plugin-react": "*",
+    "typescript": "*",
+    "vite": "*"
   }
 }

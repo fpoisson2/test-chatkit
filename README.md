@@ -21,6 +21,8 @@ This repository mirrors the walkthrough in `chatkit.md`, providing both the lega
 
 Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi les `cd`. Si `uv` n'est pas installé, les commandes tombent automatiquement sur l'équivalent `python3 -m pip` / `python3 -m uvicorn`.
 
+> ℹ️ **Versions toujours à jour** — les manifestes (`backend/requirements.txt`, `backend/pyproject.toml`, `frontend/package.json`) ne fixent plus de contrainte de version. Chaque exécution de `npm run backend:sync` ou `npm run frontend:install` installe donc les dernières publications disponibles. Pensez à régénérer vos environnements locaux après un `git pull` pour récupérer les évolutions amont.
+
 ## Backend (`backend/`)
 
 - Install dependencies via [uv](https://github.com/astral-sh/uv): `uv sync` (ou `npm run backend:sync` à la racine)
@@ -37,6 +39,8 @@ Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi
   - Optionnel : `ADMIN_EMAIL` et `ADMIN_PASSWORD` pour provisionner automatiquement un compte administrateur au démarrage
   - Optionnel : `DATABASE_CONNECT_RETRIES` / `DATABASE_CONNECT_DELAY` pour ajuster la stratégie d'attente au démarrage
 - Start the dev server from the `backend/` directory: `uv run uvicorn server:app --reload` (ou `npm run backend:dev` à la racine)
+
+> 🔁 **Environnements virtuels** — sans fichier `uv.lock`, c'est l'index PyPI qui fait foi. En CI/CD, épinglez vos versions en générant un lockfile temporaire (`uv pip compile backend/requirements.txt`) si vous avez besoin de reproductibilité stricte.
 
 Le backend expose deux intégrations complémentaires :
 
@@ -78,6 +82,7 @@ Lorsque vous définissez `VITE_CHATKIT_API_URL`, `src/MyChat.tsx` fournit une fo
 - Start the Vite dev server (also from `frontend/`): `npm run dev` (default URL `http://localhost:5173`; alias racine `npm run frontend:dev`)
 - `src/App.tsx` définit le routage entre l'accueil (`/`), la page de connexion (`/login`) et le panneau d'administration (`/admin`)
 - Le widget ChatKit reste géré par `src/MyChat.tsx`, désormais capable d'inclure automatiquement le token d'un utilisateur connecté
+- Aucun `package-lock.json` n'est versionné afin de toujours récupérer la dernière version des dépendances lors du `npm install`. Gérez un lock local ou CI si vous avez besoin de versions figées.
 - The project depends on React 19, matching the official starter app requirements for `@openai/chatkit-react`
 - `vite.config.ts` proxies toutes les routes `/api/*` (dont `/api/chatkit`) vers le backend FastAPI exposé sur le port 8000
 - Le composant `MyChat` se branche par défaut sur `/api/chatkit`. Pour forcer le mode hébergé (client secret), définissez `VITE_CHATKIT_FORCE_HOSTED=true` dans votre `.env`. Pensez à ajouter `VITE_CHATKIT_DOMAIN_KEY` si vous exposez votre propre domaine.
