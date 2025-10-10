@@ -156,7 +156,7 @@ Une fois votre serveur en place, pointez le widget ChatKit (via `apiURL`) vers v
 5. **Optionnel : forcer le mode hébergé** – définissez `VITE_CHATKIT_FORCE_HOSTED=true` si vous souhaitez ignorer le serveur custom et générer un `client_secret` (utile lorsque vous testez un workflow existant).
 6. **Redémarrez le serveur Vite** (`npm run frontend:dev` depuis la racine) pour recharger les nouvelles variables.
 
-Lorsque ces variables sont définies, le composant `MyChat` n'appelle plus `/api/chatkit/session` et utilise directement votre serveur via l'API ChatKit. Sans configuration explicite, l'application se branche sur `/api/chatkit`, ce qui vous permet d'orchestrer votre agent maison. Pour revenir au comportement hébergé, activez `VITE_CHATKIT_FORCE_HOSTED=true`. Si aucune stratégie d'upload n'est fournie, les pièces jointes sont automatiquement désactivées afin d'éviter les erreurs de configuration.
+Lorsque ces variables sont définies, le composant `MyChat` n'appelle plus `/api/chatkit/session` et dialogue directement avec votre serveur via l'API ChatKit. En l'absence de clé de domaine, le frontend conserve désormais le flux hébergé : il récupère un `client_secret` via `/api/chatkit/session`, ce qui évite les options invalides côté widget. Vous pouvez toujours forcer ce comportement en définissant `VITE_CHATKIT_FORCE_HOSTED=true`. Dans le mode auto-hébergé, si aucune stratégie d'upload n'est fournie, les pièces jointes sont automatiquement désactivées afin d'éviter les erreurs de configuration.
 
 ## Lancement via Docker Compose
 
