@@ -2,7 +2,7 @@ from agents import WebSearchTool, Agent, ModelSettings, RunContextWrapper, TResp
 from pydantic import BaseModel
 from openai.types.shared.reasoning import Reasoning
 
-from ..app.token_sanitizer import sanitize_model_like
+from app.token_sanitizer import sanitize_model_like
 
 # Tool definitions
 web_search_preview = WebSearchTool(
