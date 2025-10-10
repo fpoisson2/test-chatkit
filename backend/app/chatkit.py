@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, AsyncIterator, Sequence
+from typing import AsyncIterator, Sequence
 
-from agents import Agent, ModelSettings, RunConfig, Runner, TResponseInputItem
-from chatkit.agents import simple_to_agent_input
 from chatkit.store import NotFoundError, Store
 from chatkit.server import ChatKitServer
 from chatkit.types import (
@@ -25,10 +22,9 @@ from chatkit.types import (
     ThreadStreamEvent,
     UserMessageItem,
 )
-from openai.types.shared.reasoning import Reasoning
 
 from .config import Settings, get_settings
-from workflows.agents import agent as workflow_agent
+from workflows.agents import WorkflowInput, agent as workflow_agent, run_workflow
 
 logger = logging.getLogger("chatkit.server")
 
@@ -216,12 +212,12 @@ class InMemoryChatKitStore(Store[ChatKitRequestContext]):
 
 
 class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
-    """Serveur ChatKit piloté par un agent local."""
+    """Serveur ChatKit piloté par un workflow local."""
 
     def __init__(self, settings: Settings) -> None:
         super().__init__(InMemoryChatKitStore())
         self._settings = settings
-        self.agent = _build_weather_agent(settings)
+        _apply_agent_overrides(settings)
 
     async def respond(
         self,
@@ -246,18 +242,21 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
             return
 
-        agent_input = await _to_agent_history(history.data)
-        trace_metadata = {"__trace_source__": "chatkit-server"}
-        trace_metadata.update(context.trace_metadata())
+        user_text = _resolve_user_input_text(input_user_message, history.data)
+        if not user_text:
+            yield ErrorEvent(
+                code=ErrorCode.STREAM_ERROR,
+                message="Impossible de déterminer le message utilisateur à traiter.",
+                allow_retry=False,
+            )
+            return
 
         try:
-            agent_result = await Runner.run(
-                self.agent,
-                input=agent_input,
-                run_config=RunConfig(trace_metadata=trace_metadata),
+            workflow_result = await run_workflow(
+                WorkflowInput(input_as_text=user_text)
             )
-        except Exception as exc:  # pragma: no cover - erreurs runtime Agents
-            logger.exception("Agent execution failed")
+        except Exception as exc:  # pragma: no cover - erreurs runtime workflow
+            logger.exception("Workflow execution failed")
             yield ErrorEvent(
                 code=ErrorCode.STREAM_ERROR,
                 message=str(exc),
@@ -265,23 +264,17 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
             return
 
-        new_items = getattr(agent_result, "new_items", None)
-        if new_items:
-            logger.info(
-                "Agent new_items: %s",
-                [getattr(item, "type", type(item).__name__) for item in new_items],
-            )
-        final_output = getattr(agent_result, "final_output", None)
-        logger.info("Agent final_output type: %s", type(final_output).__name__)
-        if final_output is None:
+        message_text = workflow_result.get("output_text")
+        if not message_text:
             yield ErrorEvent(
                 code=ErrorCode.STREAM_ERROR,
-                message="La réponse de l'agent est vide.",
+                message="La réponse du workflow est vide.",
                 allow_retry=False,
             )
             return
 
-        message_text = _extract_text(final_output)
+        if not isinstance(message_text, str):
+            message_text = str(message_text)
 
         assistant_item = AssistantMessageItem(
             id=self.store.generate_item_id("message", thread, context),
@@ -299,44 +292,45 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         yield ThreadItemDoneEvent(item=end_of_turn)
 
 
-async def _to_agent_history(items: Sequence[ThreadItem]) -> list[TResponseInputItem]:
-    """Convertit l'historique ChatKit en entrée compatible Agents SDK."""
-    if not items:
-        return []
-    return await simple_to_agent_input(items)
+def _collect_user_text(message: UserMessageItem | None) -> str:
+    """Concatène le texte d'un message utilisateur."""
+    if not message or not getattr(message, "content", None):
+        return ""
+    parts: list[str] = []
+    for content_item in message.content:
+        text = getattr(content_item, "text", None)
+        if text:
+            parts.append(text)
+    return "\n".join(part.strip() for part in parts if part.strip())
 
 
-def _extract_text(final_output: Any) -> str:
-    """Normalise la sortie finale de l'agent en texte."""
-    if isinstance(final_output, str):
-        return final_output
-    if hasattr(final_output, "text"):
-        return getattr(final_output, "text")
-    return str(final_output)
+def _resolve_user_input_text(
+    input_user_message: UserMessageItem | None,
+    history: Sequence[ThreadItem],
+) -> str:
+    """Détermine le texte du message utilisateur à traiter."""
+    candidate = _collect_user_text(input_user_message)
+    if candidate:
+        return candidate
+
+    for item in reversed(history):
+        if isinstance(item, UserMessageItem):
+            candidate = _collect_user_text(item)
+            if candidate:
+                return candidate
+
+    return ""
 
 
-def _build_weather_agent(settings: Settings) -> Agent:
-    """Construit l'agent principal en se basant sur le workflow météo."""
-    base_agent = workflow_agent
-    base_settings = getattr(base_agent, "model_settings", None)
-    if base_settings is None:
-        model_settings = ModelSettings(
-            store=True,
-            reasoning=Reasoning(effort="minimal", summary="auto"),
-        )
-    else:
-        model_settings = deepcopy(base_settings)
+def _apply_agent_overrides(settings: Settings) -> None:
+    """Applique les surcharges d'environnement sur l'agent global du workflow."""
+    model_override = getattr(settings, "chatkit_agent_model", None)
+    if model_override:
+        setattr(workflow_agent, "model", model_override)
 
-    return Agent(
-        name=getattr(base_agent, "name", "Agent météo"),
-        instructions=(
-            settings.chatkit_agent_instructions
-            or getattr(base_agent, "instructions", "Fournis la météo à l'utilisateur")
-        ),
-        model=settings.chatkit_agent_model or getattr(base_agent, "model", "gpt-5"),
-        tools=list(getattr(base_agent, "tools", [])),
-        model_settings=model_settings,
-    )
+    instructions_override = getattr(settings, "chatkit_agent_instructions", None)
+    if instructions_override:
+        setattr(workflow_agent, "instructions", instructions_override)
 
 
 _server: DemoChatKitServer | None = None
