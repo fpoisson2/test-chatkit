@@ -18,9 +18,14 @@ import { getOrCreateDeviceId } from "./utils/device";
 import {
   clearStoredChatKitSecret,
   inferChatKitSessionExpiration,
-  loadStoredChatKitSecret,
   persistChatKitSecret,
+  readStoredChatKitSession,
 } from "./utils/chatkitSession";
+import {
+  clearStoredThreadId,
+  loadStoredThreadId,
+  persistStoredThreadId,
+} from "./utils/chatkitThread";
 
 type WeatherToolCall = {
   name: "get_weather";
@@ -128,6 +133,10 @@ export function MyChat() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [deviceId] = useState(() => getOrCreateDeviceId());
+  const sessionOwner = user?.email ?? deviceId;
+  const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
+    loadStoredThreadId(sessionOwner),
+  );
   const isDesktopLayout = useIsDesktopLayout();
   const [isSidebarOpen, setIsSidebarOpen] = useState(getDesktopLayoutPreference);
   const previousIsDesktopRef = useRef(isDesktopLayout);
@@ -136,23 +145,30 @@ export function MyChat() {
   const previousSessionOwnerRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const sessionOwner = user?.email ?? deviceId;
     const previousOwner = previousSessionOwnerRef.current;
     if (previousOwner && previousOwner !== sessionOwner) {
       clearStoredChatKitSecret(previousOwner);
+      clearStoredThreadId(previousOwner);
     }
     previousSessionOwnerRef.current = sessionOwner;
-  }, [deviceId, user?.email]);
+
+    const storedThreadId = loadStoredThreadId(sessionOwner);
+    setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
+  }, [sessionOwner]);
 
   const getClientSecret = useCallback(async (currentSecret: string | null) => {
-    if (currentSecret) {
+    const { session: storedSession, shouldRefresh } = readStoredChatKitSession(sessionOwner);
+
+    if (currentSecret && storedSession && storedSession.secret === currentSecret && !shouldRefresh) {
       return currentSecret;
     }
 
-    const sessionOwner = user?.email ?? deviceId;
-    const cachedSecret = loadStoredChatKitSecret(sessionOwner);
-    if (cachedSecret) {
-      return cachedSecret;
+    if (!currentSecret && storedSession && !shouldRefresh) {
+      return storedSession.secret;
+    }
+
+    if (storedSession && shouldRefresh) {
+      clearStoredChatKitSecret(sessionOwner);
     }
 
     setIsLoading(true);
@@ -199,7 +215,7 @@ export function MyChat() {
     } finally {
       setIsLoading(false);
     }
-  }, [deviceId, token, user]);
+  }, [sessionOwner, token]);
 
   const { apiConfig, attachmentsEnabled } = useMemo<{
     apiConfig: ChatKitOptions["api"];
@@ -492,6 +508,7 @@ export function MyChat() {
     () =>
       ({
         api: apiConfig,
+        initialThread: initialThreadId,
         header: {
           leftAction: {
             icon: "menu",
@@ -557,6 +574,8 @@ export function MyChat() {
         },
         onThreadChange: ({ threadId }: { threadId: string | null }) => {
           console.debug("[ChatKit] thread change", { threadId });
+          persistStoredThreadId(sessionOwner, threadId);
+          setInitialThreadId((current) => (current === threadId ? current : threadId));
         },
         onThreadLoadStart: ({ threadId }: { threadId: string }) => {
           console.debug("[ChatKit] thread load start", { threadId });
@@ -574,7 +593,14 @@ export function MyChat() {
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
         },
       }) satisfies ChatKitOptions,
-    [apiConfig, attachmentsConfig, openProfileSettings, openSidebar],
+    [
+      apiConfig,
+      attachmentsConfig,
+      initialThreadId,
+      openProfileSettings,
+      openSidebar,
+      sessionOwner,
+    ],
   );
 
   const { control, fetchUpdates } = useChatKit(chatkitOptions);

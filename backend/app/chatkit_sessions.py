@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterable
+from urllib.parse import parse_qsl, urlencode
 
 import httpx
 from fastapi import HTTPException, Request, Response, status
 from starlette.responses import StreamingResponse
 
 from .config import get_settings
+from .token_sanitizer import MAX_TOKEN_FIELD_NAMES, sanitize_value
 
 settings = get_settings()
 logger = logging.getLogger("chatkit.sessions")
@@ -22,6 +25,44 @@ _HOP_BY_HOP_HEADERS = {
     "transfer-encoding",
     "upgrade",
 }
+
+def _sanitize_json_body(
+    body: bytes | None,
+    *,
+    content_type: str | None,
+    log_context: str,
+) -> bytes | None:
+    if not body:
+        return body
+
+    if not content_type or "json" not in content_type.lower():
+        return body
+
+    try:
+        parsed = json.loads(body)
+    except ValueError:
+        return body
+
+    sanitized, removed = sanitize_value(parsed)
+    if not removed:
+        return body
+
+    logger.debug("Removed max token fields from %s payload", log_context)
+    return json.dumps(sanitized, ensure_ascii=False).encode("utf-8")
+
+
+def _sanitize_query_string(query: str) -> tuple[str, bool]:
+    if not query:
+        return "", False
+
+    pairs = parse_qsl(query, keep_blank_values=True)
+    filtered_pairs = [(key, value) for key, value in pairs if key not in MAX_TOKEN_FIELD_NAMES]
+
+    if len(filtered_pairs) == len(pairs):
+        return query, False
+
+    sanitized = urlencode(filtered_pairs, doseq=True)
+    return sanitized, True
 
 
 def _sanitize_forward_headers(
@@ -97,7 +138,12 @@ async def create_chatkit_session(user_id: str) -> dict:
                 "details": detail,
             },
         )
-    return response.json()
+
+    raw_payload = response.json()
+    sanitized_payload, removed = sanitize_value(raw_payload)
+    if removed:
+        logger.debug("Removed max token fields from ChatKit session response")
+    return sanitized_payload
 
 
 async def proxy_chatkit_request(path: str, request: Request) -> Response:
@@ -107,12 +153,22 @@ async def proxy_chatkit_request(path: str, request: Request) -> Response:
     relative_path = path.lstrip("/")
     upstream_path = f"/v1/chatkit/{relative_path}" if relative_path else "/v1/chatkit"
     if request.url.query:
-        upstream_path = f"{upstream_path}?{request.url.query}"
+        sanitized_query, removed_from_query = _sanitize_query_string(request.url.query)
+        if sanitized_query:
+            upstream_path = f"{upstream_path}?{sanitized_query}"
+        if removed_from_query:
+            logger.debug("Removed max token fields from ChatKit proxy query")
 
     try:
         body = await request.body()
     except Exception:  # pragma: no cover
         body = b""
+
+    body = _sanitize_json_body(
+        body,
+        content_type=request.headers.get("content-type"),
+        log_context="ChatKit proxy request",
+    )
 
     upstream_headers = _sanitize_forward_headers(
         request.headers.items(),
