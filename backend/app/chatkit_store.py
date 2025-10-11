@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from pydantic import TypeAdapter
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from chatkit.store import NotFoundError, Store
@@ -235,16 +236,29 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 raise NotFoundError(f"Thread {thread_id} introuvable")
             payload = item.model_dump(mode="json")
             created_at = _ensure_timezone(getattr(item, "created_at", None))
-            session.add(
-                ChatThreadItem(
-                    id=item.id,
-                    thread_id=thread_id,
-                    owner_id=owner_id,
-                    created_at=created_at,
-                    payload=payload,
-                )
+            record = ChatThreadItem(
+                id=item.id,
+                thread_id=thread_id,
+                owner_id=owner_id,
+                created_at=created_at,
+                payload=payload,
             )
-            session.commit()
+            session.add(record)
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                existing_stmt = select(ChatThreadItem).where(
+                    ChatThreadItem.id == item.id,
+                    ChatThreadItem.thread_id == thread_id,
+                    ChatThreadItem.owner_id == owner_id,
+                )
+                existing = session.execute(existing_stmt).scalar_one_or_none()
+                if existing is None:
+                    raise
+                existing.payload = payload
+                existing.created_at = created_at
+                session.commit()
 
         await self._run(_add)
 
