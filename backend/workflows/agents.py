@@ -8,9 +8,10 @@ from agents import (
   RunConfig
 )
 from dataclasses import dataclass
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 import json
 from typing import Any
+
 from pydantic import BaseModel
 from openai.types.responses import (
   ResponseReasoningSummaryTextDeltaEvent,
@@ -674,6 +675,7 @@ async def run_workflow(
   workflow_input: WorkflowInput,
   on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None = None,
   on_step_stream: Callable[[WorkflowStepStreamUpdate], Awaitable[None]] | None = None,
+  initial_conversation_history: Sequence[TResponseInputItem] | None = None,
 ) -> WorkflowRunSummary:
   state = {
     "has_all_details": False,
@@ -681,8 +683,11 @@ async def run_workflow(
   }
   steps: list[WorkflowStepSummary] = []
   workflow = workflow_input.model_dump()
-  conversation_history: list[TResponseInputItem] = [
-    {
+  conversation_history: list[TResponseInputItem] = list(
+    initial_conversation_history or []
+  )
+  if not conversation_history:
+    conversation_history.append({
       "role": "user",
       "content": [
         {
@@ -690,8 +695,7 @@ async def run_workflow(
           "text": workflow["input_as_text"]
         }
       ]
-    }
-  ]
+    })
 
   def _workflow_run_config() -> RunConfig:
     return RunConfig(trace_metadata={

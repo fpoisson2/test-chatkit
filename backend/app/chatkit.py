@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, AsyncIterator, Coroutine, Sequence
 
-from chatkit.agents import AgentContext, simple_to_agent_input, stream_agent_response
+from chatkit.agents import (
+    AgentContext,
+    ThreadItemConverter,
+    stream_agent_response,
+)
 from chatkit.server import ChatKitServer
 from chatkit.store import NotFoundError
 from chatkit.types import (
@@ -119,19 +123,23 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             request_context=context,
         )
 
-        converted_input = (
-            await simple_to_agent_input(input_user_message)
+        converter = ThreadItemConverter()
+        history_agent_input = await converter.to_agent_input(history.data)
+        new_message_agent_input = (
+            await converter.to_agent_input(input_user_message)
             if input_user_message
             else []
         )
+        agent_input_items = [*history_agent_input, *new_message_agent_input]
 
         workflow_result = _WorkflowStreamResult(
             runner=self._execute_workflow(
                 thread=thread,
                 agent_context=agent_context,
                 workflow_input=WorkflowInput(input_as_text=user_text),
+                agent_input_items=agent_input_items,
             ),
-            input_items=converted_input,
+            input_items=agent_input_items,
         )
 
         try:
@@ -150,6 +158,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         thread: ThreadMetadata,
         agent_context: AgentContext[ChatKitRequestContext],
         workflow_input: WorkflowInput,
+        agent_input_items: Sequence[Any],
     ) -> None:
         streamed_step_keys: set[str] = set()
         step_stream_states: dict[str, _StepStreamState] = {}
@@ -220,6 +229,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 workflow_input,
                 on_step=on_step,
                 on_step_stream=on_step_stream,
+                initial_conversation_history=agent_input_items,
             )
 
             result = workflow_run.final_output or {}
