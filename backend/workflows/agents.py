@@ -734,6 +734,21 @@ class _ReasoningWorkflowReporter:
 
     await self._ensure_started()
 
+  def render_reasoning_text(self) -> str:
+    parts: list[str] = []
+    for task in self._tasks:
+      if not isinstance(task, ThoughtTask):
+        continue
+      content = task.content.strip()
+      if not content:
+        continue
+      title = (task.title or "").strip()
+      if title:
+        parts.append(f"{title}\n{content}")
+      else:
+        parts.append(content)
+    return "\n\n".join(parts).strip()
+
   def _clone_task(self, task: SearchTask | ThoughtTask) -> SearchTask | ThoughtTask:
     if isinstance(task, ThoughtTask):
       return ThoughtTask(title=task.title, content=task.content)
@@ -855,6 +870,10 @@ class _ReasoningWorkflowReporter:
         await self._ensure_stopped()
       self._ended = True
       self._step_title = None
+      self._tasks = []
+      self._thought_segments = []
+      self._thought_task_indices = []
+      self._reasoning_buffer = ""
       return
 
     await self._ensure_started()
@@ -893,6 +912,7 @@ class _ReasoningWorkflowReporter:
     await self._ensure_stopped()
     self._ended = True
     self._step_title = None
+    self._reasoning_buffer = ""
 
 
 # Main code entrypoint
@@ -1088,6 +1108,7 @@ async def run_workflow(
     reasoning_accumulated = ""
     reporter = _ReasoningWorkflowReporter(agent_context)
     await reporter.start_step(title=title)
+    structured_reasoning_sent = ""
 
     async def _emit_stream_update(
       *,
@@ -1096,12 +1117,20 @@ async def run_workflow(
     ) -> None:
       if on_step_stream is None:
         return
-      emit_reasoning_delta = (
-        "" if reporter.uses_structured_workflow else reasoning_delta
-      )
-      emit_reasoning_text = (
-        "" if reporter.uses_structured_workflow else reasoning_accumulated
-      )
+      nonlocal structured_reasoning_sent
+      emit_reasoning_delta: str
+      emit_reasoning_text: str
+      if reporter.uses_structured_workflow:
+        current_structured = reporter.render_reasoning_text()
+        if current_structured.startswith(structured_reasoning_sent):
+          emit_reasoning_delta = current_structured[len(structured_reasoning_sent):]
+        else:
+          emit_reasoning_delta = current_structured
+        structured_reasoning_sent = current_structured
+        emit_reasoning_text = structured_reasoning_sent
+      else:
+        emit_reasoning_delta = reasoning_delta
+        emit_reasoning_text = reasoning_accumulated
       await on_step_stream(
         WorkflowStepStreamUpdate(
           key=step_key,
@@ -1151,6 +1180,7 @@ async def run_workflow(
       step_title=title,
     )
     await reporter.sync_with_workflow(reasoning_workflow)
+    await _emit_stream_update()
     return _AgentStepResult(
       stream=streaming_result,
       reasoning_summary=reasoning_workflow,
