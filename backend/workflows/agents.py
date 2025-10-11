@@ -1015,6 +1015,7 @@ async def run_workflow(
   on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None = None,
   on_step_stream: Callable[[WorkflowStepStreamUpdate], Awaitable[None]] | None = None,
   agent_context: AgentContext | None = None,
+  stream_structured_events: bool = True,
 ) -> WorkflowRunSummary:
   state = {
     "has_all_details": False,
@@ -1200,12 +1201,15 @@ async def run_workflow(
     )
     accumulated_text = ""
     reasoning_accumulated = ""
-    reporter = _ReasoningWorkflowReporter(agent_context)
+    reporter_context = agent_context if stream_structured_events else None
+    reporter = _ReasoningWorkflowReporter(reporter_context)
     await reporter.start_step(title=title)
     structured_reasoning_sent = ""
     processed_items = 0
 
     async def _sync_tool_calls() -> None:
+      if not stream_structured_events:
+        return
       nonlocal processed_items
       new_items = streaming_result.new_items
       if processed_items >= len(new_items):
