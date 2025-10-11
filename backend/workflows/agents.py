@@ -697,31 +697,27 @@ class _ReasoningWorkflowReporter:
     if self._context is None or self._started or self._ended:
       return
     await self._context.start_workflow(
-      self._build_workflow_payload(self._tasks)
+      self._build_workflow_payload()
     )
     self._started = True
 
   def _is_context_ready(self) -> bool:
     return self._context is not None and not self._ended
 
-  def _build_workflow_payload(
-    self, tasks: Sequence[SearchTask | ThoughtTask]
-  ) -> Workflow:
-    return Workflow(type="reasoning", tasks=list(tasks))
+  def _build_workflow_payload(self) -> Workflow:
+    return Workflow(type="reasoning", tasks=[])
 
   async def start_step(self, *, title: str | None = None) -> None:
     if self._context is None or self._started or self._ended:
       return
-    tasks: list[SearchTask | ThoughtTask] = []
+    self._placeholder_index = None
     if title:
       placeholder = ThoughtTask(title=title, content="")
       self._tasks.append(placeholder)
-      self._placeholder_index = 0
-      tasks.append(placeholder)
-    await self._context.start_workflow(
-      self._build_workflow_payload(tasks)
-    )
-    self._started = True
+      self._placeholder_index = len(self._tasks) - 1
+      await self._safe_add_task(placeholder, self._placeholder_index)
+      return
+    await self._ensure_started()
 
   def _clone_task(self, task: SearchTask | ThoughtTask) -> SearchTask | ThoughtTask:
     if isinstance(task, ThoughtTask):
@@ -750,7 +746,7 @@ class _ReasoningWorkflowReporter:
 
     cloned_tasks = [self._clone_task(task) for task in self._tasks]
     await self._context.start_workflow(
-      self._build_workflow_payload([])
+      self._build_workflow_payload()
     )
     self._started = True
     self._tasks = []
