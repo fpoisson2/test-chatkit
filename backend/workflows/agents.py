@@ -29,7 +29,10 @@ from chatkit.types import SearchTask, ThoughtTask, URLSource, Workflow
 
 from app.token_sanitizer import sanitize_model_like
 
-_REASONING_TITLE_LINE_RE = re.compile(r"^\s*\*\*(?P<title>.+?)\*\*(?P<remainder>.*)$")
+# Détecte les titres en gras en tolérant les puces ou numérotations courantes en tête de ligne.
+_REASONING_TITLE_LINE_RE = re.compile(
+  r"^\s*(?:[\-\*\+\u2022]\s+|\d+(?:[\.)]|\s*-)?\s+|\([^)]+\)\s+)?\*\*(?P<title>.+?)\*\*(?P<remainder>.*)$"
+)
 
 
 def _extract_reasoning_title(line: str) -> tuple[str | None, str | None]:
