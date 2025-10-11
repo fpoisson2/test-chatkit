@@ -12,7 +12,6 @@ from agents.result import RunItem
 from dataclasses import dataclass
 from collections.abc import Awaitable, Callable, Sequence
 import json
-import uuid
 from typing import Any
 from pydantic import BaseModel
 from openai.types.responses import (
@@ -689,7 +688,6 @@ class _ReasoningWorkflowReporter:
     self._thought_segments: list[str] = []
     self._thought_task_indices: list[int] = []
     self._placeholder_index: int | None = None
-    self._workflow_id: str | None = None
 
   @property
   def uses_structured_workflow(self) -> bool:
@@ -706,15 +704,10 @@ class _ReasoningWorkflowReporter:
   def _is_context_ready(self) -> bool:
     return self._context is not None and not self._ended
 
-  def _next_workflow_id(self) -> str:
-    return f"wf_{uuid.uuid4().hex}"
-
   def _build_workflow_payload(
     self, tasks: Sequence[SearchTask | ThoughtTask]
   ) -> Workflow:
-    if self._workflow_id is None:
-      self._workflow_id = self._next_workflow_id()
-    return Workflow(type="reasoning", tasks=list(tasks), id=self._workflow_id)
+    return Workflow(type="reasoning", tasks=list(tasks))
 
   async def start_step(self, *, title: str | None = None) -> None:
     if self._context is None or self._started or self._ended:
@@ -756,7 +749,6 @@ class _ReasoningWorkflowReporter:
       return
 
     cloned_tasks = [self._clone_task(task) for task in self._tasks]
-    self._workflow_id = None
     await self._context.start_workflow(
       self._build_workflow_payload([])
     )
@@ -858,13 +850,10 @@ class _ReasoningWorkflowReporter:
     if workflow is None or not workflow.tasks:
       if self._started:
         await self._context.end_workflow()
-      self._workflow_id = None
       self._ended = True
       return
 
     await self._ensure_started()
-    if self._workflow_id is not None and getattr(workflow, "id", None) is None:
-      workflow.id = self._workflow_id
     for index, final_task in enumerate(workflow.tasks):
       task_list_index = index
       if self._placeholder_index is not None:
@@ -903,7 +892,6 @@ class _ReasoningWorkflowReporter:
     self._thought_task_indices = [task_index for _, task_index in thought_contents]
 
     await self._context.end_workflow()
-    self._workflow_id = None
     self._ended = True
 
 
