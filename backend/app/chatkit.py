@@ -5,6 +5,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from difflib import SequenceMatcher
 from typing import Any, AsyncIterator, Coroutine, Sequence
 
 from chatkit.agents import AgentContext, simple_to_agent_input, stream_agent_response
@@ -779,16 +780,22 @@ def _extract_missing_suffix(current: str, target: str) -> str:
     if not current:
         return target
 
-    prefix_length = 0
-    max_length = min(len(current), len(target))
-    while prefix_length < max_length and current[prefix_length] == target[prefix_length]:
-        prefix_length += 1
-
-    if prefix_length == len(current):
-        return target[prefix_length:]
+    if target.startswith(current):
+        return target[len(current) :]
 
     trimmed_current = current.rstrip()
     if target.startswith(trimmed_current):
-        return target[len(trimmed_current):]
+        return target[len(trimmed_current) :]
+
+    matcher = SequenceMatcher(a=current, b=target)
+    prefix_length = 0
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal" and i1 == prefix_length and j1 == prefix_length:
+            prefix_length = i2
+        else:
+            break
+
+    if prefix_length:
+        return target[prefix_length:]
 
     return target
