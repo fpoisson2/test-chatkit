@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import AsyncIterator, Sequence
+from typing import Any, AsyncIterator, Sequence
 
 from chatkit.store import NotFoundError
 from chatkit.server import ChatKitServer
@@ -14,7 +15,6 @@ from chatkit.types import (
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
-    ProgressUpdateEvent,
     ThreadItem,
     ThreadItemDoneEvent,
     ThreadMetadata,
@@ -25,7 +25,12 @@ from chatkit.types import (
 from .config import Settings, get_settings
 from .chatkit_store import PostgresChatKitStore
 from .database import SessionLocal
-from workflows.agents import run_workflow, WorkflowExecutionError, WorkflowInput
+from workflows.agents import (
+    WorkflowExecutionError,
+    WorkflowInput,
+    WorkflowStepSummary,
+    run_workflow,
+)
 
 logger = logging.getLogger("chatkit.server")
 
@@ -124,66 +129,68 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         event_queue: asyncio.Queue[ThreadStreamEvent | None],
     ) -> None:
         try:
+            logger.info("Démarrage du workflow pour le fil %s", thread.id)
+            start_message = await self._store_assistant_message(
+                thread=thread,
+                context=context,
+                text="Analyse de votre demande en cours...",
+            )
             await _enqueue_event(
-                event_queue,
-                ProgressUpdateEvent(text="Analyse de votre demande en cours..."),
+                event_queue, ThreadItemDoneEvent(item=start_message)
             )
 
             workflow_run = await run_workflow(workflow_input)
+            await self._persist_step_summaries(
+                steps=workflow_run.steps,
+                thread=thread,
+                context=context,
+                event_queue=event_queue,
+            )
 
-            for index, step in enumerate(workflow_run.steps, start=1):
-                details = step.output.strip() or "(aucune sortie)"
-                header = f"Étape {index} – {step.title}"
-                await _enqueue_event(
-                    event_queue,
-                    ProgressUpdateEvent(text=f"{header}\n\n{details}"),
+            result = workflow_run.final_output or {}
+            output_text = _format_output_text(
+                result.get("output_text"), result.get("output_parsed")
+            )
+            if not output_text:
+                output_text = (
+                    "Le workflow a été exécuté mais n'a produit aucun contenu textuel."
                 )
 
-            result = workflow_run.final_output
+            final_message = await self._store_assistant_message(
+                thread=thread,
+                context=context,
+                text=output_text,
+            )
 
-            if result:
-                output_text = result.get("output_text", "")
-                if output_text:
-                    message_id = self.store.generate_item_id("message", thread, context)
-                    assistant_message = AssistantMessageItem(
-                        id=message_id,
-                        thread_id=thread.id,
-                        created_at=datetime.now(),
-                        content=[
-                            AssistantMessageContent(
-                                type="output_text",
-                                text=output_text,
-                            )
-                        ],
-                    )
-
-                    await self.store.add_thread_item(thread.id, assistant_message, context)
-
-                    await _enqueue_event(
-                        event_queue, ThreadItemDoneEvent(item=assistant_message)
-                    )
-                    await _enqueue_event(
-                        event_queue,
-                        EndOfTurnItem(
-                            id=self.store.generate_item_id("message", thread, context),
-                            thread_id=thread.id,
-                            created_at=datetime.now(),
-                        ),
-                    )
+            await _enqueue_event(event_queue, ThreadItemDoneEvent(item=final_message))
+            await _enqueue_event(
+                event_queue,
+                EndOfTurnItem(
+                    id=self.store.generate_item_id("message", thread, context),
+                    thread_id=thread.id,
+                    created_at=datetime.now(),
+                ),
+            )
+            logger.info("Workflow terminé avec succès pour le fil %s", thread.id)
         except WorkflowExecutionError as exc:  # pragma: no cover - erreurs connues du workflow
             logger.exception("Workflow execution failed")
-            for index, step in enumerate(exc.steps, start=1):
-                details = step.output.strip() or "(aucune sortie)"
-                header = f"Étape {index} – {step.title}"
-                await _enqueue_event(
-                    event_queue,
-                    ProgressUpdateEvent(text=f"{header}\n\n{details}"),
-                )
+            await self._persist_step_summaries(
+                steps=exc.steps,
+                thread=thread,
+                context=context,
+                event_queue=event_queue,
+            )
 
             error_message = (
                 f"Le workflow a échoué pendant l'étape « {exc.title} » ({exc.step}). "
                 f"Détails techniques : {exc.original_error}"
             )
+            error_item = await self._store_assistant_message(
+                thread=thread,
+                context=context,
+                text=error_message,
+            )
+            await _enqueue_event(event_queue, ThreadItemDoneEvent(item=error_item))
             await _enqueue_event(
                 event_queue,
                 ErrorEvent(
@@ -192,11 +199,20 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     allow_retry=True,
                 ),
             )
+            logger.info(
+                "Workflow en erreur pour le fil %s pendant %s", thread.id, exc.step
+            )
         except Exception as exc:  # pragma: no cover - autres erreurs runtime
             logger.exception("Workflow execution failed")
             detailed_message = (
                 f"Erreur inattendue ({exc.__class__.__name__}) : {exc}"
             )
+            error_item = await self._store_assistant_message(
+                thread=thread,
+                context=context,
+                text=detailed_message,
+            )
+            await _enqueue_event(event_queue, ThreadItemDoneEvent(item=error_item))
             await _enqueue_event(
                 event_queue,
                 ErrorEvent(
@@ -205,8 +221,54 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     allow_retry=True,
                 ),
             )
+            logger.info(
+                "Workflow en erreur inattendue pour le fil %s", thread.id
+            )
         finally:
             await event_queue.put(None)
+
+    async def _persist_step_summaries(
+        self,
+        *,
+        steps: Sequence[WorkflowStepSummary],
+        thread: ThreadMetadata,
+        context: ChatKitRequestContext,
+        event_queue: asyncio.Queue[ThreadStreamEvent | None],
+    ) -> None:
+        for index, step in enumerate(steps, start=1):
+            details = step.output.strip() or "(aucune sortie)"
+            header = f"Étape {index} – {step.title}"
+            text = f"{header}\n\n{details}"
+            message = await self._store_assistant_message(
+                thread=thread,
+                context=context,
+                text=text,
+            )
+            logger.info(
+                "Progression du workflow %s : %s", thread.id, header
+            )
+            await _enqueue_event(event_queue, ThreadItemDoneEvent(item=message))
+
+    async def _store_assistant_message(
+        self,
+        *,
+        thread: ThreadMetadata,
+        context: ChatKitRequestContext,
+        text: str,
+    ) -> AssistantMessageItem:
+        message = AssistantMessageItem(
+            id=self.store.generate_item_id("message", thread, context),
+            thread_id=thread.id,
+            created_at=datetime.now(),
+            content=[
+                AssistantMessageContent(
+                    type="output_text",
+                    text=text,
+                )
+            ],
+        )
+        await self.store.add_thread_item(thread.id, message, context)
+        return message
 
 
 def _collect_user_text(message: UserMessageItem | None) -> str:
@@ -266,7 +328,7 @@ def _log_background_exceptions(task: asyncio.Task[None]) -> None:
     if exception:
         logger.exception("Erreur dans la tâche de workflow", exc_info=exception)
 
-
+    
 _server: DemoChatKitServer | None = None
 
 
@@ -276,3 +338,35 @@ def get_chatkit_server() -> DemoChatKitServer:
     if _server is None:
         _server = DemoChatKitServer(get_settings())
     return _server
+
+
+def _format_output_text(output_text: str | None, fallback: Any | None) -> str:
+    """Normalise le texte final renvoyé à l'utilisateur."""
+    if output_text:
+        candidate = output_text.strip()
+        if candidate:
+            try:
+                parsed = json.loads(candidate)
+            except json.JSONDecodeError:
+                return candidate
+
+            if isinstance(parsed, str):
+                return parsed.strip()
+            if isinstance(parsed, (dict, list)):
+                try:
+                    return json.dumps(parsed, ensure_ascii=False, indent=2)
+                except TypeError:
+                    return str(parsed)
+            return str(parsed)
+
+    if fallback is not None:
+        if isinstance(fallback, (dict, list)):
+            try:
+                return json.dumps(fallback, ensure_ascii=False, indent=2)
+            except TypeError:
+                return str(fallback)
+        text = str(fallback).strip()
+        if text:
+            return text
+
+    return ""
