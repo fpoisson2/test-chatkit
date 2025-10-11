@@ -877,18 +877,20 @@ async def run_workflow(
       if not isinstance(action, ActionSearch):
         continue
 
+      query = action.query if isinstance(action.query, str) else None
+
       search_task = search_tasks_by_id.get(call.id)
       if search_task is None:
         search_task = SearchTask(
           title="Recherche Web",
-          title_query=action.query,
-          queries=[action.query],
+          title_query=query,
+          queries=[query] if query else [],
           sources=[],
         )
         search_tasks_by_id[call.id] = search_task
         ordered_search_tasks.append(search_task)
-      elif action.query not in search_task.queries:
-        search_task.queries.append(action.query)
+      elif query and query not in search_task.queries:
+        search_task.queries.append(query)
 
       if not action.sources:
         continue
