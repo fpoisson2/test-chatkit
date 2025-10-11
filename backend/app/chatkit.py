@@ -18,13 +18,12 @@ from chatkit.types import (
     ErrorEvent,
     ProgressUpdateEvent,
     ThreadItem,
+    ThreadItemAddedEvent,
     ThreadItemDoneEvent,
     ThreadMetadata,
     ThreadStreamEvent,
     UserMessageItem,
 )
-
-from sqlalchemy.exc import IntegrityError
 
 from .config import Settings, get_settings
 from .chatkit_store import PostgresChatKitStore
@@ -141,12 +140,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         try:
             logger.info("Démarrage du workflow pour le fil %s", thread.id)
-            start_message = await self._store_assistant_message(
+            await self._publish_assistant_message(
                 thread=thread,
                 agent_context=agent_context,
                 text="Analyse de votre demande en cours...",
             )
-            await agent_context.stream(ThreadItemDoneEvent(item=start_message))
 
             async def on_step(
                 step_summary: WorkflowStepSummary, index: int
@@ -200,13 +198,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     "Le workflow a été exécuté mais n'a produit aucun contenu textuel."
                 )
 
-            final_message = await self._store_assistant_message(
+            await self._publish_assistant_message(
                 thread=thread,
                 agent_context=agent_context,
                 text=output_text,
             )
-
-            await agent_context.stream(ThreadItemDoneEvent(item=final_message))
             await agent_context.stream(
                 EndOfTurnItem(
                     id=self.store.generate_item_id(
@@ -234,12 +230,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 f"Le workflow a échoué pendant l'étape « {exc.title} » ({exc.step}). "
                 f"Détails techniques : {exc.original_error}"
             )
-            error_item = await self._store_assistant_message(
+            await self._publish_assistant_message(
                 thread=thread,
                 agent_context=agent_context,
                 text=error_message,
             )
-            await agent_context.stream(ThreadItemDoneEvent(item=error_item))
             await agent_context.stream(
                 ErrorEvent(
                     code=ErrorCode.STREAM_ERROR,
@@ -255,12 +250,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             detailed_message = (
                 f"Erreur inattendue ({exc.__class__.__name__}) : {exc}"
             )
-            error_item = await self._store_assistant_message(
+            await self._publish_assistant_message(
                 thread=thread,
                 agent_context=agent_context,
                 text=detailed_message,
             )
-            await agent_context.stream(ThreadItemDoneEvent(item=error_item))
             await agent_context.stream(
                 ErrorEvent(
                     code=ErrorCode.STREAM_ERROR,
@@ -299,7 +293,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         details = step.output.strip() or "(aucune sortie)"
         header = f"Étape {index} – {step.title}"
         text = f"{header}\n\n{details}"
-        message = await self._store_assistant_message(
+        message = await self._publish_assistant_message(
             thread=thread,
             agent_context=agent_context,
             text=text,
@@ -307,9 +301,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         logger.info(
             "Progression du workflow %s : %s", thread.id, header
         )
-        await agent_context.stream(ThreadItemDoneEvent(item=message))
 
-    async def _store_assistant_message(
+    async def _publish_assistant_message(
         self,
         *,
         thread: ThreadMetadata,
@@ -317,9 +310,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         text: str,
     ) -> AssistantMessageItem:
         message = AssistantMessageItem(
-            id=self.store.generate_item_id(
-                "message", thread, agent_context.request_context
-            ),
+            id=agent_context.generate_id("message", thread),
             thread_id=thread.id,
             created_at=datetime.now(),
             content=[
@@ -329,19 +320,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 )
             ],
         )
-        try:
-            await self.store.add_thread_item(
-                thread.id, message, agent_context.request_context
-            )
-        except IntegrityError:
-            logger.warning(
-                "Élément %s déjà présent dans le fil %s, mise à jour du contenu",
-                message.id,
-                thread.id,
-            )
-            await self.store.save_item(
-                thread.id, message, agent_context.request_context
-            )
+        await agent_context.stream(ThreadItemAddedEvent(item=message))
+        await agent_context.stream(ThreadItemDoneEvent(item=message))
         return message
 
 
