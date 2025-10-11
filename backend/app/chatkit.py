@@ -15,6 +15,7 @@ from chatkit.types import (
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
+    ProgressUpdateEvent,
     ThreadItem,
     ThreadItemDoneEvent,
     ThreadMetadata,
@@ -28,6 +29,7 @@ from .database import SessionLocal
 from workflows.agents import (
     WorkflowExecutionError,
     WorkflowInput,
+    WorkflowStepStreamUpdate,
     WorkflowStepSummary,
     run_workflow,
 )
@@ -129,6 +131,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         event_queue: asyncio.Queue[ThreadStreamEvent | None],
     ) -> None:
         streamed_step_keys: set[str] = set()
+        step_progress_text: dict[str, str] = {}
 
         try:
             logger.info("Démarrage du workflow pour le fil %s", thread.id)
@@ -152,9 +155,37 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     event_queue=event_queue,
                 )
                 streamed_step_keys.add(step_summary.key)
+                step_progress_text.pop(step_summary.key, None)
+
+            async def on_step_stream(
+                update: WorkflowStepStreamUpdate,
+            ) -> None:
+                header = f"Étape {update.index} – {update.title}"
+
+                if update.key not in step_progress_text:
+                    waiting_text = f"{header}\n\nGénération en cours..."
+                    step_progress_text[update.key] = waiting_text
+                    await _enqueue_event(
+                        event_queue, ProgressUpdateEvent(text=waiting_text)
+                    )
+
+                aggregated_text = update.text
+                if not aggregated_text.strip():
+                    return
+
+                progress_text = f"{header}\n\n{aggregated_text}"
+                if step_progress_text.get(update.key) == progress_text:
+                    return
+
+                step_progress_text[update.key] = progress_text
+                await _enqueue_event(
+                    event_queue, ProgressUpdateEvent(text=progress_text)
+                )
 
             workflow_run = await run_workflow(
-                workflow_input, on_step=on_step
+                workflow_input,
+                on_step=on_step,
+                on_step_stream=on_step_stream,
             )
 
             result = workflow_run.final_output or {}

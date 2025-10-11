@@ -1,9 +1,18 @@
-from agents import WebSearchTool, Agent, ModelSettings, RunContextWrapper, TResponseInputItem, Runner, RunConfig
+from agents import (
+  WebSearchTool,
+  Agent,
+  ModelSettings,
+  RunContextWrapper,
+  TResponseInputItem,
+  Runner,
+  RunConfig
+)
 from dataclasses import dataclass
 from collections.abc import Awaitable, Callable
 import json
 from typing import Any
 from pydantic import BaseModel
+from openai.types.responses import ResponseTextDeltaEvent
 from openai.types.shared.reasoning import Reasoning
 
 from app.token_sanitizer import sanitize_model_like
@@ -594,6 +603,15 @@ class WorkflowRunSummary:
   final_output: dict[str, Any] | None
 
 
+@dataclass
+class WorkflowStepStreamUpdate:
+  key: str
+  title: str
+  index: int
+  delta: str
+  text: str
+
+
 class WorkflowExecutionError(RuntimeError):
   def __init__(
     self,
@@ -648,7 +666,8 @@ def _format_step_output(payload: Any) -> str:
 # Main code entrypoint
 async def run_workflow(
   workflow_input: WorkflowInput,
-  on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None = None
+  on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None = None,
+  on_step_stream: Callable[[WorkflowStepStreamUpdate], Awaitable[None]] | None = None,
 ) -> WorkflowRunSummary:
   state = {
     "has_all_details": False,
@@ -668,6 +687,12 @@ async def run_workflow(
     }
   ]
 
+  def _workflow_run_config() -> RunConfig:
+    return RunConfig(trace_metadata={
+      "__trace_source__": "agent-builder",
+      "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
+    })
+
   async def record_step(step_key: str, title: str, payload: Any) -> None:
     summary = WorkflowStepSummary(
       key=step_key,
@@ -681,173 +706,170 @@ async def run_workflow(
   def raise_step_error(step_key: str, title: str, error: Exception) -> None:
     raise WorkflowExecutionError(step_key, title, error, list(steps)) from error
 
-  triage_title = "Analyse des informations fournies"
-  try:
-    triage_result_temp = await Runner.run(
-      triage,
-      input=[
-        *conversation_history
-      ],
-      run_config=RunConfig(trace_metadata={
-        "__trace_source__": "agent-builder",
-        "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
-      })
+  def _structured_output_as_json(output: Any) -> tuple[Any, str]:
+    if hasattr(output, "model_dump"):
+      parsed = output.model_dump()
+      return parsed, json.dumps(parsed, ensure_ascii=False)
+    if isinstance(output, (dict, list)):
+      return output, json.dumps(output, ensure_ascii=False)
+    return output, str(output)
+
+  async def run_agent_step(
+    step_key: str,
+    title: str,
+    agent: Agent,
+    *,
+    context: Any | None = None,
+  ):
+    step_index = len(steps) + 1
+    streaming_result = Runner.run_streamed(
+      agent,
+      input=[*conversation_history],
+      run_config=_workflow_run_config(),
+      context=context,
     )
-  except Exception as exc:
-    raise_step_error("triage", triage_title, exc)
+    if on_step_stream is not None:
+      await on_step_stream(
+        WorkflowStepStreamUpdate(
+          key=step_key,
+          title=title,
+          index=step_index,
+          delta="",
+          text="",
+        )
+      )
+    accumulated_text = ""
+    try:
+      async for event in streaming_result.stream_events():
+        if (
+          event.type == "raw_response_event"
+          and isinstance(event.data, ResponseTextDeltaEvent)
+        ):
+          delta_text = event.data.delta or ""
+          if not delta_text:
+            continue
+          if on_step_stream is not None:
+            accumulated_text += delta_text
+            await on_step_stream(
+              WorkflowStepStreamUpdate(
+                key=step_key,
+                title=title,
+                index=step_index,
+                delta=delta_text,
+                text=accumulated_text,
+              )
+            )
+    except Exception as exc:
+      raise_step_error(step_key, title, exc)
 
-  conversation_history.extend([item.to_input_item() for item in triage_result_temp.new_items])
+    conversation_history.extend([item.to_input_item() for item in streaming_result.new_items])
+    return streaming_result
 
+  triage_title = "Analyse des informations fournies"
+  triage_result_stream = await run_agent_step("triage", triage_title, triage)
+  triage_parsed, triage_text = _structured_output_as_json(triage_result_stream.final_output)
   triage_result = {
-    "output_text": triage_result_temp.final_output.json(),
-    "output_parsed": triage_result_temp.final_output.model_dump()
+    "output_text": triage_text,
+    "output_parsed": triage_parsed
   }
-  state["has_all_details"] = triage_result["output_parsed"]["has_all_details"]
+  if isinstance(triage_parsed, dict):
+    state["has_all_details"] = bool(triage_parsed.get("has_all_details"))
+  else:
+    state["has_all_details"] = False
   state["infos_manquantes"] = triage_result["output_text"]
   await record_step("triage", triage_title, triage_result["output_parsed"])
 
   if state["has_all_details"] is True:
     redacteur_title = "Rédaction du plan-cadre"
-    try:
-      r_dacteur_result_temp = await Runner.run(
-        r_dacteur,
-        input=[
-          *conversation_history
-        ],
-        run_config=RunConfig(trace_metadata={
-          "__trace_source__": "agent-builder",
-          "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
-        })
-      )
-    except Exception as exc:
-      raise_step_error("r_dacteur", redacteur_title, exc)
-
-    conversation_history.extend([item.to_input_item() for item in r_dacteur_result_temp.new_items])
-
+    r_dacteur_result_stream = await run_agent_step(
+      "r_dacteur",
+      redacteur_title,
+      r_dacteur,
+    )
+    redacteur_parsed, redacteur_text = _structured_output_as_json(
+      r_dacteur_result_stream.final_output
+    )
     r_dacteur_result = {
-      "output_text": r_dacteur_result_temp.final_output.json(),
-      "output_parsed": r_dacteur_result_temp.final_output.model_dump()
+      "output_text": redacteur_text,
+      "output_parsed": redacteur_parsed
     }
     await record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
     return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
 
   web_step_title = "Collecte d'exemples externes"
-  try:
-    get_data_from_web_result_temp = await Runner.run(
-      get_data_from_web,
-      input=[
-        *conversation_history
-      ],
-      run_config=RunConfig(trace_metadata={
-        "__trace_source__": "agent-builder",
-        "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
-      }),
-      context=GetDataFromWebContext(state_infos_manquantes=state["infos_manquantes"])
-    )
-  except Exception as exc:
-    raise_step_error("get_data_from_web", web_step_title, exc)
-
-  conversation_history.extend([item.to_input_item() for item in get_data_from_web_result_temp.new_items])
-
+  get_data_from_web_result_stream = await run_agent_step(
+    "get_data_from_web",
+    web_step_title,
+    get_data_from_web,
+    context=GetDataFromWebContext(state_infos_manquantes=state["infos_manquantes"])
+  )
   get_data_from_web_result = {
-    "output_text": get_data_from_web_result_temp.final_output_as(str)
+    "output_text": get_data_from_web_result_stream.final_output_as(str)
   }
   await record_step("get_data_from_web", web_step_title, get_data_from_web_result["output_text"])
 
   triage_2_title = "Validation après collecte"
-  try:
-    triage_2_result_temp = await Runner.run(
-      triage_2,
-      input=[
-        *conversation_history
-      ],
-      run_config=RunConfig(trace_metadata={
-        "__trace_source__": "agent-builder",
-        "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
-      }),
-      context=Triage2Context(input_output_text=get_data_from_web_result["output_text"])
-    )
-  except Exception as exc:
-    raise_step_error("triage_2", triage_2_title, exc)
-
-  conversation_history.extend([item.to_input_item() for item in triage_2_result_temp.new_items])
-
+  triage_2_result_stream = await run_agent_step(
+    "triage_2",
+    triage_2_title,
+    triage_2,
+    context=Triage2Context(input_output_text=get_data_from_web_result["output_text"])
+  )
+  triage_2_parsed, triage_2_text = _structured_output_as_json(
+    triage_2_result_stream.final_output
+  )
   triage_2_result = {
-    "output_text": triage_2_result_temp.final_output.json(),
-    "output_parsed": triage_2_result_temp.final_output.model_dump()
+    "output_text": triage_2_text,
+    "output_parsed": triage_2_parsed
   }
-  state["has_all_details"] = triage_2_result["output_parsed"]["has_all_details"]
+  if isinstance(triage_2_parsed, dict):
+    state["has_all_details"] = bool(triage_2_parsed.get("has_all_details"))
+  else:
+    state["has_all_details"] = False
   state["infos_manquantes"] = triage_2_result["output_text"]
   await record_step("triage_2", triage_2_title, triage_2_result["output_parsed"])
 
   if state["has_all_details"] is True:
     redacteur_title = "Rédaction du plan-cadre"
-    try:
-      r_dacteur_result_temp = await Runner.run(
-        r_dacteur,
-        input=[
-          *conversation_history
-        ],
-        run_config=RunConfig(trace_metadata={
-          "__trace_source__": "agent-builder",
-          "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
-        })
-      )
-    except Exception as exc:
-      raise_step_error("r_dacteur", redacteur_title, exc)
-
-    conversation_history.extend([item.to_input_item() for item in r_dacteur_result_temp.new_items])
-
+    r_dacteur_result_stream = await run_agent_step(
+      "r_dacteur",
+      redacteur_title,
+      r_dacteur,
+    )
+    redacteur_parsed, redacteur_text = _structured_output_as_json(
+      r_dacteur_result_stream.final_output
+    )
     r_dacteur_result = {
-      "output_text": r_dacteur_result_temp.final_output.json(),
-      "output_parsed": r_dacteur_result_temp.final_output.model_dump()
+      "output_text": redacteur_text,
+      "output_parsed": redacteur_parsed
     }
     await record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
     return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
 
   user_step_title = "Demande d'informations supplémentaires"
-  try:
-    get_data_from_user_result_temp = await Runner.run(
-      get_data_from_user,
-      input=[
-        *conversation_history
-      ],
-      run_config=RunConfig(trace_metadata={
-        "__trace_source__": "agent-builder",
-        "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
-      }),
-      context=GetDataFromUserContext(state_infos_manquantes=state["infos_manquantes"])
-    )
-  except Exception as exc:
-    raise_step_error("get_data_from_user", user_step_title, exc)
-
-  conversation_history.extend([item.to_input_item() for item in get_data_from_user_result_temp.new_items])
-
+  get_data_from_user_result_stream = await run_agent_step(
+    "get_data_from_user",
+    user_step_title,
+    get_data_from_user,
+    context=GetDataFromUserContext(state_infos_manquantes=state["infos_manquantes"])
+  )
   get_data_from_user_result = {
-    "output_text": get_data_from_user_result_temp.final_output_as(str)
+    "output_text": get_data_from_user_result_stream.final_output_as(str)
   }
   await record_step("get_data_from_user", user_step_title, get_data_from_user_result["output_text"])
 
   redacteur_title = "Rédaction du plan-cadre"
-  try:
-    r_dacteur_result_temp = await Runner.run(
-      r_dacteur,
-      input=[
-        *conversation_history
-      ],
-      run_config=RunConfig(trace_metadata={
-        "__trace_source__": "agent-builder",
-        "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
-      })
-    )
-  except Exception as exc:
-    raise_step_error("r_dacteur", redacteur_title, exc)
-
-  conversation_history.extend([item.to_input_item() for item in r_dacteur_result_temp.new_items])
-
+  r_dacteur_result_stream = await run_agent_step(
+    "r_dacteur",
+    redacteur_title,
+    r_dacteur,
+  )
+  redacteur_parsed, redacteur_text = _structured_output_as_json(
+    r_dacteur_result_stream.final_output
+  )
   r_dacteur_result = {
-    "output_text": r_dacteur_result_temp.final_output.json(),
-    "output_parsed": r_dacteur_result_temp.final_output.model_dump()
+    "output_text": redacteur_text,
+    "output_parsed": redacteur_parsed
   }
   await record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
   return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
