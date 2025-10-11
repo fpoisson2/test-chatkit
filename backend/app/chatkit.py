@@ -74,6 +74,8 @@ class _StepStreamState:
     header: str
     output: _StreamingMessageState | None = None
     reasoning: _StreamingMessageState | None = None
+    summary_output: str | None = None
+    summary_reasoning: str | None = None
 
 
 class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
@@ -168,21 +170,24 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             async def on_step(
                 step_summary: WorkflowStepSummary, index: int
             ) -> None:
-                state = step_stream_states.pop(step_summary.key, None)
+                state = step_stream_states.get(step_summary.key)
                 if state:
                     header = f"Étape {index} – {step_summary.title}"
+                    state.summary_output = step_summary.output
+                    reasoning_text = _render_workflow_reasoning(
+                        step_summary.reasoning,
+                        step_summary.reasoning_text,
+                    )
+                    state.summary_reasoning = reasoning_text
                     if state.output is not None:
                         state.output.buffer = step_summary.output
-                    if state.reasoning is not None:
-                        reasoning_text = _render_workflow_reasoning(
-                            step_summary.reasoning,
-                            step_summary.reasoning_text,
-                        )
-                        if reasoning_text:
-                            state.reasoning.buffer = reasoning_text
-                    await self._finalize_step_stream_state(
+                    if state.reasoning is not None and reasoning_text:
+                        state.reasoning.buffer = reasoning_text
+                    await self._maybe_close_step_stream_state(
                         agent_context=agent_context,
+                        step_key=step_summary.key,
                         step_state=state,
+                        step_states=step_stream_states,
                     )
                     logger.info(
                         "Progression du workflow %s : %s (diffusé)",
@@ -234,6 +239,13 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         stream_state=state.reasoning,
                         delta=update.reasoning_delta,
                     )
+
+                await self._maybe_close_step_stream_state(
+                    agent_context=agent_context,
+                    step_key=update.key,
+                    step_state=state,
+                    step_states=step_stream_states,
+                )
 
             workflow_run = await run_workflow(
                 workflow_input,
@@ -477,6 +489,35 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
         step_stream_states.clear()
 
+    async def _maybe_close_step_stream_state(
+        self,
+        *,
+        agent_context: AgentContext[ChatKitRequestContext],
+        step_key: str,
+        step_state: _StepStreamState,
+        step_states: dict[str, _StepStreamState],
+    ) -> None:
+        summary_output = step_state.summary_output
+        summary_reasoning = step_state.summary_reasoning
+        if summary_output is None and summary_reasoning is None:
+            return
+
+        if step_state.output is not None and summary_output is not None:
+            if _normalize_text(step_state.output.buffer) != _normalize_text(summary_output):
+                return
+        elif summary_output and summary_output.strip():
+            return
+
+        if step_state.reasoning is not None and summary_reasoning is not None:
+            if _normalize_text(step_state.reasoning.buffer) != _normalize_text(summary_reasoning):
+                return
+
+        await self._finalize_step_stream_state(
+            agent_context=agent_context,
+            step_state=step_state,
+        )
+        step_states.pop(step_key, None)
+
     async def _publish_assistant_message(
         self,
         *,
@@ -687,3 +728,9 @@ def _format_output_text(output_text: str | None, fallback: Any | None) -> str:
             return text
 
     return ""
+
+
+def _normalize_text(value: str | None) -> str:
+    if value is None:
+        return ""
+    return "\n".join(part.rstrip() for part in value.splitlines()).strip()
