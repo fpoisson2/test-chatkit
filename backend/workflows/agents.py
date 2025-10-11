@@ -34,6 +34,12 @@ _REASONING_TITLE_LINE_RE = re.compile(
   r"^\s*(?:[\-\*\+\u2022]\s+|\d+(?:[\.)]|\s*-)?\s+|\([^)]+\)\s+)?\*\*(?P<title>.+?)\*\*(?P<remainder>.*)$"
 )
 
+# Identifie les titres en gras situés juste après une phrase ponctuée afin de leur
+# insérer un saut de ligne virtuel pendant l'analyse.
+_INLINE_TITLE_AFTER_SENTENCE_RE = re.compile(
+  r"(?P<prefix>[.!?…])\s+(?P<bullet>(?:[\-\*\+\u2022]\s+|\d+(?:[.)]|\s*-)?\s+|\([^)]+\)\s+)?)(?P<marker>\*\*(?P<title>[^*]+)\*\*)"
+)
+
 
 def _extract_reasoning_title(line: str) -> tuple[str | None, str | None]:
   """Detecte un titre en gras et renvoie le reste de la ligne."""
@@ -54,6 +60,20 @@ def _extract_reasoning_title(line: str) -> tuple[str | None, str | None]:
   return title, remainder_content
 
 
+def _prepare_reasoning_text_for_titles(value: str) -> str:
+  """Insère un saut de ligne avant les titres en gras collés à la fin d'une phrase."""
+  if not isinstance(value, str) or not value:
+    return value
+
+  def _insert_virtual_newline(match: re.Match[str]) -> str:
+    prefix = match.group("prefix")
+    bullet = match.group("bullet") or ""
+    marker = match.group("marker")
+    return f"{prefix}\n{bullet}{marker}"
+
+  return _INLINE_TITLE_AFTER_SENTENCE_RE.sub(_insert_virtual_newline, value)
+
+
 def _normalize_title(value: str | None) -> str | None:
   if not isinstance(value, str):
     return None
@@ -69,7 +89,9 @@ def _normalize_content(value: str) -> str:
 def _parse_reasoning_segments(
   text: str, *, default_title: str | None = None
 ) -> list[tuple[str | None, str]]:
-  normalized_text = text.replace("\r\n", "\n")
+  normalized_text = _prepare_reasoning_text_for_titles(
+    text.replace("\r\n", "\n")
+  )
   if not normalized_text.strip():
     return []
 
