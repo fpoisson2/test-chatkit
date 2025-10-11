@@ -684,7 +684,8 @@ class _ReasoningWorkflowReporter:
     self._started = False
     self._ended = False
     self._tasks: list[SearchTask | ThoughtTask] = []
-    self._thought_index: int | None = None
+    self._reasoning_buffer = ""
+    self._thought_segments: list[str] = []
 
   async def _ensure_started(self) -> None:
     if self._context is None or self._started or self._ended:
@@ -698,23 +699,35 @@ class _ReasoningWorkflowReporter:
     if not delta:
       return
     await self._ensure_started()
-    if (
-      self._thought_index is None
-      or self._thought_index >= len(self._tasks)
-      or not isinstance(self._tasks[self._thought_index], ThoughtTask)
-    ):
-      thought = ThoughtTask(content=delta)
-      self._tasks.append(thought)
-      self._thought_index = len(self._tasks) - 1
-      await self._context.add_workflow_task(thought)
-    else:
-      thought = self._tasks[self._thought_index]
-      thought.content += delta
-    if self._thought_index is not None:
-      await self._context.update_workflow_task(
-        self._tasks[self._thought_index],
-        self._thought_index,
-      )
+    self._reasoning_buffer += delta
+    raw_segments = self._reasoning_buffer.split("\n\n")
+    normalized_segments = [
+      segment.strip()
+      for segment in raw_segments
+      if segment.strip()
+    ]
+
+    # Synchronise les tâches de réflexion avec les segments observés
+    for index, content in enumerate(normalized_segments):
+      if index < len(self._thought_segments):
+        if content == self._thought_segments[index]:
+          continue
+        self._thought_segments[index] = content
+        if index < len(self._tasks):
+          task = self._tasks[index]
+          if isinstance(task, ThoughtTask):
+            task.content = content
+            await self._context.update_workflow_task(task, index)
+        continue
+
+      if content in self._thought_segments:
+        continue
+
+      thought_task = ThoughtTask(content=content)
+      self._thought_segments.append(content)
+      self._tasks.append(thought_task)
+      await self._context.add_workflow_task(thought_task)
+      await self._context.update_workflow_task(thought_task, index)
 
   async def sync_with_workflow(self, workflow: Workflow | None) -> None:
     if self._context is None or self._ended:
@@ -733,8 +746,10 @@ class _ReasoningWorkflowReporter:
         if isinstance(current, ThoughtTask) and isinstance(final_task, ThoughtTask):
           current.title = final_task.title
           current.content = final_task.content
-          if self._thought_index is None:
-            self._thought_index = index
+          if index < len(self._thought_segments):
+            self._thought_segments[index] = final_task.content.strip()
+          else:
+            self._thought_segments.append(final_task.content.strip())
         elif isinstance(current, SearchTask) and isinstance(final_task, SearchTask):
           current.title = final_task.title
           current.title_query = final_task.title_query
@@ -750,11 +765,13 @@ class _ReasoningWorkflowReporter:
         await self._context.add_workflow_task(new_task)
         await self._context.update_workflow_task(new_task, index)
 
-    if self._thought_index is None:
-      for idx, task in enumerate(self._tasks):
-        if isinstance(task, ThoughtTask):
-          self._thought_index = idx
-          break
+    thought_contents: list[str] = []
+    for task in self._tasks:
+      if isinstance(task, ThoughtTask):
+        thought_contents.append(task.content.strip())
+      else:
+        break
+    self._thought_segments = [content for content in thought_contents if content]
 
     await self._context.end_workflow()
     self._ended = True
@@ -907,9 +924,10 @@ async def run_workflow(
       for block in _split_reasoning_blocks(reasoning_text):
         _add_thought(block)
 
-    tasks: list[SearchTask | ThoughtTask] = []
-    if thought_segments:
-      tasks.append(ThoughtTask(content="\n\n".join(thought_segments)))
+    tasks: list[SearchTask | ThoughtTask] = [
+      ThoughtTask(content=segment)
+      for segment in thought_segments
+    ]
     tasks.extend(ordered_search_tasks)
 
     if not tasks:
