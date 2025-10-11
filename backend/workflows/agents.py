@@ -1,4 +1,7 @@
 from agents import WebSearchTool, Agent, ModelSettings, RunContextWrapper, TResponseInputItem, Runner, RunConfig
+from dataclasses import dataclass
+import json
+from typing import Any
 from pydantic import BaseModel
 from openai.types.shared.reasoning import Reasoning
 
@@ -577,12 +580,77 @@ class WorkflowInput(BaseModel):
   input_as_text: str
 
 
+@dataclass
+class WorkflowStepSummary:
+  key: str
+  title: str
+  output: str
+
+
+@dataclass
+class WorkflowRunSummary:
+  steps: list[WorkflowStepSummary]
+  final_output: dict[str, Any] | None
+
+
+class WorkflowExecutionError(RuntimeError):
+  def __init__(
+    self,
+    step: str,
+    title: str,
+    original_error: Exception,
+    steps: list[WorkflowStepSummary],
+  ) -> None:
+    super().__init__(str(original_error))
+    self.step = step
+    self.title = title
+    self.original_error = original_error
+    self.steps = steps
+
+  def __str__(self) -> str:
+    return f"{self.title} ({self.step}) : {self.original_error}"
+
+
+def _format_step_output(payload: Any) -> str:
+  if payload is None:
+    return "(aucune sortie)"
+
+  if isinstance(payload, BaseModel):
+    payload = payload.model_dump()
+
+  if isinstance(payload, (dict, list)):
+    try:
+      return json.dumps(payload, ensure_ascii=False, indent=2)
+    except TypeError:
+      return str(payload)
+
+  if isinstance(payload, str):
+    text_value = payload.strip()
+    if not text_value:
+      return "(aucune sortie)"
+
+    try:
+      parsed = json.loads(text_value)
+    except json.JSONDecodeError:
+      return text_value
+
+    if isinstance(parsed, (dict, list)):
+      try:
+        return json.dumps(parsed, ensure_ascii=False, indent=2)
+      except TypeError:
+        return str(parsed)
+    return str(parsed)
+
+  return str(payload)
+
+
 # Main code entrypoint
-async def run_workflow(workflow_input: WorkflowInput):
+async def run_workflow(workflow_input: WorkflowInput) -> WorkflowRunSummary:
   state = {
     "has_all_details": False,
     "infos_manquantes": None
   }
+  steps: list[WorkflowStepSummary] = []
   workflow = workflow_input.model_dump()
   conversation_history: list[TResponseInputItem] = [
     {
@@ -595,16 +663,33 @@ async def run_workflow(workflow_input: WorkflowInput):
       ]
     }
   ]
-  triage_result_temp = await Runner.run(
-    triage,
-    input=[
-      *conversation_history
-    ],
-    run_config=RunConfig(trace_metadata={
-      "__trace_source__": "agent-builder",
-      "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
-    })
-  )
+
+  def record_step(step_key: str, title: str, payload: Any) -> None:
+    steps.append(
+      WorkflowStepSummary(
+        key=step_key,
+        title=title,
+        output=_format_step_output(payload),
+      )
+    )
+
+  def raise_step_error(step_key: str, title: str, error: Exception) -> None:
+    raise WorkflowExecutionError(step_key, title, error, list(steps)) from error
+
+  triage_title = "Analyse des informations fournies"
+  try:
+    triage_result_temp = await Runner.run(
+      triage,
+      input=[
+        *conversation_history
+      ],
+      run_config=RunConfig(trace_metadata={
+        "__trace_source__": "agent-builder",
+        "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
+      })
+    )
+  except Exception as exc:
+    raise_step_error("triage", triage_title, exc)
 
   conversation_history.extend([item.to_input_item() for item in triage_result_temp.new_items])
 
@@ -614,17 +699,23 @@ async def run_workflow(workflow_input: WorkflowInput):
   }
   state["has_all_details"] = triage_result["output_parsed"]["has_all_details"]
   state["infos_manquantes"] = triage_result["output_text"]
-  if state["has_all_details"] == True:
-    r_dacteur_result_temp = await Runner.run(
-      r_dacteur,
-      input=[
-        *conversation_history
-      ],
-      run_config=RunConfig(trace_metadata={
-        "__trace_source__": "agent-builder",
-        "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
-      })
-    )
+  record_step("triage", triage_title, triage_result["output_parsed"])
+
+  if state["has_all_details"] is True:
+    redacteur_title = "Rédaction du plan-cadre"
+    try:
+      r_dacteur_result_temp = await Runner.run(
+        r_dacteur,
+        input=[
+          *conversation_history
+        ],
+        run_config=RunConfig(trace_metadata={
+          "__trace_source__": "agent-builder",
+          "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
+        })
+      )
+    except Exception as exc:
+      raise_step_error("r_dacteur", redacteur_title, exc)
 
     conversation_history.extend([item.to_input_item() for item in r_dacteur_result_temp.new_items])
 
@@ -632,8 +723,11 @@ async def run_workflow(workflow_input: WorkflowInput):
       "output_text": r_dacteur_result_temp.final_output.json(),
       "output_parsed": r_dacteur_result_temp.final_output.model_dump()
     }
-    return r_dacteur_result
-  else:
+    record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
+    return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
+
+  web_step_title = "Collecte d'exemples externes"
+  try:
     get_data_from_web_result_temp = await Runner.run(
       get_data_from_web,
       input=[
@@ -645,12 +739,18 @@ async def run_workflow(workflow_input: WorkflowInput):
       }),
       context=GetDataFromWebContext(state_infos_manquantes=state["infos_manquantes"])
     )
+  except Exception as exc:
+    raise_step_error("get_data_from_web", web_step_title, exc)
 
-    conversation_history.extend([item.to_input_item() for item in get_data_from_web_result_temp.new_items])
+  conversation_history.extend([item.to_input_item() for item in get_data_from_web_result_temp.new_items])
 
-    get_data_from_web_result = {
-      "output_text": get_data_from_web_result_temp.final_output_as(str)
-    }
+  get_data_from_web_result = {
+    "output_text": get_data_from_web_result_temp.final_output_as(str)
+  }
+  record_step("get_data_from_web", web_step_title, get_data_from_web_result["output_text"])
+
+  triage_2_title = "Validation après collecte"
+  try:
     triage_2_result_temp = await Runner.run(
       triage_2,
       input=[
@@ -662,67 +762,87 @@ async def run_workflow(workflow_input: WorkflowInput):
       }),
       context=Triage2Context(input_output_text=get_data_from_web_result["output_text"])
     )
+  except Exception as exc:
+    raise_step_error("triage_2", triage_2_title, exc)
 
-    conversation_history.extend([item.to_input_item() for item in triage_2_result_temp.new_items])
+  conversation_history.extend([item.to_input_item() for item in triage_2_result_temp.new_items])
 
-    triage_2_result = {
-      "output_text": triage_2_result_temp.final_output.json(),
-      "output_parsed": triage_2_result_temp.final_output.model_dump()
+  triage_2_result = {
+    "output_text": triage_2_result_temp.final_output.json(),
+    "output_parsed": triage_2_result_temp.final_output.model_dump()
+  }
+  state["has_all_details"] = triage_2_result["output_parsed"]["has_all_details"]
+  state["infos_manquantes"] = triage_2_result["output_text"]
+  record_step("triage_2", triage_2_title, triage_2_result["output_parsed"])
+
+  if state["has_all_details"] is True:
+    redacteur_title = "Rédaction du plan-cadre"
+    try:
+      r_dacteur_result_temp = await Runner.run(
+        r_dacteur,
+        input=[
+          *conversation_history
+        ],
+        run_config=RunConfig(trace_metadata={
+          "__trace_source__": "agent-builder",
+          "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
+        })
+      )
+    except Exception as exc:
+      raise_step_error("r_dacteur", redacteur_title, exc)
+
+    conversation_history.extend([item.to_input_item() for item in r_dacteur_result_temp.new_items])
+
+    r_dacteur_result = {
+      "output_text": r_dacteur_result_temp.final_output.json(),
+      "output_parsed": r_dacteur_result_temp.final_output.model_dump()
     }
-    state["has_all_details"] = triage_2_result["output_parsed"]["has_all_details"]
-    state["infos_manquantes"] = triage_2_result["output_text"]
-    if state["has_all_details"] == True:
-      r_dacteur_result_temp = await Runner.run(
-        r_dacteur,
-        input=[
-          *conversation_history
-        ],
-        run_config=RunConfig(trace_metadata={
-          "__trace_source__": "agent-builder",
-          "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
-        })
-      )
+    record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
+    return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
 
-      conversation_history.extend([item.to_input_item() for item in r_dacteur_result_temp.new_items])
+  user_step_title = "Demande d'informations supplémentaires"
+  try:
+    get_data_from_user_result_temp = await Runner.run(
+      get_data_from_user,
+      input=[
+        *conversation_history
+      ],
+      run_config=RunConfig(trace_metadata={
+        "__trace_source__": "agent-builder",
+        "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
+      }),
+      context=GetDataFromUserContext(state_infos_manquantes=state["infos_manquantes"])
+    )
+  except Exception as exc:
+    raise_step_error("get_data_from_user", user_step_title, exc)
 
-      r_dacteur_result = {
-        "output_text": r_dacteur_result_temp.final_output.json(),
-        "output_parsed": r_dacteur_result_temp.final_output.model_dump()
-      }
-      return r_dacteur_result
-    else:
-      get_data_from_user_result_temp = await Runner.run(
-        get_data_from_user,
-        input=[
-          *conversation_history
-        ],
-        run_config=RunConfig(trace_metadata={
-          "__trace_source__": "agent-builder",
-          "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
-        }),
-        context=GetDataFromUserContext(state_infos_manquantes=state["infos_manquantes"])
-      )
+  conversation_history.extend([item.to_input_item() for item in get_data_from_user_result_temp.new_items])
 
-      conversation_history.extend([item.to_input_item() for item in get_data_from_user_result_temp.new_items])
+  get_data_from_user_result = {
+    "output_text": get_data_from_user_result_temp.final_output_as(str)
+  }
+  record_step("get_data_from_user", user_step_title, get_data_from_user_result["output_text"])
 
-      get_data_from_user_result = {
-        "output_text": get_data_from_user_result_temp.final_output_as(str)
-      }
-      r_dacteur_result_temp = await Runner.run(
-        r_dacteur,
-        input=[
-          *conversation_history
-        ],
-        run_config=RunConfig(trace_metadata={
-          "__trace_source__": "agent-builder",
-          "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
-        })
-      )
+  redacteur_title = "Rédaction du plan-cadre"
+  try:
+    r_dacteur_result_temp = await Runner.run(
+      r_dacteur,
+      input=[
+        *conversation_history
+      ],
+      run_config=RunConfig(trace_metadata={
+        "__trace_source__": "agent-builder",
+        "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
+      })
+    )
+  except Exception as exc:
+    raise_step_error("r_dacteur", redacteur_title, exc)
 
-      conversation_history.extend([item.to_input_item() for item in r_dacteur_result_temp.new_items])
+  conversation_history.extend([item.to_input_item() for item in r_dacteur_result_temp.new_items])
 
-      r_dacteur_result = {
-        "output_text": r_dacteur_result_temp.final_output.json(),
-        "output_parsed": r_dacteur_result_temp.final_output.model_dump()
-      }
-      return r_dacteur_result
+  r_dacteur_result = {
+    "output_text": r_dacteur_result_temp.final_output.json(),
+    "output_parsed": r_dacteur_result_temp.final_output.model_dump()
+  }
+  record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
+  return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)

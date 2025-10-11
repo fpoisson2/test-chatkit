@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -13,7 +14,7 @@ from chatkit.types import (
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
-    Page,
+    ProgressUpdateEvent,
     ThreadItem,
     ThreadItemDoneEvent,
     ThreadMetadata,
@@ -21,13 +22,10 @@ from chatkit.types import (
     UserMessageItem,
 )
 
-from agents import Runner
-from chatkit.agents import stream_agent_response, AgentContext, simple_to_agent_input
-
 from .config import Settings, get_settings
 from .chatkit_store import PostgresChatKitStore
 from .database import SessionLocal
-from workflows.agents import triage, get_data_from_user, GetDataFromUserContext, run_workflow, WorkflowInput
+from workflows.agents import run_workflow, WorkflowExecutionError, WorkflowInput
 
 logger = logging.getLogger("chatkit.server")
 
@@ -90,32 +88,62 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
             return
 
-        # Créer le contexte pour l'agent
-        agent_context = AgentContext(
-            thread=thread,
-            store=self.store,
-            request_context=context,
+        event_queue: asyncio.Queue[ThreadStreamEvent | None] = asyncio.Queue()
+
+        background = asyncio.create_task(
+            self._run_workflow_and_queue_events(
+                thread=thread,
+                context=context,
+                workflow_input=WorkflowInput(input_as_text=user_text),
+                event_queue=event_queue,
+            )
         )
+        background.add_done_callback(_log_background_exceptions)
 
         try:
-            # Exécuter le workflow complet avec streaming simulé via des progress updates
-            workflow_input = WorkflowInput(input_as_text=user_text)
+            while True:
+                event = await event_queue.get()
+                if event is None:
+                    break
+                yield event
 
-            # Note: Le workflow n'est pas nativement streamé, donc nous allons
-            # afficher des messages de progression et attendre le résultat
-            from chatkit.types import ProgressUpdateEvent
+            await background
+        except asyncio.CancelledError:  # pragma: no cover - déconnexion client
+            logger.info(
+                "Streaming interrompu pour le fil %s, poursuite du workflow en tâche de fond",
+                thread.id,
+            )
+            return
 
-            yield ProgressUpdateEvent(text="Analyse de votre demande en cours...")
+    async def _run_workflow_and_queue_events(
+        self,
+        *,
+        thread: ThreadMetadata,
+        context: ChatKitRequestContext,
+        workflow_input: WorkflowInput,
+        event_queue: asyncio.Queue[ThreadStreamEvent | None],
+    ) -> None:
+        try:
+            await _enqueue_event(
+                event_queue,
+                ProgressUpdateEvent(text="Analyse de votre demande en cours..."),
+            )
 
-            # Exécuter le workflow de manière asynchrone
-            result = await run_workflow(workflow_input)
+            workflow_run = await run_workflow(workflow_input)
 
-            # Le résultat contient le plan-cadre généré ou une demande d'infos
-            # Convertir le résultat en message assistant
+            for index, step in enumerate(workflow_run.steps, start=1):
+                details = step.output.strip() or "(aucune sortie)"
+                header = f"Étape {index} – {step.title}"
+                await _enqueue_event(
+                    event_queue,
+                    ProgressUpdateEvent(text=f"{header}\n\n{details}"),
+                )
+
+            result = workflow_run.final_output
+
             if result:
                 output_text = result.get("output_text", "")
                 if output_text:
-                    # Créer un message assistant avec le résultat
                     message_id = self.store.generate_item_id("message", thread, context)
                     assistant_message = AssistantMessageItem(
                         id=message_id,
@@ -129,25 +157,56 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         ],
                     )
 
-                    # Sauvegarder le message
                     await self.store.add_thread_item(thread.id, assistant_message, context)
 
-                    # Yielder l'événement de fin
-                    yield ThreadItemDoneEvent(item=assistant_message)
-                    yield EndOfTurnItem(
-                        id=self.store.generate_item_id("message", thread, context),
-                        thread_id=thread.id,
-                        created_at=datetime.now(),
+                    await _enqueue_event(
+                        event_queue, ThreadItemDoneEvent(item=assistant_message)
                     )
-
-        except Exception as exc:  # pragma: no cover - erreurs runtime workflow
+                    await _enqueue_event(
+                        event_queue,
+                        EndOfTurnItem(
+                            id=self.store.generate_item_id("message", thread, context),
+                            thread_id=thread.id,
+                            created_at=datetime.now(),
+                        ),
+                    )
+        except WorkflowExecutionError as exc:  # pragma: no cover - erreurs connues du workflow
             logger.exception("Workflow execution failed")
-            yield ErrorEvent(
-                code=ErrorCode.STREAM_ERROR,
-                message=str(exc),
-                allow_retry=True,
+            for index, step in enumerate(exc.steps, start=1):
+                details = step.output.strip() or "(aucune sortie)"
+                header = f"Étape {index} – {step.title}"
+                await _enqueue_event(
+                    event_queue,
+                    ProgressUpdateEvent(text=f"{header}\n\n{details}"),
+                )
+
+            error_message = (
+                f"Le workflow a échoué pendant l'étape « {exc.title} » ({exc.step}). "
+                f"Détails techniques : {exc.original_error}"
             )
-            return
+            await _enqueue_event(
+                event_queue,
+                ErrorEvent(
+                    code=ErrorCode.STREAM_ERROR,
+                    message=error_message,
+                    allow_retry=True,
+                ),
+            )
+        except Exception as exc:  # pragma: no cover - autres erreurs runtime
+            logger.exception("Workflow execution failed")
+            detailed_message = (
+                f"Erreur inattendue ({exc.__class__.__name__}) : {exc}"
+            )
+            await _enqueue_event(
+                event_queue,
+                ErrorEvent(
+                    code=ErrorCode.STREAM_ERROR,
+                    message=detailed_message,
+                    allow_retry=True,
+                ),
+            )
+        finally:
+            await event_queue.put(None)
 
 
 def _collect_user_text(message: UserMessageItem | None) -> str:
@@ -185,6 +244,27 @@ def _apply_agent_overrides(settings: Settings) -> None:
     # Le workflow dans agents.py gère sa propre configuration
     # Les overrides ne sont plus nécessaires car run_workflow utilise le workflow complet
     pass
+
+
+async def _enqueue_event(
+    queue: asyncio.Queue[ThreadStreamEvent | None], event: ThreadStreamEvent
+) -> None:
+    """Ajoute un événement dans la file sans interrompre le workflow."""
+    await queue.put(event)
+
+
+def _log_background_exceptions(task: asyncio.Task[None]) -> None:
+    try:
+        exception = task.exception()
+    except asyncio.CancelledError:  # pragma: no cover - annulation explicite
+        logger.info("Traitement du workflow annulé")
+        return
+    except Exception:  # pragma: no cover - erreur lors de l'inspection
+        logger.exception("Erreur lors de la récupération de l'exception de la tâche")
+        return
+
+    if exception:
+        logger.exception("Erreur dans la tâche de workflow", exc_info=exception)
 
 
 _server: DemoChatKitServer | None = None
