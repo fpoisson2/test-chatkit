@@ -722,13 +722,13 @@ class _ReasoningWorkflowReporter:
     if self._context is None or self._started or self._ended:
       return
     self._placeholder_index = None
+    await self._ensure_started()
     if title:
       placeholder = ThoughtTask(title=title, content="")
       self._tasks.append(placeholder)
       self._placeholder_index = len(self._tasks) - 1
       await self._safe_add_task(placeholder, self._placeholder_index)
       return
-    await self._ensure_started()
 
   def _clone_task(self, task: SearchTask | ThoughtTask) -> SearchTask | ThoughtTask:
     if isinstance(task, ThoughtTask):
