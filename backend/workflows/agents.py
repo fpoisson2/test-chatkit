@@ -686,6 +686,8 @@ class _ReasoningWorkflowReporter:
     self._tasks: list[SearchTask | ThoughtTask] = []
     self._reasoning_buffer = ""
     self._thought_segments: list[str] = []
+    self._thought_task_indices: list[int] = []
+    self._placeholder_index: int | None = None
 
   @property
   def uses_structured_workflow(self) -> bool:
@@ -699,6 +701,18 @@ class _ReasoningWorkflowReporter:
 
   def _is_context_ready(self) -> bool:
     return self._context is not None and not self._ended
+
+  async def start_step(self, *, title: str | None = None) -> None:
+    if self._context is None or self._started or self._ended:
+      return
+    tasks: list[SearchTask | ThoughtTask] = []
+    if title:
+      placeholder = ThoughtTask(title=title, content="")
+      self._tasks.append(placeholder)
+      self._placeholder_index = 0
+      tasks.append(placeholder)
+    await self._context.start_workflow(Workflow(type="reasoning", tasks=tasks))
+    self._started = True
 
   async def _recover_workflow_state(self) -> None:
     if not self._is_context_ready():
@@ -752,20 +766,32 @@ class _ReasoningWorkflowReporter:
         if content == self._thought_segments[index]:
           continue
         self._thought_segments[index] = content
-        if index < len(self._tasks):
-          task = self._tasks[index]
-          if isinstance(task, ThoughtTask):
-            task.content = content
-          await self._safe_update_task(task, index)
+        task_list_index = self._thought_task_indices[index]
+        task = self._tasks[task_list_index]
+        if isinstance(task, ThoughtTask):
+          task.content = content
+        await self._safe_update_task(task, task_list_index)
         continue
 
       if content in self._thought_segments:
         continue
 
+      if self._placeholder_index is not None and not self._thought_segments:
+        task_list_index = self._placeholder_index
+        task = self._tasks[task_list_index]
+        if isinstance(task, ThoughtTask):
+          task.content = content
+        self._thought_segments.append(content)
+        self._thought_task_indices.append(task_list_index)
+        await self._safe_update_task(task, task_list_index)
+        continue
+
       thought_task = ThoughtTask(content=content)
+      task_list_index = len(self._tasks)
       self._thought_segments.append(content)
+      self._thought_task_indices.append(task_list_index)
       self._tasks.append(thought_task)
-      await self._safe_add_task(thought_task, index)
+      await self._safe_add_task(thought_task, task_list_index)
 
   async def sync_with_workflow(self, workflow: Workflow | None) -> None:
     if self._context is None or self._ended:
@@ -779,15 +805,17 @@ class _ReasoningWorkflowReporter:
 
     await self._ensure_started()
     for index, final_task in enumerate(workflow.tasks):
-      if index < len(self._tasks):
-        current = self._tasks[index]
+      task_list_index = index
+      if self._placeholder_index is not None:
+        if index == 0:
+          task_list_index = self._placeholder_index
+        elif index > self._placeholder_index:
+          task_list_index = index
+      if task_list_index < len(self._tasks):
+        current = self._tasks[task_list_index]
         if isinstance(current, ThoughtTask) and isinstance(final_task, ThoughtTask):
           current.title = final_task.title
           current.content = final_task.content
-          if index < len(self._thought_segments):
-            self._thought_segments[index] = final_task.content.strip()
-          else:
-            self._thought_segments.append(final_task.content.strip())
         elif isinstance(current, SearchTask) and isinstance(final_task, SearchTask):
           current.title = final_task.title
           current.title_query = final_task.title_query
@@ -795,20 +823,23 @@ class _ReasoningWorkflowReporter:
           current.sources = list(final_task.sources)
         else:
           current = final_task
-          self._tasks[index] = current
-        await self._safe_update_task(current, index)
+          self._tasks[task_list_index] = current
+        await self._safe_update_task(current, task_list_index)
       else:
         new_task = final_task
         self._tasks.append(new_task)
-        await self._safe_add_task(new_task, index)
+        await self._safe_add_task(new_task, task_list_index)
 
-    thought_contents: list[str] = []
-    for task in self._tasks:
+    thought_contents: list[tuple[str, int]] = []
+    for index, task in enumerate(self._tasks):
       if isinstance(task, ThoughtTask):
-        thought_contents.append(task.content.strip())
+        content = task.content.strip()
+        if content:
+          thought_contents.append((content, index))
       else:
         break
-    self._thought_segments = [content for content in thought_contents if content]
+    self._thought_segments = [content for content, _ in thought_contents]
+    self._thought_task_indices = [task_index for _, task_index in thought_contents]
 
     await self._context.end_workflow()
     self._ended = True
@@ -893,6 +924,7 @@ async def run_workflow(
     reasoning_text: str,
     run_items: Sequence[RunItem],
     raw_responses: Sequence[Any],
+    step_title: str | None = None,
   ) -> Workflow | None:
     thought_segments: list[str] = []
     seen_thoughts: set[str] = set()
@@ -975,10 +1007,13 @@ async def run_workflow(
         summaries = getattr(event, "summary", None)
         _extract_reasoning_entries(summaries)
 
-    tasks: list[SearchTask | ThoughtTask] = [
-      ThoughtTask(content=segment)
-      for segment in thought_segments
-    ]
+    tasks: list[SearchTask | ThoughtTask] = []
+    if thought_segments:
+      first_content, *rest = thought_segments
+      tasks.append(ThoughtTask(content=first_content, title=step_title))
+      tasks.extend(ThoughtTask(content=segment) for segment in rest)
+    elif step_title:
+      tasks.append(ThoughtTask(content="", title=step_title))
     tasks.extend(ordered_search_tasks)
 
     if not tasks:
@@ -1004,6 +1039,7 @@ async def run_workflow(
     accumulated_text = ""
     reasoning_accumulated = ""
     reporter = _ReasoningWorkflowReporter(agent_context)
+    await reporter.start_step(title=title)
 
     async def _emit_stream_update(
       *,
@@ -1064,6 +1100,7 @@ async def run_workflow(
       reasoning_text=reasoning_accumulated,
       run_items=streaming_result.new_items,
       raw_responses=getattr(streaming_result, "raw_responses", ()),
+      step_title=title,
     )
     await reporter.sync_with_workflow(reasoning_workflow)
     return _AgentStepResult(
