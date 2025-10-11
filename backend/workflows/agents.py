@@ -1,5 +1,6 @@
 from agents import WebSearchTool, Agent, ModelSettings, RunContextWrapper, TResponseInputItem, Runner, RunConfig
 from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
 import json
 from typing import Any
 from pydantic import BaseModel
@@ -645,7 +646,10 @@ def _format_step_output(payload: Any) -> str:
 
 
 # Main code entrypoint
-async def run_workflow(workflow_input: WorkflowInput) -> WorkflowRunSummary:
+async def run_workflow(
+  workflow_input: WorkflowInput,
+  on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None = None
+) -> WorkflowRunSummary:
   state = {
     "has_all_details": False,
     "infos_manquantes": None
@@ -664,14 +668,15 @@ async def run_workflow(workflow_input: WorkflowInput) -> WorkflowRunSummary:
     }
   ]
 
-  def record_step(step_key: str, title: str, payload: Any) -> None:
-    steps.append(
-      WorkflowStepSummary(
-        key=step_key,
-        title=title,
-        output=_format_step_output(payload),
-      )
+  async def record_step(step_key: str, title: str, payload: Any) -> None:
+    summary = WorkflowStepSummary(
+      key=step_key,
+      title=title,
+      output=_format_step_output(payload),
     )
+    steps.append(summary)
+    if on_step is not None:
+      await on_step(summary, len(steps))
 
   def raise_step_error(step_key: str, title: str, error: Exception) -> None:
     raise WorkflowExecutionError(step_key, title, error, list(steps)) from error
@@ -699,7 +704,7 @@ async def run_workflow(workflow_input: WorkflowInput) -> WorkflowRunSummary:
   }
   state["has_all_details"] = triage_result["output_parsed"]["has_all_details"]
   state["infos_manquantes"] = triage_result["output_text"]
-  record_step("triage", triage_title, triage_result["output_parsed"])
+  await record_step("triage", triage_title, triage_result["output_parsed"])
 
   if state["has_all_details"] is True:
     redacteur_title = "Rédaction du plan-cadre"
@@ -723,7 +728,7 @@ async def run_workflow(workflow_input: WorkflowInput) -> WorkflowRunSummary:
       "output_text": r_dacteur_result_temp.final_output.json(),
       "output_parsed": r_dacteur_result_temp.final_output.model_dump()
     }
-    record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
+    await record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
     return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
 
   web_step_title = "Collecte d'exemples externes"
@@ -747,7 +752,7 @@ async def run_workflow(workflow_input: WorkflowInput) -> WorkflowRunSummary:
   get_data_from_web_result = {
     "output_text": get_data_from_web_result_temp.final_output_as(str)
   }
-  record_step("get_data_from_web", web_step_title, get_data_from_web_result["output_text"])
+  await record_step("get_data_from_web", web_step_title, get_data_from_web_result["output_text"])
 
   triage_2_title = "Validation après collecte"
   try:
@@ -773,7 +778,7 @@ async def run_workflow(workflow_input: WorkflowInput) -> WorkflowRunSummary:
   }
   state["has_all_details"] = triage_2_result["output_parsed"]["has_all_details"]
   state["infos_manquantes"] = triage_2_result["output_text"]
-  record_step("triage_2", triage_2_title, triage_2_result["output_parsed"])
+  await record_step("triage_2", triage_2_title, triage_2_result["output_parsed"])
 
   if state["has_all_details"] is True:
     redacteur_title = "Rédaction du plan-cadre"
@@ -797,7 +802,7 @@ async def run_workflow(workflow_input: WorkflowInput) -> WorkflowRunSummary:
       "output_text": r_dacteur_result_temp.final_output.json(),
       "output_parsed": r_dacteur_result_temp.final_output.model_dump()
     }
-    record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
+    await record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
     return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
 
   user_step_title = "Demande d'informations supplémentaires"
@@ -821,7 +826,7 @@ async def run_workflow(workflow_input: WorkflowInput) -> WorkflowRunSummary:
   get_data_from_user_result = {
     "output_text": get_data_from_user_result_temp.final_output_as(str)
   }
-  record_step("get_data_from_user", user_step_title, get_data_from_user_result["output_text"])
+  await record_step("get_data_from_user", user_step_title, get_data_from_user_result["output_text"])
 
   redacteur_title = "Rédaction du plan-cadre"
   try:
@@ -844,5 +849,5 @@ async def run_workflow(workflow_input: WorkflowInput) -> WorkflowRunSummary:
     "output_text": r_dacteur_result_temp.final_output.json(),
     "output_parsed": r_dacteur_result_temp.final_output.model_dump()
   }
-  record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
+  await record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
   return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)

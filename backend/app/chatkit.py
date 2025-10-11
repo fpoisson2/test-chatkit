@@ -128,6 +128,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         workflow_input: WorkflowInput,
         event_queue: asyncio.Queue[ThreadStreamEvent | None],
     ) -> None:
+        streamed_step_keys: set[str] = set()
+
         try:
             logger.info("Démarrage du workflow pour le fil %s", thread.id)
             start_message = await self._store_assistant_message(
@@ -139,12 +141,20 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 event_queue, ThreadItemDoneEvent(item=start_message)
             )
 
-            workflow_run = await run_workflow(workflow_input)
-            await self._persist_step_summaries(
-                steps=workflow_run.steps,
-                thread=thread,
-                context=context,
-                event_queue=event_queue,
+            async def on_step(
+                step_summary: WorkflowStepSummary, index: int
+            ) -> None:
+                await self._persist_step_summary(
+                    step=step_summary,
+                    index=index,
+                    thread=thread,
+                    context=context,
+                    event_queue=event_queue,
+                )
+                streamed_step_keys.add(step_summary.key)
+
+            workflow_run = await run_workflow(
+                workflow_input, on_step=on_step
             )
 
             result = workflow_run.final_output or {}
@@ -175,10 +185,15 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         except WorkflowExecutionError as exc:  # pragma: no cover - erreurs connues du workflow
             logger.exception("Workflow execution failed")
             await self._persist_step_summaries(
-                steps=exc.steps,
+                steps=[
+                    step
+                    for step in exc.steps
+                    if step.key not in streamed_step_keys
+                ],
                 thread=thread,
                 context=context,
                 event_queue=event_queue,
+                start_index=len(streamed_step_keys) + 1,
             )
 
             error_message = (
@@ -234,20 +249,38 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         thread: ThreadMetadata,
         context: ChatKitRequestContext,
         event_queue: asyncio.Queue[ThreadStreamEvent | None],
+        start_index: int = 1,
     ) -> None:
-        for index, step in enumerate(steps, start=1):
-            details = step.output.strip() or "(aucune sortie)"
-            header = f"Étape {index} – {step.title}"
-            text = f"{header}\n\n{details}"
-            message = await self._store_assistant_message(
+        for index, step in enumerate(steps, start=start_index):
+            await self._persist_step_summary(
+                step=step,
+                index=index,
                 thread=thread,
                 context=context,
-                text=text,
+                event_queue=event_queue,
             )
-            logger.info(
-                "Progression du workflow %s : %s", thread.id, header
-            )
-            await _enqueue_event(event_queue, ThreadItemDoneEvent(item=message))
+
+    async def _persist_step_summary(
+        self,
+        *,
+        step: WorkflowStepSummary,
+        index: int,
+        thread: ThreadMetadata,
+        context: ChatKitRequestContext,
+        event_queue: asyncio.Queue[ThreadStreamEvent | None],
+    ) -> None:
+        details = step.output.strip() or "(aucune sortie)"
+        header = f"Étape {index} – {step.title}"
+        text = f"{header}\n\n{details}"
+        message = await self._store_assistant_message(
+            thread=thread,
+            context=context,
+            text=text,
+        )
+        logger.info(
+            "Progression du workflow %s : %s", thread.id, header
+        )
+        await _enqueue_event(event_queue, ThreadItemDoneEvent(item=message))
 
     async def _store_assistant_message(
         self,
