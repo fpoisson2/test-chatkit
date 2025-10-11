@@ -687,7 +687,7 @@ class _ReasoningWorkflowReporter:
     self._reasoning_buffer = ""
     self._thought_segments: list[str] = []
     self._thought_task_indices: list[int] = []
-    self._placeholder_index: int | None = None
+    self._step_title: str | None = None
 
   @property
   def uses_structured_workflow(self) -> bool:
@@ -730,16 +730,9 @@ class _ReasoningWorkflowReporter:
     self._reasoning_buffer = ""
     self._thought_segments = []
     self._thought_task_indices = []
-    self._placeholder_index = None
+    self._step_title = title
 
     await self._ensure_started()
-
-    if title:
-      placeholder = ThoughtTask(title=title, content="")
-      self._tasks.append(placeholder)
-      self._placeholder_index = len(self._tasks) - 1
-      await self._safe_add_task(placeholder, self._placeholder_index)
-      return
 
   def _clone_task(self, task: SearchTask | ThoughtTask) -> SearchTask | ThoughtTask:
     if isinstance(task, ThoughtTask):
@@ -845,17 +838,8 @@ class _ReasoningWorkflowReporter:
       if content in self._thought_segments:
         continue
 
-      if self._placeholder_index is not None and not self._thought_segments:
-        task_list_index = self._placeholder_index
-        task = self._tasks[task_list_index]
-        if isinstance(task, ThoughtTask):
-          task.content = content
-        self._thought_segments.append(content)
-        self._thought_task_indices.append(task_list_index)
-        await self._safe_update_task(task, task_list_index)
-        continue
-
-      thought_task = ThoughtTask(content=content)
+      title = self._step_title if not self._thought_segments else None
+      thought_task = ThoughtTask(content=content, title=title)
       task_list_index = len(self._tasks)
       self._thought_segments.append(content)
       self._thought_task_indices.append(task_list_index)
@@ -870,16 +854,12 @@ class _ReasoningWorkflowReporter:
       if self._started:
         await self._ensure_stopped()
       self._ended = True
+      self._step_title = None
       return
 
     await self._ensure_started()
     for index, final_task in enumerate(workflow.tasks):
       task_list_index = index
-      if self._placeholder_index is not None:
-        if index == 0:
-          task_list_index = self._placeholder_index
-        elif index > self._placeholder_index:
-          task_list_index = index
       if task_list_index < len(self._tasks):
         current = self._tasks[task_list_index]
         if isinstance(current, ThoughtTask) and isinstance(final_task, ThoughtTask):
@@ -912,6 +892,7 @@ class _ReasoningWorkflowReporter:
 
     await self._ensure_stopped()
     self._ended = True
+    self._step_title = None
 
 
 # Main code entrypoint
@@ -1081,8 +1062,6 @@ async def run_workflow(
       first_content, *rest = thought_segments
       tasks.append(ThoughtTask(content=first_content, title=step_title))
       tasks.extend(ThoughtTask(content=segment) for segment in rest)
-    elif step_title:
-      tasks.append(ThoughtTask(content="", title=step_title))
     tasks.extend(ordered_search_tasks)
 
     if not tasks:
