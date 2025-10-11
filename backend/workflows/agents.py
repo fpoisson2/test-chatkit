@@ -745,7 +745,7 @@ async def run_workflow(
     if not blocks:
       return None
     tasks = [ThoughtTask(content=block) for block in blocks]
-    return Workflow(tasks=tasks)
+    return Workflow(type="reasoning", tasks=tasks)
 
   async def run_agent_step(
     step_key: str,
