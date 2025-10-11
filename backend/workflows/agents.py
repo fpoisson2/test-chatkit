@@ -687,6 +687,8 @@ class _ReasoningWorkflowReporter:
     self._reasoning_buffer = ""
     self._thought_segments: list[str] = []
     self._thought_task_indices: list[int] = []
+    self._search_task_indices: dict[str, int] = {}
+    self._search_task_ids_by_index: dict[int, str] = {}
     self._step_title: str | None = None
 
   @property
@@ -730,6 +732,8 @@ class _ReasoningWorkflowReporter:
     self._reasoning_buffer = ""
     self._thought_segments = []
     self._thought_task_indices = []
+    self._search_task_indices = {}
+    self._search_task_ids_by_index = {}
     self._step_title = title
 
     await self._ensure_started()
@@ -775,17 +779,28 @@ class _ReasoningWorkflowReporter:
       return
 
     cloned_tasks = [self._clone_task(task) for task in self._tasks]
+    search_mapping = {
+      index: call_id
+      for index, call_id in self._search_task_ids_by_index.items()
+    }
     await self._ensure_stopped()
     await self._context.start_workflow(
       self._build_workflow_payload()
     )
     self._started = True
     self._tasks = []
+    self._search_task_indices = {}
+    self._search_task_ids_by_index = {}
 
     for index, cloned in enumerate(cloned_tasks):
       self._tasks.append(cloned)
       await self._context.add_workflow_task(cloned)
       await self._context.update_workflow_task(cloned, task_index=index)
+      if isinstance(cloned, SearchTask):
+        call_id = search_mapping.get(index)
+        if call_id:
+          self._search_task_indices[call_id] = index
+          self._search_task_ids_by_index[index] = call_id
 
   async def _safe_update_task(self, task: SearchTask | ThoughtTask, index: int) -> None:
     if not self._is_context_ready():
@@ -822,6 +837,76 @@ class _ReasoningWorkflowReporter:
         return
       current = self._tasks[index]
     await self._safe_update_task(current, index)
+
+  async def register_search_action(
+    self,
+    *,
+    call_id: str | None,
+    title: str | None,
+    query: str | None,
+    sources: Sequence[URLSource],
+  ) -> None:
+    if self._context is None or self._ended:
+      return
+
+    await self._ensure_started()
+
+    normalized_query = query.strip() if isinstance(query, str) else ""
+    safe_sources: list[URLSource] = []
+    for source in sources:
+      url = getattr(source, "url", None)
+      if not isinstance(url, str):
+        continue
+      url_value = url.strip()
+      if not url_value:
+        continue
+      source_title = getattr(source, "title", None)
+      title_value = source_title.strip() if isinstance(source_title, str) else None
+      safe_sources.append(URLSource(url=url_value, title=title_value))
+
+    safe_query = normalized_query if normalized_query else None
+    task_index = self._search_task_indices.get(call_id) if call_id else None
+
+    if task_index is not None and task_index < len(self._tasks):
+      task = self._tasks[task_index]
+      if not isinstance(task, SearchTask):
+        task = SearchTask(
+          title=title,
+          title_query=safe_query,
+          queries=[safe_query] if safe_query else [],
+          sources=list(safe_sources),
+        )
+        self._tasks[task_index] = task
+      if safe_query and safe_query not in task.queries:
+        task.queries.append(safe_query)
+      if safe_query and not task.title_query:
+        task.title_query = safe_query
+      if title and not task.title:
+        task.title = title
+      existing_urls = {
+        getattr(source, "url", "")
+        for source in task.sources
+        if getattr(source, "url", "")
+      }
+      for source in safe_sources:
+        if source.url and source.url not in existing_urls:
+          task.sources.append(source)
+          existing_urls.add(source.url)
+      await self._safe_update_task(task, task_index)
+      return
+
+    new_task = SearchTask(
+      title=title,
+      title_query=safe_query,
+      queries=[safe_query] if safe_query else [],
+      sources=list(safe_sources),
+    )
+    insertion_index = len(self._tasks)
+    self._tasks.append(new_task)
+    if call_id:
+      self._search_task_indices[call_id] = insertion_index
+      self._search_task_ids_by_index[insertion_index] = call_id
+    await self._safe_add_task(new_task, insertion_index)
 
   async def append_reasoning(self, delta: str) -> None:
     if self._context is None or self._ended:
@@ -908,6 +993,8 @@ class _ReasoningWorkflowReporter:
         break
     self._thought_segments = [content for content, _ in thought_contents]
     self._thought_task_indices = [task_index for _, task_index in thought_contents]
+    self._search_task_indices = {}
+    self._search_task_ids_by_index = {}
 
     await self._ensure_stopped()
     self._ended = True
@@ -1109,6 +1196,38 @@ async def run_workflow(
     reporter = _ReasoningWorkflowReporter(agent_context)
     await reporter.start_step(title=title)
     structured_reasoning_sent = ""
+    processed_items = 0
+
+    async def _sync_tool_calls() -> None:
+      nonlocal processed_items
+      new_items = streaming_result.new_items
+      if processed_items >= len(new_items):
+        return
+      for item in new_items[processed_items:]:
+        if not isinstance(item, ToolCallItem):
+          continue
+        call = item.raw_item
+        if not isinstance(call, ResponseFunctionWebSearch):
+          continue
+        action = call.action
+        if not isinstance(action, ActionSearch):
+          continue
+        query = action.query if isinstance(action.query, str) else None
+        source_objects: list[URLSource] = []
+        for source in action.sources or []:
+          url = getattr(source, "url", None)
+          if not isinstance(url, str) or not url.strip():
+            continue
+          source_title = getattr(source, "title", None)
+          title_value = source_title.strip() if isinstance(source_title, str) else None
+          source_objects.append(URLSource(url=url.strip(), title=title_value))
+        await reporter.register_search_action(
+          call_id=getattr(call, "id", None),
+          title="Recherche Web",
+          query=query,
+          sources=source_objects,
+        )
+      processed_items = len(new_items)
 
     async def _emit_stream_update(
       *,
@@ -1174,6 +1293,7 @@ async def run_workflow(
           reasoning_accumulated += reasoning_delta
           await reporter.append_reasoning(reasoning_delta)
           await _emit_stream_update(reasoning_delta=reasoning_delta)
+        await _sync_tool_calls()
     except Exception as exc:
       await reporter.sync_with_workflow(None)
       raise_step_error(step_key, title, exc)
@@ -1181,6 +1301,7 @@ async def run_workflow(
     conversation_history.extend([
       item.to_input_item() for item in streaming_result.new_items
     ])
+    await _sync_tool_calls()
     reasoning_workflow = _build_reasoning_workflow(
       reasoning_text=reasoning_accumulated,
       run_items=streaming_result.new_items,
