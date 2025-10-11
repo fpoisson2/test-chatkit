@@ -18,6 +18,8 @@ from chatkit.types import (
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
+    SearchTask,
+    ThoughtTask,
     ThreadItem,
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
@@ -354,12 +356,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         agent_context: AgentContext[ChatKitRequestContext],
     ) -> None:
         details = step.output.strip() or "(aucune sortie)"
-        reasoning = _render_workflow_reasoning(
-            step.reasoning,
-            step.reasoning_text,
-        )
-        if reasoning:
-            details = f"{details}\n\nRésumé du raisonnement :\n{reasoning}"
         header = f"Étape {index} – {step.title}"
         text = f"{header}\n\n{details}"
         message = await self._publish_assistant_message(
@@ -609,14 +605,46 @@ def _render_workflow_reasoning(reasoning: Workflow | None, fallback: str = "") -
     if reasoning is not None:
         parts: list[str] = []
         for task in reasoning.tasks:
-            content = task.content.strip()
-            if not content:
-                continue
-            title = (task.title or "").strip()
-            if title:
-                parts.append(f"{title}\n{content}")
-            else:
-                parts.append(content)
+            if isinstance(task, ThoughtTask):
+                content = task.content.strip()
+                if not content:
+                    continue
+                title = (task.title or "").strip()
+                if title:
+                    parts.append(f"{title}\n{content}")
+                else:
+                    parts.append(content)
+            elif isinstance(task, SearchTask):
+                title = (task.title or "Recherche web").strip()
+                safe_queries = [
+                    query.strip()
+                    for query in (task.queries or [])
+                    if isinstance(query, str) and query.strip()
+                ]
+                safe_sources = [
+                    source
+                    for source in (task.sources or [])
+                    if getattr(source, "url", "")
+                ]
+                lines: list[str] = []
+                if safe_queries:
+                    lines.append("Requêtes : " + ", ".join(safe_queries))
+                if safe_sources:
+                    sources_rendered = []
+                    for source in safe_sources:
+                        source_title = (getattr(source, "title", "") or "").strip()
+                        url = getattr(source, "url", "")
+                        label = source_title or url
+                        if not label:
+                            continue
+                        sources_rendered.append(label)
+                    if sources_rendered:
+                        lines.append("Sources : " + ", ".join(sources_rendered))
+                block = "\n".join(lines).strip()
+                if block:
+                    parts.append(f"{title}\n{block}" if title else block)
+                elif title:
+                    parts.append(title)
         rendered = "\n\n".join(parts).strip()
         if rendered:
             return rendered
