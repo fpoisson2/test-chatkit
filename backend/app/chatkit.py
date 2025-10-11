@@ -503,12 +503,22 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             return
 
         if step_state.output is not None and summary_output is not None:
+            await self._reconcile_stream_state_with_summary(
+                agent_context=agent_context,
+                stream_state=step_state.output,
+                summary_text=summary_output,
+            )
             if _normalize_text(step_state.output.buffer) != _normalize_text(summary_output):
                 return
         elif summary_output and summary_output.strip():
             return
 
         if step_state.reasoning is not None and summary_reasoning is not None:
+            await self._reconcile_stream_state_with_summary(
+                agent_context=agent_context,
+                stream_state=step_state.reasoning,
+                summary_text=summary_reasoning,
+            )
             if _normalize_text(step_state.reasoning.buffer) != _normalize_text(summary_reasoning):
                 return
 
@@ -517,6 +527,30 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             step_state=step_state,
         )
         step_states.pop(step_key, None)
+
+    async def _reconcile_stream_state_with_summary(
+        self,
+        *,
+        agent_context: AgentContext[ChatKitRequestContext],
+        stream_state: _StreamingMessageState,
+        summary_text: str,
+    ) -> None:
+        if not summary_text:
+            return
+
+        current_buffer = stream_state.buffer
+        if _normalize_text(current_buffer) == _normalize_text(summary_text):
+            stream_state.buffer = summary_text
+            return
+
+        missing_suffix = _extract_missing_suffix(current_buffer, summary_text)
+        if missing_suffix:
+            await self._append_stream_delta(
+                agent_context=agent_context,
+                stream_state=stream_state,
+                delta=missing_suffix,
+            )
+        stream_state.buffer = summary_text
 
     async def _publish_assistant_message(
         self,
@@ -734,3 +768,27 @@ def _normalize_text(value: str | None) -> str:
     if value is None:
         return ""
     return "\n".join(part.rstrip() for part in value.splitlines()).strip()
+
+
+def _extract_missing_suffix(current: str, target: str) -> str:
+    """Retourne le suffixe à ajouter pour rapprocher le flux du résumé final."""
+
+    if not target:
+        return ""
+
+    if not current:
+        return target
+
+    prefix_length = 0
+    max_length = min(len(current), len(target))
+    while prefix_length < max_length and current[prefix_length] == target[prefix_length]:
+        prefix_length += 1
+
+    if prefix_length == len(current):
+        return target[prefix_length:]
+
+    trimmed_current = current.rstrip()
+    if target.startswith(trimmed_current):
+        return target[len(trimmed_current):]
+
+    return target
