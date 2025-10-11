@@ -855,6 +855,7 @@ async def run_workflow(
     *,
     reasoning_text: str,
     run_items: Sequence[RunItem],
+    raw_responses: Sequence[Any],
   ) -> Workflow | None:
     thought_segments: list[str] = []
     seen_thoughts: set[str] = set()
@@ -868,19 +869,22 @@ async def run_workflow(
       thought_segments.append(normalized)
       seen_thoughts.add(normalized)
 
+    def _extract_reasoning_entries(entries: Sequence[Any] | None) -> None:
+      if not entries:
+        return
+      for entry in entries:
+        entry_text = getattr(entry, "text", "")
+        if entry_text:
+          _add_thought(entry_text)
+
     for item in run_items:
       if isinstance(item, ReasoningItem):
-        contents = item.raw_item.content or []
+        contents = getattr(item.raw_item, "content", None)
         if contents:
-          for entry in contents:
-            entry_text = getattr(entry, "text", "")
-            if entry_text:
-              _add_thought(entry_text)
+          _extract_reasoning_entries(contents)
         else:
-          for summary in item.raw_item.summary:
-            summary_text = getattr(summary, "text", "")
-            if summary_text:
-              _add_thought(summary_text)
+          summaries = getattr(item.raw_item, "summary", None)
+          _extract_reasoning_entries(summaries)
         continue
 
       if not isinstance(item, ToolCallItem):
@@ -923,6 +927,16 @@ async def run_workflow(
     if reasoning_text:
       for block in _split_reasoning_blocks(reasoning_text):
         _add_thought(block)
+
+    for response in raw_responses:
+      output_items = getattr(response, "output", None)
+      if not output_items:
+        continue
+      for event in output_items:
+        if getattr(event, "type", None) != "reasoning":
+          continue
+        summaries = getattr(event, "summary", None)
+        _extract_reasoning_entries(summaries)
 
     tasks: list[SearchTask | ThoughtTask] = [
       ThoughtTask(content=segment)
@@ -1006,6 +1020,7 @@ async def run_workflow(
     reasoning_workflow = _build_reasoning_workflow(
       reasoning_text=reasoning_accumulated,
       run_items=streaming_result.new_items,
+      raw_responses=getattr(streaming_result, "raw_responses", ()),
     )
     await reporter.sync_with_workflow(reasoning_workflow)
     return _AgentStepResult(
