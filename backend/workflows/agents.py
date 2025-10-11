@@ -714,37 +714,76 @@ class _ReasoningWorkflowReporter:
     await self._context.start_workflow(Workflow(type="reasoning", tasks=tasks))
     self._started = True
 
+  def _clone_task(self, task: SearchTask | ThoughtTask) -> SearchTask | ThoughtTask:
+    if isinstance(task, ThoughtTask):
+      return ThoughtTask(title=task.title, content=task.content)
+    if isinstance(task, SearchTask):
+      safe_queries = [
+        query
+        for query in task.queries
+        if isinstance(query, str) and query
+      ]
+      safe_sources = [
+        URLSource(url=source.url, title=source.title)
+        for source in task.sources
+      ]
+      return SearchTask(
+        title=task.title,
+        title_query=task.title_query,
+        queries=safe_queries,
+        sources=safe_sources,
+      )
+    return task
+
   async def _recover_workflow_state(self) -> None:
     if not self._is_context_ready():
       return
-    await self._context.start_workflow(
-      Workflow(type="reasoning", tasks=list(self._tasks))
-    )
+
+    cloned_tasks = [self._clone_task(task) for task in self._tasks]
+    await self._context.start_workflow(Workflow(type="reasoning", tasks=[]))
     self._started = True
+    self._tasks = []
+
+    for index, cloned in enumerate(cloned_tasks):
+      self._tasks.append(cloned)
+      await self._context.add_workflow_task(cloned)
+      await self._context.update_workflow_task(cloned, task_index=index)
 
   async def _safe_update_task(self, task: SearchTask | ThoughtTask, index: int) -> None:
     if not self._is_context_ready():
       return
     await self._ensure_started()
+    if index >= len(self._tasks):
+      return
+    current = self._tasks[index]
     try:
-      await self._context.update_workflow_task(task, task_index=index)
+      await self._context.update_workflow_task(current, task_index=index)
     except ValueError as exc:
       if "Workflow is not set" not in str(exc):
         raise
       await self._recover_workflow_state()
-      await self._context.update_workflow_task(task, task_index=index)
+      if index >= len(self._tasks):
+        return
+      current = self._tasks[index]
+      await self._context.update_workflow_task(current, task_index=index)
 
   async def _safe_add_task(self, task: SearchTask | ThoughtTask, index: int) -> None:
     if not self._is_context_ready():
       return
     await self._ensure_started()
+    if index >= len(self._tasks):
+      return
+    current = self._tasks[index]
     try:
-      await self._context.add_workflow_task(task)
+      await self._context.add_workflow_task(current)
     except ValueError as exc:
       if "Workflow is not set" not in str(exc):
         raise
       await self._recover_workflow_state()
-    await self._safe_update_task(task, index)
+      if index >= len(self._tasks):
+        return
+      current = self._tasks[index]
+    await self._safe_update_task(current, index)
 
   async def append_reasoning(self, delta: str) -> None:
     if self._context is None or self._ended:
