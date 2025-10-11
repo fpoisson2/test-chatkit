@@ -966,9 +966,9 @@ class _ReasoningWorkflowReporter:
     title: str | None,
     query: str | None,
     sources: Sequence[URLSource],
-  ) -> None:
+  ) -> bool:
     if self._context is None or self._ended:
-      return
+      return False
 
     await self._ensure_started()
 
@@ -987,6 +987,7 @@ class _ReasoningWorkflowReporter:
 
     safe_query = normalized_query if normalized_query else None
     task_index = self._search_task_indices.get(call_id) if call_id else None
+    has_changed = False
 
     if task_index is not None and task_index < len(self._tasks):
       task = self._tasks[task_index]
@@ -998,12 +999,16 @@ class _ReasoningWorkflowReporter:
           sources=list(safe_sources),
         )
         self._tasks[task_index] = task
+        has_changed = True
       if safe_query and safe_query not in task.queries:
         task.queries.append(safe_query)
+        has_changed = True
       if safe_query and not task.title_query:
         task.title_query = safe_query
+        has_changed = True
       if title and not task.title:
         task.title = title
+        has_changed = True
       existing_urls = {
         getattr(source, "url", "")
         for source in task.sources
@@ -1013,8 +1018,10 @@ class _ReasoningWorkflowReporter:
         if source.url and source.url not in existing_urls:
           task.sources.append(source)
           existing_urls.add(source.url)
-      await self._safe_update_task(task, task_index)
-      return
+          has_changed = True
+      if has_changed:
+        await self._safe_update_task(task, task_index)
+      return has_changed
 
     new_task = SearchTask(
       title=title,
@@ -1028,6 +1035,7 @@ class _ReasoningWorkflowReporter:
       self._search_task_indices[call_id] = insertion_index
       self._search_task_ids_by_index[insertion_index] = call_id
     await self._safe_add_task(new_task, insertion_index)
+    return True
 
   async def append_reasoning(self, delta: str) -> None:
     if self._context is None or self._ended:
@@ -1403,11 +1411,12 @@ async def run_workflow(
     structured_reasoning_sent = ""
     processed_items = 0
 
-    async def _sync_tool_calls() -> None:
+    async def _sync_tool_calls() -> bool:
       nonlocal processed_items
       new_items = streaming_result.new_items
       if processed_items >= len(new_items):
-        return
+        return False
+      has_updates = False
       for item in new_items[processed_items:]:
         if not isinstance(item, ToolCallItem):
           continue
@@ -1426,13 +1435,15 @@ async def run_workflow(
           source_title = getattr(source, "title", None)
           title_value = source_title.strip() if isinstance(source_title, str) else None
           source_objects.append(URLSource(url=url.strip(), title=title_value))
-        await reporter.register_search_action(
+        if await reporter.register_search_action(
           call_id=getattr(call, "id", None),
           title="Recherche Web",
           query=query,
           sources=source_objects,
-        )
+        ):
+          has_updates = True
       processed_items = len(new_items)
+      return has_updates
 
     async def _emit_stream_update(
       *,
@@ -1478,6 +1489,9 @@ async def run_workflow(
 
     try:
       async for event in streaming_result.stream_events():
+        tools_updated = await _sync_tool_calls()
+        if tools_updated and reporter.uses_structured_workflow:
+          await _emit_stream_update()
         if (
           event.type == "raw_response_event"
           and isinstance(event.data, ResponseTextDeltaEvent)
@@ -1499,7 +1513,6 @@ async def run_workflow(
           reasoning_accumulated += reasoning_delta
           await reporter.append_reasoning(reasoning_delta)
           await _emit_stream_update(reasoning_delta=reasoning_delta)
-        await _sync_tool_calls()
     except Exception as exc:
       await reporter.sync_with_workflow(None)
       raise_step_error(step_key, title, exc)
@@ -1507,7 +1520,9 @@ async def run_workflow(
     conversation_history.extend([
       item.to_input_item() for item in streaming_result.new_items
     ])
-    await _sync_tool_calls()
+    final_tools_updated = await _sync_tool_calls()
+    if final_tools_updated and reporter.uses_structured_workflow:
+      await _emit_stream_update()
     reasoning_workflow = _build_reasoning_workflow(
       initial_tasks=reporter.export_tasks(),
       reasoning_text=reasoning_accumulated,
