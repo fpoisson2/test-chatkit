@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, AsyncIterator, Coroutine, Sequence
 
@@ -74,6 +74,7 @@ class _StepStreamState:
     header: str
     output: _StreamingMessageState | None = None
     reasoning: _StreamingMessageState | None = None
+    reasoning_deltas: list[str] = field(default_factory=list)
 
 
 class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
@@ -173,13 +174,24 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     header = f"Étape {index} – {step_summary.title}"
                     if state.output is not None:
                         state.output.buffer = step_summary.output
+                    reasoning_text = _render_workflow_reasoning(
+                        step_summary.reasoning,
+                        step_summary.reasoning_text,
+                    )
+                    if not reasoning_text and state.reasoning_deltas:
+                        reasoning_text = "".join(state.reasoning_deltas).strip()
                     if state.reasoning is not None:
-                        reasoning_text = _render_workflow_reasoning(
-                            step_summary.reasoning,
-                            step_summary.reasoning_text,
-                        )
                         if reasoning_text:
                             state.reasoning.buffer = reasoning_text
+                    elif reasoning_text:
+                        await self._publish_assistant_message(
+                            thread=thread,
+                            agent_context=agent_context,
+                            text=(
+                                f"{header} · Résumé du raisonnement\n\n"
+                                f"{reasoning_text}"
+                            ),
+                        )
                     await self._finalize_step_stream_state(
                         agent_context=agent_context,
                         step_state=state,
@@ -222,18 +234,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     )
 
                 if update.reasoning_delta:
-                    if state.reasoning is None:
-                        state.reasoning = await self._start_step_stream_message(
-                            thread=thread,
-                            agent_context=agent_context,
-                            header_text=f"{header} · Résumé du raisonnement",
-                            prefix=f"{header} · Résumé du raisonnement\n\n",
-                        )
-                    await self._append_stream_delta(
-                        agent_context=agent_context,
-                        stream_state=state.reasoning,
-                        delta=update.reasoning_delta,
-                    )
+                    state.reasoning_deltas.append(update.reasoning_delta)
 
             workflow_run = await run_workflow(
                 workflow_input,
