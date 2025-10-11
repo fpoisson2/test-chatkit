@@ -12,7 +12,6 @@ from agents.result import RunItem
 from dataclasses import dataclass
 from collections.abc import Awaitable, Callable, Sequence
 import json
-import uuid
 from typing import Any
 from pydantic import BaseModel
 from openai.types.responses import (
@@ -689,7 +688,6 @@ class _ReasoningWorkflowReporter:
     self._thought_segments: list[str] = []
     self._thought_task_indices: list[int] = []
     self._placeholder_index: int | None = None
-    self._workflow_id: str | None = None
 
   @property
   def uses_structured_workflow(self) -> bool:
@@ -698,10 +696,8 @@ class _ReasoningWorkflowReporter:
   async def _ensure_started(self) -> None:
     if self._context is None or self._started or self._ended:
       return
-    workflow_id = self._workflow_id or f"wf_{uuid.uuid4().hex}"
-    self._workflow_id = workflow_id
     await self._context.start_workflow(
-      Workflow(id=workflow_id, type="reasoning", tasks=list(self._tasks))
+      Workflow(type="reasoning", tasks=list(self._tasks))
     )
     self._started = True
 
@@ -711,7 +707,6 @@ class _ReasoningWorkflowReporter:
   async def start_step(self, *, title: str | None = None) -> None:
     if self._context is None or self._started or self._ended:
       return
-    self._workflow_id = f"wf_{uuid.uuid4().hex}"
     tasks: list[SearchTask | ThoughtTask] = []
     if title:
       placeholder = ThoughtTask(title=title, content="")
@@ -719,7 +714,7 @@ class _ReasoningWorkflowReporter:
       self._placeholder_index = 0
       tasks.append(placeholder)
     await self._context.start_workflow(
-      Workflow(id=self._workflow_id, type="reasoning", tasks=tasks)
+      Workflow(type="reasoning", tasks=tasks)
     )
     self._started = True
 
@@ -749,9 +744,8 @@ class _ReasoningWorkflowReporter:
       return
 
     cloned_tasks = [self._clone_task(task) for task in self._tasks]
-    self._workflow_id = f"wf_{uuid.uuid4().hex}"
     await self._context.start_workflow(
-      Workflow(id=self._workflow_id, type="reasoning", tasks=[])
+      Workflow(type="reasoning", tasks=[])
     )
     self._started = True
     self._tasks = []
@@ -894,7 +888,6 @@ class _ReasoningWorkflowReporter:
 
     await self._context.end_workflow()
     self._ended = True
-    self._workflow_id = None
 
 
 # Main code entrypoint
