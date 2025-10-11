@@ -23,6 +23,7 @@ from openai.types.responses.response_function_web_search import (
   ResponseFunctionWebSearch
 )
 from openai.types.shared.reasoning import Reasoning
+from chatkit.agents import AgentContext
 from chatkit.types import SearchTask, ThoughtTask, URLSource, Workflow
 
 from app.token_sanitizer import sanitize_model_like
@@ -677,11 +678,94 @@ def _format_step_output(payload: Any) -> str:
   return str(payload)
 
 
+class _ReasoningWorkflowReporter:
+  def __init__(self, agent_context: AgentContext | None) -> None:
+    self._context = agent_context
+    self._started = False
+    self._ended = False
+    self._tasks: list[SearchTask | ThoughtTask] = []
+    self._thought_index: int | None = None
+
+  async def _ensure_started(self) -> None:
+    if self._context is None or self._started or self._ended:
+      return
+    await self._context.start_workflow(Workflow(type="reasoning", tasks=[]))
+    self._started = True
+
+  async def append_reasoning(self, delta: str) -> None:
+    if self._context is None or self._ended:
+      return
+    if not delta:
+      return
+    await self._ensure_started()
+    if (
+      self._thought_index is None
+      or self._thought_index >= len(self._tasks)
+      or not isinstance(self._tasks[self._thought_index], ThoughtTask)
+    ):
+      thought = ThoughtTask(content=delta)
+      self._tasks.append(thought)
+      self._thought_index = len(self._tasks) - 1
+      await self._context.add_workflow_task(thought)
+    else:
+      thought = self._tasks[self._thought_index]
+      thought.content += delta
+    if self._thought_index is not None:
+      await self._context.update_workflow_task(
+        self._tasks[self._thought_index],
+        self._thought_index,
+      )
+
+  async def sync_with_workflow(self, workflow: Workflow | None) -> None:
+    if self._context is None or self._ended:
+      return
+
+    if workflow is None or not workflow.tasks:
+      if self._started:
+        await self._context.end_workflow()
+      self._ended = True
+      return
+
+    await self._ensure_started()
+    for index, final_task in enumerate(workflow.tasks):
+      if index < len(self._tasks):
+        current = self._tasks[index]
+        if isinstance(current, ThoughtTask) and isinstance(final_task, ThoughtTask):
+          current.title = final_task.title
+          current.content = final_task.content
+          if self._thought_index is None:
+            self._thought_index = index
+        elif isinstance(current, SearchTask) and isinstance(final_task, SearchTask):
+          current.title = final_task.title
+          current.title_query = final_task.title_query
+          current.queries = list(final_task.queries)
+          current.sources = list(final_task.sources)
+        else:
+          current = final_task
+          self._tasks[index] = current
+        await self._context.update_workflow_task(current, index)
+      else:
+        new_task = final_task
+        self._tasks.append(new_task)
+        await self._context.add_workflow_task(new_task)
+        await self._context.update_workflow_task(new_task, index)
+
+    if self._thought_index is None:
+      for idx, task in enumerate(self._tasks):
+        if isinstance(task, ThoughtTask):
+          self._thought_index = idx
+          break
+
+    await self._context.end_workflow()
+    self._ended = True
+
+
 # Main code entrypoint
 async def run_workflow(
   workflow_input: WorkflowInput,
   on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None = None,
   on_step_stream: Callable[[WorkflowStepStreamUpdate], Awaitable[None]] | None = None,
+  agent_context: AgentContext | None = None,
 ) -> WorkflowRunSummary:
   state = {
     "has_all_details": False,
@@ -755,15 +839,16 @@ async def run_workflow(
     reasoning_text: str,
     run_items: Sequence[RunItem],
   ) -> Workflow | None:
-    tasks: list[SearchTask | ThoughtTask] = []
+    thought_segments: list[str] = []
     seen_thoughts: set[str] = set()
     search_tasks_by_id: dict[str, SearchTask] = {}
+    ordered_search_tasks: list[SearchTask] = []
 
     def _add_thought(text: str) -> None:
       normalized = text.strip()
       if not normalized or normalized in seen_thoughts:
         return
-      tasks.append(ThoughtTask(content=normalized))
+      thought_segments.append(normalized)
       seen_thoughts.add(normalized)
 
     for item in run_items:
@@ -801,7 +886,7 @@ async def run_workflow(
           sources=[],
         )
         search_tasks_by_id[call.id] = search_task
-        tasks.append(search_task)
+        ordered_search_tasks.append(search_task)
       elif action.query not in search_task.queries:
         search_task.queries.append(action.query)
 
@@ -812,12 +897,18 @@ async def run_workflow(
       for source in action.sources:
         if source.url in existing_urls:
           continue
-        search_task.sources.append(URLSource(url=source.url))
+        source_title = getattr(source, "title", None) or source.url
+        search_task.sources.append(URLSource(url=source.url, title=source_title))
         existing_urls.add(source.url)
 
     if reasoning_text:
       for block in _split_reasoning_blocks(reasoning_text):
         _add_thought(block)
+
+    tasks: list[SearchTask | ThoughtTask] = []
+    if thought_segments:
+      tasks.append(ThoughtTask(content="\n\n".join(thought_segments)))
+    tasks.extend(ordered_search_tasks)
 
     if not tasks:
       return None
@@ -830,6 +921,7 @@ async def run_workflow(
     agent: Agent,
     *,
     context: Any | None = None,
+    agent_context: AgentContext | None = None,
   ) -> _AgentStepResult:
     step_index = len(steps) + 1
     streaming_result = Runner.run_streamed(
@@ -840,6 +932,7 @@ async def run_workflow(
     )
     accumulated_text = ""
     reasoning_accumulated = ""
+    reporter = _ReasoningWorkflowReporter(agent_context)
 
     async def _emit_stream_update(
       *,
@@ -881,8 +974,10 @@ async def run_workflow(
           if not reasoning_delta:
             continue
           reasoning_accumulated += reasoning_delta
+          await reporter.append_reasoning(reasoning_delta)
           await _emit_stream_update(reasoning_delta=reasoning_delta)
     except Exception as exc:
+      await reporter.sync_with_workflow(None)
       raise_step_error(step_key, title, exc)
 
     conversation_history.extend([
@@ -892,6 +987,7 @@ async def run_workflow(
       reasoning_text=reasoning_accumulated,
       run_items=streaming_result.new_items,
     )
+    await reporter.sync_with_workflow(reasoning_workflow)
     return _AgentStepResult(
       stream=streaming_result,
       reasoning_summary=reasoning_workflow,
@@ -899,7 +995,12 @@ async def run_workflow(
     )
 
   triage_title = "Analyse des informations fournies"
-  triage_run = await run_agent_step("triage", triage_title, triage)
+  triage_run = await run_agent_step(
+    "triage",
+    triage_title,
+    triage,
+    agent_context=agent_context,
+  )
   triage_parsed, triage_text = _structured_output_as_json(triage_run.stream.final_output)
   triage_result = {
     "output_text": triage_text,
@@ -924,6 +1025,7 @@ async def run_workflow(
       "r_dacteur",
       redacteur_title,
       r_dacteur,
+      agent_context=agent_context,
     )
     redacteur_parsed, redacteur_text = _structured_output_as_json(
       r_dacteur_run.stream.final_output
@@ -946,7 +1048,8 @@ async def run_workflow(
     "get_data_from_web",
     web_step_title,
     get_data_from_web,
-    context=GetDataFromWebContext(state_infos_manquantes=state["infos_manquantes"])
+    context=GetDataFromWebContext(state_infos_manquantes=state["infos_manquantes"]),
+    agent_context=agent_context,
   )
   get_data_from_web_result = {
     "output_text": get_data_from_web_run.stream.final_output_as(str)
@@ -964,7 +1067,8 @@ async def run_workflow(
     "triage_2",
     triage_2_title,
     triage_2,
-    context=Triage2Context(input_output_text=get_data_from_web_result["output_text"])
+    context=Triage2Context(input_output_text=get_data_from_web_result["output_text"]),
+    agent_context=agent_context,
   )
   triage_2_parsed, triage_2_text = _structured_output_as_json(
     triage_2_run.stream.final_output
@@ -992,6 +1096,7 @@ async def run_workflow(
       "r_dacteur",
       redacteur_title,
       r_dacteur,
+      agent_context=agent_context,
     )
     redacteur_parsed, redacteur_text = _structured_output_as_json(
       r_dacteur_run.stream.final_output
@@ -1014,7 +1119,8 @@ async def run_workflow(
     "get_data_from_user",
     user_step_title,
     get_data_from_user,
-    context=GetDataFromUserContext(state_infos_manquantes=state["infos_manquantes"])
+    context=GetDataFromUserContext(state_infos_manquantes=state["infos_manquantes"]),
+    agent_context=agent_context,
   )
   get_data_from_user_result = {
     "output_text": get_data_from_user_run.stream.final_output_as(str)
@@ -1032,6 +1138,7 @@ async def run_workflow(
     "r_dacteur",
     redacteur_title,
     r_dacteur,
+    agent_context=agent_context,
   )
   redacteur_parsed, redacteur_text = _structured_output_as_json(
     r_dacteur_run.stream.final_output

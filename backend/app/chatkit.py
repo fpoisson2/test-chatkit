@@ -237,6 +237,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 workflow_input,
                 on_step=on_step,
                 on_step_stream=on_step_stream,
+                agent_context=agent_context,
             )
 
             result = workflow_run.final_output or {}
