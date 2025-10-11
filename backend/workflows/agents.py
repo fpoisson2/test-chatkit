@@ -693,9 +693,20 @@ class _ReasoningWorkflowReporter:
   def uses_structured_workflow(self) -> bool:
     return self._context is not None
 
+  async def _ensure_stopped(self) -> None:
+    if self._context is None:
+      return
+    try:
+      await self._context.end_workflow()
+    except ValueError as exc:
+      if "Workflow is not set" not in str(exc):
+        raise
+    self._started = False
+
   async def _ensure_started(self) -> None:
     if self._context is None or self._started or self._ended:
       return
+    await self._ensure_stopped()
     await self._context.start_workflow(
       self._build_workflow_payload()
     )
@@ -745,6 +756,7 @@ class _ReasoningWorkflowReporter:
       return
 
     cloned_tasks = [self._clone_task(task) for task in self._tasks]
+    await self._ensure_stopped()
     await self._context.start_workflow(
       self._build_workflow_payload()
     )
@@ -845,7 +857,7 @@ class _ReasoningWorkflowReporter:
 
     if workflow is None or not workflow.tasks:
       if self._started:
-        await self._context.end_workflow()
+        await self._ensure_stopped()
       self._ended = True
       return
 
@@ -887,7 +899,7 @@ class _ReasoningWorkflowReporter:
     self._thought_segments = [content for content, _ in thought_contents]
     self._thought_task_indices = [task_index for _, task_index in thought_contents]
 
-    await self._context.end_workflow()
+    await self._ensure_stopped()
     self._ended = True
 
 
