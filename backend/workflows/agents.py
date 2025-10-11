@@ -12,6 +12,7 @@ from agents.result import RunItem
 from dataclasses import dataclass
 from collections.abc import Awaitable, Callable, Sequence
 import json
+import re
 from typing import Any
 from pydantic import BaseModel
 from openai.types.responses import (
@@ -27,6 +28,67 @@ from chatkit.agents import AgentContext
 from chatkit.types import SearchTask, ThoughtTask, URLSource, Workflow
 
 from app.token_sanitizer import sanitize_model_like
+
+_REASONING_TITLE_LINE_RE = re.compile(r"^\s*\*\*(?P<title>.+?)\*\*\s*$")
+
+
+def _normalize_title(value: str | None) -> str | None:
+  if not isinstance(value, str):
+    return None
+  normalized = value.strip()
+  return normalized or None
+
+
+def _normalize_content(value: str) -> str:
+  normalized = value.replace("\r\n", "\n")
+  return normalized.strip()
+
+
+def _parse_reasoning_segments(
+  text: str, *, default_title: str | None = None
+) -> list[tuple[str | None, str]]:
+  normalized_text = text.replace("\r\n", "\n")
+  if not normalized_text.strip():
+    return []
+
+  segments: list[tuple[str | None, str]] = []
+  current_lines: list[str] = []
+  current_title: str | None = None
+  pending_default = _normalize_title(default_title)
+
+  def flush_segment() -> None:
+    nonlocal current_lines, current_title, pending_default
+    content = _normalize_content("\n".join(current_lines))
+    title = _normalize_title(current_title)
+    if not title and pending_default:
+      title = pending_default
+      pending_default = None
+    elif title:
+      pending_default = None
+    if not content and not title:
+      current_lines = []
+      current_title = None
+      return
+    segments.append((title, content))
+    current_lines = []
+    current_title = None
+
+  for raw_line in normalized_text.split("\n"):
+    stripped = raw_line.strip()
+    title_match = _REASONING_TITLE_LINE_RE.match(stripped)
+    if title_match:
+      if current_lines or current_title is not None:
+        flush_segment()
+      current_title = title_match.group("title").strip()
+      continue
+    if not stripped and not current_lines:
+      continue
+    current_lines.append(raw_line.rstrip())
+
+  if current_lines or current_title is not None or not segments:
+    flush_segment()
+
+  return segments
 
 # Tool definitions
 web_search_preview = WebSearchTool(
@@ -685,7 +747,7 @@ class _ReasoningWorkflowReporter:
     self._ended = False
     self._tasks: list[SearchTask | ThoughtTask] = []
     self._reasoning_buffer = ""
-    self._thought_segments: list[str] = []
+    self._thought_segments: list[tuple[str | None, str]] = []
     self._thought_task_indices: list[int] = []
     self._search_task_indices: dict[str, int] = {}
     self._search_task_ids_by_index: dict[int, str] = {}
@@ -752,6 +814,11 @@ class _ReasoningWorkflowReporter:
       else:
         parts.append(content)
     return "\n\n".join(parts).strip()
+
+  def export_tasks(self) -> Sequence[SearchTask | ThoughtTask] | None:
+    if not self._tasks:
+      return None
+    return [self._clone_task(task) for task in self._tasks]
 
   def _clone_task(self, task: SearchTask | ThoughtTask) -> SearchTask | ThoughtTask:
     if isinstance(task, ThoughtTask):
@@ -918,37 +985,33 @@ class _ReasoningWorkflowReporter:
   async def append_reasoning(self, delta: str) -> None:
     if self._context is None or self._ended:
       return
-    if not delta:
-      return
     await self._ensure_started()
     self._reasoning_buffer += delta
-    raw_segments = self._reasoning_buffer.split("\n\n")
-    normalized_segments = [
-      segment.strip()
-      for segment in raw_segments
-      if segment.strip()
-    ]
+    parsed_segments = _parse_reasoning_segments(
+      self._reasoning_buffer, default_title=self._step_title
+    )
 
     # Synchronise les tâches de réflexion avec les segments observés
-    for index, content in enumerate(normalized_segments):
+    for index, (title, content) in enumerate(parsed_segments):
+      segment = (title, content)
       if index < len(self._thought_segments):
-        if content == self._thought_segments[index]:
+        if segment == self._thought_segments[index]:
           continue
-        self._thought_segments[index] = content
+        self._thought_segments[index] = segment
         task_list_index = self._thought_task_indices[index]
         task = self._tasks[task_list_index]
         if isinstance(task, ThoughtTask):
+          task.title = title
           task.content = content
         await self._safe_update_task(task, task_list_index)
         continue
 
-      if content in self._thought_segments:
+      if segment in self._thought_segments:
         continue
 
-      title = self._step_title if not self._thought_segments else None
       thought_task = ThoughtTask(content=content, title=title)
       task_list_index = len(self._tasks)
-      self._thought_segments.append(content)
+      self._thought_segments.append(segment)
       self._thought_task_indices.append(task_list_index)
       self._tasks.append(thought_task)
       await self._safe_add_task(thought_task, task_list_index)
@@ -990,15 +1053,14 @@ class _ReasoningWorkflowReporter:
         self._tasks.append(new_task)
         await self._safe_add_task(new_task, task_list_index)
 
-    thought_contents: list[tuple[str, int]] = []
+    thought_contents: list[tuple[tuple[str | None, str], int]] = []
     for index, task in enumerate(self._tasks):
       if isinstance(task, ThoughtTask):
-        content = task.content.strip()
-        if content:
-          thought_contents.append((content, index))
-      else:
-        break
-    self._thought_segments = [content for content, _ in thought_contents]
+        title = _normalize_title(task.title)
+        content = _normalize_content(task.content)
+        if title or content:
+          thought_contents.append(((title, content), index))
+    self._thought_segments = [segment for segment, _ in thought_contents]
     self._thought_task_indices = [task_index for _, task_index in thought_contents]
     self._search_task_indices = {}
     self._search_task_ids_by_index = {}
@@ -1076,39 +1138,59 @@ async def run_workflow(
     reasoning_summary: Workflow | None
     reasoning_text: str
 
-  def _split_reasoning_blocks(text: str) -> list[str]:
-    return [
-      segment.strip()
-      for segment in text.split("\n\n")
-      if segment.strip()
-    ]
-
   def _build_reasoning_workflow(
     *,
+    initial_tasks: Sequence[SearchTask | ThoughtTask] | None,
     reasoning_text: str,
     run_items: Sequence[RunItem],
     raw_responses: Sequence[Any],
     step_title: str | None = None,
   ) -> Workflow | None:
-    thought_segments: list[str] = []
-    seen_thoughts: set[str] = set()
-    search_tasks_by_id: dict[str, SearchTask] = {}
-    ordered_search_tasks: list[SearchTask] = []
+    if initial_tasks:
+      return Workflow(type="reasoning", tasks=list(initial_tasks))
 
-    def _add_thought(text: str) -> None:
-      normalized = text.strip()
-      if not normalized or normalized in seen_thoughts:
+    tasks: list[SearchTask | ThoughtTask] = []
+    search_tasks_by_id: dict[str, tuple[SearchTask, int]] = {}
+    seen_thoughts: set[tuple[str, str]] = set()
+    pending_default = _normalize_title(step_title)
+
+    def _resolve_title(candidate: str | None) -> str | None:
+      nonlocal pending_default
+      normalized_candidate = _normalize_title(candidate)
+      if normalized_candidate:
+        pending_default = None
+        return normalized_candidate
+      if pending_default:
+        resolved = pending_default
+        pending_default = None
+        return resolved
+      return None
+
+    def _add_thought_segment(title: str | None, content: str) -> None:
+      resolved_title = _resolve_title(title)
+      normalized_content = _normalize_content(content)
+      if not normalized_content and not resolved_title:
         return
-      thought_segments.append(normalized)
-      seen_thoughts.add(normalized)
+      key = ((resolved_title or ""), normalized_content)
+      if key in seen_thoughts:
+        return
+      seen_thoughts.add(key)
+      tasks.append(ThoughtTask(title=resolved_title, content=normalized_content))
 
     def _extract_reasoning_entries(entries: Sequence[Any] | None) -> None:
       if not entries:
         return
       for entry in entries:
         entry_text = getattr(entry, "text", "")
-        if entry_text:
-          _add_thought(entry_text)
+        if not isinstance(entry_text, str):
+          continue
+        entry_title = _normalize_title(getattr(entry, "title", None))
+        segments = _parse_reasoning_segments(entry_text)
+        if not segments:
+          _add_thought_segment(entry_title, entry_text)
+          continue
+        for segment_title, segment_content in segments:
+          _add_thought_segment(segment_title or entry_title, segment_content)
 
     for item in run_items:
       if isinstance(item, ReasoningItem):
@@ -1132,34 +1214,48 @@ async def run_workflow(
         continue
 
       query = action.query if isinstance(action.query, str) else None
+      normalized_query = query.strip() if isinstance(query, str) else None
 
-      search_task = search_tasks_by_id.get(call.id)
-      if search_task is None:
+      call_id = getattr(call, "id", None)
+      task_info = search_tasks_by_id.get(call_id) if call_id else None
+      if task_info is None:
         search_task = SearchTask(
           title="Recherche Web",
-          title_query=query,
-          queries=[query] if query else [],
+          title_query=normalized_query,
+          queries=[normalized_query] if normalized_query else [],
           sources=[],
         )
-        search_tasks_by_id[call.id] = search_task
-        ordered_search_tasks.append(search_task)
-      elif query and query not in search_task.queries:
-        search_task.queries.append(query)
+        tasks.append(search_task)
+        if call_id:
+          search_tasks_by_id[call_id] = (search_task, len(tasks) - 1)
+      else:
+        search_task = task_info[0]
+        if normalized_query and normalized_query not in search_task.queries:
+          search_task.queries.append(normalized_query)
+        if normalized_query and not search_task.title_query:
+          search_task.title_query = normalized_query
 
       if not action.sources:
         continue
 
-      existing_urls = {source.url for source in search_task.sources}
+      search_task = search_tasks_by_id.get(call_id, (search_task,))[0]
+      existing_urls = {source.url for source in search_task.sources if source.url}
       for source in action.sources:
-        if source.url in existing_urls:
+        url = getattr(source, "url", None)
+        if not isinstance(url, str):
           continue
-        source_title = getattr(source, "title", None) or source.url
-        search_task.sources.append(URLSource(url=source.url, title=source_title))
-        existing_urls.add(source.url)
+        normalized_url = url.strip()
+        if not normalized_url or normalized_url in existing_urls:
+          continue
+        source_title = _normalize_title(getattr(source, "title", None)) or normalized_url
+        search_task.sources.append(
+          URLSource(url=normalized_url, title=source_title)
+        )
+        existing_urls.add(normalized_url)
 
     if reasoning_text:
-      for block in _split_reasoning_blocks(reasoning_text):
-        _add_thought(block)
+      for segment_title, segment_content in _parse_reasoning_segments(reasoning_text):
+        _add_thought_segment(segment_title, segment_content)
 
     for response in raw_responses:
       output_items = getattr(response, "output", None)
@@ -1170,13 +1266,6 @@ async def run_workflow(
           continue
         summaries = getattr(event, "summary", None)
         _extract_reasoning_entries(summaries)
-
-    tasks: list[SearchTask | ThoughtTask] = []
-    if thought_segments:
-      first_content, *rest = thought_segments
-      tasks.append(ThoughtTask(content=first_content, title=step_title))
-      tasks.extend(ThoughtTask(content=segment) for segment in rest)
-    tasks.extend(ordered_search_tasks)
 
     if not tasks:
       return None
@@ -1310,6 +1399,7 @@ async def run_workflow(
     ])
     await _sync_tool_calls()
     reasoning_workflow = _build_reasoning_workflow(
+      initial_tasks=reporter.export_tasks(),
       reasoning_text=reasoning_accumulated,
       run_items=streaming_result.new_items,
       raw_responses=getattr(streaming_result, "raw_responses", ()),
