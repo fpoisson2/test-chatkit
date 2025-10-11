@@ -687,6 +687,10 @@ class _ReasoningWorkflowReporter:
     self._reasoning_buffer = ""
     self._thought_segments: list[str] = []
 
+  @property
+  def uses_structured_workflow(self) -> bool:
+    return self._context is not None
+
   async def _ensure_started(self) -> None:
     if self._context is None or self._started or self._ended:
       return
@@ -1008,6 +1012,12 @@ async def run_workflow(
     ) -> None:
       if on_step_stream is None:
         return
+      emit_reasoning_delta = (
+        "" if reporter.uses_structured_workflow else reasoning_delta
+      )
+      emit_reasoning_text = (
+        "" if reporter.uses_structured_workflow else reasoning_accumulated
+      )
       await on_step_stream(
         WorkflowStepStreamUpdate(
           key=step_key,
@@ -1015,8 +1025,8 @@ async def run_workflow(
           index=step_index,
           delta=delta,
           text=accumulated_text,
-          reasoning_delta=reasoning_delta,
-          reasoning_text=reasoning_accumulated,
+          reasoning_delta=emit_reasoning_delta,
+          reasoning_text=emit_reasoning_text,
         )
       )
 
@@ -1059,7 +1069,9 @@ async def run_workflow(
     return _AgentStepResult(
       stream=streaming_result,
       reasoning_summary=reasoning_workflow,
-      reasoning_text=reasoning_accumulated,
+      reasoning_text=(
+        "" if reporter.uses_structured_workflow else reasoning_accumulated
+      ),
     )
 
   triage_title = "Analyse des informations fournies"
