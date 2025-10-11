@@ -31,6 +31,7 @@ from .config import Settings, get_settings
 from .chatkit_store import PostgresChatKitStore
 from .database import SessionLocal
 from workflows.agents import (
+    Workflow,
     WorkflowExecutionError,
     WorkflowInput,
     WorkflowStepStreamUpdate,
@@ -167,16 +168,32 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             ) -> None:
                 state = step_stream_states.pop(step_summary.key, None)
                 if state:
+                    header = f"Étape {index} – {step_summary.title}"
+                    if state.output is not None:
+                        state.output.buffer = step_summary.output
+                    if state.reasoning is not None:
+                        reasoning_text = _render_workflow_reasoning(
+                            step_summary.reasoning,
+                            step_summary.reasoning_text,
+                        )
+                        if reasoning_text:
+                            state.reasoning.buffer = reasoning_text
                     await self._finalize_step_stream_state(
                         agent_context=agent_context,
                         step_state=state,
                     )
-                await self._persist_step_summary(
-                    step=step_summary,
-                    index=index,
-                    thread=thread,
-                    agent_context=agent_context,
-                )
+                    logger.info(
+                        "Progression du workflow %s : %s (diffusé)",
+                        thread.id,
+                        header,
+                    )
+                else:
+                    await self._persist_step_summary(
+                        step=step_summary,
+                        index=index,
+                        thread=thread,
+                        agent_context=agent_context,
+                    )
                 streamed_step_keys.add(step_summary.key)
 
             async def on_step_stream(
@@ -336,7 +353,10 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         agent_context: AgentContext[ChatKitRequestContext],
     ) -> None:
         details = step.output.strip() or "(aucune sortie)"
-        reasoning = step.reasoning.strip()
+        reasoning = _render_workflow_reasoning(
+            step.reasoning,
+            step.reasoning_text,
+        )
         if reasoning:
             details = f"{details}\n\nRésumé du raisonnement :\n{reasoning}"
         header = f"Étape {index} – {step.title}"
@@ -582,6 +602,24 @@ def get_chatkit_server() -> DemoChatKitServer:
     if _server is None:
         _server = DemoChatKitServer(get_settings())
     return _server
+
+
+def _render_workflow_reasoning(reasoning: Workflow | None, fallback: str = "") -> str:
+    if reasoning is not None:
+        parts: list[str] = []
+        for task in reasoning.tasks:
+            content = task.content.strip()
+            if not content:
+                continue
+            title = (task.title or "").strip()
+            if title:
+                parts.append(f"{title}\n{content}")
+            else:
+                parts.append(content)
+        rendered = "\n\n".join(parts).strip()
+        if rendered:
+            return rendered
+    return fallback.strip()
 
 
 def _format_output_text(output_text: str | None, fallback: Any | None) -> str:

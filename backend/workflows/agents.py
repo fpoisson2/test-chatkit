@@ -17,6 +17,7 @@ from openai.types.responses import (
   ResponseTextDeltaEvent
 )
 from openai.types.shared.reasoning import Reasoning
+from chatkit.types import ThoughtTask, Workflow
 
 from app.token_sanitizer import sanitize_model_like
 
@@ -598,7 +599,8 @@ class WorkflowStepSummary:
   key: str
   title: str
   output: str
-  reasoning: str = ""
+  reasoning: Workflow | None = None
+  reasoning_text: str = ""
 
 
 @dataclass
@@ -704,13 +706,15 @@ async def run_workflow(
     title: str,
     payload: Any,
     *,
-    reasoning_summary: str = "",
+    reasoning_summary: Workflow | None = None,
+    reasoning_text: str = "",
   ) -> None:
     summary = WorkflowStepSummary(
       key=step_key,
       title=title,
       output=_format_step_output(payload),
-      reasoning=reasoning_summary.strip(),
+      reasoning=reasoning_summary,
+      reasoning_text=reasoning_text.strip(),
     )
     steps.append(summary)
     if on_step is not None:
@@ -730,7 +734,18 @@ async def run_workflow(
   @dataclass
   class _AgentStepResult:
     stream: Any
-    reasoning_summary: str
+    reasoning_summary: Workflow | None
+    reasoning_text: str
+
+  def _build_reasoning_workflow(text: str) -> Workflow | None:
+    cleaned = text.strip()
+    if not cleaned:
+      return None
+    blocks = [segment.strip() for segment in cleaned.split("\n\n") if segment.strip()]
+    if not blocks:
+      return None
+    tasks = [ThoughtTask(content=block) for block in blocks]
+    return Workflow(tasks=tasks)
 
   async def run_agent_step(
     step_key: str,
@@ -796,9 +811,11 @@ async def run_workflow(
     conversation_history.extend([
       item.to_input_item() for item in streaming_result.new_items
     ])
+    reasoning_workflow = _build_reasoning_workflow(reasoning_accumulated)
     return _AgentStepResult(
       stream=streaming_result,
-      reasoning_summary=reasoning_accumulated,
+      reasoning_summary=reasoning_workflow,
+      reasoning_text=reasoning_accumulated,
     )
 
   triage_title = "Analyse des informations fournies"
@@ -818,6 +835,7 @@ async def run_workflow(
     triage_title,
     triage_result["output_parsed"],
     reasoning_summary=triage_run.reasoning_summary,
+    reasoning_text=triage_run.reasoning_text,
   )
 
   if state["has_all_details"] is True:
@@ -839,6 +857,7 @@ async def run_workflow(
       redacteur_title,
       r_dacteur_result["output_text"],
       reasoning_summary=r_dacteur_run.reasoning_summary,
+      reasoning_text=r_dacteur_run.reasoning_text,
     )
     return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
 
@@ -857,6 +876,7 @@ async def run_workflow(
     web_step_title,
     get_data_from_web_result["output_text"],
     reasoning_summary=get_data_from_web_run.reasoning_summary,
+    reasoning_text=get_data_from_web_run.reasoning_text,
   )
 
   triage_2_title = "Validation après collecte"
@@ -883,6 +903,7 @@ async def run_workflow(
     triage_2_title,
     triage_2_result["output_parsed"],
     reasoning_summary=triage_2_run.reasoning_summary,
+    reasoning_text=triage_2_run.reasoning_text,
   )
 
   if state["has_all_details"] is True:
@@ -904,6 +925,7 @@ async def run_workflow(
       redacteur_title,
       r_dacteur_result["output_text"],
       reasoning_summary=r_dacteur_run.reasoning_summary,
+      reasoning_text=r_dacteur_run.reasoning_text,
     )
     return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
 
@@ -922,6 +944,7 @@ async def run_workflow(
     user_step_title,
     get_data_from_user_result["output_text"],
     reasoning_summary=get_data_from_user_run.reasoning_summary,
+    reasoning_text=get_data_from_user_run.reasoning_text,
   )
 
   redacteur_title = "Rédaction du plan-cadre"
@@ -942,5 +965,6 @@ async def run_workflow(
     redacteur_title,
     r_dacteur_result["output_text"],
     reasoning_summary=r_dacteur_run.reasoning_summary,
+    reasoning_text=r_dacteur_run.reasoning_text,
   )
   return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
