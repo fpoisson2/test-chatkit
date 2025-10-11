@@ -18,6 +18,8 @@ from chatkit.types import (
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
+    SearchTask,
+    ThoughtTask,
     ThreadItem,
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
@@ -31,6 +33,7 @@ from .config import Settings, get_settings
 from .chatkit_store import PostgresChatKitStore
 from .database import SessionLocal
 from workflows.agents import (
+    Workflow,
     WorkflowExecutionError,
     WorkflowInput,
     WorkflowStepStreamUpdate,
@@ -167,16 +170,32 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             ) -> None:
                 state = step_stream_states.pop(step_summary.key, None)
                 if state:
+                    header = f"Étape {index} – {step_summary.title}"
+                    if state.output is not None:
+                        state.output.buffer = step_summary.output
+                    if state.reasoning is not None:
+                        reasoning_text = _render_workflow_reasoning(
+                            step_summary.reasoning,
+                            step_summary.reasoning_text,
+                        )
+                        if reasoning_text:
+                            state.reasoning.buffer = reasoning_text
                     await self._finalize_step_stream_state(
                         agent_context=agent_context,
                         step_state=state,
                     )
-                await self._persist_step_summary(
-                    step=step_summary,
-                    index=index,
-                    thread=thread,
-                    agent_context=agent_context,
-                )
+                    logger.info(
+                        "Progression du workflow %s : %s (diffusé)",
+                        thread.id,
+                        header,
+                    )
+                else:
+                    await self._persist_step_summary(
+                        step=step_summary,
+                        index=index,
+                        thread=thread,
+                        agent_context=agent_context,
+                    )
                 streamed_step_keys.add(step_summary.key)
 
             async def on_step_stream(
@@ -220,6 +239,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 workflow_input,
                 on_step=on_step,
                 on_step_stream=on_step_stream,
+                agent_context=agent_context,
             )
 
             result = workflow_run.final_output or {}
@@ -336,9 +356,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         agent_context: AgentContext[ChatKitRequestContext],
     ) -> None:
         details = step.output.strip() or "(aucune sortie)"
-        reasoning = step.reasoning.strip()
-        if reasoning:
-            details = f"{details}\n\nRésumé du raisonnement :\n{reasoning}"
         header = f"Étape {index} – {step.title}"
         text = f"{header}\n\n{details}"
         message = await self._publish_assistant_message(
@@ -582,6 +599,62 @@ def get_chatkit_server() -> DemoChatKitServer:
     if _server is None:
         _server = DemoChatKitServer(get_settings())
     return _server
+
+
+def _render_workflow_reasoning(reasoning: Workflow | None, fallback: str = "") -> str:
+    fallback_text = fallback.strip()
+    if reasoning is None:
+        return fallback_text
+    if not fallback_text:
+        # Lorsque nous disposons d'un workflow structuré, nous évitons de
+        # réinjecter le raisonnement sous forme textuelle pour ne pas créer
+        # de doublons dans la conversation.
+        return ""
+
+    parts: list[str] = []
+    for task in reasoning.tasks:
+        if isinstance(task, ThoughtTask):
+            content = task.content.strip()
+            if not content:
+                continue
+            title = (task.title or "").strip()
+            if title:
+                parts.append(f"{title}\n{content}")
+            else:
+                parts.append(content)
+        elif isinstance(task, SearchTask):
+            title = (task.title or "Recherche web").strip()
+            safe_queries = [
+                query.strip()
+                for query in (task.queries or [])
+                if isinstance(query, str) and query.strip()
+            ]
+            safe_sources = [
+                source
+                for source in (task.sources or [])
+                if getattr(source, "url", "")
+            ]
+            lines: list[str] = []
+            if safe_queries:
+                lines.append("Requêtes : " + ", ".join(safe_queries))
+            if safe_sources:
+                sources_rendered = []
+                for source in safe_sources:
+                    source_title = (getattr(source, "title", "") or "").strip()
+                    url = getattr(source, "url", "")
+                    label = source_title or url
+                    if not label:
+                        continue
+                    sources_rendered.append(label)
+                if sources_rendered:
+                    lines.append("Sources : " + ", ".join(sources_rendered))
+            block = "\n".join(lines).strip()
+            if block:
+                parts.append(f"{title}\n{block}" if title else block)
+            elif title:
+                parts.append(title)
+    rendered = "\n\n".join(parts).strip()
+    return rendered or fallback_text
 
 
 def _format_output_text(output_text: str | None, fallback: Any | None) -> str:
