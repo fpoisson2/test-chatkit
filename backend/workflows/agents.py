@@ -29,7 +29,26 @@ from chatkit.types import SearchTask, ThoughtTask, URLSource, Workflow
 
 from app.token_sanitizer import sanitize_model_like
 
-_REASONING_TITLE_LINE_RE = re.compile(r"^\s*\*\*(?P<title>.+?)\*\*\s*$")
+_REASONING_TITLE_LINE_RE = re.compile(r"^\s*\*\*(?P<title>.+?)\*\*(?P<remainder>.*)$")
+
+
+def _extract_reasoning_title(line: str) -> tuple[str | None, str | None]:
+  """Detecte un titre en gras et renvoie le reste de la ligne."""
+  match = _REASONING_TITLE_LINE_RE.match(line.strip())
+  if not match:
+    return None, None
+
+  raw_title = match.group("title")
+  remainder = match.group("remainder") or ""
+
+  if remainder:
+    remainder = remainder.lstrip()
+    if remainder[:1] in {":", "-", "–", "—"}:
+      remainder = remainder[1:].lstrip()
+
+  title = _normalize_title(raw_title)
+  remainder_content = remainder if remainder else None
+  return title, remainder_content
 
 
 def _normalize_title(value: str | None) -> str | None:
@@ -75,11 +94,15 @@ def _parse_reasoning_segments(
 
   for raw_line in normalized_text.split("\n"):
     stripped = raw_line.strip()
-    title_match = _REASONING_TITLE_LINE_RE.match(stripped)
-    if title_match:
+    title_value, inline_content = _extract_reasoning_title(raw_line)
+    if title_value:
       if current_lines or current_title is not None:
         flush_segment()
-      current_title = title_match.group("title").strip()
+      current_title = title_value
+      if inline_content:
+        current_lines = [inline_content]
+      else:
+        current_lines = []
       continue
     if not stripped and not current_lines:
       continue
@@ -803,16 +826,37 @@ class _ReasoningWorkflowReporter:
   def render_reasoning_text(self) -> str:
     parts: list[str] = []
     for task in self._tasks:
-      if not isinstance(task, ThoughtTask):
+      if isinstance(task, ThoughtTask):
+        content = task.content.strip()
+        if not content and not (task.title or "").strip():
+          continue
+        title = (task.title or "").strip()
+        if title and content:
+          parts.append(f"{title}\n{content}")
+        elif title:
+          parts.append(title)
+        else:
+          parts.append(content)
         continue
-      content = task.content.strip()
-      if not content:
-        continue
-      title = (task.title or "").strip()
-      if title:
-        parts.append(f"{title}\n{content}")
-      else:
-        parts.append(content)
+
+      if isinstance(task, SearchTask):
+        lines: list[str] = []
+        query = _normalize_content("\n".join(task.queries)) if task.queries else ""
+        title = (task.title or "").strip() or "Recherche Web"
+        if task.title_query:
+          lines.append(f"Requête : {task.title_query}")
+        elif query:
+          lines.append(f"Requête : {query}")
+        if task.sources:
+          for source in task.sources:
+            url = getattr(source, "url", "")
+            source_title = getattr(source, "title", None) or url
+            if url:
+              lines.append(f"- {source_title} ({url})")
+        if lines:
+          parts.append("\n".join([title, *lines]))
+        else:
+          parts.append(title)
     return "\n\n".join(parts).strip()
 
   def export_tasks(self) -> Sequence[SearchTask | ThoughtTask] | None:
@@ -1332,6 +1376,7 @@ async def run_workflow(
     ) -> None:
       if on_step_stream is None:
         return
+      await _sync_tool_calls()
       nonlocal structured_reasoning_sent
       emit_reasoning_delta: str
       emit_reasoning_text: str
