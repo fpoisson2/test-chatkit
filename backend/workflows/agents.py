@@ -719,10 +719,21 @@ class _ReasoningWorkflowReporter:
     return Workflow(type="reasoning", tasks=[])
 
   async def start_step(self, *, title: str | None = None) -> None:
-    if self._context is None or self._started or self._ended:
+    if self._context is None:
       return
+
+    await self._ensure_stopped()
+
+    self._started = False
+    self._ended = False
+    self._tasks = []
+    self._reasoning_buffer = ""
+    self._thought_segments = []
+    self._thought_task_indices = []
     self._placeholder_index = None
+
     await self._ensure_started()
+
     if title:
       placeholder = ThoughtTask(title=title, content="")
       self._tasks.append(placeholder)
