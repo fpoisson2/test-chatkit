@@ -24,6 +24,8 @@ from chatkit.types import (
     UserMessageItem,
 )
 
+from sqlalchemy.exc import IntegrityError
+
 from .config import Settings, get_settings
 from .chatkit_store import PostgresChatKitStore
 from .database import SessionLocal
@@ -327,9 +329,19 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 )
             ],
         )
-        await self.store.add_thread_item(
-            thread.id, message, agent_context.request_context
-        )
+        try:
+            await self.store.add_thread_item(
+                thread.id, message, agent_context.request_context
+            )
+        except IntegrityError:
+            logger.warning(
+                "Élément %s déjà présent dans le fil %s, mise à jour du contenu",
+                message.id,
+                thread.id,
+            )
+            await self.store.save_item(
+                thread.id, message, agent_context.request_context
+            )
         return message
 
 
