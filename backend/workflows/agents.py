@@ -693,6 +693,41 @@ class _ReasoningWorkflowReporter:
     await self._context.start_workflow(Workflow(type="reasoning", tasks=[]))
     self._started = True
 
+  def _is_context_ready(self) -> bool:
+    return self._context is not None and not self._ended
+
+  async def _recover_workflow_state(self) -> None:
+    if not self._is_context_ready():
+      return
+    await self._context.start_workflow(
+      Workflow(type="reasoning", tasks=list(self._tasks))
+    )
+    self._started = True
+
+  async def _safe_update_task(self, task: SearchTask | ThoughtTask, index: int) -> None:
+    if not self._is_context_ready():
+      return
+    await self._ensure_started()
+    try:
+      await self._context.update_workflow_task(task, task_index=index)
+    except ValueError as exc:
+      if "Workflow is not set" not in str(exc):
+        raise
+      await self._recover_workflow_state()
+      await self._context.update_workflow_task(task, task_index=index)
+
+  async def _safe_add_task(self, task: SearchTask | ThoughtTask, index: int) -> None:
+    if not self._is_context_ready():
+      return
+    await self._ensure_started()
+    try:
+      await self._context.add_workflow_task(task)
+    except ValueError as exc:
+      if "Workflow is not set" not in str(exc):
+        raise
+      await self._recover_workflow_state()
+    await self._safe_update_task(task, index)
+
   async def append_reasoning(self, delta: str) -> None:
     if self._context is None or self._ended:
       return
@@ -717,7 +752,7 @@ class _ReasoningWorkflowReporter:
           task = self._tasks[index]
           if isinstance(task, ThoughtTask):
             task.content = content
-            await self._context.update_workflow_task(task, index)
+          await self._safe_update_task(task, index)
         continue
 
       if content in self._thought_segments:
@@ -726,8 +761,7 @@ class _ReasoningWorkflowReporter:
       thought_task = ThoughtTask(content=content)
       self._thought_segments.append(content)
       self._tasks.append(thought_task)
-      await self._context.add_workflow_task(thought_task)
-      await self._context.update_workflow_task(thought_task, index)
+      await self._safe_add_task(thought_task, index)
 
   async def sync_with_workflow(self, workflow: Workflow | None) -> None:
     if self._context is None or self._ended:
@@ -758,12 +792,11 @@ class _ReasoningWorkflowReporter:
         else:
           current = final_task
           self._tasks[index] = current
-        await self._context.update_workflow_task(current, index)
+        await self._safe_update_task(current, index)
       else:
         new_task = final_task
         self._tasks.append(new_task)
-        await self._context.add_workflow_task(new_task)
-        await self._context.update_workflow_task(new_task, index)
+        await self._safe_add_task(new_task, index)
 
     thought_contents: list[str] = []
     for task in self._tasks:
