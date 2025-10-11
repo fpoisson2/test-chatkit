@@ -12,7 +12,10 @@ from collections.abc import Awaitable, Callable
 import json
 from typing import Any
 from pydantic import BaseModel
-from openai.types.responses import ResponseTextDeltaEvent
+from openai.types.responses import (
+  ResponseReasoningSummaryTextDeltaEvent,
+  ResponseTextDeltaEvent
+)
 from openai.types.shared.reasoning import Reasoning
 
 from app.token_sanitizer import sanitize_model_like
@@ -595,6 +598,7 @@ class WorkflowStepSummary:
   key: str
   title: str
   output: str
+  reasoning: str = ""
 
 
 @dataclass
@@ -610,6 +614,8 @@ class WorkflowStepStreamUpdate:
   index: int
   delta: str
   text: str
+  reasoning_delta: str = ""
+  reasoning_text: str = ""
 
 
 class WorkflowExecutionError(RuntimeError):
@@ -693,11 +699,18 @@ async def run_workflow(
       "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae"
     })
 
-  async def record_step(step_key: str, title: str, payload: Any) -> None:
+  async def record_step(
+    step_key: str,
+    title: str,
+    payload: Any,
+    *,
+    reasoning_summary: str = "",
+  ) -> None:
     summary = WorkflowStepSummary(
       key=step_key,
       title=title,
       output=_format_step_output(payload),
+      reasoning=reasoning_summary.strip(),
     )
     steps.append(summary)
     if on_step is not None:
@@ -714,13 +727,18 @@ async def run_workflow(
       return output, json.dumps(output, ensure_ascii=False)
     return output, str(output)
 
+  @dataclass
+  class _AgentStepResult:
+    stream: Any
+    reasoning_summary: str
+
   async def run_agent_step(
     step_key: str,
     title: str,
     agent: Agent,
     *,
     context: Any | None = None,
-  ):
+  ) -> _AgentStepResult:
     step_index = len(steps) + 1
     streaming_result = Runner.run_streamed(
       agent,
@@ -728,17 +746,28 @@ async def run_workflow(
       run_config=_workflow_run_config(),
       context=context,
     )
-    if on_step_stream is not None:
+    accumulated_text = ""
+    reasoning_accumulated = ""
+
+    async def _emit_stream_update(
+      *,
+      delta: str = "",
+      reasoning_delta: str = "",
+    ) -> None:
+      if on_step_stream is None:
+        return
       await on_step_stream(
         WorkflowStepStreamUpdate(
           key=step_key,
           title=title,
           index=step_index,
-          delta="",
-          text="",
+          delta=delta,
+          text=accumulated_text,
+          reasoning_delta=reasoning_delta,
+          reasoning_text=reasoning_accumulated,
         )
       )
-    accumulated_text = ""
+
     try:
       async for event in streaming_result.stream_events():
         if (
@@ -748,26 +777,33 @@ async def run_workflow(
           delta_text = event.data.delta or ""
           if not delta_text:
             continue
-          if on_step_stream is not None:
-            accumulated_text += delta_text
-            await on_step_stream(
-              WorkflowStepStreamUpdate(
-                key=step_key,
-                title=title,
-                index=step_index,
-                delta=delta_text,
-                text=accumulated_text,
-              )
-            )
+          accumulated_text += delta_text
+          await _emit_stream_update(delta=delta_text)
+          continue
+
+        if (
+          event.type == "raw_response_event"
+          and isinstance(event.data, ResponseReasoningSummaryTextDeltaEvent)
+        ):
+          reasoning_delta = event.data.delta or ""
+          if not reasoning_delta:
+            continue
+          reasoning_accumulated += reasoning_delta
+          await _emit_stream_update(reasoning_delta=reasoning_delta)
     except Exception as exc:
       raise_step_error(step_key, title, exc)
 
-    conversation_history.extend([item.to_input_item() for item in streaming_result.new_items])
-    return streaming_result
+    conversation_history.extend([
+      item.to_input_item() for item in streaming_result.new_items
+    ])
+    return _AgentStepResult(
+      stream=streaming_result,
+      reasoning_summary=reasoning_accumulated,
+    )
 
   triage_title = "Analyse des informations fournies"
-  triage_result_stream = await run_agent_step("triage", triage_title, triage)
-  triage_parsed, triage_text = _structured_output_as_json(triage_result_stream.final_output)
+  triage_run = await run_agent_step("triage", triage_title, triage)
+  triage_parsed, triage_text = _structured_output_as_json(triage_run.stream.final_output)
   triage_result = {
     "output_text": triage_text,
     "output_parsed": triage_parsed
@@ -777,46 +813,61 @@ async def run_workflow(
   else:
     state["has_all_details"] = False
   state["infos_manquantes"] = triage_result["output_text"]
-  await record_step("triage", triage_title, triage_result["output_parsed"])
+  await record_step(
+    "triage",
+    triage_title,
+    triage_result["output_parsed"],
+    reasoning_summary=triage_run.reasoning_summary,
+  )
 
   if state["has_all_details"] is True:
     redacteur_title = "Rédaction du plan-cadre"
-    r_dacteur_result_stream = await run_agent_step(
+    r_dacteur_run = await run_agent_step(
       "r_dacteur",
       redacteur_title,
       r_dacteur,
     )
     redacteur_parsed, redacteur_text = _structured_output_as_json(
-      r_dacteur_result_stream.final_output
+      r_dacteur_run.stream.final_output
     )
     r_dacteur_result = {
       "output_text": redacteur_text,
       "output_parsed": redacteur_parsed
     }
-    await record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
+    await record_step(
+      "r_dacteur",
+      redacteur_title,
+      r_dacteur_result["output_text"],
+      reasoning_summary=r_dacteur_run.reasoning_summary,
+    )
     return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
 
   web_step_title = "Collecte d'exemples externes"
-  get_data_from_web_result_stream = await run_agent_step(
+  get_data_from_web_run = await run_agent_step(
     "get_data_from_web",
     web_step_title,
     get_data_from_web,
     context=GetDataFromWebContext(state_infos_manquantes=state["infos_manquantes"])
   )
   get_data_from_web_result = {
-    "output_text": get_data_from_web_result_stream.final_output_as(str)
+    "output_text": get_data_from_web_run.stream.final_output_as(str)
   }
-  await record_step("get_data_from_web", web_step_title, get_data_from_web_result["output_text"])
+  await record_step(
+    "get_data_from_web",
+    web_step_title,
+    get_data_from_web_result["output_text"],
+    reasoning_summary=get_data_from_web_run.reasoning_summary,
+  )
 
   triage_2_title = "Validation après collecte"
-  triage_2_result_stream = await run_agent_step(
+  triage_2_run = await run_agent_step(
     "triage_2",
     triage_2_title,
     triage_2,
     context=Triage2Context(input_output_text=get_data_from_web_result["output_text"])
   )
   triage_2_parsed, triage_2_text = _structured_output_as_json(
-    triage_2_result_stream.final_output
+    triage_2_run.stream.final_output
   )
   triage_2_result = {
     "output_text": triage_2_text,
@@ -827,49 +878,69 @@ async def run_workflow(
   else:
     state["has_all_details"] = False
   state["infos_manquantes"] = triage_2_result["output_text"]
-  await record_step("triage_2", triage_2_title, triage_2_result["output_parsed"])
+  await record_step(
+    "triage_2",
+    triage_2_title,
+    triage_2_result["output_parsed"],
+    reasoning_summary=triage_2_run.reasoning_summary,
+  )
 
   if state["has_all_details"] is True:
     redacteur_title = "Rédaction du plan-cadre"
-    r_dacteur_result_stream = await run_agent_step(
+    r_dacteur_run = await run_agent_step(
       "r_dacteur",
       redacteur_title,
       r_dacteur,
     )
     redacteur_parsed, redacteur_text = _structured_output_as_json(
-      r_dacteur_result_stream.final_output
+      r_dacteur_run.stream.final_output
     )
     r_dacteur_result = {
       "output_text": redacteur_text,
       "output_parsed": redacteur_parsed
     }
-    await record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
+    await record_step(
+      "r_dacteur",
+      redacteur_title,
+      r_dacteur_result["output_text"],
+      reasoning_summary=r_dacteur_run.reasoning_summary,
+    )
     return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
 
   user_step_title = "Demande d'informations supplémentaires"
-  get_data_from_user_result_stream = await run_agent_step(
+  get_data_from_user_run = await run_agent_step(
     "get_data_from_user",
     user_step_title,
     get_data_from_user,
     context=GetDataFromUserContext(state_infos_manquantes=state["infos_manquantes"])
   )
   get_data_from_user_result = {
-    "output_text": get_data_from_user_result_stream.final_output_as(str)
+    "output_text": get_data_from_user_run.stream.final_output_as(str)
   }
-  await record_step("get_data_from_user", user_step_title, get_data_from_user_result["output_text"])
+  await record_step(
+    "get_data_from_user",
+    user_step_title,
+    get_data_from_user_result["output_text"],
+    reasoning_summary=get_data_from_user_run.reasoning_summary,
+  )
 
   redacteur_title = "Rédaction du plan-cadre"
-  r_dacteur_result_stream = await run_agent_step(
+  r_dacteur_run = await run_agent_step(
     "r_dacteur",
     redacteur_title,
     r_dacteur,
   )
   redacteur_parsed, redacteur_text = _structured_output_as_json(
-    r_dacteur_result_stream.final_output
+    r_dacteur_run.stream.final_output
   )
   r_dacteur_result = {
     "output_text": redacteur_text,
     "output_parsed": redacteur_parsed
   }
-  await record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
+  await record_step(
+    "r_dacteur",
+    redacteur_title,
+    r_dacteur_result["output_text"],
+    reasoning_summary=r_dacteur_run.reasoning_summary,
+  )
   return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)

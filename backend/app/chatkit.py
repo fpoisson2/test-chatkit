@@ -12,14 +12,16 @@ from chatkit.server import ChatKitServer
 from chatkit.store import NotFoundError
 from chatkit.types import (
     AssistantMessageContent,
+    AssistantMessageContentPartDone,
+    AssistantMessageContentPartTextDelta,
     AssistantMessageItem,
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
-    ProgressUpdateEvent,
     ThreadItem,
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
+    ThreadItemUpdated,
     ThreadMetadata,
     ThreadStreamEvent,
     UserMessageItem,
@@ -55,6 +57,20 @@ class ChatKitRequestContext:
         if self.email:
             metadata["user_email"] = self.email
         return metadata
+
+
+@dataclass
+class _StreamingMessageState:
+    message: AssistantMessageItem
+    prefix: str
+    buffer: str = ""
+
+
+@dataclass
+class _StepStreamState:
+    header: str
+    output: _StreamingMessageState | None = None
+    reasoning: _StreamingMessageState | None = None
 
 
 class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
@@ -136,7 +152,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         workflow_input: WorkflowInput,
     ) -> None:
         streamed_step_keys: set[str] = set()
-        step_progress_text: dict[str, str] = {}
+        step_stream_states: dict[str, _StepStreamState] = {}
 
         try:
             logger.info("Démarrage du workflow pour le fil %s", thread.id)
@@ -149,6 +165,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             async def on_step(
                 step_summary: WorkflowStepSummary, index: int
             ) -> None:
+                state = step_stream_states.pop(step_summary.key, None)
+                if state:
+                    await self._finalize_step_stream_state(
+                        agent_context=agent_context,
+                        step_state=state,
+                    )
                 await self._persist_step_summary(
                     step=step_summary,
                     index=index,
@@ -156,32 +178,43 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     agent_context=agent_context,
                 )
                 streamed_step_keys.add(step_summary.key)
-                step_progress_text.pop(step_summary.key, None)
 
             async def on_step_stream(
                 update: WorkflowStepStreamUpdate,
             ) -> None:
                 header = f"Étape {update.index} – {update.title}"
+                state = step_stream_states.get(update.key)
+                if state is None:
+                    state = _StepStreamState(header=header)
+                    step_stream_states[update.key] = state
 
-                if update.key not in step_progress_text:
-                    waiting_text = f"{header}\n\nGénération en cours..."
-                    step_progress_text[update.key] = waiting_text
-                    await agent_context.stream(
-                        ProgressUpdateEvent(text=waiting_text)
+                if update.delta:
+                    if state.output is None:
+                        state.output = await self._start_step_stream_message(
+                            thread=thread,
+                            agent_context=agent_context,
+                            header_text=header,
+                            prefix=f"{header}\n\n",
+                        )
+                    await self._append_stream_delta(
+                        agent_context=agent_context,
+                        stream_state=state.output,
+                        delta=update.delta,
                     )
 
-                aggregated_text = update.text
-                if not aggregated_text.strip():
-                    return
-
-                progress_text = f"{header}\n\n{aggregated_text}"
-                if step_progress_text.get(update.key) == progress_text:
-                    return
-
-                step_progress_text[update.key] = progress_text
-                await agent_context.stream(
-                    ProgressUpdateEvent(text=progress_text)
-                )
+                if update.reasoning_delta:
+                    if state.reasoning is None:
+                        state.reasoning = await self._start_step_stream_message(
+                            thread=thread,
+                            agent_context=agent_context,
+                            header_text=f"{header} · Résumé du raisonnement",
+                            prefix=f"{header} · Résumé du raisonnement\n\n",
+                        )
+                    await self._append_stream_delta(
+                        agent_context=agent_context,
+                        stream_state=state.reasoning,
+                        delta=update.reasoning_delta,
+                    )
 
             workflow_run = await run_workflow(
                 workflow_input,
@@ -203,6 +236,10 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 agent_context=agent_context,
                 text=output_text,
             )
+            await self._finalize_all_step_streams(
+                agent_context=agent_context,
+                step_stream_states=step_stream_states,
+            )
             await agent_context.stream(
                 EndOfTurnItem(
                     id=self.store.generate_item_id(
@@ -215,6 +252,10 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             logger.info("Workflow terminé avec succès pour le fil %s", thread.id)
         except WorkflowExecutionError as exc:  # pragma: no cover - erreurs connues du workflow
             logger.exception("Workflow execution failed")
+            await self._finalize_all_step_streams(
+                agent_context=agent_context,
+                step_stream_states=step_stream_states,
+            )
             await self._persist_step_summaries(
                 steps=[
                     step
@@ -247,6 +288,10 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
         except Exception as exc:  # pragma: no cover - autres erreurs runtime
             logger.exception("Workflow execution failed")
+            await self._finalize_all_step_streams(
+                agent_context=agent_context,
+                step_stream_states=step_stream_states,
+            )
             detailed_message = (
                 f"Erreur inattendue ({exc.__class__.__name__}) : {exc}"
             )
@@ -291,6 +336,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         agent_context: AgentContext[ChatKitRequestContext],
     ) -> None:
         details = step.output.strip() or "(aucune sortie)"
+        reasoning = step.reasoning.strip()
+        if reasoning:
+            details = f"{details}\n\nRésumé du raisonnement :\n{reasoning}"
         header = f"Étape {index} – {step.title}"
         text = f"{header}\n\n{details}"
         message = await self._publish_assistant_message(
@@ -301,6 +349,116 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         logger.info(
             "Progression du workflow %s : %s", thread.id, header
         )
+
+    async def _start_step_stream_message(
+        self,
+        *,
+        thread: ThreadMetadata,
+        agent_context: AgentContext[ChatKitRequestContext],
+        header_text: str,
+        prefix: str,
+    ) -> _StreamingMessageState:
+        message = AssistantMessageItem(
+            id=agent_context.generate_id("message", thread),
+            thread_id=thread.id,
+            created_at=datetime.now(),
+            content=[
+                AssistantMessageContent(
+                    type="output_text",
+                    text=prefix,
+                )
+            ],
+        )
+        await agent_context.stream(ThreadItemAddedEvent(item=message))
+        logger.info(
+            "Streaming du workflow %s initialisé pour %s",
+            thread.id,
+            header_text,
+        )
+        return _StreamingMessageState(message=message, prefix=prefix)
+
+    async def _append_stream_delta(
+        self,
+        *,
+        agent_context: AgentContext[ChatKitRequestContext],
+        stream_state: _StreamingMessageState,
+        delta: str,
+    ) -> None:
+        if not delta:
+            return
+        stream_state.buffer += delta
+        await agent_context.stream(
+            ThreadItemUpdated(
+                item_id=stream_state.message.id,
+                update=AssistantMessageContentPartTextDelta(
+                    content_index=0,
+                    delta=delta,
+                ),
+            )
+        )
+
+    async def _finalize_stream_message(
+        self,
+        *,
+        agent_context: AgentContext[ChatKitRequestContext],
+        stream_state: _StreamingMessageState,
+    ) -> None:
+        final_text = f"{stream_state.prefix}{stream_state.buffer}"
+        final_content = AssistantMessageContent(
+            type="output_text",
+            text=final_text,
+        )
+        await agent_context.stream(
+            ThreadItemUpdated(
+                item_id=stream_state.message.id,
+                update=AssistantMessageContentPartDone(
+                    content_index=0,
+                    content=final_content,
+                ),
+            )
+        )
+        await agent_context.stream(
+            ThreadItemDoneEvent(
+                item=AssistantMessageItem(
+                    id=stream_state.message.id,
+                    thread_id=stream_state.message.thread_id,
+                    created_at=stream_state.message.created_at,
+                    content=[final_content],
+                )
+            )
+        )
+
+    async def _finalize_step_stream_state(
+        self,
+        *,
+        agent_context: AgentContext[ChatKitRequestContext],
+        step_state: _StepStreamState,
+    ) -> None:
+        if step_state.output is not None:
+            await self._finalize_stream_message(
+                agent_context=agent_context,
+                stream_state=step_state.output,
+            )
+        if step_state.reasoning is not None:
+            await self._finalize_stream_message(
+                agent_context=agent_context,
+                stream_state=step_state.reasoning,
+            )
+
+    async def _finalize_all_step_streams(
+        self,
+        *,
+        agent_context: AgentContext[ChatKitRequestContext],
+        step_stream_states: dict[str, _StepStreamState],
+    ) -> None:
+        if not step_stream_states:
+            return
+        for state in list(step_stream_states.values()):
+            await self._finalize_step_stream_state(
+                agent_context=agent_context,
+                step_state=state,
+            )
+        step_stream_states.clear()
 
     async def _publish_assistant_message(
         self,
