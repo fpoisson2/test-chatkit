@@ -1190,13 +1190,46 @@ async def run_workflow(
     raw_responses: Sequence[Any],
     step_title: str | None = None,
   ) -> Workflow | None:
-    if initial_tasks:
-      return Workflow(type="reasoning", tasks=list(initial_tasks))
-
     tasks: list[SearchTask | ThoughtTask] = []
     search_tasks_by_id: dict[str, tuple[SearchTask, int]] = {}
+    search_tasks_by_signature: dict[str, tuple[SearchTask, int]] = {}
     seen_thoughts: set[tuple[str, str]] = set()
+
+    def _normalize_query(value: str | None) -> str | None:
+      if not isinstance(value, str):
+        return None
+      normalized = value.strip()
+      return normalized or None
+
+    def _register_search_task(task: SearchTask, index: int) -> None:
+      signature_candidates: list[str | None] = []
+      signature_candidates.append(task.title_query)
+      signature_candidates.extend(task.queries)
+      for candidate in signature_candidates:
+        normalized_candidate = _normalize_query(candidate)
+        if normalized_candidate:
+          search_tasks_by_signature[normalized_candidate] = (task, index)
+          break
+
+    def _register_thought_task(task: ThoughtTask) -> None:
+      title_value = _normalize_title(task.title)
+      content_value = task.content if isinstance(task.content, str) else ""
+      normalized_content = _normalize_content(content_value)
+      if not normalized_content and not title_value:
+        return
+      seen_thoughts.add(((title_value or ""), normalized_content))
+
+    if initial_tasks:
+      tasks = list(initial_tasks)
+      for index, task in enumerate(tasks):
+        if isinstance(task, SearchTask):
+          _register_search_task(task, index)
+        elif isinstance(task, ThoughtTask):
+          _register_thought_task(task)
+
     pending_default = _normalize_title(step_title)
+    if any(isinstance(task, ThoughtTask) for task in tasks):
+      pending_default = None
 
     def _resolve_title(candidate: str | None) -> str | None:
       nonlocal pending_default
@@ -1219,7 +1252,8 @@ async def run_workflow(
       if key in seen_thoughts:
         return
       seen_thoughts.add(key)
-      tasks.append(ThoughtTask(title=resolved_title, content=normalized_content))
+      thought_task = ThoughtTask(title=resolved_title, content=normalized_content)
+      tasks.append(thought_task)
 
     def _extract_reasoning_entries(entries: Sequence[Any] | None) -> None:
       if not entries:
@@ -1235,6 +1269,45 @@ async def run_workflow(
           continue
         for segment_title, segment_content in segments:
           _add_thought_segment(segment_title or entry_title, segment_content)
+
+    def _upsert_search_task(
+      *,
+      call_id: str | None,
+      title: str | None,
+      query: str | None,
+    ) -> tuple[SearchTask, int]:
+      normalized_query = _normalize_query(query)
+      task_info = search_tasks_by_id.get(call_id) if call_id else None
+      if task_info is None and normalized_query:
+        task_info = search_tasks_by_signature.get(normalized_query)
+        if call_id and task_info:
+          search_tasks_by_id[call_id] = task_info
+
+      if task_info is not None:
+        search_task, index = task_info
+        if normalized_query and normalized_query not in search_task.queries:
+          search_task.queries.append(normalized_query)
+        if normalized_query and not search_task.title_query:
+          search_task.title_query = normalized_query
+        if title and not search_task.title:
+          search_task.title = title
+        if normalized_query:
+          search_tasks_by_signature[normalized_query] = (search_task, index)
+        return search_task, index
+
+      search_task = SearchTask(
+        title=title or "Recherche Web",
+        title_query=normalized_query,
+        queries=[normalized_query] if normalized_query else [],
+        sources=[],
+      )
+      tasks.append(search_task)
+      index = len(tasks) - 1
+      if call_id:
+        search_tasks_by_id[call_id] = (search_task, index)
+      if normalized_query:
+        search_tasks_by_signature[normalized_query] = (search_task, index)
+      return search_task, index
 
     for item in run_items:
       if isinstance(item, ReasoningItem):
@@ -1257,32 +1330,15 @@ async def run_workflow(
       if not isinstance(action, ActionSearch):
         continue
 
-      query = action.query if isinstance(action.query, str) else None
-      normalized_query = query.strip() if isinstance(query, str) else None
-
-      call_id = getattr(call, "id", None)
-      task_info = search_tasks_by_id.get(call_id) if call_id else None
-      if task_info is None:
-        search_task = SearchTask(
-          title="Recherche Web",
-          title_query=normalized_query,
-          queries=[normalized_query] if normalized_query else [],
-          sources=[],
-        )
-        tasks.append(search_task)
-        if call_id:
-          search_tasks_by_id[call_id] = (search_task, len(tasks) - 1)
-      else:
-        search_task = task_info[0]
-        if normalized_query and normalized_query not in search_task.queries:
-          search_task.queries.append(normalized_query)
-        if normalized_query and not search_task.title_query:
-          search_task.title_query = normalized_query
+      search_task, _ = _upsert_search_task(
+        call_id=getattr(call, "id", None),
+        title="Recherche Web",
+        query=action.query if isinstance(action.query, str) else None,
+      )
 
       if not action.sources:
         continue
 
-      search_task = search_tasks_by_id.get(call_id, (search_task,))[0]
       existing_urls = {source.url for source in search_task.sources if source.url}
       for source in action.sources:
         url = getattr(source, "url", None)
@@ -1313,6 +1369,12 @@ async def run_workflow(
 
     if not tasks:
       return None
+
+    for index, task in enumerate(tasks):
+      if isinstance(task, ThoughtTask):
+        _register_thought_task(task)
+      elif isinstance(task, SearchTask):
+        _register_search_task(task, index)
 
     return Workflow(type="reasoning", tasks=tasks)
 
