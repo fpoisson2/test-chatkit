@@ -7,8 +7,10 @@ from agents import (
   Runner,
   RunConfig
 )
+from agents.items import ReasoningItem, ToolCallItem
+from agents.result import RunItem
 from dataclasses import dataclass
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 import json
 from typing import Any
 from pydantic import BaseModel
@@ -16,8 +18,12 @@ from openai.types.responses import (
   ResponseReasoningSummaryTextDeltaEvent,
   ResponseTextDeltaEvent
 )
+from openai.types.responses.response_function_web_search import (
+  ActionSearch,
+  ResponseFunctionWebSearch
+)
 from openai.types.shared.reasoning import Reasoning
-from chatkit.types import ThoughtTask, Workflow
+from chatkit.types import SearchTask, ThoughtTask, URLSource, Workflow
 
 from app.token_sanitizer import sanitize_model_like
 
@@ -737,14 +743,85 @@ async def run_workflow(
     reasoning_summary: Workflow | None
     reasoning_text: str
 
-  def _build_reasoning_workflow(text: str) -> Workflow | None:
-    cleaned = text.strip()
-    if not cleaned:
+  def _split_reasoning_blocks(text: str) -> list[str]:
+    return [
+      segment.strip()
+      for segment in text.split("\n\n")
+      if segment.strip()
+    ]
+
+  def _build_reasoning_workflow(
+    *,
+    reasoning_text: str,
+    run_items: Sequence[RunItem],
+  ) -> Workflow | None:
+    tasks: list[SearchTask | ThoughtTask] = []
+    seen_thoughts: set[str] = set()
+    search_tasks_by_id: dict[str, SearchTask] = {}
+
+    def _add_thought(text: str) -> None:
+      normalized = text.strip()
+      if not normalized or normalized in seen_thoughts:
+        return
+      tasks.append(ThoughtTask(content=normalized))
+      seen_thoughts.add(normalized)
+
+    for item in run_items:
+      if isinstance(item, ReasoningItem):
+        contents = item.raw_item.content or []
+        if contents:
+          for entry in contents:
+            entry_text = getattr(entry, "text", "")
+            if entry_text:
+              _add_thought(entry_text)
+        else:
+          for summary in item.raw_item.summary:
+            summary_text = getattr(summary, "text", "")
+            if summary_text:
+              _add_thought(summary_text)
+        continue
+
+      if not isinstance(item, ToolCallItem):
+        continue
+
+      call = item.raw_item
+      if not isinstance(call, ResponseFunctionWebSearch):
+        continue
+
+      action = call.action
+      if not isinstance(action, ActionSearch):
+        continue
+
+      search_task = search_tasks_by_id.get(call.id)
+      if search_task is None:
+        search_task = SearchTask(
+          title="Recherche Web",
+          title_query=action.query,
+          queries=[action.query],
+          sources=[],
+        )
+        search_tasks_by_id[call.id] = search_task
+        tasks.append(search_task)
+      elif action.query not in search_task.queries:
+        search_task.queries.append(action.query)
+
+      if not action.sources:
+        continue
+
+      existing_urls = {source.url for source in search_task.sources}
+      for source in action.sources:
+        if source.url in existing_urls:
+          continue
+        search_task.sources.append(URLSource(url=source.url))
+        existing_urls.add(source.url)
+
+    if reasoning_text:
+      for block in _split_reasoning_blocks(reasoning_text):
+        _add_thought(block)
+
+    if not tasks:
       return None
-    blocks = [segment.strip() for segment in cleaned.split("\n\n") if segment.strip()]
-    if not blocks:
-      return None
-    tasks = [ThoughtTask(content=block) for block in blocks]
+
     return Workflow(type="reasoning", tasks=tasks)
 
   async def run_agent_step(
@@ -811,7 +888,10 @@ async def run_workflow(
     conversation_history.extend([
       item.to_input_item() for item in streaming_result.new_items
     ])
-    reasoning_workflow = _build_reasoning_workflow(reasoning_accumulated)
+    reasoning_workflow = _build_reasoning_workflow(
+      reasoning_text=reasoning_accumulated,
+      run_items=streaming_result.new_items,
+    )
     return _AgentStepResult(
       stream=streaming_result,
       reasoning_summary=reasoning_workflow,
