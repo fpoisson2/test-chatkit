@@ -779,28 +779,24 @@ class _ReasoningWorkflowReporter:
       return
 
     cloned_tasks = [self._clone_task(task) for task in self._tasks]
-    search_mapping = {
-      index: call_id
-      for index, call_id in self._search_task_ids_by_index.items()
-    }
-    await self._ensure_stopped()
-    await self._context.start_workflow(
-      self._build_workflow_payload()
-    )
-    self._started = True
-    self._tasks = []
-    self._search_task_indices = {}
-    self._search_task_ids_by_index = {}
+    search_indices = dict(self._search_task_indices)
+    search_ids = dict(self._search_task_ids_by_index)
+    thought_segments = list(self._thought_segments)
+    thought_indices = list(self._thought_task_indices)
 
-    for index, cloned in enumerate(cloned_tasks):
-      self._tasks.append(cloned)
+    await self._ensure_stopped()
+    self._started = False
+    self._ended = False
+    await self._ensure_started()
+
+    self._tasks = cloned_tasks
+    self._search_task_indices = search_indices
+    self._search_task_ids_by_index = search_ids
+    self._thought_segments = thought_segments
+    self._thought_task_indices = thought_indices
+
+    for cloned in self._tasks:
       await self._context.add_workflow_task(cloned)
-      await self._context.update_workflow_task(cloned, task_index=index)
-      if isinstance(cloned, SearchTask):
-        call_id = search_mapping.get(index)
-        if call_id:
-          self._search_task_indices[call_id] = index
-          self._search_task_ids_by_index[index] = call_id
 
   async def _safe_update_task(self, task: SearchTask | ThoughtTask, index: int) -> None:
     if not self._is_context_ready():
@@ -811,14 +807,21 @@ class _ReasoningWorkflowReporter:
     current = self._tasks[index]
     try:
       await self._context.update_workflow_task(current, task_index=index)
+      return
     except ValueError as exc:
       if "Workflow is not set" not in str(exc):
         raise
-      await self._recover_workflow_state()
-      if index >= len(self._tasks):
-        return
-      current = self._tasks[index]
+    except IndexError:
+      pass
+
+    await self._recover_workflow_state()
+    if index >= len(self._tasks):
+      return
+    current = self._tasks[index]
+    try:
       await self._context.update_workflow_task(current, task_index=index)
+    except IndexError:
+      await self._context.add_workflow_task(current)
 
   async def _safe_add_task(self, task: SearchTask | ThoughtTask, index: int) -> None:
     if not self._is_context_ready():
@@ -829,14 +832,18 @@ class _ReasoningWorkflowReporter:
     current = self._tasks[index]
     try:
       await self._context.add_workflow_task(current)
+      return
     except ValueError as exc:
       if "Workflow is not set" not in str(exc):
         raise
-      await self._recover_workflow_state()
-      if index >= len(self._tasks):
-        return
-      current = self._tasks[index]
-    await self._safe_update_task(current, index)
+    except IndexError:
+      pass
+
+    await self._recover_workflow_state()
+    if index >= len(self._tasks):
+      return
+    current = self._tasks[index]
+    await self._context.add_workflow_task(current)
 
   async def register_search_action(
     self,
