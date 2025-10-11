@@ -1128,9 +1128,17 @@ async def run_workflow(
           emit_reasoning_delta = current_structured
         structured_reasoning_sent = current_structured
         emit_reasoning_text = structured_reasoning_sent
+        # Lorsque le workflow structuré est actif, le raisonnement est
+        # restitué via les tâches ThoughtTask/SearchTask plutôt que par des
+        # messages assistant. On neutralise donc la diffusion textuelle pour
+        # éviter les doublons côté client.
+        emit_reasoning_delta_for_stream = ""
+        emit_reasoning_text_for_stream = ""
       else:
         emit_reasoning_delta = reasoning_delta
         emit_reasoning_text = reasoning_accumulated
+        emit_reasoning_delta_for_stream = emit_reasoning_delta
+        emit_reasoning_text_for_stream = emit_reasoning_text
       await on_step_stream(
         WorkflowStepStreamUpdate(
           key=step_key,
@@ -1138,8 +1146,8 @@ async def run_workflow(
           index=step_index,
           delta=delta,
           text=accumulated_text,
-          reasoning_delta=emit_reasoning_delta,
-          reasoning_text=emit_reasoning_text,
+          reasoning_delta=emit_reasoning_delta_for_stream,
+          reasoning_text=emit_reasoning_text_for_stream,
         )
       )
 
