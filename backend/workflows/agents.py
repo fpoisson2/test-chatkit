@@ -1431,6 +1431,7 @@ async def run_workflow(
     reporter = _ReasoningWorkflowReporter(agent_context)
     await reporter.start_step(title=title)
     structured_reasoning_sent = ""
+    last_emitted_snapshot: tuple[str, str] | None = None
     processed_items = 0
 
     async def _sync_tool_calls() -> bool:
@@ -1476,6 +1477,7 @@ async def run_workflow(
         return
       await _sync_tool_calls()
       nonlocal structured_reasoning_sent
+      nonlocal last_emitted_snapshot
       emit_reasoning_delta: str
       emit_reasoning_text: str
       if reporter.uses_structured_workflow:
@@ -1497,6 +1499,15 @@ async def run_workflow(
         emit_reasoning_text = reasoning_accumulated
         emit_reasoning_delta_for_stream = emit_reasoning_delta
         emit_reasoning_text_for_stream = emit_reasoning_text
+      snapshot_reasoning = (
+        structured_reasoning_sent
+        if reporter.uses_structured_workflow
+        else reasoning_accumulated
+      )
+      current_snapshot = (accumulated_text, snapshot_reasoning)
+      if not delta and not reasoning_delta and last_emitted_snapshot == current_snapshot:
+        return
+      last_emitted_snapshot = current_snapshot
       await on_step_stream(
         WorkflowStepStreamUpdate(
           key=step_key,
