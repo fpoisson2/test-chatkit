@@ -677,9 +677,10 @@ class _ReasoningWorkflowReporter:
     self._context = agent_context
     self._started = False
     self._ended = False
-    self._tasks: list[SearchTask | ThoughtTask] = []
+    self._display_tasks: list[SearchTask | ThoughtTask] = []
     self._reasoning_buffer = ""
-    self._thought_segments: list[str] = []
+    self._display_segments: list[str] = []
+    self._all_reasoning_segments: list[str] = []
 
   async def _ensure_started(self) -> None:
     if self._context is None or self._started or self._ended:
@@ -694,7 +695,7 @@ class _ReasoningWorkflowReporter:
     if not self._is_context_ready():
       return
     await self._context.start_workflow(
-      Workflow(type="reasoning", tasks=list(self._tasks))
+      Workflow(type="reasoning", tasks=list(self._display_tasks))
     )
     self._started = True
 
@@ -737,24 +738,26 @@ class _ReasoningWorkflowReporter:
     ]
 
     # Synchronise les tâches de réflexion avec les segments observés
+    self._all_reasoning_segments = list(normalized_segments)
+
     for index, content in enumerate(normalized_segments):
-      if index < len(self._thought_segments):
-        if content == self._thought_segments[index]:
+      if index < len(self._display_segments):
+        if content == self._display_segments[index]:
           continue
-        self._thought_segments[index] = content
-        if index < len(self._tasks):
-          task = self._tasks[index]
+        self._display_segments[index] = content
+        if index < len(self._display_tasks):
+          task = self._display_tasks[index]
           if isinstance(task, ThoughtTask):
             task.content = content
           await self._safe_update_task(task, index)
         continue
 
-      if content in self._thought_segments:
+      if content in self._display_segments:
         continue
 
       thought_task = ThoughtTask(content=content)
-      self._thought_segments.append(content)
-      self._tasks.append(thought_task)
+      self._display_segments.append(content)
+      self._display_tasks.append(thought_task)
       await self._safe_add_task(thought_task, index)
 
   async def finish(self, *, error: BaseException | None = None) -> None:
