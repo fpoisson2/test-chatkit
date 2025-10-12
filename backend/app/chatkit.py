@@ -109,13 +109,17 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             else []
         )
 
+        event_queue: asyncio.Queue[Any] = asyncio.Queue()
+
         workflow_result = _WorkflowStreamResult(
             runner=self._execute_workflow(
                 thread=thread,
                 agent_context=agent_context,
                 workflow_input=WorkflowInput(input_as_text=user_text),
+                event_queue=event_queue,
             ),
             input_items=converted_input,
+            event_queue=event_queue,
         )
 
         try:
@@ -134,6 +138,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         thread: ThreadMetadata,
         agent_context: AgentContext[ChatKitRequestContext],
         workflow_input: WorkflowInput,
+        event_queue: asyncio.Queue[Any],
     ) -> None:
         streamed_step_keys: set[str] = set()
         step_progress_text: dict[str, str] = {}
@@ -183,10 +188,14 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     ProgressUpdateEvent(text=progress_text)
                 )
 
+            async def on_raw_event(event: Any) -> None:
+                await event_queue.put(event)
+
             workflow_run = await run_workflow(
                 workflow_input,
                 on_step=on_step,
                 on_step_stream=on_step_stream,
+                on_raw_event=on_raw_event,
             )
 
             result = workflow_run.final_output or {}
@@ -265,6 +274,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             logger.info(
                 "Workflow en erreur inattendue pour le fil %s", thread.id
             )
+        finally:
+            event_queue.put_nowait(_STREAM_DONE)
 
     async def _persist_step_summaries(
         self,
@@ -376,6 +387,9 @@ def _log_background_exceptions(task: asyncio.Task[None]) -> None:
         logger.exception("Erreur dans la tâche de workflow", exc_info=exception)
 
 
+_STREAM_DONE = object()
+
+
 class _WorkflowStreamResult:
     """Résultat minimal compatible avec stream_agent_response."""
 
@@ -384,6 +398,7 @@ class _WorkflowStreamResult:
         *,
         runner: Coroutine[Any, Any, None],
         input_items: Sequence[Any],
+        event_queue: asyncio.Queue[Any],
     ) -> None:
         self.input = list(input_items)
         self.new_items: list[Any] = []
@@ -396,6 +411,7 @@ class _WorkflowStreamResult:
         self.current_agent = None
         self.current_turn = 0
         self.max_turn = 0
+        self._event_queue = event_queue
         self._task = asyncio.create_task(runner)
         self._task.add_done_callback(_log_background_exceptions)
 
@@ -407,12 +423,13 @@ class _WorkflowStreamResult:
         self._task.cancel()
 
     async def stream_events(self) -> AsyncIterator[Any]:
-        try:
-            await self._task
-        except Exception:
-            raise
-        if False:  # pragma: no cover - nécessaire pour déclarer un générateur
-            yield None
+        while True:
+            event = await self._event_queue.get()
+            if event is _STREAM_DONE:
+                break
+            yield event
+
+        await self._task
 
     
 _server: DemoChatKitServer | None = None

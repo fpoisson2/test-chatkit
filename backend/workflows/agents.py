@@ -668,6 +668,7 @@ async def run_workflow(
   workflow_input: WorkflowInput,
   on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None = None,
   on_step_stream: Callable[[WorkflowStepStreamUpdate], Awaitable[None]] | None = None,
+  on_raw_event: Callable[[Any], Awaitable[None]] | None = None,
 ) -> WorkflowRunSummary:
   state = {
     "has_all_details": False,
@@ -741,6 +742,8 @@ async def run_workflow(
     accumulated_text = ""
     try:
       async for event in streaming_result.stream_events():
+        if on_raw_event is not None:
+          await on_raw_event(event)
         if (
           event.type == "raw_response_event"
           and isinstance(event.data, ResponseTextDeltaEvent)
