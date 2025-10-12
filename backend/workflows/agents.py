@@ -1163,10 +1163,11 @@ async def run_workflow(
       context=context,
     )
     accumulated_text = ""
-    reasoning_accumulated = ""
+    reasoning_text_accumulated = ""
+    reasoning_content_accumulated = ""
     last_reasoning_summary_segments: list[str] = []
     last_message_output_text = ""
-    last_reasoning_text = ""
+    last_reasoning_summary_text = ""
     reporter = _ReasoningWorkflowReporter(agent_context)
 
     async def _emit_stream_update(
@@ -1184,7 +1185,7 @@ async def run_workflow(
           delta=delta,
           text=accumulated_text,
           reasoning_delta=reasoning_delta,
-          reasoning_text=reasoning_accumulated,
+          reasoning_text=reasoning_text_accumulated,
         )
       )
 
@@ -1252,6 +1253,37 @@ async def run_workflow(
 
         if event_name == "reasoning_item_created" and item_type == "reasoning_item":
           raw_item = getattr(item, "raw_item", None)
+          if raw_item is None:
+            continue
+
+          content_items = getattr(raw_item, "content", None) or []
+          content_segments: list[str] = []
+          for segment in content_items:
+            text = getattr(segment, "text", None)
+            if isinstance(text, str) and text:
+              content_segments.append(text)
+
+          if content_segments:
+            content_text = "".join(content_segments)
+            if content_text and content_text != reasoning_content_accumulated:
+              if reasoning_text_accumulated and content_text.startswith(reasoning_text_accumulated):
+                reasoning_delta = content_text[len(reasoning_text_accumulated):]
+              elif reasoning_text_accumulated and reasoning_text_accumulated.startswith(content_text):
+                reasoning_delta = ""
+              elif reasoning_content_accumulated and content_text.startswith(reasoning_content_accumulated):
+                reasoning_delta = content_text[len(reasoning_content_accumulated):]
+              else:
+                reasoning_delta = content_text
+
+              reasoning_content_accumulated = content_text
+              reasoning_text_accumulated = content_text
+
+              if reasoning_delta:
+                await reporter.append_reasoning(reasoning_delta)
+                await _emit_stream_update(reasoning_delta=reasoning_delta)
+              else:
+                await _emit_stream_update()
+
           summary_items = getattr(raw_item, "summary", None) or []
 
           summary_segments = [
@@ -1266,18 +1298,17 @@ async def run_workflow(
           combined_summary = "\n\n".join(summary_segments)
           if not combined_summary:
             continue
-
-          if combined_summary == last_reasoning_text:
+          if combined_summary == last_reasoning_summary_text:
             continue
 
-          if combined_summary.startswith(reasoning_accumulated):
-            reasoning_delta = combined_summary[len(reasoning_accumulated):]
+          if reasoning_text_accumulated and combined_summary.startswith(reasoning_text_accumulated):
+            reasoning_delta = combined_summary[len(reasoning_text_accumulated):]
           else:
             reasoning_delta = combined_summary
 
-          reasoning_accumulated = combined_summary
+          reasoning_text_accumulated = combined_summary
           last_reasoning_summary_segments = list(summary_segments)
-          last_reasoning_text = combined_summary
+          last_reasoning_summary_text = combined_summary
 
           if reasoning_delta:
             await reporter.append_reasoning(reasoning_delta)
@@ -1285,6 +1316,7 @@ async def run_workflow(
             await _emit_stream_update(reasoning_delta=reasoning_delta)
           else:
             await reporter.sync_reasoning_summary(summary_segments)
+            await _emit_stream_update()
 
           continue
 
@@ -1304,12 +1336,12 @@ async def run_workflow(
     ]
     if normalized_summary:
       await reporter.sync_reasoning_summary(normalized_summary)
-      reasoning_accumulated = "\n\n".join(normalized_summary)
+      reasoning_text_accumulated = "\n\n".join(normalized_summary)
 
     await reporter.finish()
     return _AgentStepResult(
       stream=streaming_result,
-      reasoning_text=reasoning_accumulated.strip(),
+      reasoning_text=reasoning_text_accumulated.strip(),
     )
 
   triage_title = "Analyse des informations fournies"
