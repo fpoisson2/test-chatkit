@@ -724,27 +724,15 @@ class _ReasoningWorkflowReporter:
       await self._recover_workflow_state()
     await self._safe_update_task(task, index)
 
-  async def append_reasoning(self, delta: str) -> None:
-    if self._context is None or self._ended:
-      return
-    if not delta:
+  async def _update_reasoning_display(self, full_content: str) -> None:
+    if not full_content or self._context is None or self._ended:
       return
     await self._ensure_started()
-    self._reasoning_buffer += delta
-    raw_segments = self._reasoning_buffer.split("\n\n")
-    normalized_segments = [
-      segment.strip()
-      for segment in raw_segments
-      if segment.strip()
-    ]
 
-    self._all_reasoning_segments = list(normalized_segments)
-
-    full_content = "\n\n".join(normalized_segments)
-    if not full_content:
-      return
-
-    if self._reasoning_task_index is None or self._reasoning_task_index >= len(self._display_tasks):
+    if (
+      self._reasoning_task_index is None
+      or self._reasoning_task_index >= len(self._display_tasks)
+    ):
       thought_task = ThoughtTask(content=full_content)
       if hasattr(thought_task, "title"):
         thought_task.title = "Résumé du raisonnement"
@@ -769,6 +757,39 @@ class _ReasoningWorkflowReporter:
     self._display_tasks[index] = replacement
     self._reasoning_display_content = full_content
     await self._safe_update_task(replacement, index)
+
+  async def append_reasoning(self, delta: str) -> None:
+    if self._context is None or self._ended:
+      return
+    if not delta:
+      return
+    await self._ensure_started()
+    self._reasoning_buffer += delta
+    raw_segments = self._reasoning_buffer.split("\n\n")
+    normalized_segments = [
+      segment.strip()
+      for segment in raw_segments
+      if segment.strip()
+    ]
+
+    self._all_reasoning_segments = list(normalized_segments)
+
+    full_content = "\n\n".join(normalized_segments)
+    self._reasoning_buffer = full_content
+    await self._update_reasoning_display(full_content)
+
+  async def sync_reasoning_summary(self, segments: list[str]) -> None:
+    if self._context is None or self._ended:
+      return
+    normalized_segments = [
+      segment.strip()
+      for segment in segments
+      if segment and segment.strip()
+    ]
+    self._all_reasoning_segments = list(normalized_segments)
+    full_content = "\n\n".join(normalized_segments)
+    self._reasoning_buffer = full_content
+    await self._update_reasoning_display(full_content)
 
   async def finish(self, *, error: BaseException | None = None) -> None:
     if self._context is None or self._ended:
@@ -854,6 +875,27 @@ async def run_workflow(
       return output, json.dumps(output, ensure_ascii=False)
     return output, str(output)
 
+  def _extract_reasoning_summary_segments(stream_result: Any) -> list[str]:
+    segments: list[str] = []
+    raw_responses = getattr(stream_result, "raw_responses", None)
+    if not raw_responses:
+      return segments
+    for raw in raw_responses:
+      output_items = getattr(raw, "output", None)
+      if not output_items:
+        continue
+      for item in output_items:
+        if getattr(item, "type", None) != "reasoning":
+          continue
+        summary_items = getattr(item, "summary", None)
+        if not summary_items:
+          continue
+        for summary in summary_items:
+          text = getattr(summary, "text", "")
+          if text:
+            segments.append(text)
+    return segments
+
   @dataclass
   class _AgentStepResult:
     stream: Any
@@ -928,10 +970,21 @@ async def run_workflow(
     conversation_history.extend([
       item.to_input_item() for item in streaming_result.new_items
     ])
+
+    summary_segments = _extract_reasoning_summary_segments(streaming_result)
+    normalized_summary = [
+      segment.strip()
+      for segment in summary_segments
+      if segment and segment.strip()
+    ]
+    if normalized_summary:
+      await reporter.sync_reasoning_summary(normalized_summary)
+      reasoning_accumulated = "\n\n".join(normalized_summary)
+
     await reporter.finish()
     return _AgentStepResult(
       stream=streaming_result,
-      reasoning_text=reasoning_accumulated,
+      reasoning_text=reasoning_accumulated.strip(),
     )
 
   triage_title = "Analyse des informations fournies"
