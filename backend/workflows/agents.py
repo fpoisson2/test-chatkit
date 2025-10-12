@@ -1,6 +1,7 @@
 from agents import (
   WebSearchTool,
   Agent,
+  ItemHelpers,
   ModelSettings,
   RunContextWrapper,
   TResponseInputItem,
@@ -10,6 +11,7 @@ from agents import (
 from dataclasses import dataclass
 from collections.abc import Awaitable, Callable
 import json
+import re
 from typing import Any
 from pydantic import BaseModel
 from openai.types.responses import (
@@ -672,6 +674,42 @@ def _format_step_output(payload: Any) -> str:
   return str(payload)
 
 
+_SECTION_HDR = re.compile(
+  r"(?im)^(?:\*\*([^\*]{1,120})\*\*)$"
+  r"|"
+  r"^(?:#{1,6}\s*|\d+\.\s+|[-*]\s+)?\s*([A-ZÀ-ÖØ-Ýa-zà-öø-ÿ0-9][^\n]{0,120})\s*$"
+)
+
+
+def _extract_sections(text: str) -> list[tuple[str, str]]:
+  lines = text.splitlines()
+  sections: list[tuple[str, str]] = []
+  cur_title: str | None = None
+  cur_buf: list[str] = []
+
+  def flush() -> None:
+    nonlocal cur_title, cur_buf, sections
+    if cur_title is not None:
+      body = "\n".join(cur_buf).strip()
+      sections.append((cur_title.strip() or "Résumé du raisonnement", body))
+    cur_title, cur_buf = None, []
+
+  for ln in lines:
+    match = _SECTION_HDR.match(ln.strip())
+    if match:
+      title = match.group(1) or match.group(2) or "Résumé du raisonnement"
+      title = title.strip().rstrip(": -")
+      flush()
+      cur_title = title
+    else:
+      cur_buf.append(ln)
+
+  flush()
+  if not sections:
+    return [("Résumé du raisonnement", text.strip())]
+  return sections
+
+
 class _ReasoningWorkflowReporter:
   def __init__(self, agent_context: AgentContext | None) -> None:
     self._context = agent_context
@@ -680,8 +718,8 @@ class _ReasoningWorkflowReporter:
     self._display_tasks: list[SearchTask | ThoughtTask] = []
     self._reasoning_buffer = ""
     self._all_reasoning_segments: list[str] = []
-    self._reasoning_task_index: int | None = None
-    self._reasoning_display_content = ""
+    self._reasoning_task_start_index: int | None = None
+    self._reasoning_sections: list[tuple[str, str]] = []
 
   async def _ensure_started(self) -> None:
     if self._context is None or self._started or self._ended:
@@ -729,34 +767,49 @@ class _ReasoningWorkflowReporter:
       return
     await self._ensure_started()
 
-    if (
-      self._reasoning_task_index is None
-      or self._reasoning_task_index >= len(self._display_tasks)
-    ):
-      thought_task = ThoughtTask(content=full_content)
-      if hasattr(thought_task, "title"):
-        thought_task.title = "Résumé du raisonnement"
-      self._display_tasks.append(thought_task)
-      self._reasoning_task_index = len(self._display_tasks) - 1
-      self._reasoning_display_content = full_content
-      await self._safe_add_task(thought_task, self._reasoning_task_index)
+    sections = [
+      (title, body)
+      for title, body in _extract_sections(full_content)
+      if body
+    ]
+    if not sections:
+      sections = _extract_sections(full_content)
+
+    if sections == self._reasoning_sections:
       return
 
-    index = self._reasoning_task_index
-    replacement = ThoughtTask(content=full_content)
-    if hasattr(replacement, "title"):
-      replacement.title = "Résumé du raisonnement"
+    start_index = self._reasoning_task_start_index
+    if start_index is None:
+      start_index = len(self._display_tasks)
+      self._reasoning_task_start_index = start_index
 
-    current_task = self._display_tasks[index]
-    if isinstance(current_task, ThoughtTask):
-      has_same_title = getattr(current_task, "title", None) == "Résumé du raisonnement"
-      has_same_content = self._reasoning_display_content == full_content
-      if has_same_title and has_same_content:
-        return
+    previous_section_count = len(self._reasoning_sections)
 
-    self._display_tasks[index] = replacement
-    self._reasoning_display_content = full_content
-    await self._safe_update_task(replacement, index)
+    for offset, (title, body) in enumerate(sections):
+      task_index = start_index + offset
+      task = ThoughtTask(content=body or "")
+      if hasattr(task, "title"):
+        task.title = title or "Résumé du raisonnement"
+
+      if task_index >= len(self._display_tasks):
+        self._display_tasks.append(task)
+        await self._safe_add_task(task, task_index)
+      else:
+        self._display_tasks[task_index] = task
+        await self._safe_update_task(task, task_index)
+
+    if previous_section_count > len(sections):
+      for offset in range(len(sections), previous_section_count):
+        task_index = start_index + offset
+        if task_index >= len(self._display_tasks):
+          break
+        placeholder = ThoughtTask(content="")
+        if hasattr(placeholder, "title"):
+          placeholder.title = ""
+        self._display_tasks[task_index] = placeholder
+        await self._safe_update_task(placeholder, task_index)
+
+    self._reasoning_sections = sections
 
   async def append_reasoning(self, delta: str) -> None:
     if self._context is None or self._ended:
@@ -919,6 +972,7 @@ async def run_workflow(
     )
     accumulated_text = ""
     reasoning_accumulated = ""
+    last_reasoning_summary_segments: list[str] = []
     reporter = _ReasoningWorkflowReporter(agent_context)
 
     async def _emit_stream_update(
@@ -942,8 +996,70 @@ async def run_workflow(
 
     try:
       async for event in streaming_result.stream_events():
+        event_type = getattr(event, "type", "")
+
+        if event_type == "agent_updated_stream_event":
+          continue
+
+        if event_type == "run_item_stream_event":
+          item = getattr(event, "item", None)
+          if item is None:
+            continue
+
+          item_type = getattr(item, "type", "")
+
+          if item_type == "message_output_item":
+            full_text = ItemHelpers.text_message_output(item) or ""
+            if not full_text:
+              continue
+
+            if full_text.startswith(accumulated_text):
+              delta_text = full_text[len(accumulated_text):]
+            else:
+              delta_text = full_text
+
+            if not delta_text:
+              accumulated_text = full_text
+              continue
+
+            accumulated_text = full_text
+            await _emit_stream_update(delta=delta_text)
+            continue
+
+          if item_type == "reasoning_item":
+            raw_item = getattr(item, "raw_item", None)
+            summary_items = getattr(raw_item, "summary", None) or []
+
+            summary_segments = [
+              getattr(segment, "text", "").strip()
+              for segment in summary_items
+              if getattr(segment, "text", "").strip()
+            ]
+
+            if not summary_segments:
+              continue
+
+            combined_summary = "\n\n".join(summary_segments)
+            if not combined_summary:
+              continue
+
+            if combined_summary.startswith(reasoning_accumulated):
+              reasoning_delta = combined_summary[len(reasoning_accumulated):]
+              if reasoning_delta:
+                await reporter.append_reasoning(reasoning_delta)
+            else:
+              reasoning_delta = combined_summary
+
+            reasoning_accumulated = combined_summary
+            last_reasoning_summary_segments = list(summary_segments)
+            await reporter.sync_reasoning_summary(summary_segments)
+
+            if reasoning_delta:
+              await _emit_stream_update(reasoning_delta=reasoning_delta)
+            continue
+
         if (
-          event.type == "raw_response_event"
+          event_type == "raw_response_event"
           and isinstance(event.data, ResponseTextDeltaEvent)
         ):
           delta_text = event.data.delta or ""
@@ -954,7 +1070,7 @@ async def run_workflow(
           continue
 
         if (
-          event.type == "raw_response_event"
+          event_type == "raw_response_event"
           and isinstance(event.data, ResponseReasoningSummaryTextDeltaEvent)
         ):
           reasoning_delta = event.data.delta or ""
@@ -971,7 +1087,11 @@ async def run_workflow(
       item.to_input_item() for item in streaming_result.new_items
     ])
 
-    summary_segments = _extract_reasoning_summary_segments(streaming_result)
+    summary_segments = (
+      last_reasoning_summary_segments
+      if last_reasoning_summary_segments
+      else _extract_reasoning_summary_segments(streaming_result)
+    )
     normalized_summary = [
       segment.strip()
       for segment in summary_segments
