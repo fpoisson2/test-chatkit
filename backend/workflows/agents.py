@@ -760,9 +760,9 @@ async def run_workflow(
 
     try:
       async for event in event_iterator:
-        raw_event = getattr(event, "raw_event", event)
         if on_raw_event is not None:
-          await on_raw_event(raw_event)
+          await on_raw_event(event)
+        raw_event = getattr(event, "raw_event", event)
         if (
           getattr(raw_event, "type", None) == "raw_response_event"
           and isinstance(getattr(raw_event, "data", None), ResponseTextDeltaEvent)
