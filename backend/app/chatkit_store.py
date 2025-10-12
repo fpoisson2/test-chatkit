@@ -251,15 +251,28 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 raise NotFoundError(f"Thread {thread_id} introuvable")
             payload = item.model_dump(mode="json")
             created_at = _ensure_timezone(getattr(item, "created_at", None))
-            session.add(
-                ChatThreadItem(
-                    id=item.id,
-                    thread_id=thread_id,
-                    owner_id=owner_id,
-                    created_at=created_at,
-                    payload=payload,
-                )
+            existing_stmt = select(ChatThreadItem).where(
+                ChatThreadItem.id == item.id,
+                ChatThreadItem.owner_id == owner_id,
             )
+            existing = session.execute(existing_stmt).scalar_one_or_none()
+            if existing is not None:
+                if existing.thread_id != thread_id:
+                    raise NotFoundError(
+                        "Élément déjà rattaché à un autre fil"
+                    )
+                existing.payload = payload
+                existing.created_at = created_at
+            else:
+                session.add(
+                    ChatThreadItem(
+                        id=item.id,
+                        thread_id=thread_id,
+                        owner_id=owner_id,
+                        created_at=created_at,
+                        payload=payload,
+                    )
+                )
             session.commit()
 
         await self._run(_add)
