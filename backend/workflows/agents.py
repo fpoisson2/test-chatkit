@@ -684,13 +684,13 @@ class _ReasoningWorkflowReporter:
     self._started = False
     self._ended = False
     self._tasks: list[SearchTask | ThoughtTask] = []
-    self._reasoning_buffer = ""
-    self._thought_segments: list[str] = []
+    self._summary_task: ThoughtTask | None = None
+    self._summary_text = ""
+    self._pending_reasoning_segment = ""
+    self._all_thoughts: list[ThoughtTask] = []
+    self._search_tasks: list[SearchTask] = []
     self._search_tasks_by_id: dict[str, SearchTask] = {}
     self._streamed_search_seen = False
-
-  def _thoughts_count(self) -> int:
-    return sum(1 for task in self._tasks if isinstance(task, ThoughtTask))
 
   async def _ensure_started(self) -> None:
     if self._context is None or self._started or self._ended:
@@ -733,40 +733,57 @@ class _ReasoningWorkflowReporter:
       await self._recover_workflow_state()
     await self._safe_update_task(task, index)
 
-  async def append_reasoning(self, delta: str) -> None:
-    if self._context is None or self._ended:
-      return
-    if not delta:
-      return
+  async def _ensure_summary_task(self) -> ThoughtTask | None:
+    if not self._is_context_ready():
+      return self._summary_task
+    if self._summary_task is not None:
+      return self._summary_task
     await self._ensure_started()
-    self._reasoning_buffer += delta
-    raw_segments = self._reasoning_buffer.split("\n\n")
-    normalized_segments = [
-      segment.strip()
-      for segment in raw_segments
-      if segment.strip()
-    ]
+    summary_task = ThoughtTask(title="Résumé du raisonnement", content="")
+    self._summary_task = summary_task
+    self._tasks.insert(0, summary_task)
+    await self._safe_add_task(summary_task, 0)
+    return summary_task
 
-    # Synchronise les tâches de réflexion avec les segments observés
-    for index, content in enumerate(normalized_segments):
-      if index < len(self._thought_segments):
-        if content == self._thought_segments[index]:
-          continue
-        self._thought_segments[index] = content
-        if index < len(self._tasks):
-          task = self._tasks[index]
-          if isinstance(task, ThoughtTask):
-            task.content = content
-          await self._safe_update_task(task, index)
+  async def append_reasoning(self, delta: str) -> None:
+    if self._ended or not delta:
+      return
+
+    self._summary_text += delta
+
+    combined = self._pending_reasoning_segment + delta
+    segments = combined.split("\n\n")
+    if combined.endswith("\n\n"):
+      complete_segments = segments
+      remainder = ""
+    else:
+      complete_segments = segments[:-1]
+      remainder = segments[-1]
+    self._pending_reasoning_segment = remainder
+
+    for segment in complete_segments:
+      normalized = segment.strip()
+      if not normalized:
         continue
+      self._all_thoughts.append(ThoughtTask(content=normalized))
 
-      if content in self._thought_segments:
-        continue
+    if not self._is_context_ready():
+      return
 
-      thought_task = ThoughtTask(content=content)
-      self._thought_segments.append(content)
-      self._tasks.append(thought_task)
-      await self._safe_add_task(thought_task, index)
+    summary_task = await self._ensure_summary_task()
+    if summary_task is None:
+      return
+
+    new_content = self._summary_text.strip()
+    needs_update = False
+    if summary_task.title != "Résumé du raisonnement":
+      summary_task.title = "Résumé du raisonnement"
+      needs_update = True
+    if summary_task.content != new_content:
+      summary_task.content = new_content
+      needs_update = True
+    if needs_update:
+      await self._safe_update_task(summary_task, 0)
 
   async def upsert_search_task(
     self,
@@ -779,9 +796,9 @@ class _ReasoningWorkflowReporter:
     if not self._is_context_ready():
       return
     await self._ensure_started()
+    await self._ensure_summary_task()
 
     task = self._search_tasks_by_id.get(call_id)
-    insert_at = self._thoughts_count()
 
     if task is None:
       task = SearchTask(
@@ -791,14 +808,9 @@ class _ReasoningWorkflowReporter:
         sources=[],
       )
       self._search_tasks_by_id[call_id] = task
-
-      while insert_at < len(self._tasks) and isinstance(
-        self._tasks[insert_at],
-        (ThoughtTask, SearchTask)
-      ):
-        insert_at += 1
-      self._tasks.insert(insert_at, task)
-      await self._safe_add_task(task, insert_at)
+      self._search_tasks.append(task)
+      self._tasks.append(task)
+      await self._safe_add_task(task, len(self._tasks) - 1)
     else:
       if query:
         if task.title_query is None:
@@ -819,48 +831,31 @@ class _ReasoningWorkflowReporter:
     self._streamed_search_seen = True
 
   async def sync_with_workflow(self, workflow: Workflow | None) -> None:
-    if self._context is None or self._ended:
+    if self._ended:
       return
 
-    if workflow is None or not workflow.tasks:
+    pending = self._pending_reasoning_segment.strip()
+    if pending:
+      self._all_thoughts.append(ThoughtTask(content=pending))
+      self._pending_reasoning_segment = ""
+
+    final_tasks = [*self._all_thoughts, *self._search_tasks]
+
+    if workflow is not None:
+      workflow.tasks = final_tasks
+
+    if self._context is None:
+      self._ended = True
+      return
+
+    if not final_tasks:
       if self._started:
         await self._context.end_workflow()
       self._ended = True
       return
 
-    await self._ensure_started()
-    for index, final_task in enumerate(workflow.tasks):
-      if index < len(self._tasks):
-        current = self._tasks[index]
-        if isinstance(current, ThoughtTask) and isinstance(final_task, ThoughtTask):
-          current.title = final_task.title
-          current.content = final_task.content
-          if index < len(self._thought_segments):
-            self._thought_segments[index] = final_task.content.strip()
-          else:
-            self._thought_segments.append(final_task.content.strip())
-        elif isinstance(current, SearchTask) and isinstance(final_task, SearchTask):
-          current.title = final_task.title
-          current.title_query = final_task.title_query
-          current.queries = list(final_task.queries)
-          current.sources = list(final_task.sources)
-        else:
-          current = final_task
-          self._tasks[index] = current
-        await self._safe_update_task(current, index)
-      else:
-        new_task = final_task
-        self._tasks.append(new_task)
-        await self._safe_add_task(new_task, index)
-
-    thought_contents: list[str] = []
-    for task in self._tasks:
-      if isinstance(task, ThoughtTask):
-        thought_contents.append(task.content.strip())
-      else:
-        break
-    self._thought_segments = [content for content in thought_contents if content]
-
+    self._tasks = list(final_tasks)
+    await self._recover_workflow_state()
     await self._context.end_workflow()
     self._ended = True
 
