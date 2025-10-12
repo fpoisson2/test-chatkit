@@ -13,10 +13,11 @@ from collections.abc import Awaitable, Callable
 import json
 import re
 from typing import Any
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from openai.types.shared.reasoning import Reasoning
+from openai.types.responses.response_output_item import ResponseFunctionWebSearch
 from chatkit.agents import AgentContext
-from chatkit.types import SearchTask, ThoughtTask, Workflow
+from chatkit.types import SearchTask, ThoughtTask, Workflow, URLSource
 
 from app.token_sanitizer import sanitize_model_like
 
@@ -716,6 +717,8 @@ class _ReasoningWorkflowReporter:
     self._all_reasoning_segments: list[str] = []
     self._reasoning_task_start_index: int | None = None
     self._reasoning_sections: list[tuple[str, str]] = []
+    self._search_tasks: dict[str, SearchTask] = {}
+    self._search_task_indices: dict[str, int] = {}
 
   async def _ensure_started(self) -> None:
     if self._context is None or self._started or self._ended:
@@ -757,6 +760,214 @@ class _ReasoningWorkflowReporter:
         raise
       await self._recover_workflow_state()
     await self._safe_update_task(task, index)
+
+  def _status_to_indicator(self, status: str | None) -> str:
+    if not status:
+      return "loading"
+    normalized = status.lower()
+    if normalized in {"completed", "failed"}:
+      return "complete"
+    return "loading"
+
+  def _normalize_web_search_action(
+    self,
+    action: dict[str, Any] | None,
+    *,
+    fallback_title: str | None = None,
+  ) -> tuple[str | None, list[str], list[URLSource]]:
+    if not action:
+      return fallback_title, [], []
+
+    action_type = str(action.get("type") or "").lower()
+    queries: list[str] = []
+    primary_query: str | None = None
+    sources: list[URLSource] = []
+
+    def append_source(
+      url: str | None,
+      *,
+      title: str | None = None,
+      description: str | None = None,
+      timestamp: str | None = None,
+      group: str | None = None,
+    ) -> None:
+      if not url:
+        return
+      source_title = title or fallback_title or url
+      try:
+        sources.append(
+          URLSource(
+            url=url,
+            title=source_title,
+            description=description,
+            timestamp=timestamp,
+            group=group,
+          )
+        )
+      except ValidationError:
+        sources.append(URLSource(url=url, title=source_title))
+
+    if action_type == "search":
+      query = action.get("query")
+      if isinstance(query, str) and query.strip():
+        primary_query = query.strip()
+        queries.append(primary_query)
+
+      raw_sources = action.get("sources") or []
+      if isinstance(raw_sources, list):
+        for src in raw_sources:
+          if not isinstance(src, dict):
+            continue
+          append_source(
+            src.get("url"),
+            title=src.get("title"),
+            description=src.get("description"),
+            timestamp=src.get("timestamp"),
+            group=src.get("group"),
+          )
+
+    elif action_type == "open_page":
+      url = action.get("url")
+      title = action.get("title")
+      append_source(url, title=title)
+      if isinstance(url, str) and url:
+        queries.append(f"Ouverture de {url}")
+
+    elif action_type == "find":
+      pattern = action.get("pattern")
+      url = action.get("url")
+      if isinstance(url, str) and url:
+        append_source(url, title=action.get("title"))
+      if isinstance(pattern, str) and pattern.strip():
+        if isinstance(url, str) and url:
+          queries.append(f"Recherche «{pattern.strip()}» dans {url}")
+        else:
+          queries.append(f"Recherche «{pattern.strip()}»")
+
+    else:
+      summary = action.get("summary")
+      if isinstance(summary, str) and summary.strip():
+        queries.append(summary.strip())
+
+    if primary_query is None and queries:
+      primary_query = queries[0]
+
+    return primary_query, queries, sources
+
+  async def update_web_search_task(self, call_data: dict[str, Any]) -> None:
+    if self._context is None or self._ended:
+      return
+
+    call_id = str(call_data.get("id") or "").strip()
+    if not call_id:
+      return
+
+    await self._ensure_started()
+
+    status_raw = call_data.get("status")
+    status = str(status_raw) if status_raw is not None else None
+    action_data = call_data.get("action")
+    if hasattr(action_data, "model_dump"):
+      action_dict = action_data.model_dump(exclude_none=False)
+    elif isinstance(action_data, dict):
+      action_dict = dict(action_data)
+    else:
+      action_dict = {}
+
+    fallback_title = call_data.get("label")
+    if not isinstance(fallback_title, str):
+      fallback_title = None
+
+    primary_query, queries, sources = self._normalize_web_search_action(
+      action_dict,
+      fallback_title=fallback_title,
+    )
+
+    indicator = self._status_to_indicator(status)
+    existing = self._search_tasks.get(call_id)
+    created = False
+    changed = False
+
+    if existing is None:
+      title_value = primary_query or fallback_title or "Recherche web"
+      existing = SearchTask(
+        status_indicator=indicator,
+        title=title_value,
+        title_query=primary_query,
+        queries=[],
+        sources=[],
+      )
+      self._search_tasks[call_id] = existing
+      created = True
+    else:
+      if indicator and existing.status_indicator != indicator:
+        existing.status_indicator = indicator
+        changed = True
+      if primary_query and existing.title_query != primary_query:
+        existing.title_query = primary_query
+        if not existing.title or existing.title == fallback_title or existing.title == "Recherche web":
+          existing.title = primary_query
+          changed = True
+      if not existing.title and (primary_query or fallback_title):
+        existing.title = primary_query or fallback_title
+        changed = True
+
+    current_queries = {q for q in existing.queries if isinstance(q, str)}
+    for query in queries:
+      if not isinstance(query, str):
+        continue
+      normalized = query.strip()
+      if not normalized or normalized in current_queries:
+        continue
+      existing.queries.append(normalized)
+      current_queries.add(normalized)
+      changed = True
+
+    current_urls = {getattr(src, "url", None) for src in existing.sources}
+    for source in sources:
+      url = getattr(source, "url", None)
+      if not url or url in current_urls:
+        continue
+      existing.sources.append(source)
+      current_urls.add(url)
+      changed = True
+
+    if created and indicator and existing.status_indicator != indicator:
+      existing.status_indicator = indicator
+
+    index = self._search_task_indices.get(call_id)
+    if index is None:
+      index = len(self._display_tasks)
+      self._search_task_indices[call_id] = index
+      self._display_tasks.append(existing)
+      await self._safe_add_task(existing, index)
+      return
+
+    if index >= len(self._display_tasks):
+      self._display_tasks.append(existing)
+      await self._safe_add_task(existing, index)
+      return
+
+    self._display_tasks[index] = existing
+    if changed:
+      await self._safe_update_task(existing, index)
+
+  async def _finalize_search_tasks(self) -> None:
+    if not self._is_context_ready():
+      return
+    pending_updates: list[tuple[SearchTask, int]] = []
+    for call_id, index in self._search_task_indices.items():
+      if index >= len(self._display_tasks):
+        continue
+      task = self._display_tasks[index]
+      if not isinstance(task, SearchTask):
+        continue
+      if task.status_indicator != "complete":
+        task.status_indicator = "complete"
+        pending_updates.append((task, index))
+
+    for task, index in pending_updates:
+      await self._safe_update_task(task, index)
 
   async def _update_reasoning_display(self, full_content: str) -> None:
     if not full_content or self._context is None or self._ended:
@@ -850,11 +1061,13 @@ class _ReasoningWorkflowReporter:
 
     try:
       try:
+        await self._finalize_search_tasks()
         await self._context.end_workflow()
       except ValueError as exc:
         if "Workflow is not set" not in str(exc):
           raise
         await self._recover_workflow_state()
+        await self._finalize_search_tasks()
         await self._context.end_workflow()
     except Exception as exc:
       if error is None:
@@ -981,7 +1194,24 @@ async def run_workflow(
           if item is None:
             continue
 
+          event_name = getattr(event, "name", "")
           item_type = getattr(item, "type", "")
+
+          if event_name == "tool_called":
+            raw_item = getattr(item, "raw_item", None)
+            is_web_search = isinstance(raw_item, ResponseFunctionWebSearch) or (
+              getattr(raw_item, "type", "") == "web_search_call"
+            )
+            if is_web_search:
+              if hasattr(raw_item, "model_dump"):
+                call_data = raw_item.model_dump(exclude_none=False)
+              elif isinstance(raw_item, dict):
+                call_data = dict(raw_item)
+              else:
+                call_data = {}
+              if call_data:
+                await reporter.update_web_search_task(call_data)
+              continue
 
           if item_type == "message_output_item":
             full_text = ItemHelpers.text_message_output(item) or ""
