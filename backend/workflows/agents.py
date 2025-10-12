@@ -7,10 +7,8 @@ from agents import (
   Runner,
   RunConfig
 )
-from agents.items import ReasoningItem, ToolCallItem
-from agents.result import RunItem
 from dataclasses import dataclass
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable
 import json
 from typing import Any
 from pydantic import BaseModel
@@ -18,13 +16,9 @@ from openai.types.responses import (
   ResponseReasoningSummaryTextDeltaEvent,
   ResponseTextDeltaEvent
 )
-from openai.types.responses.response_function_web_search import (
-  ActionSearch,
-  ResponseFunctionWebSearch
-)
 from openai.types.shared.reasoning import Reasoning
 from chatkit.agents import AgentContext
-from chatkit.types import SearchTask, ThoughtTask, URLSource, Workflow
+from chatkit.types import SearchTask, ThoughtTask, Workflow
 
 from app.token_sanitizer import sanitize_model_like
 
@@ -763,51 +757,27 @@ class _ReasoningWorkflowReporter:
       self._tasks.append(thought_task)
       await self._safe_add_task(thought_task, index)
 
-  async def sync_with_workflow(self, workflow: Workflow | None) -> None:
+  async def finish(self, *, error: BaseException | None = None) -> None:
     if self._context is None or self._ended:
       return
 
-    if workflow is None or not workflow.tasks:
-      if self._started:
-        await self._context.end_workflow()
+    if not self._started:
       self._ended = True
       return
 
-    await self._ensure_started()
-    for index, final_task in enumerate(workflow.tasks):
-      if index < len(self._tasks):
-        current = self._tasks[index]
-        if isinstance(current, ThoughtTask) and isinstance(final_task, ThoughtTask):
-          current.title = final_task.title
-          current.content = final_task.content
-          if index < len(self._thought_segments):
-            self._thought_segments[index] = final_task.content.strip()
-          else:
-            self._thought_segments.append(final_task.content.strip())
-        elif isinstance(current, SearchTask) and isinstance(final_task, SearchTask):
-          current.title = final_task.title
-          current.title_query = final_task.title_query
-          current.queries = list(final_task.queries)
-          current.sources = list(final_task.sources)
-        else:
-          current = final_task
-          self._tasks[index] = current
-        await self._safe_update_task(current, index)
-      else:
-        new_task = final_task
-        self._tasks.append(new_task)
-        await self._safe_add_task(new_task, index)
-
-    thought_contents: list[str] = []
-    for task in self._tasks:
-      if isinstance(task, ThoughtTask):
-        thought_contents.append(task.content.strip())
-      else:
-        break
-    self._thought_segments = [content for content in thought_contents if content]
-
-    await self._context.end_workflow()
-    self._ended = True
+    try:
+      try:
+        await self._context.end_workflow()
+      except ValueError as exc:
+        if "Workflow is not set" not in str(exc):
+          raise
+        await self._recover_workflow_state()
+        await self._context.end_workflow()
+    except Exception as exc:
+      if error is None:
+        raise
+    finally:
+      self._ended = True
 
 
 # Main code entrypoint
@@ -874,113 +844,8 @@ async def run_workflow(
   @dataclass
   class _AgentStepResult:
     stream: Any
-    reasoning_summary: Workflow | None
+    reasoning_summary: Workflow | None = None
     reasoning_text: str
-
-  def _split_reasoning_blocks(text: str) -> list[str]:
-    return [
-      segment.strip()
-      for segment in text.split("\n\n")
-      if segment.strip()
-    ]
-
-  def _build_reasoning_workflow(
-    *,
-    reasoning_text: str,
-    run_items: Sequence[RunItem],
-    raw_responses: Sequence[Any],
-  ) -> Workflow | None:
-    thought_segments: list[str] = []
-    seen_thoughts: set[str] = set()
-    search_tasks_by_id: dict[str, SearchTask] = {}
-    ordered_search_tasks: list[SearchTask] = []
-
-    def _add_thought(text: str) -> None:
-      normalized = text.strip()
-      if not normalized or normalized in seen_thoughts:
-        return
-      thought_segments.append(normalized)
-      seen_thoughts.add(normalized)
-
-    def _extract_reasoning_entries(entries: Sequence[Any] | None) -> None:
-      if not entries:
-        return
-      for entry in entries:
-        entry_text = getattr(entry, "text", "")
-        if entry_text:
-          _add_thought(entry_text)
-
-    for item in run_items:
-      if isinstance(item, ReasoningItem):
-        contents = getattr(item.raw_item, "content", None)
-        if contents:
-          _extract_reasoning_entries(contents)
-        else:
-          summaries = getattr(item.raw_item, "summary", None)
-          _extract_reasoning_entries(summaries)
-        continue
-
-      if not isinstance(item, ToolCallItem):
-        continue
-
-      call = item.raw_item
-      if not isinstance(call, ResponseFunctionWebSearch):
-        continue
-
-      action = call.action
-      if not isinstance(action, ActionSearch):
-        continue
-
-      query = action.query if isinstance(action.query, str) else None
-
-      search_task = search_tasks_by_id.get(call.id)
-      if search_task is None:
-        search_task = SearchTask(
-          title="Recherche Web",
-          title_query=query,
-          queries=[query] if query else [],
-          sources=[],
-        )
-        search_tasks_by_id[call.id] = search_task
-        ordered_search_tasks.append(search_task)
-      elif query and query not in search_task.queries:
-        search_task.queries.append(query)
-
-      if not action.sources:
-        continue
-
-      existing_urls = {source.url for source in search_task.sources}
-      for source in action.sources:
-        if source.url in existing_urls:
-          continue
-        source_title = getattr(source, "title", None) or source.url
-        search_task.sources.append(URLSource(url=source.url, title=source_title))
-        existing_urls.add(source.url)
-
-    if reasoning_text:
-      for block in _split_reasoning_blocks(reasoning_text):
-        _add_thought(block)
-
-    for response in raw_responses:
-      output_items = getattr(response, "output", None)
-      if not output_items:
-        continue
-      for event in output_items:
-        if getattr(event, "type", None) != "reasoning":
-          continue
-        summaries = getattr(event, "summary", None)
-        _extract_reasoning_entries(summaries)
-
-    tasks: list[SearchTask | ThoughtTask] = [
-      ThoughtTask(content=segment)
-      for segment in thought_segments
-    ]
-    tasks.extend(ordered_search_tasks)
-
-    if not tasks:
-      return None
-
-    return Workflow(type="reasoning", tasks=tasks)
 
   async def run_agent_step(
     step_key: str,
@@ -1044,21 +909,15 @@ async def run_workflow(
           await reporter.append_reasoning(reasoning_delta)
           await _emit_stream_update(reasoning_delta=reasoning_delta)
     except Exception as exc:
-      await reporter.sync_with_workflow(None)
+      await reporter.finish(error=exc)
       raise_step_error(step_key, title, exc)
 
     conversation_history.extend([
       item.to_input_item() for item in streaming_result.new_items
     ])
-    reasoning_workflow = _build_reasoning_workflow(
-      reasoning_text=reasoning_accumulated,
-      run_items=streaming_result.new_items,
-      raw_responses=getattr(streaming_result, "raw_responses", ()),
-    )
-    await reporter.sync_with_workflow(reasoning_workflow)
+    await reporter.finish()
     return _AgentStepResult(
       stream=streaming_result,
-      reasoning_summary=reasoning_workflow,
       reasoning_text=reasoning_accumulated,
     )
 
