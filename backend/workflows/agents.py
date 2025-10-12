@@ -679,8 +679,9 @@ class _ReasoningWorkflowReporter:
     self._ended = False
     self._display_tasks: list[SearchTask | ThoughtTask] = []
     self._reasoning_buffer = ""
-    self._display_segments: list[str] = []
     self._all_reasoning_segments: list[str] = []
+    self._reasoning_task_index: int | None = None
+    self._reasoning_display_content = ""
 
   async def _ensure_started(self) -> None:
     if self._context is None or self._started or self._ended:
@@ -737,28 +738,53 @@ class _ReasoningWorkflowReporter:
       if segment.strip()
     ]
 
-    # Synchronise les tâches de réflexion avec les segments observés
     self._all_reasoning_segments = list(normalized_segments)
 
-    for index, content in enumerate(normalized_segments):
-      if index < len(self._display_segments):
-        if content == self._display_segments[index]:
-          continue
-        self._display_segments[index] = content
-        if index < len(self._display_tasks):
-          task = self._display_tasks[index]
-          if isinstance(task, ThoughtTask):
-            task.content = content
-          await self._safe_update_task(task, index)
-        continue
+    full_content = "\n\n".join(normalized_segments)
+    if not full_content:
+      return
 
-      if content in self._display_segments:
-        continue
-
-      thought_task = ThoughtTask(content=content)
-      self._display_segments.append(content)
+    if self._reasoning_task_index is None:
+      thought_task = ThoughtTask(content=full_content)
+      if hasattr(thought_task, "title"):
+        thought_task.title = "Résumé du raisonnement"
       self._display_tasks.append(thought_task)
-      await self._safe_add_task(thought_task, index)
+      self._reasoning_task_index = len(self._display_tasks) - 1
+      self._reasoning_display_content = full_content
+      await self._safe_add_task(thought_task, self._reasoning_task_index)
+      return
+
+    index = self._reasoning_task_index
+    if index >= len(self._display_tasks):
+      thought_task = ThoughtTask(content=full_content)
+      if hasattr(thought_task, "title"):
+        thought_task.title = "Résumé du raisonnement"
+      self._display_tasks.append(thought_task)
+      self._reasoning_task_index = len(self._display_tasks) - 1
+      self._reasoning_display_content = full_content
+      await self._safe_add_task(thought_task, self._reasoning_task_index)
+      return
+
+    current_task = self._display_tasks[index]
+    if not isinstance(current_task, ThoughtTask):
+      replacement = ThoughtTask(content=full_content)
+      if hasattr(replacement, "title"):
+        replacement.title = "Résumé du raisonnement"
+      self._display_tasks[index] = replacement
+      self._reasoning_display_content = full_content
+      await self._safe_update_task(replacement, index)
+      return
+
+    updated = False
+    if getattr(current_task, "title", None) != "Résumé du raisonnement":
+      current_task.title = "Résumé du raisonnement"
+      updated = True
+    if self._reasoning_display_content != full_content:
+      current_task.content = full_content
+      self._reasoning_display_content = full_content
+      updated = True
+    if updated:
+      await self._safe_update_task(current_task, index)
 
   async def finish(self, *, error: BaseException | None = None) -> None:
     if self._context is None or self._ended:
