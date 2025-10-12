@@ -12,10 +12,15 @@ from collections.abc import Awaitable, Callable
 import json
 from typing import Any
 from pydantic import BaseModel
-from openai.types.responses import ResponseTextDeltaEvent
 from openai.types.shared.reasoning import Reasoning
 
 from app.token_sanitizer import sanitize_model_like
+from chatkit.agents import AgentContext, stream_agent_response
+from chatkit.types import (
+  AssistantMessageContentPartTextDelta,
+  ThreadItemUpdated,
+  ThreadStreamEvent,
+)
 
 # Tool definitions
 web_search_preview = WebSearchTool(
@@ -666,9 +671,11 @@ def _format_step_output(payload: Any) -> str:
 # Main code entrypoint
 async def run_workflow(
   workflow_input: WorkflowInput,
+  *,
+  agent_context: AgentContext[Any],
   on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None = None,
   on_step_stream: Callable[[WorkflowStepStreamUpdate], Awaitable[None]] | None = None,
-  on_raw_event: Callable[[Any], Awaitable[None]] | None = None,
+  on_stream_event: Callable[[ThreadStreamEvent], Awaitable[None]] | None = None,
 ) -> WorkflowRunSummary:
   state = {
     "has_all_details": False,
@@ -715,19 +722,27 @@ async def run_workflow(
       return output, json.dumps(output, ensure_ascii=False)
     return output, str(output)
 
+  def _extract_delta(event: ThreadStreamEvent) -> str:
+    if isinstance(event, ThreadItemUpdated):
+      update = event.update
+      if isinstance(update, AssistantMessageContentPartTextDelta):
+        return update.delta or ""
+    return ""
+
   async def run_agent_step(
     step_key: str,
     title: str,
     agent: Agent,
     *,
-    context: Any | None = None,
+    agent_context: AgentContext[Any],
+    run_context: Any | None = None,
   ):
     step_index = len(steps) + 1
     streaming_result = Runner.run_streamed(
       agent,
       input=[*conversation_history],
       run_config=_workflow_run_config(),
-      context=context,
+      context=run_context,
     )
     if on_step_stream is not None:
       await on_step_stream(
@@ -741,27 +756,23 @@ async def run_workflow(
       )
     accumulated_text = ""
     try:
-      async for event in streaming_result.stream_events():
-        if on_raw_event is not None:
-          await on_raw_event(event)
-        if (
-          event.type == "raw_response_event"
-          and isinstance(event.data, ResponseTextDeltaEvent)
-        ):
-          delta_text = event.data.delta or ""
+      async for event in stream_agent_response(agent_context, streaming_result):
+        if on_stream_event is not None:
+          await on_stream_event(event)
+        if on_step_stream is not None:
+          delta_text = _extract_delta(event)
           if not delta_text:
             continue
-          if on_step_stream is not None:
-            accumulated_text += delta_text
-            await on_step_stream(
-              WorkflowStepStreamUpdate(
-                key=step_key,
-                title=title,
-                index=step_index,
-                delta=delta_text,
-                text=accumulated_text,
-              )
+          accumulated_text += delta_text
+          await on_step_stream(
+            WorkflowStepStreamUpdate(
+              key=step_key,
+              title=title,
+              index=step_index,
+              delta=delta_text,
+              text=accumulated_text,
             )
+          )
     except Exception as exc:
       raise_step_error(step_key, title, exc)
 
@@ -769,7 +780,12 @@ async def run_workflow(
     return streaming_result
 
   triage_title = "Analyse des informations fournies"
-  triage_result_stream = await run_agent_step("triage", triage_title, triage)
+  triage_result_stream = await run_agent_step(
+    "triage",
+    triage_title,
+    triage,
+    agent_context=agent_context,
+  )
   triage_parsed, triage_text = _structured_output_as_json(triage_result_stream.final_output)
   triage_result = {
     "output_text": triage_text,
@@ -788,6 +804,7 @@ async def run_workflow(
       "r_dacteur",
       redacteur_title,
       r_dacteur,
+      agent_context=agent_context,
     )
     redacteur_parsed, redacteur_text = _structured_output_as_json(
       r_dacteur_result_stream.final_output
@@ -804,7 +821,8 @@ async def run_workflow(
     "get_data_from_web",
     web_step_title,
     get_data_from_web,
-    context=GetDataFromWebContext(state_infos_manquantes=state["infos_manquantes"])
+    agent_context=agent_context,
+    run_context=GetDataFromWebContext(state_infos_manquantes=state["infos_manquantes"])
   )
   get_data_from_web_result = {
     "output_text": get_data_from_web_result_stream.final_output_as(str)
@@ -816,7 +834,8 @@ async def run_workflow(
     "triage_2",
     triage_2_title,
     triage_2,
-    context=Triage2Context(input_output_text=get_data_from_web_result["output_text"])
+    agent_context=agent_context,
+    run_context=Triage2Context(input_output_text=get_data_from_web_result["output_text"])
   )
   triage_2_parsed, triage_2_text = _structured_output_as_json(
     triage_2_result_stream.final_output
@@ -838,6 +857,7 @@ async def run_workflow(
       "r_dacteur",
       redacteur_title,
       r_dacteur,
+      agent_context=agent_context,
     )
     redacteur_parsed, redacteur_text = _structured_output_as_json(
       r_dacteur_result_stream.final_output
@@ -854,7 +874,8 @@ async def run_workflow(
     "get_data_from_user",
     user_step_title,
     get_data_from_user,
-    context=GetDataFromUserContext(state_infos_manquantes=state["infos_manquantes"])
+    agent_context=agent_context,
+    run_context=GetDataFromUserContext(state_infos_manquantes=state["infos_manquantes"])
   )
   get_data_from_user_result = {
     "output_text": get_data_from_user_result_stream.final_output_as(str)
@@ -866,6 +887,7 @@ async def run_workflow(
     "r_dacteur",
     redacteur_title,
     r_dacteur,
+    agent_context=agent_context,
   )
   redacteur_parsed, redacteur_text = _structured_output_as_json(
     r_dacteur_result_stream.final_output
