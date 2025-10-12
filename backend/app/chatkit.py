@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -11,15 +10,11 @@ from chatkit.agents import AgentContext, simple_to_agent_input, stream_agent_res
 from chatkit.server import ChatKitServer
 from chatkit.store import NotFoundError
 from chatkit.types import (
-    AssistantMessageContent,
-    AssistantMessageItem,
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
     ProgressUpdateEvent,
     ThreadItem,
-    ThreadItemAddedEvent,
-    ThreadItemDoneEvent,
     ThreadMetadata,
     ThreadStreamEvent,
     UserMessageItem,
@@ -109,13 +104,17 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             else []
         )
 
+        event_queue: asyncio.Queue[Any] = asyncio.Queue()
+
         workflow_result = _WorkflowStreamResult(
             runner=self._execute_workflow(
                 thread=thread,
                 agent_context=agent_context,
                 workflow_input=WorkflowInput(input_as_text=user_text),
+                event_queue=event_queue,
             ),
             input_items=converted_input,
+            event_queue=event_queue,
         )
 
         try:
@@ -134,27 +133,17 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         thread: ThreadMetadata,
         agent_context: AgentContext[ChatKitRequestContext],
         workflow_input: WorkflowInput,
+        event_queue: asyncio.Queue[Any],
     ) -> None:
         streamed_step_keys: set[str] = set()
         step_progress_text: dict[str, str] = {}
 
         try:
             logger.info("Démarrage du workflow pour le fil %s", thread.id)
-            await self._publish_assistant_message(
-                thread=thread,
-                agent_context=agent_context,
-                text="Analyse de votre demande en cours...",
-            )
 
             async def on_step(
                 step_summary: WorkflowStepSummary, index: int
             ) -> None:
-                await self._persist_step_summary(
-                    step=step_summary,
-                    index=index,
-                    thread=thread,
-                    agent_context=agent_context,
-                )
                 streamed_step_keys.add(step_summary.key)
                 step_progress_text.pop(step_summary.key, None)
 
@@ -183,26 +172,16 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     ProgressUpdateEvent(text=progress_text)
                 )
 
+            async def on_raw_event(event: Any) -> None:
+                await event_queue.put(event)
+
             workflow_run = await run_workflow(
                 workflow_input,
                 on_step=on_step,
                 on_step_stream=on_step_stream,
+                on_raw_event=on_raw_event,
             )
 
-            result = workflow_run.final_output or {}
-            output_text = _format_output_text(
-                result.get("output_text"), result.get("output_parsed")
-            )
-            if not output_text:
-                output_text = (
-                    "Le workflow a été exécuté mais n'a produit aucun contenu textuel."
-                )
-
-            await self._publish_assistant_message(
-                thread=thread,
-                agent_context=agent_context,
-                text=output_text,
-            )
             await agent_context.stream(
                 EndOfTurnItem(
                     id=self.store.generate_item_id(
@@ -215,25 +194,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             logger.info("Workflow terminé avec succès pour le fil %s", thread.id)
         except WorkflowExecutionError as exc:  # pragma: no cover - erreurs connues du workflow
             logger.exception("Workflow execution failed")
-            await self._persist_step_summaries(
-                steps=[
-                    step
-                    for step in exc.steps
-                    if step.key not in streamed_step_keys
-                ],
-                thread=thread,
-                agent_context=agent_context,
-                start_index=len(streamed_step_keys) + 1,
-            )
-
             error_message = (
                 f"Le workflow a échoué pendant l'étape « {exc.title} » ({exc.step}). "
                 f"Détails techniques : {exc.original_error}"
-            )
-            await self._publish_assistant_message(
-                thread=thread,
-                agent_context=agent_context,
-                text=error_message,
             )
             await agent_context.stream(
                 ErrorEvent(
@@ -247,14 +210,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
         except Exception as exc:  # pragma: no cover - autres erreurs runtime
             logger.exception("Workflow execution failed")
-            detailed_message = (
-                f"Erreur inattendue ({exc.__class__.__name__}) : {exc}"
-            )
-            await self._publish_assistant_message(
-                thread=thread,
-                agent_context=agent_context,
-                text=detailed_message,
-            )
+            detailed_message = f"Erreur inattendue ({exc.__class__.__name__}) : {exc}"
             await agent_context.stream(
                 ErrorEvent(
                     code=ErrorCode.STREAM_ERROR,
@@ -265,64 +221,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             logger.info(
                 "Workflow en erreur inattendue pour le fil %s", thread.id
             )
-
-    async def _persist_step_summaries(
-        self,
-        *,
-        steps: Sequence[WorkflowStepSummary],
-        thread: ThreadMetadata,
-        agent_context: AgentContext[ChatKitRequestContext],
-        start_index: int = 1,
-    ) -> None:
-        for index, step in enumerate(steps, start=start_index):
-            await self._persist_step_summary(
-                step=step,
-                index=index,
-                thread=thread,
-                agent_context=agent_context,
-            )
-
-    async def _persist_step_summary(
-        self,
-        *,
-        step: WorkflowStepSummary,
-        index: int,
-        thread: ThreadMetadata,
-        agent_context: AgentContext[ChatKitRequestContext],
-    ) -> None:
-        details = step.output.strip() or "(aucune sortie)"
-        header = f"Étape {index} – {step.title}"
-        text = f"{header}\n\n{details}"
-        message = await self._publish_assistant_message(
-            thread=thread,
-            agent_context=agent_context,
-            text=text,
-        )
-        logger.info(
-            "Progression du workflow %s : %s", thread.id, header
-        )
-
-    async def _publish_assistant_message(
-        self,
-        *,
-        thread: ThreadMetadata,
-        agent_context: AgentContext[ChatKitRequestContext],
-        text: str,
-    ) -> AssistantMessageItem:
-        message = AssistantMessageItem(
-            id=agent_context.generate_id("message", thread),
-            thread_id=thread.id,
-            created_at=datetime.now(),
-            content=[
-                AssistantMessageContent(
-                    type="output_text",
-                    text=text,
-                )
-            ],
-        )
-        await agent_context.stream(ThreadItemAddedEvent(item=message))
-        await agent_context.stream(ThreadItemDoneEvent(item=message))
-        return message
+        finally:
+            event_queue.put_nowait(_STREAM_DONE)
 
 
 def _collect_user_text(message: UserMessageItem | None) -> str:
@@ -376,6 +276,9 @@ def _log_background_exceptions(task: asyncio.Task[None]) -> None:
         logger.exception("Erreur dans la tâche de workflow", exc_info=exception)
 
 
+_STREAM_DONE = object()
+
+
 class _WorkflowStreamResult:
     """Résultat minimal compatible avec stream_agent_response."""
 
@@ -384,6 +287,7 @@ class _WorkflowStreamResult:
         *,
         runner: Coroutine[Any, Any, None],
         input_items: Sequence[Any],
+        event_queue: asyncio.Queue[Any],
     ) -> None:
         self.input = list(input_items)
         self.new_items: list[Any] = []
@@ -396,6 +300,7 @@ class _WorkflowStreamResult:
         self.current_agent = None
         self.current_turn = 0
         self.max_turn = 0
+        self._event_queue = event_queue
         self._task = asyncio.create_task(runner)
         self._task.add_done_callback(_log_background_exceptions)
 
@@ -407,12 +312,13 @@ class _WorkflowStreamResult:
         self._task.cancel()
 
     async def stream_events(self) -> AsyncIterator[Any]:
-        try:
-            await self._task
-        except Exception:
-            raise
-        if False:  # pragma: no cover - nécessaire pour déclarer un générateur
-            yield None
+        while True:
+            event = await self._event_queue.get()
+            if event is _STREAM_DONE:
+                break
+            yield event
+
+        await self._task
 
     
 _server: DemoChatKitServer | None = None
@@ -424,35 +330,3 @@ def get_chatkit_server() -> DemoChatKitServer:
     if _server is None:
         _server = DemoChatKitServer(get_settings())
     return _server
-
-
-def _format_output_text(output_text: str | None, fallback: Any | None) -> str:
-    """Normalise le texte final renvoyé à l'utilisateur."""
-    if output_text:
-        candidate = output_text.strip()
-        if candidate:
-            try:
-                parsed = json.loads(candidate)
-            except json.JSONDecodeError:
-                return candidate
-
-            if isinstance(parsed, str):
-                return parsed.strip()
-            if isinstance(parsed, (dict, list)):
-                try:
-                    return json.dumps(parsed, ensure_ascii=False, indent=2)
-                except TypeError:
-                    return str(parsed)
-            return str(parsed)
-
-    if fallback is not None:
-        if isinstance(fallback, (dict, list)):
-            try:
-                return json.dumps(fallback, ensure_ascii=False, indent=2)
-            except TypeError:
-                return str(fallback)
-        text = str(fallback).strip()
-        if text:
-            return text
-
-    return ""
