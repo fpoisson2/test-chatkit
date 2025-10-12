@@ -9,7 +9,7 @@ from pydantic import TypeAdapter
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from chatkit.store import NotFoundError, Store
+from chatkit.store import NotFoundError, Store, StoreItemType, default_generate_id
 from chatkit.types import Attachment, Page, ThreadItem, ThreadMetadata
 
 from .models import ChatAttachment, ChatThread, ChatThreadItem
@@ -33,10 +33,26 @@ def _ensure_timezone(value: dt.datetime | None) -> dt.datetime:
 class PostgresChatKitStore(Store[ChatKitRequestContext]):
     """Implémentation du store ChatKit reposant sur PostgreSQL."""
 
+    # Les outils distants (ex. web search) renvoient parfois leurs propres IDs `wf_*`
+    # qui entrent en collision avec ceux générés localement par le store. On force
+    # donc un suffixe stable pour distinguer nos éléments persistés.
+    _LOCAL_SUFFIX = "local"
+
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
         self._attachment_adapter = TypeAdapter(Attachment)
         self._thread_item_adapter = TypeAdapter(ThreadItem)
+
+    def generate_item_id(
+        self,
+        item_type: StoreItemType,
+        thread: ThreadMetadata,
+        context: ChatKitRequestContext,
+    ) -> str:
+        """Ajoute un suffixe local pour éviter les collisions avec les IDs d'outils."""
+
+        base_id = default_generate_id(item_type)
+        return f"{base_id}_{self._LOCAL_SUFFIX}"
 
     def _require_user_id(self, context: ChatKitRequestContext) -> str:
         if not context.user_id:
