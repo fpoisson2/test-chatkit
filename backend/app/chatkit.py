@@ -72,6 +72,7 @@ class _StepStreamState:
     header: str
     output: _StreamingMessageState | None = None
     reasoning: _StreamingMessageState | None = None
+    reasoning_text: str = ""
 
 
 class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
@@ -178,6 +179,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         )
                         if reasoning_text:
                             state.reasoning.buffer = reasoning_text
+                            state.reasoning_text = reasoning_text
                     await self._finalize_step_stream_state(
                         agent_context=agent_context,
                         step_state=state,
@@ -219,7 +221,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                         delta=update.delta,
                     )
 
-                if update.reasoning_delta:
+                reasoning_delta = update.reasoning_delta
+                reasoning_text = update.reasoning_text
+                if reasoning_delta or reasoning_text:
                     if state.reasoning is None:
                         state.reasoning = await self._start_step_stream_message(
                             thread=thread,
@@ -227,11 +231,27 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                             header_text=f"{header} · Résumé du raisonnement",
                             prefix=f"{header} · Résumé du raisonnement\n\n",
                         )
-                    await self._append_stream_delta(
-                        agent_context=agent_context,
-                        stream_state=state.reasoning,
-                        delta=update.reasoning_delta,
-                    )
+                    if not reasoning_delta and reasoning_text:
+                        previous = state.reasoning_text
+                        if not previous and state.reasoning is not None:
+                            previous = state.reasoning.buffer
+                        if previous and reasoning_text.startswith(previous):
+                            reasoning_delta = reasoning_text[len(previous) :]
+                        else:
+                            reasoning_delta = reasoning_text
+                    if reasoning_delta:
+                        await self._append_stream_delta(
+                            agent_context=agent_context,
+                            stream_state=state.reasoning,
+                            delta=reasoning_delta,
+                        )
+                        state.reasoning_text = (
+                            state.reasoning.buffer if state.reasoning else reasoning_delta
+                        )
+                    if reasoning_text:
+                        state.reasoning_text = reasoning_text
+                        if state.reasoning is not None:
+                            state.reasoning.buffer = reasoning_text
 
             workflow_run = await run_workflow(
                 workflow_input,

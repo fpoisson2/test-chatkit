@@ -8,6 +8,10 @@ from agents import (
   Runner,
   RunConfig
 )
+from agents.stream_events import (
+  AgentUpdatedStreamEvent,
+  RunItemStreamEvent,
+)
 from dataclasses import dataclass
 from collections.abc import Awaitable, Callable
 import json
@@ -1184,84 +1188,92 @@ async def run_workflow(
 
     try:
       async for event in streaming_result.stream_events():
-        event_type = getattr(event, "type", "")
-
-        if event_type == "agent_updated_stream_event":
+        if isinstance(event, AgentUpdatedStreamEvent):
           continue
 
-        if event_type == "run_item_stream_event":
-          item = getattr(event, "item", None)
-          if item is None:
+        if not isinstance(event, RunItemStreamEvent):
+          continue
+
+        item = getattr(event, "item", None)
+        if item is None:
+          continue
+
+        event_name = getattr(event, "name", "")
+        item_type = getattr(item, "type", "")
+
+        if event_name == "tool_called":
+          raw_item = getattr(item, "raw_item", None)
+          is_web_search = isinstance(raw_item, ResponseFunctionWebSearch) or (
+            getattr(raw_item, "type", "") == "web_search_call"
+          )
+          if is_web_search:
+            if hasattr(raw_item, "model_dump"):
+              call_data = raw_item.model_dump(exclude_none=False)
+            elif isinstance(raw_item, dict):
+              call_data = dict(raw_item)
+            else:
+              call_data = {}
+            if call_data:
+              await reporter.update_web_search_task(call_data)
+          continue
+
+        if event_name == "tool_output":
+          # Aucun traitement spécifique n'est requis pour l'instant, mais on pourra
+          # compléter ici si l'affichage des outils doit être synchronisé.
+          continue
+
+        if event_name in {"handoff_requested", "handoff_occured"}:
+          continue
+
+        if event_name == "message_output_created" and item_type == "message_output_item":
+          full_text = ItemHelpers.text_message_output(item) or ""
+          if not full_text:
             continue
 
-          event_name = getattr(event, "name", "")
-          item_type = getattr(item, "type", "")
+          if full_text.startswith(accumulated_text):
+            delta_text = full_text[len(accumulated_text):]
+          else:
+            delta_text = full_text
 
-          if event_name == "tool_called":
-            raw_item = getattr(item, "raw_item", None)
-            is_web_search = isinstance(raw_item, ResponseFunctionWebSearch) or (
-              getattr(raw_item, "type", "") == "web_search_call"
-            )
-            if is_web_search:
-              if hasattr(raw_item, "model_dump"):
-                call_data = raw_item.model_dump(exclude_none=False)
-              elif isinstance(raw_item, dict):
-                call_data = dict(raw_item)
-              else:
-                call_data = {}
-              if call_data:
-                await reporter.update_web_search_task(call_data)
-              continue
-
-          if item_type == "message_output_item":
-            full_text = ItemHelpers.text_message_output(item) or ""
-            if not full_text:
-              continue
-
-            if full_text.startswith(accumulated_text):
-              delta_text = full_text[len(accumulated_text):]
-            else:
-              delta_text = full_text
-
-            if not delta_text:
-              accumulated_text = full_text
-              continue
-
+          if not delta_text:
             accumulated_text = full_text
-            await _emit_stream_update(delta=delta_text)
             continue
 
-          if item_type == "reasoning_item":
-            raw_item = getattr(item, "raw_item", None)
-            summary_items = getattr(raw_item, "summary", None) or []
+          accumulated_text = full_text
+          await _emit_stream_update(delta=delta_text)
+          continue
 
-            summary_segments = [
-              getattr(segment, "text", "").strip()
-              for segment in summary_items
-              if getattr(segment, "text", "").strip()
-            ]
+        if event_name == "reasoning_item_created" and item_type == "reasoning_item":
+          raw_item = getattr(item, "raw_item", None)
+          summary_items = getattr(raw_item, "summary", None) or []
 
-            if not summary_segments:
-              continue
+          summary_segments = [
+            getattr(segment, "text", "").strip()
+            for segment in summary_items
+            if getattr(segment, "text", "").strip()
+          ]
 
-            combined_summary = "\n\n".join(summary_segments)
-            if not combined_summary:
-              continue
+          if not summary_segments:
+            continue
 
-            if combined_summary.startswith(reasoning_accumulated):
-              reasoning_delta = combined_summary[len(reasoning_accumulated):]
-              if reasoning_delta:
-                await reporter.append_reasoning(reasoning_delta)
-            else:
-              reasoning_delta = combined_summary
+          combined_summary = "\n\n".join(summary_segments)
+          if not combined_summary:
+            continue
 
-            reasoning_accumulated = combined_summary
-            last_reasoning_summary_segments = list(summary_segments)
-            await reporter.sync_reasoning_summary(summary_segments)
-
+          if combined_summary.startswith(reasoning_accumulated):
+            reasoning_delta = combined_summary[len(reasoning_accumulated):]
             if reasoning_delta:
-              await _emit_stream_update(reasoning_delta=reasoning_delta)
-            continue
+              await reporter.append_reasoning(reasoning_delta)
+          else:
+            reasoning_delta = combined_summary
+
+          reasoning_accumulated = combined_summary
+          last_reasoning_summary_segments = list(summary_segments)
+          await reporter.sync_reasoning_summary(summary_segments)
+
+          if reasoning_delta:
+            await _emit_stream_update(reasoning_delta=reasoning_delta)
+          continue
 
     except Exception as exc:
       await reporter.finish(error=exc)
