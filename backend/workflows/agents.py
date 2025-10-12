@@ -14,10 +14,6 @@ import json
 import re
 from typing import Any
 from pydantic import BaseModel
-from openai.types.responses import (
-  ResponseReasoningSummaryTextDeltaEvent,
-  ResponseTextDeltaEvent
-)
 from openai.types.shared.reasoning import Reasoning
 from chatkit.agents import AgentContext
 from chatkit.types import SearchTask, ThoughtTask, Workflow
@@ -928,27 +924,6 @@ async def run_workflow(
       return output, json.dumps(output, ensure_ascii=False)
     return output, str(output)
 
-  def _extract_reasoning_summary_segments(stream_result: Any) -> list[str]:
-    segments: list[str] = []
-    raw_responses = getattr(stream_result, "raw_responses", None)
-    if not raw_responses:
-      return segments
-    for raw in raw_responses:
-      output_items = getattr(raw, "output", None)
-      if not output_items:
-        continue
-      for item in output_items:
-        if getattr(item, "type", None) != "reasoning":
-          continue
-        summary_items = getattr(item, "summary", None)
-        if not summary_items:
-          continue
-        for summary in summary_items:
-          text = getattr(summary, "text", "")
-          if text:
-            segments.append(text)
-    return segments
-
   @dataclass
   class _AgentStepResult:
     stream: Any
@@ -1058,27 +1033,6 @@ async def run_workflow(
               await _emit_stream_update(reasoning_delta=reasoning_delta)
             continue
 
-        if (
-          event_type == "raw_response_event"
-          and isinstance(event.data, ResponseTextDeltaEvent)
-        ):
-          delta_text = event.data.delta or ""
-          if not delta_text:
-            continue
-          accumulated_text += delta_text
-          await _emit_stream_update(delta=delta_text)
-          continue
-
-        if (
-          event_type == "raw_response_event"
-          and isinstance(event.data, ResponseReasoningSummaryTextDeltaEvent)
-        ):
-          reasoning_delta = event.data.delta or ""
-          if not reasoning_delta:
-            continue
-          reasoning_accumulated += reasoning_delta
-          await reporter.append_reasoning(reasoning_delta)
-          await _emit_stream_update(reasoning_delta=reasoning_delta)
     except Exception as exc:
       await reporter.finish(error=exc)
       raise_step_error(step_key, title, exc)
@@ -1087,11 +1041,7 @@ async def run_workflow(
       item.to_input_item() for item in streaming_result.new_items
     ])
 
-    summary_segments = (
-      last_reasoning_summary_segments
-      if last_reasoning_summary_segments
-      else _extract_reasoning_summary_segments(streaming_result)
-    )
+    summary_segments = last_reasoning_summary_segments
     normalized_summary = [
       segment.strip()
       for segment in summary_segments
