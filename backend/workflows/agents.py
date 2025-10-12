@@ -844,8 +844,8 @@ async def run_workflow(
   @dataclass
   class _AgentStepResult:
     stream: Any
+    reasoning_text: str = ""
     reasoning_summary: Workflow | None = None
-    reasoning_text: str
 
   async def run_agent_step(
     step_key: str,
