@@ -1165,6 +1165,8 @@ async def run_workflow(
     accumulated_text = ""
     reasoning_accumulated = ""
     last_reasoning_summary_segments: list[str] = []
+    last_message_output_text = ""
+    last_reasoning_text = ""
     reporter = _ReasoningWorkflowReporter(agent_context)
 
     async def _emit_stream_update(
@@ -1230,6 +1232,9 @@ async def run_workflow(
           if not full_text:
             continue
 
+          if full_text == last_message_output_text:
+            continue
+
           if full_text.startswith(accumulated_text):
             delta_text = full_text[len(accumulated_text):]
           else:
@@ -1237,9 +1242,11 @@ async def run_workflow(
 
           if not delta_text:
             accumulated_text = full_text
+            last_message_output_text = full_text
             continue
 
           accumulated_text = full_text
+          last_message_output_text = full_text
           await _emit_stream_update(delta=delta_text)
           continue
 
@@ -1260,19 +1267,25 @@ async def run_workflow(
           if not combined_summary:
             continue
 
+          if combined_summary == last_reasoning_text:
+            continue
+
           if combined_summary.startswith(reasoning_accumulated):
             reasoning_delta = combined_summary[len(reasoning_accumulated):]
-            if reasoning_delta:
-              await reporter.append_reasoning(reasoning_delta)
           else:
             reasoning_delta = combined_summary
 
           reasoning_accumulated = combined_summary
           last_reasoning_summary_segments = list(summary_segments)
-          await reporter.sync_reasoning_summary(summary_segments)
+          last_reasoning_text = combined_summary
 
           if reasoning_delta:
+            await reporter.append_reasoning(reasoning_delta)
+            await reporter.sync_reasoning_summary(summary_segments)
             await _emit_stream_update(reasoning_delta=reasoning_delta)
+          else:
+            await reporter.sync_reasoning_summary(summary_segments)
+
           continue
 
     except Exception as exc:
