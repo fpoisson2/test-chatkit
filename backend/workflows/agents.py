@@ -686,6 +686,11 @@ class _ReasoningWorkflowReporter:
     self._tasks: list[SearchTask | ThoughtTask] = []
     self._reasoning_buffer = ""
     self._thought_segments: list[str] = []
+    self._search_tasks_by_id: dict[str, SearchTask] = {}
+    self._streamed_search_seen = False
+
+  def _thoughts_count(self) -> int:
+    return sum(1 for task in self._tasks if isinstance(task, ThoughtTask))
 
   async def _ensure_started(self) -> None:
     if self._context is None or self._started or self._ended:
@@ -762,6 +767,56 @@ class _ReasoningWorkflowReporter:
       self._thought_segments.append(content)
       self._tasks.append(thought_task)
       await self._safe_add_task(thought_task, index)
+
+  async def upsert_search_task(
+    self,
+    *,
+    call_id: str,
+    title: str | None,
+    query: str | None,
+    new_sources: list[URLSource] | None,
+  ) -> None:
+    if not self._is_context_ready():
+      return
+    await self._ensure_started()
+
+    task = self._search_tasks_by_id.get(call_id)
+    insert_at = self._thoughts_count()
+
+    if task is None:
+      task = SearchTask(
+        title=title or "Recherche Web",
+        title_query=query,
+        queries=[q for q in [query] if q],
+        sources=[],
+      )
+      self._search_tasks_by_id[call_id] = task
+
+      while insert_at < len(self._tasks) and isinstance(
+        self._tasks[insert_at],
+        (ThoughtTask, SearchTask)
+      ):
+        insert_at += 1
+      self._tasks.insert(insert_at, task)
+      await self._safe_add_task(task, insert_at)
+    else:
+      if query:
+        if task.title_query is None:
+          task.title_query = query
+        if query not in task.queries:
+          task.queries.append(query)
+
+    if new_sources:
+      existing_urls = {source.url for source in task.sources}
+      for source in new_sources:
+        if source.url in existing_urls:
+          continue
+        task.sources.append(source)
+        existing_urls.add(source.url)
+
+    idx = self._tasks.index(task)
+    await self._safe_update_task(task, idx)
+    self._streamed_search_seen = True
 
   async def sync_with_workflow(self, workflow: Workflow | None) -> None:
     if self._context is None or self._ended:
@@ -889,11 +944,15 @@ async def run_workflow(
     reasoning_text: str,
     run_items: Sequence[RunItem],
     raw_responses: Sequence[Any],
+    reporter: _ReasoningWorkflowReporter | None = None,
   ) -> Workflow | None:
     thought_segments: list[str] = []
     seen_thoughts: set[str] = set()
     search_tasks_by_id: dict[str, SearchTask] = {}
     ordered_search_tasks: list[SearchTask] = []
+    skip_search_tasks = (
+      reporter is not None and getattr(reporter, "_streamed_search_seen", False)
+    )
 
     def _add_thought(text: str) -> None:
       normalized = text.strip()
@@ -929,6 +988,9 @@ async def run_workflow(
 
       action = call.action
       if not isinstance(action, ActionSearch):
+        continue
+
+      if skip_search_tasks:
         continue
 
       query = action.query if isinstance(action.query, str) else None
@@ -1043,6 +1105,29 @@ async def run_workflow(
           reasoning_accumulated += reasoning_delta
           await reporter.append_reasoning(reasoning_delta)
           await _emit_stream_update(reasoning_delta=reasoning_delta)
+          continue
+
+        if (
+          event.type == "raw_response_event"
+          and isinstance(event.data, ResponseFunctionWebSearch)
+        ):
+          call = event.data
+          action = call.action
+          if isinstance(action, ActionSearch):
+            query = action.query if isinstance(action.query, str) else None
+            new_sources: list[URLSource] = []
+            if action.sources:
+              for source in action.sources:
+                source_title = getattr(source, "title", None) or source.url
+                new_sources.append(URLSource(url=source.url, title=source_title))
+
+            await reporter.upsert_search_task(
+              call_id=call.id,
+              title="Recherche Web",
+              query=query,
+              new_sources=new_sources or None,
+            )
+          continue
     except Exception as exc:
       await reporter.sync_with_workflow(None)
       raise_step_error(step_key, title, exc)
@@ -1054,6 +1139,7 @@ async def run_workflow(
       reasoning_text=reasoning_accumulated,
       run_items=streaming_result.new_items,
       raw_responses=getattr(streaming_result, "raw_responses", ()),
+      reporter=reporter,
     )
     await reporter.sync_with_workflow(reasoning_workflow)
     return _AgentStepResult(
