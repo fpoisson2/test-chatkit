@@ -10,12 +10,14 @@ from agents import (
 from dataclasses import dataclass
 from collections.abc import Awaitable, Callable
 import json
-from typing import Any
+from typing import Any, AsyncIterator
 from pydantic import BaseModel
 from openai.types.responses import ResponseTextDeltaEvent
 from openai.types.shared.reasoning import Reasoning
 
 from app.token_sanitizer import sanitize_model_like
+
+from chatkit.agents import stream_agent_response
 
 # Tool definitions
 web_search_preview = WebSearchTool(
@@ -729,6 +731,7 @@ async def run_workflow(
       run_config=_workflow_run_config(),
       context=context,
     )
+    agent_ctx = getattr(streaming_result, "context", None)
     if on_step_stream is not None:
       await on_step_stream(
         WorkflowStepStreamUpdate(
@@ -740,15 +743,28 @@ async def run_workflow(
         )
       )
     accumulated_text = ""
+    if agent_ctx is None:
+      raise_step_error(
+        step_key,
+        title,
+        RuntimeError(
+          "Le contexte d'agent est manquant : impossible de relayer le flux via stream_agent_response."
+        ),
+      )
+
+    event_iterator: AsyncIterator[Any] = stream_agent_response(agent_ctx, streaming_result)
+
     try:
-      async for event in streaming_result.stream_events():
+      async for event in event_iterator:
+        raw_event = getattr(event, "raw_event", event)
         if on_raw_event is not None:
-          await on_raw_event(event)
+          await on_raw_event(raw_event)
         if (
-          event.type == "raw_response_event"
-          and isinstance(event.data, ResponseTextDeltaEvent)
+          getattr(raw_event, "type", None) == "raw_response_event"
+          and isinstance(getattr(raw_event, "data", None), ResponseTextDeltaEvent)
         ):
-          delta_text = event.data.delta or ""
+          delta_payload = raw_event.data.delta if raw_event.data else ""
+          delta_text = delta_payload or ""
           if not delta_text:
             continue
           if on_step_stream is not None:
