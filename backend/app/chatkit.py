@@ -177,6 +177,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
             workflow_run = await run_workflow(
                 workflow_input,
+                agent_context=agent_context,
                 on_step=on_step,
                 on_step_stream=on_step_stream,
                 on_raw_event=on_raw_event,

@@ -17,7 +17,7 @@ from openai.types.shared.reasoning import Reasoning
 
 from app.token_sanitizer import sanitize_model_like
 
-from chatkit.agents import stream_agent_response
+from chatkit.agents import AgentContext, stream_agent_response
 
 # Tool definitions
 web_search_preview = WebSearchTool(
@@ -668,6 +668,8 @@ def _format_step_output(payload: Any) -> str:
 # Main code entrypoint
 async def run_workflow(
   workflow_input: WorkflowInput,
+  *,
+  agent_context: AgentContext[Any] | None = None,
   on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None = None,
   on_step_stream: Callable[[WorkflowStepStreamUpdate], Awaitable[None]] | None = None,
   on_raw_event: Callable[[Any], Awaitable[None]] | None = None,
@@ -732,6 +734,8 @@ async def run_workflow(
       context=context,
     )
     agent_ctx = getattr(streaming_result, "context", None)
+    if agent_ctx is None:
+      agent_ctx = agent_context
     if on_step_stream is not None:
       await on_step_stream(
         WorkflowStepStreamUpdate(
@@ -748,7 +752,7 @@ async def run_workflow(
         step_key,
         title,
         RuntimeError(
-          "Le contexte d'agent est manquant : impossible de relayer le flux via stream_agent_response."
+          "Contexte ChatKit absent : fournissez agent_context à run_workflow pour relayer le flux."
         ),
       )
 
