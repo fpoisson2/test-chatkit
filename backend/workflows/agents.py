@@ -744,7 +744,7 @@ class _ReasoningWorkflowReporter:
     if not full_content:
       return
 
-    if self._reasoning_task_index is None:
+    if self._reasoning_task_index is None or self._reasoning_task_index >= len(self._display_tasks):
       thought_task = ThoughtTask(content=full_content)
       if hasattr(thought_task, "title"):
         thought_task.title = "Résumé du raisonnement"
@@ -755,36 +755,20 @@ class _ReasoningWorkflowReporter:
       return
 
     index = self._reasoning_task_index
-    if index >= len(self._display_tasks):
-      thought_task = ThoughtTask(content=full_content)
-      if hasattr(thought_task, "title"):
-        thought_task.title = "Résumé du raisonnement"
-      self._display_tasks.append(thought_task)
-      self._reasoning_task_index = len(self._display_tasks) - 1
-      self._reasoning_display_content = full_content
-      await self._safe_add_task(thought_task, self._reasoning_task_index)
-      return
+    replacement = ThoughtTask(content=full_content)
+    if hasattr(replacement, "title"):
+      replacement.title = "Résumé du raisonnement"
 
     current_task = self._display_tasks[index]
-    if not isinstance(current_task, ThoughtTask):
-      replacement = ThoughtTask(content=full_content)
-      if hasattr(replacement, "title"):
-        replacement.title = "Résumé du raisonnement"
-      self._display_tasks[index] = replacement
-      self._reasoning_display_content = full_content
-      await self._safe_update_task(replacement, index)
-      return
+    if isinstance(current_task, ThoughtTask):
+      has_same_title = getattr(current_task, "title", None) == "Résumé du raisonnement"
+      has_same_content = self._reasoning_display_content == full_content
+      if has_same_title and has_same_content:
+        return
 
-    updated = False
-    if getattr(current_task, "title", None) != "Résumé du raisonnement":
-      current_task.title = "Résumé du raisonnement"
-      updated = True
-    if self._reasoning_display_content != full_content:
-      current_task.content = full_content
-      self._reasoning_display_content = full_content
-      updated = True
-    if updated:
-      await self._safe_update_task(current_task, index)
+    self._display_tasks[index] = replacement
+    self._reasoning_display_content = full_content
+    await self._safe_update_task(replacement, index)
 
   async def finish(self, *, error: BaseException | None = None) -> None:
     if self._context is None or self._ended:
