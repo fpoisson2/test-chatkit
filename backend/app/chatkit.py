@@ -508,7 +508,7 @@ thread_title_agent = Agent(
         "Si le message ne contient aucune information exploitable, renvoie une chaîne\n"
         "vide."""
     ),
-    model="gpt-4.1-mini",
+    model="gpt-5-nano",
     output_type=str,
     model_settings=_model_settings(
         temperature=0.3,
