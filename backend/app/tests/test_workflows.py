@@ -79,6 +79,12 @@ def test_admin_can_read_default_graph() -> None:
     payload = response.json()
     nodes = {node["slug"]: node for node in payload["graph"]["nodes"]}
     assert {"start", "end", "infos-completes", "finalisation"}.issubset(nodes.keys())
+    state_slugs = {
+        node["slug"]
+        for node in payload["graph"]["nodes"]
+        if node.get("kind") == "state"
+    }
+    assert {"maj-etat-triage", "maj-etat-validation"}.issubset(state_slugs)
     edges = {(edge["source"], edge["target"]) for edge in payload["graph"]["edges"]}
     assert ("start", "analyse") in edges
     agent_keys = [step["agent_key"] for step in payload["steps"]]
@@ -189,6 +195,89 @@ def test_legacy_workflow_is_backfilled_with_default_graph() -> None:
 
     redacteur_step = next(step for step in payload["steps"] if step["agent_key"] == "r_dacteur")
     assert redacteur_step["parameters"]["model"] == "o4-mini"
+
+
+def test_legacy_workflow_missing_state_nodes_is_backfilled() -> None:
+    admin = _make_user(email="stateless@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    with SessionLocal() as session:
+        session.query(WorkflowTransition).delete()
+        session.query(WorkflowStep).delete()
+        session.query(WorkflowDefinition).delete()
+        session.commit()
+
+        definition = WorkflowDefinition(name="workflow-sans-etat", is_active=True)
+        session.add(definition)
+        session.flush()
+
+        steps = [
+            ("start", "start", None, None),
+            ("analyse", "agent", "triage", {"instructions": "Analyse initiale"}),
+            ("infos-completes", "condition", None, {"mode": "truthy", "path": "has_all_details"}),
+            ("collecte-web", "agent", "get_data_from_web", {"instructions": "Recherche en ligne"}),
+            ("validation", "agent", "triage_2", {"instructions": "Valide"}),
+            ("pret-final", "condition", None, {"mode": "truthy", "path": "should_finalize"}),
+            ("collecte-utilisateur", "agent", "get_data_from_user", {"instructions": "Demander"}),
+            ("finalisation", "agent", "r_dacteur", {"instructions": "Synthèse"}),
+            ("end", "end", None, None),
+        ]
+
+        step_map: dict[str, WorkflowStep] = {}
+        for index, (slug, kind, agent_key, parameters) in enumerate(steps, start=1):
+            step = WorkflowStep(
+                definition_id=definition.id,
+                slug=slug,
+                kind=kind,
+                agent_key=agent_key,
+                position=index,
+                is_enabled=True,
+                parameters=parameters,
+            )
+            session.add(step)
+            step_map[slug] = step
+
+        session.flush()
+
+        transitions = [
+            ("start", "analyse", None),
+            ("analyse", "infos-completes", None),
+            ("infos-completes", "finalisation", "true"),
+            ("infos-completes", "collecte-web", "false"),
+            ("collecte-web", "validation", None),
+            ("validation", "pret-final", None),
+            ("pret-final", "finalisation", "true"),
+            ("pret-final", "collecte-utilisateur", "false"),
+            ("collecte-utilisateur", "finalisation", None),
+            ("finalisation", "end", None),
+        ]
+
+        for source, target, condition in transitions:
+            session.add(
+                WorkflowTransition(
+                    definition_id=definition.id,
+                    source_step=step_map[source],
+                    target_step=step_map[target],
+                    condition=condition,
+                    ui_metadata={},
+                )
+            )
+
+        session.commit()
+
+    response = client.get("/api/workflows/current", headers=_auth_headers(token))
+    assert response.status_code == 200
+    payload = response.json()
+
+    state_slugs = {
+        node["slug"]
+        for node in payload["graph"]["nodes"]
+        if node.get("kind") == "state"
+    }
+    assert {"maj-etat-triage", "maj-etat-validation"}.issubset(state_slugs)
+
+    analyse_node = next(node for node in payload["graph"]["nodes"] if node["slug"] == "analyse")
+    assert analyse_node["parameters"]["instructions"] == "Analyse initiale"
 
 
 def test_update_rejects_unknown_agent() -> None:

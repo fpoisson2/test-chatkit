@@ -18,21 +18,37 @@ import "reactflow/dist/style.css";
 
 import { useAuth } from "../auth";
 import { makeApiEndpointCandidates } from "../utils/backend";
+import { resolveAgentParameters } from "../utils/agentPresets";
 import {
   getAgentMessage,
   getAgentModel,
   getAgentReasoningEffort,
+  getAgentResponseFormat,
+  getAgentTemperature,
+  getAgentTopP,
+  getAgentWebSearchConfig,
   parseAgentParameters,
+  setStateAssignments,
   setAgentMessage,
   setAgentModel,
   setAgentReasoningEffort,
+  setAgentResponseFormatKind,
+  setAgentResponseFormatName,
+  setAgentResponseFormatSchema,
+  setAgentTemperature,
+  setAgentTopP,
+  setAgentWebSearchConfig,
+  getStateAssignments,
   stringifyAgentParameters,
   type AgentParameters,
+  type WebSearchConfig,
+  type StateAssignment,
+  type StateAssignmentScope,
 } from "../utils/workflows";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 
-type NodeKind = "start" | "agent" | "condition" | "end";
+type NodeKind = "start" | "agent" | "condition" | "state" | "end";
 
 type ApiWorkflowNode = {
   id: number;
@@ -41,7 +57,7 @@ type ApiWorkflowNode = {
   display_name: string | null;
   agent_key: string | null;
   is_enabled: boolean;
-  parameters: AgentParameters;
+  parameters: AgentParameters | null;
   metadata: Record<string, unknown> | null;
 };
 
@@ -68,7 +84,6 @@ type FlowNodeData = {
   kind: NodeKind;
   displayName: string;
   label: string;
-  agentKey?: string | null;
   isEnabled: boolean;
   parameters: AgentParameters;
   parametersText: string;
@@ -86,18 +101,11 @@ type FlowEdge = Edge<FlowEdgeData>;
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
-const AGENT_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "triage", label: "Analyse" },
-  { value: "get_data_from_web", label: "Collecte web" },
-  { value: "triage_2", label: "Validation" },
-  { value: "get_data_from_user", label: "Collecte utilisateur" },
-  { value: "r_dacteur", label: "Rédaction" },
-];
-
 const NODE_COLORS: Record<NodeKind, string> = {
   start: "#2563eb",
   agent: "#16a34a",
   condition: "#f97316",
+  state: "#0ea5e9",
   end: "#7c3aed",
 };
 
@@ -105,6 +113,7 @@ const NODE_BACKGROUNDS: Record<NodeKind, string> = {
   start: "rgba(37, 99, 235, 0.12)",
   agent: "rgba(22, 163, 74, 0.12)",
   condition: "rgba(249, 115, 22, 0.14)",
+  state: "rgba(14, 165, 233, 0.14)",
   end: "rgba(124, 58, 237, 0.12)",
 };
 
@@ -132,6 +141,25 @@ const defaultEdgeOptions: EdgeOptions = {
 };
 
 const connectionLineStyle = { stroke: "#1e293b", strokeWidth: 2 };
+
+const NON_REASONING_MODEL_PATTERN = /^gpt-4\.1/i;
+
+const supportsReasoningModel = (model: string): boolean => {
+  if (!model.trim()) {
+    return true;
+  }
+  return !NON_REASONING_MODEL_PATTERN.test(model.trim());
+};
+
+const DEFAULT_JSON_SCHEMA_OBJECT = { type: "object", properties: {} } as const;
+const DEFAULT_JSON_SCHEMA_TEXT = JSON.stringify(DEFAULT_JSON_SCHEMA_OBJECT, null, 2);
+const DEFAULT_WEB_SEARCH_CONFIG: WebSearchConfig = { search_context_size: "medium" };
+const WEB_SEARCH_LOCATION_LABELS = {
+  city: "Ville",
+  region: "Région",
+  country: "Pays",
+  type: "Type de précision",
+} as const;
 
 const WorkflowBuilderPage = () => {
   const { token } = useAuth();
@@ -170,7 +198,10 @@ const WorkflowBuilderPage = () => {
           const flowNodes = data.graph.nodes.map<FlowNode>((node, index) => {
             const positionFromMetadata = extractPosition(node.metadata);
             const displayName = node.display_name ?? humanizeSlug(node.slug);
-            const parameters = { ...(node.parameters ?? {}) } as AgentParameters;
+            const parameters =
+              node.kind === "agent"
+                ? resolveAgentParameters(node.agent_key, node.parameters)
+                : resolveAgentParameters(null, node.parameters);
             return {
               id: node.slug,
               position: positionFromMetadata ?? { x: 150 * index, y: 120 * index },
@@ -179,7 +210,6 @@ const WorkflowBuilderPage = () => {
                 kind: node.kind,
                 displayName,
                 label: displayName,
-                agentKey: node.agent_key,
                 isEnabled: node.is_enabled,
                 parameters,
                 parametersText: stringifyAgentParameters(parameters),
@@ -298,16 +328,6 @@ const WorkflowBuilderPage = () => {
     [updateNodeData]
   );
 
-  const handleAgentKeyChange = useCallback(
-    (nodeId: string, agentKey: string) => {
-      updateNodeData(nodeId, (data) => ({
-        ...data,
-        agentKey,
-      }));
-    },
-    [updateNodeData]
-  );
-
   const handleToggleNode = useCallback(
     (nodeId: string) => {
       updateNodeData(nodeId, (data) => ({
@@ -363,7 +383,10 @@ const WorkflowBuilderPage = () => {
         if (data.kind !== "agent") {
           return data;
         }
-        const nextParameters = setAgentModel(data.parameters, value);
+        let nextParameters = setAgentModel(data.parameters, value);
+        if (!supportsReasoningModel(value)) {
+          nextParameters = setAgentReasoningEffort(nextParameters, "");
+        }
         return {
           ...data,
           parameters: nextParameters,
@@ -391,6 +414,132 @@ const WorkflowBuilderPage = () => {
       });
     },
     [updateNodeData]
+  );
+
+  const handleAgentTemperatureChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentTemperature(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentTopPChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentTopP(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentResponseFormatKindChange = useCallback(
+    (nodeId: string, kind: "text" | "json_schema") => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentResponseFormatKind(data.parameters, kind);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentResponseFormatNameChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentResponseFormatName(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentResponseFormatSchemaChange = useCallback(
+    (nodeId: string, schema: unknown) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentResponseFormatSchema(data.parameters, schema);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentWebSearchChange = useCallback(
+    (nodeId: string, config: WebSearchConfig | null) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentWebSearchConfig(data.parameters, config);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleStateAssignmentsChange = useCallback(
+    (nodeId: string, scope: StateAssignmentScope, assignments: StateAssignment[]) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "state") {
+          return data;
+        }
+        const nextParameters = setStateAssignments(data.parameters, scope, assignments);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
   );
 
   const handleConditionChange = useCallback(
@@ -459,7 +608,6 @@ const WorkflowBuilderPage = () => {
 
   const handleAddAgentNode = useCallback(() => {
     const slug = `agent-${Date.now()}`;
-    const defaultAgent = AGENT_OPTIONS[0]?.value ?? "triage";
     const parameters: AgentParameters = {};
     const newNode: FlowNode = {
       id: slug,
@@ -468,7 +616,6 @@ const WorkflowBuilderPage = () => {
         slug,
         kind: "agent",
         displayName: humanizeSlug(slug),
-        agentKey: defaultAgent,
         isEnabled: true,
         parameters,
         parametersText: stringifyAgentParameters(parameters),
@@ -495,7 +642,6 @@ const WorkflowBuilderPage = () => {
         kind: "condition",
         displayName: humanizeSlug(slug),
         label: humanizeSlug(slug),
-        agentKey: null,
         isEnabled: true,
         parameters,
         parametersText: stringifyAgentParameters(parameters),
@@ -504,6 +650,36 @@ const WorkflowBuilderPage = () => {
       },
       draggable: true,
       style: buildNodeStyle("condition"),
+    };
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes]);
+
+  const handleAddStateNode = useCallback(() => {
+    const slug = `state-${Date.now()}`;
+    const parameters: AgentParameters = {
+      state: [
+        { target: "state.has_all_details", expression: "input.output_parsed.has_all_details" },
+        { target: "state.infos_manquantes", expression: "input.output_text" },
+      ],
+    };
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 360, y: 220 },
+      data: {
+        slug,
+        kind: "state",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        isEnabled: true,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("state"),
     };
     setNodes((current) => [...current, newNode]);
     setSelectedNodeId(slug);
@@ -525,9 +701,9 @@ const WorkflowBuilderPage = () => {
           slug: node.data.slug,
           kind: node.data.kind,
           display_name: node.data.displayName.trim() || null,
-          agent_key: node.data.kind === "agent" ? node.data.agentKey : null,
+          agent_key: null,
           is_enabled: node.data.isEnabled,
-          parameters: node.data.parameters,
+          parameters: prepareNodeParametersForSave(node.data.kind, node.data.parameters),
           metadata: {
             ...node.data.metadata,
             position: { x: node.position.x, y: node.position.y },
@@ -650,12 +826,15 @@ const WorkflowBuilderPage = () => {
             </p>
           </header>
 
-          <div style={{ display: "flex", gap: "0.5rem" }}>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <button type="button" className="btn" onClick={handleAddAgentNode}>
               Ajouter un agent
             </button>
             <button type="button" className="btn" onClick={handleAddConditionNode}>
               Ajouter un bloc conditionnel
+            </button>
+            <button type="button" className="btn" onClick={handleAddStateNode}>
+              Ajouter un bloc état
             </button>
           </div>
 
@@ -664,10 +843,16 @@ const WorkflowBuilderPage = () => {
               node={selectedNode}
               onToggle={handleToggleNode}
               onDisplayNameChange={handleDisplayNameChange}
-              onAgentKeyChange={handleAgentKeyChange}
               onAgentMessageChange={handleAgentMessageChange}
               onAgentModelChange={handleAgentModelChange}
               onAgentReasoningChange={handleAgentReasoningChange}
+              onAgentTemperatureChange={handleAgentTemperatureChange}
+              onAgentTopPChange={handleAgentTopPChange}
+              onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
+              onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
+              onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
+              onAgentWebSearchChange={handleAgentWebSearchChange}
+              onStateAssignmentsChange={handleStateAssignmentsChange}
               onParametersChange={handleParametersChange}
               onRemove={handleRemoveNode}
             />
@@ -713,10 +898,20 @@ type NodeInspectorProps = {
   node: FlowNode;
   onToggle: (nodeId: string) => void;
   onDisplayNameChange: (nodeId: string, value: string) => void;
-  onAgentKeyChange: (nodeId: string, agentKey: string) => void;
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onAgentModelChange: (nodeId: string, value: string) => void;
   onAgentReasoningChange: (nodeId: string, value: string) => void;
+  onAgentTemperatureChange: (nodeId: string, value: string) => void;
+  onAgentTopPChange: (nodeId: string, value: string) => void;
+  onAgentResponseFormatKindChange: (nodeId: string, kind: "text" | "json_schema") => void;
+  onAgentResponseFormatNameChange: (nodeId: string, value: string) => void;
+  onAgentResponseFormatSchemaChange: (nodeId: string, schema: unknown) => void;
+  onAgentWebSearchChange: (nodeId: string, config: WebSearchConfig | null) => void;
+  onStateAssignmentsChange: (
+    nodeId: string,
+    scope: StateAssignmentScope,
+    assignments: StateAssignment[],
+  ) => void;
   onParametersChange: (nodeId: string, value: string) => void;
   onRemove: (nodeId: string) => void;
 };
@@ -725,19 +920,58 @@ const NodeInspector = ({
   node,
   onToggle,
   onDisplayNameChange,
-  onAgentKeyChange,
   onAgentMessageChange,
   onAgentModelChange,
   onAgentReasoningChange,
+  onAgentTemperatureChange,
+  onAgentTopPChange,
+  onAgentResponseFormatKindChange,
+  onAgentResponseFormatNameChange,
+  onAgentResponseFormatSchemaChange,
+  onAgentWebSearchChange,
+  onStateAssignmentsChange,
   onParametersChange,
   onRemove,
 }: NodeInspectorProps) => {
-  const { kind, displayName, isEnabled, agentKey, parameters, parametersText, parametersError } =
-    node.data;
+  const { kind, displayName, isEnabled, parameters, parametersText, parametersError } = node.data;
   const isFixed = kind === "start" || kind === "end";
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
   const reasoningEffort = getAgentReasoningEffort(parameters);
+  const responseFormat = getAgentResponseFormat(parameters);
+  const temperature = getAgentTemperature(parameters);
+  const topP = getAgentTopP(parameters);
+  const webSearchConfig = getAgentWebSearchConfig(parameters);
+  const webSearchEnabled = Boolean(webSearchConfig);
+  const globalAssignments = useMemo(
+    () => getStateAssignments(parameters, "globals"),
+    [parameters],
+  );
+  const stateAssignments = useMemo(
+    () => getStateAssignments(parameters, "state"),
+    [parameters],
+  );
+  const [schemaText, setSchemaText] = useState(() =>
+    responseFormat.kind === "json_schema"
+      ? JSON.stringify(responseFormat.schema ?? {}, null, 2)
+      : DEFAULT_JSON_SCHEMA_TEXT,
+  );
+  const [schemaError, setSchemaError] = useState<string | null>(null);
+  const schemaSignature =
+    responseFormat.kind === "json_schema"
+      ? JSON.stringify(responseFormat.schema ?? {})
+      : "";
+  useEffect(() => {
+    if (responseFormat.kind === "json_schema") {
+      setSchemaText(JSON.stringify(responseFormat.schema ?? {}, null, 2));
+    } else {
+      setSchemaText(DEFAULT_JSON_SCHEMA_TEXT);
+    }
+    setSchemaError(null);
+  }, [node.id, responseFormat.kind, schemaSignature]);
+  const supportsReasoning = supportsReasoningModel(agentModel);
+  const temperatureValue = typeof temperature === "number" ? String(temperature) : "";
+  const topPValue = typeof topP === "number" ? String(topP) : "";
   return (
     <section aria-label={`Propriétés du nœud ${node.data.slug}`}>
       <h2 style={{ fontSize: "1.25rem", marginBottom: "0.75rem" }}>Nœud sélectionné</h2>
@@ -760,20 +994,6 @@ const NodeInspector = ({
       {kind === "agent" && (
         <>
           <label style={fieldStyle}>
-            <span>Agent associé</span>
-            <select
-              value={agentKey ?? ""}
-              onChange={(event) => onAgentKeyChange(node.id, event.target.value)}
-            >
-              {AGENT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label style={fieldStyle}>
             <span>Message système</span>
             <textarea
               value={agentMessage}
@@ -793,23 +1013,233 @@ const NodeInspector = ({
             />
           </label>
 
+          {supportsReasoning ? (
+            <label style={fieldStyle}>
+              <span>Niveau de raisonnement</span>
+              <select
+                value={reasoningEffort}
+                onChange={(event) => onAgentReasoningChange(node.id, event.target.value)}
+              >
+                {reasoningEffortOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <small style={{ color: "#475569" }}>
+                Ajuste la profondeur d'analyse du modèle (laisser vide pour utiliser la valeur par
+                défaut).
+              </small>
+            </label>
+          ) : (
+            <>
+              <label style={fieldStyle}>
+                <span>Température</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="2"
+                  step="0.01"
+                  value={temperatureValue}
+                  placeholder="Ex. 0.7"
+                  onChange={(event) => onAgentTemperatureChange(node.id, event.target.value)}
+                />
+                <small style={{ color: "#475569" }}>
+                  Ajuste la créativité des réponses pour les modèles sans raisonnement.
+                </small>
+              </label>
+              <label style={fieldStyle}>
+                <span>Top-p</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={topPValue}
+                  placeholder="Ex. 0.9"
+                  onChange={(event) => onAgentTopPChange(node.id, event.target.value)}
+                />
+                <small style={{ color: "#475569" }}>
+                  Détermine la diversité lexicale en limitant la probabilité cumulée.
+                </small>
+              </label>
+            </>
+          )}
+
           <label style={fieldStyle}>
-            <span>Niveau de raisonnement</span>
+            <span>Type de sortie</span>
             <select
-              value={reasoningEffort}
-              onChange={(event) => onAgentReasoningChange(node.id, event.target.value)}
+              value={responseFormat.kind}
+              onChange={(event) =>
+                onAgentResponseFormatKindChange(
+                  node.id,
+                  event.target.value as "text" | "json_schema",
+                )
+              }
             >
-              {reasoningEffortOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
+              <option value="text">Texte libre</option>
+              <option value="json_schema">Schéma JSON</option>
             </select>
             <small style={{ color: "#475569" }}>
-              Ajuste la profondeur d'analyse du modèle (laisser vide pour utiliser la valeur par
-              défaut).
+              Choisissez le format attendu pour la réponse de l'agent.
             </small>
           </label>
+
+          {responseFormat.kind === "json_schema" && (
+            <>
+              <label style={fieldStyle}>
+                <span>Nom du schéma JSON</span>
+                <input
+                  type="text"
+                  value={responseFormat.name}
+                  onChange={(event) => onAgentResponseFormatNameChange(node.id, event.target.value)}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span>Définition du schéma JSON</span>
+                <textarea
+                  value={schemaText}
+                  rows={8}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSchemaText(value);
+                    try {
+                      const parsed = JSON.parse(value);
+                      setSchemaError(null);
+                      onAgentResponseFormatSchemaChange(node.id, parsed);
+                    } catch (error) {
+                      setSchemaError(
+                        error instanceof Error ? error.message : "Schéma JSON invalide",
+                      );
+                    }
+                  }}
+                  style={schemaError ? { borderColor: "#b91c1c" } : undefined}
+                />
+                {schemaError ? (
+                  <span style={{ color: "#b91c1c", fontSize: "0.85rem" }}>{schemaError}</span>
+                ) : (
+                  <small style={{ color: "#475569" }}>
+                    Fournissez un schéma JSON valide (Draft 2020-12) pour contraindre la sortie.
+                  </small>
+                )}
+              </label>
+            </>
+          )}
+
+          <div
+            style={{
+              border: "1px solid rgba(15, 23, 42, 0.12)",
+              borderRadius: "0.75rem",
+              padding: "0.75rem",
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.5rem",
+            }}
+          >
+            <strong style={{ fontSize: "0.95rem" }}>Outils</strong>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={webSearchEnabled}
+                onChange={(event) =>
+                  onAgentWebSearchChange(
+                    node.id,
+                    event.target.checked
+                      ? webSearchConfig ?? { ...DEFAULT_WEB_SEARCH_CONFIG }
+                      : null,
+                  )
+                }
+              />
+              Activer la recherche web
+            </label>
+            {webSearchEnabled && (
+              <>
+                <label style={fieldStyle}>
+                  <span>Portée de la recherche</span>
+                  <select
+                    value={webSearchConfig?.search_context_size ?? ""}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      const nextConfig: WebSearchConfig = { ...(webSearchConfig ?? {}) };
+                      if (value) {
+                        nextConfig.search_context_size = value;
+                      } else {
+                        delete nextConfig.search_context_size;
+                      }
+                      onAgentWebSearchChange(node.id, nextConfig);
+                    }}
+                  >
+                    <option value="">(par défaut)</option>
+                    <option value="small">Petit contexte</option>
+                    <option value="medium">Contexte moyen</option>
+                    <option value="large">Grand contexte</option>
+                  </select>
+                </label>
+
+                <div style={{ display: "grid", gap: "0.5rem" }}>
+                  <span style={{ fontWeight: 600 }}>Localisation utilisateur</span>
+                  {Object.entries(WEB_SEARCH_LOCATION_LABELS).map(([key, label]) => {
+                    const typedKey = key as keyof typeof WEB_SEARCH_LOCATION_LABELS;
+                    const currentValue =
+                      (webSearchConfig?.user_location?.[typedKey] as string | undefined) ?? "";
+                    return (
+                      <label key={key} style={fieldStyle}>
+                        <span>{label}</span>
+                        <input
+                          type="text"
+                          value={currentValue}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            const nextLocation = {
+                              ...(webSearchConfig?.user_location ?? {}),
+                            } as Record<string, string>;
+                            if (value.trim()) {
+                              nextLocation[typedKey] = value;
+                            } else {
+                              delete nextLocation[typedKey];
+                            }
+                            const nextConfig: WebSearchConfig = { ...(webSearchConfig ?? {}) };
+                            if (Object.keys(nextLocation).length > 0) {
+                              nextConfig.user_location = nextLocation;
+                            } else {
+                              delete nextConfig.user_location;
+                            }
+                            onAgentWebSearchChange(node.id, nextConfig);
+                          }}
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        </>
+      )}
+
+      {kind === "state" && (
+        <>
+          <StateAssignmentsPanel
+            title="Variables globales"
+            description="Définissez des variables disponibles pour l'ensemble du workflow."
+            assignments={globalAssignments}
+            onChange={(next) => onStateAssignmentsChange(node.id, "globals", next)}
+            expressionPlaceholder="Ex. input.output_parsed"
+            targetPlaceholder="global.nom_variable"
+            addLabel="Ajouter une variable globale"
+            emptyLabel="Aucune variable globale n'est définie pour ce nœud."
+          />
+          <StateAssignmentsPanel
+            title="Variables d'état"
+            description="Affectez des valeurs aux variables d'état du workflow."
+            assignments={stateAssignments}
+            onChange={(next) => onStateAssignmentsChange(node.id, "state", next)}
+            expressionPlaceholder="Ex. input.output_text"
+            targetPlaceholder="state.nom_variable"
+            addLabel="Ajouter une variable d'état"
+            emptyLabel="Aucune variable d'état n'est configurée pour ce nœud."
+          />
         </>
       )}
 
@@ -847,6 +1277,130 @@ const NodeInspector = ({
             Supprimer
           </button>
         )}
+      </div>
+    </section>
+  );
+};
+
+
+type StateAssignmentsPanelProps = {
+  title: string;
+  description: string;
+  assignments: StateAssignment[];
+  onChange: (assignments: StateAssignment[]) => void;
+  expressionPlaceholder?: string;
+  targetPlaceholder?: string;
+  addLabel: string;
+  emptyLabel: string;
+};
+
+const StateAssignmentsPanel = ({
+  title,
+  description,
+  assignments,
+  onChange,
+  expressionPlaceholder,
+  targetPlaceholder,
+  addLabel,
+  emptyLabel,
+}: StateAssignmentsPanelProps) => {
+  const handleAssignmentChange = (
+    index: number,
+    field: keyof StateAssignment,
+    value: string,
+  ) => {
+    const next = assignments.map((assignment, currentIndex) =>
+      currentIndex === index ? { ...assignment, [field]: value } : assignment,
+    );
+    onChange(next);
+  };
+
+  const handleRemoveAssignment = (index: number) => {
+    onChange(assignments.filter((_, currentIndex) => currentIndex !== index));
+  };
+
+  const handleAddAssignment = () => {
+    onChange([...assignments, { expression: "", target: "" }]);
+  };
+
+  return (
+    <section
+      aria-label={title}
+      style={{
+        marginTop: "1rem",
+        border: "1px solid rgba(15, 23, 42, 0.12)",
+        borderRadius: "0.75rem",
+        padding: "0.75rem",
+        display: "grid",
+        gap: "0.75rem",
+      }}
+    >
+      <header>
+        <h3 style={{ margin: 0, fontSize: "1rem" }}>{title}</h3>
+        <p style={{ margin: "0.25rem 0 0", color: "#475569", fontSize: "0.95rem" }}>{description}</p>
+      </header>
+
+      {assignments.length === 0 ? (
+        <p style={{ margin: 0, color: "#64748b", fontSize: "0.9rem" }}>{emptyLabel}</p>
+      ) : (
+        assignments.map((assignment, index) => (
+          <div
+            key={`${title}-${index}`}
+            style={{
+              border: "1px solid rgba(148, 163, 184, 0.35)",
+              borderRadius: "0.65rem",
+              padding: "0.75rem",
+              display: "grid",
+              gap: "0.75rem",
+            }}
+          >
+            <label style={fieldStyle}>
+              <span>Affecter la valeur</span>
+              <input
+                type="text"
+                value={assignment.expression}
+                placeholder={expressionPlaceholder}
+                onChange={(event) =>
+                  handleAssignmentChange(index, "expression", event.target.value)
+                }
+              />
+              <small style={{ color: "#64748b" }}>
+                Utilisez le langage Common Expression Language pour créer une expression
+                personnalisée.{" "}
+                <a href="https://opensource.google/projects/cel" target="_blank" rel="noreferrer">
+                  En savoir plus
+                </a>
+                .
+              </small>
+            </label>
+
+            <label style={fieldStyle}>
+              <span>Vers la variable</span>
+              <input
+                type="text"
+                value={assignment.target}
+                placeholder={targetPlaceholder}
+                onChange={(event) => handleAssignmentChange(index, "target", event.target.value)}
+              />
+            </label>
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="btn danger"
+                onClick={() => handleRemoveAssignment(index)}
+              >
+                Supprimer cette affectation
+              </button>
+            </div>
+          </div>
+        ))
+      )}
+
+      <div>
+        <button type="button" className="btn" onClick={handleAddAssignment}>
+          {addLabel}
+        </button>
       </div>
     </section>
   );
@@ -904,6 +1458,34 @@ const EmptyInspector = () => (
   </section>
 );
 
+const STATE_ASSIGNMENT_SCOPES: StateAssignmentScope[] = ["globals", "state"];
+
+const prepareNodeParametersForSave = (kind: NodeKind, parameters: AgentParameters): AgentParameters => {
+  if (kind !== "state") {
+    return parameters;
+  }
+
+  const preservedEntries = Object.entries(parameters ?? {}).filter(
+    ([key]) => key !== "state" && key !== "globals",
+  );
+
+  const sanitized: Record<string, unknown> = Object.fromEntries(preservedEntries);
+
+  for (const scope of STATE_ASSIGNMENT_SCOPES) {
+    const assignments = getStateAssignments(parameters, scope)
+      .map((assignment) => ({
+        target: assignment.target.trim(),
+        expression: assignment.expression.trim(),
+      }))
+      .filter((assignment) => assignment.target || assignment.expression);
+    if (assignments.length > 0) {
+      sanitized[scope] = assignments;
+    }
+  }
+
+  return Object.keys(sanitized).length === 0 ? {} : (sanitized as AgentParameters);
+};
+
 const loadingStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -927,6 +1509,8 @@ const labelForKind = (kind: NodeKind) => {
       return "Agent";
     case "condition":
       return "Condition";
+    case "state":
+      return "État";
     case "end":
       return "Fin";
     default:
