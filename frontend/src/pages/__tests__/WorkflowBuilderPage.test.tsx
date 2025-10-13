@@ -45,14 +45,7 @@ describe("WorkflowBuilderPage", () => {
           display_name: "Analyse",
           agent_key: "triage",
           is_enabled: true,
-          parameters: {
-            instructions: "Analyse les données fournies et signale les manques.",
-            model: "gpt-4o",
-            model_settings: {
-              store: true,
-              reasoning: { effort: "minimal", summary: "auto" },
-            },
-          },
+          parameters: {},
           metadata: { position: { x: 240, y: 0 } },
         },
         {
@@ -163,5 +156,36 @@ describe("WorkflowBuilderPage", () => {
     });
 
     await screen.findByText(/workflow enregistré avec succès/i);
+  });
+
+  test("pré-remplit un agent hérité avec les valeurs par défaut", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => JSON.parse(JSON.stringify(defaultResponse)),
+    } as Response);
+
+    const { container } = render(<WorkflowBuilderPage />);
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const triageNode = container.querySelector('[data-id="agent-triage"]');
+    expect(triageNode).not.toBeNull();
+    fireEvent.click(triageNode!);
+
+    const messageTextarea = await screen.findByLabelText(/message système/i);
+    expect(messageTextarea).toHaveValue(
+      expect.stringContaining(
+        "Ton rôle : Vérifier si toutes les informations nécessaires sont présentes pour générer un plan-cadre.",
+      ),
+    );
+
+    const modelInput = await screen.findByLabelText(/modèle openai/i);
+    expect(modelInput).toHaveValue("gpt-5");
+
+    const reasoningSelect = await screen.findByLabelText(/niveau de raisonnement/i);
+    expect(reasoningSelect).toHaveValue("minimal");
   });
 });

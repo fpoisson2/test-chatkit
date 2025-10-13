@@ -1,6 +1,6 @@
 export type AgentParameters = Record<string, unknown>;
 
-const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+export const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 export const stringifyAgentParameters = (

@@ -18,6 +18,7 @@ import "reactflow/dist/style.css";
 
 import { useAuth } from "../auth";
 import { makeApiEndpointCandidates } from "../utils/backend";
+import { resolveAgentParameters } from "../utils/agentPresets";
 import {
   getAgentMessage,
   getAgentModel,
@@ -41,7 +42,7 @@ type ApiWorkflowNode = {
   display_name: string | null;
   agent_key: string | null;
   is_enabled: boolean;
-  parameters: AgentParameters;
+  parameters: AgentParameters | null;
   metadata: Record<string, unknown> | null;
 };
 
@@ -161,7 +162,10 @@ const WorkflowBuilderPage = () => {
           const flowNodes = data.graph.nodes.map<FlowNode>((node, index) => {
             const positionFromMetadata = extractPosition(node.metadata);
             const displayName = node.display_name ?? humanizeSlug(node.slug);
-            const parameters = { ...(node.parameters ?? {}) } as AgentParameters;
+            const parameters =
+              node.kind === "agent"
+                ? resolveAgentParameters(node.agent_key, node.parameters)
+                : resolveAgentParameters(null, node.parameters);
             return {
               id: node.slug,
               position: positionFromMetadata ?? { x: 150 * index, y: 120 * index },
