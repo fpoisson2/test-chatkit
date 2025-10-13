@@ -23,9 +23,7 @@ SUPPORTED_AGENT_KEYS: set[str] = {
 
 EXPECTED_STATE_SLUGS: set[str] = {
     "maj-etat-triage",
-    "maj-etat-collecte-web",
     "maj-etat-validation",
-    "maj-etat-collecte-utilisateur",
 }
 
 DEFAULT_AGENT_SLUGS: set[str] = {
@@ -99,21 +97,6 @@ DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
             "metadata": {"position": {"x": 500, "y": 180}},
         },
         {
-            "slug": "maj-etat-collecte-web",
-            "kind": "state",
-            "display_name": "Mise à jour de l'état (collecte web)",
-            "is_enabled": True,
-            "parameters": {
-                "state": [
-                    {
-                        "target": "state.infos_manquantes",
-                        "expression": "input.output_text",
-                    }
-                ]
-            },
-            "metadata": {"position": {"x": 630, "y": 120}},
-        },
-        {
             "slug": "validation",
             "kind": "agent",
             "agent_key": "triage_2",
@@ -166,25 +149,6 @@ DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
             "metadata": {"position": {"x": 1020, "y": 340}},
         },
         {
-            "slug": "maj-etat-collecte-utilisateur",
-            "kind": "state",
-            "display_name": "Mise à jour de l'état (collecte utilisateur)",
-            "is_enabled": True,
-            "parameters": {
-                "state": [
-                    {
-                        "target": "state.infos_manquantes",
-                        "expression": "input.output_text",
-                    },
-                    {
-                        "target": "state.should_finalize",
-                        "expression": "true",
-                    },
-                ]
-            },
-            "metadata": {"position": {"x": 1180, "y": 220}},
-        },
-        {
             "slug": "finalisation",
             "kind": "agent",
             "agent_key": "r_dacteur",
@@ -224,11 +188,6 @@ DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
         },
         {
             "source": "collecte-web",
-            "target": "maj-etat-collecte-web",
-            "metadata": {"label": ""},
-        },
-        {
-            "source": "maj-etat-collecte-web",
             "target": "validation",
             "metadata": {"label": ""},
         },
@@ -256,11 +215,6 @@ DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
         },
         {
             "source": "collecte-utilisateur",
-            "target": "maj-etat-collecte-utilisateur",
-            "metadata": {"label": ""},
-        },
-        {
-            "source": "maj-etat-collecte-utilisateur",
             "target": "finalisation",
             "metadata": {"label": ""},
         },
