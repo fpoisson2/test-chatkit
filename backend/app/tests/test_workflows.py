@@ -11,7 +11,13 @@ from fastapi.testclient import TestClient
 
 from backend.app import app
 from backend.app.database import SessionLocal, engine
-from backend.app.models import Base, User
+from backend.app.models import (
+    Base,
+    User,
+    WorkflowDefinition,
+    WorkflowStep,
+    WorkflowTransition,
+)
 from backend.app.security import create_access_token, hash_password
 
 _db_path = engine.url.database or ""
@@ -127,6 +133,62 @@ def test_admin_can_update_workflow_graph_with_parameters() -> None:
     assert nodes["analyse"]["parameters"]["temperature"] == 0.2
     redacteur = next(step for step in data["steps"] if step["agent_key"] == "r_dacteur")
     assert redacteur["parameters"]["model"] == "gpt-4.1"
+
+
+def test_legacy_workflow_is_backfilled_with_default_graph() -> None:
+    admin = _make_user(email="legacy@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    with SessionLocal() as session:
+        session.query(WorkflowTransition).delete()
+        session.query(WorkflowStep).delete()
+        session.query(WorkflowDefinition).delete()
+        session.commit()
+
+        definition = WorkflowDefinition(name="ancien-workflow", is_active=True)
+        session.add(definition)
+        session.flush()
+
+        legacy_agents = [
+            ("triage", {"instructions": "Analyse initiale", "model": "gpt-4.1-mini"}),
+            ("get_data_from_web", {"instructions": "Cherche les infos"}),
+            ("triage_2", {"instructions": "Valide les données", "model": "gpt-4.1-mini"}),
+            ("get_data_from_user", {"instructions": "Demande des précisions"}),
+            ("r_dacteur", {"instructions": "Rédige la synthèse", "model": "o4-mini"}),
+        ]
+
+        for index, (agent_key, parameters) in enumerate(legacy_agents, start=1):
+            session.add(
+                WorkflowStep(
+                    definition_id=definition.id,
+                    slug=f"step_{index}",
+                    kind="agent",
+                    display_name=f"Étape {index}",
+                    agent_key=agent_key,
+                    position=index,
+                    is_enabled=True,
+                    parameters=parameters,
+                )
+            )
+
+        session.commit()
+
+    response = client.get("/api/workflows/current", headers=_auth_headers(token))
+    assert response.status_code == 200
+    payload = response.json()
+
+    slugs = {node["slug"] for node in payload["graph"]["nodes"]}
+    assert {"start", "end", "infos-completes", "pret-final"}.issubset(slugs)
+
+    edges = {(edge["source"], edge["target"], edge.get("condition")) for edge in payload["graph"]["edges"]}
+    assert ("infos-completes", "finalisation", "true") in edges
+    assert ("pret-final", "collecte-utilisateur", "false") in edges
+
+    redacteur_node = next(node for node in payload["graph"]["nodes"] if node["slug"] == "finalisation")
+    assert redacteur_node["parameters"]["instructions"] == "Rédige la synthèse"
+
+    redacteur_step = next(step for step in payload["steps"] if step["agent_key"] == "r_dacteur")
+    assert redacteur_step["parameters"]["model"] == "o4-mini"
 
 
 def test_update_rejects_unknown_agent() -> None:

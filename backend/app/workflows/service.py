@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
@@ -9,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from ..database import SessionLocal
 from ..models import WorkflowDefinition, WorkflowStep, WorkflowTransition
+
+logger = logging.getLogger(__name__)
 
 SUPPORTED_AGENT_KEYS: set[str] = {
     "triage",
@@ -191,6 +194,11 @@ class WorkflowService:
                 definition = self._create_default_definition(db)
             definition.steps  # noqa: B018 - charge les étapes
             definition.transitions  # noqa: B018 - charge les transitions
+            if self._needs_graph_backfill(definition):
+                logger.info(
+                    "Legacy workflow detected, backfilling default graph with existing agent configuration",
+                )
+                definition = self._backfill_legacy_definition(definition, db)
             return definition
         finally:
             if owns_session:
@@ -278,6 +286,73 @@ class WorkflowService:
                 )
             )
 
+        session.commit()
+        session.refresh(definition)
+        definition.steps  # noqa: B018
+        definition.transitions  # noqa: B018
+        return definition
+
+    def _needs_graph_backfill(self, definition: WorkflowDefinition) -> bool:
+        has_start = any(step.kind == "start" for step in definition.steps)
+        has_end = any(step.kind == "end" for step in definition.steps)
+        has_edges = bool(definition.transitions)
+        return not (has_start and has_end and has_edges)
+
+    def _backfill_legacy_definition(
+        self, definition: WorkflowDefinition, session: Session
+    ) -> WorkflowDefinition:
+        legacy_agent_steps: dict[str, WorkflowStep] = {}
+        for step in definition.steps:
+            if step.agent_key:
+                legacy_agent_steps.setdefault(step.agent_key, step)
+
+        definition.transitions.clear()
+        definition.steps.clear()
+        session.flush()
+
+        nodes, edges = self._normalize_graph(DEFAULT_WORKFLOW_GRAPH)
+        slug_to_step: dict[str, WorkflowStep] = {}
+
+        for index, node in enumerate(nodes, start=1):
+            display_name = node.display_name
+            is_enabled = node.is_enabled
+            parameters = dict(node.parameters)
+            metadata = dict(node.metadata)
+
+            if node.kind == "agent" and node.agent_key:
+                legacy_step = legacy_agent_steps.get(node.agent_key)
+                if legacy_step is not None:
+                    if legacy_step.display_name:
+                        display_name = legacy_step.display_name
+                    is_enabled = legacy_step.is_enabled
+                    parameters = dict(legacy_step.parameters or {})
+                    metadata = dict(legacy_step.ui_metadata or metadata)
+
+            step = WorkflowStep(
+                slug=node.slug,
+                kind=node.kind,
+                display_name=display_name,
+                agent_key=node.agent_key,
+                position=index,
+                is_enabled=is_enabled,
+                parameters=parameters,
+                ui_metadata=metadata,
+            )
+            definition.steps.append(step)
+            slug_to_step[node.slug] = step
+
+        for edge in edges:
+            definition.transitions.append(
+                WorkflowTransition(
+                    source_step=slug_to_step[edge.source_slug],
+                    target_step=slug_to_step[edge.target_slug],
+                    condition=edge.condition,
+                    ui_metadata=dict(edge.metadata),
+                )
+            )
+
+        definition.updated_at = datetime.datetime.now(datetime.UTC)
+        session.add(definition)
         session.commit()
         session.refresh(definition)
         definition.steps  # noqa: B018
