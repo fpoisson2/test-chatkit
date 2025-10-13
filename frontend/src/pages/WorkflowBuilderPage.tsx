@@ -28,6 +28,7 @@ import {
   getAgentTopP,
   getAgentWebSearchConfig,
   parseAgentParameters,
+  setStateAssignments,
   setAgentMessage,
   setAgentModel,
   setAgentReasoningEffort,
@@ -37,14 +38,17 @@ import {
   setAgentTemperature,
   setAgentTopP,
   setAgentWebSearchConfig,
+  getStateAssignments,
   stringifyAgentParameters,
   type AgentParameters,
   type WebSearchConfig,
+  type StateAssignment,
+  type StateAssignmentScope,
 } from "../utils/workflows";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 
-type NodeKind = "start" | "agent" | "condition" | "end";
+type NodeKind = "start" | "agent" | "condition" | "state" | "end";
 
 type ApiWorkflowNode = {
   id: number;
@@ -101,6 +105,7 @@ const NODE_COLORS: Record<NodeKind, string> = {
   start: "#2563eb",
   agent: "#16a34a",
   condition: "#f97316",
+  state: "#0ea5e9",
   end: "#7c3aed",
 };
 
@@ -108,6 +113,7 @@ const NODE_BACKGROUNDS: Record<NodeKind, string> = {
   start: "rgba(37, 99, 235, 0.12)",
   agent: "rgba(22, 163, 74, 0.12)",
   condition: "rgba(249, 115, 22, 0.14)",
+  state: "rgba(14, 165, 233, 0.14)",
   end: "rgba(124, 58, 237, 0.12)",
 };
 
@@ -518,6 +524,24 @@ const WorkflowBuilderPage = () => {
     [updateNodeData]
   );
 
+  const handleStateAssignmentsChange = useCallback(
+    (nodeId: string, scope: StateAssignmentScope, assignments: StateAssignment[]) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "state") {
+          return data;
+        }
+        const nextParameters = setStateAssignments(data.parameters, scope, assignments);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleConditionChange = useCallback(
     (edgeId: string, value: string) => {
       setEdges((current) =>
@@ -632,6 +656,36 @@ const WorkflowBuilderPage = () => {
     setSelectedEdgeId(null);
   }, [setNodes]);
 
+  const handleAddStateNode = useCallback(() => {
+    const slug = `state-${Date.now()}`;
+    const parameters: AgentParameters = {
+      state: [
+        { target: "state.has_all_details", expression: "input.output_parsed.has_all_details" },
+        { target: "state.infos_manquantes", expression: "input.output_text" },
+      ],
+    };
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 360, y: 220 },
+      data: {
+        slug,
+        kind: "state",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        isEnabled: true,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("state"),
+    };
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes]);
+
   const handleSave = useCallback(async () => {
     setSaveMessage(null);
     const nodesWithErrors = nodes.filter((node) => node.data.parametersError);
@@ -649,7 +703,7 @@ const WorkflowBuilderPage = () => {
           display_name: node.data.displayName.trim() || null,
           agent_key: null,
           is_enabled: node.data.isEnabled,
-          parameters: node.data.parameters,
+          parameters: prepareNodeParametersForSave(node.data.kind, node.data.parameters),
           metadata: {
             ...node.data.metadata,
             position: { x: node.position.x, y: node.position.y },
@@ -772,12 +826,15 @@ const WorkflowBuilderPage = () => {
             </p>
           </header>
 
-          <div style={{ display: "flex", gap: "0.5rem" }}>
+          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <button type="button" className="btn" onClick={handleAddAgentNode}>
               Ajouter un agent
             </button>
             <button type="button" className="btn" onClick={handleAddConditionNode}>
               Ajouter un bloc conditionnel
+            </button>
+            <button type="button" className="btn" onClick={handleAddStateNode}>
+              Ajouter un bloc état
             </button>
           </div>
 
@@ -795,6 +852,7 @@ const WorkflowBuilderPage = () => {
               onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
               onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
               onAgentWebSearchChange={handleAgentWebSearchChange}
+              onStateAssignmentsChange={handleStateAssignmentsChange}
               onParametersChange={handleParametersChange}
               onRemove={handleRemoveNode}
             />
@@ -849,6 +907,11 @@ type NodeInspectorProps = {
   onAgentResponseFormatNameChange: (nodeId: string, value: string) => void;
   onAgentResponseFormatSchemaChange: (nodeId: string, schema: unknown) => void;
   onAgentWebSearchChange: (nodeId: string, config: WebSearchConfig | null) => void;
+  onStateAssignmentsChange: (
+    nodeId: string,
+    scope: StateAssignmentScope,
+    assignments: StateAssignment[],
+  ) => void;
   onParametersChange: (nodeId: string, value: string) => void;
   onRemove: (nodeId: string) => void;
 };
@@ -866,6 +929,7 @@ const NodeInspector = ({
   onAgentResponseFormatNameChange,
   onAgentResponseFormatSchemaChange,
   onAgentWebSearchChange,
+  onStateAssignmentsChange,
   onParametersChange,
   onRemove,
 }: NodeInspectorProps) => {
@@ -879,6 +943,14 @@ const NodeInspector = ({
   const topP = getAgentTopP(parameters);
   const webSearchConfig = getAgentWebSearchConfig(parameters);
   const webSearchEnabled = Boolean(webSearchConfig);
+  const globalAssignments = useMemo(
+    () => getStateAssignments(parameters, "globals"),
+    [parameters],
+  );
+  const stateAssignments = useMemo(
+    () => getStateAssignments(parameters, "state"),
+    [parameters],
+  );
   const [schemaText, setSchemaText] = useState(() =>
     responseFormat.kind === "json_schema"
       ? JSON.stringify(responseFormat.schema ?? {}, null, 2)
@@ -1146,6 +1218,31 @@ const NodeInspector = ({
         </>
       )}
 
+      {kind === "state" && (
+        <>
+          <StateAssignmentsPanel
+            title="Variables globales"
+            description="Définissez des variables disponibles pour l'ensemble du workflow."
+            assignments={globalAssignments}
+            onChange={(next) => onStateAssignmentsChange(node.id, "globals", next)}
+            expressionPlaceholder="Ex. input.output_parsed"
+            targetPlaceholder="global.nom_variable"
+            addLabel="Ajouter une variable globale"
+            emptyLabel="Aucune variable globale n'est définie pour ce nœud."
+          />
+          <StateAssignmentsPanel
+            title="Variables d'état"
+            description="Affectez des valeurs aux variables d'état du workflow."
+            assignments={stateAssignments}
+            onChange={(next) => onStateAssignmentsChange(node.id, "state", next)}
+            expressionPlaceholder="Ex. input.output_text"
+            targetPlaceholder="state.nom_variable"
+            addLabel="Ajouter une variable d'état"
+            emptyLabel="Aucune variable d'état n'est configurée pour ce nœud."
+          />
+        </>
+      )}
+
       <label style={fieldStyle}>
         <span>Paramètres JSON avancés</span>
         <textarea
@@ -1180,6 +1277,130 @@ const NodeInspector = ({
             Supprimer
           </button>
         )}
+      </div>
+    </section>
+  );
+};
+
+
+type StateAssignmentsPanelProps = {
+  title: string;
+  description: string;
+  assignments: StateAssignment[];
+  onChange: (assignments: StateAssignment[]) => void;
+  expressionPlaceholder?: string;
+  targetPlaceholder?: string;
+  addLabel: string;
+  emptyLabel: string;
+};
+
+const StateAssignmentsPanel = ({
+  title,
+  description,
+  assignments,
+  onChange,
+  expressionPlaceholder,
+  targetPlaceholder,
+  addLabel,
+  emptyLabel,
+}: StateAssignmentsPanelProps) => {
+  const handleAssignmentChange = (
+    index: number,
+    field: keyof StateAssignment,
+    value: string,
+  ) => {
+    const next = assignments.map((assignment, currentIndex) =>
+      currentIndex === index ? { ...assignment, [field]: value } : assignment,
+    );
+    onChange(next);
+  };
+
+  const handleRemoveAssignment = (index: number) => {
+    onChange(assignments.filter((_, currentIndex) => currentIndex !== index));
+  };
+
+  const handleAddAssignment = () => {
+    onChange([...assignments, { expression: "", target: "" }]);
+  };
+
+  return (
+    <section
+      aria-label={title}
+      style={{
+        marginTop: "1rem",
+        border: "1px solid rgba(15, 23, 42, 0.12)",
+        borderRadius: "0.75rem",
+        padding: "0.75rem",
+        display: "grid",
+        gap: "0.75rem",
+      }}
+    >
+      <header>
+        <h3 style={{ margin: 0, fontSize: "1rem" }}>{title}</h3>
+        <p style={{ margin: "0.25rem 0 0", color: "#475569", fontSize: "0.95rem" }}>{description}</p>
+      </header>
+
+      {assignments.length === 0 ? (
+        <p style={{ margin: 0, color: "#64748b", fontSize: "0.9rem" }}>{emptyLabel}</p>
+      ) : (
+        assignments.map((assignment, index) => (
+          <div
+            key={`${title}-${index}`}
+            style={{
+              border: "1px solid rgba(148, 163, 184, 0.35)",
+              borderRadius: "0.65rem",
+              padding: "0.75rem",
+              display: "grid",
+              gap: "0.75rem",
+            }}
+          >
+            <label style={fieldStyle}>
+              <span>Affecter la valeur</span>
+              <input
+                type="text"
+                value={assignment.expression}
+                placeholder={expressionPlaceholder}
+                onChange={(event) =>
+                  handleAssignmentChange(index, "expression", event.target.value)
+                }
+              />
+              <small style={{ color: "#64748b" }}>
+                Utilisez le langage Common Expression Language pour créer une expression
+                personnalisée.{" "}
+                <a href="https://opensource.google/projects/cel" target="_blank" rel="noreferrer">
+                  En savoir plus
+                </a>
+                .
+              </small>
+            </label>
+
+            <label style={fieldStyle}>
+              <span>Vers la variable</span>
+              <input
+                type="text"
+                value={assignment.target}
+                placeholder={targetPlaceholder}
+                onChange={(event) => handleAssignmentChange(index, "target", event.target.value)}
+              />
+            </label>
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="btn danger"
+                onClick={() => handleRemoveAssignment(index)}
+              >
+                Supprimer cette affectation
+              </button>
+            </div>
+          </div>
+        ))
+      )}
+
+      <div>
+        <button type="button" className="btn" onClick={handleAddAssignment}>
+          {addLabel}
+        </button>
       </div>
     </section>
   );
@@ -1237,6 +1458,34 @@ const EmptyInspector = () => (
   </section>
 );
 
+const STATE_ASSIGNMENT_SCOPES: StateAssignmentScope[] = ["globals", "state"];
+
+const prepareNodeParametersForSave = (kind: NodeKind, parameters: AgentParameters): AgentParameters => {
+  if (kind !== "state") {
+    return parameters;
+  }
+
+  const preservedEntries = Object.entries(parameters ?? {}).filter(
+    ([key]) => key !== "state" && key !== "globals",
+  );
+
+  const sanitized: Record<string, unknown> = Object.fromEntries(preservedEntries);
+
+  for (const scope of STATE_ASSIGNMENT_SCOPES) {
+    const assignments = getStateAssignments(parameters, scope)
+      .map((assignment) => ({
+        target: assignment.target.trim(),
+        expression: assignment.expression.trim(),
+      }))
+      .filter((assignment) => assignment.target || assignment.expression);
+    if (assignments.length > 0) {
+      sanitized[scope] = assignments;
+    }
+  }
+
+  return Object.keys(sanitized).length === 0 ? {} : (sanitized as AgentParameters);
+};
+
 const loadingStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -1260,6 +1509,8 @@ const labelForKind = (kind: NodeKind) => {
       return "Agent";
     case "condition":
       return "Condition";
+    case "state":
+      return "État";
     case "end":
       return "Fin";
     default:

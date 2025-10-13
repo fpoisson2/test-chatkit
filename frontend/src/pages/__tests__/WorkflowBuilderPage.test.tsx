@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import WorkflowBuilderPage from "../WorkflowBuilderPage";
@@ -277,6 +277,104 @@ describe("WorkflowBuilderPage", () => {
     expect(await screen.findByLabelText(/pays/i)).toHaveValue("CA");
     expect(await screen.findByLabelText(/région/i)).toHaveValue("QC");
     expect(await screen.findByLabelText(/type de précision/i)).toHaveValue("approximate");
+  });
+
+  test("permet de configurer un bloc état", async () => {
+    const responseWithState = JSON.parse(JSON.stringify(defaultResponse));
+    responseWithState.graph.nodes.splice(2, 0, {
+      id: 6,
+      slug: "maj-etat",
+      kind: "state",
+      display_name: "Mettre à jour l'état",
+      agent_key: null,
+      is_enabled: true,
+      parameters: {
+        globals: [{ target: "global.workflow_name", expression: '"PlanCadre"' }],
+        state: [
+          { target: "state.has_all_details", expression: "input.output_parsed.has_all_details" },
+          { target: "state.infos_manquantes", expression: "input.output_text" },
+        ],
+      },
+      metadata: { position: { x: 360, y: 120 } },
+    });
+    responseWithState.graph.edges = [
+      { id: 1, source: "start", target: "agent-triage", condition: null, metadata: {} },
+      { id: 2, source: "agent-triage", target: "maj-etat", condition: null, metadata: {} },
+      { id: 3, source: "maj-etat", target: "writer", condition: null, metadata: {} },
+      { id: 4, source: "writer", target: "end", condition: null, metadata: {} },
+    ];
+
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => responseWithState,
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true }),
+      } as Response);
+
+    const { container } = render(<WorkflowBuilderPage />);
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="maj-etat"]')).not.toBeNull();
+    });
+
+    const stateNode = container.querySelector('[data-id="maj-etat"]');
+    expect(stateNode).not.toBeNull();
+    fireEvent.click(stateNode!);
+
+    const globalPanel = await screen.findByRole("region", { name: /variables globales/i });
+    const globalValueInputs = within(globalPanel).getAllByLabelText(/Affecter la valeur/i);
+    const globalTargetInputs = within(globalPanel).getAllByLabelText(/Vers la variable/i);
+    expect(globalValueInputs[0]).toHaveValue('"PlanCadre"');
+    expect(globalTargetInputs[0]).toHaveValue("global.workflow_name");
+
+    const statePanel = screen.getByRole("region", { name: /variables d'état/i });
+    const stateValueInputs = within(statePanel).getAllByLabelText(/Affecter la valeur/i);
+    const stateTargetInputs = within(statePanel).getAllByLabelText(/Vers la variable/i);
+    expect(stateValueInputs[0]).toHaveValue("input.output_parsed.has_all_details");
+    expect(stateTargetInputs[0]).toHaveValue("state.has_all_details");
+    expect(stateValueInputs[1]).toHaveValue("input.output_text");
+    expect(stateTargetInputs[1]).toHaveValue("state.infos_manquantes");
+
+    fireEvent.change(stateValueInputs[1], { target: { value: "input.output_structured.details" } });
+    fireEvent.change(stateTargetInputs[1], { target: { value: "state.details_a_collecter" } });
+
+    const addGlobalButton = within(globalPanel).getByRole("button", { name: /ajouter une variable globale/i });
+    fireEvent.click(addGlobalButton);
+    const updatedGlobalValues = within(globalPanel).getAllByLabelText(/Affecter la valeur/i);
+    const updatedGlobalTargets = within(globalPanel).getAllByLabelText(/Vers la variable/i);
+    fireEvent.change(updatedGlobalValues[updatedGlobalValues.length - 1], {
+      target: { value: "state.has_all_details" },
+    });
+    fireEvent.change(updatedGlobalTargets[updatedGlobalTargets.length - 1], {
+      target: { value: "global.validation" },
+    });
+
+    const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    const [, putRequest] = fetchMock.mock.calls[1];
+    const payload = JSON.parse((putRequest as RequestInit).body as string);
+    const statePayload = payload.graph.nodes.find((node: any) => node.slug === "maj-etat");
+    expect(statePayload.parameters).toEqual({
+      globals: [
+        { target: "global.workflow_name", expression: '"PlanCadre"' },
+        { target: "global.validation", expression: "state.has_all_details" },
+      ],
+      state: [
+        { target: "state.has_all_details", expression: "input.output_parsed.has_all_details" },
+        { target: "state.details_a_collecter", expression: "input.output_structured.details" },
+      ],
+    });
   });
 
   test("permet de configurer le schéma JSON et les outils", async () => {

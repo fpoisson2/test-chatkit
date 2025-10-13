@@ -328,6 +328,65 @@ export const setAgentResponseFormatSchema = (
   return setAgentResponseFormat(parameters, { kind: "json_schema", name, schema });
 };
 
+export type StateAssignment = {
+  target: string;
+  expression: string;
+};
+
+export type StateAssignmentScope = "globals" | "state";
+
+const isStateAssignment = (value: unknown): value is StateAssignment =>
+  isPlainRecord(value) && typeof value.target === "string" && typeof value.expression === "string";
+
+export const getStateAssignments = (
+  parameters: AgentParameters | null | undefined,
+  scope: StateAssignmentScope,
+): StateAssignment[] => {
+  if (!parameters) {
+    return [];
+  }
+  const raw = (parameters as Record<string, unknown>)[scope];
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const result: StateAssignment[] = [];
+  for (const entry of raw) {
+    if (!isStateAssignment(entry)) {
+      continue;
+    }
+    result.push({ target: entry.target, expression: entry.expression });
+  }
+  return result;
+};
+
+export const setStateAssignments = (
+  parameters: AgentParameters,
+  scope: StateAssignmentScope,
+  assignments: StateAssignment[],
+): AgentParameters => {
+  const sanitized = assignments
+    .map((assignment) => ({
+      target: assignment.target.trim(),
+      expression: assignment.expression.trim(),
+    }));
+
+  const next = { ...parameters } as AgentParameters;
+
+  if (sanitized.length === 0) {
+    if (scope in next) {
+      delete (next as Record<string, unknown>)[scope];
+    }
+    return stripEmpty(next as Record<string, unknown>);
+  }
+
+  (next as Record<string, unknown>)[scope] = sanitized.map((assignment) => ({
+    target: assignment.target,
+    expression: assignment.expression,
+  }));
+
+  return next;
+};
+
 export type WebSearchConfig = {
   search_context_size?: string;
   user_location?: {
