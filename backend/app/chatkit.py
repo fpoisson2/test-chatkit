@@ -511,8 +511,11 @@ thread_title_agent = Agent(
     model="gpt-5-nano",
     output_type=str,
     model_settings=_model_settings(
-        top_p=0.9,
         store=False,
+        reasoning=Reasoning(
+            effort="minimal",
+            summary="auto",
+        ),
     ),
 )
 
