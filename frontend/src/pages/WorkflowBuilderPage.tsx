@@ -1,13 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
-import { DndContext, type DragEndEvent } from "@dnd-kit/core";
-import {
-  SortableContext,
-  arrayMove,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import ReactFlow, {
+  Background,
+  Controls,
+  MarkerType,
+  MiniMap,
+  addEdge,
+  type Connection,
+  type Edge,
+  type Node,
+  ReactFlowProvider,
+  useEdgesState,
+  useNodesState,
+} from "reactflow";
+
+import "reactflow/dist/style.css";
 
 import { useAuth } from "../auth";
 import { makeApiEndpointCandidates } from "../utils/backend";
@@ -19,434 +25,784 @@ import {
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 
-type ApiWorkflowStep = {
-  id?: number;
-  agent_key: string;
-  position: number;
+type NodeKind = "start" | "agent" | "condition" | "end";
+
+type ApiWorkflowNode = {
+  id: number;
+  slug: string;
+  kind: NodeKind;
+  display_name: string | null;
+  agent_key: string | null;
   is_enabled: boolean;
   parameters: AgentParameters;
+  metadata: Record<string, unknown> | null;
+};
+
+type ApiWorkflowEdge = {
+  id: number;
+  source: string;
+  target: string;
+  condition: string | null;
+  metadata: Record<string, unknown> | null;
 };
 
 type WorkflowResponse = {
   id: number;
   name: string;
   is_active: boolean;
-  steps: ApiWorkflowStep[];
+  graph: {
+    nodes: ApiWorkflowNode[];
+    edges: ApiWorkflowEdge[];
+  };
 };
 
-type EditableWorkflowStep = {
-  key: string;
-  id?: number;
-  agent_key: string;
-  position: number;
-  is_enabled: boolean;
+type FlowNodeData = {
+  slug: string;
+  kind: NodeKind;
+  displayName: string;
+  label: string;
+  agentKey?: string | null;
+  isEnabled: boolean;
   parametersText: string;
   parametersError: string | null;
+  metadata: Record<string, unknown>;
 };
 
-type SortableStepProps = {
-  step: EditableWorkflowStep;
-  index: number;
-  isFirst: boolean;
-  isLast: boolean;
-  onToggle: (stepKey: string) => void;
-  onMove: (stepKey: string, direction: -1 | 1) => void;
-  onParametersChange: (stepKey: string, value: string) => void;
+type FlowEdgeData = {
+  condition?: string | null;
+  metadata: Record<string, unknown>;
 };
 
-const SortableStep = ({ step, index, isFirst, isLast, onToggle, onMove, onParametersChange }: SortableStepProps) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: step.key,
-  });
+type FlowNode = Node<FlowNodeData>;
+type FlowEdge = Edge<FlowEdgeData>;
 
-  const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.6 : 1,
-    background: "var(--workflow-card-bg, #fff)",
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    borderRadius: "0.75rem",
-    padding: "1rem",
-    boxShadow: "0 1px 3px rgba(15, 23, 42, 0.08)",
-  };
+type SaveState = "idle" | "saving" | "saved" | "error";
+
+const AGENT_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "triage", label: "Analyse" },
+  { value: "get_data_from_web", label: "Collecte web" },
+  { value: "triage_2", label: "Validation" },
+  { value: "get_data_from_user", label: "Collecte utilisateur" },
+  { value: "r_dacteur", label: "Rédaction" },
+];
+
+const NODE_COLORS: Record<NodeKind, string> = {
+  start: "#2563eb",
+  agent: "#16a34a",
+  condition: "#f97316",
+  end: "#7c3aed",
+};
+
+const conditionOptions = [
+  { value: "", label: "(par défaut)" },
+  { value: "true", label: "Branche true" },
+  { value: "false", label: "Branche false" },
+];
+
+const WorkflowBuilderPage = () => {
+  const { token } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdgeData>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+
+  const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchWorkflow = async () => {
+      setLoading(true);
+      setLoadError(null);
+      const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows/current");
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeader,
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`Échec du chargement (${response.status})`);
+          }
+          const data: WorkflowResponse = await response.json();
+          if (!isMounted) {
+            return;
+          }
+          const flowNodes = data.graph.nodes.map<FlowNode>((node, index) => {
+            const positionFromMetadata = extractPosition(node.metadata);
+            const displayName = node.display_name ?? humanizeSlug(node.slug);
+            return {
+              id: node.slug,
+              position: positionFromMetadata ?? { x: 150 * index, y: 120 * index },
+              data: {
+                slug: node.slug,
+                kind: node.kind,
+                displayName,
+                label: displayName,
+                agentKey: node.agent_key,
+                isEnabled: node.is_enabled,
+                parametersText: stringifyAgentParameters(node.parameters),
+                parametersError: null,
+                metadata: node.metadata ?? {},
+              },
+              draggable: node.kind !== "start" && node.kind !== "end",
+              style: buildNodeStyle(node.kind),
+            } satisfies FlowNode;
+          });
+          const flowEdges = data.graph.edges.map<FlowEdge>((edge) => ({
+            id: String(edge.id ?? `${edge.source}-${edge.target}-${Math.random()}`),
+            source: edge.source,
+            target: edge.target,
+            label: edge.metadata?.label ? String(edge.metadata.label) : edge.condition ?? "",
+            data: {
+              condition: edge.condition,
+              metadata: edge.metadata ?? {},
+            },
+            markerEnd: { type: MarkerType.ArrowClosed },
+          }));
+          setNodes(flowNodes);
+          setEdges(flowEdges);
+          setLoading(false);
+          return;
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            continue;
+          }
+          if (isMounted) {
+            setLoadError(
+              error instanceof Error ? error.message : "Impossible de charger le workflow."
+            );
+          }
+        }
+      }
+      if (isMounted) {
+        setLoading(false);
+        setLoadError((previous) => previous ?? "Impossible de charger le workflow.");
+      }
+    };
+    void fetchWorkflow();
+    return () => {
+      isMounted = false;
+    };
+  }, [authHeader]);
+
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      setEdges((current) =>
+        addEdge<FlowEdgeData>(
+          {
+            ...connection,
+            id: `edge-${Date.now()}`,
+            label: "",
+            data: { condition: "", metadata: {} },
+            markerEnd: { type: MarkerType.ArrowClosed },
+          },
+          current
+        )
+      );
+    },
+    [setEdges]
+  );
+
+  const selectedNode = useMemo(
+    () => nodes.find((node) => node.id === selectedNodeId) ?? null,
+    [nodes, selectedNodeId]
+  );
+
+  const selectedEdge = useMemo(
+    () => edges.find((edge) => edge.id === selectedEdgeId) ?? null,
+    [edges, selectedEdgeId]
+  );
+
+  const handleNodeClick = useCallback((_: unknown, node: FlowNode) => {
+    setSelectedNodeId(node.id);
+    setSelectedEdgeId(null);
+  }, []);
+
+  const handleEdgeClick = useCallback((_: unknown, edge: FlowEdge) => {
+    setSelectedEdgeId(edge.id);
+    setSelectedNodeId(null);
+  }, []);
+
+  const updateNodeData = useCallback(
+    (nodeId: string, updater: (data: FlowNodeData) => FlowNodeData) => {
+      setNodes((current) =>
+        current.map((node) => {
+          if (node.id !== nodeId) {
+            return node;
+          }
+          const nextData = updater(node.data);
+          return {
+            ...node,
+            data: nextData,
+            style: buildNodeStyle(nextData.kind),
+          } satisfies FlowNode;
+        })
+      );
+    },
+    [setNodes]
+  );
+
+  const handleDisplayNameChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        const display = value;
+        return {
+          ...data,
+          displayName: display,
+          label: display.trim() ? display : humanizeSlug(data.slug),
+        };
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentKeyChange = useCallback(
+    (nodeId: string, agentKey: string) => {
+      updateNodeData(nodeId, (data) => ({
+        ...data,
+        agentKey,
+      }));
+    },
+    [updateNodeData]
+  );
+
+  const handleToggleNode = useCallback(
+    (nodeId: string) => {
+      updateNodeData(nodeId, (data) => ({
+        ...data,
+        isEnabled: !data.isEnabled,
+      }));
+    },
+    [updateNodeData]
+  );
+
+  const handleParametersChange = useCallback(
+    (nodeId: string, rawValue: string) => {
+      updateNodeData(nodeId, (data) => {
+        let error: string | null = null;
+        try {
+          parseAgentParameters(rawValue);
+        } catch (err) {
+          error = err instanceof Error ? err.message : "Paramètres invalides";
+        }
+        return {
+          ...data,
+          parametersText: rawValue,
+          parametersError: error,
+        };
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleConditionChange = useCallback(
+    (edgeId: string, value: string) => {
+      setEdges((current) =>
+        current.map((edge) =>
+          edge.id === edgeId
+            ? {
+                ...edge,
+                label: value,
+                data: { ...edge.data, condition: value || null },
+              }
+            : edge
+        )
+      );
+    },
+    [setEdges]
+  );
+
+  const handleEdgeLabelChange = useCallback(
+    (edgeId: string, value: string) => {
+      setEdges((current) =>
+        current.map((edge) =>
+          edge.id === edgeId
+            ? {
+                ...edge,
+                label: value,
+                data: {
+                  ...edge.data,
+                  metadata: { ...edge.data?.metadata, label: value },
+                },
+              }
+            : edge
+        )
+      );
+    },
+    [setEdges]
+  );
+
+  const handleRemoveNode = useCallback(
+    (nodeId: string) => {
+      const nodeToRemove = nodes.find((node) => node.id === nodeId);
+      if (!nodeToRemove || nodeToRemove.data.kind === "start" || nodeToRemove.data.kind === "end") {
+        return;
+      }
+      setNodes((currentNodes) => currentNodes.filter((node) => node.id !== nodeId));
+      setEdges((currentEdges) =>
+        currentEdges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId)
+      );
+      if (selectedNodeId === nodeId) {
+        setSelectedNodeId(null);
+      }
+    },
+    [nodes, selectedNodeId, setEdges, setNodes]
+  );
+
+  const handleRemoveEdge = useCallback(
+    (edgeId: string) => {
+      setEdges((currentEdges) => currentEdges.filter((edge) => edge.id !== edgeId));
+      if (selectedEdgeId === edgeId) {
+        setSelectedEdgeId(null);
+      }
+    },
+    [selectedEdgeId, setEdges]
+  );
+
+  const handleAddAgentNode = useCallback(() => {
+    const slug = `agent-${Date.now()}`;
+    const defaultAgent = AGENT_OPTIONS[0]?.value ?? "triage";
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 300, y: 200 },
+      data: {
+        slug,
+        kind: "agent",
+        displayName: humanizeSlug(slug),
+        agentKey: defaultAgent,
+        isEnabled: true,
+        parametersText: "{}",
+        parametersError: null,
+        metadata: {},
+        label: humanizeSlug(slug),
+      },
+      draggable: true,
+      style: buildNodeStyle("agent"),
+    };
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes]);
+
+  const handleAddConditionNode = useCallback(() => {
+    const slug = `condition-${Date.now()}`;
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 400, y: 260 },
+      data: {
+        slug,
+        kind: "condition",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        agentKey: null,
+        isEnabled: true,
+        parametersText: JSON.stringify({ path: "has_all_details", mode: "truthy" }, null, 2),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("condition"),
+    };
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes]);
+
+  const handleSave = useCallback(async () => {
+    setSaveMessage(null);
+    const nodesWithErrors = nodes.filter((node) => node.data.parametersError);
+    if (nodesWithErrors.length > 0) {
+      setSaveState("error");
+      setSaveMessage("Corrigez les paramètres JSON invalides avant d'enregistrer.");
+      return;
+    }
+
+    try {
+      const graphPayload = {
+        nodes: nodes.map((node, index) => ({
+          slug: node.data.slug,
+          kind: node.data.kind,
+          display_name: node.data.displayName.trim() || null,
+          agent_key: node.data.kind === "agent" ? node.data.agentKey : null,
+          is_enabled: node.data.isEnabled,
+          parameters: parseAgentParameters(node.data.parametersText),
+          metadata: {
+            ...node.data.metadata,
+            position: { x: node.position.x, y: node.position.y },
+            order: index + 1,
+          },
+        })),
+        edges: edges.map((edge, index) => ({
+          source: edge.source,
+          target: edge.target,
+          condition: edge.data?.condition ? edge.data.condition : null,
+          metadata: {
+            ...edge.data?.metadata,
+            label: edge.label ?? "",
+            order: index + 1,
+          },
+        })),
+      };
+
+      const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows/current");
+      setSaveState("saving");
+      for (const url of candidates) {
+        const response = await fetch(url, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify({ graph: graphPayload }),
+        });
+        if (!response.ok) {
+          throw new Error(`Échec de l'enregistrement (${response.status})`);
+        }
+        setSaveState("saved");
+        setSaveMessage("Workflow enregistré avec succès.");
+        setTimeout(() => setSaveState("idle"), 1500);
+        return;
+      }
+    } catch (error) {
+      setSaveState("error");
+      setSaveMessage(
+        error instanceof Error ? error.message : "Impossible d'enregistrer le workflow."
+      );
+    }
+  }, [authHeader, edges, nodes]);
+
+  const disableSave = useMemo(
+    () => nodes.some((node) => node.data.parametersError),
+    [nodes]
+  );
 
   return (
-    <article ref={setNodeRef} style={style} aria-label={`Étape ${index + 1}`}> 
-      <header
+    <ReactFlowProvider>
+      <main
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.75rem",
-          marginBottom: "0.75rem",
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) 340px",
+          gap: "1.25rem",
+          height: "calc(100vh - 4rem)",
+          padding: "1.5rem",
         }}
       >
-        <button
-          type="button"
-          aria-label={`Déplacer l'étape ${step.agent_key}`}
+        <section
           style={{
-            cursor: "grab",
-            border: "none",
-            background: "transparent",
-            fontSize: "1.25rem",
-            lineHeight: 1,
+            position: "relative",
+            border: "1px solid rgba(15, 23, 42, 0.08)",
+            borderRadius: "1rem",
+            overflow: "hidden",
+            background: "#fff",
           }}
-          {...attributes}
-          {...listeners}
+          aria-label="Éditeur visuel du workflow"
         >
-          ≡
-        </button>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600 }}>{index + 1}. {step.agent_key}</div>
-        </div>
+          {loading ? (
+            <div style={loadingStyle}>Chargement du workflow…</div>
+          ) : loadError ? (
+            <div style={loadingStyle} role="alert">
+              {loadError}
+            </div>
+          ) : (
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onNodeClick={handleNodeClick}
+              onEdgeClick={handleEdgeClick}
+              onConnect={onConnect}
+              fitView
+              fitViewOptions={{ padding: 0.2 }}
+            >
+              <Background gap={18} size={1} />
+              <MiniMap
+                nodeStrokeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
+                nodeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
+              />
+              <Controls />
+            </ReactFlow>
+          )}
+        </section>
+
+        <aside
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "1rem",
+            padding: "1rem",
+            borderRadius: "1rem",
+            border: "1px solid rgba(15, 23, 42, 0.08)",
+            background: "#fff",
+            overflowY: "auto",
+          }}
+        >
+          <header>
+            <h1 style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>Workflow visuel</h1>
+            <p style={{ color: "#475569" }}>
+              Ajoutez des agents, connectez-les entre eux et ajustez leurs paramètres pour piloter le
+              workflow ChatKit.
+            </p>
+          </header>
+
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button type="button" className="btn" onClick={handleAddAgentNode}>
+              Ajouter un agent
+            </button>
+            <button type="button" className="btn" onClick={handleAddConditionNode}>
+              Ajouter un bloc conditionnel
+            </button>
+          </div>
+
+          {selectedNode ? (
+            <NodeInspector
+              node={selectedNode}
+              onToggle={handleToggleNode}
+              onDisplayNameChange={handleDisplayNameChange}
+              onAgentKeyChange={handleAgentKeyChange}
+              onParametersChange={handleParametersChange}
+              onRemove={handleRemoveNode}
+            />
+          ) : selectedEdge ? (
+            <EdgeInspector
+              edge={selectedEdge}
+              onConditionChange={handleConditionChange}
+              onLabelChange={handleEdgeLabelChange}
+              onRemove={handleRemoveEdge}
+            />
+          ) : (
+            <EmptyInspector />
+          )
+}
+
+          <footer style={{ marginTop: "auto" }}>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={handleSave}
+              disabled={disableSave || saveState === "saving" || loading}
+            >
+              {saveState === "saving" ? "Enregistrement…" : "Enregistrer les modifications"}
+            </button>
+            {saveMessage && (
+              <p
+                style={{
+                  marginTop: "0.5rem",
+                  color: saveState === "error" ? "#b91c1c" : "#047857",
+                }}
+              >
+                {saveMessage}
+              </p>
+            )}
+          </footer>
+        </aside>
+      </main>
+    </ReactFlowProvider>
+  );
+};
+
+type NodeInspectorProps = {
+  node: FlowNode;
+  onToggle: (nodeId: string) => void;
+  onDisplayNameChange: (nodeId: string, value: string) => void;
+  onAgentKeyChange: (nodeId: string, agentKey: string) => void;
+  onParametersChange: (nodeId: string, value: string) => void;
+  onRemove: (nodeId: string) => void;
+};
+
+const NodeInspector = ({
+  node,
+  onToggle,
+  onDisplayNameChange,
+  onAgentKeyChange,
+  onParametersChange,
+  onRemove,
+}: NodeInspectorProps) => {
+  const { kind, displayName, isEnabled, agentKey, parametersText, parametersError } = node.data;
+  const isFixed = kind === "start" || kind === "end";
+  return (
+    <section aria-label={`Propriétés du nœud ${node.data.slug}`}>
+      <h2 style={{ fontSize: "1.25rem", marginBottom: "0.75rem" }}>Nœud sélectionné</h2>
+      <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 0.75rem" }}>
+        <dt>Identifiant</dt>
+        <dd>{node.data.slug}</dd>
+        <dt>Type</dt>
+        <dd>{labelForKind(kind)}</dd>
+      </dl>
+
+      <label style={fieldStyle}>
+        <span>Nom affiché</span>
+        <input
+          type="text"
+          value={displayName}
+          onChange={(event) => onDisplayNameChange(node.id, event.target.value)}
+        />
+      </label>
+
+      {kind === "agent" && (
+        <label style={fieldStyle}>
+          <span>Agent associé</span>
+          <select
+            value={agentKey ?? ""}
+            onChange={(event) => onAgentKeyChange(node.id, event.target.value)}
+          >
+            {AGENT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      <label style={fieldStyle}>
+        <span>Paramètres JSON</span>
+        <textarea
+          value={parametersText}
+          rows={8}
+          onChange={(event) => onParametersChange(node.id, event.target.value)}
+          style={parametersError ? { borderColor: "#b91c1c" } : undefined}
+        />
+        {parametersError && (
+          <span style={{ color: "#b91c1c", fontSize: "0.875rem" }}>{parametersError}</span>
+        )}
+      </label>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <input
             type="checkbox"
-            checked={step.is_enabled}
-            onChange={() => onToggle(step.key)}
+            checked={isEnabled}
+            onChange={() => onToggle(node.id)}
+            disabled={isFixed}
           />
-          Activer
+          Activer ce nœud
         </label>
-      </header>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", marginBottom: "0.75rem" }}>
-        <button
-          type="button"
-          onClick={() => onMove(step.key, -1)}
-          disabled={isFirst}
-          style={{ padding: "0.4rem 0.75rem" }}
-        >
-          Monter
-        </button>
-        <button
-          type="button"
-          onClick={() => onMove(step.key, 1)}
-          disabled={isLast}
-          style={{ padding: "0.4rem 0.75rem" }}
-        >
-          Descendre
-        </button>
+        {!isFixed && (
+          <button type="button" className="btn danger" onClick={() => onRemove(node.id)}>
+            Supprimer
+          </button>
+        )}
       </div>
-      <label style={{ display: "block", fontWeight: 500, marginBottom: "0.5rem" }}>
-        Paramètres JSON
-        <textarea
-          value={step.parametersText}
-          onChange={(event) => onParametersChange(step.key, event.currentTarget.value)}
-          rows={8}
-          style={{
-            width: "100%",
-            fontFamily: "var(--font-mono, monospace)",
-            marginTop: "0.5rem",
-            borderRadius: "0.5rem",
-            border: step.parametersError ? "1px solid #dc2626" : "1px solid rgba(15,23,42,0.15)",
-            padding: "0.75rem",
-          }}
-        />
-      </label>
-      {step.parametersError ? (
-        <p style={{ color: "#dc2626", marginTop: "0.25rem" }}>{step.parametersError}</p>
-      ) : null}
-    </article>
-  );
-};
-
-export const WorkflowBuilderPage = () => {
-  const { token, logout } = useAuth();
-  const [steps, setSteps] = useState<EditableWorkflowStep[]>([]);
-  const [isLoading, setLoading] = useState(true);
-  const [isSaving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-
-  const headers = useMemo(() => {
-    const base: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (token) {
-      base.Authorization = `Bearer ${token}`;
-    }
-    return base;
-  }, [token]);
-
-  const requestWithFallback = useCallback(
-    async (path: string, init?: RequestInit) => {
-      const endpoints = makeApiEndpointCandidates(backendUrl, path);
-      let lastError: Error | null = null;
-      for (const endpoint of endpoints) {
-        try {
-          const response = await fetch(endpoint, init);
-          const sameOrigin = endpoint.startsWith("/");
-          if (!response.ok && sameOrigin && endpoints.length > 1) {
-            let detail = `${response.status} ${response.statusText}`;
-            try {
-              const body = await response.clone().json();
-              if (body?.detail) {
-                detail = String(body.detail);
-              }
-            } catch (parseError) {
-              if (parseError instanceof Error) {
-                detail = parseError.message;
-              }
-            }
-            lastError = new Error(detail);
-            continue;
-          }
-          return response;
-        } catch (networkError) {
-          if (networkError instanceof Error) {
-            lastError = networkError;
-          } else {
-            lastError = new Error("Impossible de joindre l'API workflows");
-          }
-        }
-      }
-      throw lastError ?? new Error("Impossible de joindre l'API workflows");
-    },
-    [],
-  );
-
-  const mapSteps = useCallback((apiSteps: ApiWorkflowStep[]): EditableWorkflowStep[] =>
-    apiSteps
-      .slice()
-      .sort((a, b) => a.position - b.position)
-      .map((step, index) => ({
-        key: String(step.id ?? `${step.agent_key}-${index}`),
-        id: step.id,
-        agent_key: step.agent_key,
-        position: index + 1,
-        is_enabled: step.is_enabled,
-        parametersText: stringifyAgentParameters(step.parameters),
-        parametersError: null,
-      })),
-  []);
-
-  const fetchWorkflow = useCallback(async () => {
-    if (!token) {
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await requestWithFallback("/api/workflows/current", { headers });
-      if (response.status === 401) {
-        logout();
-        throw new Error("Session expirée, veuillez vous reconnecter.");
-      }
-      if (!response.ok) {
-        const { detail } = await response.json();
-        throw new Error(detail ?? "Impossible de récupérer le workflow");
-      }
-      const data: WorkflowResponse = await response.json();
-      setSteps(mapSteps(data.steps));
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Une erreur inattendue est survenue");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [headers, logout, mapSteps, requestWithFallback, token]);
-
-  useEffect(() => {
-    void fetchWorkflow();
-  }, [fetchWorkflow]);
-
-  const handleToggle = useCallback((stepKey: string) => {
-    setSteps((prev) =>
-      prev.map((step) =>
-        step.key === stepKey
-          ? { ...step, is_enabled: !step.is_enabled }
-          : step,
-      ),
-    );
-  }, []);
-
-  const handleMove = useCallback((stepKey: string, direction: -1 | 1) => {
-    setSteps((prev) => {
-      const currentIndex = prev.findIndex((step) => step.key === stepKey);
-      if (currentIndex === -1) {
-        return prev;
-      }
-      const newIndex = currentIndex + direction;
-      if (newIndex < 0 || newIndex >= prev.length) {
-        return prev;
-      }
-      return arrayMove(prev, currentIndex, newIndex);
-    });
-  }, []);
-
-  const handleParametersChange = useCallback((stepKey: string, value: string) => {
-    setSteps((prev) =>
-      prev.map((step) => {
-        if (step.key !== stepKey) {
-          return step;
-        }
-        let error: string | null = null;
-        try {
-          parseAgentParameters(value);
-        } catch (parseError) {
-          if (parseError instanceof Error) {
-            error = parseError.message;
-          } else {
-            error = "Paramètres JSON invalides";
-          }
-        }
-        return {
-          ...step,
-          parametersText: value,
-          parametersError: error,
-        };
-      }),
-    );
-  }, []);
-
-  const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      if (!event.active.id || !event.over?.id || event.active.id === event.over.id) {
-        return;
-      }
-      setSteps((prev) => {
-        const oldIndex = prev.findIndex((step) => step.key === event.active.id);
-        const newIndex = prev.findIndex((step) => step.key === event.over?.id);
-        if (oldIndex === -1 || newIndex === -1) {
-          return prev;
-        }
-        return arrayMove(prev, oldIndex, newIndex);
-      });
-    },
-    [],
-  );
-
-  const handleSave = useCallback(async () => {
-    if (!token) {
-      return;
-    }
-    setSaving(true);
-    setError(null);
-    setSuccess(null);
-    try {
-      const serializedSteps = steps.map((step, index) => {
-        if (step.parametersError) {
-          throw new Error(
-            `Corrigez les paramètres JSON de l'étape « ${step.agent_key} » avant d'enregistrer.`,
-          );
-        }
-        return {
-          agent_key: step.agent_key,
-          position: index + 1,
-          is_enabled: step.is_enabled,
-          parameters: parseAgentParameters(step.parametersText),
-        };
-      });
-
-      const response = await requestWithFallback("/api/workflows/current", {
-        method: "PUT",
-        headers,
-        body: JSON.stringify({ steps: serializedSteps }),
-      });
-      if (response.status === 401) {
-        logout();
-        throw new Error("Session expirée, veuillez vous reconnecter.");
-      }
-      if (!response.ok) {
-        const { detail } = await response.json();
-        throw new Error(detail ?? "Impossible d'enregistrer le workflow");
-      }
-      const data: WorkflowResponse = await response.json();
-      setSteps(mapSteps(data.steps));
-      setSuccess("Configuration enregistrée avec succès");
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Une erreur inattendue est survenue");
-      }
-    } finally {
-      setSaving(false);
-    }
-  }, [headers, logout, mapSteps, requestWithFallback, steps, token]);
-
-  return (
-    <section style={{ maxWidth: "960px", margin: "0 auto", padding: "2rem 1rem" }}>
-      <header style={{ marginBottom: "1.5rem" }}>
-        <h1 style={{ fontSize: "1.875rem", fontWeight: 700, marginBottom: "0.5rem" }}>
-          Constructeur de workflow ChatKit
-        </h1>
-        <p style={{ color: "rgba(15,23,42,0.7)" }}>
-          Réordonnez les étapes, activez ou désactivez des agents et ajustez leurs paramètres JSON.
-        </p>
-      </header>
-      {error ? (
-        <div
-          role="alert"
-          style={{
-            borderRadius: "0.75rem",
-            border: "1px solid rgba(220,38,38,0.2)",
-            background: "rgba(254,226,226,0.6)",
-            color: "#991b1b",
-            padding: "1rem",
-            marginBottom: "1.5rem",
-          }}
-        >
-          {error}
-        </div>
-      ) : null}
-      {success ? (
-        <div
-          role="status"
-          style={{
-            borderRadius: "0.75rem",
-            border: "1px solid rgba(34,197,94,0.2)",
-            background: "rgba(220,252,231,0.6)",
-            color: "#047857",
-            padding: "1rem",
-            marginBottom: "1.5rem",
-          }}
-        >
-          {success}
-        </div>
-      ) : null}
-      {isLoading ? (
-        <p>Chargement du workflow…</p>
-      ) : (
-        <DndContext onDragEnd={handleDragEnd}>
-          <SortableContext items={steps.map((step) => step.key)} strategy={verticalListSortingStrategy}>
-            <div style={{ display: "grid", gap: "1rem" }}>
-              {steps.map((step, index) => (
-                <SortableStep
-                  key={step.key}
-                  step={step}
-                  index={index}
-                  isFirst={index === 0}
-                  isLast={index === steps.length - 1}
-                  onToggle={handleToggle}
-                  onMove={handleMove}
-                  onParametersChange={handleParametersChange}
-                />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-      )}
-      <footer style={{ marginTop: "2rem", display: "flex", justifyContent: "flex-end" }}>
-        <button
-          type="button"
-          onClick={() => void handleSave()}
-          disabled={isSaving || steps.length === 0}
-          style={{
-            padding: "0.75rem 1.5rem",
-            borderRadius: "9999px",
-            border: "none",
-            background: "#2563eb",
-            color: "white",
-            fontWeight: 600,
-            cursor: isSaving ? "wait" : "pointer",
-            opacity: isSaving ? 0.7 : 1,
-          }}
-        >
-          {isSaving ? "Enregistrement…" : "Enregistrer les modifications"}
-        </button>
-      </footer>
     </section>
   );
 };
+
+type EdgeInspectorProps = {
+  edge: FlowEdge;
+  onConditionChange: (edgeId: string, value: string) => void;
+  onLabelChange: (edgeId: string, value: string) => void;
+  onRemove: (edgeId: string) => void;
+};
+
+const EdgeInspector = ({ edge, onConditionChange, onLabelChange, onRemove }: EdgeInspectorProps) => (
+  <section aria-label="Propriétés de l'arête sélectionnée">
+    <h2 style={{ fontSize: "1.25rem", marginBottom: "0.75rem" }}>Connexion sélectionnée</h2>
+    <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 0.75rem" }}>
+      <dt>Depuis</dt>
+      <dd>{edge.source}</dd>
+      <dt>Vers</dt>
+      <dd>{edge.target}</dd>
+    </dl>
+    <label style={fieldStyle}>
+      <span>Branche conditionnelle</span>
+      <select
+        value={edge.data?.condition ?? ""}
+        onChange={(event) => onConditionChange(edge.id, event.target.value)}
+      >
+        {conditionOptions.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+    <label style={fieldStyle}>
+      <span>Libellé affiché</span>
+      <input
+        type="text"
+        value={edge.label ?? ""}
+        onChange={(event) => onLabelChange(edge.id, event.target.value)}
+      />
+    </label>
+    <button type="button" className="btn danger" onClick={() => onRemove(edge.id)}>
+      Supprimer cette connexion
+    </button>
+  </section>
+);
+
+const EmptyInspector = () => (
+  <section aria-label="Aucun élément sélectionné">
+    <h2 style={{ fontSize: "1.25rem", marginBottom: "0.75rem" }}>Sélectionnez un élément</h2>
+    <p style={{ color: "#475569" }}>
+      Cliquez sur un nœud ou une connexion dans le graphe pour en modifier les paramètres.
+    </p>
+  </section>
+);
+
+const loadingStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "1.1rem",
+  height: "100%",
+};
+
+const fieldStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.4rem",
+  marginTop: "0.75rem",
+};
+
+const labelForKind = (kind: NodeKind) => {
+  switch (kind) {
+    case "start":
+      return "Début";
+    case "agent":
+      return "Agent";
+    case "condition":
+      return "Condition";
+    case "end":
+      return "Fin";
+    default:
+      return kind;
+  }
+};
+
+const buildNodeStyle = (kind: NodeKind): CSSProperties => ({
+  padding: "0.75rem 1rem",
+  borderRadius: "0.75rem",
+  border: `2px solid ${NODE_COLORS[kind]}`,
+  color: "#0f172a",
+  background: "#fff",
+  fontWeight: 600,
+  minWidth: 160,
+  textAlign: "center",
+  boxShadow: "0 1px 3px rgba(15, 23, 42, 0.15)",
+});
+
+const humanizeSlug = (slug: string) => slug.replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const extractPosition = (metadata: Record<string, unknown> | null | undefined) => {
+  const position = metadata && typeof metadata === "object" ? (metadata as Record<string, unknown>).position : null;
+  if (
+    position &&
+    typeof position === "object" &&
+    "x" in position &&
+    "y" in position &&
+    typeof (position as Record<string, unknown>).x === "number" &&
+    typeof (position as Record<string, unknown>).y === "number"
+  ) {
+    return { x: (position as { x: number }).x, y: (position as { y: number }).y };
+  }
+  return null;
+};
+
+export default WorkflowBuilderPage;

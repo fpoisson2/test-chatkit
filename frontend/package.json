@@ -11,12 +11,10 @@
   },
   "dependencies": {
     "@openai/chatkit-react": "*",
-    "@dnd-kit/core": "*",
-    "@dnd-kit/sortable": "*",
-    "@dnd-kit/utilities": "*",
     "react-router-dom": "*",
     "react": "*",
-    "react-dom": "*"
+    "react-dom": "*",
+    "reactflow": "*"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "*",

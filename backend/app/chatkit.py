@@ -38,6 +38,7 @@ from chatkit.types import (
 from .config import Settings, get_settings
 from .chatkit_store import PostgresChatKitStore
 from .database import SessionLocal
+from .models import WorkflowStep, WorkflowTransition
 from .token_sanitizer import sanitize_model_like
 from .workflows import WorkflowService
 
@@ -934,29 +935,80 @@ async def run_workflow(
 
     service = workflow_service or WorkflowService()
     definition = service.get_current()
-    configured_steps = [
-        step for step in sorted(definition.steps, key=lambda s: s.position) if step.is_enabled
-    ]
 
-    runtime_steps: list[tuple[int, Any, Agent]] = []
-    for index, step in enumerate(configured_steps, start=1):
-        builder = _AGENT_BUILDERS.get(step.agent_key)
-        if builder is None:
-            logger.warning("Étape ignorée : agent inconnu %s", step.agent_key)
-            continue
-        agent = builder(step.parameters or {})
-        runtime_steps.append((index, step, agent))
-
-    if not runtime_steps:
+    nodes_by_slug: dict[str, WorkflowStep] = {
+        step.slug: step for step in definition.steps if step.is_enabled
+    }
+    if not nodes_by_slug:
         raise WorkflowExecutionError(
             "configuration",
             "Configuration du workflow invalide",
-            RuntimeError("Aucune étape active utilisable"),
+            RuntimeError("Aucun nœud actif disponible"),
             [],
         )
 
-    if all(step.agent_key == "r_dacteur" for _, step, _ in runtime_steps):
+    transitions = [
+        transition
+        for transition in definition.transitions
+        if transition.source_step.slug in nodes_by_slug
+        and transition.target_step.slug in nodes_by_slug
+    ]
+
+    start_step = next(
+        (step for step in nodes_by_slug.values() if step.kind == "start"),
+        None,
+    )
+    end_step = next(
+        (step for step in nodes_by_slug.values() if step.kind == "end"),
+        None,
+    )
+    if start_step is None or end_step is None:
+        raise WorkflowExecutionError(
+            "configuration",
+            "Configuration du workflow invalide",
+            RuntimeError("Nœuds de début/fin introuvables"),
+            [],
+        )
+
+    agent_steps_ordered = [
+        step
+        for step in sorted(definition.steps, key=lambda s: s.position)
+        if step.kind == "agent" and step.is_enabled and step.slug in nodes_by_slug
+    ]
+    if not agent_steps_ordered:
+        raise WorkflowExecutionError(
+            "configuration",
+            "Configuration du workflow invalide",
+            RuntimeError("Aucun agent actif utilisable"),
+            [],
+        )
+
+    agent_positions = {
+        step.slug: index for index, step in enumerate(agent_steps_ordered, start=1)
+    }
+    total_runtime_steps = len(agent_steps_ordered)
+
+    agent_instances: dict[str, Agent] = {}
+    for step in agent_steps_ordered:
+        agent_key = step.agent_key or ""
+        builder = _AGENT_BUILDERS.get(agent_key)
+        if builder is None:
+            raise WorkflowExecutionError(
+                "configuration",
+                "Configuration du workflow invalide",
+                RuntimeError(f"Agent inconnu : {agent_key}"),
+                [],
+            )
+        agent_instances[step.slug] = builder(step.parameters or {})
+
+    if all((step.agent_key == "r_dacteur") for step in agent_steps_ordered):
         state["should_finalize"] = True
+
+    edges_by_source: dict[str, list[WorkflowTransition]] = {}
+    for transition in transitions:
+        edges_by_source.setdefault(transition.source_step.slug, []).append(transition)
+    for edge_list in edges_by_source.values():
+        edge_list.sort(key=lambda tr: tr.id or 0)
 
     def _workflow_run_config() -> RunConfig:
         return RunConfig(
@@ -1044,18 +1096,142 @@ async def run_workflow(
         conversation_history.extend([item.to_input_item() for item in result.new_items])
         return result
 
-    total_runtime_steps = len(runtime_steps)
-    for position, step_model, agent in runtime_steps:
-        agent_key = step_model.agent_key
-        step_identifier = f"{agent_key}_{position}"
-        title = _STEP_TITLES.get(agent_key, getattr(agent, "name", agent_key))
+    def _node_title(step: WorkflowStep) -> str:
+        if getattr(step, "display_name", None):
+            return str(step.display_name)
+        agent_key = getattr(step, "agent_key", None)
+        if agent_key:
+            return _STEP_TITLES.get(agent_key, agent_key)
+        return step.slug
 
-        if agent_key in {"get_data_from_web", "triage_2", "get_data_from_user"} and state["has_all_details"]:
+    def _resolve_state_path(path: str) -> Any:
+        value: Any = state
+        for part in path.split("."):
+            if isinstance(value, dict):
+                value = value.get(part)
+            else:
+                return None
+        return value
+
+    def _evaluate_condition_node(step: WorkflowStep) -> bool:
+        params = step.parameters or {}
+        mode = str(params.get("mode", "truthy")).lower()
+        path = str(params.get("path", "")).strip()
+        value = _resolve_state_path(path) if path else None
+        if mode == "equals":
+            return value == params.get("value")
+        if mode == "not_equals":
+            return value != params.get("value")
+        if mode == "falsy":
+            return not bool(value)
+        return bool(value)
+
+    def _next_edge(source_slug: str, branch: str | None = None) -> WorkflowTransition | None:
+        candidates = edges_by_source.get(source_slug, [])
+        if not candidates:
+            return None
+        if branch is None:
+            for edge in candidates:
+                condition = (edge.condition or "default").lower()
+                if condition in {"", "default"}:
+                    return edge
+            return candidates[0]
+        branch_lower = branch.lower()
+        for edge in candidates:
+            if (edge.condition or "").lower() == branch_lower:
+                return edge
+        for edge in candidates:
+            condition = (edge.condition or "default").lower()
+            if condition in {"", "default"}:
+                return edge
+        return candidates[0]
+
+    current_slug = start_step.slug
+    guard = 0
+    while guard < 1000:
+        guard += 1
+        current_node = nodes_by_slug.get(current_slug)
+        if current_node is None:
+            raise WorkflowExecutionError(
+                "configuration",
+                "Configuration du workflow invalide",
+                RuntimeError(f"Nœud introuvable : {current_slug}"),
+                list(steps),
+            )
+
+        if current_node.kind == "end":
+            break
+
+        if current_node.kind == "start":
+            transition = _next_edge(current_slug)
+            if transition is None:
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError("Aucune transition depuis le nœud de début"),
+                    list(steps),
+                )
+            current_slug = transition.target_step.slug
+            continue
+
+        if current_node.kind == "condition":
+            branch = "true" if _evaluate_condition_node(current_node) else "false"
+            transition = _next_edge(current_slug, branch)
+            if transition is None:
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError(
+                        f"Transition manquante pour la branche {branch} du nœud {current_slug}"
+                    ),
+                    list(steps),
+                )
+            current_slug = transition.target_step.slug
+            continue
+
+        if current_node.kind != "agent":
+            raise WorkflowExecutionError(
+                "configuration",
+                "Configuration du workflow invalide",
+                RuntimeError(f"Type de nœud non géré : {current_node.kind}"),
+                list(steps),
+            )
+
+        agent_key = current_node.agent_key or current_node.slug
+        position = agent_positions.get(current_slug, total_runtime_steps)
+        step_identifier = f"{agent_key}_{position}"
+        agent = agent_instances[current_slug]
+        title = _node_title(current_node)
+
+        if (
+            agent_key in {"get_data_from_web", "triage_2", "get_data_from_user"}
+            and state["has_all_details"]
+        ):
+            transition = _next_edge(current_slug)
+            if transition is None:
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError(f"Aucune transition disponible après {current_slug}"),
+                    list(steps),
+                )
+            current_slug = transition.target_step.slug
             continue
 
         if agent_key == "r_dacteur":
             should_run = state["should_finalize"] or position == total_runtime_steps
             if not should_run:
+                transition = _next_edge(current_slug)
+                if transition is None:
+                    raise WorkflowExecutionError(
+                        "configuration",
+                        "Configuration du workflow invalide",
+                        RuntimeError(
+                            "Impossible de continuer : aucune transition depuis r_dacteur"
+                        ),
+                        list(steps),
+                    )
+                current_slug = transition.target_step.slug
                 continue
 
         run_context: Any | None = None
@@ -1080,36 +1256,52 @@ async def run_workflow(
             state["infos_manquantes"] = text
             state["should_finalize"] = state["has_all_details"]
             await record_step(step_identifier, title, parsed)
-            continue
-
-        if agent_key == "get_data_from_web":
+        elif agent_key == "get_data_from_web":
             text = result_stream.final_output_as(str)
             state["infos_manquantes"] = text
             await record_step(step_identifier, title, text)
-            continue
-
-        if agent_key == "triage_2":
+        elif agent_key == "triage_2":
             parsed, text = _structured_output_as_json(result_stream.final_output)
             state["has_all_details"] = bool(parsed.get("has_all_details")) if isinstance(parsed, dict) else False
             state["infos_manquantes"] = text
             state["should_finalize"] = state["has_all_details"]
             await record_step(step_identifier, title, parsed)
-            continue
-
-        if agent_key == "get_data_from_user":
+        elif agent_key == "get_data_from_user":
             text = result_stream.final_output_as(str)
             state["infos_manquantes"] = text
             state["should_finalize"] = True
             await record_step(step_identifier, title, text)
-            continue
-
-        if agent_key == "r_dacteur":
+        elif agent_key == "r_dacteur":
             parsed, text = _structured_output_as_json(result_stream.final_output)
             final_output = {"output_text": text, "output_parsed": parsed}
             await record_step(step_identifier, title, final_output["output_text"])
-            break
+        else:
+            await record_step(step_identifier, title, result_stream.final_output)
 
-        await record_step(step_identifier, title, result_stream.final_output)
+        transition = _next_edge(current_slug)
+        if agent_key == "r_dacteur":
+            # Après la rédaction finale, on rejoint la fin si disponible
+            transition = transition or _next_edge(current_slug, "true")
+        if transition is None:
+            current_slug = end_step.slug
+            break
+        current_slug = transition.target_step.slug
+
+    if guard >= 1000:
+        raise WorkflowExecutionError(
+            "configuration",
+            "Configuration du workflow invalide",
+            RuntimeError("Nombre maximal d'étapes dépassé"),
+            list(steps),
+        )
+
+    if current_slug != end_step.slug:
+        raise WorkflowExecutionError(
+            "configuration",
+            "Configuration du workflow invalide",
+            RuntimeError("Le workflow ne se termine pas correctement"),
+            list(steps),
+        )
 
     return WorkflowRunSummary(steps=steps, final_output=final_output)
 _server: DemoChatKitServer | None = None

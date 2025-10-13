@@ -7,7 +7,11 @@ from ..database import get_session
 from ..dependencies import get_current_user
 from ..models import User
 from ..schemas import WorkflowDefinitionResponse, WorkflowDefinitionUpdate
-from ..workflows import WorkflowService, WorkflowValidationError
+from ..workflows import (
+    WorkflowService,
+    WorkflowValidationError,
+    serialize_definition,
+)
 
 router = APIRouter()
 
@@ -25,7 +29,7 @@ async def get_current_workflow(
     _ensure_admin(current_user)
     service = WorkflowService()
     definition = service.get_current(session)
-    return WorkflowDefinitionResponse.model_validate(definition)
+    return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
 
 
 @router.put("/api/workflows/current", response_model=WorkflowDefinitionResponse)
@@ -37,7 +41,7 @@ async def update_current_workflow(
     _ensure_admin(current_user)
     service = WorkflowService()
     try:
-        definition = service.update_current([step.model_dump() for step in payload.steps], session=session)
+        definition = service.update_current(payload.graph.model_dump(), session=session)
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
-    return WorkflowDefinitionResponse.model_validate(definition)
+    return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))

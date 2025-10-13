@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, EmailStr, Field
+from typing import Any, Literal
 
 
 class SessionRequest(BaseModel):
@@ -60,15 +61,71 @@ class WeatherResponse(BaseModel):
     source: str = "open-meteo"
 
 
-class WorkflowStepInput(BaseModel):
-    agent_key: str
-    position: int
+class WorkflowNodeBase(BaseModel):
+    slug: str
+    kind: Literal["start", "agent", "condition", "end"]
+    display_name: str | None = None
+    agent_key: str | None = None
     is_enabled: bool = True
     parameters: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class WorkflowStepResponse(WorkflowStepInput):
+class WorkflowNodeInput(WorkflowNodeBase):
+    pass
+
+
+class WorkflowNodeResponse(WorkflowNodeBase):
     id: int
+    position: int
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WorkflowEdgeBase(BaseModel):
+    source: str
+    target: str
+    condition: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowEdgeInput(WorkflowEdgeBase):
+    pass
+
+
+class WorkflowEdgeResponse(WorkflowEdgeBase):
+    id: int
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WorkflowGraphInput(BaseModel):
+    nodes: list[WorkflowNodeInput]
+    edges: list[WorkflowEdgeInput]
+
+
+class WorkflowGraphResponse(BaseModel):
+    nodes: list[WorkflowNodeResponse]
+    edges: list[WorkflowEdgeResponse]
+
+    class Config:
+        from_attributes = True
+
+
+class WorkflowStepResponse(BaseModel):
+    id: int
+    agent_key: str | None
+    position: int
+    is_enabled: bool
+    parameters: dict[str, Any]
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
 
     class Config:
         from_attributes = True
@@ -81,10 +138,11 @@ class WorkflowDefinitionResponse(BaseModel):
     created_at: datetime.datetime
     updated_at: datetime.datetime
     steps: list[WorkflowStepResponse]
+    graph: WorkflowGraphResponse
 
     class Config:
         from_attributes = True
 
 
 class WorkflowDefinitionUpdate(BaseModel):
-    steps: list[WorkflowStepInput]
+    graph: WorkflowGraphInput

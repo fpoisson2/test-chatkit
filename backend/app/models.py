@@ -4,7 +4,7 @@ import datetime
 
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -94,10 +94,17 @@ class WorkflowDefinition(Base):
         cascade="all, delete-orphan",
         order_by="WorkflowStep.position",
     )
+    transitions: Mapped[list["WorkflowTransition"]] = relationship(
+        "WorkflowTransition",
+        back_populates="definition",
+        cascade="all, delete-orphan",
+        order_by="WorkflowTransition.id",
+    )
 
 
 class WorkflowStep(Base):
     __tablename__ = "workflow_steps"
+    __table_args__ = (UniqueConstraint("definition_id", "slug", name="workflow_steps_definition_slug"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     definition_id: Mapped[int] = mapped_column(
@@ -106,10 +113,16 @@ class WorkflowStep(Base):
         nullable=False,
         index=True,
     )
-    agent_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    slug: Mapped[str] = mapped_column(String(128), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, default="agent")
+    display_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    agent_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     parameters: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    ui_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False, default=dict
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -123,3 +136,65 @@ class WorkflowStep(Base):
     )
 
     definition: Mapped[WorkflowDefinition] = relationship("WorkflowDefinition", back_populates="steps")
+    outgoing_transitions: Mapped[list["WorkflowTransition"]] = relationship(
+        "WorkflowTransition",
+        foreign_keys="WorkflowTransition.source_step_id",
+        back_populates="source_step",
+        cascade="all, delete-orphan",
+    )
+    incoming_transitions: Mapped[list["WorkflowTransition"]] = relationship(
+        "WorkflowTransition",
+        foreign_keys="WorkflowTransition.target_step_id",
+        back_populates="target_step",
+    )
+
+
+class WorkflowTransition(Base):
+    __tablename__ = "workflow_transitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    definition_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("workflow_definitions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_step_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("workflow_steps.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    target_step_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("workflow_steps.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    condition: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    ui_metadata: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False, default=dict
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    definition: Mapped[WorkflowDefinition] = relationship(
+        "WorkflowDefinition", back_populates="transitions"
+    )
+    source_step: Mapped[WorkflowStep] = relationship(
+        "WorkflowStep",
+        foreign_keys=[source_step_id],
+        back_populates="outgoing_transitions",
+    )
+    target_step: Mapped[WorkflowStep] = relationship(
+        "WorkflowStep",
+        foreign_keys=[target_step_id],
+        back_populates="incoming_transitions",
+    )

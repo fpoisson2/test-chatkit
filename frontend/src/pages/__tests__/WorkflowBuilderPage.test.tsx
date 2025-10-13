@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { WorkflowBuilderPage } from "../WorkflowBuilderPage";
+import WorkflowBuilderPage from "../WorkflowBuilderPage";
 
 const logoutMock = vi.hoisted(() => vi.fn());
 
@@ -26,12 +26,56 @@ describe("WorkflowBuilderPage", () => {
     id: 1,
     name: "workflow",
     is_active: true,
-    steps: [
-      { agent_key: "triage", position: 1, is_enabled: true, parameters: {} },
-      { agent_key: "get_data_from_web", position: 2, is_enabled: true, parameters: {} },
-      { agent_key: "r_dacteur", position: 3, is_enabled: true, parameters: {} },
-    ],
-  };
+    graph: {
+      nodes: [
+        {
+          id: 1,
+          slug: "start",
+          kind: "start",
+          display_name: "Début",
+          agent_key: null,
+          is_enabled: true,
+          parameters: {},
+          metadata: { position: { x: 0, y: 0 } },
+        },
+        {
+          id: 2,
+          slug: "agent-triage",
+          kind: "agent",
+          display_name: "Analyse",
+          agent_key: "triage",
+          is_enabled: true,
+          parameters: {},
+          metadata: { position: { x: 240, y: 0 } },
+        },
+        {
+          id: 3,
+          slug: "writer",
+          kind: "agent",
+          display_name: "Rédaction",
+          agent_key: "r_dacteur",
+          is_enabled: true,
+          parameters: {},
+          metadata: { position: { x: 480, y: 0 } },
+        },
+        {
+          id: 4,
+          slug: "end",
+          kind: "end",
+          display_name: "Fin",
+          agent_key: null,
+          is_enabled: true,
+          parameters: {},
+          metadata: { position: { x: 720, y: 0 } },
+        },
+      ],
+      edges: [
+        { id: 1, source: "start", target: "agent-triage", condition: null, metadata: {} },
+        { id: 2, source: "agent-triage", target: "writer", condition: null, metadata: {} },
+        { id: 3, source: "writer", target: "end", condition: null, metadata: {} },
+      ],
+    },
+  } as const;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -41,7 +85,7 @@ describe("WorkflowBuilderPage", () => {
     vi.restoreAllMocks();
   });
 
-  test("affiche les étapes et enregistre les modifications", async () => {
+  test("permet de modifier un nœud et d'enregistrer le graphe", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce({
@@ -52,33 +96,26 @@ describe("WorkflowBuilderPage", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({
-          ...defaultResponse,
-          steps: [
-            { agent_key: "get_data_from_web", position: 1, is_enabled: true, parameters: {} },
-            { agent_key: "triage", position: 2, is_enabled: true, parameters: { model: "gpt-4" } },
-            { agent_key: "r_dacteur", position: 3, is_enabled: true, parameters: {} },
-          ],
-        }),
+        json: async () => ({ success: true }),
       } as Response);
 
-    render(<WorkflowBuilderPage />);
-
-    await screen.findByText(/triage/i);
-
-    const articles = screen.getAllByRole("article");
-    expect(articles[0].textContent).toContain("triage");
-
-    const moveUpButtons = screen.getAllByRole("button", { name: "Monter" });
-    fireEvent.click(moveUpButtons[1]);
+    const { container } = render(<WorkflowBuilderPage />);
 
     await waitFor(() => {
-      const reordered = screen.getAllByRole("article");
-      expect(reordered[0].textContent).toContain("get_data_from_web");
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
     });
 
-    const textareas = screen.getAllByRole("textbox");
-    fireEvent.change(textareas[1], { target: { value: '{"model":"gpt-4"}' } });
+    const triageNode = container.querySelector('[data-id="agent-triage"]');
+    expect(triageNode).not.toBeNull();
+    fireEvent.click(triageNode!);
+
+    const displayNameInput = await screen.findByLabelText(/nom affiché/i);
+    fireEvent.change(displayNameInput, { target: { value: "Analyse enrichie" } });
+
+    const parametersTextarea = await screen.findByLabelText(/paramètres json/i);
+    fireEvent.change(parametersTextarea, {
+      target: { value: '{"temperature":0.3}' },
+    });
 
     const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
     fireEvent.click(saveButton);
@@ -90,10 +127,13 @@ describe("WorkflowBuilderPage", () => {
     const putCall = fetchMock.mock.calls[1];
     expect(putCall?.[0]).toBe("/api/workflows/current");
     expect(putCall?.[1]).toMatchObject({ method: "PUT" });
-    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
-    expect(body.steps[0].agent_key).toBe("get_data_from_web");
-    expect(body.steps[1].parameters).toEqual({ model: "gpt-4" });
 
-    await screen.findByText(/Configuration enregistrée avec succès/i);
+    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    expect(body).toHaveProperty("graph");
+    const agentNode = body.graph.nodes.find((node: any) => node.slug === "agent-triage");
+    expect(agentNode.display_name).toBe("Analyse enrichie");
+    expect(agentNode.parameters).toEqual({ temperature: 0.3 });
+
+    await screen.findByText(/workflow enregistré avec succès/i);
   });
 });
