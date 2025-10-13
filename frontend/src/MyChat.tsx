@@ -619,10 +619,30 @@ export function MyChat() {
       }
       lastVisibilityRefreshRef.current = now;
 
-      fetchUpdates().catch((err) => {
+      const logSyncError = (err: unknown) => {
         if (import.meta.env.DEV) {
           console.warn("[ChatKit] Échec de la synchronisation après retour d'onglet", err);
         }
+      };
+
+      let result: unknown;
+      try {
+        if (typeof fetchUpdates !== "function") {
+          if (import.meta.env.DEV) {
+            console.warn(
+              "[ChatKit] Échec de la synchronisation après retour d'onglet : fetchUpdates est indisponible.",
+            );
+          }
+          return;
+        }
+        result = fetchUpdates();
+      } catch (err) {
+        logSyncError(err);
+        return;
+      }
+
+      Promise.resolve(result).catch((err) => {
+        logSyncError(err);
       });
     };
 
