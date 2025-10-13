@@ -19,7 +19,7 @@ from agents import (
 from openai.types.shared.reasoning import Reasoning
 from pydantic import BaseModel
 
-from chatkit.agents import AgentContext, stream_agent_response
+from chatkit.agents import AgentContext, simple_to_agent_input, stream_agent_response
 from chatkit.server import ChatKitServer
 from chatkit.store import NotFoundError
 from chatkit.types import (
@@ -99,6 +99,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 allow_retry=False,
             )
             return
+
+        if not thread.title and input_user_message is not None:
+            title_task = asyncio.create_task(
+                self.maybe_update_thread_title(thread, input_user_message, context)
+            )
+            title_task.add_done_callback(_log_background_exceptions)
 
         agent_context = AgentContext(
             thread=thread,
@@ -221,6 +227,68 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
         finally:
             event_queue.put_nowait(_STREAM_DONE)
+
+    async def maybe_update_thread_title(
+        self,
+        thread: ThreadMetadata,
+        input_user_message: UserMessageItem | None,
+        context: ChatKitRequestContext,
+    ) -> None:
+        if thread.title or input_user_message is None:
+            return
+
+        user_text = _collect_user_text(input_user_message)
+        if not user_text:
+            return
+
+        try:
+            agent_input = await simple_to_agent_input(input_user_message)
+        except Exception:  # pragma: no cover - conversion errors are logged
+            logger.exception(
+                "Impossible de convertir le premier message utilisateur en entrée agent pour le fil %s",
+                thread.id,
+            )
+            return
+
+        agent_context = AgentContext(
+            thread=thread,
+            store=self.store,
+            request_context=context,
+        )
+
+        try:
+            result = await Runner.run(
+                thread_title_agent,
+                agent_input,
+                context=agent_context,
+                run_config=RunConfig(
+                    trace_metadata={
+                        "__trace_source__": "agent-builder",
+                        "purpose": "thread-title",
+                        "thread_id": thread.id,
+                    }
+                ),
+            )
+        except Exception:  # pragma: no cover - titre non critique
+            logger.exception(
+                "Échec de la génération automatique du titre pour le fil %s",
+                thread.id,
+            )
+            return
+
+        title = (result.final_output_as(str) or "").strip()
+        if not title:
+            return
+
+        thread.title = title
+
+        try:
+            await self.store.save_thread(thread, context)
+        except Exception:  # pragma: no cover - persistance best effort
+            logger.exception(
+                "Impossible d'enregistrer le titre généré pour le fil %s",
+                thread.id,
+            )
 
 
 def _collect_user_text(message: UserMessageItem | None) -> str:
@@ -427,6 +495,27 @@ web_search_preview = WebSearchTool(
         "region": "QC",
         "type": "approximate",
     },
+)
+
+
+thread_title_agent = Agent(
+    name="Synthèse en titre",
+    instructions=(
+        """Tu lis le premier message d'un utilisateur et tu en extrais un titre\n"
+        "concis en français. Le titre doit être compréhensible sans contexte\n"
+        "supplémentaire, tenir en une seule phrase courte (généralement moins de 12\n"
+        "mots) et ne pas contenir de guillemets ni de ponctuation superflue.\n\n"
+        "Si le message ne contient aucune information exploitable, renvoie une chaîne\n"
+        "vide."""
+    ),
+    model="gpt-4.1-mini",
+    output_type=str,
+    model_settings=_model_settings(
+        temperature=0.3,
+        top_p=0.9,
+        store=False,
+        reasoning=Reasoning(effort="minimal"),
+    ),
 )
 
 
