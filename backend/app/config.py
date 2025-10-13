@@ -7,9 +7,6 @@ from typing import Mapping
 
 from dotenv import load_dotenv
 
-from workflows.agents import run_workflow
-
-
 @dataclass(frozen=True)
 class Settings:
     allowed_origins: list[str]

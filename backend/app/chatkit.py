@@ -1,35 +1,44 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, AsyncIterator, Coroutine, Sequence
+from typing import Any, AsyncIterator, Awaitable, Callable, Coroutine, Sequence
 
-from chatkit.agents import AgentContext, simple_to_agent_input
+from agents import (
+    Agent,
+    ModelSettings,
+    RunConfig,
+    RunContextWrapper,
+    Runner,
+    TResponseInputItem,
+    WebSearchTool,
+)
+from openai.types.shared.reasoning import Reasoning
+from pydantic import BaseModel
+
+from chatkit.agents import AgentContext, stream_agent_response
 from chatkit.server import ChatKitServer
 from chatkit.store import NotFoundError
 from chatkit.types import (
+    AssistantMessageContentPartTextDelta,
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
     ProgressUpdateEvent,
     ThreadItem,
+    ThreadItemUpdated,
     ThreadMetadata,
     ThreadStreamEvent,
     UserMessageItem,
 )
 
+from .token_sanitizer import sanitize_model_like
 from .config import Settings, get_settings
 from .chatkit_store import PostgresChatKitStore
 from .database import SessionLocal
-from workflows.agents import (
-    WorkflowExecutionError,
-    WorkflowInput,
-    WorkflowStepStreamUpdate,
-    WorkflowStepSummary,
-    run_workflow,
-)
 
 logger = logging.getLogger("chatkit.server")
 
@@ -58,7 +67,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     def __init__(self, settings: Settings) -> None:
         super().__init__(PostgresChatKitStore(SessionLocal))
         self._settings = settings
-        _apply_agent_overrides(settings)
 
     async def respond(
         self,
@@ -98,12 +106,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             request_context=context,
         )
 
-        converted_input = (
-            await simple_to_agent_input(input_user_message)
-            if input_user_message
-            else []
-        )
-
         event_queue: asyncio.Queue[Any] = asyncio.Queue()
 
         workflow_result = _WorkflowStreamResult(
@@ -113,7 +115,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 workflow_input=WorkflowInput(input_as_text=user_text),
                 event_queue=event_queue,
             ),
-            input_items=converted_input,
             event_queue=event_queue,
         )
 
@@ -171,7 +172,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 step_progress_text[update.key] = progress_text
                 await on_stream_event(ProgressUpdateEvent(text=progress_text))
 
-            workflow_run = await run_workflow(
+            await run_workflow(
                 workflow_input,
                 agent_context=agent_context,
                 on_step=on_step,
@@ -252,13 +253,6 @@ def _resolve_user_input_text(
     return ""
 
 
-def _apply_agent_overrides(settings: Settings) -> None:
-    """Applique les surcharges d'environnement sur l'agent global du workflow."""
-    # Le workflow dans agents.py gère sa propre configuration
-    # Les overrides ne sont plus nécessaires car run_workflow utilise le workflow complet
-    pass
-
-
 def _log_background_exceptions(task: asyncio.Task[None]) -> None:
     try:
         exception = task.exception()
@@ -277,36 +271,17 @@ _STREAM_DONE = object()
 
 
 class _WorkflowStreamResult:
-    """Résultat minimal compatible avec stream_agent_response."""
+    """Adaptateur minimal pour exposer les événements du workflow."""
 
     def __init__(
         self,
         *,
         runner: Coroutine[Any, Any, None],
-        input_items: Sequence[Any],
         event_queue: asyncio.Queue[Any],
     ) -> None:
-        self.input = list(input_items)
-        self.new_items: list[Any] = []
-        self.raw_responses: list[Any] = []
-        self.final_output: Any = None
-        self.input_guardrail_results: list[Any] = []
-        self.output_guardrail_results: list[Any] = []
-        self.tool_input_guardrail_results: list[Any] = []
-        self.tool_output_guardrail_results: list[Any] = []
-        self.current_agent = None
-        self.current_turn = 0
-        self.max_turn = 0
         self._event_queue = event_queue
         self._task = asyncio.create_task(runner)
         self._task.add_done_callback(_log_background_exceptions)
-
-    @property
-    def is_complete(self) -> bool:
-        return self._task.done()
-
-    def cancel(self) -> None:
-        self._task.cancel()
 
     async def stream_events(self) -> AsyncIterator[Any]:
         while True:
@@ -317,7 +292,806 @@ class _WorkflowStreamResult:
 
         await self._task
 
-    
+
+# ---------------------------------------------------------------------------
+# Définition du workflow local exécuté par DemoChatKitServer
+# ---------------------------------------------------------------------------
+
+
+class TriageSchema(BaseModel):
+    has_all_details: bool
+    details_manquants: str
+
+
+class RDacteurSchemaIntroPlaceCours(BaseModel):
+    texte: str
+
+
+class RDacteurSchemaObjectifTerminal(BaseModel):
+    texte: str
+
+
+class RDacteurSchemaStructureIntro(BaseModel):
+    texte: str
+
+
+class RDacteurSchemaActivitesTheoriques(BaseModel):
+    texte: str
+
+
+class RDacteurSchemaActivitesPratiques(BaseModel):
+    texte: str
+
+
+class RDacteurSchemaActivitesPrevuesItem(BaseModel):
+    phase: str
+    description: str
+
+
+class RDacteurSchemaEvaluationSommative(BaseModel):
+    texte: str
+
+
+class RDacteurSchemaNatureEvaluationsSommatives(BaseModel):
+    texte: str
+
+
+class RDacteurSchemaEvaluationLangue(BaseModel):
+    texte: str
+
+
+class RDacteurSchemaEvaluationFormative(BaseModel):
+    texte: str
+
+
+class RDacteurSchemaCompetencesDeveloppeesItem(BaseModel):
+    texte: str
+    description: str
+
+
+class RDacteurSchemaCompetencesCertifieesItem(BaseModel):
+    texte: str
+    description: str
+
+
+class RDacteurSchemaCoursCorequisItem(BaseModel):
+    texte: str
+    description: str
+
+
+class RDacteurSchemaObjetsCiblesItem(BaseModel):
+    texte: str
+    description: str
+
+
+class RDacteurSchemaCoursReliesItem(BaseModel):
+    texte: str
+    description: str
+
+
+class RDacteurSchemaCoursPrealablesItem(BaseModel):
+    texte: str
+    description: str
+
+
+class RDacteurSchemaSavoirsFaireCapaciteItem(BaseModel):
+    savoir_faire: str
+    cible_100: str
+    seuil_60: str
+
+
+class RDacteurSchemaCapaciteItem(BaseModel):
+    capacite: str
+    pond_min: float
+    pond_max: float
+    savoirs_necessaires_capacite: list[str]
+    savoirs_faire_capacite: list[RDacteurSchemaSavoirsFaireCapaciteItem]
+    moyens_evaluation_capacite: list[str]
+
+
+class RDacteurSchema(BaseModel):
+    intro_place_cours: RDacteurSchemaIntroPlaceCours
+    objectif_terminal: RDacteurSchemaObjectifTerminal
+    structure_intro: RDacteurSchemaStructureIntro
+    activites_theoriques: RDacteurSchemaActivitesTheoriques
+    activites_pratiques: RDacteurSchemaActivitesPratiques
+    activites_prevues: list[RDacteurSchemaActivitesPrevuesItem]
+    evaluation_sommative: RDacteurSchemaEvaluationSommative
+    nature_evaluations_sommatives: RDacteurSchemaNatureEvaluationsSommatives
+    evaluation_langue: RDacteurSchemaEvaluationLangue
+    evaluation_formative: RDacteurSchemaEvaluationFormative
+    competences_developpees: list[RDacteurSchemaCompetencesDeveloppeesItem]
+    competences_certifiees: list[RDacteurSchemaCompetencesCertifieesItem]
+    cours_corequis: list[RDacteurSchemaCoursCorequisItem]
+    objets_cibles: list[RDacteurSchemaObjetsCiblesItem]
+    cours_relies: list[RDacteurSchemaCoursReliesItem]
+    cours_prealables: list[RDacteurSchemaCoursPrealablesItem]
+    savoir_etre: list[str]
+    capacite: list[RDacteurSchemaCapaciteItem]
+
+
+class Triage2Schema(BaseModel):
+    has_all_details: bool
+    details_manquants: str
+
+
+def _model_settings(**kwargs: Any) -> ModelSettings:
+    return sanitize_model_like(ModelSettings(**kwargs))
+
+
+web_search_preview = WebSearchTool(
+    search_context_size="medium",
+    user_location={
+        "city": "Québec",
+        "country": "CA",
+        "region": "QC",
+        "type": "approximate",
+    },
+)
+
+
+triage = Agent(
+    name="Triage",
+    instructions=(
+        """Ton rôle : Vérifier si toutes les informations nécessaires sont présentes pour générer un plan-cadre.
+Si oui → has_all_details: true
+Sinon → has_all_details: false + lister uniquement les éléments manquants
+
+Ne génère pas encore le plan-cadre.
+
+Informations attendues
+Le plan-cadre pourra être généré seulement si les champs suivants sont fournis :
+code_cours:
+nom_cours:
+programme:
+fil_conducteur:
+session:
+cours_prealables: []       # Codes + titres
+cours_requis: []           # (optionnel)
+cours_reliés: []           # (optionnel)
+heures_theorie:
+heures_lab:
+heures_maison:
+competences_developpees: []   # Codes + titres
+competences_atteintes: []     # Codes + titres
+competence_nom:               # Pour la section Description des compétences développées
+cours_developpant_une_meme_competence: [] # Pour les activités pratiques
+Une idée générale de ce qui devrait se retrouver dans le cours."""
+    ),
+    model="gpt-5",
+    output_type=TriageSchema,
+    model_settings=_model_settings(
+        store=True,
+        reasoning=Reasoning(
+            effort="minimal",
+            summary="auto",
+        ),
+    ),
+)
+
+
+r_dacteur = Agent(
+    name="Rédacteur",
+    instructions=(
+        """Tu es un assistant pédagogique qui génère, en français, des contenus de plan-cadre selon le ton institutionnel : clairs, concis, rigoureux, rédigés au vouvoiement. Tu ne t’appuies que sur les informations fournies dans le prompt utilisateur, sans inventer de contenu. Si une information manque et qu’aucune directive de repli n’est donnée, omets l’élément manquant.
+
+**CONTRAINTE SPÉCIALE – SAVOIR ET SAVOIR-FAIRE PAR CAPACITÉ**
+Pour chaque capacité identifiée dans le cours, tu dois générer explicitement :
+- La liste des savoirs nécessaires à la maîtrise de cette capacité (minimum 10 par capacité)
+- La liste des savoir-faire associés à cette même capacité (minimum 10 par capacité, chacun avec niveau cible et seuil)
+
+Ton rôle est de récupérer les informations manquantes pour rédiger le plan-cadre.
+Demande à l'utilisateur les informations manquantes.
+
+SECTIONS ET RÈGLES DE GÉNÉRATION
+
+## Intro et place du cours
+Génère une description détaillée pour le cours «{{code_cours}} – {{nom_cours}}» qui s’inscrit dans le fil conducteur «{{fil_conducteur}}» du programme de {{programme}} et se donne en session {{session}} de la grille de cours.
+
+La description devra comporter :
+
+Une introduction qui situe le cours dans son contexte (code, nom, fil conducteur, programme et session).
+
+Une explication sur l’importance des connaissances préalables pour réussir ce cours.
+
+Pour chaque cours préalable listé dans {{cours_prealables}}, détaillez les connaissances et compétences essentielles acquises et expliquez en quoi ces acquis sont indispensables pour aborder les notions spécifiques du cours actuel.
+
+Le texte final devra adopter un style clair et pédagogique, similaire à l’exemple suivant, mais adapté au contenu du présent cours :
+
+"Le cours «243-4Q4 – Communication radio» s’inscrit dans le fil conducteur «Sans-fil et fibre optique» du programme de Technologie du génie électrique : Réseaux et télécommunications et se donne en session 4. Afin de bien réussir ce cours, il est essentiel de maîtriser les connaissances préalables acquises dans «nom du cours», particulièrement [connaissances et compétences]. Ces acquis permettront aux personnes étudiantes de saisir plus aisément les notions [ de ... ]abordées dans le présent cours."
+
+---
+
+## Objectif terminal
+Écrire un objectif terminal pour le cours {{nom_cours}} qui devrait commencer par: "Au terme de ce cours, les personnes étudiantes seront capables de" et qui termine par un objectif terminal qui correspond aux compétences à développer ou atteinte({{competences_developpees}}{{competences_atteintes}}). Celui-ci devrait clair, mais ne comprendre que 2 ou 3 actes. Le e nom du cours donne de bonnes explications sur les technologies utilisés dans le cours, à intégrer dans l'objectif terminal.
+
+---
+
+## Introduction Structure du Cours
+Le cours «{{nom_cours}}» prévoit {{heures_theorie}} heures de théorie, {{heures_lab}} heures d’application en travaux pratiques ou en laboratoire et {{heures_maison}} heures de travail personnel sur une base hebdomadaire.
+
+---
+
+## Activités Théoriques
+Écrire un texte sous cette forme adapté à la nature du cours ({{nom_cours}}), celui-ci devrait être similaire en longueur et en style:
+
+"Les séances théoriques du cours visent à préparer les personnes étudiantes en vue de la mise en pratique de leurs connaissances au laboratoire. Ces séances seront axées sur plusieurs aspects, notamment les éléments constitutifs des systèmes électroniques analogiques utilisés en télécommunications. Les personnes étudiantes auront l'opportunité d'approfondir leur compréhension par le biais de discussions interactives, des exercices et des analyses de cas liés à l’installation et au fonctionnement des systèmes électroniques analogiques. "
+
+---
+
+## Activités Pratiques
+Écrire un texte sous cette forme adapté à la nature du cours {{nom_cours}}, celui-ci devrait être similaire en longueur et en style.  Le premier chiffre après 243 indique la session sur 6 et le nom du cours donne de bonnes explications sur le matériel ou la technologie utilisé dans le cours
+
+Voici les cours reliés:
+{{cours_developpant_une_meme_competence}}
+
+Voici un exemple provenant d'un autre cours de mes attentes:
+"La structure des activités pratiques sur les 15 semaines du cours se déroulera de manière progressive et devrait se dérouler en 4 phases. La première phrase devrait s’inspirer du quotidien des personnes étudiantes qui, généralement, ont simplement utilisé des systèmes électroniques. Son objectif serait donc de favoriser la compréhension des composants essentiels des systèmes électroniques analogiques. Cela devrait conduire à une compréhension d’un système d’alimentation basé sur des panneaux solaires photovoltaïques, offrant ainsi une introduction pertinente aux systèmes d’alimentation en courant continu, utilisés dans les télécommunications. La seconde phase devrait mener l’a personne à comprendre la nature des signaux alternatifs dans le cadre de systèmes d’alimentation en courant alternatif et sur des signaux audios. La troisième phase viserait une exploration des systèmes de communication radio. Finalement, la dernière phase viserait à réaliser un projet final combinant les apprentissages réalisés, en partenariat avec les cours 243-1N5-LI - Systèmes numériques et 243-1P4-LI – Travaux d’atelier."
+
+---
+
+## Activités Prévues
+Décrire les différentes phases de manière succincte en utilisant cette forme. Ne pas oublier que la session dure 15 semaines.
+
+**Phase X - titre de la phase (Semaines Y à 4Z)**
+  - Description de la phase
+
+---
+
+## Évaluation Sommative des Apprentissages
+Pour la réussite du cours, la personne étudiante doit obtenir la note de 60% lorsque l'on fait la somme pondérée des capacités.
+
+La note attribuée à une capacité ne sera pas nécessairement la moyenne cumulative des résultats des évaluations pour cette capacité, mais bien le reflet des observations constatées en cours de session, par la personne enseignante et le jugement global de cette dernière.
+
+---
+
+## Nature des Évaluations Sommatives
+Inclure un texte similaire à celui-ci:
+
+L’évaluation sommative devrait surtout être réalisée à partir de travaux pratiques effectués en laboratoire, alignés avec le savoir-faire évalué. Les travaux pratiques pourraient prendre la forme de...
+
+Pour certains savoirs, il est possible que de courts examens théoriques soient le moyen à privilégier, par exemple pour les savoirs suivants:
+...
+
+---
+
+## Évaluation de la Langue
+Utiliser ce modèle:
+
+Dans un souci de valorisation de la langue, l’évaluation de l’expression et de la communication en français se fera de façon constante par l’enseignant(e) sur une base formative, à l’oral ou à l’écrit. Son évaluation se fera sur une base sommative pour les savoir-faire reliés à la documentation. Les critères d’évaluation se trouvent au plan général d’évaluation sommative présenté à la page suivante. Les dispositions pour la valorisation de l’expression et de la communication en français sont encadrées par les modalités particulières d’application de l’article 6.6 de la PIEA (Politique institutionnelle d’évaluation des apprentissages) et sont précisées dans le plan de cours.
+
+---
+
+## Évaluation formative des apprentissages
+Sur une base régulière, la personne enseignante proposera des évaluations formatives à réaliser en classe, en équipe ou individuellement. Elle pourrait offrir des mises en situation authentiques de même que des travaux pratiques et des simulations. Des lectures dirigées pourraient également être proposées. L’évaluation formative est continue et intégrée aux activités d’apprentissage et d’enseignement et poursuit les fins suivantes :
+
+...
+Définir le concept de superposition d’ondes.
+Expliquer la différence entre interférence constructive et destructive.
+Décrire les causes possibles de réflexion dans un système de transmission.
+Comprendre l’effet de la longueur électrique sur les ondes stationnaires.
+… (jusqu’à au moins 10)
+Comment adapter à ce cours
+Identifier les notions clés propres au présent cours (ex. décrire les types de risques financiers, expliquer les mécanismes d’authentification en sécurité informatique, etc.).
+Veiller à ce que la liste couvre l’essentiel de la base théorique nécessaire pour développer les savoir-faire ultérieurement.
+Rester cohérent avec la complexité de la capacité. Pas de verbes trop avancés si on vise la simple compréhension.
+
+---
+
+## Savoirs faire d'une capacité
+Objectif général
+Définir ce que les apprenants doivent être capables de faire (actions concrètes) pour démontrer qu’ils atteignent la capacité. Chaque savoir-faire est accompagné de deux niveaux de performance : cible (100 %) et seuil de réussite (60 %).
+
+Instructions détaillées
+Lister au moins 10 savoir-faire.
+Chaque savoir-faire doit commencer par un verbe à l’infinitif (ex. Mesurer, Calculer, Configurer, Vérifier, etc.).
+Il doit représenter une action observable et évaluable.
+Pour chaque savoir-faire, préciser :
+Cible (niveau optimal, 100 %) : Formulée à l’infinitif, décrivant la maîtrise complète ou la performance idéale.
+Seuil de réussite (niveau minimal, 60 %) : Aussi formulée à l’infinitif, décrivant la version minimale acceptable du même savoir-faire.
+Éviter :
+Les notions de quantité ou répétition (ex. « faire X fois »).
+Les noms d’outils ou de technologies précises.
+Exemple d’attendu
+Savoir-faire : Analyser l’effet des réflexions sur une ligne de transmission
+
+Cible (100 %) : Analyser avec précision les variations de signal en identifiant clairement l’origine des désadaptations.
+Seuil (60 %) : Analyser les variations de manière suffisante pour repérer les principales anomalies et causes de désadaptation.
+Savoir-faire : Mesurer l’impédance caractéristique d’un support
+
+Cible (100 %) : Mesurer avec exactitude l’impédance en appliquant la bonne méthode et en interprétant correctement les résultats.
+Seuil (60 %) : Mesurer l’impédance de base et reconnaître les écarts majeurs par rapport à la valeur attendue.
+(jusqu’à avoir 10 savoir-faire minimum)
+
+Comment adapter au présent cours
+Transformer les actions en fonction du domaine (ex. Configurer un serveur Web, Concevoir une base de données, Effectuer une analyse de rentabilité, etc.).
+Ajuster le langage et la précision selon le niveau visé (Bloom). Par exemple, Appliquer ou Mettre en œuvre pour un niveau intermédiaire, Concevoir ou Évaluer pour un niveau avancé.
+Adapter les niveaux cible et seuil pour refléter les attendus concrets dans la pratique de votre discipline.
+
+---
+
+## Moyen d'évaluation d'une capacité
+Trouve 3 ou 4 moyens d'évaluations adaptés pour cette capacité.
+
+# Remarques
+
+- Respecter la logique explicite : lier savoirs, savoir-faire et évaluation à chaque capacité (ne pas globaliser).
+- S’assurer que chaque tableau “capacités” contient systématiquement la triple structure : savoirs, savoir-faire, moyens d’évaluation.
+- Reproduire fidèlement la langue et le degré de précision montré dans les exemples.
+- Pour toutes les listes longues (ex : savoirs, savoir-faire), fournir la longueur requise (même si exemples ci-dessous sont abrégés).
+- Pour les exemples, utiliser des placeholders réalistes : (ex : “Décrire les principes de base du [concept central du cours]”).
+
+---
+
+**Résumé importante** :
+Pour chaque capacité, générez immédiatement après son texte et sa pondération :
+- La liste complète de ses savoirs nécessaires ;
+- La liste complète de ses savoir-faire associés (avec cible et seuil) ;
+- Les moyens d’évaluation pertinents pour cette capacité.
+
+Générez les autres sections exactement comme décrit, sans ajout ni omission spontanée.
+"""
+    ),
+    model="gpt-4.1-mini",
+    output_type=RDacteurSchema,
+    model_settings=_model_settings(
+        temperature=1,
+        top_p=1,
+        store=True,
+    ),
+)
+
+
+class GetDataFromWebContext:
+    def __init__(self, state_infos_manquantes: str) -> None:
+        self.state_infos_manquantes = state_infos_manquantes
+
+
+def get_data_from_web_instructions(
+    run_context: RunContextWrapper[GetDataFromWebContext],
+    _agent: Agent[GetDataFromWebContext],
+) -> str:
+    state_infos_manquantes = run_context.context.state_infos_manquantes
+    return f"""Ton rôle est de récupérer les informations manquantes pour rédiger le plan-cadre.
+Va chercher sur le web pour les informations manquantes.
+
+Voici les informations manquantes:
+ {state_infos_manquantes}
+
+code_cours:
+nom_cours:
+programme:
+fil_conducteur:
+session:
+cours_prealables: []       # Codes + titres
+cours_requis: []           # (optionnel)
+cours_reliés: []           # (optionnel)
+heures_theorie:
+heures_lab:
+heures_maison:
+competences_developpees: []   # Codes + titres
+competences_atteintes: []     # Codes + titres
+competence_nom:               # Pour la section Description des compétences développées
+cours_developpant_une_meme_competence: [] # Pour les activités pratiques
+Une idée générale de ce qui devrait se retrouver dans le cours"""
+
+
+get_data_from_web = Agent(
+    name="Get data from web",
+    instructions=get_data_from_web_instructions,
+    model="gpt-5-mini",
+    tools=[web_search_preview],
+    model_settings=_model_settings(
+        store=True,
+        reasoning=Reasoning(
+            effort="medium",
+            summary="auto",
+        ),
+    ),
+)
+
+
+class Triage2Context:
+    def __init__(self, input_output_text: str) -> None:
+        self.input_output_text = input_output_text
+
+
+def triage_2_instructions(
+    run_context: RunContextWrapper[Triage2Context],
+    _agent: Agent[Triage2Context],
+) -> str:
+    input_output_text = run_context.context.input_output_text
+    return f"""Ton rôle : Vérifier si toutes les informations nécessaires sont présentes pour générer un plan-cadre.
+Si oui → has_all_details: true
+Sinon → has_all_details: false + lister uniquement les éléments manquants
+
+Ne génère pas encore le plan-cadre.
+
+Informations attendues
+Le plan-cadre pourra être généré seulement si les champs suivants sont fournis :
+code_cours:
+nom_cours:
+programme:
+fil_conducteur:
+session:
+cours_prealables: []       # Codes + titres cours_requis: []           # (optionnel)
+cours_reliés: []           # (optionnel)
+heures_theorie:
+heures_lab:
+heures_maison:
+competences_developpees: []   # Codes + titres
+competences_atteintes: []     # Codes + titres
+competence_nom:               # Pour la section Description des compétences développées cours_developpant_une_meme_competence: [] # Pour les activités pratiques
+Une idée générale de ce qui devrait se retrouver dans le cours.
+
+Voici les informations connues {input_output_text}"""
+
+
+triage_2 = Agent(
+    name="Triage 2",
+    instructions=triage_2_instructions,
+    model="gpt-5",
+    output_type=Triage2Schema,
+    model_settings=_model_settings(
+        store=True,
+        reasoning=Reasoning(
+            effort="minimal",
+            summary="auto",
+        ),
+    ),
+)
+
+
+class GetDataFromUserContext:
+    def __init__(self, state_infos_manquantes: str) -> None:
+        self.state_infos_manquantes = state_infos_manquantes
+
+
+def get_data_from_user_instructions(
+    run_context: RunContextWrapper[GetDataFromUserContext],
+    _agent: Agent[GetDataFromUserContext],
+) -> str:
+    state_infos_manquantes = run_context.context.state_infos_manquantes
+    return f"""Ton rôle est de récupérer les informations manquantes pour rédiger le plan-cadre.
+
+Arrête-toi et demande à l'utilisateur les informations manquantes.
+infos manquantes:
+ {state_infos_manquantes}
+"""
+
+
+get_data_from_user = Agent(
+    name="Get data from user",
+    instructions=get_data_from_user_instructions,
+    model="gpt-5-nano",
+    model_settings=_model_settings(
+        store=True,
+        reasoning=Reasoning(
+            effort="medium",
+            summary="auto",
+        ),
+    ),
+)
+
+
+class WorkflowInput(BaseModel):
+    input_as_text: str
+
+
+@dataclass
+class WorkflowStepSummary:
+    key: str
+    title: str
+    output: str
+
+
+@dataclass
+class WorkflowRunSummary:
+    steps: list[WorkflowStepSummary]
+    final_output: dict[str, Any] | None
+
+
+@dataclass
+class WorkflowStepStreamUpdate:
+    key: str
+    title: str
+    index: int
+    delta: str
+    text: str
+
+
+class WorkflowExecutionError(RuntimeError):
+    def __init__(
+        self,
+        step: str,
+        title: str,
+        original_error: Exception,
+        steps: list[WorkflowStepSummary],
+    ) -> None:
+        super().__init__(str(original_error))
+        self.step = step
+        self.title = title
+        self.original_error = original_error
+        self.steps = steps
+
+    def __str__(self) -> str:
+        return f"{self.title} ({self.step}) : {self.original_error}"
+
+
+def _format_step_output(payload: Any) -> str:
+    if payload is None:
+        return "(aucune sortie)"
+
+    if isinstance(payload, BaseModel):
+        payload = payload.model_dump()
+
+    if isinstance(payload, (dict, list)):
+        try:
+            return json.dumps(payload, ensure_ascii=False, indent=2)
+        except TypeError:
+            return str(payload)
+
+    if isinstance(payload, str):
+        text_value = payload.strip()
+        if not text_value:
+            return "(aucune sortie)"
+
+        try:
+            parsed = json.loads(text_value)
+        except json.JSONDecodeError:
+            return text_value
+
+        if isinstance(parsed, (dict, list)):
+            try:
+                return json.dumps(parsed, ensure_ascii=False, indent=2)
+            except TypeError:
+                return str(parsed)
+        return str(parsed)
+
+    return str(payload)
+
+
+async def run_workflow(
+    workflow_input: WorkflowInput,
+    *,
+    agent_context: AgentContext[Any],
+    on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None = None,
+    on_step_stream: Callable[[WorkflowStepStreamUpdate], Awaitable[None]] | None = None,
+    on_stream_event: Callable[[ThreadStreamEvent], Awaitable[None]] | None = None,
+) -> WorkflowRunSummary:
+    state: dict[str, Any] = {
+        "has_all_details": False,
+        "infos_manquantes": None,
+    }
+    steps: list[WorkflowStepSummary] = []
+    workflow = workflow_input.model_dump()
+    conversation_history: list[TResponseInputItem] = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": workflow["input_as_text"],
+                }
+            ],
+        }
+    ]
+
+    def _workflow_run_config() -> RunConfig:
+        return RunConfig(
+            trace_metadata={
+                "__trace_source__": "agent-builder",
+                "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae",
+            }
+        )
+
+    async def record_step(step_key: str, title: str, payload: Any) -> None:
+        summary = WorkflowStepSummary(
+            key=step_key,
+            title=title,
+            output=_format_step_output(payload),
+        )
+        steps.append(summary)
+        if on_step is not None:
+            await on_step(summary, len(steps))
+
+    def raise_step_error(step_key: str, title: str, error: Exception) -> None:
+        raise WorkflowExecutionError(step_key, title, error, list(steps)) from error
+
+    def _structured_output_as_json(output: Any) -> tuple[Any, str]:
+        if hasattr(output, "model_dump"):
+            parsed = output.model_dump()
+            return parsed, json.dumps(parsed, ensure_ascii=False)
+        if isinstance(output, (dict, list)):
+            return output, json.dumps(output, ensure_ascii=False)
+        return output, str(output)
+
+    def _extract_delta(event: ThreadStreamEvent) -> str:
+        if isinstance(event, ThreadItemUpdated):
+            update = event.update
+            if isinstance(update, AssistantMessageContentPartTextDelta):
+                return update.delta or ""
+        return ""
+
+    async def run_agent_step(
+        step_key: str,
+        title: str,
+        agent: Agent,
+        *,
+        agent_context: AgentContext[Any],
+        run_context: Any | None = None,
+    ) -> _WorkflowStreamResult:
+        step_index = len(steps) + 1
+        if on_step_stream is not None:
+            await on_step_stream(
+                WorkflowStepStreamUpdate(
+                    key=step_key,
+                    title=title,
+                    index=step_index,
+                    delta="",
+                    text="",
+                )
+            )
+        accumulated_text = ""
+        result = Runner.run_streamed(
+            agent,
+            input=[*conversation_history],
+            run_config=_workflow_run_config(),
+            context=run_context,
+        )
+        try:
+            async for event in stream_agent_response(agent_context, result):
+                if on_stream_event is not None:
+                    await on_stream_event(event)
+                if on_step_stream is not None:
+                    delta_text = _extract_delta(event)
+                    if not delta_text:
+                        continue
+                    accumulated_text += delta_text
+                    await on_step_stream(
+                        WorkflowStepStreamUpdate(
+                            key=step_key,
+                            title=title,
+                            index=step_index,
+                            delta=delta_text,
+                            text=accumulated_text,
+                        )
+                    )
+        except Exception as exc:  # pragma: no cover - erreurs propagées au serveur
+            raise_step_error(step_key, title, exc)
+
+        conversation_history.extend([item.to_input_item() for item in result.new_items])
+        return result
+
+    triage_title = "Analyse des informations fournies"
+    triage_result_stream = await run_agent_step(
+        "triage",
+        triage_title,
+        triage,
+        agent_context=agent_context,
+    )
+    triage_parsed, triage_text = _structured_output_as_json(triage_result_stream.final_output)
+    triage_result = {
+        "output_text": triage_text,
+        "output_parsed": triage_parsed,
+    }
+    if isinstance(triage_parsed, dict):
+        state["has_all_details"] = bool(triage_parsed.get("has_all_details"))
+    else:
+        state["has_all_details"] = False
+    state["infos_manquantes"] = triage_result["output_text"]
+    await record_step("triage", triage_title, triage_result["output_parsed"])
+
+    if state["has_all_details"] is True:
+        redacteur_title = "Rédaction du plan-cadre"
+        r_dacteur_result_stream = await run_agent_step(
+            "r_dacteur",
+            redacteur_title,
+            r_dacteur,
+            agent_context=agent_context,
+        )
+        redacteur_parsed, redacteur_text = _structured_output_as_json(
+            r_dacteur_result_stream.final_output
+        )
+        r_dacteur_result = {
+            "output_text": redacteur_text,
+            "output_parsed": redacteur_parsed,
+        }
+        await record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
+        return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
+
+    web_step_title = "Collecte d'exemples externes"
+    get_data_from_web_result_stream = await run_agent_step(
+        "get_data_from_web",
+        web_step_title,
+        get_data_from_web,
+        agent_context=agent_context,
+        run_context=GetDataFromWebContext(state_infos_manquantes=state["infos_manquantes"]),
+    )
+    get_data_from_web_result = {
+        "output_text": get_data_from_web_result_stream.final_output_as(str)
+    }
+    await record_step(
+        "get_data_from_web",
+        web_step_title,
+        get_data_from_web_result["output_text"],
+    )
+
+    triage_2_title = "Validation après collecte"
+    triage_2_result_stream = await run_agent_step(
+        "triage_2",
+        triage_2_title,
+        triage_2,
+        agent_context=agent_context,
+        run_context=Triage2Context(input_output_text=get_data_from_web_result["output_text"]),
+    )
+    triage_2_parsed, triage_2_text = _structured_output_as_json(
+        triage_2_result_stream.final_output
+    )
+    triage_2_result = {
+        "output_text": triage_2_text,
+        "output_parsed": triage_2_parsed,
+    }
+    if isinstance(triage_2_parsed, dict):
+        state["has_all_details"] = bool(triage_2_parsed.get("has_all_details"))
+    else:
+        state["has_all_details"] = False
+    state["infos_manquantes"] = triage_2_result["output_text"]
+    await record_step("triage_2", triage_2_title, triage_2_result["output_parsed"])
+
+    if state["has_all_details"] is True:
+        redacteur_title = "Rédaction du plan-cadre"
+        r_dacteur_result_stream = await run_agent_step(
+            "r_dacteur",
+            redacteur_title,
+            r_dacteur,
+            agent_context=agent_context,
+        )
+        redacteur_parsed, redacteur_text = _structured_output_as_json(
+            r_dacteur_result_stream.final_output
+        )
+        r_dacteur_result = {
+            "output_text": redacteur_text,
+            "output_parsed": redacteur_parsed,
+        }
+        await record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
+        return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
+
+    user_step_title = "Demande d'informations supplémentaires"
+    get_data_from_user_result_stream = await run_agent_step(
+        "get_data_from_user",
+        user_step_title,
+        get_data_from_user,
+        agent_context=agent_context,
+        run_context=GetDataFromUserContext(state_infos_manquantes=state["infos_manquantes"]),
+    )
+    get_data_from_user_result = {
+        "output_text": get_data_from_user_result_stream.final_output_as(str)
+    }
+    await record_step(
+        "get_data_from_user",
+        user_step_title,
+        get_data_from_user_result["output_text"],
+    )
+
+    redacteur_title = "Rédaction du plan-cadre"
+    r_dacteur_result_stream = await run_agent_step(
+        "r_dacteur",
+        redacteur_title,
+        r_dacteur,
+        agent_context=agent_context,
+    )
+    redacteur_parsed, redacteur_text = _structured_output_as_json(
+        r_dacteur_result_stream.final_output
+    )
+    r_dacteur_result = {
+        "output_text": redacteur_text,
+        "output_parsed": redacteur_parsed,
+    }
+    await record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
+    return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
+
+
 _server: DemoChatKitServer | None = None
 
 
