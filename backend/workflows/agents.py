@@ -738,12 +738,6 @@ async def run_workflow(
     run_context: Any | None = None,
   ):
     step_index = len(steps) + 1
-    streaming_result = Runner.run_streamed(
-      agent,
-      input=[*conversation_history],
-      run_config=_workflow_run_config(),
-      context=run_context,
-    )
     if on_step_stream is not None:
       await on_step_stream(
         WorkflowStepStreamUpdate(
@@ -755,8 +749,14 @@ async def run_workflow(
         )
       )
     accumulated_text = ""
+    result = Runner.run_streamed(
+      agent,
+      input=[*conversation_history],
+      run_config=_workflow_run_config(),
+      context=run_context,
+    )
     try:
-      async for event in stream_agent_response(agent_context, streaming_result):
+      async for event in stream_agent_response(agent_context, result):
         if on_stream_event is not None:
           await on_stream_event(event)
         if on_step_stream is not None:
@@ -776,8 +776,8 @@ async def run_workflow(
     except Exception as exc:
       raise_step_error(step_key, title, exc)
 
-    conversation_history.extend([item.to_input_item() for item in streaming_result.new_items])
-    return streaming_result
+    conversation_history.extend([item.to_input_item() for item in result.new_items])
+    return result
 
   triage_title = "Analyse des informations fournies"
   triage_result_stream = await run_agent_step(
