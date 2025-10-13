@@ -19,25 +19,147 @@ def _run_ad_hoc_migrations() -> None:
 
     with engine.begin() as connection:
         inspector = inspect(connection)
-        if "workflow_steps" not in inspector.get_table_names():
-            return
+        table_names = set(inspector.get_table_names())
+        if "workflow_steps" in table_names:
+            dialect = connection.dialect.name
 
-        columns = {column["name"] for column in inspector.get_columns("workflow_steps")}
-        if "slug" not in columns:
-            connection.execute(text("ALTER TABLE workflow_steps ADD COLUMN slug VARCHAR(128)"))
-            connection.execute(text("UPDATE workflow_steps SET slug = CONCAT('step_', id)"))
-            connection.execute(text("ALTER TABLE workflow_steps ALTER COLUMN slug SET NOT NULL"))
+            def _refresh_columns() -> set[str]:
+                return {
+                    column["name"]
+                    for column in inspect(connection).get_columns("workflow_steps")
+                }
 
-        inspector = inspect(connection)
-        uniques = {constraint["name"] for constraint in inspector.get_unique_constraints("workflow_steps")}
-        if "workflow_steps_definition_slug" not in uniques:
-            connection.execute(
-                text(
-                    "ALTER TABLE workflow_steps "
-                    "ADD CONSTRAINT workflow_steps_definition_slug "
-                    "UNIQUE(definition_id, slug)"
+            columns = _refresh_columns()
+
+            if "slug" not in columns:
+                connection.execute(
+                    text("ALTER TABLE workflow_steps ADD COLUMN slug VARCHAR(128)")
                 )
-            )
+                if dialect == "postgresql":
+                    connection.execute(
+                        text("UPDATE workflow_steps SET slug = CONCAT('step_', id)")
+                    )
+                    connection.execute(
+                        text("ALTER TABLE workflow_steps ALTER COLUMN slug SET NOT NULL")
+                    )
+                else:
+                    connection.execute(
+                        text("UPDATE workflow_steps SET slug = 'step_' || id")
+                    )
+                columns = _refresh_columns()
+
+            if "kind" not in columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflow_steps "
+                        "ADD COLUMN kind VARCHAR(32) NOT NULL DEFAULT 'agent'"
+                    )
+                )
+                columns = _refresh_columns()
+
+            if "display_name" not in columns:
+                connection.execute(
+                    text("ALTER TABLE workflow_steps ADD COLUMN display_name VARCHAR(128)")
+                )
+                columns = _refresh_columns()
+
+            if "agent_key" not in columns:
+                connection.execute(
+                    text("ALTER TABLE workflow_steps ADD COLUMN agent_key VARCHAR(128)")
+                )
+                columns = _refresh_columns()
+
+            if "position" not in columns:
+                if "order" in columns:
+                    connection.execute(text("ALTER TABLE workflow_steps ADD COLUMN position INTEGER"))
+                    connection.execute(text("UPDATE workflow_steps SET position = \"order\""))
+                    if dialect == "postgresql":
+                        connection.execute(
+                            text(
+                                "ALTER TABLE workflow_steps ALTER COLUMN position SET NOT NULL"
+                            )
+                        )
+                else:
+                    connection.execute(
+                        text(
+                            "ALTER TABLE workflow_steps ADD COLUMN position INTEGER "
+                            "NOT NULL DEFAULT 0"
+                        )
+                    )
+                columns = _refresh_columns()
+
+            if "is_enabled" not in columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflow_steps ADD COLUMN is_enabled BOOLEAN "
+                        "NOT NULL DEFAULT TRUE"
+                    )
+                )
+                columns = _refresh_columns()
+
+            json_type = "JSONB" if dialect == "postgresql" else "TEXT"
+            json_default = "'{}'::jsonb" if dialect == "postgresql" else "'{}'"
+
+            if "parameters" not in columns:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE workflow_steps ADD COLUMN parameters {json_type} "
+                        f"NOT NULL DEFAULT {json_default}"
+                    )
+                )
+                columns = _refresh_columns()
+
+            metadata_column = "metadata"
+            if metadata_column not in columns:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE workflow_steps ADD COLUMN {metadata_column} {json_type} "
+                        f"NOT NULL DEFAULT {json_default}"
+                    )
+                )
+                columns = _refresh_columns()
+
+            inspector = inspect(connection)
+            uniques = {
+                constraint["name"]
+                for constraint in inspector.get_unique_constraints("workflow_steps")
+            }
+            if "workflow_steps_definition_slug" not in uniques:
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflow_steps "
+                        "ADD CONSTRAINT workflow_steps_definition_slug "
+                        "UNIQUE(definition_id, slug)"
+                    )
+                )
+
+        if "workflow_transitions" in table_names:
+            dialect = connection.dialect.name
+            json_type = "JSONB" if dialect == "postgresql" else "TEXT"
+            json_default = "'{}'::jsonb" if dialect == "postgresql" else "'{}'"
+
+            def _refresh_transition_columns() -> set[str]:
+                return {
+                    column["name"]
+                    for column in inspect(connection).get_columns("workflow_transitions")
+                }
+
+            columns = _refresh_transition_columns()
+
+            if "condition" not in columns:
+                connection.execute(
+                    text("ALTER TABLE workflow_transitions ADD COLUMN condition VARCHAR(64)")
+                )
+                columns = _refresh_transition_columns()
+
+            metadata_column = "metadata"
+            if metadata_column not in columns:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE workflow_transitions ADD COLUMN {metadata_column} {json_type} "
+                        f"NOT NULL DEFAULT {json_default}"
+                    )
+                )
 
 
 def register_startup_events(app: FastAPI) -> None:
