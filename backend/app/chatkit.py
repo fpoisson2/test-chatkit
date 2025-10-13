@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, AsyncIterator, Coroutine, Sequence
 
-from chatkit.agents import AgentContext, simple_to_agent_input, stream_agent_response
+from chatkit.agents import AgentContext, simple_to_agent_input
 from chatkit.server import ChatKitServer
 from chatkit.store import NotFoundError
 from chatkit.types import (
@@ -118,7 +118,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         )
 
         try:
-            async for event in stream_agent_response(agent_context, workflow_result):
+            async for event in workflow_result.stream_events():
                 yield event
         except asyncio.CancelledError:  # pragma: no cover - déconnexion client
             logger.info(
@@ -147,6 +147,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 streamed_step_keys.add(step_summary.key)
                 step_progress_text.pop(step_summary.key, None)
 
+            async def on_stream_event(event: ThreadStreamEvent) -> None:
+                await event_queue.put(event)
+
             async def on_step_stream(
                 update: WorkflowStepStreamUpdate,
             ) -> None:
@@ -155,9 +158,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 if update.key not in step_progress_text:
                     waiting_text = f"{header}\n\nGénération en cours..."
                     step_progress_text[update.key] = waiting_text
-                    await agent_context.stream(
-                        ProgressUpdateEvent(text=waiting_text)
-                    )
+                    await on_stream_event(ProgressUpdateEvent(text=waiting_text))
 
                 aggregated_text = update.text
                 if not aggregated_text.strip():
@@ -168,21 +169,17 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     return
 
                 step_progress_text[update.key] = progress_text
-                await agent_context.stream(
-                    ProgressUpdateEvent(text=progress_text)
-                )
-
-            async def on_raw_event(event: Any) -> None:
-                await event_queue.put(event)
+                await on_stream_event(ProgressUpdateEvent(text=progress_text))
 
             workflow_run = await run_workflow(
                 workflow_input,
+                agent_context=agent_context,
                 on_step=on_step,
                 on_step_stream=on_step_stream,
-                on_raw_event=on_raw_event,
+                on_stream_event=on_stream_event,
             )
 
-            await agent_context.stream(
+            await on_stream_event(
                 EndOfTurnItem(
                     id=self.store.generate_item_id(
                         "message", thread, agent_context.request_context
@@ -198,7 +195,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 f"Le workflow a échoué pendant l'étape « {exc.title} » ({exc.step}). "
                 f"Détails techniques : {exc.original_error}"
             )
-            await agent_context.stream(
+            await on_stream_event(
                 ErrorEvent(
                     code=ErrorCode.STREAM_ERROR,
                     message=error_message,
@@ -211,7 +208,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         except Exception as exc:  # pragma: no cover - autres erreurs runtime
             logger.exception("Workflow execution failed")
             detailed_message = f"Erreur inattendue ({exc.__class__.__name__}) : {exc}"
-            await agent_context.stream(
+            await on_stream_event(
                 ErrorEvent(
                     code=ErrorCode.STREAM_ERROR,
                     message=detailed_message,
