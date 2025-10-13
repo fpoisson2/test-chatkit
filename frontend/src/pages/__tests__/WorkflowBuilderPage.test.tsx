@@ -45,7 +45,14 @@ describe("WorkflowBuilderPage", () => {
           display_name: "Analyse",
           agent_key: "triage",
           is_enabled: true,
-          parameters: {},
+          parameters: {
+            instructions: "Analyse les données fournies et signale les manques.",
+            model: "gpt-4o",
+            model_settings: {
+              store: true,
+              reasoning: { effort: "minimal", summary: "auto" },
+            },
+          },
           metadata: { position: { x: 240, y: 0 } },
         },
         {
@@ -105,6 +112,9 @@ describe("WorkflowBuilderPage", () => {
       expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
     });
 
+    expect(container.querySelector('[data-id="start"]')).not.toBeNull();
+    expect(container.querySelector('[data-id="end"]')).not.toBeNull();
+
     const triageNode = container.querySelector('[data-id="agent-triage"]');
     expect(triageNode).not.toBeNull();
     fireEvent.click(triageNode!);
@@ -112,10 +122,21 @@ describe("WorkflowBuilderPage", () => {
     const displayNameInput = await screen.findByLabelText(/nom affiché/i);
     fireEvent.change(displayNameInput, { target: { value: "Analyse enrichie" } });
 
-    const parametersTextarea = await screen.findByLabelText(/paramètres json/i);
-    fireEvent.change(parametersTextarea, {
-      target: { value: '{"temperature":0.3}' },
+    const messageTextarea = await screen.findByLabelText(/message système/i);
+    fireEvent.change(messageTextarea, {
+      target: { value: "Analyse les entrées et produis un résumé clair." },
     });
+
+    const modelInput = await screen.findByLabelText(/modèle openai/i);
+    fireEvent.change(modelInput, { target: { value: "gpt-4.1-mini" } });
+
+    const reasoningSelect = await screen.findByLabelText(/niveau de raisonnement/i);
+    fireEvent.change(reasoningSelect, { target: { value: "medium" } });
+
+    const parametersTextarea = await screen.findByLabelText(/paramètres json avancés/i);
+    expect(parametersTextarea).toHaveValue(
+      expect.stringContaining("Analyse les entrées et produis un résumé clair."),
+    );
 
     const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
     fireEvent.click(saveButton);
@@ -132,7 +153,14 @@ describe("WorkflowBuilderPage", () => {
     expect(body).toHaveProperty("graph");
     const agentNode = body.graph.nodes.find((node: any) => node.slug === "agent-triage");
     expect(agentNode.display_name).toBe("Analyse enrichie");
-    expect(agentNode.parameters).toEqual({ temperature: 0.3 });
+    expect(agentNode.parameters).toEqual({
+      instructions: "Analyse les entrées et produis un résumé clair.",
+      model: "gpt-4.1-mini",
+      model_settings: {
+        store: true,
+        reasoning: { effort: "medium", summary: "auto" },
+      },
+    });
 
     await screen.findByText(/workflow enregistré avec succès/i);
   });
