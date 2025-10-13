@@ -514,7 +514,6 @@ thread_title_agent = Agent(
         temperature=0.3,
         top_p=0.9,
         store=False,
-        reasoning=Reasoning(effort="minimal"),
     ),
 )
 
