@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import datetime
+from typing import Any
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 
 class SessionRequest(BaseModel):
@@ -57,3 +58,33 @@ class WeatherResponse(BaseModel):
     observation_time: str
     timezone: str | None
     source: str = "open-meteo"
+
+
+class WorkflowStepInput(BaseModel):
+    agent_key: str
+    position: int
+    is_enabled: bool = True
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowStepResponse(WorkflowStepInput):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+class WorkflowDefinitionResponse(BaseModel):
+    id: int
+    name: str
+    is_active: bool
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    steps: list[WorkflowStepResponse]
+
+    class Config:
+        from_attributes = True
+
+
+class WorkflowDefinitionUpdate(BaseModel):
+    steps: list[WorkflowStepInput]

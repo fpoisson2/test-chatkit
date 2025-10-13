@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routes import admin, auth, chatkit, tools, users
+from .routes import admin, auth, chatkit, tools, users, workflows
 from .startup import register_startup_events
 
 settings = get_settings()
@@ -23,5 +23,6 @@ app.include_router(users.router)
 app.include_router(admin.router)
 app.include_router(chatkit.router)
 app.include_router(tools.router)
+app.include_router(workflows.router)
 
 register_startup_events(app)

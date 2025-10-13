@@ -35,10 +35,11 @@ from chatkit.types import (
     UserMessageItem,
 )
 
-from .token_sanitizer import sanitize_model_like
 from .config import Settings, get_settings
 from .chatkit_store import PostgresChatKitStore
 from .database import SessionLocal
+from .token_sanitizer import sanitize_model_like
+from .workflows import WorkflowService
 
 logger = logging.getLogger("chatkit.server")
 
@@ -67,6 +68,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     def __init__(self, settings: Settings) -> None:
         super().__init__(PostgresChatKitStore(SessionLocal))
         self._settings = settings
+        self._workflow_service = WorkflowService()
 
     async def respond(
         self,
@@ -178,6 +180,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 on_step=on_step,
                 on_step_stream=on_step_stream,
                 on_stream_event=on_stream_event,
+                workflow_service=self._workflow_service,
             )
 
             await on_stream_event(
@@ -419,6 +422,24 @@ def _model_settings(**kwargs: Any) -> ModelSettings:
     return sanitize_model_like(ModelSettings(**kwargs))
 
 
+def _coerce_model_settings(value: Any) -> Any:
+    if isinstance(value, dict):
+        return _model_settings(**value)
+    return sanitize_model_like(value)
+
+
+def _build_agent_kwargs(
+    base_kwargs: dict[str, Any], overrides: dict[str, Any] | None
+) -> dict[str, Any]:
+    merged = {**base_kwargs}
+    if overrides:
+        for key, value in overrides.items():
+            merged[key] = value
+    if "model_settings" in merged:
+        merged["model_settings"] = _coerce_model_settings(merged["model_settings"])
+    return merged
+
+
 web_search_preview = WebSearchTool(
     search_context_size="medium",
     user_location={
@@ -430,10 +451,11 @@ web_search_preview = WebSearchTool(
 )
 
 
-triage = Agent(
-    name="Triage",
-    instructions=(
-        """Ton rôle : Vérifier si toutes les informations nécessaires sont présentes pour générer un plan-cadre.
+def _build_triage_agent(overrides: dict[str, Any] | None = None) -> Agent:
+    base_kwargs: dict[str, Any] = {
+        "name": "Triage",
+        "instructions": (
+            """Ton rôle : Vérifier si toutes les informations nécessaires sont présentes pour générer un plan-cadre.
 Si oui → has_all_details: true
 Sinon → has_all_details: false + lister uniquement les éléments manquants
 
@@ -457,23 +479,22 @@ competences_atteintes: []     # Codes + titres
 competence_nom:               # Pour la section Description des compétences développées
 cours_developpant_une_meme_competence: [] # Pour les activités pratiques
 Une idée générale de ce qui devrait se retrouver dans le cours."""
-    ),
-    model="gpt-5",
-    output_type=TriageSchema,
-    model_settings=_model_settings(
-        store=True,
-        reasoning=Reasoning(
-            effort="minimal",
-            summary="auto",
         ),
-    ),
-)
+        "model": "gpt-5",
+        "output_type": TriageSchema,
+        "model_settings": _model_settings(
+            store=True,
+            reasoning=Reasoning(
+                effort="minimal",
+                summary="auto",
+            ),
+        ),
+    }
+    return Agent(**_build_agent_kwargs(base_kwargs, overrides))
 
 
-r_dacteur = Agent(
-    name="Rédacteur",
-    instructions=(
-        """Tu es un assistant pédagogique qui génère, en français, des contenus de plan-cadre selon le ton institutionnel : clairs, concis, rigoureux, rédigés au vouvoiement. Tu ne t’appuies que sur les informations fournies dans le prompt utilisateur, sans inventer de contenu. Si une information manque et qu’aucune directive de repli n’est donnée, omets l’élément manquant.
+R_DACTEUR_INSTRUCTIONS = (
+    """Tu es un assistant pédagogique qui génère, en français, des contenus de plan-cadre selon le ton institutionnel : clairs, concis, rigoureux, rédigés au vouvoiement. Tu ne t’appuies que sur les informations fournies dans le prompt utilisateur, sans inventer de contenu. Si une information manque et qu’aucune directive de repli n’est donnée, omets l’élément manquant.
 
 **CONTRAINTE SPÉCIALE – SAVOIR ET SAVOIR-FAIRE PAR CAPACITÉ**
 Pour chaque capacité identifiée dans le cours, tu dois générer explicitement :
@@ -631,15 +652,22 @@ Pour chaque capacité, générez immédiatement après son texte et sa pondérat
 
 Générez les autres sections exactement comme décrit, sans ajout ni omission spontanée.
 """
-    ),
-    model="gpt-4.1-mini",
-    output_type=RDacteurSchema,
-    model_settings=_model_settings(
-        temperature=1,
-        top_p=1,
-        store=True,
-    ),
 )
+
+
+def _build_r_dacteur_agent(overrides: dict[str, Any] | None = None) -> Agent:
+    base_kwargs: dict[str, Any] = {
+        "name": "Rédacteur",
+        "instructions": R_DACTEUR_INSTRUCTIONS,
+        "model": "gpt-4.1-mini",
+        "output_type": RDacteurSchema,
+        "model_settings": _model_settings(
+            temperature=1,
+            top_p=1,
+            store=True,
+        ),
+    }
+    return Agent(**_build_agent_kwargs(base_kwargs, overrides))
 
 
 class GetDataFromWebContext:
@@ -676,19 +704,21 @@ cours_developpant_une_meme_competence: [] # Pour les activités pratiques
 Une idée générale de ce qui devrait se retrouver dans le cours"""
 
 
-get_data_from_web = Agent(
-    name="Get data from web",
-    instructions=get_data_from_web_instructions,
-    model="gpt-5-mini",
-    tools=[web_search_preview],
-    model_settings=_model_settings(
-        store=True,
-        reasoning=Reasoning(
-            effort="medium",
-            summary="auto",
+def _build_get_data_from_web_agent(overrides: dict[str, Any] | None = None) -> Agent:
+    base_kwargs: dict[str, Any] = {
+        "name": "Get data from web",
+        "instructions": get_data_from_web_instructions,
+        "model": "gpt-5-mini",
+        "tools": [web_search_preview],
+        "model_settings": _model_settings(
+            store=True,
+            reasoning=Reasoning(
+                effort="medium",
+                summary="auto",
+            ),
         ),
-    ),
-)
+    }
+    return Agent(**_build_agent_kwargs(base_kwargs, overrides))
 
 
 class Triage2Context:
@@ -727,19 +757,21 @@ Une idée générale de ce qui devrait se retrouver dans le cours.
 Voici les informations connues {input_output_text}"""
 
 
-triage_2 = Agent(
-    name="Triage 2",
-    instructions=triage_2_instructions,
-    model="gpt-5",
-    output_type=Triage2Schema,
-    model_settings=_model_settings(
-        store=True,
-        reasoning=Reasoning(
-            effort="minimal",
-            summary="auto",
+def _build_triage_2_agent(overrides: dict[str, Any] | None = None) -> Agent:
+    base_kwargs: dict[str, Any] = {
+        "name": "Triage 2",
+        "instructions": triage_2_instructions,
+        "model": "gpt-5",
+        "output_type": Triage2Schema,
+        "model_settings": _model_settings(
+            store=True,
+            reasoning=Reasoning(
+                effort="minimal",
+                summary="auto",
+            ),
         ),
-    ),
-)
+    }
+    return Agent(**_build_agent_kwargs(base_kwargs, overrides))
 
 
 class GetDataFromUserContext:
@@ -760,18 +792,38 @@ infos manquantes:
 """
 
 
-get_data_from_user = Agent(
-    name="Get data from user",
-    instructions=get_data_from_user_instructions,
-    model="gpt-5-nano",
-    model_settings=_model_settings(
-        store=True,
-        reasoning=Reasoning(
-            effort="medium",
-            summary="auto",
+def _build_get_data_from_user_agent(overrides: dict[str, Any] | None = None) -> Agent:
+    base_kwargs: dict[str, Any] = {
+        "name": "Get data from user",
+        "instructions": get_data_from_user_instructions,
+        "model": "gpt-5-nano",
+        "model_settings": _model_settings(
+            store=True,
+            reasoning=Reasoning(
+                effort="medium",
+                summary="auto",
+            ),
         ),
-    ),
-)
+    }
+    return Agent(**_build_agent_kwargs(base_kwargs, overrides))
+
+
+_AGENT_BUILDERS: dict[str, Callable[[dict[str, Any] | None], Agent]] = {
+    "triage": _build_triage_agent,
+    "r_dacteur": _build_r_dacteur_agent,
+    "get_data_from_web": _build_get_data_from_web_agent,
+    "triage_2": _build_triage_2_agent,
+    "get_data_from_user": _build_get_data_from_user_agent,
+}
+
+
+_STEP_TITLES: dict[str, str] = {
+    "triage": "Analyse des informations fournies",
+    "r_dacteur": "Rédaction du plan-cadre",
+    "get_data_from_web": "Collecte d'exemples externes",
+    "triage_2": "Validation après collecte",
+    "get_data_from_user": "Demande d'informations supplémentaires",
+}
 
 
 class WorkflowInput(BaseModel):
@@ -858,24 +910,53 @@ async def run_workflow(
     on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None = None,
     on_step_stream: Callable[[WorkflowStepStreamUpdate], Awaitable[None]] | None = None,
     on_stream_event: Callable[[ThreadStreamEvent], Awaitable[None]] | None = None,
+    workflow_service: WorkflowService | None = None,
 ) -> WorkflowRunSummary:
-    state: dict[str, Any] = {
-        "has_all_details": False,
-        "infos_manquantes": None,
-    }
+    workflow_payload = workflow_input.model_dump()
     steps: list[WorkflowStepSummary] = []
-    workflow = workflow_input.model_dump()
     conversation_history: list[TResponseInputItem] = [
         {
             "role": "user",
             "content": [
                 {
                     "type": "input_text",
-                    "text": workflow["input_as_text"],
+                    "text": workflow_payload["input_as_text"],
                 }
             ],
         }
     ]
+    state: dict[str, Any] = {
+        "has_all_details": False,
+        "infos_manquantes": workflow_payload["input_as_text"],
+        "should_finalize": False,
+    }
+    final_output: dict[str, Any] | None = None
+
+    service = workflow_service or WorkflowService()
+    definition = service.get_current()
+    configured_steps = [
+        step for step in sorted(definition.steps, key=lambda s: s.position) if step.is_enabled
+    ]
+
+    runtime_steps: list[tuple[int, Any, Agent]] = []
+    for index, step in enumerate(configured_steps, start=1):
+        builder = _AGENT_BUILDERS.get(step.agent_key)
+        if builder is None:
+            logger.warning("Étape ignorée : agent inconnu %s", step.agent_key)
+            continue
+        agent = builder(step.parameters or {})
+        runtime_steps.append((index, step, agent))
+
+    if not runtime_steps:
+        raise WorkflowExecutionError(
+            "configuration",
+            "Configuration du workflow invalide",
+            RuntimeError("Aucune étape active utilisable"),
+            [],
+        )
+
+    if all(step.agent_key == "r_dacteur" for _, step, _ in runtime_steps):
+        state["should_finalize"] = True
 
     def _workflow_run_config() -> RunConfig:
         return RunConfig(
@@ -957,141 +1038,80 @@ async def run_workflow(
                             text=accumulated_text,
                         )
                     )
-        except Exception as exc:  # pragma: no cover - erreurs propagées au serveur
+        except Exception as exc:  # pragma: no cover
             raise_step_error(step_key, title, exc)
 
         conversation_history.extend([item.to_input_item() for item in result.new_items])
         return result
 
-    triage_title = "Analyse des informations fournies"
-    triage_result_stream = await run_agent_step(
-        "triage",
-        triage_title,
-        triage,
-        agent_context=agent_context,
-    )
-    triage_parsed, triage_text = _structured_output_as_json(triage_result_stream.final_output)
-    triage_result = {
-        "output_text": triage_text,
-        "output_parsed": triage_parsed,
-    }
-    if isinstance(triage_parsed, dict):
-        state["has_all_details"] = bool(triage_parsed.get("has_all_details"))
-    else:
-        state["has_all_details"] = False
-    state["infos_manquantes"] = triage_result["output_text"]
-    await record_step("triage", triage_title, triage_result["output_parsed"])
+    total_runtime_steps = len(runtime_steps)
+    for position, step_model, agent in runtime_steps:
+        agent_key = step_model.agent_key
+        step_identifier = f"{agent_key}_{position}"
+        title = _STEP_TITLES.get(agent_key, getattr(agent, "name", agent_key))
 
-    if state["has_all_details"] is True:
-        redacteur_title = "Rédaction du plan-cadre"
-        r_dacteur_result_stream = await run_agent_step(
-            "r_dacteur",
-            redacteur_title,
-            r_dacteur,
+        if agent_key in {"get_data_from_web", "triage_2", "get_data_from_user"} and state["has_all_details"]:
+            continue
+
+        if agent_key == "r_dacteur":
+            should_run = state["should_finalize"] or position == total_runtime_steps
+            if not should_run:
+                continue
+
+        run_context: Any | None = None
+        if agent_key == "get_data_from_web":
+            run_context = GetDataFromWebContext(state["infos_manquantes"])
+        elif agent_key == "triage_2":
+            run_context = Triage2Context(input_output_text=state["infos_manquantes"])
+        elif agent_key == "get_data_from_user":
+            run_context = GetDataFromUserContext(state_infos_manquantes=state["infos_manquantes"])
+
+        result_stream = await run_agent_step(
+            step_identifier,
+            title,
+            agent,
             agent_context=agent_context,
+            run_context=run_context,
         )
-        redacteur_parsed, redacteur_text = _structured_output_as_json(
-            r_dacteur_result_stream.final_output
-        )
-        r_dacteur_result = {
-            "output_text": redacteur_text,
-            "output_parsed": redacteur_parsed,
-        }
-        await record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
-        return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
 
-    web_step_title = "Collecte d'exemples externes"
-    get_data_from_web_result_stream = await run_agent_step(
-        "get_data_from_web",
-        web_step_title,
-        get_data_from_web,
-        agent_context=agent_context,
-        run_context=GetDataFromWebContext(state_infos_manquantes=state["infos_manquantes"]),
-    )
-    get_data_from_web_result = {
-        "output_text": get_data_from_web_result_stream.final_output_as(str)
-    }
-    await record_step(
-        "get_data_from_web",
-        web_step_title,
-        get_data_from_web_result["output_text"],
-    )
+        if agent_key == "triage":
+            parsed, text = _structured_output_as_json(result_stream.final_output)
+            state["has_all_details"] = bool(parsed.get("has_all_details")) if isinstance(parsed, dict) else False
+            state["infos_manquantes"] = text
+            state["should_finalize"] = state["has_all_details"]
+            await record_step(step_identifier, title, parsed)
+            continue
 
-    triage_2_title = "Validation après collecte"
-    triage_2_result_stream = await run_agent_step(
-        "triage_2",
-        triage_2_title,
-        triage_2,
-        agent_context=agent_context,
-        run_context=Triage2Context(input_output_text=get_data_from_web_result["output_text"]),
-    )
-    triage_2_parsed, triage_2_text = _structured_output_as_json(
-        triage_2_result_stream.final_output
-    )
-    triage_2_result = {
-        "output_text": triage_2_text,
-        "output_parsed": triage_2_parsed,
-    }
-    if isinstance(triage_2_parsed, dict):
-        state["has_all_details"] = bool(triage_2_parsed.get("has_all_details"))
-    else:
-        state["has_all_details"] = False
-    state["infos_manquantes"] = triage_2_result["output_text"]
-    await record_step("triage_2", triage_2_title, triage_2_result["output_parsed"])
+        if agent_key == "get_data_from_web":
+            text = result_stream.final_output_as(str)
+            state["infos_manquantes"] = text
+            await record_step(step_identifier, title, text)
+            continue
 
-    if state["has_all_details"] is True:
-        redacteur_title = "Rédaction du plan-cadre"
-        r_dacteur_result_stream = await run_agent_step(
-            "r_dacteur",
-            redacteur_title,
-            r_dacteur,
-            agent_context=agent_context,
-        )
-        redacteur_parsed, redacteur_text = _structured_output_as_json(
-            r_dacteur_result_stream.final_output
-        )
-        r_dacteur_result = {
-            "output_text": redacteur_text,
-            "output_parsed": redacteur_parsed,
-        }
-        await record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
-        return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
+        if agent_key == "triage_2":
+            parsed, text = _structured_output_as_json(result_stream.final_output)
+            state["has_all_details"] = bool(parsed.get("has_all_details")) if isinstance(parsed, dict) else False
+            state["infos_manquantes"] = text
+            state["should_finalize"] = state["has_all_details"]
+            await record_step(step_identifier, title, parsed)
+            continue
 
-    user_step_title = "Demande d'informations supplémentaires"
-    get_data_from_user_result_stream = await run_agent_step(
-        "get_data_from_user",
-        user_step_title,
-        get_data_from_user,
-        agent_context=agent_context,
-        run_context=GetDataFromUserContext(state_infos_manquantes=state["infos_manquantes"]),
-    )
-    get_data_from_user_result = {
-        "output_text": get_data_from_user_result_stream.final_output_as(str)
-    }
-    await record_step(
-        "get_data_from_user",
-        user_step_title,
-        get_data_from_user_result["output_text"],
-    )
+        if agent_key == "get_data_from_user":
+            text = result_stream.final_output_as(str)
+            state["infos_manquantes"] = text
+            state["should_finalize"] = True
+            await record_step(step_identifier, title, text)
+            continue
 
-    redacteur_title = "Rédaction du plan-cadre"
-    r_dacteur_result_stream = await run_agent_step(
-        "r_dacteur",
-        redacteur_title,
-        r_dacteur,
-        agent_context=agent_context,
-    )
-    redacteur_parsed, redacteur_text = _structured_output_as_json(
-        r_dacteur_result_stream.final_output
-    )
-    r_dacteur_result = {
-        "output_text": redacteur_text,
-        "output_parsed": redacteur_parsed,
-    }
-    await record_step("r_dacteur", redacteur_title, r_dacteur_result["output_text"])
-    return WorkflowRunSummary(steps=steps, final_output=r_dacteur_result)
+        if agent_key == "r_dacteur":
+            parsed, text = _structured_output_as_json(result_stream.final_output)
+            final_output = {"output_text": text, "output_parsed": parsed}
+            await record_step(step_identifier, title, final_output["output_text"])
+            break
 
+        await record_step(step_identifier, title, result_stream.final_output)
 
+    return WorkflowRunSummary(steps=steps, final_output=final_output)
 _server: DemoChatKitServer | None = None
 
 

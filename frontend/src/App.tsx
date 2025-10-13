@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AdminPage } from "./pages/AdminPage";
 import { LoginPage } from "./pages/LoginPage";
+import { WorkflowBuilderPage } from "./pages/WorkflowBuilderPage";
 import { MyChat } from "./MyChat";
 import { useAuth } from "./auth";
 
@@ -51,6 +52,14 @@ export const App = () => (
       element={
         <RequireAdmin>
           <AdminPage />
+        </RequireAdmin>
+      }
+    />
+    <Route
+      path="/admin/workflows"
+      element={
+        <RequireAdmin>
+          <WorkflowBuilderPage />
         </RequireAdmin>
       }
     />

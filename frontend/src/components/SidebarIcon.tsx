@@ -4,6 +4,7 @@ export type SidebarIconName =
   | "logo"
   | "home"
   | "admin"
+  | "workflow"
   | "settings"
   | "login"
   | "logout";
@@ -50,6 +51,21 @@ const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
       />
       <path
         d="m9 12.75 2.25 2.25L15 9.75"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </>
+  ),
+  workflow: (
+    <>
+      <circle cx="6.5" cy="7" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="17.5" cy="5.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="12" cy="18" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M8.3 8.2 11 12m3.2 1.6L16 7.4M12 16V14"
         fill="none"
         stroke="currentColor"
         strokeLinecap="round"

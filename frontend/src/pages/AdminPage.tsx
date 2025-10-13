@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { AuthUser, useAuth } from "../auth";
 import { makeApiEndpointCandidates } from "../utils/backend";
@@ -253,6 +254,12 @@ export const AdminPage = () => {
         </header>
 
         {error && <div className="alert alert--danger">{error}</div>}
+
+        <div className="admin-shell__toolbar" style={{ marginBottom: "1.5rem" }}>
+          <Link className="button button--ghost" to="/admin/workflows">
+            Configurer le workflow ChatKit
+          </Link>
+        </div>
 
         <div className="admin-grid">
           <section className="admin-card">

@@ -49,6 +49,7 @@ const buildNavigationItems = ({
   isAdmin,
   handleSidebarHome,
   handleSidebarAdmin,
+  handleSidebarWorkflows,
   handleSidebarSettings,
   handleSidebarLogin,
   handleSidebarLogout,
@@ -57,6 +58,7 @@ const buildNavigationItems = ({
   isAdmin: boolean;
   handleSidebarHome: () => void;
   handleSidebarAdmin: () => void;
+  handleSidebarWorkflows: () => void;
   handleSidebarSettings: () => void;
   handleSidebarLogin: () => void;
   handleSidebarLogout: () => void;
@@ -76,6 +78,12 @@ const buildNavigationItems = ({
       label: "Administration",
       icon: "admin",
       onClick: handleSidebarAdmin,
+    });
+    items.push({
+      key: "workflow",
+      label: "Workflow",
+      icon: "workflow",
+      onClick: handleSidebarWorkflows,
     });
   }
 
@@ -490,6 +498,13 @@ export function MyChat() {
     navigate("/admin");
   }, [closeSidebar, isDesktopLayout, navigate]);
 
+  const handleSidebarWorkflows = useCallback(() => {
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
+    navigate("/admin/workflows");
+  }, [closeSidebar, isDesktopLayout, navigate]);
+
   const handleSidebarLogin = useCallback(() => {
     if (!isDesktopLayout) {
       closeSidebar();
@@ -676,6 +691,7 @@ export function MyChat() {
         isAdmin: Boolean(user?.is_admin),
         handleSidebarHome,
         handleSidebarAdmin,
+        handleSidebarWorkflows,
         handleSidebarSettings,
         handleSidebarLogin,
         handleSidebarLogout,
@@ -684,6 +700,7 @@ export function MyChat() {
       isAuthenticated,
       handleSidebarAdmin,
       handleSidebarHome,
+      handleSidebarWorkflows,
       handleSidebarLogout,
       handleSidebarSettings,
       handleSidebarLogin,
