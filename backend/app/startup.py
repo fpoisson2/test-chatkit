@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from fastapi import FastAPI
 from sqlalchemy import inspect, select, text
@@ -30,6 +31,12 @@ def _run_ad_hoc_migrations() -> None:
                 }
 
             columns = _refresh_columns()
+
+            def _get_column(name: str) -> dict[str, Any] | None:
+                for column in inspect(connection).get_columns("workflow_steps"):
+                    if column["name"] == name:
+                        return column
+                return None
 
             if "slug" not in columns:
                 connection.execute(
@@ -63,11 +70,24 @@ def _run_ad_hoc_migrations() -> None:
                 )
                 columns = _refresh_columns()
 
-            if "agent_key" not in columns:
+            agent_key_column = _get_column("agent_key")
+            if agent_key_column is None:
                 connection.execute(
                     text("ALTER TABLE workflow_steps ADD COLUMN agent_key VARCHAR(128)")
                 )
-                columns = _refresh_columns()
+                agent_key_column = _get_column("agent_key")
+            if agent_key_column is not None and not agent_key_column.get("nullable", True):
+                if dialect == "postgresql":
+                    connection.execute(
+                        text("ALTER TABLE workflow_steps ALTER COLUMN agent_key DROP NOT NULL")
+                    )
+                    agent_key_column = _get_column("agent_key")
+                else:
+                    logger.warning(
+                        "Impossible de rendre la colonne agent_key nullable pour le dialecte %s",
+                        dialect,
+                    )
+            columns = _refresh_columns()
 
             if "position" not in columns:
                 if "order" in columns:
