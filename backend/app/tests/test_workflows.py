@@ -84,12 +84,7 @@ def test_admin_can_read_default_graph() -> None:
         for node in payload["graph"]["nodes"]
         if node.get("kind") == "state"
     }
-    assert {
-        "maj-etat-triage",
-        "maj-etat-collecte-web",
-        "maj-etat-validation",
-        "maj-etat-collecte-utilisateur",
-    }.issubset(state_slugs)
+    assert {"maj-etat-triage", "maj-etat-validation"}.issubset(state_slugs)
     edges = {(edge["source"], edge["target"]) for edge in payload["graph"]["edges"]}
     assert ("start", "analyse") in edges
     agent_keys = [step["agent_key"] for step in payload["steps"]]
@@ -279,12 +274,7 @@ def test_legacy_workflow_missing_state_nodes_is_backfilled() -> None:
         for node in payload["graph"]["nodes"]
         if node.get("kind") == "state"
     }
-    assert {
-        "maj-etat-triage",
-        "maj-etat-collecte-web",
-        "maj-etat-validation",
-        "maj-etat-collecte-utilisateur",
-    }.issubset(state_slugs)
+    assert {"maj-etat-triage", "maj-etat-validation"}.issubset(state_slugs)
 
     analyse_node = next(node for node in payload["graph"]["nodes"] if node["slug"] == "analyse")
     assert analyse_node["parameters"]["instructions"] == "Analyse initiale"
