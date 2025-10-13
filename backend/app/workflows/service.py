@@ -41,6 +41,29 @@ DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
             "metadata": {"position": {"x": 240, "y": 0}},
         },
         {
+            "slug": "maj-etat-triage",
+            "kind": "state",
+            "display_name": "Mise à jour de l'état (analyse)",
+            "is_enabled": True,
+            "parameters": {
+                "state": [
+                    {
+                        "target": "state.has_all_details",
+                        "expression": "input.output_parsed.has_all_details",
+                    },
+                    {
+                        "target": "state.infos_manquantes",
+                        "expression": "input.output_text",
+                    },
+                    {
+                        "target": "state.should_finalize",
+                        "expression": "input.output_parsed.has_all_details",
+                    },
+                ]
+            },
+            "metadata": {"position": {"x": 370, "y": -80}},
+        },
+        {
             "slug": "infos-completes",
             "kind": "condition",
             "display_name": "Toutes les informations?",
@@ -61,6 +84,21 @@ DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
             "metadata": {"position": {"x": 500, "y": 180}},
         },
         {
+            "slug": "maj-etat-collecte-web",
+            "kind": "state",
+            "display_name": "Mise à jour de l'état (collecte web)",
+            "is_enabled": True,
+            "parameters": {
+                "state": [
+                    {
+                        "target": "state.infos_manquantes",
+                        "expression": "input.output_text",
+                    }
+                ]
+            },
+            "metadata": {"position": {"x": 630, "y": 120}},
+        },
+        {
             "slug": "validation",
             "kind": "agent",
             "agent_key": "triage_2",
@@ -68,6 +106,29 @@ DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
             "is_enabled": True,
             "parameters": {},
             "metadata": {"position": {"x": 760, "y": 180}},
+        },
+        {
+            "slug": "maj-etat-validation",
+            "kind": "state",
+            "display_name": "Mise à jour de l'état (validation)",
+            "is_enabled": True,
+            "parameters": {
+                "state": [
+                    {
+                        "target": "state.has_all_details",
+                        "expression": "input.output_parsed.has_all_details",
+                    },
+                    {
+                        "target": "state.infos_manquantes",
+                        "expression": "input.output_text",
+                    },
+                    {
+                        "target": "state.should_finalize",
+                        "expression": "input.output_parsed.has_all_details",
+                    },
+                ]
+            },
+            "metadata": {"position": {"x": 900, "y": 120}},
         },
         {
             "slug": "pret-final",
@@ -90,6 +151,25 @@ DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
             "metadata": {"position": {"x": 1020, "y": 340}},
         },
         {
+            "slug": "maj-etat-collecte-utilisateur",
+            "kind": "state",
+            "display_name": "Mise à jour de l'état (collecte utilisateur)",
+            "is_enabled": True,
+            "parameters": {
+                "state": [
+                    {
+                        "target": "state.infos_manquantes",
+                        "expression": "input.output_text",
+                    },
+                    {
+                        "target": "state.should_finalize",
+                        "expression": "true",
+                    },
+                ]
+            },
+            "metadata": {"position": {"x": 1180, "y": 220}},
+        },
+        {
             "slug": "finalisation",
             "kind": "agent",
             "agent_key": "r_dacteur",
@@ -109,7 +189,12 @@ DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
     ],
     "edges": [
         {"source": "start", "target": "analyse", "metadata": {"label": ""}},
-        {"source": "analyse", "target": "infos-completes", "metadata": {"label": ""}},
+        {"source": "analyse", "target": "maj-etat-triage", "metadata": {"label": ""}},
+        {
+            "source": "maj-etat-triage",
+            "target": "infos-completes",
+            "metadata": {"label": ""},
+        },
         {
             "source": "infos-completes",
             "target": "finalisation",
@@ -122,8 +207,26 @@ DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
             "condition": "false",
             "metadata": {"label": "Non"},
         },
-        {"source": "collecte-web", "target": "validation", "metadata": {"label": ""}},
-        {"source": "validation", "target": "pret-final", "metadata": {"label": ""}},
+        {
+            "source": "collecte-web",
+            "target": "maj-etat-collecte-web",
+            "metadata": {"label": ""},
+        },
+        {
+            "source": "maj-etat-collecte-web",
+            "target": "validation",
+            "metadata": {"label": ""},
+        },
+        {
+            "source": "validation",
+            "target": "maj-etat-validation",
+            "metadata": {"label": ""},
+        },
+        {
+            "source": "maj-etat-validation",
+            "target": "pret-final",
+            "metadata": {"label": ""},
+        },
         {
             "source": "pret-final",
             "target": "finalisation",
@@ -136,7 +239,16 @@ DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
             "condition": "false",
             "metadata": {"label": "Non"},
         },
-        {"source": "collecte-utilisateur", "target": "finalisation", "metadata": {"label": ""}},
+        {
+            "source": "collecte-utilisateur",
+            "target": "maj-etat-collecte-utilisateur",
+            "metadata": {"label": ""},
+        },
+        {
+            "source": "maj-etat-collecte-utilisateur",
+            "target": "finalisation",
+            "metadata": {"label": ""},
+        },
         {"source": "finalisation", "target": "end", "metadata": {"label": ""}},
     ],
 }
@@ -387,7 +499,7 @@ class WorkflowService:
             slugs.add(slug)
 
             kind = str(entry.get("kind", "")).strip().lower()
-            if kind not in {"start", "agent", "condition", "end"}:
+            if kind not in {"start", "agent", "condition", "state", "end"}:
                 raise WorkflowValidationError(f"Type de nœud invalide : {kind or 'inconnu'}")
 
             agent_key: str | None = entry.get("agent_key")

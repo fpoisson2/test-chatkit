@@ -79,6 +79,17 @@ def test_admin_can_read_default_graph() -> None:
     payload = response.json()
     nodes = {node["slug"]: node for node in payload["graph"]["nodes"]}
     assert {"start", "end", "infos-completes", "finalisation"}.issubset(nodes.keys())
+    state_slugs = {
+        node["slug"]
+        for node in payload["graph"]["nodes"]
+        if node.get("kind") == "state"
+    }
+    assert {
+        "maj-etat-triage",
+        "maj-etat-collecte-web",
+        "maj-etat-validation",
+        "maj-etat-collecte-utilisateur",
+    }.issubset(state_slugs)
     edges = {(edge["source"], edge["target"]) for edge in payload["graph"]["edges"]}
     assert ("start", "analyse") in edges
     agent_keys = [step["agent_key"] for step in payload["steps"]]
