@@ -153,13 +153,22 @@ describe("WorkflowBuilderPage", () => {
     expect(body).toHaveProperty("graph");
     const agentNode = body.graph.nodes.find((node: any) => node.slug === "agent-triage");
     expect(agentNode.display_name).toBe("Analyse enrichie");
-    expect(agentNode.parameters).toEqual({
+    expect(agentNode.parameters).toMatchObject({
       instructions: "Analyse les entrées et produis un résumé clair.",
       model: "gpt-4.1-mini",
       model_settings: {
         store: true,
         temperature: 0.6,
         top_p: 0.8,
+      },
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "TriageSchema",
+          schema: expect.objectContaining({
+            properties: expect.objectContaining({ has_all_details: expect.any(Object) }),
+          }),
+        },
       },
     });
 
@@ -196,6 +205,12 @@ describe("WorkflowBuilderPage", () => {
     const reasoningSelect = await screen.findByLabelText(/niveau de raisonnement/i);
     expect(reasoningSelect).toHaveValue("minimal");
 
+    const triageResponseType = await screen.findByLabelText(/type de sortie/i);
+    expect(triageResponseType).toHaveValue("json_schema");
+
+    const triageSchemaTextarea = await screen.findByLabelText(/définition du schéma json/i);
+    expect(triageSchemaTextarea.value).toContain("has_all_details");
+
     const writerNode = container.querySelector('[data-id="writer"]');
     expect(writerNode).not.toBeNull();
     fireEvent.click(writerNode!);
@@ -209,6 +224,59 @@ describe("WorkflowBuilderPage", () => {
 
     const writerTopP = await screen.findByLabelText(/top-p/i);
     expect(writerTopP).toHaveValue(1);
+
+    const writerResponseType = await screen.findByLabelText(/type de sortie/i);
+    expect(writerResponseType).toHaveValue("json_schema");
+
+    const writerSchemaTextarea = await screen.findByLabelText(/définition du schéma json/i);
+    expect(writerSchemaTextarea.value).toContain("intro_place_cours");
+  });
+
+  test("pré-remplit la configuration de recherche web héritée", async () => {
+    const responseWithWeb = JSON.parse(JSON.stringify(defaultResponse));
+    responseWithWeb.graph.nodes.splice(2, 0, {
+      id: 5,
+      slug: "collecte-web",
+      kind: "agent",
+      display_name: "Collecte web",
+      agent_key: "get_data_from_web",
+      is_enabled: true,
+      parameters: {},
+      metadata: { position: { x: 360, y: 120 } },
+    });
+    responseWithWeb.graph.edges = [
+      { id: 1, source: "start", target: "agent-triage", condition: null, metadata: {} },
+      { id: 2, source: "agent-triage", target: "collecte-web", condition: null, metadata: {} },
+      { id: 3, source: "collecte-web", target: "writer", condition: null, metadata: {} },
+      { id: 4, source: "writer", target: "end", condition: null, metadata: {} },
+    ];
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => responseWithWeb,
+    } as Response);
+
+    const { container } = render(<WorkflowBuilderPage />);
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="collecte-web"]')).not.toBeNull();
+    });
+
+    const webNode = container.querySelector('[data-id="collecte-web"]');
+    expect(webNode).not.toBeNull();
+    fireEvent.click(webNode!);
+
+    const webToggle = await screen.findByLabelText(/activer la recherche web/i);
+    expect(webToggle).toBeChecked();
+
+    const searchScopeSelect = await screen.findByLabelText(/portée de la recherche/i);
+    expect(searchScopeSelect).toHaveValue("medium");
+
+    expect(await screen.findByLabelText(/ville/i)).toHaveValue("Québec");
+    expect(await screen.findByLabelText(/pays/i)).toHaveValue("CA");
+    expect(await screen.findByLabelText(/région/i)).toHaveValue("QC");
+    expect(await screen.findByLabelText(/type de précision/i)).toHaveValue("approximate");
   });
 
   test("permet de configurer le schéma JSON et les outils", async () => {

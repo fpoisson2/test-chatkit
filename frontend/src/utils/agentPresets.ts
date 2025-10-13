@@ -241,6 +241,437 @@ Arrête-toi et demande à l'utilisateur les informations manquantes.
 infos manquantes:
  {{state_infos_manquantes}}`;
 
+const TRIAGE_RESPONSE_SCHEMA = {
+  properties: {
+    has_all_details: {
+      title: "Has All Details",
+      type: "boolean",
+    },
+    details_manquants: {
+      title: "Details Manquants",
+      type: "string",
+    },
+  },
+  required: ["has_all_details", "details_manquants"],
+  title: "TriageSchema",
+  type: "object",
+} as const;
+
+const R_DACTEUR_RESPONSE_SCHEMA = {
+  $defs: {
+    RDacteurSchemaActivitesPratiques: {
+      properties: {
+        texte: {
+          title: "Texte",
+          type: "string",
+        },
+      },
+      required: ["texte"],
+      title: "RDacteurSchemaActivitesPratiques",
+      type: "object",
+    },
+    RDacteurSchemaActivitesPrevuesItem: {
+      properties: {
+        phase: {
+          title: "Phase",
+          type: "string",
+        },
+        description: {
+          title: "Description",
+          type: "string",
+        },
+      },
+      required: ["phase", "description"],
+      title: "RDacteurSchemaActivitesPrevuesItem",
+      type: "object",
+    },
+    RDacteurSchemaActivitesTheoriques: {
+      properties: {
+        texte: {
+          title: "Texte",
+          type: "string",
+        },
+      },
+      required: ["texte"],
+      title: "RDacteurSchemaActivitesTheoriques",
+      type: "object",
+    },
+    RDacteurSchemaCapaciteItem: {
+      properties: {
+        capacite: {
+          title: "Capacite",
+          type: "string",
+        },
+        pond_min: {
+          title: "Pond Min",
+          type: "number",
+        },
+        pond_max: {
+          title: "Pond Max",
+          type: "number",
+        },
+        savoirs_necessaires_capacite: {
+          items: {
+            type: "string",
+          },
+          title: "Savoirs Necessaires Capacite",
+          type: "array",
+        },
+        savoirs_faire_capacite: {
+          items: {
+            $ref: "#/$defs/RDacteurSchemaSavoirsFaireCapaciteItem",
+          },
+          title: "Savoirs Faire Capacite",
+          type: "array",
+        },
+        moyens_evaluation_capacite: {
+          items: {
+            type: "string",
+          },
+          title: "Moyens Evaluation Capacite",
+          type: "array",
+        },
+      },
+      required: [
+        "capacite",
+        "pond_min",
+        "pond_max",
+        "savoirs_necessaires_capacite",
+        "savoirs_faire_capacite",
+        "moyens_evaluation_capacite",
+      ],
+      title: "RDacteurSchemaCapaciteItem",
+      type: "object",
+    },
+    RDacteurSchemaCompetencesCertifieesItem: {
+      properties: {
+        texte: {
+          title: "Texte",
+          type: "string",
+        },
+        description: {
+          title: "Description",
+          type: "string",
+        },
+      },
+      required: ["texte", "description"],
+      title: "RDacteurSchemaCompetencesCertifieesItem",
+      type: "object",
+    },
+    RDacteurSchemaCompetencesDeveloppeesItem: {
+      properties: {
+        texte: {
+          title: "Texte",
+          type: "string",
+        },
+        description: {
+          title: "Description",
+          type: "string",
+        },
+      },
+      required: ["texte", "description"],
+      title: "RDacteurSchemaCompetencesDeveloppeesItem",
+      type: "object",
+    },
+    RDacteurSchemaCoursCorequisItem: {
+      properties: {
+        texte: {
+          title: "Texte",
+          type: "string",
+        },
+        description: {
+          title: "Description",
+          type: "string",
+        },
+      },
+      required: ["texte", "description"],
+      title: "RDacteurSchemaCoursCorequisItem",
+      type: "object",
+    },
+    RDacteurSchemaCoursPrealablesItem: {
+      properties: {
+        texte: {
+          title: "Texte",
+          type: "string",
+        },
+        description: {
+          title: "Description",
+          type: "string",
+        },
+      },
+      required: ["texte", "description"],
+      title: "RDacteurSchemaCoursPrealablesItem",
+      type: "object",
+    },
+    RDacteurSchemaCoursReliesItem: {
+      properties: {
+        texte: {
+          title: "Texte",
+          type: "string",
+        },
+        description: {
+          title: "Description",
+          type: "string",
+        },
+      },
+      required: ["texte", "description"],
+      title: "RDacteurSchemaCoursReliesItem",
+      type: "object",
+    },
+    RDacteurSchemaEvaluationFormative: {
+      properties: {
+        texte: {
+          title: "Texte",
+          type: "string",
+        },
+      },
+      required: ["texte"],
+      title: "RDacteurSchemaEvaluationFormative",
+      type: "object",
+    },
+    RDacteurSchemaEvaluationLangue: {
+      properties: {
+        texte: {
+          title: "Texte",
+          type: "string",
+        },
+      },
+      required: ["texte"],
+      title: "RDacteurSchemaEvaluationLangue",
+      type: "object",
+    },
+    RDacteurSchemaEvaluationSommative: {
+      properties: {
+        texte: {
+          title: "Texte",
+          type: "string",
+        },
+      },
+      required: ["texte"],
+      title: "RDacteurSchemaEvaluationSommative",
+      type: "object",
+    },
+    RDacteurSchemaIntroPlaceCours: {
+      properties: {
+        texte: {
+          title: "Texte",
+          type: "string",
+        },
+      },
+      required: ["texte"],
+      title: "RDacteurSchemaIntroPlaceCours",
+      type: "object",
+    },
+    RDacteurSchemaNatureEvaluationsSommatives: {
+      properties: {
+        texte: {
+          title: "Texte",
+          type: "string",
+        },
+      },
+      required: ["texte"],
+      title: "RDacteurSchemaNatureEvaluationsSommatives",
+      type: "object",
+    },
+    RDacteurSchemaObjectifTerminal: {
+      properties: {
+        texte: {
+          title: "Texte",
+          type: "string",
+        },
+      },
+      required: ["texte"],
+      title: "RDacteurSchemaObjectifTerminal",
+      type: "object",
+    },
+    RDacteurSchemaObjetsCiblesItem: {
+      properties: {
+        texte: {
+          title: "Texte",
+          type: "string",
+        },
+        description: {
+          title: "Description",
+          type: "string",
+        },
+      },
+      required: ["texte", "description"],
+      title: "RDacteurSchemaObjetsCiblesItem",
+      type: "object",
+    },
+    RDacteurSchemaSavoirsFaireCapaciteItem: {
+      properties: {
+        savoir_faire: {
+          title: "Savoir Faire",
+          type: "string",
+        },
+        cible_100: {
+          title: "Cible 100",
+          type: "string",
+        },
+        seuil_60: {
+          title: "Seuil 60",
+          type: "string",
+        },
+      },
+      required: ["savoir_faire", "cible_100", "seuil_60"],
+      title: "RDacteurSchemaSavoirsFaireCapaciteItem",
+      type: "object",
+    },
+    RDacteurSchemaStructureIntro: {
+      properties: {
+        texte: {
+          title: "Texte",
+          type: "string",
+        },
+      },
+      required: ["texte"],
+      title: "RDacteurSchemaStructureIntro",
+      type: "object",
+    },
+  },
+  properties: {
+    intro_place_cours: {
+      $ref: "#/$defs/RDacteurSchemaIntroPlaceCours",
+    },
+    objectif_terminal: {
+      $ref: "#/$defs/RDacteurSchemaObjectifTerminal",
+    },
+    structure_intro: {
+      $ref: "#/$defs/RDacteurSchemaStructureIntro",
+    },
+    activites_theoriques: {
+      $ref: "#/$defs/RDacteurSchemaActivitesTheoriques",
+    },
+    activites_pratiques: {
+      $ref: "#/$defs/RDacteurSchemaActivitesPratiques",
+    },
+    activites_prevues: {
+      items: {
+        $ref: "#/$defs/RDacteurSchemaActivitesPrevuesItem",
+      },
+      title: "Activites Prevues",
+      type: "array",
+    },
+    evaluation_sommative: {
+      $ref: "#/$defs/RDacteurSchemaEvaluationSommative",
+    },
+    nature_evaluations_sommatives: {
+      $ref: "#/$defs/RDacteurSchemaNatureEvaluationsSommatives",
+    },
+    evaluation_langue: {
+      $ref: "#/$defs/RDacteurSchemaEvaluationLangue",
+    },
+    evaluation_formative: {
+      $ref: "#/$defs/RDacteurSchemaEvaluationFormative",
+    },
+    competences_developpees: {
+      items: {
+        $ref: "#/$defs/RDacteurSchemaCompetencesDeveloppeesItem",
+      },
+      title: "Competences Developpees",
+      type: "array",
+    },
+    competences_certifiees: {
+      items: {
+        $ref: "#/$defs/RDacteurSchemaCompetencesCertifieesItem",
+      },
+      title: "Competences Certifiees",
+      type: "array",
+    },
+    cours_corequis: {
+      items: {
+        $ref: "#/$defs/RDacteurSchemaCoursCorequisItem",
+      },
+      title: "Cours Corequis",
+      type: "array",
+    },
+    objets_cibles: {
+      items: {
+        $ref: "#/$defs/RDacteurSchemaObjetsCiblesItem",
+      },
+      title: "Objets Cibles",
+      type: "array",
+    },
+    cours_relies: {
+      items: {
+        $ref: "#/$defs/RDacteurSchemaCoursReliesItem",
+      },
+      title: "Cours Relies",
+      type: "array",
+    },
+    cours_prealables: {
+      items: {
+        $ref: "#/$defs/RDacteurSchemaCoursPrealablesItem",
+      },
+      title: "Cours Prealables",
+      type: "array",
+    },
+    savoir_etre: {
+      items: {
+        type: "string",
+      },
+      title: "Savoir Etre",
+      type: "array",
+    },
+    capacite: {
+      items: {
+        $ref: "#/$defs/RDacteurSchemaCapaciteItem",
+      },
+      title: "Capacite",
+      type: "array",
+    },
+  },
+  required: [
+    "intro_place_cours",
+    "objectif_terminal",
+    "structure_intro",
+    "activites_theoriques",
+    "activites_pratiques",
+    "activites_prevues",
+    "evaluation_sommative",
+    "nature_evaluations_sommatives",
+    "evaluation_langue",
+    "evaluation_formative",
+    "competences_developpees",
+    "competences_certifiees",
+    "cours_corequis",
+    "objets_cibles",
+    "cours_relies",
+    "cours_prealables",
+    "savoir_etre",
+    "capacite",
+  ],
+  title: "RDacteurSchema",
+  type: "object",
+} as const;
+
+const TRIAGE_2_RESPONSE_SCHEMA = {
+  properties: {
+    has_all_details: {
+      title: "Has All Details",
+      type: "boolean",
+    },
+    details_manquants: {
+      title: "Details Manquants",
+      type: "string",
+    },
+  },
+  required: ["has_all_details", "details_manquants"],
+  title: "Triage2Schema",
+  type: "object",
+} as const;
+
+const GET_DATA_FROM_WEB_TOOL = {
+  user_location: {
+    city: "Québec",
+    country: "CA",
+    region: "QC",
+    type: "approximate",
+  },
+  search_context_size: "medium",
+} as const;
+
 const LEGACY_AGENT_DEFAULTS: Record<string, AgentParameters> = {
   triage: {
     instructions: TRIAGE_DEFAULT_INSTRUCTIONS,
@@ -248,6 +679,10 @@ const LEGACY_AGENT_DEFAULTS: Record<string, AgentParameters> = {
     model_settings: {
       store: true,
       reasoning: { effort: "minimal", summary: "auto" },
+    },
+    response_format: {
+      type: "json_schema",
+      json_schema: { name: "TriageSchema", schema: TRIAGE_RESPONSE_SCHEMA },
     },
   },
   r_dacteur: {
@@ -258,6 +693,10 @@ const LEGACY_AGENT_DEFAULTS: Record<string, AgentParameters> = {
       top_p: 1,
       store: true,
     },
+    response_format: {
+      type: "json_schema",
+      json_schema: { name: "RDacteurSchema", schema: R_DACTEUR_RESPONSE_SCHEMA },
+    },
   },
   get_data_from_web: {
     instructions: GET_DATA_FROM_WEB_INSTRUCTIONS,
@@ -266,6 +705,15 @@ const LEGACY_AGENT_DEFAULTS: Record<string, AgentParameters> = {
       store: true,
       reasoning: { effort: "medium", summary: "auto" },
     },
+    tools: [
+      {
+        type: "web_search",
+        web_search: {
+          search_context_size: GET_DATA_FROM_WEB_TOOL.search_context_size,
+          user_location: { ...GET_DATA_FROM_WEB_TOOL.user_location },
+        },
+      },
+    ],
   },
   triage_2: {
     instructions: TRIAGE_2_INSTRUCTIONS,
@@ -273,6 +721,10 @@ const LEGACY_AGENT_DEFAULTS: Record<string, AgentParameters> = {
     model_settings: {
       store: true,
       reasoning: { effort: "minimal", summary: "auto" },
+    },
+    response_format: {
+      type: "json_schema",
+      json_schema: { name: "Triage2Schema", schema: TRIAGE_2_RESPONSE_SCHEMA },
     },
   },
   get_data_from_user: {
