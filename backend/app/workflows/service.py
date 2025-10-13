@@ -21,6 +21,21 @@ SUPPORTED_AGENT_KEYS: set[str] = {
     "r_dacteur",
 }
 
+EXPECTED_STATE_SLUGS: set[str] = {
+    "maj-etat-triage",
+    "maj-etat-collecte-web",
+    "maj-etat-validation",
+    "maj-etat-collecte-utilisateur",
+}
+
+DEFAULT_AGENT_SLUGS: set[str] = {
+    "analyse",
+    "collecte-web",
+    "validation",
+    "collecte-utilisateur",
+    "finalisation",
+}
+
 DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
     "nodes": [
         {
@@ -408,7 +423,17 @@ class WorkflowService:
         has_start = any(step.kind == "start" for step in definition.steps)
         has_end = any(step.kind == "end" for step in definition.steps)
         has_edges = bool(definition.transitions)
-        return not (has_start and has_end and has_edges)
+        if not (has_start and has_end and has_edges):
+            return True
+
+        existing_slugs = {step.slug for step in definition.steps}
+        if EXPECTED_STATE_SLUGS.issubset(existing_slugs):
+            return False
+
+        if DEFAULT_AGENT_SLUGS.issubset(existing_slugs):
+            return True
+
+        return False
 
     def _backfill_legacy_definition(
         self, definition: WorkflowDefinition, session: Session
