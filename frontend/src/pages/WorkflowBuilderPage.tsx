@@ -23,12 +23,23 @@ import {
   getAgentMessage,
   getAgentModel,
   getAgentReasoningEffort,
+  getAgentResponseFormat,
+  getAgentTemperature,
+  getAgentTopP,
+  getAgentWebSearchConfig,
   parseAgentParameters,
   setAgentMessage,
   setAgentModel,
   setAgentReasoningEffort,
+  setAgentResponseFormatKind,
+  setAgentResponseFormatName,
+  setAgentResponseFormatSchema,
+  setAgentTemperature,
+  setAgentTopP,
+  setAgentWebSearchConfig,
   stringifyAgentParameters,
   type AgentParameters,
+  type WebSearchConfig,
 } from "../utils/workflows";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
@@ -124,6 +135,25 @@ const defaultEdgeOptions: EdgeOptions = {
 };
 
 const connectionLineStyle = { stroke: "#1e293b", strokeWidth: 2 };
+
+const NON_REASONING_MODEL_PATTERN = /^gpt-4\.1/i;
+
+const supportsReasoningModel = (model: string): boolean => {
+  if (!model.trim()) {
+    return true;
+  }
+  return !NON_REASONING_MODEL_PATTERN.test(model.trim());
+};
+
+const DEFAULT_JSON_SCHEMA_OBJECT = { type: "object", properties: {} } as const;
+const DEFAULT_JSON_SCHEMA_TEXT = JSON.stringify(DEFAULT_JSON_SCHEMA_OBJECT, null, 2);
+const DEFAULT_WEB_SEARCH_CONFIG: WebSearchConfig = { search_context_size: "medium" };
+const WEB_SEARCH_LOCATION_LABELS = {
+  city: "Ville",
+  region: "Région",
+  country: "Pays",
+  type: "Type de précision",
+} as const;
 
 const WorkflowBuilderPage = () => {
   const { token } = useAuth();
@@ -347,7 +377,10 @@ const WorkflowBuilderPage = () => {
         if (data.kind !== "agent") {
           return data;
         }
-        const nextParameters = setAgentModel(data.parameters, value);
+        let nextParameters = setAgentModel(data.parameters, value);
+        if (!supportsReasoningModel(value)) {
+          nextParameters = setAgentReasoningEffort(nextParameters, "");
+        }
         return {
           ...data,
           parameters: nextParameters,
@@ -366,6 +399,114 @@ const WorkflowBuilderPage = () => {
           return data;
         }
         const nextParameters = setAgentReasoningEffort(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentTemperatureChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentTemperature(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentTopPChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentTopP(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentResponseFormatKindChange = useCallback(
+    (nodeId: string, kind: "text" | "json_schema") => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentResponseFormatKind(data.parameters, kind);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentResponseFormatNameChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentResponseFormatName(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentResponseFormatSchemaChange = useCallback(
+    (nodeId: string, schema: unknown) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentResponseFormatSchema(data.parameters, schema);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentWebSearchChange = useCallback(
+    (nodeId: string, config: WebSearchConfig | null) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentWebSearchConfig(data.parameters, config);
         return {
           ...data,
           parameters: nextParameters,
@@ -648,6 +789,12 @@ const WorkflowBuilderPage = () => {
               onAgentMessageChange={handleAgentMessageChange}
               onAgentModelChange={handleAgentModelChange}
               onAgentReasoningChange={handleAgentReasoningChange}
+              onAgentTemperatureChange={handleAgentTemperatureChange}
+              onAgentTopPChange={handleAgentTopPChange}
+              onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
+              onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
+              onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
+              onAgentWebSearchChange={handleAgentWebSearchChange}
               onParametersChange={handleParametersChange}
               onRemove={handleRemoveNode}
             />
@@ -696,6 +843,12 @@ type NodeInspectorProps = {
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onAgentModelChange: (nodeId: string, value: string) => void;
   onAgentReasoningChange: (nodeId: string, value: string) => void;
+  onAgentTemperatureChange: (nodeId: string, value: string) => void;
+  onAgentTopPChange: (nodeId: string, value: string) => void;
+  onAgentResponseFormatKindChange: (nodeId: string, kind: "text" | "json_schema") => void;
+  onAgentResponseFormatNameChange: (nodeId: string, value: string) => void;
+  onAgentResponseFormatSchemaChange: (nodeId: string, schema: unknown) => void;
+  onAgentWebSearchChange: (nodeId: string, config: WebSearchConfig | null) => void;
   onParametersChange: (nodeId: string, value: string) => void;
   onRemove: (nodeId: string) => void;
 };
@@ -707,6 +860,12 @@ const NodeInspector = ({
   onAgentMessageChange,
   onAgentModelChange,
   onAgentReasoningChange,
+  onAgentTemperatureChange,
+  onAgentTopPChange,
+  onAgentResponseFormatKindChange,
+  onAgentResponseFormatNameChange,
+  onAgentResponseFormatSchemaChange,
+  onAgentWebSearchChange,
   onParametersChange,
   onRemove,
 }: NodeInspectorProps) => {
@@ -715,6 +874,32 @@ const NodeInspector = ({
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
   const reasoningEffort = getAgentReasoningEffort(parameters);
+  const responseFormat = getAgentResponseFormat(parameters);
+  const temperature = getAgentTemperature(parameters);
+  const topP = getAgentTopP(parameters);
+  const webSearchConfig = getAgentWebSearchConfig(parameters);
+  const webSearchEnabled = Boolean(webSearchConfig);
+  const [schemaText, setSchemaText] = useState(() =>
+    responseFormat.kind === "json_schema"
+      ? JSON.stringify(responseFormat.schema ?? {}, null, 2)
+      : DEFAULT_JSON_SCHEMA_TEXT,
+  );
+  const [schemaError, setSchemaError] = useState<string | null>(null);
+  const schemaSignature =
+    responseFormat.kind === "json_schema"
+      ? JSON.stringify(responseFormat.schema ?? {})
+      : "";
+  useEffect(() => {
+    if (responseFormat.kind === "json_schema") {
+      setSchemaText(JSON.stringify(responseFormat.schema ?? {}, null, 2));
+    } else {
+      setSchemaText(DEFAULT_JSON_SCHEMA_TEXT);
+    }
+    setSchemaError(null);
+  }, [node.id, responseFormat.kind, schemaSignature]);
+  const supportsReasoning = supportsReasoningModel(agentModel);
+  const temperatureValue = typeof temperature === "number" ? String(temperature) : "";
+  const topPValue = typeof topP === "number" ? String(topP) : "";
   return (
     <section aria-label={`Propriétés du nœud ${node.data.slug}`}>
       <h2 style={{ fontSize: "1.25rem", marginBottom: "0.75rem" }}>Nœud sélectionné</h2>
@@ -756,23 +941,208 @@ const NodeInspector = ({
             />
           </label>
 
+          {supportsReasoning ? (
+            <label style={fieldStyle}>
+              <span>Niveau de raisonnement</span>
+              <select
+                value={reasoningEffort}
+                onChange={(event) => onAgentReasoningChange(node.id, event.target.value)}
+              >
+                {reasoningEffortOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <small style={{ color: "#475569" }}>
+                Ajuste la profondeur d'analyse du modèle (laisser vide pour utiliser la valeur par
+                défaut).
+              </small>
+            </label>
+          ) : (
+            <>
+              <label style={fieldStyle}>
+                <span>Température</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="2"
+                  step="0.01"
+                  value={temperatureValue}
+                  placeholder="Ex. 0.7"
+                  onChange={(event) => onAgentTemperatureChange(node.id, event.target.value)}
+                />
+                <small style={{ color: "#475569" }}>
+                  Ajuste la créativité des réponses pour les modèles sans raisonnement.
+                </small>
+              </label>
+              <label style={fieldStyle}>
+                <span>Top-p</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={topPValue}
+                  placeholder="Ex. 0.9"
+                  onChange={(event) => onAgentTopPChange(node.id, event.target.value)}
+                />
+                <small style={{ color: "#475569" }}>
+                  Détermine la diversité lexicale en limitant la probabilité cumulée.
+                </small>
+              </label>
+            </>
+          )}
+
           <label style={fieldStyle}>
-            <span>Niveau de raisonnement</span>
+            <span>Type de sortie</span>
             <select
-              value={reasoningEffort}
-              onChange={(event) => onAgentReasoningChange(node.id, event.target.value)}
+              value={responseFormat.kind}
+              onChange={(event) =>
+                onAgentResponseFormatKindChange(
+                  node.id,
+                  event.target.value as "text" | "json_schema",
+                )
+              }
             >
-              {reasoningEffortOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
+              <option value="text">Texte libre</option>
+              <option value="json_schema">Schéma JSON</option>
             </select>
             <small style={{ color: "#475569" }}>
-              Ajuste la profondeur d'analyse du modèle (laisser vide pour utiliser la valeur par
-              défaut).
+              Choisissez le format attendu pour la réponse de l'agent.
             </small>
           </label>
+
+          {responseFormat.kind === "json_schema" && (
+            <>
+              <label style={fieldStyle}>
+                <span>Nom du schéma JSON</span>
+                <input
+                  type="text"
+                  value={responseFormat.name}
+                  onChange={(event) => onAgentResponseFormatNameChange(node.id, event.target.value)}
+                />
+              </label>
+
+              <label style={fieldStyle}>
+                <span>Définition du schéma JSON</span>
+                <textarea
+                  value={schemaText}
+                  rows={8}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSchemaText(value);
+                    try {
+                      const parsed = JSON.parse(value);
+                      setSchemaError(null);
+                      onAgentResponseFormatSchemaChange(node.id, parsed);
+                    } catch (error) {
+                      setSchemaError(
+                        error instanceof Error ? error.message : "Schéma JSON invalide",
+                      );
+                    }
+                  }}
+                  style={schemaError ? { borderColor: "#b91c1c" } : undefined}
+                />
+                {schemaError ? (
+                  <span style={{ color: "#b91c1c", fontSize: "0.85rem" }}>{schemaError}</span>
+                ) : (
+                  <small style={{ color: "#475569" }}>
+                    Fournissez un schéma JSON valide (Draft 2020-12) pour contraindre la sortie.
+                  </small>
+                )}
+              </label>
+            </>
+          )}
+
+          <div
+            style={{
+              border: "1px solid rgba(15, 23, 42, 0.12)",
+              borderRadius: "0.75rem",
+              padding: "0.75rem",
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.5rem",
+            }}
+          >
+            <strong style={{ fontSize: "0.95rem" }}>Outils</strong>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={webSearchEnabled}
+                onChange={(event) =>
+                  onAgentWebSearchChange(
+                    node.id,
+                    event.target.checked
+                      ? webSearchConfig ?? { ...DEFAULT_WEB_SEARCH_CONFIG }
+                      : null,
+                  )
+                }
+              />
+              Activer la recherche web
+            </label>
+            {webSearchEnabled && (
+              <>
+                <label style={fieldStyle}>
+                  <span>Portée de la recherche</span>
+                  <select
+                    value={webSearchConfig?.search_context_size ?? ""}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      const nextConfig: WebSearchConfig = { ...(webSearchConfig ?? {}) };
+                      if (value) {
+                        nextConfig.search_context_size = value;
+                      } else {
+                        delete nextConfig.search_context_size;
+                      }
+                      onAgentWebSearchChange(node.id, nextConfig);
+                    }}
+                  >
+                    <option value="">(par défaut)</option>
+                    <option value="small">Petit contexte</option>
+                    <option value="medium">Contexte moyen</option>
+                    <option value="large">Grand contexte</option>
+                  </select>
+                </label>
+
+                <div style={{ display: "grid", gap: "0.5rem" }}>
+                  <span style={{ fontWeight: 600 }}>Localisation utilisateur</span>
+                  {Object.entries(WEB_SEARCH_LOCATION_LABELS).map(([key, label]) => {
+                    const typedKey = key as keyof typeof WEB_SEARCH_LOCATION_LABELS;
+                    const currentValue =
+                      (webSearchConfig?.user_location?.[typedKey] as string | undefined) ?? "";
+                    return (
+                      <label key={key} style={fieldStyle}>
+                        <span>{label}</span>
+                        <input
+                          type="text"
+                          value={currentValue}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            const nextLocation = {
+                              ...(webSearchConfig?.user_location ?? {}),
+                            } as Record<string, string>;
+                            if (value.trim()) {
+                              nextLocation[typedKey] = value;
+                            } else {
+                              delete nextLocation[typedKey];
+                            }
+                            const nextConfig: WebSearchConfig = { ...(webSearchConfig ?? {}) };
+                            if (Object.keys(nextLocation).length > 0) {
+                              nextConfig.user_location = nextLocation;
+                            } else {
+                              delete nextConfig.user_location;
+                            }
+                            onAgentWebSearchChange(node.id, nextConfig);
+                          }}
+                        />
+                      </label>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
         </>
       )}
 
