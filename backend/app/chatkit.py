@@ -5,6 +5,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from types import MethodType
 from typing import Any, AsyncIterator, Awaitable, Callable, Coroutine, Sequence
 
 from agents import (
@@ -16,19 +17,25 @@ from agents import (
     TResponseInputItem,
     WebSearchTool,
 )
+from agents.items import ToolCallItem, ToolCallOutputItem
+from agents.run import RunResultStreaming
+from agents.stream_events import RunItemStreamEvent
 from openai.types.shared.reasoning import Reasoning
 from pydantic import BaseModel
 
-from chatkit.agents import AgentContext, stream_agent_response
+from chatkit.agents import AgentContext, stream_agent_response, _merge_generators
 from chatkit.server import ChatKitServer
 from chatkit.store import NotFoundError
 from chatkit.types import (
     AssistantMessageContentPartTextDelta,
+    ClientToolCallItem,
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
     ProgressUpdateEvent,
     ThreadItem,
+    ThreadItemAddedEvent,
+    ThreadItemDoneEvent,
     ThreadItemUpdated,
     ThreadMetadata,
     ThreadStreamEvent,
@@ -291,6 +298,180 @@ class _WorkflowStreamResult:
             yield event
 
         await self._task
+
+
+# ---------------------------------------------------------------------------
+# Adaptateur de streaming des réponses Agents avec interception des outils
+# ---------------------------------------------------------------------------
+
+
+async def stream_agent_response_with_tools(
+    context: AgentContext, result: RunResultStreaming
+) -> AsyncIterator[ThreadStreamEvent]:
+    """Relaye les événements Agents en exposant explicitement les appels d'outils.
+
+    Cette variante enrichit les événements retournés par
+    :func:`chatkit.agents.stream_agent_response` en injectant des
+    ``ClientToolCallItem`` lorsque l'agent déclenche un outil (événements
+    ``tool_call_item`` / ``tool_call_output_item``). Les appels d'outils sont
+    diffusés comme un élément client en trois temps : ajout (`pending`), mise à
+    jour (`completed` + sortie) puis finalisation.
+    """
+
+    tool_event_queue: asyncio.Queue[ThreadStreamEvent | object] = asyncio.Queue()
+    queue_done = object()
+    pending_calls: dict[str, ClientToolCallItem] = {}
+    call_ids_by_item_id: dict[str, str] = {}
+
+    def _generate_tool_call_id() -> str:
+        return context.store.generate_item_id(
+            "tool_call", context.thread, context.request_context
+        )
+
+    def _resolve_call_id(candidate: str | None) -> str:
+        if candidate:
+            return str(candidate)
+        return _generate_tool_call_id()
+
+    def _resolve_item_id(raw_id: str | None, call_id: str) -> str:
+        if raw_id:
+            return str(raw_id)
+        return call_id or _generate_tool_call_id()
+
+    def _resolve_tool_name(raw_item: Any) -> str:
+        name = getattr(raw_item, "name", None)
+        if name:
+            return str(name)
+        raw_type = getattr(raw_item, "type", None)
+        if raw_type == "web_search_call":
+            return "web_search"
+        if raw_type:
+            return str(raw_type)
+        return "tool_call"
+
+    def _normalize_payload(value: Any) -> Any:
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError:
+                return value
+            else:
+                return parsed
+        if hasattr(value, "model_dump"):
+            return value.model_dump()
+        if isinstance(value, bytes):
+            try:
+                return value.decode("utf-8")
+            except UnicodeDecodeError:
+                return value
+        return value
+
+    def _extract_arguments(raw_item: Any) -> dict[str, Any]:
+        arguments = getattr(raw_item, "arguments", None)
+        if arguments is None and hasattr(raw_item, "action"):
+            arguments = getattr(raw_item, "action")
+        normalized = _normalize_payload(arguments)
+        if isinstance(normalized, dict):
+            return normalized
+        if normalized is None:
+            return {}
+        return {"value": normalized}
+
+    def _emit_update_event(item: ClientToolCallItem) -> ThreadItemUpdated:
+        update_payload = {
+            "type": "client_tool_call.updated",
+            "status": item.status,
+            "output": item.output,
+            "name": item.name,
+            "arguments": item.arguments,
+            "call_id": item.call_id,
+        }
+        return ThreadItemUpdated.model_construct(
+            type="thread.item.updated", item_id=item.id, update=update_payload
+        )
+
+    async def _handle_tool_call(run_item: ToolCallItem) -> None:
+        raw_item = run_item.raw_item
+        call_id = _resolve_call_id(getattr(raw_item, "call_id", None))
+        item_id = _resolve_item_id(getattr(raw_item, "id", None), call_id)
+        call_ids_by_item_id[item_id] = call_id
+        arguments = _extract_arguments(raw_item)
+        client_tool = ClientToolCallItem(
+            id=item_id,
+            thread_id=context.thread.id,
+            created_at=datetime.now(),
+            call_id=call_id,
+            name=_resolve_tool_name(raw_item),
+            arguments=arguments,
+            status="pending",
+        )
+        pending_calls[call_id] = client_tool
+        await tool_event_queue.put(ThreadItemAddedEvent(item=client_tool))
+
+    async def _handle_tool_output(run_item: ToolCallOutputItem) -> None:
+        raw_item = run_item.raw_item
+        call_id = getattr(raw_item, "call_id", None)
+        if not call_id:
+            raw_identifier = getattr(raw_item, "id", None)
+            call_id = call_ids_by_item_id.get(str(raw_identifier)) if raw_identifier else None
+        call_id = _resolve_call_id(call_id)
+        existing = pending_calls.get(call_id)
+        if existing is None:
+            item_id = _resolve_item_id(getattr(raw_item, "id", None), call_id)
+            existing = ClientToolCallItem(
+                id=item_id,
+                thread_id=context.thread.id,
+                created_at=datetime.now(),
+                call_id=call_id,
+                name=_resolve_tool_name(raw_item),
+                arguments=_extract_arguments(raw_item),
+                status="pending",
+            )
+            call_ids_by_item_id[item_id] = call_id
+            pending_calls[call_id] = existing
+            await tool_event_queue.put(ThreadItemAddedEvent(item=existing))
+        output_value = _normalize_payload(run_item.output)
+        completed = existing.model_copy(
+            update={"status": "completed", "output": output_value}
+        )
+        pending_calls[call_id] = completed
+        await tool_event_queue.put(_emit_update_event(completed))
+        await tool_event_queue.put(ThreadItemDoneEvent(item=completed))
+        pending_calls.pop(call_id, None)
+
+    async def _handle_run_item_event(event: RunItemStreamEvent) -> None:
+        item = event.item
+        if isinstance(item, ToolCallItem):
+            await _handle_tool_call(item)
+        elif isinstance(item, ToolCallOutputItem):
+            await _handle_tool_output(item)
+
+    original_stream_events = result.stream_events
+
+    async def _hooked_stream_events(self) -> AsyncIterator[Any]:
+        try:
+            async for raw_event in original_stream_events():
+                if isinstance(raw_event, RunItemStreamEvent):
+                    await _handle_run_item_event(raw_event)
+                yield raw_event
+        finally:
+            await tool_event_queue.put(queue_done)
+
+    result.stream_events = MethodType(_hooked_stream_events, result)
+
+    async def _tool_event_iterator() -> AsyncIterator[ThreadStreamEvent]:
+        while True:
+            queued = await tool_event_queue.get()
+            if queued is queue_done:
+                break
+            yield queued
+
+    try:
+        base_stream = stream_agent_response(context, result)
+        async for event in _merge_generators(base_stream, _tool_event_iterator()):
+            yield event
+    finally:
+        result.stream_events = original_stream_events
 
 
 # ---------------------------------------------------------------------------
@@ -940,7 +1121,9 @@ async def run_workflow(
             context=run_context,
         )
         try:
-            async for event in stream_agent_response(agent_context, result):
+            async for event in stream_agent_response_with_tools(
+                agent_context, result
+            ):
                 if on_stream_event is not None:
                     await on_stream_event(event)
                 if on_step_stream is not None:
