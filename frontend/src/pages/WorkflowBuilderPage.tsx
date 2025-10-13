@@ -68,7 +68,6 @@ type FlowNodeData = {
   kind: NodeKind;
   displayName: string;
   label: string;
-  agentKey?: string | null;
   isEnabled: boolean;
   parameters: AgentParameters;
   parametersText: string;
@@ -85,14 +84,6 @@ type FlowNode = Node<FlowNodeData>;
 type FlowEdge = Edge<FlowEdgeData>;
 
 type SaveState = "idle" | "saving" | "saved" | "error";
-
-const AGENT_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "triage", label: "Analyse" },
-  { value: "get_data_from_web", label: "Collecte web" },
-  { value: "triage_2", label: "Validation" },
-  { value: "get_data_from_user", label: "Collecte utilisateur" },
-  { value: "r_dacteur", label: "Rédaction" },
-];
 
 const NODE_COLORS: Record<NodeKind, string> = {
   start: "#2563eb",
@@ -179,7 +170,6 @@ const WorkflowBuilderPage = () => {
                 kind: node.kind,
                 displayName,
                 label: displayName,
-                agentKey: node.agent_key,
                 isEnabled: node.is_enabled,
                 parameters,
                 parametersText: stringifyAgentParameters(parameters),
@@ -294,16 +284,6 @@ const WorkflowBuilderPage = () => {
           label: display.trim() ? display : humanizeSlug(data.slug),
         };
       });
-    },
-    [updateNodeData]
-  );
-
-  const handleAgentKeyChange = useCallback(
-    (nodeId: string, agentKey: string) => {
-      updateNodeData(nodeId, (data) => ({
-        ...data,
-        agentKey,
-      }));
     },
     [updateNodeData]
   );
@@ -459,7 +439,6 @@ const WorkflowBuilderPage = () => {
 
   const handleAddAgentNode = useCallback(() => {
     const slug = `agent-${Date.now()}`;
-    const defaultAgent = AGENT_OPTIONS[0]?.value ?? "triage";
     const parameters: AgentParameters = {};
     const newNode: FlowNode = {
       id: slug,
@@ -468,7 +447,6 @@ const WorkflowBuilderPage = () => {
         slug,
         kind: "agent",
         displayName: humanizeSlug(slug),
-        agentKey: defaultAgent,
         isEnabled: true,
         parameters,
         parametersText: stringifyAgentParameters(parameters),
@@ -495,7 +473,6 @@ const WorkflowBuilderPage = () => {
         kind: "condition",
         displayName: humanizeSlug(slug),
         label: humanizeSlug(slug),
-        agentKey: null,
         isEnabled: true,
         parameters,
         parametersText: stringifyAgentParameters(parameters),
@@ -525,7 +502,7 @@ const WorkflowBuilderPage = () => {
           slug: node.data.slug,
           kind: node.data.kind,
           display_name: node.data.displayName.trim() || null,
-          agent_key: node.data.kind === "agent" ? node.data.agentKey : null,
+          agent_key: null,
           is_enabled: node.data.isEnabled,
           parameters: node.data.parameters,
           metadata: {
@@ -664,7 +641,6 @@ const WorkflowBuilderPage = () => {
               node={selectedNode}
               onToggle={handleToggleNode}
               onDisplayNameChange={handleDisplayNameChange}
-              onAgentKeyChange={handleAgentKeyChange}
               onAgentMessageChange={handleAgentMessageChange}
               onAgentModelChange={handleAgentModelChange}
               onAgentReasoningChange={handleAgentReasoningChange}
@@ -713,7 +689,6 @@ type NodeInspectorProps = {
   node: FlowNode;
   onToggle: (nodeId: string) => void;
   onDisplayNameChange: (nodeId: string, value: string) => void;
-  onAgentKeyChange: (nodeId: string, agentKey: string) => void;
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onAgentModelChange: (nodeId: string, value: string) => void;
   onAgentReasoningChange: (nodeId: string, value: string) => void;
@@ -725,15 +700,13 @@ const NodeInspector = ({
   node,
   onToggle,
   onDisplayNameChange,
-  onAgentKeyChange,
   onAgentMessageChange,
   onAgentModelChange,
   onAgentReasoningChange,
   onParametersChange,
   onRemove,
 }: NodeInspectorProps) => {
-  const { kind, displayName, isEnabled, agentKey, parameters, parametersText, parametersError } =
-    node.data;
+  const { kind, displayName, isEnabled, parameters, parametersText, parametersError } = node.data;
   const isFixed = kind === "start" || kind === "end";
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
@@ -759,20 +732,6 @@ const NodeInspector = ({
 
       {kind === "agent" && (
         <>
-          <label style={fieldStyle}>
-            <span>Agent associé</span>
-            <select
-              value={agentKey ?? ""}
-              onChange={(event) => onAgentKeyChange(node.id, event.target.value)}
-            >
-              {AGENT_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
           <label style={fieldStyle}>
             <span>Message système</span>
             <textarea
