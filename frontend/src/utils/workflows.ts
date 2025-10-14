@@ -397,8 +397,15 @@ export type WebSearchConfig = {
   };
 };
 
+export type FileSearchConfig = {
+  vector_store_slug: string;
+};
+
 const isWebSearchTool = (value: unknown): value is Record<string, unknown> =>
   isPlainRecord(value) && value.type === "web_search";
+
+const isFileSearchTool = (value: unknown): value is Record<string, unknown> =>
+  isPlainRecord(value) && value.type === "file_search";
 
 const sanitizeWebSearchConfig = (config: WebSearchConfig | null): WebSearchConfig | null => {
   if (!config) {
@@ -426,6 +433,27 @@ const sanitizeWebSearchConfig = (config: WebSearchConfig | null): WebSearchConfi
 
   if (Object.keys(sanitized).length === 0) {
     return {};
+  }
+
+  return sanitized;
+};
+
+const sanitizeFileSearchConfig = (
+  config: FileSearchConfig | null,
+): Record<string, unknown> | null => {
+  if (!config) {
+    return null;
+  }
+
+  const slug = typeof config.vector_store_slug === "string" ? config.vector_store_slug.trim() : "";
+
+  const sanitized: Record<string, unknown> = {
+    return_documents: "full",
+    vector_store_slug: slug,
+  };
+
+  if (slug) {
+    sanitized.store = { slug };
   }
 
   return sanitized;
@@ -461,6 +489,35 @@ export const getAgentWebSearchConfig = (
   return null;
 };
 
+export const getAgentFileSearchConfig = (
+  parameters: AgentParameters | null | undefined,
+): FileSearchConfig | null => {
+  if (!parameters) {
+    return null;
+  }
+  const tools = parameters.tools;
+  if (!Array.isArray(tools)) {
+    return null;
+  }
+  for (const tool of tools) {
+    if (!isFileSearchTool(tool)) {
+      continue;
+    }
+    const config = tool.file_search;
+    if (!isPlainRecord(config)) {
+      return { vector_store_slug: "" };
+    }
+    const store = config.store;
+    if (isPlainRecord(store) && typeof store.slug === "string") {
+      return { vector_store_slug: store.slug };
+    }
+    const slug =
+      typeof config.vector_store_slug === "string" ? config.vector_store_slug.trim() : "";
+    return { vector_store_slug: slug };
+  }
+  return null;
+};
+
 export const setAgentWebSearchConfig = (
   parameters: AgentParameters,
   config: WebSearchConfig | null,
@@ -484,5 +541,27 @@ export const setAgentWebSearchConfig = (
     toolEntry.web_search = sanitized;
   }
 
+  return { ...next, tools: [...tools, toolEntry] };
+};
+
+export const setAgentFileSearchConfig = (
+  parameters: AgentParameters,
+  config: FileSearchConfig | null,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const sanitized = sanitizeFileSearchConfig(config);
+  const tools = Array.isArray(next.tools)
+    ? (next.tools as unknown[]).filter((tool) => !isFileSearchTool(tool))
+    : [];
+
+  if (!sanitized) {
+    if (tools.length === 0) {
+      const { tools: _ignored, ...rest } = next;
+      return stripEmpty(rest);
+    }
+    return { ...next, tools };
+  }
+
+  const toolEntry: Record<string, unknown> = { type: "file_search", file_search: sanitized };
   return { ...next, tools: [...tools, toolEntry] };
 };
