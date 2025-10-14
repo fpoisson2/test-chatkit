@@ -85,6 +85,7 @@ type FlowNodeData = {
   displayName: string;
   label: string;
   isEnabled: boolean;
+  agentKey: string | null;
   parameters: AgentParameters;
   parametersText: string;
   parametersError: string | null;
@@ -116,6 +117,16 @@ const NODE_BACKGROUNDS: Record<NodeKind, string> = {
   state: "rgba(14, 165, 233, 0.14)",
   end: "rgba(124, 58, 237, 0.12)",
 };
+
+const AGENT_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "triage", label: "Analyse des informations (triage)" },
+  { value: "get_data_from_web", label: "Collecte d'exemples externes" },
+  { value: "triage_2", label: "Validation après collecte" },
+  { value: "get_data_from_user", label: "Collecte auprès de l'utilisateur" },
+  { value: "r_dacteur", label: "Rédaction finale" },
+];
+
+const DEFAULT_AGENT_KEY = AGENT_OPTIONS[0]?.value ?? "triage";
 
 const conditionOptions = [
   { value: "", label: "(par défaut)" },
@@ -198,9 +209,10 @@ const WorkflowBuilderPage = () => {
           const flowNodes = data.graph.nodes.map<FlowNode>((node, index) => {
             const positionFromMetadata = extractPosition(node.metadata);
             const displayName = node.display_name ?? humanizeSlug(node.slug);
+            const agentKey = node.kind === "agent" ? node.agent_key ?? null : null;
             const parameters =
               node.kind === "agent"
-                ? resolveAgentParameters(node.agent_key, node.parameters)
+                ? resolveAgentParameters(agentKey, node.parameters)
                 : node.kind === "state"
                   ? resolveStateParameters(node.slug, node.parameters)
                   : resolveAgentParameters(null, node.parameters);
@@ -213,6 +225,7 @@ const WorkflowBuilderPage = () => {
                 displayName,
                 label: displayName,
                 isEnabled: node.is_enabled,
+                agentKey,
                 parameters,
                 parametersText: stringifyAgentParameters(parameters),
                 parametersError: null,
@@ -391,6 +404,29 @@ const WorkflowBuilderPage = () => {
         }
         return {
           ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentKeyChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const normalized = value.trim();
+        const nextKey = normalized ? normalized : null;
+        const nextParameters = nextKey
+          ? resolveAgentParameters(nextKey, {})
+          : data.parameters;
+        return {
+          ...data,
+          agentKey: nextKey,
           parameters: nextParameters,
           parametersText: stringifyAgentParameters(nextParameters),
           parametersError: null,
@@ -610,7 +646,7 @@ const WorkflowBuilderPage = () => {
 
   const handleAddAgentNode = useCallback(() => {
     const slug = `agent-${Date.now()}`;
-    const parameters: AgentParameters = {};
+    const parameters = resolveAgentParameters(DEFAULT_AGENT_KEY, {});
     const newNode: FlowNode = {
       id: slug,
       position: { x: 300, y: 200 },
@@ -619,6 +655,7 @@ const WorkflowBuilderPage = () => {
         kind: "agent",
         displayName: humanizeSlug(slug),
         isEnabled: true,
+        agentKey: DEFAULT_AGENT_KEY,
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
@@ -645,6 +682,7 @@ const WorkflowBuilderPage = () => {
         displayName: humanizeSlug(slug),
         label: humanizeSlug(slug),
         isEnabled: true,
+        agentKey: null,
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
@@ -675,6 +713,7 @@ const WorkflowBuilderPage = () => {
         displayName: humanizeSlug(slug),
         label: humanizeSlug(slug),
         isEnabled: true,
+        agentKey: null,
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
@@ -703,7 +742,7 @@ const WorkflowBuilderPage = () => {
           slug: node.data.slug,
           kind: node.data.kind,
           display_name: node.data.displayName.trim() || null,
-          agent_key: null,
+          agent_key: node.data.kind === "agent" ? node.data.agentKey : null,
           is_enabled: node.data.isEnabled,
           parameters: prepareNodeParametersForSave(node.data.kind, node.data.parameters),
           metadata: {
@@ -752,8 +791,13 @@ const WorkflowBuilderPage = () => {
   }, [authHeader, edges, nodes]);
 
   const disableSave = useMemo(
-    () => nodes.some((node) => node.data.parametersError),
-    [nodes]
+    () =>
+      nodes.some(
+        (node) =>
+          node.data.parametersError ||
+          (node.data.kind === "agent" && (!node.data.agentKey || node.data.agentKey.trim() === "")),
+      ),
+    [nodes],
   );
 
   return (
@@ -845,6 +889,7 @@ const WorkflowBuilderPage = () => {
               node={selectedNode}
               onToggle={handleToggleNode}
               onDisplayNameChange={handleDisplayNameChange}
+              onAgentKeyChange={handleAgentKeyChange}
               onAgentMessageChange={handleAgentMessageChange}
               onAgentModelChange={handleAgentModelChange}
               onAgentReasoningChange={handleAgentReasoningChange}
@@ -905,6 +950,7 @@ type NodeInspectorProps = {
   onAgentReasoningChange: (nodeId: string, value: string) => void;
   onAgentTemperatureChange: (nodeId: string, value: string) => void;
   onAgentTopPChange: (nodeId: string, value: string) => void;
+  onAgentKeyChange: (nodeId: string, value: string) => void;
   onAgentResponseFormatKindChange: (nodeId: string, kind: "text" | "json_schema") => void;
   onAgentResponseFormatNameChange: (nodeId: string, value: string) => void;
   onAgentResponseFormatSchemaChange: (nodeId: string, schema: unknown) => void;
@@ -927,6 +973,7 @@ const NodeInspector = ({
   onAgentReasoningChange,
   onAgentTemperatureChange,
   onAgentTopPChange,
+  onAgentKeyChange,
   onAgentResponseFormatKindChange,
   onAgentResponseFormatNameChange,
   onAgentResponseFormatSchemaChange,
@@ -935,7 +982,8 @@ const NodeInspector = ({
   onParametersChange,
   onRemove,
 }: NodeInspectorProps) => {
-  const { kind, displayName, isEnabled, parameters, parametersText, parametersError } = node.data;
+  const { kind, displayName, isEnabled, parameters, parametersText, parametersError, agentKey } =
+    node.data;
   const isFixed = kind === "start" || kind === "end";
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
@@ -995,6 +1043,24 @@ const NodeInspector = ({
 
       {kind === "agent" && (
         <>
+          <label style={fieldStyle}>
+            <span>Agent ChatKit</span>
+            <select
+              value={agentKey ?? ""}
+              onChange={(event) => onAgentKeyChange(node.id, event.target.value)}
+            >
+              <option value="">Sélectionnez un agent…</option>
+              {AGENT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <small style={{ color: "#475569" }}>
+              Choisissez l'agent exécuté lorsque ce nœud est atteint.
+            </small>
+          </label>
+
           <label style={fieldStyle}>
             <span>Message système</span>
             <textarea
