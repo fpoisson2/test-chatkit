@@ -75,6 +75,31 @@ def test_create_voice_session_success(monkeypatch) -> None:
     }
 
 
+def test_create_voice_session_success_with_string_secret(monkeypatch) -> None:
+    user = _make_user(email="voice-string@example.com", is_admin=False)
+    token = create_access_token(user)
+
+    async def _fake_helper(**kwargs):
+        assert kwargs["user_id"] == f"user:{user.id}"
+        return {"client_secret": "plain-secret", "expires_after": 321}
+
+    monkeypatch.setattr(
+        "backend.app.routes.chatkit.create_realtime_voice_session",
+        _fake_helper,
+    )
+
+    response = client.post(
+        "/api/chatkit/voice/session",
+        headers=_auth_headers(token),
+        json={},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["client_secret"] == "plain-secret"
+    assert payload["expires_at"] == "321"
+
+
 @pytest.mark.parametrize(
     "payload,expected_secret,expected_expiration",
     [

@@ -30,7 +30,7 @@ class VoiceSessionRequest(BaseModel):
 class VoiceSessionResponse(BaseModel):
     """Réponse renvoyée après création d'une session vocale Realtime."""
 
-    client_secret: dict[str, Any]
+    client_secret: dict[str, Any] | str
     expires_at: str | None = None
     model: str
     instructions: str
