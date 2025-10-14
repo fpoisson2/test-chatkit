@@ -395,7 +395,11 @@ const WorkflowBuilderPage = () => {
 
   const loadWorkflows = useCallback(
     async (
-      options: { selectWorkflowId?: number | null; selectVersionId?: number | null } = {},
+      options: {
+        selectWorkflowId?: number | null;
+        selectVersionId?: number | null;
+        excludeWorkflowId?: number | null;
+      } = {},
     ): Promise<void> => {
       setLoading(true);
       setLoadError(null);
@@ -423,13 +427,26 @@ const WorkflowBuilderPage = () => {
             setLoading(false);
             return;
           }
+          const availableIds = new Set(data.map((workflow) => workflow.id));
+          const excluded = options.excludeWorkflowId ?? null;
           let nextWorkflowId = options.selectWorkflowId ?? null;
-          if (nextWorkflowId && data.some((workflow) => workflow.id === nextWorkflowId)) {
-            // keep provided
-          } else if (selectedWorkflowId && data.some((workflow) => workflow.id === selectedWorkflowId)) {
+          if (
+            nextWorkflowId &&
+            (!availableIds.has(nextWorkflowId) || (excluded != null && nextWorkflowId === excluded))
+          ) {
+            nextWorkflowId = null;
+          }
+          if (
+            nextWorkflowId == null &&
+            selectedWorkflowId &&
+            availableIds.has(selectedWorkflowId) &&
+            (excluded == null || selectedWorkflowId !== excluded)
+          ) {
             nextWorkflowId = selectedWorkflowId;
-          } else {
-            nextWorkflowId = data[0]?.id ?? null;
+          }
+          if (nextWorkflowId == null) {
+            const fallback = data.find((workflow) => workflow.id !== excluded);
+            nextWorkflowId = fallback?.id ?? data[0]?.id ?? null;
           }
           setSelectedWorkflowId(nextWorkflowId);
           if (nextWorkflowId != null) {
@@ -990,6 +1007,77 @@ const WorkflowBuilderPage = () => {
     setSaveMessage(lastError?.message ?? "Impossible de créer le workflow.");
   }, [authHeader, loadWorkflows]);
 
+  const handleDeleteWorkflow = useCallback(async () => {
+    if (!selectedWorkflowId) {
+      return;
+    }
+    const current = workflows.find((workflow) => workflow.id === selectedWorkflowId);
+    if (!current) {
+      return;
+    }
+    const confirmed = window.confirm(
+      `Supprimer le workflow "${current.display_name}" ? Cette action est irréversible.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+    const endpoint = `/api/workflows/${selectedWorkflowId}`;
+    const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
+    let lastError: Error | null = null;
+    setSaveState("saving");
+    setSaveMessage("Suppression en cours…");
+    for (const url of candidates) {
+      try {
+        const response = await fetch(url, {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+        });
+        if (response.status === 204) {
+          setSelectedNodeId(null);
+          setSelectedEdgeId(null);
+          await loadWorkflows({ excludeWorkflowId: current.id });
+          setSaveState("saved");
+          setSaveMessage(`Workflow "${current.display_name}" supprimé.`);
+          setTimeout(() => setSaveState("idle"), 1500);
+          return;
+        }
+        if (response.status === 400) {
+          let message = "Impossible de supprimer le workflow.";
+          try {
+            const detail = (await response.json()) as { detail?: unknown };
+            if (detail && typeof detail.detail === "string") {
+              message = detail.detail;
+            }
+          } catch (parseError) {
+            console.error(parseError);
+          }
+          throw new Error(message);
+        }
+        if (response.status === 404) {
+          throw new Error("Le workflow n'existe plus.");
+        }
+        throw new Error(`Impossible de supprimer le workflow (${response.status}).`);
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          continue;
+        }
+        lastError = error instanceof Error ? error : new Error("Impossible de supprimer le workflow.");
+      }
+    }
+    setSaveState("error");
+    setSaveMessage(lastError?.message ?? "Impossible de supprimer le workflow.");
+  }, [
+    authHeader,
+    loadWorkflows,
+    selectedWorkflowId,
+    setSelectedEdgeId,
+    setSelectedNodeId,
+    workflows,
+  ]);
+
   const handlePromoteVersion = useCallback(async () => {
     if (!selectedWorkflowId || !selectedVersionId) {
       return;
@@ -1221,6 +1309,15 @@ const WorkflowBuilderPage = () => {
               </select>
               <button type="button" className="btn" onClick={handleCreateWorkflow} disabled={loading}>
                 Nouveau workflow
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleDeleteWorkflow}
+                disabled={loading || !selectedWorkflowId}
+                style={{ backgroundColor: "#fee2e2", color: "#b91c1c", borderColor: "#fecaca" }}
+              >
+                Supprimer le workflow
               </button>
             </div>
             {selectedWorkflow?.description && (
