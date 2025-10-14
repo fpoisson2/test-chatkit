@@ -437,6 +437,93 @@ def _coerce_model_settings(value: Any) -> Any:
     return sanitize_model_like(value)
 
 
+def _sanitize_web_search_user_location(payload: Any) -> dict[str, str] | None:
+    """Nettoie un dictionnaire de localisation envoyé depuis l'UI."""
+
+    if not isinstance(payload, dict):
+        return None
+
+    sanitized: dict[str, str] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str):
+            continue
+        if not isinstance(value, str):
+            continue
+        trimmed = value.strip()
+        if trimmed:
+            sanitized[key] = trimmed
+
+    return sanitized or None
+
+
+def _build_web_search_tool(payload: Any) -> WebSearchTool | None:
+    """Construit un outil de recherche web à partir des paramètres sérialisés."""
+
+    if isinstance(payload, WebSearchTool):
+        return payload
+
+    config: dict[str, Any] = {}
+    if isinstance(payload, dict):
+        search_context_size = payload.get("search_context_size")
+        if isinstance(search_context_size, str) and search_context_size.strip():
+            config["search_context_size"] = search_context_size.strip()
+
+        user_location = _sanitize_web_search_user_location(payload.get("user_location"))
+        if user_location:
+            config["user_location"] = user_location
+
+    try:
+        return WebSearchTool(**config)
+    except Exception:  # pragma: no cover - dépend des versions du SDK
+        logger.warning(
+            "Impossible d'instancier WebSearchTool avec la configuration %s", config
+        )
+        return None
+
+
+def _coerce_agent_tools(
+    value: Any, fallback: Sequence[Any] | None = None
+) -> Sequence[Any] | None:
+    """Convertit les outils sérialisés en instances compatibles avec le SDK Agents."""
+
+    if value is None:
+        return None
+
+    if not isinstance(value, list):
+        return value
+
+    coerced: list[Any] = []
+    for entry in value:
+        if isinstance(entry, WebSearchTool):
+            coerced.append(entry)
+            continue
+
+        if isinstance(entry, dict):
+            tool_type = entry.get("type") or entry.get("tool") or entry.get("name")
+            tool_payload = entry.get("web_search")
+            if isinstance(tool_type, str) and tool_type.strip().lower() == "web_search":
+                tool = _build_web_search_tool(tool_payload)
+                if tool is not None:
+                    coerced.append(tool)
+                continue
+
+    if coerced:
+        return coerced
+
+    if value:
+        logger.warning(
+            "Outils agent non reconnus (%s), utilisation de la configuration par défaut.",
+            value,
+        )
+        if fallback is None:
+            return None
+        if isinstance(fallback, list):
+            return list(fallback)
+        return fallback
+
+    return []
+
+
 def _build_agent_kwargs(
     base_kwargs: dict[str, Any], overrides: dict[str, Any] | None
 ) -> dict[str, Any]:
@@ -446,6 +533,10 @@ def _build_agent_kwargs(
             merged[key] = value
     if "model_settings" in merged:
         merged["model_settings"] = _coerce_model_settings(merged["model_settings"])
+    if "tools" in merged:
+        merged["tools"] = _coerce_agent_tools(
+            merged["tools"], base_kwargs.get("tools") if base_kwargs else None
+        )
     return merged
 
 

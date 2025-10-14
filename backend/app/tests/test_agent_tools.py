@@ -1,0 +1,50 @@
+"""Tests liés à la conversion des outils Agents."""
+
+from backend.app.chatkit import (
+    WebSearchTool,
+    _coerce_agent_tools,
+    web_search_preview,
+)
+
+
+def test_coerce_agent_tools_from_serialized_web_search() -> None:
+    tools = _coerce_agent_tools(
+        [
+            {
+                "type": "web_search",
+                "web_search": {
+                    "search_context_size": "large",
+                    "user_location": {
+                        "city": "Montréal ",
+                        "country": "",
+                        "region": " QC",
+                    },
+                },
+            }
+        ]
+    )
+
+    assert isinstance(tools, list)
+    assert len(tools) == 1
+    tool = tools[0]
+    assert isinstance(tool, WebSearchTool)
+    if hasattr(tool, "search_context_size"):
+        assert getattr(tool, "search_context_size") == "large"
+    if hasattr(tool, "user_location") and tool.user_location is not None:
+        assert tool.user_location.get("city") == "Montréal"
+        assert "country" not in tool.user_location
+
+
+def test_coerce_agent_tools_uses_fallback_on_unknown_entries() -> None:
+    fallback = [web_search_preview]
+    tools = _coerce_agent_tools([{"type": "unknown"}], fallback)
+
+    assert isinstance(tools, list)
+    assert tools is not fallback
+    assert tools == fallback
+
+
+def test_coerce_agent_tools_accepts_empty_list() -> None:
+    tools = _coerce_agent_tools([], [web_search_preview])
+    assert isinstance(tools, list)
+    assert tools == []
