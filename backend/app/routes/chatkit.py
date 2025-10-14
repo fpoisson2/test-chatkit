@@ -68,7 +68,6 @@ async def create_voice_session(
         user_id=user_id,
         model=resolved_model,
         instructions=resolved_instructions,
-        voice=resolved_voice,
     )
 
     client_secret = secret_payload.get("client_secret")

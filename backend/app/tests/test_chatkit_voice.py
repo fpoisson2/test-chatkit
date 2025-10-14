@@ -43,7 +43,7 @@ def test_create_voice_session_success(monkeypatch) -> None:
         assert kwargs["user_id"] == f"user:{user.id}"
         assert kwargs["model"] == "gpt-custom"
         assert kwargs["instructions"] == "Réponds avec empathie"
-        assert kwargs["voice"] == settings.chatkit_realtime_voice
+        assert "voice" not in kwargs
         return {
             "client_secret": {"value": "secret-token"},
             "expires_at": "2024-01-01T00:00:00Z",

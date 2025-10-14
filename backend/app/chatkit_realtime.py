@@ -17,7 +17,6 @@ async def create_realtime_voice_session(
     user_id: str,
     model: str,
     instructions: str,
-    voice: str,
 ) -> dict[str, Any]:
     """Crée un client_secret Realtime pour une session vocale."""
 
@@ -27,7 +26,6 @@ async def create_realtime_voice_session(
             "type": "realtime",
             "instructions": instructions,
             "model": model,
-            "voice": voice,
             "user": {"id": user_id},
         },
     }

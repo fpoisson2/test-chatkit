@@ -59,9 +59,9 @@ async def test_create_realtime_voice_session_uses_realtime_type(monkeypatch) -> 
         user_id="user:123",
         model="gpt-realtime",
         instructions="Sois utile",
-        voice="verse",
     )
 
     assert payload == {"client_secret": {"value": "secret"}}
     assert captured["path"] == "/v1/realtime/client_secrets"
     assert captured["payload"]["session"]["type"] == "realtime"
+    assert "voice" not in captured["payload"]["session"]
