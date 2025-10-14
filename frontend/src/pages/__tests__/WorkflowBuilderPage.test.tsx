@@ -14,7 +14,7 @@ vi.mock("../../auth", () => ({
 }));
 
 const makeApiEndpointCandidatesMock = vi.hoisted(() =>
-  vi.fn<[string, string], string[]>(() => ["/api/workflows/current"]),
+  vi.fn<[string, string], string[]>((_, path) => [path]),
 );
 
 vi.mock("../../utils/backend", () => ({
@@ -22,9 +22,50 @@ vi.mock("../../utils/backend", () => ({
 }));
 
 describe("WorkflowBuilderPage", () => {
-  const defaultResponse = {
-    id: 1,
-    name: "workflow",
+  const DEFAULT_WORKFLOW_ID = 1;
+  const DEFAULT_VERSION_ID = 10;
+
+  const defaultModelsResponse = [
+    { id: 1, name: "gpt-4.1-mini", display_name: "GPT-4.1 Mini", supports_reasoning: false },
+    { id: 2, name: "gpt-4.1", display_name: "GPT-4.1", supports_reasoning: true },
+    { id: 3, name: "o4-mini", display_name: "O4 Mini", supports_reasoning: true },
+  ] as const;
+
+  const defaultWorkflowsResponse = [
+    {
+      id: DEFAULT_WORKFLOW_ID,
+      slug: "plan-cadre",
+      display_name: "Plan Cadre",
+      description: "Workflow principal",
+      active_version_id: DEFAULT_VERSION_ID,
+      active_version_number: 3,
+      is_chatkit_default: true,
+      versions_count: 1,
+      created_at: "2024-01-01T00:00:00Z",
+      updated_at: "2024-01-02T00:00:00Z",
+    },
+  ] as const;
+
+  const defaultVersionsResponse = [
+    {
+      id: DEFAULT_VERSION_ID,
+      workflow_id: DEFAULT_WORKFLOW_ID,
+      name: "Version active",
+      version: 3,
+      is_active: true,
+      created_at: "2024-01-01T00:00:00Z",
+      updated_at: "2024-01-02T00:00:00Z",
+    },
+  ] as const;
+
+  const defaultVersionDetail = {
+    id: DEFAULT_VERSION_ID,
+    workflow_id: DEFAULT_WORKFLOW_ID,
+    workflow_slug: "plan-cadre",
+    workflow_display_name: "Plan Cadre",
+    workflow_is_chatkit_default: true,
+    name: "Version active",
+    version: 3,
     is_active: true,
     graph: {
       nodes: [
@@ -75,7 +116,90 @@ describe("WorkflowBuilderPage", () => {
         { id: 3, source: "writer", target: "end", condition: null, metadata: {} },
       ],
     },
+    steps: [],
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-02T00:00:00Z",
   } as const;
+
+  const deepClone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
+  type FetchMockOptions = {
+    models?: Array<(typeof defaultModelsResponse)[number]>;
+    workflows?: Array<(typeof defaultWorkflowsResponse)[number]>;
+    versions?: Array<(typeof defaultVersionsResponse)[number]>;
+    versionDetails?: Record<number, typeof defaultVersionDetail>;
+    workflowId?: number;
+    postVersionId?: number;
+  };
+
+  const jsonResponse = <T,>(data: T, status = 200) =>
+    ({
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => data,
+    }) as Response;
+
+  const setupFetchMock = (options: FetchMockOptions = {}) => {
+    const initialDetail = options.versionDetails
+      ? Object.values(options.versionDetails)[0]
+      : defaultVersionDetail;
+    const workflowId = options.workflowId ?? initialDetail.workflow_id ?? DEFAULT_WORKFLOW_ID;
+    const models = options.models ?? deepClone(defaultModelsResponse);
+    const workflows = options.workflows ?? deepClone(defaultWorkflowsResponse);
+    const versions = (options.versions ?? deepClone(defaultVersionsResponse)).map((version) => ({
+      ...version,
+      workflow_id: workflowId,
+    }));
+    const detailsSource = options.versionDetails ?? {
+      [defaultVersionDetail.id]: {
+        ...deepClone(defaultVersionDetail),
+        workflow_id: workflowId,
+      },
+    };
+    const versionDetails = Object.entries(detailsSource).reduce<Record<number, typeof defaultVersionDetail>>(
+      (acc, [key, value]) => {
+        const numericKey = Number(key);
+        acc[numericKey] = { ...deepClone(value), workflow_id: workflowId };
+        return acc;
+      },
+      {},
+    );
+    const postVersionId =
+      options.postVersionId ??
+      (versions.find((version) => version.is_active)?.id ??
+        Number(Object.keys(versionDetails)[0]) ??
+        DEFAULT_VERSION_ID);
+
+    return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/admin/models") {
+        return Promise.resolve(jsonResponse(models));
+      }
+      if (url === "/api/workflows") {
+        return Promise.resolve(jsonResponse(workflows));
+      }
+      if (url === `/api/workflows/${workflowId}/versions`) {
+        if (init?.method === "POST") {
+          const detail = versionDetails[postVersionId];
+          if (!detail) {
+            throw new Error(`Aucune version ${postVersionId} enregistrée dans le mock.`);
+          }
+          return Promise.resolve(jsonResponse(detail));
+        }
+        return Promise.resolve(jsonResponse(versions));
+      }
+      const match = url.match(new RegExp(`^/api/workflows/${workflowId}/versions/(\\d+)$`));
+      if (match) {
+        const versionId = Number(match[1]);
+        const detail = versionDetails[versionId];
+        if (!detail) {
+          throw new Error(`Aucune réponse maquetée pour la version ${versionId}.`);
+        }
+        return Promise.resolve(jsonResponse(detail));
+      }
+      return Promise.reject(new Error(`Requête inattendue vers ${url}`));
+    });
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -86,18 +210,7 @@ describe("WorkflowBuilderPage", () => {
   });
 
   test("permet de modifier un nœud et d'enregistrer le graphe", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => defaultResponse,
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true }),
-      } as Response);
+    const fetchMock = setupFetchMock();
 
     const { container } = render(<WorkflowBuilderPage />);
 
@@ -112,9 +225,6 @@ describe("WorkflowBuilderPage", () => {
     expect(triageNode).not.toBeNull();
     fireEvent.click(triageNode!);
 
-    const agentSelect = await screen.findByLabelText(/agent chatkit/i);
-    expect(agentSelect).toHaveValue("triage");
-
     const displayNameInput = await screen.findByLabelText(/nom affiché/i);
     fireEvent.change(displayNameInput, { target: { value: "Analyse enrichie" } });
 
@@ -123,18 +233,36 @@ describe("WorkflowBuilderPage", () => {
       target: { value: "Analyse les entrées et produis un résumé clair." },
     });
 
-    const modelInput = await screen.findByLabelText(/modèle openai/i);
-    fireEvent.change(modelInput, { target: { value: "gpt-4.1-mini" } });
+    const modelSelect = await screen.findByLabelText(/modèle openai/i);
+    fireEvent.change(modelSelect, { target: { value: "gpt-4.1-mini" } });
 
     await waitFor(() => {
       expect(screen.queryByLabelText(/niveau de raisonnement/i)).toBeNull();
     });
+
+    const maxTokensInput = await screen.findByLabelText(/nombre maximal de tokens/i);
+    fireEvent.change(maxTokensInput, { target: { value: "4096" } });
 
     const temperatureInput = await screen.findByLabelText(/température/i);
     fireEvent.change(temperatureInput, { target: { value: "0.6" } });
 
     const topPInput = await screen.findByLabelText(/top-p/i);
     fireEvent.change(topPInput, { target: { value: "0.8" } });
+
+    const includeHistorySelect = await screen.findByLabelText(/inclure l'historique du chat/i);
+    fireEvent.change(includeHistorySelect, { target: { value: "true" } });
+
+    const displayResponseSelect = await screen.findByLabelText(/afficher la réponse dans le chat/i);
+    fireEvent.change(displayResponseSelect, { target: { value: "false" } });
+
+    const showSourcesSelect = await screen.findByLabelText(/afficher les sources de recherche/i);
+    fireEvent.change(showSourcesSelect, { target: { value: "true" } });
+
+    const continueOnErrorSelect = await screen.findByLabelText(/continuer en cas d'erreur/i);
+    fireEvent.change(continueOnErrorSelect, { target: { value: "false" } });
+
+    const writeHistorySelect = await screen.findByLabelText(/écrire dans l'historique du workflow/i);
+    fireEvent.change(writeHistorySelect, { target: { value: "true" } });
 
     const parametersTextarea = await screen.findByLabelText<HTMLTextAreaElement>(
       /paramètres json avancés/i,
@@ -146,14 +274,25 @@ describe("WorkflowBuilderPage", () => {
     fireEvent.click(saveButton);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) =>
+            url === `/api/workflows/${DEFAULT_WORKFLOW_ID}/versions` &&
+            (init as RequestInit | undefined)?.method === "POST",
+        ),
+      ).toBe(true);
     });
 
-    const putCall = fetchMock.mock.calls[1];
-    expect(putCall?.[0]).toBe("/api/workflows/current");
-    expect(putCall?.[1]).toMatchObject({ method: "PUT" });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/models");
 
-    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const postCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        url === `/api/workflows/${DEFAULT_WORKFLOW_ID}/versions` &&
+        (init as RequestInit | undefined)?.method === "POST",
+    );
+    expect(postCall).toBeDefined();
+
+    const body = JSON.parse((postCall?.[1] as RequestInit).body as string);
     expect(body).toHaveProperty("graph");
     const agentNode = body.graph.nodes.find((node: any) => node.slug === "agent-triage");
     expect(agentNode.agent_key).toBe("triage");
@@ -165,7 +304,13 @@ describe("WorkflowBuilderPage", () => {
         store: true,
         temperature: 0.6,
         top_p: 0.8,
+        max_output_tokens: 4096,
       },
+      include_chat_history: true,
+      display_response_in_chat: false,
+      show_search_sources: true,
+      continue_on_error: false,
+      write_to_conversation_history: true,
       response_format: {
         type: "json_schema",
         json_schema: {
@@ -177,15 +322,16 @@ describe("WorkflowBuilderPage", () => {
       },
     });
 
-    await screen.findByText(/workflow enregistré avec succès/i);
+    await screen.findByText(/nouvelle version enregistrée avec succès/i);
   });
 
   test("pré-remplit un agent hérité avec les valeurs par défaut", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => JSON.parse(JSON.stringify(defaultResponse)),
-    } as Response);
+    const versionResponse = deepClone(defaultVersionDetail);
+    setupFetchMock({
+      versionDetails: {
+        [versionResponse.id]: versionResponse,
+      },
+    });
 
     const { container } = render(<WorkflowBuilderPage />);
 
@@ -197,16 +343,13 @@ describe("WorkflowBuilderPage", () => {
     expect(triageNode).not.toBeNull();
     fireEvent.click(triageNode!);
 
-    const agentSelect = await screen.findByLabelText(/agent chatkit/i);
-    expect(agentSelect).toHaveValue("triage");
-
     const messageTextarea = await screen.findByLabelText<HTMLTextAreaElement>(/message système/i);
     expect(messageTextarea.value).toContain(
       "Ton rôle : Vérifier si toutes les informations nécessaires sont présentes pour générer un plan-cadre.",
     );
 
-    const modelInput = await screen.findByLabelText(/modèle openai/i);
-    expect(modelInput).toHaveValue("gpt-5");
+    const modelSelect = await screen.findByLabelText(/modèle openai/i);
+    expect(modelSelect).toHaveValue("gpt-5");
 
     const reasoningSelect = await screen.findByLabelText(/niveau de raisonnement/i);
     expect(reasoningSelect).toHaveValue("minimal");
@@ -220,9 +363,6 @@ describe("WorkflowBuilderPage", () => {
     const writerNode = container.querySelector('[data-id="writer"]');
     expect(writerNode).not.toBeNull();
     fireEvent.click(writerNode!);
-
-    const writerAgentSelect = await screen.findByLabelText(/agent chatkit/i);
-    expect(writerAgentSelect).toHaveValue("r_dacteur");
 
     await waitFor(() => {
       expect(screen.queryByLabelText(/niveau de raisonnement/i)).toBeNull();
@@ -242,7 +382,7 @@ describe("WorkflowBuilderPage", () => {
   });
 
   test("pré-remplit la configuration de recherche web héritée", async () => {
-    const responseWithWeb = JSON.parse(JSON.stringify(defaultResponse));
+    const responseWithWeb = deepClone(defaultVersionDetail);
     responseWithWeb.graph.nodes.splice(2, 0, {
       id: 5,
       slug: "collecte-web",
@@ -260,11 +400,11 @@ describe("WorkflowBuilderPage", () => {
       { id: 4, source: "writer", target: "end", condition: null, metadata: {} },
     ];
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => responseWithWeb,
-    } as Response);
+    setupFetchMock({
+      versionDetails: {
+        [responseWithWeb.id]: responseWithWeb,
+      },
+    });
 
     const { container } = render(<WorkflowBuilderPage />);
 
@@ -289,7 +429,7 @@ describe("WorkflowBuilderPage", () => {
   });
 
   test("permet de configurer un bloc état", async () => {
-    const responseWithState = JSON.parse(JSON.stringify(defaultResponse));
+    const responseWithState = deepClone(defaultVersionDetail);
     responseWithState.graph.nodes.splice(2, 0, {
       id: 6,
       slug: "maj-etat",
@@ -313,18 +453,11 @@ describe("WorkflowBuilderPage", () => {
       { id: 4, source: "writer", target: "end", condition: null, metadata: {} },
     ];
 
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => responseWithState,
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true }),
-      } as Response);
+    const fetchMock = setupFetchMock({
+      versionDetails: {
+        [responseWithState.id]: responseWithState,
+      },
+    });
 
     const { container } = render(<WorkflowBuilderPage />);
 
@@ -368,11 +501,23 @@ describe("WorkflowBuilderPage", () => {
     fireEvent.click(saveButton);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) =>
+            url === `/api/workflows/${DEFAULT_WORKFLOW_ID}/versions` &&
+            (init as RequestInit | undefined)?.method === "POST",
+        ),
+      ).toBe(true);
     });
 
-    const [, putRequest] = fetchMock.mock.calls[1];
-    const payload = JSON.parse((putRequest as RequestInit).body as string);
+    const postCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        url === `/api/workflows/${DEFAULT_WORKFLOW_ID}/versions` &&
+        (init as RequestInit | undefined)?.method === "POST",
+    );
+    expect(postCall).toBeDefined();
+    const [, postRequest] = postCall!;
+    const payload = JSON.parse((postRequest as RequestInit).body as string);
     const statePayload = payload.graph.nodes.find((node: any) => node.slug === "maj-etat");
     expect(statePayload.parameters).toEqual({
       globals: [
@@ -387,18 +532,12 @@ describe("WorkflowBuilderPage", () => {
   });
 
   test("permet de configurer le schéma JSON et les outils", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => JSON.parse(JSON.stringify(defaultResponse)),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true }),
-      } as Response);
+    const versionResponse = deepClone(defaultVersionDetail);
+    const fetchMock = setupFetchMock({
+      versionDetails: {
+        [versionResponse.id]: versionResponse,
+      },
+    });
 
     const { container } = render(<WorkflowBuilderPage />);
 
@@ -442,11 +581,25 @@ describe("WorkflowBuilderPage", () => {
     fireEvent.click(saveButton);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, init]) =>
+            url === `/api/workflows/${DEFAULT_WORKFLOW_ID}/versions` &&
+            (init as RequestInit | undefined)?.method === "POST",
+        ),
+      ).toBe(true);
     });
 
-    const putCall = fetchMock.mock.calls[1];
-    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/admin/models");
+
+    const postCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        url === `/api/workflows/${DEFAULT_WORKFLOW_ID}/versions` &&
+        (init as RequestInit | undefined)?.method === "POST",
+    );
+    expect(postCall).toBeDefined();
+    const [, postRequest] = postCall!;
+    const body = JSON.parse((postRequest as RequestInit).body as string);
     const writerPayload = body.graph.nodes.find((node: any) => node.slug === "writer");
     expect(writerPayload.parameters.response_format).toEqual({
       type: "json_schema",

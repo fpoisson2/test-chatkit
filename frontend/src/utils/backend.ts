@@ -134,6 +134,26 @@ export type CreateUserPayload = {
   is_admin: boolean;
 };
 
+export type AccessibleModel = {
+  id: number;
+  name: string;
+  display_name: string | null;
+  supports_reasoning: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AccessibleModelCreatePayload = {
+  name: string;
+  display_name?: string | null;
+  supports_reasoning: boolean;
+};
+
+export type AccessibleModelUpdatePayload = {
+  display_name?: string | null;
+  supports_reasoning?: boolean;
+};
+
 export const adminApi = {
   async listUsers(token: string | null): Promise<EditableUser[]> {
     const response = await requestWithFallback("/api/admin/users", {
@@ -162,6 +182,48 @@ export const adminApi = {
 
   async deleteUser(token: string | null, id: number): Promise<void> {
     const response = await requestWithFallback(`/api/admin/users/${id}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+    if (!response.ok && response.status !== 204) {
+      throw new ApiError("Échec de la suppression", { status: response.status });
+    }
+  },
+
+  async listModels(token: string | null): Promise<AccessibleModel[]> {
+    const response = await requestWithFallback("/api/admin/models", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async createModel(
+    token: string | null,
+    payload: AccessibleModelCreatePayload,
+  ): Promise<AccessibleModel> {
+    const response = await requestWithFallback("/api/admin/models", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async updateModel(
+    token: string | null,
+    id: number,
+    payload: AccessibleModelUpdatePayload,
+  ): Promise<AccessibleModel> {
+    const response = await requestWithFallback(`/api/admin/models/${id}`, {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async deleteModel(token: string | null, id: number): Promise<void> {
+    const response = await requestWithFallback(`/api/admin/models/${id}`, {
       method: "DELETE",
       headers: withAuthHeaders(token),
     });

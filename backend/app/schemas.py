@@ -38,6 +38,30 @@ class UserResponse(BaseModel):
         from_attributes = True
 
 
+class AccessibleModelBase(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    display_name: str | None = Field(default=None, max_length=128)
+    supports_reasoning: bool = True
+
+
+class AccessibleModelCreate(AccessibleModelBase):
+    pass
+
+
+class AccessibleModelUpdate(BaseModel):
+    display_name: str | None = Field(default=None, max_length=128)
+    supports_reasoning: bool | None = None
+
+
+class AccessibleModelResponse(AccessibleModelBase):
+    id: int
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

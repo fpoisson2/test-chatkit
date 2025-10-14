@@ -72,6 +72,45 @@ export const getAgentReasoningEffort = (
   return typeof effort === "string" ? effort : "";
 };
 
+export const getAgentReasoningVerbosity = (
+  parameters: AgentParameters | null | undefined,
+): string => {
+  if (!parameters) {
+    return "";
+  }
+  const modelSettings = parameters.model_settings;
+  if (!isPlainRecord(modelSettings)) {
+    return "";
+  }
+  const reasoning = modelSettings.reasoning;
+  if (!isPlainRecord(reasoning)) {
+    return "";
+  }
+  const verbosity = reasoning.verbosity;
+  return typeof verbosity === "string" ? verbosity : "";
+};
+
+export const getAgentReasoningSummary = (
+  parameters: AgentParameters | null | undefined,
+): string => {
+  if (!parameters) {
+    return "";
+  }
+  const modelSettings = parameters.model_settings;
+  if (!isPlainRecord(modelSettings)) {
+    return "";
+  }
+  const reasoning = modelSettings.reasoning;
+  if (!isPlainRecord(reasoning)) {
+    return "";
+  }
+  const summary = reasoning.summary;
+  if (typeof summary === "string") {
+    return summary;
+  }
+  return "";
+};
+
 export const setAgentMessage = (
   parameters: AgentParameters,
   message: string,
@@ -123,7 +162,7 @@ export const setAgentReasoningEffort = (
     ? { ...(reasoning as Record<string, unknown>), effort: trimmed }
     : { effort: trimmed };
 
-  if (typeof nextReasoning.summary !== "string") {
+  if (!("summary" in nextReasoning)) {
     nextReasoning.summary = "auto";
   }
 
@@ -138,6 +177,38 @@ export const setAgentReasoningEffort = (
 
   return { ...next, model_settings: mergedSettings };
 };
+
+export const setAgentReasoningVerbosity = (
+  parameters: AgentParameters,
+  verbosity: string,
+): AgentParameters => {
+  const trimmed = verbosity.trim();
+  return updateReasoningSettings(parameters, (current) => {
+    const next = { ...current } as Record<string, unknown>;
+    if (!trimmed) {
+      if ("verbosity" in next) {
+        delete next.verbosity;
+      }
+      return next;
+    }
+    next.verbosity = trimmed;
+    return next;
+  });
+};
+
+export const setAgentReasoningSummary = (
+  parameters: AgentParameters,
+  summary: string,
+): AgentParameters =>
+  updateReasoningSettings(parameters, (current) => {
+    const next = { ...current } as Record<string, unknown>;
+    if (!summary.trim()) {
+      next.summary = null;
+      return next;
+    }
+    next.summary = summary.trim();
+    return next;
+  });
 
 const cloneModelSettings = (
   modelSettings: unknown,
@@ -161,6 +232,24 @@ const updateModelSettings = (
   }
   return { ...next, model_settings: updated };
 };
+
+const updateReasoningSettings = (
+  parameters: AgentParameters,
+  updater: (current: Record<string, unknown>) => Record<string, unknown>,
+): AgentParameters =>
+  updateModelSettings(parameters, (current) => {
+    const existingReasoning = isPlainRecord(current.reasoning)
+      ? { ...(current.reasoning as Record<string, unknown>) }
+      : {};
+    const updatedReasoning = updater(existingReasoning);
+    const nextSettings = { ...current } as Record<string, unknown>;
+    if (Object.keys(updatedReasoning).length === 0) {
+      const { reasoning: _ignored, ...rest } = nextSettings;
+      return rest;
+    }
+    nextSettings.reasoning = updatedReasoning;
+    return nextSettings;
+  });
 
 const parseNumericSetting = (value: string): number | null => {
   const trimmed = value.trim();
@@ -233,6 +322,38 @@ export const setAgentTopP = (
   return updateModelSettings(parameters, (current) => ({
     ...current,
     top_p: parsed,
+  }));
+};
+
+export const getAgentMaxOutputTokens = (
+  parameters: AgentParameters | null | undefined,
+): number | null => {
+  if (!parameters) {
+    return null;
+  }
+  const modelSettings = parameters.model_settings;
+  if (!isPlainRecord(modelSettings)) {
+    return null;
+  }
+  const maxTokens = modelSettings.max_output_tokens;
+  return typeof maxTokens === "number" ? maxTokens : null;
+};
+
+export const setAgentMaxOutputTokens = (
+  parameters: AgentParameters,
+  rawValue: string,
+): AgentParameters => {
+  const parsed = parseNumericSetting(rawValue);
+  if (parsed === null) {
+    return updateModelSettings(parameters, (current) => {
+      const { max_output_tokens: _ignored, ...rest } = current;
+      return rest;
+    });
+  }
+
+  return updateModelSettings(parameters, (current) => ({
+    ...current,
+    max_output_tokens: parsed,
   }));
 };
 
@@ -486,3 +607,75 @@ export const setAgentWebSearchConfig = (
 
   return { ...next, tools: [...tools, toolEntry] };
 };
+
+const getBooleanParameter = (
+  parameters: AgentParameters | null | undefined,
+  key: string,
+): boolean | null => {
+  if (!parameters) {
+    return null;
+  }
+  const value = (parameters as Record<string, unknown>)[key];
+  return typeof value === "boolean" ? value : null;
+};
+
+const setBooleanParameter = (
+  parameters: AgentParameters,
+  key: string,
+  value: boolean | null,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  if (value === null) {
+    if (key in next) {
+      const { [key]: _ignored, ...rest } = next as Record<string, unknown>;
+      return stripEmpty(rest);
+    }
+    return stripEmpty(next);
+  }
+  return { ...next, [key]: value } as AgentParameters;
+};
+
+export const getAgentIncludeChatHistory = (
+  parameters: AgentParameters | null | undefined,
+): boolean | null => getBooleanParameter(parameters, "include_chat_history");
+
+export const setAgentIncludeChatHistory = (
+  parameters: AgentParameters,
+  value: boolean | null,
+): AgentParameters => setBooleanParameter(parameters, "include_chat_history", value);
+
+export const getAgentDisplayResponseInChat = (
+  parameters: AgentParameters | null | undefined,
+): boolean | null => getBooleanParameter(parameters, "display_response_in_chat");
+
+export const setAgentDisplayResponseInChat = (
+  parameters: AgentParameters,
+  value: boolean | null,
+): AgentParameters => setBooleanParameter(parameters, "display_response_in_chat", value);
+
+export const getAgentShowSearchSources = (
+  parameters: AgentParameters | null | undefined,
+): boolean | null => getBooleanParameter(parameters, "show_search_sources");
+
+export const setAgentShowSearchSources = (
+  parameters: AgentParameters,
+  value: boolean | null,
+): AgentParameters => setBooleanParameter(parameters, "show_search_sources", value);
+
+export const getAgentContinueOnError = (
+  parameters: AgentParameters | null | undefined,
+): boolean | null => getBooleanParameter(parameters, "continue_on_error");
+
+export const setAgentContinueOnError = (
+  parameters: AgentParameters,
+  value: boolean | null,
+): AgentParameters => setBooleanParameter(parameters, "continue_on_error", value);
+
+export const getAgentWriteToConversationHistory = (
+  parameters: AgentParameters | null | undefined,
+): boolean | null => getBooleanParameter(parameters, "write_to_conversation_history");
+
+export const setAgentWriteToConversationHistory = (
+  parameters: AgentParameters,
+  value: boolean | null,
+): AgentParameters => setBooleanParameter(parameters, "write_to_conversation_history", value);
