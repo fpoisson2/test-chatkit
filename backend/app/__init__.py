@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
 
-from .routes import admin, auth, model_registry, tools, users, vector_stores, workflows
+from .routes import admin, auth, model_registry, tools, users, vector_stores, widgets, workflows
 
 
 try:  # pragma: no cover - dépendance optionnelle pour le SDK ChatKit
