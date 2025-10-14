@@ -7,6 +7,7 @@ import { useAuth } from "./auth";
 import { LoginPage } from "./pages/LoginPage";
 import { VectorStoresPage } from "./pages/VectorStoresPage";
 import WorkflowBuilderPage from "./pages/WorkflowBuilderPage";
+import { VoicePage } from "./pages/VoicePage";
 
 const RequireAdmin = ({ children }: { children: ReactElement }) => {
   const { user } = useAuth();
@@ -71,6 +72,10 @@ export const App = () => (
           <WorkflowBuilderPage />
         </RequireAdmin>
       }
+    />
+    <Route
+      path="/voice"
+      element={<VoicePage />}
     />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>

@@ -10,6 +10,7 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@openai/agents": "*",
     "@openai/chatkit-react": "*",
     "react-router-dom": "*",
     "react": "*",
