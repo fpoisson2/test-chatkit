@@ -4,7 +4,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routes import admin, auth, chatkit, tools, users, workflows
+from .routes import admin, auth, tools, users, workflows
+
+try:  # pragma: no cover - dépendance optionnelle pour le SDK ChatKit
+    from .routes import chatkit
+except ModuleNotFoundError:  # pragma: no cover - utilisé dans l'environnement de tests sans SDK
+    chatkit = None  # type: ignore[assignment]
 from .startup import register_startup_events
 
 settings = get_settings()
@@ -21,7 +26,8 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(admin.router)
-app.include_router(chatkit.router)
+if chatkit and hasattr(chatkit, "router"):
+    app.include_router(chatkit.router)
 app.include_router(tools.router)
 app.include_router(workflows.router)
 

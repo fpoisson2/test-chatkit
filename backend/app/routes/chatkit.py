@@ -1,12 +1,23 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 
-from chatkit.server import StreamingResult
+try:  # pragma: no cover - dépendance optionnelle pour les tests
+    from chatkit.server import StreamingResult
+except ModuleNotFoundError:  # pragma: no cover - utilisé uniquement quand ChatKit n'est pas installé
+    class StreamingResult:  # type: ignore[override]
+        """Bouchon minimal utilisé lorsque le SDK ChatKit n'est pas disponible."""
+
+        pass
+
+
+if TYPE_CHECKING:  # pragma: no cover - uniquement pour l'auto-complétion
+    from ..chatkit import ChatKitRequestContext
 
 from ..chatkit_sessions import create_chatkit_session, proxy_chatkit_request
-from ..chatkit import ChatKitRequestContext, get_chatkit_server
 from ..dependencies import get_current_user
 from ..models import User
 from ..schemas import SessionRequest
@@ -50,6 +61,17 @@ async def chatkit_endpoint(
     request: Request,
     current_user: User = Depends(get_current_user),
 ):
+    try:
+        from ..chatkit import ChatKitRequestContext, get_chatkit_server
+    except ModuleNotFoundError as exc:  # pragma: no cover - dépendance optionnelle absente
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "ChatKit SDK introuvable",
+                "hint": "Installez le paquet `chatkit` ou configurez CHATKIT_WORKFLOW_ID pour utiliser cette route.",
+            },
+        ) from exc
+
     server = get_chatkit_server()
     payload = await request.body()
     context = ChatKitRequestContext(

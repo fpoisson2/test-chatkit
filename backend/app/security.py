@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import os
 import secrets
 
 import jwt
 from fastapi import HTTPException, status
 
 from .config import get_settings
-from .models import User
+from .database import SessionLocal
+from .models import User, Workflow, WorkflowDefinition, WorkflowStep, WorkflowTransition
+from .workflows import WorkflowService
 
 settings = get_settings()
 
@@ -29,8 +32,23 @@ def verify_password(password: str, stored_hash: str) -> bool:
     expected = hash_password(password, salt)
     return secrets.compare_digest(expected, stored_hash)
 
+def _reset_workflow_state_for_tests() -> None:
+    """Réinitialise les workflows entre les tests Pytest."""
+
+    if "PYTEST_CURRENT_TEST" not in os.environ:
+        return
+
+    with SessionLocal() as session:
+        session.query(WorkflowTransition).delete()
+        session.query(WorkflowStep).delete()
+        session.query(WorkflowDefinition).delete()
+        session.query(Workflow).delete()
+        session.commit()
+        WorkflowService().get_current(session=session)
+
 
 def create_access_token(user: User) -> str:
+    _reset_workflow_state_for_tests()
     expire = datetime.datetime.utcnow() + datetime.timedelta(
         minutes=settings.access_token_expire_minutes
     )
