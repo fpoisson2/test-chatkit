@@ -9,3 +9,5 @@ sqlalchemy
 psycopg[binary]
 PyJWT
 email-validator
+pgvector
+sentence-transformers

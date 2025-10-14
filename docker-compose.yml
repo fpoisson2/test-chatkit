@@ -1,10 +1,10 @@
 services:
   backend:
-    image: python:3.11-slim
+    build:
+      context: ./backend
     working_dir: /app
     command: >-
-      sh -c "pip install --no-cache-dir -r requirements.txt &&
-      uvicorn server:app --host 0.0.0.0 --port 8000 --reload"
+      uvicorn server:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend:/app
     environment:
@@ -47,7 +47,7 @@ services:
     depends_on:
       - backend
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-chatkit}
       POSTGRES_USER: ${POSTGRES_USER:-chatkit}
