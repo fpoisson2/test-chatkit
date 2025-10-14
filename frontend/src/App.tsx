@@ -8,6 +8,7 @@ import { useAuth } from "./auth";
 import { LoginPage } from "./pages/LoginPage";
 import { VectorStoresPage } from "./pages/VectorStoresPage";
 import WorkflowBuilderPage from "./pages/WorkflowBuilderPage";
+import WidgetLibraryPage from "./pages/WidgetLibraryPage";
 
 const RequireAdmin = ({ children }: { children: ReactElement }) => {
   const { user } = useAuth();
@@ -70,6 +71,14 @@ export const App = () => (
       element={
         <RequireAdmin>
           <VectorStoresPage />
+        </RequireAdmin>
+      }
+    />
+    <Route
+      path="/admin/widgets"
+      element={
+        <RequireAdmin>
+          <WidgetLibraryPage />
         </RequireAdmin>
       }
     />

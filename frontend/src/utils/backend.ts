@@ -184,6 +184,16 @@ export const resetUserPassword = async (
   return response.json();
 };
 
+
+export type WidgetTemplate = {
+  slug: string;
+  title: string | null;
+  description: string | null;
+  definition: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AvailableModel = {
   id: number;
   name: string;
@@ -193,6 +203,20 @@ export type AvailableModel = {
   created_at: string;
   updated_at: string;
 };
+
+export type WidgetTemplateCreatePayload = {
+  slug: string;
+  title?: string | null;
+  description?: string | null;
+  definition: Record<string, unknown>;
+};
+
+export type WidgetTemplateUpdatePayload = {
+  title?: string | null;
+  description?: string | null;
+  definition?: Record<string, unknown>;
+};
+
 
 export type AvailableModelPayload = {
   name: string;
@@ -208,6 +232,15 @@ export const modelRegistryApi = {
     });
     return response.json();
   },
+    
+export const widgetLibraryApi = {
+  async listWidgets(token: string | null): Promise<WidgetTemplate[]> {
+    const response = await requestWithFallback("/api/widgets", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+      
 
   async listAdmin(token: string | null): Promise<AvailableModel[]> {
     const response = await requestWithFallback("/api/admin/models", {
@@ -215,6 +248,19 @@ export const modelRegistryApi = {
     });
     return response.json();
   },
+    
+  async createWidget(
+    token: string | null,
+    payload: WidgetTemplateCreatePayload,
+  ): Promise<WidgetTemplate> {
+    const response = await requestWithFallback("/api/widgets", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+       
 
   async create(token: string | null, payload: AvailableModelPayload): Promise<AvailableModel> {
     const response = await requestWithFallback("/api/admin/models", {
@@ -224,12 +270,47 @@ export const modelRegistryApi = {
     });
     return response.json();
   },
+  
+  async updateWidget(
+    token: string | null,
+    slug: string,
+    payload: WidgetTemplateUpdatePayload,
+  ): Promise<WidgetTemplate> {
+    const response = await requestWithFallback(`/api/widgets/${encodeURIComponent(slug)}`, {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
 
   async delete(token: string | null, id: number): Promise<void> {
     await requestWithFallback(`/api/admin/models/${id}`, {
       method: "DELETE",
       headers: withAuthHeaders(token),
     });
+  },
+  
+  async deleteWidget(token: string | null, slug: string): Promise<void> {
+    await requestWithFallback(`/api/widgets/${encodeURIComponent(slug)}`, {  
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+  },
+  
+
+  async previewWidget(
+    token: string | null,
+    definition: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const response = await requestWithFallback("/api/widgets/preview", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ definition }),
+    });
+    const payload = (await response.json()) as { definition: Record<string, unknown> };
+    return payload.definition;
   },
 };
 

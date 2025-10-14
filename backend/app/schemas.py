@@ -244,6 +244,43 @@ class WorkflowProductionUpdate(BaseModel):
 class WorkflowChatKitUpdate(BaseModel):
     workflow_id: int
 
+
+class WidgetTemplateBase(BaseModel):
+    slug: str
+    title: str | None = None
+    description: str | None = None
+    definition: dict[str, Any]
+
+
+class WidgetTemplateResponse(WidgetTemplateBase):
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WidgetTemplateCreateRequest(BaseModel):
+    slug: str
+    title: str | None = None
+    description: str | None = None
+    definition: dict[str, Any]
+
+
+class WidgetTemplateUpdateRequest(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    definition: dict[str, Any] | None = None
+
+
+class WidgetPreviewRequest(BaseModel):
+    definition: dict[str, Any]
+
+
+class WidgetPreviewResponse(BaseModel):
+    definition: dict[str, Any]
+
+
 class VectorStoreCreateRequest(BaseModel):
     slug: str
     title: str | None = None
