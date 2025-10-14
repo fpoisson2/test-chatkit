@@ -156,6 +156,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     await on_stream_event(
                         ProgressUpdateEvent(text=f"{header}\n\nTerminé.")
                     )
+                    await on_stream_event(ProgressUpdateEvent(text=""))
 
             async def on_stream_event(event: ThreadStreamEvent) -> None:
                 await event_queue.put(event)
