@@ -289,7 +289,7 @@ const WorkflowBuilderPage = () => {
                 parametersError: null,
                 metadata: node.metadata ?? {},
               },
-              draggable: node.kind !== "start" && node.kind !== "end",
+              draggable: true,
               style: buildNodeStyle(node.kind),
             } satisfies FlowNode;
           });

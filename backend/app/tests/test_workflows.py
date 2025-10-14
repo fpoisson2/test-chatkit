@@ -8,12 +8,14 @@ from backend.app.config import get_settings
 get_settings.cache_clear()
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from backend.app import app
 from backend.app.database import SessionLocal, engine
 from backend.app.models import (
     Base,
     User,
+    Workflow,
     WorkflowDefinition,
     WorkflowStep,
     WorkflowTransition,
@@ -151,7 +153,17 @@ def test_legacy_workflow_is_backfilled_with_default_graph() -> None:
         session.query(WorkflowDefinition).delete()
         session.commit()
 
-        definition = WorkflowDefinition(name="ancien-workflow", is_active=True)
+        workflow = session.scalar(select(Workflow).where(Workflow.slug == "workflow-par-defaut"))
+        if workflow is None:
+            workflow = Workflow(slug="workflow-par-defaut", display_name="Workflow par défaut")
+            session.add(workflow)
+            session.flush()
+
+        definition = WorkflowDefinition(
+            workflow_id=workflow.id,
+            name="ancien-workflow",
+            is_active=True,
+        )
         session.add(definition)
         session.flush()
 
@@ -207,7 +219,17 @@ def test_legacy_workflow_missing_state_nodes_is_backfilled() -> None:
         session.query(WorkflowDefinition).delete()
         session.commit()
 
-        definition = WorkflowDefinition(name="workflow-sans-etat", is_active=True)
+        workflow = session.scalar(select(Workflow).where(Workflow.slug == "workflow-par-defaut"))
+        if workflow is None:
+            workflow = Workflow(slug="workflow-par-defaut", display_name="Workflow par défaut")
+            session.add(workflow)
+            session.flush()
+
+        definition = WorkflowDefinition(
+            workflow_id=workflow.id,
+            name="workflow-sans-etat",
+            is_active=True,
+        )
         session.add(definition)
         session.flush()
 
@@ -369,6 +391,49 @@ def test_create_workflow_without_graph_creates_empty_version() -> None:
     created = next(item for item in summaries if item["id"] == data["workflow_id"])
     assert created["versions_count"] == 1
     assert created["active_version_id"] is None
+
+
+def test_can_save_minimal_graph_version() -> None:
+    admin = _make_user(email="minimal@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    creation = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-minimal",
+            "display_name": "Workflow minimal",
+            "description": None,
+            "graph": None,
+        },
+    )
+    assert creation.status_code == 201
+    workflow_id = creation.json()["workflow_id"]
+
+    response = client.post(
+        f"/api/workflows/{workflow_id}/versions",
+        headers=_auth_headers(token),
+        json={
+            "graph": {
+                "nodes": [
+                    {"slug": "start", "kind": "start", "is_enabled": True},
+                    {"slug": "end", "kind": "end", "is_enabled": True},
+                ],
+                "edges": [
+                    {"source": "start", "target": "end"},
+                ],
+            },
+            "mark_as_active": False,
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["version"] == 2
+    assert body["is_active"] is False
+    assert len(body["graph"]["nodes"]) == 2
+    assert {node["kind"] for node in body["graph"]["nodes"]} == {"start", "end"}
+    assert body["steps"] == []
 
 
 def test_create_two_workflows_with_same_initial_name() -> None:

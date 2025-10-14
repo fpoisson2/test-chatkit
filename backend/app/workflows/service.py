@@ -824,12 +824,6 @@ class WorkflowService:
             raise WorkflowValidationError("Le workflow doit contenir un nœud de début actif.")
         if not any(node.kind == "end" and node.is_enabled for node in normalized_nodes):
             raise WorkflowValidationError("Le workflow doit contenir un nœud de fin actif.")
-        if not enabled_agent_slugs and not allow_empty:
-            raise WorkflowValidationError("Au moins un agent doit être actif dans le workflow.")
-        # Les anciens workflows imposaient la présence d'un rédacteur final, mais la
-        # bibliothèque permet désormais de créer des workflows plus simples.
-        # Nous conservons uniquement la vérification d'au moins un agent actif.
-
         normalized_edges: list[NormalizedEdge] = []
         for entry in raw_edges:
             if not isinstance(entry, dict):
@@ -859,6 +853,13 @@ class WorkflowService:
                 )
             )
 
+        minimal_skeleton = self._is_minimal_skeleton(normalized_nodes, normalized_edges)
+        if not enabled_agent_slugs and not (allow_empty or minimal_skeleton):
+            raise WorkflowValidationError("Au moins un agent doit être actif dans le workflow.")
+        # Les anciens workflows imposaient la présence d'un rédacteur final, mais la
+        # bibliothèque permet désormais de créer des workflows plus simples.
+        # Nous conservons uniquement la vérification d'au moins un agent actif.
+
         self._validate_graph_structure(normalized_nodes, normalized_edges)
         return normalized_nodes, normalized_edges
 
@@ -885,6 +886,32 @@ class WorkflowService:
             for entry in MINIMAL_WORKFLOW_GRAPH["edges"]
         ]
         return nodes, edges
+
+    def _is_minimal_skeleton(
+        self,
+        nodes: Iterable[NormalizedNode],
+        edges: Iterable[NormalizedEdge],
+    ) -> bool:
+        enabled_nodes = [node for node in nodes if node.is_enabled]
+        if not enabled_nodes:
+            return False
+
+        start_nodes = [node for node in enabled_nodes if node.kind == "start"]
+        end_nodes = [node for node in enabled_nodes if node.kind == "end"]
+        if len(start_nodes) != 1 or len(end_nodes) != 1:
+            return False
+
+        # Autorise uniquement le couple Début / Fin comme nœuds actifs.
+        if len(enabled_nodes) > 2:
+            return False
+
+        start_slug = start_nodes[0].slug
+        end_slug = end_nodes[0].slug
+
+        for edge in edges:
+            if edge.source_slug == start_slug and edge.target_slug == end_slug:
+                return True
+        return False
 
     def _ensure_dict(self, value: Any, label: str) -> dict[str, Any]:
         if value is None:
