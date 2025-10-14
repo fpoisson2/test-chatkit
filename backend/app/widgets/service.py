@@ -5,6 +5,16 @@ import logging
 from typing import Any, Iterable
 
 from pydantic import ValidationError
+
+try:  # pragma: no cover - import conditionnel selon la version de Pydantic
+    from pydantic import TypeAdapter
+except ImportError:  # pragma: no cover - Pydantic v1
+    TypeAdapter = None  # type: ignore[assignment]
+
+try:  # pragma: no cover - API disponible sur Pydantic v1
+    from pydantic import parse_obj_as
+except ImportError:  # pragma: no cover - supprimé en v2
+    parse_obj_as = None  # type: ignore[assignment]
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -151,10 +161,32 @@ class WidgetLibraryService:
                 "Installez le SDK ChatKit pour utiliser la bibliothèque de widgets."
             )
         try:
+            adapter = None
+            if TypeAdapter is not None:
+                try:
+                    adapter = TypeAdapter(WidgetRoot)
+                except TypeError:  # pragma: no cover - typage inattendu
+                    logger.debug(
+                        "Impossible de construire un TypeAdapter pour %s", WidgetRoot
+                    )
             if isinstance(definition, str):
-                widget = WidgetRoot.model_validate_json(definition)
+                if adapter is not None:
+                    widget = adapter.validate_json(definition)
+                else:
+                    if parse_obj_as is None:
+                        raise RuntimeError(
+                            "Aucun validateur Pydantic disponible pour les widgets"
+                        )
+                    widget = parse_obj_as(WidgetRoot, json.loads(definition))
             else:
-                widget = WidgetRoot.model_validate(definition)
+                if adapter is not None:
+                    widget = adapter.validate_python(definition)
+                else:
+                    if parse_obj_as is None:
+                        raise RuntimeError(
+                            "Aucun validateur Pydantic disponible pour les widgets"
+                        )
+                    widget = parse_obj_as(WidgetRoot, definition)
         except ValidationError as exc:  # pragma: no cover - dépendant de la structure exacte
             logger.debug("Widget invalide: %s", exc, exc_info=exc)
             messages = []
