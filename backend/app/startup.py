@@ -7,7 +7,13 @@ from fastapi import FastAPI
 from sqlalchemy import inspect, select, text
 
 from .config import get_settings
-from .database import SessionLocal, engine, wait_for_database
+from .database import (
+    SessionLocal,
+    ensure_database_extensions,
+    ensure_vector_indexes,
+    engine,
+    wait_for_database,
+)
 from .models import Base, User
 from .security import hash_password
 
@@ -186,8 +192,10 @@ def register_startup_events(app: FastAPI) -> None:
     @app.on_event("startup")
     def _on_startup() -> None:
         wait_for_database()
+        ensure_database_extensions()
         _run_ad_hoc_migrations()
         Base.metadata.create_all(bind=engine)
+        ensure_vector_indexes()
         if settings.admin_email and settings.admin_password:
             normalized_email = settings.admin_email.lower()
             with SessionLocal() as session:
