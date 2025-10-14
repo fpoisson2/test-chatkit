@@ -6,7 +6,7 @@ import pytest
 from backend.app.config import get_settings
 from backend.app.security import create_access_token
 from backend.app.routes.chatkit import _resolve_voice_client_secret
-from backend.app.tests.test_workflows import _auth_headers, _make_user, client
+from backend.app.tests.test_workflows import _auth_headers, _make_user, _reset_db, client
 
 
 def test_create_voice_session_requires_authentication() -> None:
@@ -72,6 +72,9 @@ def test_create_voice_session_success(monkeypatch) -> None:
         "model": "gpt-custom",
         "instructions": "Réponds avec empathie",
         "voice": settings.chatkit_realtime_voice,
+        "prompt_id": None,
+        "prompt_version": None,
+        "prompt_variables": {},
     }
 
 
@@ -98,6 +101,82 @@ def test_create_voice_session_success_with_string_secret(monkeypatch) -> None:
     payload = response.json()
     assert payload["client_secret"] == "plain-secret"
     assert payload["expires_at"] == "321"
+    assert payload["prompt_variables"] == {}
+
+
+def test_admin_can_read_default_voice_settings() -> None:
+    _reset_db()
+    admin = _make_user(email="voice-admin@example.com", is_admin=True)
+    token = create_access_token(admin)
+    defaults = get_settings()
+
+    response = client.get(
+        "/api/admin/voice-settings",
+        headers=_auth_headers(token),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["instructions"] == defaults.chatkit_realtime_instructions
+    assert payload["model"] == defaults.chatkit_realtime_model
+    assert payload["voice"] == defaults.chatkit_realtime_voice
+    assert payload["prompt_id"] is None
+    assert payload["prompt_version"] is None
+    assert payload["prompt_variables"] == {}
+
+
+def test_admin_can_update_voice_settings(monkeypatch) -> None:
+    _reset_db()
+    admin = _make_user(email="voice-owner@example.com", is_admin=True)
+    admin_token = create_access_token(admin)
+
+    response = client.patch(
+        "/api/admin/voice-settings",
+        headers=_auth_headers(admin_token),
+        json={
+            "instructions": "Réponds avec concision.",
+            "model": "gpt-realtime-preview",
+            "voice": "marin",
+            "prompt_id": "pmpt_123",
+            "prompt_version": "89",
+            "prompt_variables": {"city": "Paris"},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["instructions"] == "Réponds avec concision."
+    assert payload["model"] == "gpt-realtime-preview"
+    assert payload["voice"] == "marin"
+    assert payload["prompt_id"] == "pmpt_123"
+    assert payload["prompt_version"] == "89"
+    assert payload["prompt_variables"] == {"city": "Paris"}
+
+    user = _make_user(email="voice-consumer@example.com", is_admin=False)
+    user_token = create_access_token(user)
+
+    async def _fake_helper(**kwargs):
+        assert kwargs["model"] == "gpt-realtime-preview"
+        assert kwargs["instructions"] == "Réponds avec concision."
+        return {"client_secret": "voice-secret"}
+
+    monkeypatch.setattr(
+        "backend.app.routes.chatkit.create_realtime_voice_session",
+        _fake_helper,
+    )
+
+    session_response = client.post(
+        "/api/chatkit/voice/session",
+        headers=_auth_headers(user_token),
+        json={},
+    )
+
+    assert session_response.status_code == 200
+    data = session_response.json()
+    assert data["voice"] == "marin"
+    assert data["prompt_id"] == "pmpt_123"
+    assert data["prompt_version"] == "89"
+    assert data["prompt_variables"] == {"city": "Paris"}
 
 
 @pytest.mark.parametrize(

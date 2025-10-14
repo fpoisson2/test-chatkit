@@ -8,6 +8,7 @@ __all__ = [
     "tools",
     "users",
     "vector_stores",
+    "voice_settings",
     "widgets",
     "workflows",
 ]

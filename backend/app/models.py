@@ -97,6 +97,29 @@ class AvailableModel(Base):
     )
 
 
+class VoiceSettings(Base):
+    __tablename__ = "voice_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    instructions: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    voice: Mapped[str] = mapped_column(String(64), nullable=False)
+    prompt_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    prompt_variables: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+
 class Workflow(Base):
     __tablename__ = "workflows"
 

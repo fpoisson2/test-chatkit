@@ -134,6 +134,26 @@ export type CreateUserPayload = {
   is_admin: boolean;
 };
 
+export type VoiceSettings = {
+  instructions: string;
+  model: string;
+  voice: string;
+  prompt_id: string | null;
+  prompt_version: string | null;
+  prompt_variables: Record<string, string>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type VoiceSettingsUpdatePayload = {
+  instructions?: string | null;
+  model?: string | null;
+  voice?: string | null;
+  prompt_id?: string | null;
+  prompt_version?: string | null;
+  prompt_variables?: Record<string, string>;
+};
+
 export const adminApi = {
   async listUsers(token: string | null): Promise<EditableUser[]> {
     const response = await requestWithFallback("/api/admin/users", {
@@ -182,6 +202,27 @@ export const resetUserPassword = async (
     body: JSON.stringify(payload),
   });
   return response.json();
+};
+
+export const voiceSettingsApi = {
+  async get(token: string | null): Promise<VoiceSettings> {
+    const response = await requestWithFallback("/api/admin/voice-settings", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async update(
+    token: string | null,
+    payload: VoiceSettingsUpdatePayload,
+  ): Promise<VoiceSettings> {
+    const response = await requestWithFallback("/api/admin/voice-settings", {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
 };
 
 
