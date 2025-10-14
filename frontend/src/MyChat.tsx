@@ -26,6 +26,9 @@ import {
   loadStoredThreadId,
   persistStoredThreadId,
 } from "./utils/chatkitThread";
+import { SettingsModal } from "./features/settings/SettingsModal";
+import { SETTINGS_SECTIONS, type SettingsSectionId } from "./features/settings/sections";
+import { useAdminUsers } from "./features/settings/useAdminUsers";
 
 type WeatherToolCall = {
   name: "get_weather";
@@ -140,6 +143,9 @@ export function MyChat() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSectionId>(
+    SETTINGS_SECTIONS[0].id,
+  );
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
   const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
@@ -151,6 +157,27 @@ export function MyChat() {
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const lastVisibilityRefreshRef = useRef(0);
   const previousSessionOwnerRef = useRef<string | null>(null);
+
+  const closeProfileSettings = useCallback(() => {
+    setIsSettingsModalOpen(false);
+  }, []);
+
+  const handleSettingsUnauthorized = useCallback(() => {
+    closeProfileSettings();
+    logout();
+  }, [closeProfileSettings, logout]);
+
+  const adminUsers = useAdminUsers({
+    token,
+    isEnabled: Boolean(user?.is_admin) && isSettingsModalOpen,
+    onUnauthorized: handleSettingsUnauthorized,
+  });
+
+  useEffect(() => {
+    if (isSettingsModalOpen) {
+      setActiveSettingsSection(SETTINGS_SECTIONS[0].id);
+    }
+  }, [isSettingsModalOpen]);
 
   useEffect(() => {
     const previousOwner = previousSessionOwnerRef.current;
@@ -454,10 +481,6 @@ export function MyChat() {
     setIsSettingsModalOpen(true);
   }, [navigate, user]);
 
-  const closeProfileSettings = useCallback(() => {
-    setIsSettingsModalOpen(false);
-  }, []);
-
   const handleSidebarSettings = useCallback(() => {
     if (!isDesktopLayout) {
       closeSidebar();
@@ -481,9 +504,9 @@ export function MyChat() {
     goToHome();
   }, [closeProfileSettings, goToHome]);
 
-  const handleGoToAdmin = useCallback(() => {
+  const handleOpenWorkflows = useCallback(() => {
     closeProfileSettings();
-    navigate("/admin");
+    navigate("/admin/workflows");
   }, [closeProfileSettings, navigate]);
 
   const handleLogout = useCallback(() => {
@@ -812,57 +835,18 @@ export function MyChat() {
           </div>
         )}
       </div>
-      {isSettingsModalOpen && (
-        <div
-          className="settings-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="settings-modal-title"
-        >
-          <div className="settings-modal__backdrop" onClick={closeProfileSettings} />
-          <div className="settings-modal__panel" role="document">
-            <header className="settings-modal__header">
-              <div>
-                <h2 id="settings-modal-title" className="settings-modal__title">
-                  Paramètres rapides
-                </h2>
-                <p className="settings-modal__subtitle">
-                  Accédez rapidement aux sections clés de votre espace.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="settings-modal__close"
-                onClick={closeProfileSettings}
-                aria-label="Fermer les paramètres"
-              >
-                ×
-              </button>
-            </header>
-            <nav className="settings-modal__content" aria-label="Menu des paramètres">
-              <ul className="settings-modal__list">
-                <li className="settings-modal__item">
-                  <button type="button" onClick={handleHomeFromModal}>
-                    Retour à l'accueil
-                  </button>
-                </li>
-                {user?.is_admin && (
-                  <li className="settings-modal__item">
-                    <button type="button" onClick={handleGoToAdmin}>
-                      Administration
-                    </button>
-                  </li>
-                )}
-                <li className="settings-modal__item">
-                  <button type="button" onClick={handleLogout} className="settings-modal__item--danger">
-                    Déconnexion
-                  </button>
-                </li>
-              </ul>
-            </nav>
-          </div>
-        </div>
-      )}
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        sections={SETTINGS_SECTIONS}
+        activeSectionId={activeSettingsSection}
+        onSelectSection={setActiveSettingsSection}
+        onClose={closeProfileSettings}
+        currentUser={user}
+        onGoHome={handleHomeFromModal}
+        onLogout={handleLogout}
+        onOpenWorkflows={handleOpenWorkflows}
+        adminUsers={adminUsers}
+      />
     </div>
   );
 }
