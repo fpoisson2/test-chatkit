@@ -15,7 +15,7 @@ dependencies = [
     "psycopg[binary]",
     "PyJWT",
     "email-validator",
-    "sqlalchemy-pgvector",
+    "pgvector",
     "sentence-transformers",
 ]
 

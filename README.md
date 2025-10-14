@@ -94,7 +94,7 @@ with SessionLocal() as session:
     session.commit()
 ```
 
-Le chargement du modèle e5 est effectué paresseusement et mis en cache. Pensez à relancer `npm run backend:sync` (depuis la racine) pour installer les nouvelles dépendances Python (`sqlalchemy-pgvector`, `sentence-transformers`).
+Le chargement du modèle e5 est effectué paresseusement et mis en cache. Pensez à relancer `npm run backend:sync` (depuis la racine) pour installer les nouvelles dépendances Python (`pgvector`, `sentence-transformers`).
 
 ### Outil météo exposé au workflow ChatKit
 
