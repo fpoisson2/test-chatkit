@@ -65,6 +65,10 @@ Au démarrage, `backend/app/startup.py` appelle automatiquement `CREATE EXTENSIO
 - `GIN` plein texte sur `to_tsvector('simple', linearized_text)` ;
 - `GIN` sur les colonnes `metadata` pour accélérer les filtres JSONB.
 
+Dans l'environnement Docker Compose fourni, le service PostgreSQL repose sur l'image officielle `pgvector/pgvector:pg16`, qui
+embarque l'extension `vector` prête à l'emploi. Sur une instance managée, vérifiez auprès de votre administrateur que le
+paquet `pgvector` est installé avant de lancer le backend.
+
 Assurez-vous que l'utilisateur PostgreSQL dispose du droit `CREATE EXTENSION`. En cas de déploiement manuel, vous pouvez forcer l'initialisation depuis la **racine du dépôt** avec :
 
 ```bash
@@ -263,7 +267,7 @@ Depuis la racine du dépôt, vous pouvez orchestrer le backend FastAPI et le fro
    # VITE_ALLOWED_HOSTS="chatkit.example.com"
    ```
    Les autres variables d'environnement exposées dans `docker-compose.yml` disposent de valeurs par défaut (`VITE_ALLOWED_HOSTS`, `VITE_HMR_PROTOCOL`, `VITE_HMR_CLIENT_PORT`, `VITE_BACKEND_URL`, etc.) que vous pouvez également surcharger dans `.env` si nécessaire.
-2. Depuis la racine du projet, lancez `docker compose up --build` pour démarrer les trois services (backend, frontend, base PostgreSQL). Cette première exécution construit l'image `backend` à partir de `backend/Dockerfile` (installation de `libgomp1` + dépendances Python). Le backend répond sur `http://localhost:8000`, la base de données sur `localhost:5432` et le frontend sur `http://localhost:${VITE_PORT}`.
+2. Depuis la racine du projet, lancez `docker compose up --build` pour démarrer les trois services (backend, frontend, base PostgreSQL). Cette première exécution construit l'image `backend` à partir de `backend/Dockerfile` (installation de `libgomp1` + dépendances Python) et récupère l'image `pgvector/pgvector:pg16` pour la base de données, avec l'extension `vector` déjà disponible. Le backend répond sur `http://localhost:8000`, la base de données sur `localhost:5432` et le frontend sur `http://localhost:${VITE_PORT}`.
 3. Utilisez `docker compose down` pour arrêter l'environnement de développement. Rejouez `docker compose up --build` à chaque fois que vous modifiez `backend/requirements.txt` ou le Dockerfile ; dans les autres cas, un simple `docker compose up` suffit.
 
 Les volumes montés vous permettent de modifier le code localement tout en profitant du rafraîchissement à chaud côté frontend (`npm run dev -- --host 0.0.0.0`) et du rechargement automatique d'Uvicorn. Le volume nommé `postgres-data` conserve l'état de la base entre deux relances.
