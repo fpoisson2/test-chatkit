@@ -8,6 +8,7 @@ This repository mirrors the walkthrough in `chatkit.md`, providing both the lega
 - L'accueil (`/`) est protégé : sans authentification valide, l'utilisateur est redirigé vers la page de connexion avant d'accéder au widget ChatKit.
 - Un compte administrateur (créé via variables d'environnement) peut gérer les utilisateurs depuis `/admin` : création, promotion/déclassement, réinitialisation de mot de passe et suppression.
 - L'onglet `/admin/vector-stores` récapitule les magasins JSON (`pgvector`) disponibles, permet d'en créer de nouveaux, d'uploader un fichier JSON pour l'ingérer, de déclencher l'indexation et de tester les requêtes hybrides (`/search_json`) avec un aperçu du document source (`/documents/{doc_id}`).
+- L'onglet `/admin/widgets` offre une interface complète pour constituer la bibliothèque de widgets ChatKit : création, validation/prévisualisation, édition et suppression des définitions JSON avant leur utilisation dans le workflow builder.
 - Les requêtes vers `/api/chatkit/session` utilisent automatiquement l'identité de l'utilisateur connecté si un token est présent dans les en-têtes.
 - Une implémentation ChatKit auto‑hébergée est disponible sur `/api/chatkit`. Elle orchestre l'Agents SDK en local pour répondre via le widget sans passer par un workflow hébergé.
 - Les endpoints `/api/chatkit/session`, `/api/chatkit` et `/api/chatkit/proxy/*` exigent désormais un JWT valide : toute tentative non authentifiée renvoie `401` avant même de contacter l'API ChatKit.
@@ -41,6 +42,25 @@ Une fois les deux serveurs démarrés, ouvrez `http://localhost:5173/admin/vecto
 3. Testez une requête de recherche hybride et inspectez le document complet retourné par l'API.
 
 > ℹ️ **Versions toujours à jour** — les manifestes (`backend/requirements.txt`, `backend/pyproject.toml`, `frontend/package.json`) ne fixent plus de contrainte de version. Chaque exécution de `npm run backend:sync` ou `npm run frontend:install` installe donc les dernières publications disponibles. Pensez à régénérer vos environnements locaux après un `git pull` pour récupérer les évolutions amont.
+
+### Gérer la bibliothèque de widgets via l'interface admin
+
+Toujours **depuis la racine du dépôt** :
+
+```bash
+# depuis la racine du dépôt
+npm run backend:dev   # expose les routes /api/widgets protégées par authentification
+npm run frontend:dev  # lance Vite et l'interface d'administration
+```
+
+Ouvrez ensuite `http://localhost:5173/admin/widgets` :
+
+1. Cliquez sur **Nouveau widget** pour saisir un slug, un titre et coller la définition JSON (ex. un `Card` avec des `Text`).
+2. Utilisez le bouton **Prévisualiser** pour valider la définition côté backend (`chatkit.widgets.WidgetRoot`) et visualiser le JSON normalisé.
+3. Enregistrez le widget pour le retrouver dans la table, prêt à être référencé depuis vos modules d'agent (slug).
+4. Ouvrez un widget existant pour le mettre à jour ou supprimez-le lorsqu'il n'est plus utilisé.
+
+La prévisualisation en direct évite de propager des définitions invalides dans vos workflows et fournit un exemple de JSON prêt à copier/coller dans le workflow builder.
 
 ## Backend (`backend/`)
 
@@ -117,6 +137,37 @@ with SessionLocal() as session:
 ```
 
 Le chargement du modèle e5 est effectué paresseusement et mis en cache. Pensez à relancer `npm run backend:sync` (depuis la racine) pour installer les nouvelles dépendances Python (`pgvector`, `sentence-transformers`).
+
+### Bibliothèque de widgets ChatKit
+
+Un nouvel ensemble d'endpoints REST permet aux administrateurs de constituer une bibliothèque de widgets réutilisables par les modules d'agent du workflow builder. Les définitions sont stockées dans la table `widget_templates` et validées via `chatkit.widgets.WidgetRoot` avant d'être persistées.
+
+- `GET /api/widgets` — lister l'ensemble des widgets disponibles (administrateur uniquement) ;
+- `POST /api/widgets` — créer un widget (`slug`, titres/description optionnels et JSON décrivant le widget) ;
+- `PATCH /api/widgets/{slug}` — mettre à jour le libellé, la description ou la définition JSON d'un widget ;
+- `DELETE /api/widgets/{slug}` — retirer un widget de la bibliothèque ;
+- `POST /api/widgets/preview` — valider une définition JSON et obtenir la version normalisée sans l'enregistrer.
+
+Toutes ces routes sont protégées par un contrôle d'accès administrateur. Une fois `npm run backend:dev` lancé **depuis la racine du dépôt**, vous pouvez vérifier une définition depuis le terminal avec :
+
+```bash
+# depuis la racine du dépôt
+curl -X POST http://localhost:8000/api/widgets/preview \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN_ADMIN>" \
+  -d '{
+        "definition": {
+          "type": "Card",
+          "size": "lg",
+          "children": [
+            {"type": "Text", "id": "titre", "value": "Résumé"},
+            {"type": "Markdown", "id": "details", "value": "**Points clés**"}
+          ]
+        }
+      }'
+```
+
+Le JSON renvoyé peut être utilisé tel quel comme sortie d'un module d'agent dans le workflow builder ChatKit.
 
 ### Outil météo exposé au workflow ChatKit
 

@@ -15,7 +15,7 @@ from .database import (
     engine,
     wait_for_database,
 )
-from .models import Base, User, Workflow
+from .models import AvailableModel, Base, User, Workflow
 from .security import hash_password
 
 logger = logging.getLogger("chatkit.server")
@@ -28,6 +28,11 @@ def _run_ad_hoc_migrations() -> None:
     with engine.begin() as connection:
         inspector = inspect(connection)
         table_names = set(inspector.get_table_names())
+        if "available_models" not in table_names:
+            logger.info("Création de la table available_models manquante")
+            AvailableModel.__table__.create(bind=connection)
+            table_names.add("available_models")
+
         if "workflows" in table_names:
             workflow_columns = {
                 column["name"]

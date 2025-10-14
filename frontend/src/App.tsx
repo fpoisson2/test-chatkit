@@ -2,12 +2,14 @@ import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AdminPage } from "./pages/AdminPage";
+import { AdminModelsPage } from "./pages/AdminModelsPage";
 import { MyChat } from "./MyChat";
 import { useAuth } from "./auth";
 import { LoginPage } from "./pages/LoginPage";
 import { VectorStoresPage } from "./pages/VectorStoresPage";
 import WorkflowBuilderPage from "./pages/WorkflowBuilderPage";
 import { VoicePage } from "./pages/VoicePage";
+import WidgetLibraryPage from "./pages/WidgetLibraryPage";
 
 const RequireAdmin = ({ children }: { children: ReactElement }) => {
   const { user } = useAuth();
@@ -58,10 +60,26 @@ export const App = () => (
       }
     />
     <Route
+      path="/admin/models"
+      element={
+        <RequireAdmin>
+          <AdminModelsPage />
+        </RequireAdmin>
+      }
+    />
+    <Route
       path="/admin/vector-stores"
       element={
         <RequireAdmin>
           <VectorStoresPage />
+        </RequireAdmin>
+      }
+    />
+    <Route
+      path="/admin/widgets"
+      element={
+        <RequireAdmin>
+          <WidgetLibraryPage />
         </RequireAdmin>
       }
     />

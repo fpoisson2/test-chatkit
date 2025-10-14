@@ -12,9 +12,10 @@
   "dependencies": {
     "@openai/agents": "*",
     "@openai/chatkit-react": "*",
-    "react-router-dom": "*",
     "react": "*",
     "react-dom": "*",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "*",
     "reactflow": "*"
   },
   "devDependencies": {

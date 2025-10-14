@@ -1,12 +1,14 @@
 import { NavLink } from "react-router-dom";
 
 type AdminTabsProps = {
-  activeTab: "users" | "vector-stores";
+  activeTab: "users" | "vector-stores" | "widgets" | "models";
 };
 
 const tabs = [
   { key: "users" as const, to: "/admin", label: "Gestion des utilisateurs" },
+  { key: "models" as const, to: "/admin/models", label: "Modèles disponibles" },
   { key: "vector-stores" as const, to: "/admin/vector-stores", label: "Vector stores JSON" },
+  { key: "widgets" as const, to: "/admin/widgets", label: "Bibliothèque de widgets" },
 ];
 
 export const AdminTabs = ({ activeTab }: AdminTabsProps) => (

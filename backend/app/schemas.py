@@ -3,7 +3,8 @@ from __future__ import annotations
 import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, constr
+from typing import Any, Literal
 
 
 class SessionRequest(BaseModel):
@@ -57,6 +58,26 @@ class UserResponse(BaseModel):
     id: int
     email: EmailStr
     is_admin: bool
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AvailableModelBase(BaseModel):
+    name: constr(strip_whitespace=True, min_length=1, max_length=128)
+    display_name: constr(strip_whitespace=True, min_length=1, max_length=128) | None = None
+    description: constr(strip_whitespace=True, min_length=1, max_length=512) | None = None
+    supports_reasoning: bool = False
+
+
+class AvailableModelCreateRequest(AvailableModelBase):
+    pass
+
+
+class AvailableModelResponse(AvailableModelBase):
+    id: int
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
@@ -222,6 +243,43 @@ class WorkflowProductionUpdate(BaseModel):
 
 class WorkflowChatKitUpdate(BaseModel):
     workflow_id: int
+
+
+class WidgetTemplateBase(BaseModel):
+    slug: str
+    title: str | None = None
+    description: str | None = None
+    definition: dict[str, Any]
+
+
+class WidgetTemplateResponse(WidgetTemplateBase):
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WidgetTemplateCreateRequest(BaseModel):
+    slug: str
+    title: str | None = None
+    description: str | None = None
+    definition: dict[str, Any]
+
+
+class WidgetTemplateUpdateRequest(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    definition: dict[str, Any] | None = None
+
+
+class WidgetPreviewRequest(BaseModel):
+    definition: dict[str, Any]
+
+
+class WidgetPreviewResponse(BaseModel):
+    definition: dict[str, Any]
+
 
 class VectorStoreCreateRequest(BaseModel):
     slug: str
