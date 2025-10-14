@@ -71,11 +71,52 @@ class ChatAttachment(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
 
+class Workflow(Base):
+    __tablename__ = "workflows"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    active_version_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("workflow_definitions.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+    versions: Mapped[list["WorkflowDefinition"]] = relationship(
+        "WorkflowDefinition",
+        back_populates="workflow",
+        cascade="all, delete-orphan",
+        order_by=lambda: WorkflowDefinition.version.desc(),
+        foreign_keys="WorkflowDefinition.workflow_id",
+    )
+    active_version: Mapped[WorkflowDefinition | None] = relationship(
+        "WorkflowDefinition",
+        primaryjoin="Workflow.active_version_id==WorkflowDefinition.id",
+        foreign_keys="Workflow.active_version_id",
+        viewonly=True,
+    )
+
+
 class WorkflowDefinition(Base):
     __tablename__ = "workflow_definitions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    workflow_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -88,6 +129,12 @@ class WorkflowDefinition(Base):
         default=lambda: datetime.datetime.now(datetime.UTC),
         onupdate=lambda: datetime.datetime.now(datetime.UTC),
     )
+    workflow: Mapped[Workflow] = relationship(
+        "Workflow",
+        back_populates="versions",
+        foreign_keys=[workflow_id],
+    )
+
     steps: Mapped[list["WorkflowStep"]] = relationship(
         "WorkflowStep",
         back_populates="definition",

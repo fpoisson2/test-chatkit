@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ChangeEvent,
+} from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -69,14 +76,51 @@ type ApiWorkflowEdge = {
   metadata: Record<string, unknown> | null;
 };
 
-type WorkflowResponse = {
+type WorkflowVersionResponse = {
   id: number;
-  name: string;
+  workflow_id: number;
+  workflow_slug: string | null;
+  workflow_display_name: string | null;
+  name: string | null;
+  version: number;
   is_active: boolean;
   graph: {
     nodes: ApiWorkflowNode[];
     edges: ApiWorkflowEdge[];
   };
+  steps: Array<{
+    id: number;
+    agent_key: string | null;
+    position: number;
+    is_enabled: boolean;
+    parameters: AgentParameters;
+    created_at: string;
+    updated_at: string;
+  }>;
+  created_at: string;
+  updated_at: string;
+};
+
+type WorkflowSummary = {
+  id: number;
+  slug: string;
+  display_name: string;
+  description: string | null;
+  active_version_id: number | null;
+  active_version_number: number | null;
+  versions_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type WorkflowVersionSummary = {
+  id: number;
+  workflow_id: number;
+  name: string | null;
+  version: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 };
 
 type FlowNodeData = {
@@ -182,15 +226,32 @@ const WorkflowBuilderPage = () => {
   const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdgeData>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
+  const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(null);
+  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
+  const [publishOnSave, setPublishOnSave] = useState(false);
 
   const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+  const selectedWorkflow = useMemo(
+    () => workflows.find((workflow) => workflow.id === selectedWorkflowId) ?? null,
+    [selectedWorkflowId, workflows],
+  );
 
-  useEffect(() => {
-    let isMounted = true;
-    const fetchWorkflow = async () => {
+  const selectedVersionSummary = useMemo(
+    () => versions.find((version) => version.id === selectedVersionId) ?? null,
+    [selectedVersionId, versions],
+  );
+
+  const loadVersionDetail = useCallback(
+    async (workflowId: number, versionId: number): Promise<boolean> => {
       setLoading(true);
       setLoadError(null);
-      const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows/current");
+      const candidates = makeApiEndpointCandidates(
+        backendUrl,
+        `/api/workflows/${workflowId}/versions/${versionId}`,
+      );
+      let lastError: Error | null = null;
       for (const url of candidates) {
         try {
           const response = await fetch(url, {
@@ -200,12 +261,9 @@ const WorkflowBuilderPage = () => {
             },
           });
           if (!response.ok) {
-            throw new Error(`Échec du chargement (${response.status})`);
+            throw new Error(`Échec du chargement de la version (${response.status})`);
           }
-          const data: WorkflowResponse = await response.json();
-          if (!isMounted) {
-            return;
-          }
+          const data: WorkflowVersionResponse = await response.json();
           const flowNodes = data.graph.nodes.map<FlowNode>((node, index) => {
             const positionFromMetadata = extractPosition(node.metadata);
             const displayName = node.display_name ?? humanizeSlug(node.slug);
@@ -248,29 +306,156 @@ const WorkflowBuilderPage = () => {
           }));
           setNodes(flowNodes);
           setEdges(flowEdges);
+          setSelectedNodeId(null);
+          setSelectedEdgeId(null);
+          setSaveState("idle");
+          setSaveMessage(null);
+          setPublishOnSave(false);
           setLoading(false);
+          return true;
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            continue;
+          }
+          lastError = error instanceof Error ? error : new Error("Erreur inconnue");
+        }
+      }
+      if (lastError) {
+        setLoadError(lastError.message);
+      }
+      setLoading(false);
+      return false;
+    },
+    [authHeader, setEdges, setNodes],
+  );
+
+  const loadVersions = useCallback(
+    async (
+      workflowId: number,
+      preferredVersionId: number | null = null,
+    ): Promise<boolean> => {
+      setLoadError(null);
+      const candidates = makeApiEndpointCandidates(
+        backendUrl,
+        `/api/workflows/${workflowId}/versions`,
+      );
+      let lastError: Error | null = null;
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeader,
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`Échec du chargement des versions (${response.status})`);
+          }
+          const data: WorkflowVersionSummary[] = await response.json();
+          setVersions(data);
+          if (data.length === 0) {
+            setSelectedVersionId(null);
+            setNodes([]);
+            setEdges([]);
+            setLoading(false);
+            return true;
+          }
+          const availableIds = new Set(data.map((version) => version.id));
+          let nextVersionId: number | null = null;
+          if (preferredVersionId && availableIds.has(preferredVersionId)) {
+            nextVersionId = preferredVersionId;
+          } else if (selectedVersionId && availableIds.has(selectedVersionId)) {
+            nextVersionId = selectedVersionId;
+          } else {
+            const active = data.find((version) => version.is_active);
+            nextVersionId = active?.id ?? data[0]?.id ?? null;
+          }
+          setSelectedVersionId(nextVersionId);
+          if (nextVersionId != null) {
+            await loadVersionDetail(workflowId, nextVersionId);
+          } else {
+            setLoading(false);
+          }
+          return true;
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            continue;
+          }
+          lastError = error instanceof Error ? error : new Error("Erreur inconnue");
+        }
+      }
+      if (lastError) {
+        setLoadError(lastError.message);
+      }
+      setLoading(false);
+      return false;
+    },
+    [authHeader, loadVersionDetail, selectedVersionId, setEdges, setNodes],
+  );
+
+  const loadWorkflows = useCallback(
+    async (
+      options: { selectWorkflowId?: number | null; selectVersionId?: number | null } = {},
+    ): Promise<void> => {
+      setLoading(true);
+      setLoadError(null);
+      const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows");
+      let lastError: Error | null = null;
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeader,
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`Échec du chargement de la bibliothèque (${response.status})`);
+          }
+          const data: WorkflowSummary[] = await response.json();
+          setWorkflows(data);
+          if (data.length === 0) {
+            setSelectedWorkflowId(null);
+            setSelectedVersionId(null);
+            setVersions([]);
+            setNodes([]);
+            setEdges([]);
+            setLoading(false);
+            return;
+          }
+          let nextWorkflowId = options.selectWorkflowId ?? null;
+          if (nextWorkflowId && data.some((workflow) => workflow.id === nextWorkflowId)) {
+            // keep provided
+          } else if (selectedWorkflowId && data.some((workflow) => workflow.id === selectedWorkflowId)) {
+            nextWorkflowId = selectedWorkflowId;
+          } else {
+            nextWorkflowId = data[0]?.id ?? null;
+          }
+          setSelectedWorkflowId(nextWorkflowId);
+          if (nextWorkflowId != null) {
+            await loadVersions(nextWorkflowId, options.selectVersionId ?? null);
+          } else {
+            setLoading(false);
+          }
           return;
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") {
             continue;
           }
-          if (isMounted) {
-            setLoadError(
-              error instanceof Error ? error.message : "Impossible de charger le workflow."
-            );
-          }
+          lastError = error instanceof Error ? error : new Error("Erreur inconnue");
         }
       }
-      if (isMounted) {
-        setLoading(false);
-        setLoadError((previous) => previous ?? "Impossible de charger le workflow.");
+      if (lastError) {
+        setLoadError(lastError.message);
       }
-    };
-    void fetchWorkflow();
-    return () => {
-      isMounted = false;
-    };
-  }, [authHeader]);
+      setLoading(false);
+    },
+    [authHeader, loadVersions, selectedWorkflowId, setEdges, setNodes],
+  );
+
+  useEffect(() => {
+    void loadWorkflows();
+  }, [loadWorkflows]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -727,8 +912,133 @@ const WorkflowBuilderPage = () => {
     setSelectedEdgeId(null);
   }, [setNodes]);
 
+  const handleWorkflowChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const value = Number(event.target.value);
+      const workflowId = Number.isFinite(value) ? value : null;
+      setSelectedWorkflowId(workflowId);
+      setSelectedVersionId(null);
+      if (workflowId) {
+        void loadVersions(workflowId, null);
+      } else {
+        setVersions([]);
+        setNodes([]);
+        setEdges([]);
+      }
+    },
+    [loadVersions, setEdges, setNodes],
+  );
+
+  const handleVersionChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const value = Number(event.target.value);
+      const versionId = Number.isFinite(value) ? value : null;
+      setSelectedVersionId(versionId);
+      if (selectedWorkflowId && versionId) {
+        void loadVersionDetail(selectedWorkflowId, versionId);
+      }
+    },
+    [loadVersionDetail, selectedWorkflowId],
+  );
+
+  const handlePublishToggle = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setPublishOnSave(event.target.checked);
+  }, []);
+
+  const handleCreateWorkflow = useCallback(async () => {
+    const proposed = window.prompt("Nom du nouveau workflow ?");
+    if (!proposed) {
+      return;
+    }
+    const displayName = proposed.trim();
+    if (!displayName) {
+      return;
+    }
+    const slug = slugifyWorkflowName(displayName);
+    const payload = {
+      slug,
+      display_name: displayName,
+      description: null,
+      graph: null,
+    };
+    const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows");
+    let lastError: Error | null = null;
+    for (const url of candidates) {
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          throw new Error(`Échec de la création (${response.status})`);
+        }
+        const data: WorkflowVersionResponse = await response.json();
+        await loadWorkflows({ selectWorkflowId: data.workflow_id, selectVersionId: data.id });
+        setSaveState("saved");
+        setSaveMessage(`Workflow "${displayName}" créé avec succès.`);
+        setTimeout(() => setSaveState("idle"), 1500);
+        return;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error("Impossible de créer le workflow.");
+      }
+    }
+    setSaveState("error");
+    setSaveMessage(lastError?.message ?? "Impossible de créer le workflow.");
+  }, [authHeader, loadWorkflows]);
+
+  const handlePromoteVersion = useCallback(async () => {
+    if (!selectedWorkflowId || !selectedVersionId) {
+      return;
+    }
+    const endpoint = `/api/workflows/${selectedWorkflowId}/production`;
+    const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
+    let lastError: Error | null = null;
+    for (const url of candidates) {
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify({ version_id: selectedVersionId }),
+        });
+        if (!response.ok) {
+          throw new Error(`Échec de la mise en production (${response.status})`);
+        }
+        await loadWorkflows({
+          selectWorkflowId: selectedWorkflowId,
+          selectVersionId: selectedVersionId,
+        });
+        setSaveState("saved");
+        setSaveMessage("Version définie comme production.");
+        setTimeout(() => setSaveState("idle"), 1500);
+        return;
+      } catch (error) {
+        lastError =
+          error instanceof Error
+            ? error
+            : new Error("Impossible de définir la version en production.");
+      }
+    }
+    setSaveState("error");
+    setSaveMessage(
+      lastError?.message ?? "Impossible de définir la version en production."
+    );
+  }, [authHeader, loadWorkflows, selectedVersionId, selectedWorkflowId]);
+
   const handleSave = useCallback(async () => {
     setSaveMessage(null);
+    if (!selectedWorkflowId) {
+      setSaveState("error");
+      setSaveMessage("Sélectionnez un workflow avant d'enregistrer une version.");
+      return;
+    }
+
     const nodesWithErrors = nodes.filter((node) => node.data.parametersError);
     if (nodesWithErrors.length > 0) {
       setSaveState("error");
@@ -763,41 +1073,53 @@ const WorkflowBuilderPage = () => {
         })),
       };
 
-      const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows/current");
+      const endpoint = `/api/workflows/${selectedWorkflowId}/versions`;
+      const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
       setSaveState("saving");
       for (const url of candidates) {
         const response = await fetch(url, {
-          method: "PUT",
+          method: "POST",
           headers: {
             "Content-Type": "application/json",
             ...authHeader,
           },
-          body: JSON.stringify({ graph: graphPayload }),
+          body: JSON.stringify({
+            graph: graphPayload,
+            mark_as_active: publishOnSave,
+          }),
         });
         if (!response.ok) {
           throw new Error(`Échec de l'enregistrement (${response.status})`);
         }
+        const data: WorkflowVersionResponse = await response.json();
+        await loadVersions(selectedWorkflowId, data.id);
         setSaveState("saved");
-        setSaveMessage("Workflow enregistré avec succès.");
+        setSaveMessage(
+          publishOnSave
+            ? "Nouvelle version enregistrée et définie en production."
+            : "Nouvelle version enregistrée avec succès."
+        );
         setTimeout(() => setSaveState("idle"), 1500);
         return;
       }
+      throw new Error("Impossible de contacter le serveur pour enregistrer la version.");
     } catch (error) {
       setSaveState("error");
       setSaveMessage(
         error instanceof Error ? error.message : "Impossible d'enregistrer le workflow."
       );
     }
-  }, [authHeader, edges, nodes]);
+  }, [authHeader, edges, loadVersions, nodes, publishOnSave, selectedWorkflowId]);
 
   const disableSave = useMemo(
     () =>
+      !selectedWorkflowId ||
       nodes.some(
         (node) =>
           node.data.parametersError ||
           (node.data.kind === "agent" && (!node.data.agentKey || node.data.agentKey.trim() === "")),
       ),
-    [nodes],
+    [nodes, selectedWorkflowId],
   );
 
   return (
@@ -865,76 +1187,178 @@ const WorkflowBuilderPage = () => {
           }}
         >
           <header>
-            <h1 style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>Workflow visuel</h1>
+            <h1 style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>Bibliothèque de workflows</h1>
             <p style={{ color: "#475569" }}>
               Ajoutez des agents, connectez-les entre eux et ajustez leurs paramètres pour piloter le
               workflow ChatKit.
             </p>
           </header>
 
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-            <button type="button" className="btn" onClick={handleAddAgentNode}>
-              Ajouter un agent
-            </button>
-            <button type="button" className="btn" onClick={handleAddConditionNode}>
-              Ajouter un bloc conditionnel
-            </button>
-            <button type="button" className="btn" onClick={handleAddStateNode}>
-              Ajouter un bloc état
-            </button>
-          </div>
-
-          {selectedNode ? (
-            <NodeInspector
-              node={selectedNode}
-              onToggle={handleToggleNode}
-              onDisplayNameChange={handleDisplayNameChange}
-              onAgentKeyChange={handleAgentKeyChange}
-              onAgentMessageChange={handleAgentMessageChange}
-              onAgentModelChange={handleAgentModelChange}
-              onAgentReasoningChange={handleAgentReasoningChange}
-              onAgentTemperatureChange={handleAgentTemperatureChange}
-              onAgentTopPChange={handleAgentTopPChange}
-              onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
-              onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
-              onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
-              onAgentWebSearchChange={handleAgentWebSearchChange}
-              onStateAssignmentsChange={handleStateAssignmentsChange}
-              onParametersChange={handleParametersChange}
-              onRemove={handleRemoveNode}
-            />
-          ) : selectedEdge ? (
-            <EdgeInspector
-              edge={selectedEdge}
-              onConditionChange={handleConditionChange}
-              onLabelChange={handleEdgeLabelChange}
-              onRemove={handleRemoveEdge}
-            />
-          ) : (
-            <EmptyInspector />
-          )
-}
-
-          <footer style={{ marginTop: "auto" }}>
-            <button
-              type="button"
-              className="btn primary"
-              onClick={handleSave}
-              disabled={disableSave || saveState === "saving" || loading}
-            >
-              {saveState === "saving" ? "Enregistrement…" : "Enregistrer les modifications"}
-            </button>
-            {saveMessage && (
-              <p
-                style={{
-                  marginTop: "0.5rem",
-                  color: saveState === "error" ? "#b91c1c" : "#047857",
-                }}
+          <section style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            <label htmlFor="workflow-select" style={{ fontWeight: 600, color: "#0f172a" }}>
+              Workflow
+            </label>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <select
+                id="workflow-select"
+                value={selectedWorkflowId ? String(selectedWorkflowId) : ""}
+                onChange={handleWorkflowChange}
+                disabled={loading}
+                style={{ flexGrow: 1, minWidth: "12rem" }}
               >
-                {saveMessage}
-              </p>
+                {workflows.length === 0 ? (
+                  <option value="">Aucun workflow disponible</option>
+                ) : (
+                  workflows.map((workflow) => (
+                    <option key={workflow.id} value={workflow.id}>
+                      {workflow.display_name}
+                      {workflow.active_version_number
+                        ? ` (prod : v${workflow.active_version_number})`
+                        : ""}
+                    </option>
+                  ))
+                )}
+              </select>
+              <button type="button" className="btn" onClick={handleCreateWorkflow} disabled={loading}>
+                Nouveau workflow
+              </button>
+            </div>
+            {selectedWorkflow?.description && (
+              <p style={{ color: "#475569", margin: 0 }}>{selectedWorkflow.description}</p>
             )}
-          </footer>
+          </section>
+
+          {workflows.length === 0 ? (
+            <div style={{ color: "#475569" }}>
+              <p style={{ margin: "0.5rem 0" }}>
+                Aucun workflow n'est encore disponible. Créez-en un pour commencer.
+              </p>
+            </div>
+          ) : (
+            <>
+              <section style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <label htmlFor="version-select" style={{ fontWeight: 600, color: "#0f172a" }}>
+                  Version
+                </label>
+                <select
+                  id="version-select"
+                  value={selectedVersionId ? String(selectedVersionId) : ""}
+                  onChange={handleVersionChange}
+                  disabled={loading || versions.length === 0}
+                >
+                  {versions.map((version) => (
+                    <option key={version.id} value={version.id}>
+                      {`v${version.version}${version.name ? ` – ${version.name}` : ""}${
+                        version.is_active ? " (production)" : ""
+                      }`}
+                    </option>
+                  ))}
+                </select>
+                {selectedVersionSummary && (
+                  <p style={{ color: "#475569", margin: 0 }}>
+                    Dernière mise à jour : {formatDateTime(selectedVersionSummary.updated_at)}
+                  </p>
+                )}
+                {selectedVersionSummary && !selectedVersionSummary.is_active && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={handlePromoteVersion}
+                    disabled={loading}
+                  >
+                    Définir comme version de production
+                  </button>
+                )}
+              </section>
+
+              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={handleAddAgentNode}
+                  disabled={loading}
+                >
+                  Ajouter un agent
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={handleAddConditionNode}
+                  disabled={loading}
+                >
+                  Ajouter un bloc conditionnel
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={handleAddStateNode}
+                  disabled={loading}
+                >
+                  Ajouter un bloc état
+                </button>
+              </div>
+
+              {selectedNode ? (
+                <NodeInspector
+                  node={selectedNode}
+                  onToggle={handleToggleNode}
+                  onDisplayNameChange={handleDisplayNameChange}
+                  onAgentKeyChange={handleAgentKeyChange}
+                  onAgentMessageChange={handleAgentMessageChange}
+                  onAgentModelChange={handleAgentModelChange}
+                  onAgentReasoningChange={handleAgentReasoningChange}
+                  onAgentTemperatureChange={handleAgentTemperatureChange}
+                  onAgentTopPChange={handleAgentTopPChange}
+                  onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
+                  onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
+                  onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
+                  onAgentWebSearchChange={handleAgentWebSearchChange}
+                  onStateAssignmentsChange={handleStateAssignmentsChange}
+                  onParametersChange={handleParametersChange}
+                  onRemove={handleRemoveNode}
+                />
+              ) : selectedEdge ? (
+                <EdgeInspector
+                  edge={selectedEdge}
+                  onConditionChange={handleConditionChange}
+                  onLabelChange={handleEdgeLabelChange}
+                  onRemove={handleRemoveEdge}
+                />
+              ) : (
+                <EmptyInspector />
+              )}
+
+              <footer style={{ marginTop: "auto" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <input
+                    type="checkbox"
+                    checked={publishOnSave}
+                    onChange={handlePublishToggle}
+                    disabled={loading}
+                  />
+                  <span>Publier cette version immédiatement</span>
+                </label>
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={handleSave}
+                  disabled={disableSave || saveState === "saving" || loading}
+                >
+                  {saveState === "saving" ? "Enregistrement…" : "Enregistrer les modifications"}
+                </button>
+                {saveMessage && (
+                  <p
+                    style={{
+                      marginTop: "0.5rem",
+                      color: saveState === "error" ? "#b91c1c" : "#047857",
+                    }}
+                  >
+                    {saveMessage}
+                  </p>
+                )}
+              </footer>
+            </>
+          )}
         </aside>
       </main>
     </ReactFlowProvider>
@@ -1598,6 +2022,18 @@ const buildNodeStyle = (kind: NodeKind): CSSProperties => ({
   boxShadow: "0 1px 3px rgba(15, 23, 42, 0.18)",
 });
 
+const slugifyWorkflowName = (label: string): string => {
+  const normalized = label
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const slug = normalized.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (slug) {
+    return slug;
+  }
+  return `workflow-${Date.now()}`;
+};
+
 const humanizeSlug = (slug: string) => slug.replace(/[-_]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 const extractPosition = (metadata: Record<string, unknown> | null | undefined) => {
@@ -1613,6 +2049,20 @@ const extractPosition = (metadata: Record<string, unknown> | null | undefined) =
     return { x: (position as { x: number }).x, y: (position as { y: number }).y };
   }
   return null;
+};
+
+const formatDateTime = (value: string | null | undefined): string => {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleString("fr-FR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 };
 
 export default WorkflowBuilderPage;

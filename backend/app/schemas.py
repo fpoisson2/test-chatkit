@@ -133,7 +133,11 @@ class WorkflowStepResponse(BaseModel):
 
 class WorkflowDefinitionResponse(BaseModel):
     id: int
+    workflow_id: int
+    workflow_slug: str | None = None
+    workflow_display_name: str | None = None
     name: str
+    version: int
     is_active: bool
     created_at: datetime.datetime
     updated_at: datetime.datetime
@@ -146,3 +150,42 @@ class WorkflowDefinitionResponse(BaseModel):
 
 class WorkflowDefinitionUpdate(BaseModel):
     graph: WorkflowGraphInput
+
+
+class WorkflowSummaryResponse(BaseModel):
+    id: int
+    slug: str
+    display_name: str
+    description: str | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    active_version_id: int | None = None
+    active_version_number: int | None = None
+    versions_count: int
+
+
+class WorkflowVersionSummaryResponse(BaseModel):
+    id: int
+    workflow_id: int
+    name: str | None = None
+    version: int
+    is_active: bool
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
+class WorkflowCreateRequest(BaseModel):
+    slug: str
+    display_name: str
+    description: str | None = None
+    graph: WorkflowGraphInput | None = None
+
+
+class WorkflowVersionCreateRequest(BaseModel):
+    graph: WorkflowGraphInput
+    name: str | None = None
+    mark_as_active: bool = False
+
+
+class WorkflowProductionUpdate(BaseModel):
+    version_id: int
