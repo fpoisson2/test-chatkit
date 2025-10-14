@@ -7,6 +7,7 @@ This repository mirrors the walkthrough in `chatkit.md`, providing both the lega
 - La connexion se fait depuis `/login` et repose sur un token JWT signé côté backend.
 - L'accueil (`/`) est protégé : sans authentification valide, l'utilisateur est redirigé vers la page de connexion avant d'accéder au widget ChatKit.
 - Un compte administrateur (créé via variables d'environnement) peut gérer les utilisateurs depuis `/admin` : création, promotion/déclassement, réinitialisation de mot de passe et suppression.
+- L'onglet `/admin/vector-stores` récapitule les magasins JSON (`pgvector`) disponibles, permet d'en créer de nouveaux, d'uploader un fichier JSON pour l'ingérer, de déclencher l'indexation et de tester les requêtes hybrides (`/search_json`) avec un aperçu du document source (`/documents/{doc_id}`).
 - Les requêtes vers `/api/chatkit/session` utilisent automatiquement l'identité de l'utilisateur connecté si un token est présent dans les en-têtes.
 - Une implémentation ChatKit auto‑hébergée est disponible sur `/api/chatkit`. Elle orchestre l'Agents SDK en local pour répondre via le widget sans passer par un workflow hébergé.
 - Les endpoints `/api/chatkit/session`, `/api/chatkit` et `/api/chatkit/proxy/*` exigent désormais un JWT valide : toute tentative non authentifiée renvoie `401` avant même de contacter l'API ChatKit.
@@ -21,6 +22,23 @@ This repository mirrors the walkthrough in `chatkit.md`, providing both the lega
 - `npm run frontend:preview` — aperçu local du bundle
 
 Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi les `cd`. Si `uv` n'est pas installé, les commandes tombent automatiquement sur l'équivalent `python3 -m pip` / `python3 -m uvicorn`.
+
+### Initialiser un vector store via l'interface admin
+
+Toutes les commandes ci-dessous se lancent **depuis la racine du dépôt** :
+
+```bash
+# depuis la racine du dépôt
+npm run backend:sync   # installe les dépendances Python (pgvector, sentence-transformers…)
+npm run backend:dev    # démarre FastAPI et initialise les tables json_vector_stores
+npm run frontend:dev   # lance Vite pour accéder au panneau d'administration
+```
+
+Une fois les deux serveurs démarrés, ouvrez `http://localhost:5173/admin/vector-stores` :
+
+1. Créez un magasin (slug + métadonnées) via **Nouveau vector store**.
+2. Déposez un fichier JSON et validez l'ingestion pour générer les embeddings.
+3. Testez une requête de recherche hybride et inspectez le document complet retourné par l'API.
 
 > ℹ️ **Versions toujours à jour** — les manifestes (`backend/requirements.txt`, `backend/pyproject.toml`, `frontend/package.json`) ne fixent plus de contrainte de version. Chaque exécution de `npm run backend:sync` ou `npm run frontend:install` installe donc les dernières publications disponibles. Pensez à régénérer vos environnements locaux après un `git pull` pour récupérer les évolutions amont.
 
