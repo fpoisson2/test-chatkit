@@ -18,11 +18,15 @@ const makeApiEndpointCandidatesMock = vi.hoisted(() =>
 );
 
 const listVectorStoresMock = vi.hoisted(() => vi.fn(async () => []));
+const listModelsMock = vi.hoisted(() => vi.fn(async () => []));
 
 vi.mock("../../utils/backend", () => ({
   makeApiEndpointCandidates: makeApiEndpointCandidatesMock,
   vectorStoreApi: {
     listStores: listVectorStoresMock,
+  },
+  modelRegistryApi: {
+    list: listModelsMock,
   },
 }));
 
@@ -128,7 +132,7 @@ describe("WorkflowBuilderPage", () => {
       target: { value: "Analyse les entrées et produis un résumé clair." },
     });
 
-    const modelInput = await screen.findByLabelText(/modèle openai/i);
+    const modelInput = await screen.findByPlaceholderText(/ex\. gpt-4\.1-mini/i);
     fireEvent.change(modelInput, { target: { value: "gpt-4.1-mini" } });
 
     await waitFor(() => {
@@ -140,6 +144,15 @@ describe("WorkflowBuilderPage", () => {
 
     const topPInput = await screen.findByLabelText(/top-p/i);
     fireEvent.change(topPInput, { target: { value: "0.8" } });
+
+    const maxTokensInput = await screen.findByLabelText(/nombre maximal de tokens générés/i);
+    fireEvent.change(maxTokensInput, { target: { value: "600" } });
+
+    const includeHistoryCheckbox = await screen.findByLabelText(/inclure l'historique du chat/i);
+    fireEvent.click(includeHistoryCheckbox);
+
+    const showSourcesCheckbox = await screen.findByLabelText(/afficher les sources de recherche/i);
+    fireEvent.click(showSourcesCheckbox);
 
     const parametersTextarea = await screen.findByLabelText<HTMLTextAreaElement>(
       /paramètres json avancés/i,
@@ -167,9 +180,11 @@ describe("WorkflowBuilderPage", () => {
       instructions: "Analyse les entrées et produis un résumé clair.",
       model: "gpt-4.1-mini",
       model_settings: {
-        store: true,
         temperature: 0.6,
         top_p: 0.8,
+        max_output_tokens: 600,
+        include_chat_history: false,
+        show_search_sources: true,
       },
       response_format: {
         type: "json_schema",

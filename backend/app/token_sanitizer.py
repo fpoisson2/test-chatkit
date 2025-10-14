@@ -9,7 +9,6 @@ T = TypeVar("T")
 MAX_TOKEN_FIELD_NAMES = {
     "max_tokens",
     "maxTokens",
-    "max_output_tokens",
     "maxOutputTokens",
     "max_completion_tokens",
     "maxCompletionTokens",
