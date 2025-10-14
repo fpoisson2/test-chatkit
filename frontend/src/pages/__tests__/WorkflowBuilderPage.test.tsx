@@ -112,6 +112,9 @@ describe("WorkflowBuilderPage", () => {
     expect(triageNode).not.toBeNull();
     fireEvent.click(triageNode!);
 
+    const agentSelect = await screen.findByLabelText(/agent chatkit/i);
+    expect(agentSelect).toHaveValue("triage");
+
     const displayNameInput = await screen.findByLabelText(/nom affiché/i);
     fireEvent.change(displayNameInput, { target: { value: "Analyse enrichie" } });
 
@@ -133,10 +136,11 @@ describe("WorkflowBuilderPage", () => {
     const topPInput = await screen.findByLabelText(/top-p/i);
     fireEvent.change(topPInput, { target: { value: "0.8" } });
 
-    const parametersTextarea = await screen.findByLabelText(/paramètres json avancés/i);
-    expect(parametersTextarea).toHaveValue(
-      expect.stringContaining("Analyse les entrées et produis un résumé clair."),
+    const parametersTextarea = await screen.findByLabelText<HTMLTextAreaElement>(
+      /paramètres json avancés/i,
     );
+    const rawParameters = parametersTextarea.value;
+    expect(rawParameters).toContain("Analyse les entrées et produis un résumé clair.");
 
     const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
     fireEvent.click(saveButton);
@@ -152,6 +156,7 @@ describe("WorkflowBuilderPage", () => {
     const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
     expect(body).toHaveProperty("graph");
     const agentNode = body.graph.nodes.find((node: any) => node.slug === "agent-triage");
+    expect(agentNode.agent_key).toBe("triage");
     expect(agentNode.display_name).toBe("Analyse enrichie");
     expect(agentNode.parameters).toMatchObject({
       instructions: "Analyse les entrées et produis un résumé clair.",
@@ -192,11 +197,12 @@ describe("WorkflowBuilderPage", () => {
     expect(triageNode).not.toBeNull();
     fireEvent.click(triageNode!);
 
-    const messageTextarea = await screen.findByLabelText(/message système/i);
-    expect(messageTextarea).toHaveValue(
-      expect.stringContaining(
-        "Ton rôle : Vérifier si toutes les informations nécessaires sont présentes pour générer un plan-cadre.",
-      ),
+    const agentSelect = await screen.findByLabelText(/agent chatkit/i);
+    expect(agentSelect).toHaveValue("triage");
+
+    const messageTextarea = await screen.findByLabelText<HTMLTextAreaElement>(/message système/i);
+    expect(messageTextarea.value).toContain(
+      "Ton rôle : Vérifier si toutes les informations nécessaires sont présentes pour générer un plan-cadre.",
     );
 
     const modelInput = await screen.findByLabelText(/modèle openai/i);
@@ -214,6 +220,9 @@ describe("WorkflowBuilderPage", () => {
     const writerNode = container.querySelector('[data-id="writer"]');
     expect(writerNode).not.toBeNull();
     fireEvent.click(writerNode!);
+
+    const writerAgentSelect = await screen.findByLabelText(/agent chatkit/i);
+    expect(writerAgentSelect).toHaveValue("r_dacteur");
 
     await waitFor(() => {
       expect(screen.queryByLabelText(/niveau de raisonnement/i)).toBeNull();
