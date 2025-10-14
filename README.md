@@ -24,6 +24,31 @@ This repository mirrors the walkthrough in `chatkit.md`, providing both the lega
 
 Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi les `cd`. Si `uv` n'est pas installé, les commandes tombent automatiquement sur l'équivalent `python3 -m pip` / `python3 -m uvicorn`.
 
+### Activer le mode voix
+
+Le parcours vocal exploite WebRTC : prévoyez un navigateur récent capable d'accéder au microphone via `navigator.mediaDevices.getUserMedia` et autorisez la permission audio lors du premier démarrage.【F:frontend/src/voice/VoiceChat.tsx†L31-L63】 Un micro fonctionnel est indispensable pour initier la session.
+
+Toutes les commandes ci-dessous se lancent **depuis la racine du dépôt** :
+
+```bash
+# depuis la racine du dépôt
+npm run backend:dev   # expose POST /api/chatkit/voice/session pour générer les secrets éphémères
+npm run frontend:dev  # démarre le client Vite et la page /voice
+```
+
+L'appel `POST /api/chatkit/voice/session` retourne un `client_secret` temporaire, la configuration (modèle, voix, instructions) ainsi que l'horodatage d'expiration. Le backend s'appuie par défaut sur les variables `CHATKIT_REALTIME_MODEL`, `CHATKIT_REALTIME_INSTRUCTIONS` et `CHATKIT_REALTIME_VOICE`, mais vous pouvez les surcharger depuis l'interface admin (« Paramètres du mode voix »).【F:backend/app/routes/chatkit.py†L154-L204】【F:.env.example†L12-L16】
+
+Côté navigateur, configurez la section « Paramétrage du mode voix » de votre `.env` Vite pour pointer vers le backend et définir les valeurs par défaut utilisées avant la première personnalisation :
+
+```env
+VITE_VOICE_SESSION_URL="/api/chatkit/voice/session"
+VITE_VOICE_DEFAULT_MODEL="gpt-4o-realtime-preview-2024-12-17"
+VITE_VOICE_DEFAULT_INSTRUCTIONS="Sois chaleureux et garde des réponses courtes"
+VITE_VOICE_DEFAULT_VOICE="verse"
+```
+
+Ces variables servent de repli lorsque la base de données ne contient pas encore de préférences vocales et permettent de diriger le frontend vers un backend distant si `VITE_BACKEND_URL` est renseigné.【F:.env.example†L44-L53】【F:frontend/src/voice/useVoiceSession.ts†L17-L48】【F:frontend/src/voice/useVoiceSession.ts†L324-L371】 Le secret renvoyé par OpenAI expira rapidement : le frontend anticipe un rafraîchissement environ une minute avant la date `expires_at`. Prévoyez de relancer la capture microphone si vous suspendez la session trop longtemps.【F:frontend/src/voice/useVoiceSession.ts†L54-L68】【F:frontend/src/voice/useVoiceSession.ts†L406-L462】
+
 ### Initialiser un vector store via l'interface admin
 
 Toutes les commandes ci-dessous se lancent **depuis la racine du dépôt** :
