@@ -336,3 +336,33 @@ def test_update_condition_requires_branches() -> None:
     )
     assert response.status_code == 400
     assert "conditionnel" in response.json()["detail"].lower()
+
+
+def test_create_workflow_without_graph_creates_empty_version() -> None:
+    admin = _make_user(email="builder@example.com", is_admin=True)
+    token = create_access_token(admin)
+    payload = {
+        "slug": "nouveau-workflow",
+        "display_name": "Nouveau workflow",
+        "description": None,
+        "graph": None,
+    }
+    response = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json=payload,
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["workflow_slug"] == payload["slug"]
+    assert data["name"] == "Version initiale"
+    assert data["is_active"] is False
+    assert data["steps"] == []
+    assert data["graph"] == {"nodes": [], "edges": []}
+
+    library_response = client.get("/api/workflows", headers=_auth_headers(token))
+    assert library_response.status_code == 200
+    summaries = library_response.json()
+    created = next(item for item in summaries if item["id"] == data["workflow_id"])
+    assert created["versions_count"] == 1
+    assert created["active_version_id"] is None

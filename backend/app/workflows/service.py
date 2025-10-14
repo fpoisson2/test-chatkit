@@ -545,9 +545,12 @@ class WorkflowService:
             db.flush()
 
             if graph_payload is None:
-                nodes, edges = self._normalize_graph(DEFAULT_WORKFLOW_GRAPH)
+                nodes: list[NormalizedNode] = []
+                edges: list[NormalizedEdge] = []
             else:
-                nodes, edges = self._normalize_graph(graph_payload)
+                nodes, edges = self._normalize_graph(graph_payload, allow_empty=True)
+
+            mark_active = bool(nodes)
 
             definition = self._create_definition_from_graph(
                 workflow=workflow,
@@ -555,7 +558,7 @@ class WorkflowService:
                 edges=edges,
                 session=db,
                 name="Version initiale",
-                mark_active=True,
+                mark_active=mark_active,
             )
             db.commit()
             db.refresh(definition)
@@ -699,14 +702,25 @@ class WorkflowService:
         return self._fully_load_definition(definition)
 
     def _normalize_graph(
-        self, payload: dict[str, Any] | None
+        self,
+        payload: dict[str, Any] | None,
+        *,
+        allow_empty: bool = False,
     ) -> tuple[list[NormalizedNode], list[NormalizedEdge]]:
         if not payload:
+            if allow_empty:
+                return [], []
             raise WorkflowValidationError("Le workflow doit contenir un graphe valide.")
 
         raw_nodes = payload.get("nodes") or []
         raw_edges = payload.get("edges") or []
         if not raw_nodes:
+            if allow_empty:
+                if raw_edges:
+                    raise WorkflowValidationError(
+                        "Impossible de définir des connexions sans nœuds."
+                    )
+                return [], []
             raise WorkflowValidationError("Le workflow doit contenir au moins un nœud.")
 
         normalized_nodes: list[NormalizedNode] = []
