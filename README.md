@@ -118,6 +118,37 @@ with SessionLocal() as session:
 
 Le chargement du modèle e5 est effectué paresseusement et mis en cache. Pensez à relancer `npm run backend:sync` (depuis la racine) pour installer les nouvelles dépendances Python (`pgvector`, `sentence-transformers`).
 
+### Bibliothèque de widgets ChatKit
+
+Un nouvel ensemble d'endpoints REST permet aux administrateurs de constituer une bibliothèque de widgets réutilisables par les modules d'agent du workflow builder. Les définitions sont stockées dans la table `widget_templates` et validées via `chatkit.widgets.WidgetRoot` avant d'être persistées.
+
+- `GET /api/widgets` — lister l'ensemble des widgets disponibles (administrateur uniquement) ;
+- `POST /api/widgets` — créer un widget (`slug`, titres/description optionnels et JSON décrivant le widget) ;
+- `PATCH /api/widgets/{slug}` — mettre à jour le libellé, la description ou la définition JSON d'un widget ;
+- `DELETE /api/widgets/{slug}` — retirer un widget de la bibliothèque ;
+- `POST /api/widgets/preview` — valider une définition JSON et obtenir la version normalisée sans l'enregistrer.
+
+Toutes ces routes sont protégées par un contrôle d'accès administrateur. Une fois `npm run backend:dev` lancé **depuis la racine du dépôt**, vous pouvez vérifier une définition depuis le terminal avec :
+
+```bash
+# depuis la racine du dépôt
+curl -X POST http://localhost:8000/api/widgets/preview \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN_ADMIN>" \
+  -d '{
+        "definition": {
+          "type": "Card",
+          "size": "lg",
+          "children": [
+            {"type": "Text", "id": "titre", "value": "Résumé"},
+            {"type": "Markdown", "id": "details", "value": "**Points clés**"}
+          ]
+        }
+      }'
+```
+
+Le JSON renvoyé peut être utilisé tel quel comme sortie d'un module d'agent dans le workflow builder ChatKit.
+
 ### Outil météo exposé au workflow ChatKit
 
 Le backend expose également un point d'entrée `GET /api/tools/weather` qui interroge l'API libre [Open-Meteo](https://open-meteo.com/) pour fournir les conditions actuelles d'une ville donnée. Cette route est pensée pour être appelée depuis un outil de workflow ChatKit, mais elle reste publique afin de faciliter les tests manuels.
