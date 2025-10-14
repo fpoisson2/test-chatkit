@@ -141,6 +141,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     ) -> None:
         streamed_step_keys: set[str] = set()
         step_progress_text: dict[str, str] = {}
+        step_progress_headers: dict[str, str] = {}
 
         try:
             logger.info("Démarrage du workflow pour le fil %s", thread.id)
@@ -150,6 +151,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             ) -> None:
                 streamed_step_keys.add(step_summary.key)
                 step_progress_text.pop(step_summary.key, None)
+                header = step_progress_headers.pop(step_summary.key, None)
+                if header:
+                    await on_stream_event(
+                        ProgressUpdateEvent(text=f"{header}\n\nTerminé.")
+                    )
 
             async def on_stream_event(event: ThreadStreamEvent) -> None:
                 await event_queue.put(event)
@@ -162,6 +168,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 if update.key not in step_progress_text:
                     waiting_text = f"{header}\n\nGénération en cours..."
                     step_progress_text[update.key] = waiting_text
+                    step_progress_headers[update.key] = header
                     await on_stream_event(ProgressUpdateEvent(text=waiting_text))
 
                 aggregated_text = update.text
