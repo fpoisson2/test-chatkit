@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from fastapi import HTTPException
+import pytest
 
 from backend.app.config import get_settings
 from backend.app.security import create_access_token
+from backend.app.routes.chatkit import _resolve_voice_client_secret
 from backend.app.tests.test_workflows import _auth_headers, _make_user, client
 
 
@@ -45,8 +47,7 @@ def test_create_voice_session_success(monkeypatch) -> None:
         assert kwargs["instructions"] == "Réponds avec empathie"
         assert "voice" not in kwargs
         return {
-            "client_secret": {"value": "secret-token"},
-            "expires_at": "2024-01-01T00:00:00Z",
+            "client_secret": {"value": "secret-token", "expires_after": 900},
         }
 
     monkeypatch.setattr(
@@ -66,9 +67,55 @@ def test_create_voice_session_success(monkeypatch) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload == {
-        "client_secret": {"value": "secret-token"},
-        "expires_at": "2024-01-01T00:00:00Z",
+        "client_secret": {"value": "secret-token", "expires_after": 900},
+        "expires_at": "900",
         "model": "gpt-custom",
         "instructions": "Réponds avec empathie",
         "voice": settings.chatkit_realtime_voice,
     }
+
+
+@pytest.mark.parametrize(
+    "payload,expected_secret,expected_expiration",
+    [
+        ({"client_secret": "raw-token"}, "raw-token", None),
+        (
+            {"client_secret": {"value": "abc", "expires_at": "2024-01-01T00:00:00Z"}},
+            {"value": "abc", "expires_at": "2024-01-01T00:00:00Z"},
+            "2024-01-01T00:00:00Z",
+        ),
+        (
+            {
+                "data": {
+                    "client_secret": {"value": "def"},
+                    "expires_after": 600,
+                }
+            },
+            {"value": "def"},
+            "600",
+        ),
+        (
+            {
+                "session": {
+                    "client_secret": {"value": "ghi", "expires_after": 120},
+                }
+            },
+            {"value": "ghi", "expires_after": 120},
+            "120",
+        ),
+    ],
+)
+def test_resolve_voice_client_secret_handles_various_shapes(
+    payload: dict[str, object],
+    expected_secret: object,
+    expected_expiration: str | None,
+) -> None:
+    secret, expires = _resolve_voice_client_secret(payload)
+    assert secret == expected_secret
+    assert expires == expected_expiration
+
+
+def test_resolve_voice_client_secret_missing_secret() -> None:
+    secret, expires = _resolve_voice_client_secret({"foo": "bar", "expires_at": "soon"})
+    assert secret is None
+    assert expires == "soon"
