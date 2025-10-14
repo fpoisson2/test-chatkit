@@ -50,6 +50,8 @@ def _extract_secret_from_container(container: Any) -> tuple[Any | None, str | No
         return None, None
 
     secret = container.get("client_secret") or container.get("clientSecret")
+    if not secret and "value" in container:
+        secret = container["value"]
     if not secret:
         return None, None
 
@@ -107,7 +109,7 @@ def _summarize_payload_shape(payload: Any) -> dict[str, Any] | str:
 
     summary: dict[str, Any] = {}
     for key, value in payload.items():
-        if key == "client_secret":
+        if key in {"client_secret", "value"}:
             summary[key] = "***"
             continue
         if isinstance(value, dict):
