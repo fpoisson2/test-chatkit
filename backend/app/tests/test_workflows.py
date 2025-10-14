@@ -374,6 +374,42 @@ def test_update_rejects_unknown_agent() -> None:
     assert "Agent inconnu" in response.json()["detail"]
 
 
+def test_update_accepts_custom_agent_without_key() -> None:
+    admin = _make_user(email="custom@example.com", is_admin=True)
+    token = create_access_token(admin)
+    payload = {
+        "graph": {
+            "nodes": [
+                {"slug": "start", "kind": "start"},
+                {
+                    "slug": "redacteur-sur-mesure",
+                    "kind": "agent",
+                    "parameters": {
+                        "instructions": "Rédige une réponse personnalisée.",
+                        "model": "gpt-4.1-mini",
+                    },
+                },
+                {"slug": "end", "kind": "end"},
+            ],
+            "edges": [
+                {"source": "start", "target": "redacteur-sur-mesure"},
+                {"source": "redacteur-sur-mesure", "target": "end"},
+            ],
+        }
+    }
+    response = client.put(
+        "/api/workflows/current",
+        headers=_auth_headers(token),
+        json=payload,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    nodes = body["graph"]["nodes"]
+    custom = next(node for node in nodes if node["slug"] == "redacteur-sur-mesure")
+    assert custom["agent_key"] is None
+    assert custom["parameters"]["instructions"] == "Rédige une réponse personnalisée."
+
+
 def test_update_condition_requires_branches() -> None:
     admin = _make_user(email="condition@example.com", is_admin=True)
     token = create_access_token(admin)

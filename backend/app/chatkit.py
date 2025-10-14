@@ -809,6 +809,18 @@ def _build_get_data_from_user_agent(overrides: dict[str, Any] | None = None) -> 
     return Agent(**_build_agent_kwargs(base_kwargs, overrides))
 
 
+_CUSTOM_AGENT_FALLBACK_NAME = "Agent personnalisé"
+
+
+def _build_custom_agent(overrides: dict[str, Any] | None = None) -> Agent:
+    base_kwargs: dict[str, Any] = {"name": _CUSTOM_AGENT_FALLBACK_NAME}
+    merged = _build_agent_kwargs(base_kwargs, overrides or {})
+    name = merged.get("name")
+    if not isinstance(name, str) or not name.strip():
+        merged["name"] = _CUSTOM_AGENT_FALLBACK_NAME
+    return Agent(**merged)
+
+
 _AGENT_BUILDERS: dict[str, Callable[[dict[str, Any] | None], Agent]] = {
     "triage": _build_triage_agent,
     "r_dacteur": _build_r_dacteur_agent,
@@ -991,16 +1003,19 @@ async def run_workflow(
 
     agent_instances: dict[str, Agent] = {}
     for step in agent_steps_ordered:
-        agent_key = step.agent_key or ""
+        agent_key = (step.agent_key or "").strip()
         builder = _AGENT_BUILDERS.get(agent_key)
         if builder is None:
-            raise WorkflowExecutionError(
-                "configuration",
-                "Configuration du workflow invalide",
-                RuntimeError(f"Agent inconnu : {agent_key}"),
-                [],
-            )
-        agent_instances[step.slug] = builder(step.parameters or {})
+            if agent_key:
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError(f"Agent inconnu : {agent_key}"),
+                    [],
+                )
+            agent_instances[step.slug] = _build_custom_agent(step.parameters or {})
+        else:
+            agent_instances[step.slug] = builder(step.parameters or {})
 
     if all((step.agent_key == "r_dacteur") for step in agent_steps_ordered):
         state["should_finalize"] = True
