@@ -35,6 +35,16 @@ const RequireGuest = ({ children }: { children: ReactElement }) => {
   return children;
 };
 
+const RequireUser = ({ children }: { children: ReactElement }) => {
+  const { user } = useAuth();
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+};
+
 const HomePage = () => <MyChat />;
 
 export const App = () => (
@@ -93,7 +103,11 @@ export const App = () => (
     />
     <Route
       path="/voice"
-      element={<VoicePage />}
+      element={
+        <RequireUser>
+          <VoicePage />
+        </RequireUser>
+      }
     />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>
