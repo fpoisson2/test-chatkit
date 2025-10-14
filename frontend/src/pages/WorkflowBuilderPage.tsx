@@ -18,7 +18,7 @@ import "reactflow/dist/style.css";
 
 import { useAuth } from "../auth";
 import { makeApiEndpointCandidates } from "../utils/backend";
-import { resolveAgentParameters } from "../utils/agentPresets";
+import { resolveAgentParameters, resolveStateParameters } from "../utils/agentPresets";
 import {
   getAgentMessage,
   getAgentModel,
@@ -201,7 +201,9 @@ const WorkflowBuilderPage = () => {
             const parameters =
               node.kind === "agent"
                 ? resolveAgentParameters(node.agent_key, node.parameters)
-                : resolveAgentParameters(null, node.parameters);
+                : node.kind === "state"
+                  ? resolveStateParameters(node.slug, node.parameters)
+                  : resolveAgentParameters(null, node.parameters);
             return {
               id: node.slug,
               position: positionFromMetadata ?? { x: 150 * index, y: 120 * index },
