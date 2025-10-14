@@ -111,8 +111,37 @@ class WidgetLibraryService:
     @staticmethod
     def _normalize_definition(definition: dict[str, Any] | str) -> dict[str, Any]:
         widget = WidgetLibraryService._validate_widget(definition)
-        dumped = widget.model_dump(mode="json")
+        dumped = WidgetLibraryService._dump_widget(widget)
         return json.loads(json.dumps(dumped, ensure_ascii=False))
+
+    @staticmethod
+    def _dump_widget(widget: Any) -> dict[str, Any]:
+        """Serialize un widget validé quel que soit le runtime Pydantic."""
+
+        if hasattr(widget, "model_dump"):
+            dump_method = getattr(widget, "model_dump")
+            try:
+                dumped = dump_method(mode="json")
+            except TypeError:
+                dumped = dump_method()
+        elif hasattr(widget, "dict"):
+            dump_method = getattr(widget, "dict")
+            dumped = dump_method()
+        elif isinstance(widget, dict):
+            dumped = widget
+        else:  # pragma: no cover - protection supplémentaire
+            raise WidgetValidationError(
+                "Définition de widget invalide",
+                errors=["Le widget ne peut pas être sérialisé."],
+            )
+
+        if not isinstance(dumped, dict):
+            raise WidgetValidationError(
+                "Définition de widget invalide",
+                errors=["La définition normalisée doit être un objet JSON."],
+            )
+
+        return dumped
 
     @staticmethod
     def _validate_widget(definition: dict[str, Any] | str) -> Any:
