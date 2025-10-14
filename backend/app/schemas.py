@@ -193,5 +193,67 @@ class WorkflowProductionUpdate(BaseModel):
     version_id: int
 
 
+
 class WorkflowChatKitUpdate(BaseModel):
     workflow_id: int
+
+class VectorStoreCreateRequest(BaseModel):
+    slug: str
+    title: str | None = None
+    description: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class VectorStoreUpdateRequest(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class VectorStoreResponse(BaseModel):
+    slug: str
+    title: str | None = None
+    description: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    documents_count: int = 0
+
+
+class VectorStoreDocumentIngestRequest(BaseModel):
+    doc_id: str
+    document: dict[str, Any]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    store_title: str | None = None
+    store_metadata: dict[str, Any] | None = None
+
+
+class VectorStoreDocumentResponse(BaseModel):
+    doc_id: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    chunk_count: int
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
+class VectorStoreDocumentDetailResponse(VectorStoreDocumentResponse):
+    document: dict[str, Any]
+
+
+class VectorStoreSearchRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    top_k: int = Field(default=5, ge=1, le=50)
+    metadata_filters: dict[str, Any] | None = None
+    dense_weight: float = Field(default=0.5, ge=0.0)
+    sparse_weight: float = Field(default=0.5, ge=0.0)
+
+
+class VectorStoreSearchResult(BaseModel):
+    doc_id: str
+    chunk_index: int
+    text: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    document_metadata: dict[str, Any] = Field(default_factory=dict)
+    dense_score: float
+    bm25_score: float
+    score: float

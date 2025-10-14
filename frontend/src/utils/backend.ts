@@ -33,3 +33,277 @@ export const makeApiEndpointCandidates = (
 
   return toUniqueList(candidates);
 };
+
+const backendUrl = sanitizeBackendUrl(import.meta.env.VITE_BACKEND_URL ?? "");
+
+export class ApiError extends Error {
+  status: number | undefined;
+  detail: unknown;
+
+  constructor(message: string, options?: { status?: number; detail?: unknown }) {
+    super(message);
+    this.name = "ApiError";
+    this.status = options?.status;
+    this.detail = options?.detail;
+  }
+}
+
+export const isUnauthorizedError = (error: unknown): boolean =>
+  error instanceof ApiError && error.status === 401;
+
+const extractErrorMessage = async (response: Response): Promise<string> => {
+  try {
+    const payload = await response.clone().json();
+    if (payload?.detail) {
+      if (typeof payload.detail === "string") {
+        return payload.detail;
+      }
+      return JSON.stringify(payload.detail);
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message) {
+      return err.message;
+    }
+  }
+  return `${response.status} ${response.statusText}`;
+};
+
+const requestWithFallback = async (
+  path: string,
+  init?: RequestInit,
+): Promise<Response> => {
+  const endpoints = makeApiEndpointCandidates(backendUrl, path);
+  let lastError: Error | ApiError | null = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, init);
+      if (response.ok) {
+        return response;
+      }
+
+      const message = await extractErrorMessage(response);
+      const apiError = new ApiError(message, {
+        status: response.status,
+        detail: await response.clone().json().catch(() => undefined),
+      });
+
+      const isSameOrigin = endpoint.startsWith("/");
+      if (isSameOrigin && endpoints.length > 1) {
+        lastError = apiError;
+        continue;
+      }
+
+      throw apiError;
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      lastError = error instanceof Error ? error : new Error("Erreur réseau");
+    }
+  }
+
+  if (lastError instanceof ApiError) {
+    throw lastError;
+  }
+
+  throw lastError ?? new Error("Impossible de joindre le backend d'administration");
+};
+
+const withAuthHeaders = (token: string | null | undefined): HeadersInit => {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+};
+
+export type EditableUser = {
+  id: number;
+  email: string;
+  is_admin: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateUserPayload = {
+  email: string;
+  password: string;
+  is_admin: boolean;
+};
+
+export const adminApi = {
+  async listUsers(token: string | null): Promise<EditableUser[]> {
+    const response = await requestWithFallback("/api/admin/users", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async createUser(token: string | null, payload: CreateUserPayload): Promise<EditableUser> {
+    const response = await requestWithFallback("/api/admin/users", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async updateUser(token: string | null, id: number, payload: Partial<CreateUserPayload>): Promise<EditableUser> {
+    const response = await requestWithFallback(`/api/admin/users/${id}`, {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async deleteUser(token: string | null, id: number): Promise<void> {
+    const response = await requestWithFallback(`/api/admin/users/${id}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+    if (!response.ok && response.status !== 204) {
+      throw new ApiError("Échec de la suppression", { status: response.status });
+    }
+  },
+};
+
+export const resetUserPassword = async (
+  token: string | null,
+  id: number,
+  payload: { password: string },
+): Promise<EditableUser> => {
+  const response = await requestWithFallback(`/api/admin/users/${id}`, {
+    method: "PATCH",
+    headers: withAuthHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  return response.json();
+};
+
+export type VectorStoreSummary = {
+  slug: string;
+  title: string | null;
+  description: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  documents_count: number;
+};
+
+export type VectorStoreCreatePayload = {
+  slug: string;
+  title?: string | null;
+  description?: string | null;
+  metadata: Record<string, unknown>;
+};
+
+export type VectorStoreDocument = {
+  doc_id: string;
+  metadata: Record<string, unknown>;
+  chunk_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type VectorStoreDocumentDetail = VectorStoreDocument & {
+  document: Record<string, unknown>;
+};
+
+export type VectorStoreIngestionPayload = {
+  doc_id: string;
+  document: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  store_title?: string | null;
+  store_metadata?: Record<string, unknown> | null;
+};
+
+export type VectorStoreSearchPayload = {
+  query: string;
+  top_k?: number;
+  metadata_filters?: Record<string, unknown> | null;
+  dense_weight?: number;
+  sparse_weight?: number;
+};
+
+export type VectorStoreSearchResult = {
+  doc_id: string;
+  chunk_index: number;
+  text: string;
+  metadata: Record<string, unknown>;
+  document_metadata: Record<string, unknown>;
+  dense_score: number;
+  bm25_score: number;
+  score: number;
+};
+
+export const vectorStoreApi = {
+  async listStores(token: string | null): Promise<VectorStoreSummary[]> {
+    const response = await requestWithFallback("/api/vector-stores", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async createStore(
+    token: string | null,
+    payload: VectorStoreCreatePayload,
+  ): Promise<VectorStoreSummary> {
+    const response = await requestWithFallback("/api/vector-stores", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async deleteStore(token: string | null, slug: string): Promise<void> {
+    await requestWithFallback(`/api/vector-stores/${slug}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+  },
+
+  async ingestDocument(
+    token: string | null,
+    slug: string,
+    payload: VectorStoreIngestionPayload,
+  ): Promise<VectorStoreDocument> {
+    const response = await requestWithFallback(`/api/vector-stores/${slug}/documents`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async search(
+    token: string | null,
+    slug: string,
+    payload: VectorStoreSearchPayload,
+  ): Promise<VectorStoreSearchResult[]> {
+    const response = await requestWithFallback(`/api/vector-stores/${slug}/search_json`, {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async getDocument(
+    token: string | null,
+    slug: string,
+    docId: string,
+  ): Promise<VectorStoreDocumentDetail> {
+    const response = await requestWithFallback(
+      `/api/vector-stores/${slug}/documents/${encodeURIComponent(docId)}`,
+      {
+        headers: withAuthHeaders(token),
+      },
+    );
+    return response.json();
+  },
+};

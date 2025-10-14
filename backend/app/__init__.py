@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routes import admin, auth, tools, users, workflows
+from .routes import admin, auth, tools, users, vector_stores, workflows
 
 try:  # pragma: no cover - dépendance optionnelle pour le SDK ChatKit
     from .routes import chatkit
@@ -29,6 +29,7 @@ app.include_router(admin.router)
 if chatkit and hasattr(chatkit, "router"):
     app.include_router(chatkit.router)
 app.include_router(tools.router)
+app.include_router(vector_stores.router)
 app.include_router(workflows.router)
 
 register_startup_events(app)
