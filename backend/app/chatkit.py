@@ -9,13 +9,14 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Coroutine, Sequence
 
 from agents import (
     Agent,
-    FileSearchTool,
+    FunctionTool,
     ModelSettings,
     RunConfig,
     RunContextWrapper,
     Runner,
     TResponseInputItem,
     WebSearchTool,
+    function_tool,
 )
 from openai.types.shared.reasoning import Reasoning
 from pydantic import BaseModel
@@ -42,6 +43,7 @@ from .database import SessionLocal
 from .models import WorkflowStep, WorkflowTransition
 from .token_sanitizer import sanitize_model_like
 from .workflows import WorkflowService
+from .vector_store import JsonVectorStoreService, SearchResult
 
 logger = logging.getLogger("chatkit.server")
 
@@ -541,8 +543,8 @@ def _coerce_include_search_results(value: Any) -> bool:
     return False
 
 
-def _coerce_ranking_options(value: Any) -> Any:
-    """Instancie les options de ranking reconnues par l'SDK OpenAI."""
+def _coerce_ranking_options(value: Any) -> dict[str, Any] | None:
+    """Nettoie les options de ranking attendues par l'outil de recherche locale."""
 
     if value is None:
         return None
@@ -562,23 +564,47 @@ def _coerce_ranking_options(value: Any) -> Any:
             except ValueError:
                 pass
 
-        if data:
-            try:
-                from agents.tool import RankingOptions
-
-                return RankingOptions(**data)
-            except Exception:  # pragma: no cover - dépend du SDK Agents
-                logger.warning(
-                    "RankingOptions invalide pour FileSearchTool : %s", value
-                )
+        return data or None
 
     return None
 
 
-def _build_file_search_tool(payload: Any) -> FileSearchTool | None:
-    """Construit un outil de recherche documentaire à partir des paramètres."""
+def _format_vector_store_results(
+    matches: list[tuple[str, list[SearchResult]]],
+    *,
+    include_text: bool,
+) -> list[dict[str, Any]]:
+    formatted: list[dict[str, Any]] = []
+    for slug, entries in matches:
+        formatted_matches: list[dict[str, Any]] = []
+        for entry in entries:
+            item: dict[str, Any] = {
+                "doc_id": entry.doc_id,
+                "chunk_index": entry.chunk_index,
+                "score": entry.score,
+                "dense_score": entry.dense_score,
+                "bm25_score": entry.bm25_score,
+                "metadata": entry.metadata,
+                "document_metadata": entry.document_metadata,
+            }
+            if include_text:
+                item["text"] = entry.text
+            formatted_matches.append(item)
 
-    if isinstance(payload, FileSearchTool):
+        formatted.append(
+            {
+                "vector_store_slug": slug,
+                "matches": formatted_matches,
+            }
+        )
+
+    return formatted
+
+
+def _build_file_search_tool(payload: Any) -> FunctionTool | None:
+    """Construit un FunctionTool effectuant une recherche sur nos magasins locaux."""
+
+    if isinstance(payload, FunctionTool):
         return payload
 
     config: dict[str, Any] = payload if isinstance(payload, dict) else {}
@@ -591,24 +617,96 @@ def _build_file_search_tool(payload: Any) -> FileSearchTool | None:
         config.get("return_documents")
     )
     ranking_options = _coerce_ranking_options(config.get("ranking_options"))
+    default_top_k = max_num_results if max_num_results else 5
 
-    kwargs: dict[str, Any] = {
-        "vector_store_ids": vector_store_ids,
-        "include_search_results": include_search_results,
-    }
-    if max_num_results is not None:
-        kwargs["max_num_results"] = max_num_results
-    if ranking_options is not None:
-        kwargs["ranking_options"] = ranking_options
+    async def _search_vector_stores(
+        query: str,
+        top_k: int | None = None,
+    ) -> dict[str, Any]:
+        """Recherche des extraits pertinents dans les magasins configurés."""
 
-    try:
-        return FileSearchTool(**kwargs)
-    except Exception:  # pragma: no cover - dépend des validations internes
-        logger.warning(
-            "Impossible d'instancier FileSearchTool avec la configuration %s",
-            kwargs,
+        normalized_query = query.strip() if isinstance(query, str) else ""
+        if not normalized_query:
+            return {
+                "query": "",
+                "vector_stores": [],
+                "errors": ["La requête de recherche est vide."],
+            }
+
+        limit: int = default_top_k
+        if isinstance(top_k, int) and top_k > 0:
+            limit = top_k
+
+        def _search_sync() -> tuple[
+            list[tuple[str, list[SearchResult]]], list[dict[str, Any]]
+        ]:
+            matches: list[tuple[str, list[SearchResult]]] = []
+            errors: list[dict[str, Any]] = []
+            with SessionLocal() as session:
+                service = JsonVectorStoreService(session)
+                for slug in vector_store_ids:
+                    try:
+                        results = service.search(
+                            slug,
+                            normalized_query,
+                            top_k=limit,
+                        )
+                    except LookupError:
+                        errors.append(
+                            {
+                                "vector_store_slug": slug,
+                                "message": "Magasin introuvable.",
+                            }
+                        )
+                        continue
+                    except Exception as exc:  # pragma: no cover - dépend du runtime
+                        logger.exception(
+                            "Erreur lors de la recherche dans le magasin %s", slug,
+                            exc_info=exc,
+                        )
+                        errors.append(
+                            {
+                                "vector_store_slug": slug,
+                                "message": "Recherche impossible : erreur interne.",
+                            }
+                        )
+                        continue
+
+                    matches.append((slug, list(results)))
+
+            return matches, errors
+
+        store_matches, store_errors = await asyncio.to_thread(_search_sync)
+
+        response: dict[str, Any] = {
+            "query": normalized_query,
+            "vector_stores": _format_vector_store_results(
+                store_matches,
+                include_text=include_search_results,
+            ),
+        }
+        if ranking_options:
+            response["ranking_options"] = ranking_options
+        if store_errors:
+            response["errors"] = store_errors
+
+        return response
+
+    tool_name = "file_search"
+    if len(vector_store_ids) == 1:
+        tool_name = f"file_search_{vector_store_ids[0].replace('-', '_')}"
+
+    search_tool = function_tool(name_override=tool_name)(_search_vector_stores)
+    if include_search_results:
+        search_tool.description = (
+            "Recherche dans les documents locaux et renvoie le texte des extraits pertinents."
         )
-        return None
+    else:
+        search_tool.description = (
+            "Recherche dans les documents locaux et renvoie les métadonnées des extraits pertinents."
+        )
+
+    return search_tool
 
 
 def _clone_tools(value: Sequence[Any] | None) -> list[Any]:

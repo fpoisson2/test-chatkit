@@ -1,7 +1,7 @@
 """Tests liés à la conversion des outils Agents."""
 
 from backend.app.chatkit import (
-    FileSearchTool,
+    FunctionTool,
     WebSearchTool,
     _coerce_agent_tools,
     web_search_preview,
@@ -62,10 +62,8 @@ def test_coerce_agent_tools_from_serialized_file_search() -> None:
     assert isinstance(tools, list)
     assert len(tools) == 1
     tool = tools[0]
-    assert isinstance(tool, FileSearchTool)
-    assert tool.vector_store_ids == ["plan-cadre"]
-    assert tool.include_search_results is True
-    assert tool.max_num_results == 10
+    assert isinstance(tool, FunctionTool)
+    assert tool.name == "file_search_plan_cadre"
 
 
 def test_coerce_agent_tools_accepts_empty_list() -> None:
