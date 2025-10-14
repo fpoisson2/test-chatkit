@@ -232,15 +232,6 @@ export const modelRegistryApi = {
     });
     return response.json();
   },
-    
-export const widgetLibraryApi = {
-  async listWidgets(token: string | null): Promise<WidgetTemplate[]> {
-    const response = await requestWithFallback("/api/widgets", {
-      headers: withAuthHeaders(token),
-    });
-    return response.json();
-  },
-      
 
   async listAdmin(token: string | null): Promise<AvailableModel[]> {
     const response = await requestWithFallback("/api/admin/models", {
@@ -248,7 +239,32 @@ export const widgetLibraryApi = {
     });
     return response.json();
   },
-    
+
+  async create(token: string | null, payload: AvailableModelPayload): Promise<AvailableModel> {
+    const response = await requestWithFallback("/api/admin/models", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async delete(token: string | null, id: number): Promise<void> {
+    await requestWithFallback(`/api/admin/models/${id}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+  },
+};
+
+export const widgetLibraryApi = {
+  async listWidgets(token: string | null): Promise<WidgetTemplate[]> {
+    const response = await requestWithFallback("/api/widgets", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
   async createWidget(
     token: string | null,
     payload: WidgetTemplateCreatePayload,
@@ -260,17 +276,7 @@ export const widgetLibraryApi = {
     });
     return response.json();
   },
-       
 
-  async create(token: string | null, payload: AvailableModelPayload): Promise<AvailableModel> {
-    const response = await requestWithFallback("/api/admin/models", {
-      method: "POST",
-      headers: withAuthHeaders(token),
-      body: JSON.stringify(payload),
-    });
-    return response.json();
-  },
-  
   async updateWidget(
     token: string | null,
     slug: string,
@@ -284,21 +290,12 @@ export const widgetLibraryApi = {
     return response.json();
   },
 
-
-  async delete(token: string | null, id: number): Promise<void> {
-    await requestWithFallback(`/api/admin/models/${id}`, {
-      method: "DELETE",
-      headers: withAuthHeaders(token),
-    });
-  },
-  
   async deleteWidget(token: string | null, slug: string): Promise<void> {
-    await requestWithFallback(`/api/widgets/${encodeURIComponent(slug)}`, {  
+    await requestWithFallback(`/api/widgets/${encodeURIComponent(slug)}`, {
       method: "DELETE",
       headers: withAuthHeaders(token),
     });
   },
-  
 
   async previewWidget(
     token: string | null,
