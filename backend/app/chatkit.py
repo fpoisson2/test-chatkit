@@ -9,6 +9,7 @@ from typing import Any, AsyncIterator, Awaitable, Callable, Coroutine, Sequence
 
 from agents import (
     Agent,
+    FileSearchTool,
     ModelSettings,
     RunConfig,
     RunContextWrapper,
@@ -481,6 +482,135 @@ def _build_web_search_tool(payload: Any) -> WebSearchTool | None:
         return None
 
 
+def _extract_vector_store_ids(config: dict[str, Any]) -> list[str]:
+    """Récupère la liste des identifiants de vector store à partir du payload."""
+
+    result: list[str] = []
+
+    raw_ids = config.get("vector_store_ids")
+    if isinstance(raw_ids, (list, tuple, set)):
+        for entry in raw_ids:
+            if isinstance(entry, str) and entry.strip():
+                normalized = entry.strip()
+                if normalized not in result:
+                    result.append(normalized)
+
+    candidate = config.get("vector_store_id")
+    if isinstance(candidate, str) and candidate.strip():
+        normalized = candidate.strip()
+        if normalized not in result:
+            result.append(normalized)
+
+    slug = config.get("vector_store_slug")
+    if isinstance(slug, str) and slug.strip():
+        normalized = slug.strip()
+        if normalized not in result:
+            result.append(normalized)
+
+    store = config.get("store")
+    if isinstance(store, dict):
+        nested_slug = store.get("slug")
+        if isinstance(nested_slug, str) and nested_slug.strip():
+            normalized = nested_slug.strip()
+            if normalized not in result:
+                result.append(normalized)
+
+    return result
+
+
+def _coerce_max_num_results(value: Any) -> int | None:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            return int(stripped)
+    return None
+
+
+def _coerce_include_search_results(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if not normalized:
+            return False
+        return normalized in {"full", "true", "1", "yes", "y"}
+    return False
+
+
+def _coerce_ranking_options(value: Any) -> Any:
+    """Instancie les options de ranking reconnues par l'SDK OpenAI."""
+
+    if value is None:
+        return None
+
+    if isinstance(value, dict):
+        data: dict[str, Any] = {}
+        ranker = value.get("ranker")
+        if isinstance(ranker, str) and ranker.strip():
+            data["ranker"] = ranker.strip()
+
+        threshold = value.get("score_threshold")
+        if isinstance(threshold, (int, float)):
+            data["score_threshold"] = float(threshold)
+        elif isinstance(threshold, str):
+            try:
+                data["score_threshold"] = float(threshold.strip())
+            except ValueError:
+                pass
+
+        if data:
+            try:
+                from agents.tool import RankingOptions
+
+                return RankingOptions(**data)
+            except Exception:  # pragma: no cover - dépend du SDK Agents
+                logger.warning(
+                    "RankingOptions invalide pour FileSearchTool : %s", value
+                )
+
+    return None
+
+
+def _build_file_search_tool(payload: Any) -> FileSearchTool | None:
+    """Construit un outil de recherche documentaire à partir des paramètres."""
+
+    if isinstance(payload, FileSearchTool):
+        return payload
+
+    config: dict[str, Any] = payload if isinstance(payload, dict) else {}
+    vector_store_ids = _extract_vector_store_ids(config)
+    if not vector_store_ids:
+        return None
+
+    max_num_results = _coerce_max_num_results(config.get("max_num_results"))
+    include_search_results = _coerce_include_search_results(
+        config.get("return_documents")
+    )
+    ranking_options = _coerce_ranking_options(config.get("ranking_options"))
+
+    kwargs: dict[str, Any] = {
+        "vector_store_ids": vector_store_ids,
+        "include_search_results": include_search_results,
+    }
+    if max_num_results is not None:
+        kwargs["max_num_results"] = max_num_results
+    if ranking_options is not None:
+        kwargs["ranking_options"] = ranking_options
+
+    try:
+        return FileSearchTool(**kwargs)
+    except Exception:  # pragma: no cover - dépend des validations internes
+        logger.warning(
+            "Impossible d'instancier FileSearchTool avec la configuration %s",
+            kwargs,
+        )
+        return None
+
+
 def _clone_tools(value: Sequence[Any] | None) -> list[Any]:
     if value is None:
         return []
@@ -515,6 +645,12 @@ def _coerce_agent_tools(
             tool_payload = entry.get("web_search")
             if isinstance(tool_type, str) and tool_type.strip().lower() == "web_search":
                 tool = _build_web_search_tool(tool_payload)
+                if tool is not None:
+                    coerced.append(tool)
+                continue
+
+            if isinstance(tool_type, str) and tool_type.strip().lower() == "file_search":
+                tool = _build_file_search_tool(entry.get("file_search"))
                 if tool is not None:
                     coerced.append(tool)
                 continue
