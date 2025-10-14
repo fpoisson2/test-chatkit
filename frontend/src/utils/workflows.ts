@@ -582,6 +582,47 @@ const isWebSearchTool = (value: unknown): value is Record<string, unknown> =>
 const isFileSearchTool = (value: unknown): value is Record<string, unknown> =>
   isPlainRecord(value) && value.type === "file_search";
 
+const WEATHER_FUNCTION_TOOL_NAME = "fetch_weather";
+
+const WEATHER_FUNCTION_TOOL_DESCRIPTION =
+  "Interroge le service météo Python et renvoie les conditions actuelles.";
+
+const isFunctionTool = (value: unknown): value is Record<string, unknown> =>
+  isPlainRecord(value) && typeof value.type === "string" && value.type.trim().toLowerCase() === "function";
+
+const getFunctionToolPayload = (
+  entry: Record<string, unknown>,
+): Record<string, unknown> | undefined => {
+  const payload = entry.function ?? entry.payload ?? entry.parameters;
+  if (isPlainRecord(payload)) {
+    return payload;
+  }
+  return undefined;
+};
+
+const isWeatherFunctionTool = (value: unknown): boolean => {
+  if (!isFunctionTool(value)) {
+    return false;
+  }
+  const payload = getFunctionToolPayload(value);
+  if (!payload) {
+    return false;
+  }
+  const nameCandidate = payload.name ?? payload.id ?? payload.function_name;
+  if (typeof nameCandidate !== "string") {
+    return false;
+  }
+  return nameCandidate.trim().toLowerCase() === WEATHER_FUNCTION_TOOL_NAME;
+};
+
+const buildWeatherFunctionToolEntry = (): Record<string, unknown> => ({
+  type: "function",
+  function: {
+    name: WEATHER_FUNCTION_TOOL_NAME,
+    description: WEATHER_FUNCTION_TOOL_DESCRIPTION,
+  },
+});
+
 const sanitizeWebSearchConfig = (config: WebSearchConfig | null): WebSearchConfig | null => {
   if (!config) {
     return null;
@@ -738,5 +779,39 @@ export const setAgentFileSearchConfig = (
   }
 
   const toolEntry: Record<string, unknown> = { type: "file_search", file_search: sanitized };
+  return { ...next, tools: [...tools, toolEntry] };
+};
+
+export const getAgentWeatherToolEnabled = (
+  parameters: AgentParameters | null | undefined,
+): boolean => {
+  if (!parameters) {
+    return false;
+  }
+  const tools = (parameters as Record<string, unknown>).tools;
+  if (!Array.isArray(tools)) {
+    return false;
+  }
+  return tools.some((tool) => isWeatherFunctionTool(tool));
+};
+
+export const setAgentWeatherToolEnabled = (
+  parameters: AgentParameters,
+  enabled: boolean,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const tools = Array.isArray(next.tools)
+    ? (next.tools as unknown[]).filter((tool) => !isWeatherFunctionTool(tool))
+    : [];
+
+  if (!enabled) {
+    if (tools.length === 0) {
+      const { tools: _ignored, ...rest } = next;
+      return stripEmpty(rest);
+    }
+    return { ...next, tools };
+  }
+
+  const toolEntry = buildWeatherFunctionToolEntry();
   return { ...next, tools: [...tools, toolEntry] };
 };

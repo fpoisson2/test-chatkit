@@ -12,7 +12,10 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
-from sentence_transformers import SentenceTransformer
+try:  # pragma: no cover - dépendance optionnelle pour les tests rapides
+    from sentence_transformers import SentenceTransformer
+except ModuleNotFoundError:  # pragma: no cover - utilisée lorsque la dépendance est absente
+    SentenceTransformer = None  # type: ignore[assignment]
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -26,7 +29,12 @@ DEFAULT_CHUNK_OVERLAP = 8
 
 
 @lru_cache(maxsize=2)
-def _load_model(model_name: str) -> SentenceTransformer:
+def _load_model(model_name: str) -> Any:
+    if SentenceTransformer is None:
+        raise RuntimeError(
+            "Le paquet sentence-transformers est requis pour charger le modèle '%s'. "
+            "Installez-le ou fournissez un modèle factice dans les tests." % model_name
+        )
     logger.info("Chargement du modèle d'embedding %s", model_name)
     return SentenceTransformer(model_name)
 

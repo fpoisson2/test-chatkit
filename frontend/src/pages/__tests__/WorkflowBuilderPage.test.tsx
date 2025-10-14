@@ -14,7 +14,7 @@ vi.mock("../../auth", () => ({
 }));
 
 const makeApiEndpointCandidatesMock = vi.hoisted(() =>
-  vi.fn<[string, string], string[]>(() => ["/api/workflows/current"]),
+  vi.fn<[string, string], string[]>((_baseUrl, path) => [path]),
 );
 
 const listVectorStoresMock = vi.hoisted(() => vi.fn(async () => []));
@@ -33,7 +33,12 @@ vi.mock("../../utils/backend", () => ({
 describe("WorkflowBuilderPage", () => {
   const defaultResponse = {
     id: 1,
-    name: "workflow",
+    workflow_id: 1,
+    workflow_slug: "workflow",
+    workflow_display_name: "Workflow de test",
+    workflow_is_chatkit_default: true,
+    name: "Version 1",
+    version: 1,
     is_active: true,
     graph: {
       nodes: [
@@ -84,7 +89,97 @@ describe("WorkflowBuilderPage", () => {
         { id: 3, source: "writer", target: "end", condition: null, metadata: {} },
       ],
     },
+    steps: [],
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-02T00:00:00Z",
   } as const;
+
+  const defaultWorkflowSummary = {
+    id: 1,
+    slug: "workflow",
+    display_name: "Workflow de test",
+    description: null,
+    active_version_id: 1,
+    active_version_number: 1,
+    is_chatkit_default: true,
+    versions_count: 1,
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-02T00:00:00Z",
+  } as const;
+
+  const defaultVersionSummary = {
+    id: 1,
+    workflow_id: 1,
+    name: "Version 1",
+    version: 1,
+    is_active: true,
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-02T00:00:00Z",
+  } as const;
+
+  const setupWorkflowApi = (
+    overrides: {
+      workflowDetail?: typeof defaultResponse;
+      workflowList?: typeof defaultWorkflowSummary[];
+      versions?: typeof defaultVersionSummary[];
+      putResponse?: unknown;
+    } = {},
+  ) => {
+    const workflowDetail = overrides.workflowDetail ?? defaultResponse;
+    const workflowList = overrides.workflowList ?? [defaultWorkflowSummary];
+    const versions = overrides.versions ?? [defaultVersionSummary];
+    const putResponse = overrides.putResponse ?? { success: true };
+
+    return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = typeof input === "string" ? input : input.url;
+      if (url.endsWith("/api/workflows") && (!init || !init.method || init.method === "GET")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => workflowList,
+        } as Response;
+      }
+      if (
+        url.endsWith(`/api/workflows/${workflowDetail.workflow_id}/versions`) &&
+        (!init || !init.method || init.method === "GET")
+      ) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => versions,
+        } as Response;
+      }
+      if (
+        url.endsWith(`/api/workflows/${workflowDetail.workflow_id}/versions/${workflowDetail.id}`) &&
+        (!init || !init.method || init.method === "GET")
+      ) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => workflowDetail,
+        } as Response;
+      }
+      if (url.endsWith("/api/workflows/current") && init?.method === "PUT") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => putResponse,
+        } as Response;
+      }
+      if (url.endsWith("/api/workflows/current")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => workflowDetail,
+        } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({}),
+      } as Response;
+    });
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -95,18 +190,7 @@ describe("WorkflowBuilderPage", () => {
   });
 
   test("permet de modifier un nœud et d'enregistrer le graphe", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => defaultResponse,
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true }),
-      } as Response);
+    const fetchMock = setupWorkflowApi();
 
     const { container } = render(<WorkflowBuilderPage />);
 
@@ -164,10 +248,12 @@ describe("WorkflowBuilderPage", () => {
     fireEvent.click(saveButton);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(
+        fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
+      ).toBe(true);
     });
 
-    const putCall = fetchMock.mock.calls[1];
+    const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
     expect(putCall?.[0]).toBe("/api/workflows/current");
     expect(putCall?.[1]).toMatchObject({ method: "PUT" });
 
@@ -200,12 +286,50 @@ describe("WorkflowBuilderPage", () => {
     await screen.findByText(/workflow enregistré avec succès/i);
   });
 
+  test("permet d'activer le function tool météo Python", async () => {
+    const fetchMock = setupWorkflowApi();
+
+    const { container } = render(<WorkflowBuilderPage />);
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const triageNode = container.querySelector('[data-id="agent-triage"]');
+    expect(triageNode).not.toBeNull();
+    fireEvent.click(triageNode!);
+
+    const weatherCheckbox = await screen.findByLabelText(/fonction météo python/i);
+    expect(weatherCheckbox).not.toBeChecked();
+    fireEvent.click(weatherCheckbox);
+
+    const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
+      ).toBe(true);
+    });
+
+    const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
+    expect(putCall?.[0]).toBe("/api/workflows/current");
+    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const agentNode = body.graph.nodes.find((node: any) => node.slug === "agent-triage");
+    expect(agentNode.parameters).toMatchObject({
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "fetch_weather",
+          },
+        },
+      ],
+    });
+  });
+
   test("pré-remplit un agent hérité avec les valeurs par défaut", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => JSON.parse(JSON.stringify(defaultResponse)),
-    } as Response);
+    setupWorkflowApi({ workflowDetail: JSON.parse(JSON.stringify(defaultResponse)) });
 
     const { container } = render(<WorkflowBuilderPage />);
 
@@ -280,11 +404,7 @@ describe("WorkflowBuilderPage", () => {
       { id: 4, source: "writer", target: "end", condition: null, metadata: {} },
     ];
 
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => responseWithWeb,
-    } as Response);
+    setupWorkflowApi({ workflowDetail: responseWithWeb });
 
     const { container } = render(<WorkflowBuilderPage />);
 
@@ -333,18 +453,7 @@ describe("WorkflowBuilderPage", () => {
       { id: 4, source: "writer", target: "end", condition: null, metadata: {} },
     ];
 
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => responseWithState,
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true }),
-      } as Response);
+    const fetchMock = setupWorkflowApi({ workflowDetail: responseWithState });
 
     const { container } = render(<WorkflowBuilderPage />);
 
@@ -388,11 +497,13 @@ describe("WorkflowBuilderPage", () => {
     fireEvent.click(saveButton);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(
+        fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
+      ).toBe(true);
     });
 
-    const [, putRequest] = fetchMock.mock.calls[1];
-    const payload = JSON.parse((putRequest as RequestInit).body as string);
+    const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
+    const payload = JSON.parse((putCall?.[1] as RequestInit).body as string);
     const statePayload = payload.graph.nodes.find((node: any) => node.slug === "maj-etat");
     expect(statePayload.parameters).toEqual({
       globals: [
@@ -407,18 +518,7 @@ describe("WorkflowBuilderPage", () => {
   });
 
   test("permet de configurer le schéma JSON et les outils", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => JSON.parse(JSON.stringify(defaultResponse)),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ success: true }),
-      } as Response);
+    const fetchMock = setupWorkflowApi({ workflowDetail: JSON.parse(JSON.stringify(defaultResponse)) });
 
     const { container } = render(<WorkflowBuilderPage />);
 
@@ -462,10 +562,12 @@ describe("WorkflowBuilderPage", () => {
     fireEvent.click(saveButton);
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(
+        fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
+      ).toBe(true);
     });
 
-    const putCall = fetchMock.mock.calls[1];
+    const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
     const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
     const writerPayload = body.graph.nodes.find((node: any) => node.slug === "writer");
     expect(writerPayload.parameters.response_format).toEqual({

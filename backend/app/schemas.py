@@ -11,6 +11,33 @@ class SessionRequest(BaseModel):
     user: str | None = None
 
 
+class VoiceSessionRequest(BaseModel):
+    """Requête de création d'une session vocale Realtime."""
+
+    model: str | None = Field(
+        default=None,
+        description="Modèle Realtime à utiliser (optionnel).",
+    )
+    instructions: str | None = Field(
+        default=None,
+        description="Instructions transmises à l'agent vocal (optionnel).",
+    )
+    voice: str | None = Field(
+        default=None,
+        description="Identifiant de la voix souhaitée (optionnel).",
+    )
+
+
+class VoiceSessionResponse(BaseModel):
+    """Réponse renvoyée après création d'une session vocale Realtime."""
+
+    client_secret: dict[str, Any]
+    expires_at: str | None = None
+    model: str
+    instructions: str
+    voice: str
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str

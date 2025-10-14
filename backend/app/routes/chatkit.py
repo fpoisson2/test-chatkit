@@ -17,10 +17,12 @@ except ModuleNotFoundError:  # pragma: no cover - utilisé uniquement quand Chat
 if TYPE_CHECKING:  # pragma: no cover - uniquement pour l'auto-complétion
     from ..chatkit import ChatKitRequestContext
 
+from ..chatkit_realtime import create_realtime_voice_session
 from ..chatkit_sessions import create_chatkit_session, proxy_chatkit_request
+from ..config import get_settings
 from ..dependencies import get_current_user
 from ..models import User
-from ..schemas import SessionRequest
+from ..schemas import SessionRequest, VoiceSessionRequest, VoiceSessionResponse
 
 router = APIRouter()
 
@@ -46,6 +48,48 @@ async def create_session(
         "client_secret": client_secret,
         "expires_after": session_payload.get("expires_after"),
     }
+
+
+@router.post(
+    "/api/chatkit/voice/session",
+    response_model=VoiceSessionResponse,
+)
+async def create_voice_session(
+    req: VoiceSessionRequest,
+    current_user: User = Depends(get_current_user),
+):
+    settings = get_settings()
+    resolved_model = req.model or settings.chatkit_realtime_model
+    resolved_instructions = req.instructions or settings.chatkit_realtime_instructions
+    resolved_voice = req.voice or settings.chatkit_realtime_voice
+    user_id = f"user:{current_user.id}"
+
+    secret_payload = await create_realtime_voice_session(
+        user_id=user_id,
+        model=resolved_model,
+        instructions=resolved_instructions,
+        voice=resolved_voice,
+    )
+
+    client_secret = secret_payload.get("client_secret")
+    if not client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "ChatKit Realtime response missing client_secret",
+                "details": secret_payload,
+            },
+        )
+
+    expires_at = secret_payload.get("expires_at") or secret_payload.get("expires_after")
+
+    return VoiceSessionResponse(
+        client_secret=client_secret,
+        expires_at=expires_at,
+        model=resolved_model,
+        instructions=resolved_instructions,
+        voice=resolved_voice,
+    )
 
 
 @router.api_route(
