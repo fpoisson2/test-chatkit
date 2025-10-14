@@ -5,11 +5,11 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ..database import SessionLocal
-from ..models import WorkflowDefinition, WorkflowStep, WorkflowTransition
+from ..models import Workflow, WorkflowDefinition, WorkflowStep, WorkflowTransition
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +218,32 @@ DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
     ],
 }
 
-DEFAULT_WORKFLOW_NAME = "workflow-par-defaut"
+MINIMAL_WORKFLOW_GRAPH: dict[str, Any] = {
+    "nodes": [
+        {
+            "slug": "start",
+            "kind": "start",
+            "display_name": "Début",
+            "is_enabled": True,
+            "parameters": {},
+            "metadata": {"position": {"x": 0, "y": 0}},
+        },
+        {
+            "slug": "end",
+            "kind": "end",
+            "display_name": "Fin",
+            "is_enabled": True,
+            "parameters": {},
+            "metadata": {"position": {"x": 320, "y": 0}},
+        },
+    ],
+    "edges": [
+        {"source": "start", "target": "end", "metadata": {"label": ""}},
+    ],
+}
+
+DEFAULT_WORKFLOW_SLUG = "workflow-par-defaut"
+DEFAULT_WORKFLOW_DISPLAY_NAME = "Workflow par défaut"
 
 
 @dataclass(slots=True, frozen=True)
@@ -248,6 +273,23 @@ class WorkflowValidationError(ValueError):
         self.message = message
 
 
+class WorkflowNotFoundError(LookupError):
+    """Signale qu'un workflow n'a pas pu être localisé."""
+
+    def __init__(self, workflow_id: int) -> None:
+        super().__init__(f"Workflow introuvable ({workflow_id})")
+        self.workflow_id = workflow_id
+
+
+class WorkflowVersionNotFoundError(LookupError):
+    """Signale qu'une version de workflow est introuvable."""
+
+    def __init__(self, workflow_id: int, version_id: int) -> None:
+        super().__init__(f"Version {version_id} introuvable pour le workflow {workflow_id}")
+        self.workflow_id = workflow_id
+        self.version_id = version_id
+
+
 class WorkflowService:
     """Gestionnaire de persistance pour la configuration du workflow."""
 
@@ -271,22 +313,137 @@ class WorkflowService:
             return session, False
         return self._session_factory(), True
 
+    def _get_or_create_default_workflow(self, session: Session) -> Workflow:
+        workflow = session.scalar(
+            select(Workflow).where(Workflow.slug == DEFAULT_WORKFLOW_SLUG)
+        )
+        if workflow is None:
+            existing = session.scalar(select(Workflow).order_by(Workflow.created_at.asc()))
+            if existing is not None:
+                workflow = existing
+                workflow.slug = DEFAULT_WORKFLOW_SLUG
+                if not workflow.display_name:
+                    workflow.display_name = DEFAULT_WORKFLOW_DISPLAY_NAME
+                session.flush()
+            else:
+                workflow = Workflow(slug=DEFAULT_WORKFLOW_SLUG, display_name=DEFAULT_WORKFLOW_DISPLAY_NAME)
+                session.add(workflow)
+                session.flush()
+        return workflow
+
+    def _ensure_default_workflow(self, session: Session) -> Workflow:
+        workflow = self._get_or_create_default_workflow(session)
+        definition = self._load_active_definition(workflow, session)
+        if definition is None:
+            self._create_default_definition(session, workflow)
+        return workflow
+
+    def _load_active_definition(self, workflow: Workflow, session: Session) -> WorkflowDefinition | None:
+        definition = session.scalar(
+            select(WorkflowDefinition)
+                .where(
+                    WorkflowDefinition.workflow_id == workflow.id,
+                    WorkflowDefinition.is_active.is_(True),
+                )
+                .order_by(WorkflowDefinition.updated_at.desc())
+        )
+        if definition is not None:
+            return definition
+        return session.scalar(
+            select(WorkflowDefinition)
+            .where(WorkflowDefinition.workflow_id == workflow.id)
+            .order_by(WorkflowDefinition.updated_at.desc())
+        )
+
+    def _get_next_version(self, workflow: Workflow, session: Session) -> int:
+        current = session.scalar(
+            select(func.max(WorkflowDefinition.version)).where(
+                WorkflowDefinition.workflow_id == workflow.id
+            )
+        )
+        return int(current or 0) + 1
+
+    def _set_active_definition(
+        self, workflow: Workflow, definition: WorkflowDefinition, session: Session
+    ) -> None:
+        session.execute(
+            update(WorkflowDefinition)
+            .where(
+                WorkflowDefinition.workflow_id == workflow.id,
+                WorkflowDefinition.id != definition.id,
+            )
+            .values(is_active=False)
+        )
+        definition.is_active = True
+        workflow.active_version_id = definition.id
+        session.flush()
+
+    def _create_definition_from_graph(
+        self,
+        *,
+        workflow: Workflow,
+        nodes: list[NormalizedNode],
+        edges: list[NormalizedEdge],
+        session: Session,
+        name: str | None = None,
+        mark_active: bool = False,
+    ) -> WorkflowDefinition:
+        version_number = self._get_next_version(workflow, session)
+        definition = WorkflowDefinition(
+            workflow=workflow,
+            name=name or f"v{version_number}",
+            version=version_number,
+            is_active=False,
+        )
+        session.add(definition)
+        session.flush()
+
+        slug_to_step: dict[str, WorkflowStep] = {}
+        for index, node in enumerate(nodes, start=1):
+            step = WorkflowStep(
+                slug=node.slug,
+                kind=node.kind,
+                display_name=node.display_name,
+                agent_key=node.agent_key,
+                position=index,
+                is_enabled=node.is_enabled,
+                parameters=dict(node.parameters),
+                ui_metadata=dict(node.metadata),
+            )
+            definition.steps.append(step)
+            slug_to_step[node.slug] = step
+
+        for edge in edges:
+            definition.transitions.append(
+                WorkflowTransition(
+                    source_step=slug_to_step[edge.source_slug],
+                    target_step=slug_to_step[edge.target_slug],
+                    condition=edge.condition,
+                    ui_metadata=dict(edge.metadata),
+                )
+            )
+
+        session.flush()
+        if mark_active:
+            self._set_active_definition(workflow, definition, session)
+
+        return definition
+
     def get_current(self, session: Session | None = None) -> WorkflowDefinition:
         db, owns_session = self._get_session(session)
         try:
-            definition = db.scalar(
-                select(WorkflowDefinition)
-                .where(WorkflowDefinition.is_active.is_(True))
-                .order_by(WorkflowDefinition.updated_at.desc())
-            )
+            workflow = self._get_or_create_default_workflow(db)
+            definition = self._load_active_definition(workflow, db)
             if definition is None:
-                definition = self._create_default_definition(db)
+                definition = self._create_default_definition(db, workflow)
             definition = self._fully_load_definition(definition)
             if self._needs_graph_backfill(definition):
                 logger.info(
                     "Legacy workflow detected, backfilling default graph with existing agent configuration",
                 )
                 definition = self._backfill_legacy_definition(definition, db)
+                self._set_active_definition(workflow, definition, db)
+                db.commit()
             return definition
         finally:
             if owns_session:
@@ -300,41 +457,15 @@ class WorkflowService:
     ) -> WorkflowDefinition:
         db, owns_session = self._get_session(session)
         try:
-            definition = self.get_current(db)
             normalized_nodes, normalized_edges = self._normalize_graph(graph_payload)
-            definition.transitions.clear()
-            definition.steps.clear()
-            db.flush()
-
-            slug_to_step: dict[str, WorkflowStep] = {}
-            for index, node in enumerate(normalized_nodes, start=1):
-                step = WorkflowStep(
-                    slug=node.slug,
-                    kind=node.kind,
-                    display_name=node.display_name,
-                    agent_key=node.agent_key,
-                    position=index,
-                    is_enabled=node.is_enabled,
-                    parameters=node.parameters,
-                    ui_metadata=node.metadata,
-                )
-                definition.steps.append(step)
-                slug_to_step[node.slug] = step
-
-            for edge in normalized_edges:
-                source = slug_to_step[edge.source_slug]
-                target = slug_to_step[edge.target_slug]
-                definition.transitions.append(
-                    WorkflowTransition(
-                        source_step=source,
-                        target_step=target,
-                        condition=edge.condition,
-                        ui_metadata=edge.metadata,
-                    )
-                )
-
-            definition.updated_at = datetime.datetime.now(datetime.UTC)
-            db.add(definition)
+            workflow = self._get_or_create_default_workflow(db)
+            definition = self._create_definition_from_graph(
+                workflow=workflow,
+                nodes=normalized_nodes,
+                edges=normalized_edges,
+                session=db,
+                mark_active=True,
+            )
             db.commit()
             db.refresh(definition)
             return self._fully_load_definition(definition)
@@ -342,39 +473,196 @@ class WorkflowService:
             if owns_session:
                 db.close()
 
-    def _create_default_definition(self, session: Session) -> WorkflowDefinition:
-        definition = WorkflowDefinition(name=DEFAULT_WORKFLOW_NAME, is_active=True)
-        session.add(definition)
-        session.flush()
+    def _create_default_definition(self, session: Session, workflow: Workflow) -> WorkflowDefinition:
         nodes, edges = self._normalize_graph(DEFAULT_WORKFLOW_GRAPH)
-        slug_to_step: dict[str, WorkflowStep] = {}
-        for index, node in enumerate(nodes, start=1):
-            step = WorkflowStep(
-                slug=node.slug,
-                kind=node.kind,
-                display_name=node.display_name,
-                agent_key=node.agent_key,
-                position=index,
-                is_enabled=node.is_enabled,
-                parameters=node.parameters,
-                ui_metadata=node.metadata,
-            )
-            definition.steps.append(step)
-            slug_to_step[node.slug] = step
-
-        for edge in edges:
-            definition.transitions.append(
-                WorkflowTransition(
-                    source_step=slug_to_step[edge.source_slug],
-                    target_step=slug_to_step[edge.target_slug],
-                    condition=edge.condition,
-                    ui_metadata=edge.metadata,
-                )
-            )
-
+        definition = self._create_definition_from_graph(
+            workflow=workflow,
+            nodes=nodes,
+            edges=edges,
+            session=session,
+            name="Version initiale",
+            mark_active=True,
+        )
         session.commit()
         session.refresh(definition)
         return self._fully_load_definition(definition)
+
+    def list_workflows(self, session: Session | None = None) -> list[Workflow]:
+        db, owns_session = self._get_session(session)
+        try:
+            self._ensure_default_workflow(db)
+            workflows = db.scalars(select(Workflow).order_by(Workflow.created_at.asc())).all()
+            for workflow in workflows:
+                workflow.versions  # force le chargement des versions
+            return workflows
+        finally:
+            if owns_session:
+                db.close()
+
+    def get_workflow(self, workflow_id: int, session: Session | None = None) -> Workflow:
+        db, owns_session = self._get_session(session)
+        try:
+            workflow = db.get(Workflow, workflow_id)
+            if workflow is None:
+                raise WorkflowNotFoundError(workflow_id)
+            workflow.versions
+            return workflow
+        finally:
+            if owns_session:
+                db.close()
+
+    def list_versions(
+        self, workflow_id: int, session: Session | None = None
+    ) -> list[WorkflowDefinition]:
+        db, owns_session = self._get_session(session)
+        try:
+            workflow = db.get(Workflow, workflow_id)
+            if workflow is None:
+                raise WorkflowNotFoundError(workflow_id)
+            definitions = db.scalars(
+                select(WorkflowDefinition)
+                .where(WorkflowDefinition.workflow_id == workflow_id)
+                .order_by(WorkflowDefinition.version.desc())
+            ).all()
+            for definition in definitions:
+                definition.steps
+            return definitions
+        finally:
+            if owns_session:
+                db.close()
+
+    def get_version(
+        self, workflow_id: int, version_id: int, session: Session | None = None
+    ) -> WorkflowDefinition:
+        db, owns_session = self._get_session(session)
+        try:
+            definition = db.scalar(
+                select(WorkflowDefinition)
+                .where(
+                    WorkflowDefinition.workflow_id == workflow_id,
+                    WorkflowDefinition.id == version_id,
+                )
+            )
+            if definition is None:
+                raise WorkflowVersionNotFoundError(workflow_id, version_id)
+            return self._fully_load_definition(definition)
+        finally:
+            if owns_session:
+                db.close()
+
+    def create_workflow(
+        self,
+        *,
+        slug: str,
+        display_name: str,
+        description: str | None = None,
+        graph_payload: dict[str, Any] | None = None,
+        session: Session | None = None,
+    ) -> WorkflowDefinition:
+        db, owns_session = self._get_session(session)
+        try:
+            existing = db.scalar(select(Workflow).where(Workflow.slug == slug))
+            if existing is not None:
+                raise WorkflowValidationError("Un workflow avec ce slug existe déjà.")
+            workflow = Workflow(slug=slug, display_name=display_name, description=description)
+            db.add(workflow)
+            db.flush()
+
+            nodes, edges = self._normalize_graph(graph_payload, allow_empty=True)
+
+            mark_active = bool(graph_payload and (graph_payload.get("nodes") or []))
+
+            definition = self._create_definition_from_graph(
+                workflow=workflow,
+                nodes=nodes,
+                edges=edges,
+                session=db,
+                name="Version initiale",
+                mark_active=mark_active,
+            )
+            db.commit()
+            db.refresh(definition)
+            return self._fully_load_definition(definition)
+        finally:
+            if owns_session:
+                db.close()
+
+    def delete_workflow(
+        self, workflow_id: int, *, session: Session | None = None
+    ) -> None:
+        db, owns_session = self._get_session(session)
+        try:
+            workflow = db.get(Workflow, workflow_id)
+            if workflow is None:
+                raise WorkflowNotFoundError(workflow_id)
+            if workflow.slug == DEFAULT_WORKFLOW_SLUG:
+                raise WorkflowValidationError(
+                    "Le workflow par défaut ne peut pas être supprimé."
+                )
+            db.delete(workflow)
+            db.commit()
+        finally:
+            if owns_session:
+                db.close()
+
+    def create_version(
+        self,
+        workflow_id: int,
+        graph_payload: dict[str, Any],
+        *,
+        name: str | None = None,
+        mark_as_active: bool = False,
+        session: Session | None = None,
+    ) -> WorkflowDefinition:
+        db, owns_session = self._get_session(session)
+        try:
+            workflow = db.get(Workflow, workflow_id)
+            if workflow is None:
+                raise WorkflowNotFoundError(workflow_id)
+            nodes, edges = self._normalize_graph(graph_payload)
+            definition = self._create_definition_from_graph(
+                workflow=workflow,
+                nodes=nodes,
+                edges=edges,
+                session=db,
+                name=name,
+                mark_active=mark_as_active,
+            )
+            db.commit()
+            db.refresh(definition)
+            return self._fully_load_definition(definition)
+        finally:
+            if owns_session:
+                db.close()
+
+    def set_production_version(
+        self,
+        workflow_id: int,
+        version_id: int,
+        *,
+        session: Session | None = None,
+    ) -> WorkflowDefinition:
+        db, owns_session = self._get_session(session)
+        try:
+            definition = db.scalar(
+                select(WorkflowDefinition)
+                .where(
+                    WorkflowDefinition.workflow_id == workflow_id,
+                    WorkflowDefinition.id == version_id,
+                )
+            )
+            if definition is None:
+                raise WorkflowVersionNotFoundError(workflow_id, version_id)
+            workflow = definition.workflow or db.get(Workflow, workflow_id)
+            if workflow is None:
+                raise WorkflowNotFoundError(workflow_id)
+            self._set_active_definition(workflow, definition, db)
+            db.commit()
+            db.refresh(definition)
+            return self._fully_load_definition(definition)
+        finally:
+            if owns_session:
+                db.close()
 
     def _needs_graph_backfill(self, definition: WorkflowDefinition) -> bool:
         has_start = any(step.kind == "start" for step in definition.steps)
@@ -452,14 +740,25 @@ class WorkflowService:
         return self._fully_load_definition(definition)
 
     def _normalize_graph(
-        self, payload: dict[str, Any] | None
+        self,
+        payload: dict[str, Any] | None,
+        *,
+        allow_empty: bool = False,
     ) -> tuple[list[NormalizedNode], list[NormalizedEdge]]:
         if not payload:
+            if allow_empty:
+                return self._build_minimal_graph()
             raise WorkflowValidationError("Le workflow doit contenir un graphe valide.")
 
         raw_nodes = payload.get("nodes") or []
         raw_edges = payload.get("edges") or []
         if not raw_nodes:
+            if allow_empty:
+                if raw_edges:
+                    raise WorkflowValidationError(
+                        "Impossible de définir des connexions sans nœuds."
+                    )
+                return self._build_minimal_graph()
             raise WorkflowValidationError("Le workflow doit contenir au moins un nœud.")
 
         normalized_nodes: list[NormalizedNode] = []
@@ -525,11 +824,6 @@ class WorkflowService:
             raise WorkflowValidationError("Le workflow doit contenir un nœud de début actif.")
         if not any(node.kind == "end" and node.is_enabled for node in normalized_nodes):
             raise WorkflowValidationError("Le workflow doit contenir un nœud de fin actif.")
-        if not enabled_agent_slugs:
-            raise WorkflowValidationError("Au moins un agent doit être actif dans le workflow.")
-        if "r_dacteur" not in enabled_agent_keys:
-            raise WorkflowValidationError("Le workflow doit contenir une étape r_dacteur active.")
-
         normalized_edges: list[NormalizedEdge] = []
         for entry in raw_edges:
             if not isinstance(entry, dict):
@@ -559,8 +853,65 @@ class WorkflowService:
                 )
             )
 
+        minimal_skeleton = self._is_minimal_skeleton(normalized_nodes, normalized_edges)
+        if not enabled_agent_slugs and not (allow_empty or minimal_skeleton):
+            raise WorkflowValidationError("Au moins un agent doit être actif dans le workflow.")
+        # Les anciens workflows imposaient la présence d'un rédacteur final, mais la
+        # bibliothèque permet désormais de créer des workflows plus simples.
+        # Nous conservons uniquement la vérification d'au moins un agent actif.
+
         self._validate_graph_structure(normalized_nodes, normalized_edges)
         return normalized_nodes, normalized_edges
+
+    def _build_minimal_graph(self) -> tuple[list[NormalizedNode], list[NormalizedEdge]]:
+        nodes = [
+            NormalizedNode(
+                slug=str(entry["slug"]),
+                kind=str(entry["kind"]),
+                display_name=str(entry.get("display_name") or "") or None,
+                agent_key=None,
+                is_enabled=bool(entry.get("is_enabled", True)),
+                parameters=dict(entry.get("parameters") or {}),
+                metadata=dict(entry.get("metadata") or {}),
+            )
+            for entry in MINIMAL_WORKFLOW_GRAPH["nodes"]
+        ]
+        edges = [
+            NormalizedEdge(
+                source_slug=str(entry.get("source", "")),
+                target_slug=str(entry.get("target", "")),
+                condition=None,
+                metadata=dict(entry.get("metadata") or {}),
+            )
+            for entry in MINIMAL_WORKFLOW_GRAPH["edges"]
+        ]
+        return nodes, edges
+
+    def _is_minimal_skeleton(
+        self,
+        nodes: Iterable[NormalizedNode],
+        edges: Iterable[NormalizedEdge],
+    ) -> bool:
+        enabled_nodes = [node for node in nodes if node.is_enabled]
+        if not enabled_nodes:
+            return False
+
+        start_nodes = [node for node in enabled_nodes if node.kind == "start"]
+        end_nodes = [node for node in enabled_nodes if node.kind == "end"]
+        if len(start_nodes) != 1 or len(end_nodes) != 1:
+            return False
+
+        # Autorise uniquement le couple Début / Fin comme nœuds actifs.
+        if len(enabled_nodes) > 2:
+            return False
+
+        start_slug = start_nodes[0].slug
+        end_slug = end_nodes[0].slug
+
+        for edge in edges:
+            if edge.source_slug == start_slug and edge.target_slug == end_slug:
+                return True
+        return False
 
     def _ensure_dict(self, value: Any, label: str) -> dict[str, Any]:
         if value is None:
@@ -685,10 +1036,41 @@ def serialize_definition(definition: WorkflowDefinition) -> dict[str, Any]:
 
     return {
         "id": definition.id,
+        "workflow_id": definition.workflow_id,
+        "workflow_slug": definition.workflow.slug if definition.workflow else None,
+        "workflow_display_name": definition.workflow.display_name if definition.workflow else None,
         "name": definition.name,
+        "version": definition.version,
         "is_active": definition.is_active,
         "created_at": definition.created_at,
         "updated_at": definition.updated_at,
         "steps": agent_steps,
         "graph": {"nodes": nodes_payload, "edges": edges_payload},
+    }
+
+
+def serialize_workflow_summary(workflow: Workflow) -> dict[str, Any]:
+    active_version = workflow.active_version
+    return {
+        "id": workflow.id,
+        "slug": workflow.slug,
+        "display_name": workflow.display_name,
+        "description": workflow.description,
+        "created_at": workflow.created_at,
+        "updated_at": workflow.updated_at,
+        "active_version_id": workflow.active_version_id,
+        "active_version_number": active_version.version if active_version else None,
+        "versions_count": len(workflow.versions),
+    }
+
+
+def serialize_version_summary(definition: WorkflowDefinition) -> dict[str, Any]:
+    return {
+        "id": definition.id,
+        "workflow_id": definition.workflow_id,
+        "name": definition.name,
+        "version": definition.version,
+        "is_active": definition.is_active,
+        "created_at": definition.created_at,
+        "updated_at": definition.updated_at,
     }

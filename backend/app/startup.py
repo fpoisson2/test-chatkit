@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import logging
 from typing import Any
 
@@ -186,6 +187,221 @@ def _run_ad_hoc_migrations() -> None:
                         f"NOT NULL DEFAULT {json_default}"
                     )
                 )
+
+        if "workflow_definitions" in table_names:
+            dialect = connection.dialect.name
+
+            def _refresh_definition_columns() -> set[str]:
+                return {
+                    column["name"]
+                    for column in inspect(connection).get_columns("workflow_definitions")
+                }
+
+            definition_columns = _refresh_definition_columns()
+
+            if "workflow_id" not in definition_columns:
+                logger.info(
+                    "Migration du schéma des workflows : ajout de la colonne workflow_id et rétro-portage des données"
+                )
+
+                if "workflows" not in table_names:
+                    logger.info("Création de la table workflows manquante")
+                    Workflow.__table__.create(bind=connection)
+                    table_names.add("workflows")
+
+                connection.execute(
+                    text("ALTER TABLE workflow_definitions ADD COLUMN workflow_id INTEGER")
+                )
+                definition_columns = _refresh_definition_columns()
+
+                timestamp = datetime.datetime.now(datetime.UTC)
+                default_slug = "workflow-par-defaut"
+                default_display_name = "Workflow par défaut"
+
+                workflow_row = connection.execute(
+                    text("SELECT id FROM workflows WHERE slug = :slug"),
+                    {"slug": default_slug},
+                ).first()
+
+                if workflow_row is None:
+                    connection.execute(
+                        Workflow.__table__.insert(),
+                        {
+                            "slug": default_slug,
+                            "display_name": default_display_name,
+                            "description": None,
+                            "active_version_id": None,
+                            "created_at": timestamp,
+                            "updated_at": timestamp,
+                        },
+                    )
+                    workflow_row = connection.execute(
+                        text("SELECT id FROM workflows WHERE slug = :slug"),
+                        {"slug": default_slug},
+                    ).first()
+
+                if workflow_row is None:
+                    raise RuntimeError("Impossible de créer le workflow par défaut pour la migration")
+
+                workflow_id = workflow_row.id
+
+                connection.execute(
+                    text("UPDATE workflow_definitions SET workflow_id = :workflow_id"),
+                    {"workflow_id": workflow_id},
+                )
+
+                active_definition = connection.execute(
+                    text(
+                        "SELECT id FROM workflow_definitions "
+                        "WHERE is_active IS TRUE "
+                        "ORDER BY updated_at DESC LIMIT 1"
+                    )
+                ).first()
+
+                if active_definition is None:
+                    active_definition = connection.execute(
+                        text(
+                            "SELECT id FROM workflow_definitions "
+                            "ORDER BY updated_at DESC LIMIT 1"
+                        )
+                    ).first()
+
+                if active_definition is not None:
+                    connection.execute(
+                        text(
+                            "UPDATE workflows SET active_version_id = :definition_id "
+                            "WHERE id = :workflow_id"
+                        ),
+                        {"definition_id": active_definition.id, "workflow_id": workflow_id},
+                    )
+
+                if dialect == "postgresql":
+                    connection.execute(
+                        text(
+                            "ALTER TABLE workflow_definitions ALTER COLUMN workflow_id SET NOT NULL"
+                        )
+                    )
+                    connection.execute(
+                        text(
+                            "ALTER TABLE workflow_definitions "
+                            "ADD CONSTRAINT workflow_definitions_workflow_id_fkey "
+                            "FOREIGN KEY (workflow_id) REFERENCES workflows (id) ON DELETE CASCADE"
+                        )
+                    )
+                    connection.execute(
+                        text(
+                            "CREATE INDEX IF NOT EXISTS ix_workflow_definitions_workflow_id "
+                            "ON workflow_definitions (workflow_id)"
+                        )
+                    )
+                else:
+                    logger.warning(
+                        "La contrainte NOT NULL/FOREIGN KEY sur workflow_definitions.workflow_id n'a pas pu être ajoutée pour le dialecte %s",
+                        dialect,
+                    )
+
+            definition_columns = _refresh_definition_columns()
+
+            if "name" not in definition_columns:
+                connection.execute(
+                    text("ALTER TABLE workflow_definitions ADD COLUMN name VARCHAR(128)")
+                )
+                definition_columns = _refresh_definition_columns()
+
+            if "version" not in definition_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflow_definitions "
+                        "ADD COLUMN version INTEGER NOT NULL DEFAULT 1"
+                    )
+                )
+                definition_columns = _refresh_definition_columns()
+
+            if "is_active" not in definition_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflow_definitions "
+                        "ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE"
+                    )
+                )
+                definition_columns = _refresh_definition_columns()
+
+            datetime_type = "TIMESTAMPTZ" if dialect == "postgresql" else "DATETIME"
+            current_ts = "CURRENT_TIMESTAMP"
+
+            if "created_at" not in definition_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflow_definitions "
+                        f"ADD COLUMN created_at {datetime_type} NOT NULL DEFAULT {current_ts}"
+                    )
+                )
+                definition_columns = _refresh_definition_columns()
+
+            if "updated_at" not in definition_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflow_definitions "
+                        f"ADD COLUMN updated_at {datetime_type} NOT NULL DEFAULT {current_ts}"
+                    )
+                )
+
+            inspector = inspect(connection)
+            unique_constraints = {
+                constraint["name"]
+                for constraint in inspector.get_unique_constraints("workflow_definitions")
+            }
+            indexes = {
+                index["name"]
+                for index in inspector.get_indexes("workflow_definitions")
+                if index.get("name")
+            }
+
+            if "workflow_definitions_name_key" in unique_constraints:
+                connection.execute(
+                    text("ALTER TABLE workflow_definitions DROP CONSTRAINT workflow_definitions_name_key")
+                )
+                unique_constraints.discard("workflow_definitions_name_key")
+            elif "workflow_definitions_name_key" in indexes:
+                connection.execute(
+                    text("DROP INDEX IF EXISTS workflow_definitions_name_key")
+                )
+                indexes.discard("workflow_definitions_name_key")
+
+            if dialect == "postgresql":
+                if "workflow_definitions_workflow_version" not in unique_constraints:
+                    connection.execute(
+                        text(
+                            "ALTER TABLE workflow_definitions "
+                            "ADD CONSTRAINT workflow_definitions_workflow_version "
+                            "UNIQUE (workflow_id, version)"
+                        )
+                    )
+                if "workflow_definitions_workflow_name" not in unique_constraints:
+                    connection.execute(
+                        text(
+                            "ALTER TABLE workflow_definitions "
+                            "ADD CONSTRAINT workflow_definitions_workflow_name "
+                            "UNIQUE (workflow_id, name)"
+                        )
+                    )
+            else:
+                if "workflow_definitions_workflow_version" not in indexes:
+                    connection.execute(
+                        text(
+                            "CREATE UNIQUE INDEX IF NOT EXISTS "
+                            "workflow_definitions_workflow_version "
+                            "ON workflow_definitions (workflow_id, version)"
+                        )
+                    )
+                if "workflow_definitions_workflow_name" not in indexes:
+                    connection.execute(
+                        text(
+                            "CREATE UNIQUE INDEX IF NOT EXISTS "
+                            "workflow_definitions_workflow_name "
+                            "ON workflow_definitions (workflow_id, name)"
+                        )
+                    )
 
 
 def register_startup_events(app: FastAPI) -> None:
