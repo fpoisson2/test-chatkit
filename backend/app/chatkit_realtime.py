@@ -24,7 +24,7 @@ async def create_realtime_voice_session(
     settings = get_settings()
     payload = {
         "session": {
-            "type": "voice",
+            "type": "realtime",
             "instructions": instructions,
             "model": model,
             "voice": voice,
