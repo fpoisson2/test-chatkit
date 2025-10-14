@@ -24,12 +24,17 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 
 import { useAuth } from "../auth";
-import { makeApiEndpointCandidates } from "../utils/backend";
+import {
+  makeApiEndpointCandidates,
+  vectorStoreApi,
+  type VectorStoreSummary,
+} from "../utils/backend";
 import { resolveAgentParameters, resolveStateParameters } from "../utils/agentPresets";
 import {
   getAgentMessage,
   getAgentModel,
   getAgentReasoningEffort,
+  getAgentFileSearchConfig,
   getAgentResponseFormat,
   getAgentTemperature,
   getAgentTopP,
@@ -39,6 +44,7 @@ import {
   setAgentMessage,
   setAgentModel,
   setAgentReasoningEffort,
+  setAgentFileSearchConfig,
   setAgentResponseFormatKind,
   setAgentResponseFormatName,
   setAgentResponseFormatSchema,
@@ -48,6 +54,7 @@ import {
   getStateAssignments,
   stringifyAgentParameters,
   type AgentParameters,
+  type FileSearchConfig,
   type WebSearchConfig,
   type StateAssignment,
   type StateAssignmentScope,
@@ -233,6 +240,9 @@ const WorkflowBuilderPage = () => {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [publishOnSave, setPublishOnSave] = useState(false);
+  const [vectorStores, setVectorStores] = useState<VectorStoreSummary[]>([]);
+  const [vectorStoresLoading, setVectorStoresLoading] = useState(false);
+  const [vectorStoresError, setVectorStoresError] = useState<string | null>(null);
 
   const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
   const selectedWorkflow = useMemo(
@@ -244,6 +254,48 @@ const WorkflowBuilderPage = () => {
     () => versions.find((version) => version.id === selectedVersionId) ?? null,
     [selectedVersionId, versions],
   );
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!token) {
+      setVectorStores([]);
+      setVectorStoresLoading(false);
+      setVectorStoresError(null);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    setVectorStoresLoading(true);
+    setVectorStoresError(null);
+    vectorStoreApi
+      .listStores(token)
+      .then((stores) => {
+        if (isMounted) {
+          setVectorStores(stores);
+        }
+      })
+      .catch((error) => {
+        if (!isMounted) {
+          return;
+        }
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Impossible de charger les vector stores.";
+        setVectorStoresError(message);
+        setVectorStores([]);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setVectorStoresLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
 
   const loadVersionDetail = useCallback(
     async (workflowId: number, versionId: number): Promise<boolean> => {
@@ -770,6 +822,24 @@ const WorkflowBuilderPage = () => {
       });
     },
     [updateNodeData]
+  );
+
+  const handleAgentFileSearchChange = useCallback(
+    (nodeId: string, config: FileSearchConfig | null) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentFileSearchConfig(data.parameters, config);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
   );
 
   const handleStateAssignmentsChange = useCallback(
@@ -1526,6 +1596,10 @@ const WorkflowBuilderPage = () => {
                   onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
                   onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
                   onAgentWebSearchChange={handleAgentWebSearchChange}
+                  onAgentFileSearchChange={handleAgentFileSearchChange}
+                  vectorStores={vectorStores}
+                  vectorStoresLoading={vectorStoresLoading}
+                  vectorStoresError={vectorStoresError}
                   onStateAssignmentsChange={handleStateAssignmentsChange}
                   onParametersChange={handleParametersChange}
                   onRemove={handleRemoveNode}
@@ -1592,6 +1666,10 @@ type NodeInspectorProps = {
   onAgentResponseFormatNameChange: (nodeId: string, value: string) => void;
   onAgentResponseFormatSchemaChange: (nodeId: string, schema: unknown) => void;
   onAgentWebSearchChange: (nodeId: string, config: WebSearchConfig | null) => void;
+  onAgentFileSearchChange: (nodeId: string, config: FileSearchConfig | null) => void;
+  vectorStores: VectorStoreSummary[];
+  vectorStoresLoading: boolean;
+  vectorStoresError: string | null;
   onStateAssignmentsChange: (
     nodeId: string,
     scope: StateAssignmentScope,
@@ -1615,6 +1693,10 @@ const NodeInspector = ({
   onAgentResponseFormatNameChange,
   onAgentResponseFormatSchemaChange,
   onAgentWebSearchChange,
+  onAgentFileSearchChange,
+  vectorStores,
+  vectorStoresLoading,
+  vectorStoresError,
   onStateAssignmentsChange,
   onParametersChange,
   onRemove,
@@ -1630,6 +1712,9 @@ const NodeInspector = ({
   const topP = getAgentTopP(parameters);
   const webSearchConfig = getAgentWebSearchConfig(parameters);
   const webSearchEnabled = Boolean(webSearchConfig);
+  const fileSearchConfig = getAgentFileSearchConfig(parameters);
+  const fileSearchEnabled = Boolean(fileSearchConfig);
+  const selectedVectorStoreSlug = fileSearchConfig?.vector_store_slug ?? "";
   const globalAssignments = useMemo(
     () => getStateAssignments(parameters, "globals"),
     [parameters],
@@ -1917,6 +2002,65 @@ const NodeInspector = ({
                     );
                   })}
                 </div>
+              </>
+            )}
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={fileSearchEnabled}
+                onChange={(event) => {
+                  if (event.target.checked) {
+                    const preferredSlug =
+                      (fileSearchConfig?.vector_store_slug?.trim() ?? "") ||
+                      vectorStores[0]?.slug ||
+                      "";
+                    onAgentFileSearchChange(node.id, {
+                      vector_store_slug: preferredSlug,
+                    });
+                  } else {
+                    onAgentFileSearchChange(node.id, null);
+                  }
+                }}
+              />
+              Activer la recherche documentaire
+            </label>
+            {vectorStoresError ? (
+              <p style={{ color: "#b91c1c", margin: 0 }}>{vectorStoresError}</p>
+            ) : null}
+            {fileSearchEnabled && (
+              <>
+                {vectorStoresLoading ? (
+                  <p style={{ color: "#475569", margin: 0 }}>Chargement des vector stores…</p>
+                ) : vectorStores.length === 0 ? (
+                  <p style={{ color: "#475569", margin: 0 }}>
+                    Aucun vector store disponible. Créez-en un depuis l'onglet « Vector stores JSON
+                    ».
+                  </p>
+                ) : (
+                  <label style={fieldStyle}>
+                    <span>Vector store à interroger</span>
+                    <select
+                      value={selectedVectorStoreSlug}
+                      onChange={(event) =>
+                        onAgentFileSearchChange(node.id, {
+                          vector_store_slug: event.target.value,
+                        })
+                      }
+                    >
+                      <option value="">Sélectionnez un vector store…</option>
+                      {vectorStores.map((store) => (
+                        <option key={store.slug} value={store.slug}>
+                          {store.title?.trim()
+                            ? `${store.title} (${store.slug})`
+                            : store.slug}
+                        </option>
+                      ))}
+                    </select>
+                    <small style={{ color: "#475569" }}>
+                      Le document complet du résultat sera transmis à l'agent.
+                    </small>
+                  </label>
+                )}
               </>
             )}
           </div>

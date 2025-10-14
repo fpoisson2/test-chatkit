@@ -17,8 +17,13 @@ const makeApiEndpointCandidatesMock = vi.hoisted(() =>
   vi.fn<[string, string], string[]>(() => ["/api/workflows/current"]),
 );
 
+const listVectorStoresMock = vi.hoisted(() => vi.fn(async () => []));
+
 vi.mock("../../utils/backend", () => ({
   makeApiEndpointCandidates: makeApiEndpointCandidatesMock,
+  vectorStoreApi: {
+    listStores: listVectorStoresMock,
+  },
 }));
 
 describe("WorkflowBuilderPage", () => {
