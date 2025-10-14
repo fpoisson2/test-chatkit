@@ -19,6 +19,7 @@ const makeApiEndpointCandidatesMock = vi.hoisted(() =>
 
 const listVectorStoresMock = vi.hoisted(() => vi.fn(async () => []));
 const listModelsMock = vi.hoisted(() => vi.fn(async () => []));
+const listWidgetsMock = vi.hoisted(() => vi.fn(async () => []));
 
 vi.mock("../../utils/backend", () => ({
   makeApiEndpointCandidates: makeApiEndpointCandidatesMock,
@@ -27,6 +28,9 @@ vi.mock("../../utils/backend", () => ({
   },
   modelRegistryApi: {
     list: listModelsMock,
+  },
+  widgetLibraryApi: {
+    listWidgets: listWidgetsMock,
   },
 }));
 
@@ -205,9 +209,6 @@ describe("WorkflowBuilderPage", () => {
     expect(triageNode).not.toBeNull();
     fireEvent.click(triageNode!);
 
-    const agentSelect = await screen.findByLabelText(/agent chatkit/i);
-    expect(agentSelect).toHaveValue("triage");
-
     const displayNameInput = await screen.findByLabelText(/nom affiché/i);
     fireEvent.change(displayNameInput, { target: { value: "Analyse enrichie" } });
 
@@ -245,6 +246,7 @@ describe("WorkflowBuilderPage", () => {
     expect(rawParameters).toContain("Analyse les entrées et produis un résumé clair.");
 
     const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
+    expect(saveButton).not.toBeDisabled();
     fireEvent.click(saveButton);
 
     await waitFor(() => {
@@ -304,6 +306,7 @@ describe("WorkflowBuilderPage", () => {
     fireEvent.click(weatherCheckbox);
 
     const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
+    expect(saveButton).not.toBeDisabled();
     fireEvent.click(saveButton);
 
     await waitFor(() => {
@@ -341,15 +344,12 @@ describe("WorkflowBuilderPage", () => {
     expect(triageNode).not.toBeNull();
     fireEvent.click(triageNode!);
 
-    const agentSelect = await screen.findByLabelText(/agent chatkit/i);
-    expect(agentSelect).toHaveValue("triage");
-
     const messageTextarea = await screen.findByLabelText<HTMLTextAreaElement>(/message système/i);
     expect(messageTextarea.value).toContain(
       "Ton rôle : Vérifier si toutes les informations nécessaires sont présentes pour générer un plan-cadre.",
     );
 
-    const modelInput = await screen.findByLabelText(/modèle openai/i);
+    const modelInput = await screen.findByPlaceholderText(/ex\. gpt-4\.1-mini/i);
     expect(modelInput).toHaveValue("gpt-5");
 
     const reasoningSelect = await screen.findByLabelText(/niveau de raisonnement/i);
@@ -364,9 +364,6 @@ describe("WorkflowBuilderPage", () => {
     const writerNode = container.querySelector('[data-id="writer"]');
     expect(writerNode).not.toBeNull();
     fireEvent.click(writerNode!);
-
-    const writerAgentSelect = await screen.findByLabelText(/agent chatkit/i);
-    expect(writerAgentSelect).toHaveValue("r_dacteur");
 
     await waitFor(() => {
       expect(screen.queryByLabelText(/niveau de raisonnement/i)).toBeNull();
