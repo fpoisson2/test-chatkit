@@ -294,6 +294,52 @@ def _run_ad_hoc_migrations() -> None:
                         dialect,
                     )
 
+            definition_columns = _refresh_definition_columns()
+
+            if "name" not in definition_columns:
+                connection.execute(
+                    text("ALTER TABLE workflow_definitions ADD COLUMN name VARCHAR(128)")
+                )
+                definition_columns = _refresh_definition_columns()
+
+            if "version" not in definition_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflow_definitions "
+                        "ADD COLUMN version INTEGER NOT NULL DEFAULT 1"
+                    )
+                )
+                definition_columns = _refresh_definition_columns()
+
+            if "is_active" not in definition_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflow_definitions "
+                        "ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT TRUE"
+                    )
+                )
+                definition_columns = _refresh_definition_columns()
+
+            datetime_type = "TIMESTAMPTZ" if dialect == "postgresql" else "DATETIME"
+            current_ts = "CURRENT_TIMESTAMP"
+
+            if "created_at" not in definition_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflow_definitions "
+                        f"ADD COLUMN created_at {datetime_type} NOT NULL DEFAULT {current_ts}"
+                    )
+                )
+                definition_columns = _refresh_definition_columns()
+
+            if "updated_at" not in definition_columns:
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflow_definitions "
+                        f"ADD COLUMN updated_at {datetime_type} NOT NULL DEFAULT {current_ts}"
+                    )
+                )
+
 
 def register_startup_events(app: FastAPI) -> None:
     @app.on_event("startup")
