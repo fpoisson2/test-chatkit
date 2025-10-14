@@ -521,6 +521,24 @@ button {
   box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
 }
 
+.textarea {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  font-size: 0.95rem;
+  font-family: "JetBrains Mono", "Fira Code", "SFMono-Regular", ui-monospace, monospace;
+  resize: vertical;
+  min-height: 120px;
+  background-color: rgba(255, 255, 255, 0.95);
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: rgba(37, 99, 235, 0.6);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+}
+
 .alert {
   padding: 14px 16px;
   border-radius: 12px;
@@ -530,6 +548,11 @@ button {
 .alert--danger {
   background: rgba(254, 226, 226, 0.9);
   color: var(--danger-hover);
+}
+
+.alert--success {
+  background: rgba(187, 247, 208, 0.85);
+  color: #15803d;
 }
 
 .admin-shell {
@@ -549,6 +572,43 @@ button {
   align-items: center;
   gap: 12px;
   justify-content: space-between;
+}
+
+.admin-shell__toolbar--secondary {
+  justify-content: flex-start;
+}
+
+.admin-tabs {
+  display: inline-flex;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.05);
+  align-self: flex-start;
+}
+
+.admin-tabs__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.admin-tabs__link:hover,
+.admin-tabs__link:focus-visible {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--primary-hover);
+  text-decoration: none;
+}
+
+.admin-tabs__link--active {
+  background: var(--primary-color);
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.25);
 }
 
 .admin-shell__chips {
@@ -650,8 +710,134 @@ button {
 
 .admin-table__actions {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal__overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.modal__container {
+  position: relative;
+  z-index: 1;
+  width: min(720px, 94vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-strong);
+  border-radius: 24px;
+  box-shadow: var(--shadow-card);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  overflow: hidden;
+}
+
+.modal__container--sm {
+  width: min(420px, 90vw);
+}
+
+.modal__container--lg {
+  width: min(960px, 96vw);
+}
+
+.modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.modal__title {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.modal__close {
+  border: none;
+  background: transparent;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.modal__body {
+  padding: 24px;
+  overflow-y: auto;
+  display: grid;
+  gap: 18px;
+}
+
+.modal__footer {
+  padding: 18px 24px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.vector-store__steps {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 8px;
+  color: var(--text-muted);
+}
+
+.vector-store__snippet {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--text-muted);
+  max-width: 320px;
+}
+
+.vector-store__preview {
+  display: grid;
+  gap: 12px;
+}
+
+.code-block {
+  margin: 0;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #f8fafc;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  overflow-x: auto;
+}
+
+.accordion {
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  padding: 10px 14px;
+  background: rgba(15, 23, 42, 0.03);
+}
+
+.accordion > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.accordion[open] {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.25);
 }
 
 .settings-modal {
