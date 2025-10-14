@@ -86,6 +86,7 @@ class Workflow(Base):
     active_version_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("workflow_definitions.id", ondelete="SET NULL"), nullable=True
     )
+    is_chatkit_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

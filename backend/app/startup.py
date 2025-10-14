@@ -15,7 +15,7 @@ from .database import (
     engine,
     wait_for_database,
 )
-from .models import Base, User
+from .models import Base, User, Workflow
 from .security import hash_password
 
 logger = logging.getLogger("chatkit.server")
@@ -28,6 +28,35 @@ def _run_ad_hoc_migrations() -> None:
     with engine.begin() as connection:
         inspector = inspect(connection)
         table_names = set(inspector.get_table_names())
+        if "workflows" in table_names:
+            workflow_columns = {
+                column["name"]
+                for column in inspect(connection).get_columns("workflows")
+            }
+            if "is_chatkit_default" not in workflow_columns:
+                dialect = connection.dialect.name
+                logger.info(
+                    "Migration du schéma des workflows : ajout de la colonne is_chatkit_default"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflows "
+                        "ADD COLUMN is_chatkit_default BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
+                connection.execute(
+                    text(
+                        "UPDATE workflows SET is_chatkit_default = TRUE WHERE slug = :slug"
+                    ),
+                    {"slug": "workflow-par-defaut"},
+                )
+                if dialect == "postgresql":
+                    connection.execute(
+                        text(
+                            "ALTER TABLE workflows ALTER COLUMN is_chatkit_default SET DEFAULT FALSE"
+                        )
+                    )
+
         if "workflow_steps" in table_names:
             dialect = connection.dialect.name
 

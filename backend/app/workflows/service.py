@@ -336,6 +336,25 @@ class WorkflowService:
         definition = self._load_active_definition(workflow, session)
         if definition is None:
             self._create_default_definition(session, workflow)
+            session.commit()
+            session.refresh(workflow)
+
+        has_chatkit_default = session.scalar(
+            select(Workflow.id).where(Workflow.is_chatkit_default.is_(True))
+        )
+        if has_chatkit_default is None:
+            workflow.is_chatkit_default = True
+            session.add(workflow)
+            session.commit()
+            session.refresh(workflow)
+        return workflow
+
+    def _get_chatkit_workflow(self, session: Session) -> Workflow:
+        workflow = session.scalar(
+            select(Workflow).where(Workflow.is_chatkit_default.is_(True))
+        )
+        if workflow is None:
+            workflow = self._ensure_default_workflow(session)
         return workflow
 
     def _load_active_definition(self, workflow: Workflow, session: Session) -> WorkflowDefinition | None:
@@ -432,10 +451,12 @@ class WorkflowService:
     def get_current(self, session: Session | None = None) -> WorkflowDefinition:
         db, owns_session = self._get_session(session)
         try:
-            workflow = self._get_or_create_default_workflow(db)
+            workflow = self._get_chatkit_workflow(db)
             definition = self._load_active_definition(workflow, db)
             if definition is None:
                 definition = self._create_default_definition(db, workflow)
+                db.commit()
+                db.refresh(definition)
             definition = self._fully_load_definition(definition)
             if self._needs_graph_backfill(definition):
                 logger.info(
@@ -495,6 +516,37 @@ class WorkflowService:
             for workflow in workflows:
                 workflow.versions  # force le chargement des versions
             return workflows
+        finally:
+            if owns_session:
+                db.close()
+
+    def set_chatkit_workflow(
+        self, workflow_id: int, session: Session | None = None
+    ) -> Workflow:
+        db, owns_session = self._get_session(session)
+        try:
+            workflow = db.get(Workflow, workflow_id)
+            if workflow is None:
+                raise WorkflowNotFoundError(workflow_id)
+            if workflow.active_version_id is None:
+                raise WorkflowValidationError(
+                    "Définissez une version de production avant d'utiliser ce workflow avec ChatKit."
+                )
+
+            has_changed = False
+            workflows = db.scalars(select(Workflow)).all()
+            for current in workflows:
+                should_be_default = current.id == workflow_id
+                if current.is_chatkit_default != should_be_default:
+                    current.is_chatkit_default = should_be_default
+                    has_changed = True
+                    db.add(current)
+
+            if has_changed:
+                db.commit()
+                db.refresh(workflow)
+            workflow.versions
+            return workflow
         finally:
             if owns_session:
                 db.close()
@@ -595,9 +647,9 @@ class WorkflowService:
             workflow = db.get(Workflow, workflow_id)
             if workflow is None:
                 raise WorkflowNotFoundError(workflow_id)
-            if workflow.slug == DEFAULT_WORKFLOW_SLUG:
+            if workflow.slug == DEFAULT_WORKFLOW_SLUG or workflow.is_chatkit_default:
                 raise WorkflowValidationError(
-                    "Le workflow par défaut ne peut pas être supprimé."
+                    "Le workflow sélectionné pour ChatKit ne peut pas être supprimé."
                 )
             db.delete(workflow)
             db.commit()
@@ -1039,6 +1091,9 @@ def serialize_definition(definition: WorkflowDefinition) -> dict[str, Any]:
         "workflow_id": definition.workflow_id,
         "workflow_slug": definition.workflow.slug if definition.workflow else None,
         "workflow_display_name": definition.workflow.display_name if definition.workflow else None,
+        "workflow_is_chatkit_default": bool(
+            definition.workflow and definition.workflow.is_chatkit_default
+        ),
         "name": definition.name,
         "version": definition.version,
         "is_active": definition.is_active,
@@ -1060,6 +1115,7 @@ def serialize_workflow_summary(workflow: Workflow) -> dict[str, Any]:
         "updated_at": workflow.updated_at,
         "active_version_id": workflow.active_version_id,
         "active_version_number": active_version.version if active_version else None,
+        "is_chatkit_default": workflow.is_chatkit_default,
         "versions_count": len(workflow.versions),
     }
 

@@ -81,6 +81,7 @@ type WorkflowVersionResponse = {
   workflow_id: number;
   workflow_slug: string | null;
   workflow_display_name: string | null;
+  workflow_is_chatkit_default: boolean;
   name: string | null;
   version: number;
   is_active: boolean;
@@ -108,6 +109,7 @@ type WorkflowSummary = {
   description: string | null;
   active_version_id: number | null;
   active_version_number: number | null;
+  is_chatkit_default: boolean;
   versions_count: number;
   created_at: string;
   updated_at: string;
@@ -429,6 +431,12 @@ const WorkflowBuilderPage = () => {
           }
           const availableIds = new Set(data.map((workflow) => workflow.id));
           const excluded = options.excludeWorkflowId ?? null;
+          const chatkitWorkflow = data.find(
+            (workflow) =>
+              workflow.is_chatkit_default &&
+              workflow.id !== excluded &&
+              availableIds.has(workflow.id),
+          );
           let nextWorkflowId = options.selectWorkflowId ?? null;
           if (
             nextWorkflowId &&
@@ -445,7 +453,7 @@ const WorkflowBuilderPage = () => {
             nextWorkflowId = selectedWorkflowId;
           }
           if (nextWorkflowId == null) {
-            const fallback = data.find((workflow) => workflow.id !== excluded);
+            const fallback = chatkitWorkflow ?? data.find((workflow) => workflow.id !== excluded);
             nextWorkflowId = fallback?.id ?? data[0]?.id ?? null;
           }
           setSelectedWorkflowId(nextWorkflowId);
@@ -1015,6 +1023,13 @@ const WorkflowBuilderPage = () => {
     if (!current) {
       return;
     }
+    if (current.is_chatkit_default) {
+      setSaveState("error");
+      setSaveMessage(
+        "Sélectionnez un autre workflow pour ChatKit avant de supprimer celui-ci.",
+      );
+      return;
+    }
     const confirmed = window.confirm(
       `Supprimer le workflow "${current.display_name}" ? Cette action est irréversible.`,
     );
@@ -1075,6 +1090,84 @@ const WorkflowBuilderPage = () => {
     selectedWorkflowId,
     setSelectedEdgeId,
     setSelectedNodeId,
+    workflows,
+  ]);
+
+  const handleSelectChatkitWorkflow = useCallback(async () => {
+    if (!selectedWorkflowId) {
+      return;
+    }
+    const current = workflows.find((workflow) => workflow.id === selectedWorkflowId);
+    if (!current || current.is_chatkit_default) {
+      return;
+    }
+    if (!current.active_version_id) {
+      setSaveState("error");
+      setSaveMessage(
+        "Publiez une version de production avant d'utiliser ce workflow avec ChatKit.",
+      );
+      return;
+    }
+
+    const endpoint = "/api/workflows/chatkit";
+    const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
+    let lastError: Error | null = null;
+    setSaveState("saving");
+    setSaveMessage("Mise à jour du workflow ChatKit…");
+    for (const url of candidates) {
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify({ workflow_id: current.id }),
+        });
+        if (!response.ok) {
+          if (response.status === 400 || response.status === 404) {
+            try {
+              const detail = (await response.json()) as { detail?: unknown };
+              const message =
+                detail && typeof detail.detail === "string"
+                  ? detail.detail
+                  : "Impossible de sélectionner le workflow pour ChatKit.";
+              throw new Error(message);
+            } catch (error) {
+              if (error instanceof Error && error.name === "SyntaxError") {
+                throw new Error("Impossible de sélectionner le workflow pour ChatKit.");
+              }
+              throw error;
+            }
+          }
+          throw new Error(
+            `Impossible de sélectionner le workflow pour ChatKit (${response.status}).`,
+          );
+        }
+        await loadWorkflows({
+          selectWorkflowId: current.id,
+          selectVersionId: selectedVersionId ?? null,
+        });
+        setSaveState("saved");
+        setSaveMessage(`Workflow "${current.display_name}" sélectionné pour ChatKit.`);
+        setTimeout(() => setSaveState("idle"), 1500);
+        return;
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          continue;
+        }
+        lastError = error instanceof Error ? error : new Error("Impossible de sélectionner le workflow pour ChatKit.");
+      }
+    }
+    setSaveState("error");
+    setSaveMessage(
+      lastError?.message ?? "Impossible de sélectionner le workflow pour ChatKit.",
+    );
+  }, [
+    authHeader,
+    loadWorkflows,
+    selectedVersionId,
+    selectedWorkflowId,
     workflows,
   ]);
 
@@ -1303,6 +1396,7 @@ const WorkflowBuilderPage = () => {
                       {workflow.active_version_number
                         ? ` (prod : v${workflow.active_version_number})`
                         : ""}
+                      {workflow.is_chatkit_default ? " – utilisé par ChatKit" : ""}
                     </option>
                   ))
                 )}
@@ -1313,8 +1407,21 @@ const WorkflowBuilderPage = () => {
               <button
                 type="button"
                 className="btn"
+                onClick={handleSelectChatkitWorkflow}
+                disabled={
+                  loading ||
+                  !selectedWorkflowId ||
+                  selectedWorkflow?.is_chatkit_default ||
+                  !selectedWorkflow?.active_version_id
+                }
+              >
+                Utiliser pour ChatKit
+              </button>
+              <button
+                type="button"
+                className="btn"
                 onClick={handleDeleteWorkflow}
-                disabled={loading || !selectedWorkflowId}
+                disabled={loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default}
                 style={{ backgroundColor: "#fee2e2", color: "#b91c1c", borderColor: "#fecaca" }}
               >
                 Supprimer le workflow
@@ -1323,6 +1430,15 @@ const WorkflowBuilderPage = () => {
             {selectedWorkflow?.description && (
               <p style={{ color: "#475569", margin: 0 }}>{selectedWorkflow.description}</p>
             )}
+            {selectedWorkflow?.is_chatkit_default ? (
+              <p style={{ color: "#047857", margin: "0.25rem 0 0" }}>
+                Ce workflow alimente actuellement ChatKit.
+              </p>
+            ) : selectedWorkflow && !selectedWorkflow.active_version_id ? (
+              <p style={{ color: "#b45309", margin: "0.25rem 0 0" }}>
+                Publiez une version de production pour pouvoir l'utiliser avec ChatKit.
+              </p>
+            ) : null}
           </section>
 
           {workflows.length === 0 ? (

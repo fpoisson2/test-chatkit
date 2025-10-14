@@ -14,6 +14,7 @@ from ..schemas import (
     WorkflowSummaryResponse,
     WorkflowVersionCreateRequest,
     WorkflowVersionSummaryResponse,
+    WorkflowChatKitUpdate,
 )
 from ..workflows import (
     WorkflowService,
@@ -194,3 +195,20 @@ async def set_workflow_production_version(
     except WorkflowVersionNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
+
+
+@router.post("/api/workflows/chatkit", response_model=WorkflowSummaryResponse)
+async def set_chatkit_workflow(
+    payload: WorkflowChatKitUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowSummaryResponse:
+    _ensure_admin(current_user)
+    service = WorkflowService()
+    try:
+        workflow = service.set_chatkit_workflow(payload.workflow_id, session=session)
+    except WorkflowNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except WorkflowValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
+    return WorkflowSummaryResponse.model_validate(serialize_workflow_summary(workflow))
