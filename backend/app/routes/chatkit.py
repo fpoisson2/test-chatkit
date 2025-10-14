@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import logging
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
@@ -25,6 +26,101 @@ from ..models import User
 from ..schemas import SessionRequest, VoiceSessionRequest, VoiceSessionResponse
 
 router = APIRouter()
+
+
+logger = logging.getLogger("chatkit.voice")
+
+
+def _normalize_expiration(value: Any) -> str | None:
+    """Convertit une valeur d'expiration en chaîne lorsque c'est possible."""
+
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float)):
+        return str(value)
+    return None
+
+
+def _extract_secret_from_container(container: Any) -> tuple[Any | None, str | None]:
+    """Retourne un éventuel secret client et son expiration depuis un conteneur."""
+
+    if not isinstance(container, dict):
+        return None, None
+
+    secret = container.get("client_secret") or container.get("clientSecret")
+    if not secret and "value" in container:
+        secret = container["value"]
+    if not secret:
+        return None, None
+
+    expires = (
+        _normalize_expiration(container.get("expires_at"))
+        or _normalize_expiration(container.get("expires_after"))
+    )
+
+    if isinstance(secret, dict):
+        expires = (
+            expires
+            or _normalize_expiration(secret.get("expires_at"))
+            or _normalize_expiration(secret.get("expires_after"))
+        )
+
+    return secret, expires
+
+
+def _resolve_voice_client_secret(payload: dict[str, Any]) -> tuple[Any | None, str | None]:
+    """Tente d'extraire un client_secret exploitable de la réponse OpenAI."""
+
+    direct_secret, direct_expiration = _extract_secret_from_container(payload)
+    if direct_secret is not None:
+        expires = (
+            direct_expiration
+            or _normalize_expiration(payload.get("expires_at"))
+            or _normalize_expiration(payload.get("expires_after"))
+        )
+        return direct_secret, expires
+
+    for key in ("data", "session"):
+        nested_secret, nested_expiration = _extract_secret_from_container(
+            payload.get(key)
+        )
+        if nested_secret is not None:
+            expires = (
+                nested_expiration
+                or _normalize_expiration(payload.get("expires_at"))
+                or _normalize_expiration(payload.get("expires_after"))
+            )
+            return nested_secret, expires
+
+    fallback_expiration = (
+        _normalize_expiration(payload.get("expires_at"))
+        or _normalize_expiration(payload.get("expires_after"))
+    )
+    return None, fallback_expiration
+
+
+def _summarize_payload_shape(payload: Any) -> dict[str, Any] | str:
+    """Fournit un résumé non sensible de la réponse pour le débogage."""
+
+    if not isinstance(payload, dict):
+        return str(type(payload))
+
+    summary: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key in {"client_secret", "value"}:
+            summary[key] = "***"
+            continue
+        if isinstance(value, dict):
+            summary[key] = {
+                sub_key: type(sub_value).__name__ for sub_key, sub_value in value.items()
+            }
+        elif isinstance(value, list):
+            summary[key] = f"list(len={len(value)})"
+        else:
+            summary[key] = type(value).__name__
+    return summary
 
 
 @router.post("/api/chatkit/session")
@@ -68,20 +164,22 @@ async def create_voice_session(
         user_id=user_id,
         model=resolved_model,
         instructions=resolved_instructions,
-        voice=resolved_voice,
     )
 
-    client_secret = secret_payload.get("client_secret")
-    if not client_secret:
+    client_secret, expires_at = _resolve_voice_client_secret(secret_payload)
+    if client_secret is None:
+        summary = _summarize_payload_shape(secret_payload)
+        logger.error(
+            "Client secret introuvable dans la réponse Realtime : %s",
+            summary,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error": "ChatKit Realtime response missing client_secret",
-                "details": secret_payload,
+                "payload_summary": summary,
             },
         )
-
-    expires_at = secret_payload.get("expires_at") or secret_payload.get("expires_after")
 
     return VoiceSessionResponse(
         client_secret=client_secret,

@@ -17,16 +17,16 @@ async def create_realtime_voice_session(
     user_id: str,
     model: str,
     instructions: str,
-    voice: str,
 ) -> dict[str, Any]:
     """Crée un client_secret Realtime pour une session vocale."""
 
     settings = get_settings()
     payload = {
-        "model": model,
-        "voice": voice,
-        "user": {"id": user_id},
-        "session": {"instructions": instructions},
+        "session": {
+            "type": "realtime",
+            "instructions": instructions,
+            "model": model,
+        },
     }
 
     sanitized_request, removed_request = sanitize_value(payload)

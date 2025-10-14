@@ -90,7 +90,7 @@ class Settings:
             ),
             chatkit_realtime_model=env.get(
                 "CHATKIT_REALTIME_MODEL",
-                "gpt-4o-realtime-preview-2024-12-17",
+                "gpt-realtime",
             ),
             chatkit_realtime_instructions=env.get(
                 "CHATKIT_REALTIME_INSTRUCTIONS",
