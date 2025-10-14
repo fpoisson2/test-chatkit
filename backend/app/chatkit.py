@@ -481,13 +481,25 @@ def _build_web_search_tool(payload: Any) -> WebSearchTool | None:
         return None
 
 
+def _clone_tools(value: Sequence[Any] | None) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return list(value)
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return list(value)
+    # Si la valeur n'est pas séquentielle (ex. un objet unique), on la
+    # encapsule tout de même dans une liste pour respecter le contrat du SDK.
+    return [value]
+
+
 def _coerce_agent_tools(
     value: Any, fallback: Sequence[Any] | None = None
 ) -> Sequence[Any] | None:
     """Convertit les outils sérialisés en instances compatibles avec le SDK Agents."""
 
     if value is None:
-        return None
+        return _clone_tools(fallback)
 
     if not isinstance(value, list):
         return value
@@ -515,11 +527,7 @@ def _coerce_agent_tools(
             "Outils agent non reconnus (%s), utilisation de la configuration par défaut.",
             value,
         )
-        if fallback is None:
-            return None
-        if isinstance(fallback, list):
-            return list(fallback)
-        return fallback
+        return _clone_tools(fallback)
 
     return []
 

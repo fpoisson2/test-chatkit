@@ -48,3 +48,17 @@ def test_coerce_agent_tools_accepts_empty_list() -> None:
     tools = _coerce_agent_tools([], [web_search_preview])
     assert isinstance(tools, list)
     assert tools == []
+
+
+def test_coerce_agent_tools_returns_empty_when_no_fallback() -> None:
+    tools = _coerce_agent_tools([{"type": "file_search"}])
+
+    assert isinstance(tools, list)
+    assert tools == []
+
+
+def test_coerce_agent_tools_normalizes_none_value() -> None:
+    tools = _coerce_agent_tools(None)
+
+    assert isinstance(tools, list)
+    assert tools == []
