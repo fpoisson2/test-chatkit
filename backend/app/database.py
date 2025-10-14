@@ -14,7 +14,7 @@ from .config import get_settings
 logger = logging.getLogger("chatkit.server")
 settings = get_settings()
 
-engine: Engine = create_engine(settings.database_url, future=True)
+engine: Engine = create_engine(settings.database_url, future=True, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
@@ -40,3 +40,25 @@ def wait_for_database() -> None:
             )
             time.sleep(delay)
     raise RuntimeError("Database connection failed after retries")
+
+
+def ensure_database_extensions() -> None:
+    if engine.dialect.name != "postgresql":
+        return
+    with engine.begin() as connection:
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
+
+def ensure_vector_indexes() -> None:
+    if engine.dialect.name != "postgresql":
+        return
+    statements = (
+        "CREATE INDEX IF NOT EXISTS ix_json_chunks_embedding "
+        "ON json_chunks USING ivfflat (embedding vector_cosine_ops)",
+        "CREATE INDEX IF NOT EXISTS ix_json_chunks_text_search "
+        "ON json_chunks USING gin "
+        "(to_tsvector('simple', coalesce(linearized_text, '')))",
+    )
+    with engine.begin() as connection:
+        for statement in statements:
+            connection.execute(text(statement))

@@ -50,6 +50,52 @@ Le backend expose deux intégrations complémentaires :
 
 > ℹ️ **CORS et flux de conversation** — l'API ChatKit hébergée ne renvoie pas systématiquement d'en-têtes `Access-Control-Allow-Origin`, ce qui provoque un blocage lors de la diffusion SSE. Le backend expose donc un proxy `OPTIONS|POST /api/chatkit/proxy/{path:path}` qui relaie `https://api.openai.com/v1/chatkit/*`. Le serveur custom n'en a pas besoin mais le proxy reste utile pour le mode hébergé ou pour récupérer des logs bruts.
 
+### Indexation JSON vectorielle (`pgvector`)
+
+Le backend persiste désormais les documents JSON enrichis dans trois tables dédiées.
+⚠️ Cette fonctionnalité repose exclusivement sur PostgreSQL (>= 14) avec l'extension `pgvector` activée ; aucun mode de repli SQLite n'est prévu.
+
+- `json_vector_stores` pour référencer les collections (`slug`, titre optionnel, métadonnées) ;
+- `json_documents` pour stocker le JSON brut, sa version linéarisée et les métadonnées associées à un document (`store_id`, `doc_id`) ;
+- `json_chunks` pour conserver chaque extrait linéarisé, son embedding `VECTOR`, le JSON source correspondant, les métadonnées et les timestamps.
+
+Au démarrage, `backend/app/startup.py` appelle automatiquement `CREATE EXTENSION IF NOT EXISTS vector` (PostgreSQL) puis crée les index spécialisés :
+
+- `ivfflat` sur `json_chunks.embedding` (`vector_cosine_ops`) ;
+- `GIN` plein texte sur `to_tsvector('simple', linearized_text)` ;
+- `GIN` sur les colonnes `metadata` pour accélérer les filtres JSONB.
+
+Assurez-vous que l'utilisateur PostgreSQL dispose du droit `CREATE EXTENSION`. En cas de déploiement manuel, vous pouvez forcer l'initialisation depuis la **racine du dépôt** avec :
+
+```bash
+# depuis la racine du dépôt
+psql "postgresql://user:password@host:5432/chatkit" -c "CREATE EXTENSION IF NOT EXISTS vector"
+```
+
+L'ingestion est centralisée dans `backend/app/vector_store/service.py`. Le service linéarise automatiquement le JSON, découpe le texte en segments avec chevauchement, génère des embeddings via le modèle local `intfloat/multilingual-e5-small` (`sentence-transformers`) puis normalise les vecteurs avant de les enregistrer. Exemple minimal :
+
+> 💡 **Dépendances système** — Sur les distributions Debian/Ubuntu minimalistes (dont l'image officielle `python:3.11-slim` utilisée en Docker Compose), PyTorch nécessite la bibliothèque `libgomp1` pour activer OpenMP. Le `Dockerfile` du backend installe ce paquet automatiquement ; sur une machine hôte, ajoutez-le via `sudo apt install libgomp1` si vous rencontrez une erreur « libgomp.so.1: cannot open shared object file » lors du chargement du modèle d'embedding.
+
+```python
+from backend.app.database import SessionLocal
+from backend.app.vector_store import JsonVectorStoreService
+
+payload = {"title": "Guide", "sections": ["Introduction", "FAQ"]}
+
+with SessionLocal() as session:
+    service = JsonVectorStoreService(session)
+    service.ingest(
+        "documentation",
+        "guide-v1",
+        payload,
+        store_title="Documentation produit",
+        document_metadata={"source": "wiki interne"},
+    )
+    session.commit()
+```
+
+Le chargement du modèle e5 est effectué paresseusement et mis en cache. Pensez à relancer `npm run backend:sync` (depuis la racine) pour installer les nouvelles dépendances Python (`sqlalchemy-pgvector`, `sentence-transformers`).
+
 ### Outil météo exposé au workflow ChatKit
 
 Le backend expose également un point d'entrée `GET /api/tools/weather` qui interroge l'API libre [Open-Meteo](https://open-meteo.com/) pour fournir les conditions actuelles d'une ville donnée. Cette route est pensée pour être appelée depuis un outil de workflow ChatKit, mais elle reste publique afin de faciliter les tests manuels.
@@ -217,8 +263,8 @@ Depuis la racine du dépôt, vous pouvez orchestrer le backend FastAPI et le fro
    # VITE_ALLOWED_HOSTS="chatkit.example.com"
    ```
    Les autres variables d'environnement exposées dans `docker-compose.yml` disposent de valeurs par défaut (`VITE_ALLOWED_HOSTS`, `VITE_HMR_PROTOCOL`, `VITE_HMR_CLIENT_PORT`, `VITE_BACKEND_URL`, etc.) que vous pouvez également surcharger dans `.env` si nécessaire.
-2. Depuis la racine du projet, lancez `docker compose up` pour démarrer les trois services (backend, frontend, base PostgreSQL). Le backend répond sur `http://localhost:8000`, la base de données sur `localhost:5432` et le frontend sur `http://localhost:${VITE_PORT}`.
-3. Utilisez `docker compose down` pour arrêter l'environnement de développement, puis relancez `docker compose up --build` si vous modifiez les dépendances système.
+2. Depuis la racine du projet, lancez `docker compose up --build` pour démarrer les trois services (backend, frontend, base PostgreSQL). Cette première exécution construit l'image `backend` à partir de `backend/Dockerfile` (installation de `libgomp1` + dépendances Python). Le backend répond sur `http://localhost:8000`, la base de données sur `localhost:5432` et le frontend sur `http://localhost:${VITE_PORT}`.
+3. Utilisez `docker compose down` pour arrêter l'environnement de développement. Rejouez `docker compose up --build` à chaque fois que vous modifiez `backend/requirements.txt` ou le Dockerfile ; dans les autres cas, un simple `docker compose up` suffit.
 
 Les volumes montés vous permettent de modifier le code localement tout en profitant du rafraîchissement à chaud côté frontend (`npm run dev -- --host 0.0.0.0`) et du rechargement automatique d'Uvicorn. Le volume nommé `postgres-data` conserve l'état de la base entre deux relances.
 
