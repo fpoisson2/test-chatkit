@@ -254,6 +254,18 @@ class WorkflowService:
     def __init__(self, session_factory: Callable[[], Session] | None = None) -> None:
         self._session_factory = session_factory or SessionLocal
 
+    def _fully_load_definition(
+        self, definition: WorkflowDefinition
+    ) -> WorkflowDefinition:
+        """Charge toutes les relations nécessaires avant fermeture de session."""
+
+        definition.steps  # noqa: B018 - charge les étapes liées
+        transitions = list(definition.transitions)  # noqa: B018 - charge les transitions
+        for transition in transitions:
+            transition.source_step  # noqa: B018 - charge le nœud source
+            transition.target_step  # noqa: B018 - charge le nœud cible
+        return definition
+
     def _get_session(self, session: Session | None) -> tuple[Session, bool]:
         if session is not None:
             return session, False
@@ -269,8 +281,7 @@ class WorkflowService:
             )
             if definition is None:
                 definition = self._create_default_definition(db)
-            definition.steps  # noqa: B018 - charge les étapes
-            definition.transitions  # noqa: B018 - charge les transitions
+            definition = self._fully_load_definition(definition)
             if self._needs_graph_backfill(definition):
                 logger.info(
                     "Legacy workflow detected, backfilling default graph with existing agent configuration",
@@ -326,9 +337,7 @@ class WorkflowService:
             db.add(definition)
             db.commit()
             db.refresh(definition)
-            definition.steps  # noqa: B018
-            definition.transitions  # noqa: B018
-            return definition
+            return self._fully_load_definition(definition)
         finally:
             if owns_session:
                 db.close()
@@ -365,9 +374,7 @@ class WorkflowService:
 
         session.commit()
         session.refresh(definition)
-        definition.steps  # noqa: B018
-        definition.transitions  # noqa: B018
-        return definition
+        return self._fully_load_definition(definition)
 
     def _needs_graph_backfill(self, definition: WorkflowDefinition) -> bool:
         has_start = any(step.kind == "start" for step in definition.steps)
@@ -442,9 +449,7 @@ class WorkflowService:
         session.add(definition)
         session.commit()
         session.refresh(definition)
-        definition.steps  # noqa: B018
-        definition.transitions  # noqa: B018
-        return definition
+        return self._fully_load_definition(definition)
 
     def _normalize_graph(
         self, payload: dict[str, Any] | None
