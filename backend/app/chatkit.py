@@ -141,6 +141,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     ) -> None:
         streamed_step_keys: set[str] = set()
         step_progress_text: dict[str, str] = {}
+        step_progress_headers: dict[str, str] = {}
 
         try:
             logger.info("Démarrage du workflow pour le fil %s", thread.id)
@@ -150,6 +151,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             ) -> None:
                 streamed_step_keys.add(step_summary.key)
                 step_progress_text.pop(step_summary.key, None)
+                header = step_progress_headers.pop(step_summary.key, None)
+                if header:
+                    await on_stream_event(
+                        ProgressUpdateEvent(text=f"{header}\n\nTerminé.")
+                    )
+                    await on_stream_event(ProgressUpdateEvent(text=""))
 
             async def on_stream_event(event: ThreadStreamEvent) -> None:
                 await event_queue.put(event)
@@ -162,6 +169,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 if update.key not in step_progress_text:
                     waiting_text = f"{header}\n\nGénération en cours..."
                     step_progress_text[update.key] = waiting_text
+                    step_progress_headers[update.key] = header
                     await on_stream_event(ProgressUpdateEvent(text=waiting_text))
 
                 aggregated_text = update.text
@@ -809,6 +817,18 @@ def _build_get_data_from_user_agent(overrides: dict[str, Any] | None = None) -> 
     return Agent(**_build_agent_kwargs(base_kwargs, overrides))
 
 
+_CUSTOM_AGENT_FALLBACK_NAME = "Agent personnalisé"
+
+
+def _build_custom_agent(overrides: dict[str, Any] | None = None) -> Agent:
+    base_kwargs: dict[str, Any] = {"name": _CUSTOM_AGENT_FALLBACK_NAME}
+    merged = _build_agent_kwargs(base_kwargs, overrides or {})
+    name = merged.get("name")
+    if not isinstance(name, str) or not name.strip():
+        merged["name"] = _CUSTOM_AGENT_FALLBACK_NAME
+    return Agent(**merged)
+
+
 _AGENT_BUILDERS: dict[str, Callable[[dict[str, Any] | None], Agent]] = {
     "triage": _build_triage_agent,
     "r_dacteur": _build_r_dacteur_agent,
@@ -991,16 +1011,19 @@ async def run_workflow(
 
     agent_instances: dict[str, Agent] = {}
     for step in agent_steps_ordered:
-        agent_key = step.agent_key or ""
+        agent_key = (step.agent_key or "").strip()
         builder = _AGENT_BUILDERS.get(agent_key)
         if builder is None:
-            raise WorkflowExecutionError(
-                "configuration",
-                "Configuration du workflow invalide",
-                RuntimeError(f"Agent inconnu : {agent_key}"),
-                [],
-            )
-        agent_instances[step.slug] = builder(step.parameters or {})
+            if agent_key:
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError(f"Agent inconnu : {agent_key}"),
+                    [],
+                )
+            agent_instances[step.slug] = _build_custom_agent(step.parameters or {})
+        else:
+            agent_instances[step.slug] = builder(step.parameters or {})
 
     if all((step.agent_key == "r_dacteur") for step in agent_steps_ordered):
         state["should_finalize"] = True
@@ -1012,10 +1035,9 @@ async def run_workflow(
         edge_list.sort(key=lambda tr: tr.id or 0)
 
     def _workflow_run_config() -> RunConfig:
-        metadata: dict[str, Any] = {
-            "__trace_source__": "agent-builder",
-            "workflow_db_id": definition.workflow_id,
-        }
+        metadata: dict[str, str] = {"__trace_source__": "agent-builder"}
+        if definition.workflow_id is not None:
+            metadata["workflow_db_id"] = str(definition.workflow_id)
         if definition.workflow and definition.workflow.slug:
             metadata["workflow_slug"] = definition.workflow.slug
         if definition.workflow and definition.workflow.display_name:

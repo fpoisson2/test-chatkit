@@ -834,16 +834,23 @@ class WorkflowService:
             if kind not in {"start", "agent", "condition", "state", "end"}:
                 raise WorkflowValidationError(f"Type de nœud invalide : {kind or 'inconnu'}")
 
-            agent_key: str | None = entry.get("agent_key")
+            agent_key: str | None = None
             if kind == "agent":
-                if not agent_key or not isinstance(agent_key, str):
+                raw_agent_key = entry.get("agent_key")
+                if raw_agent_key is None:
+                    agent_key = None
+                elif isinstance(raw_agent_key, str):
+                    trimmed_key = raw_agent_key.strip()
+                    if trimmed_key:
+                        if trimmed_key not in SUPPORTED_AGENT_KEYS:
+                            raise WorkflowValidationError(
+                                f"Agent inconnu : {trimmed_key}"
+                            )
+                        agent_key = trimmed_key
+                else:
                     raise WorkflowValidationError(
-                        f"Le nœud agent {slug} doit préciser un agent supporté."
+                        f"Le nœud agent {slug} possède une clé d'agent invalide."
                     )
-                if agent_key not in SUPPORTED_AGENT_KEYS:
-                    raise WorkflowValidationError(f"Agent inconnu : {agent_key}")
-            else:
-                agent_key = None
 
             display_name_raw = entry.get("display_name")
             display_name = (
