@@ -932,6 +932,7 @@ async def run_workflow(
         "should_finalize": False,
     }
     final_output: dict[str, Any] | None = None
+    last_step_context: dict[str, Any] | None = None
 
     service = workflow_service or WorkflowService()
     definition = service.get_current()
@@ -1038,6 +1039,104 @@ async def run_workflow(
         if isinstance(output, (dict, list)):
             return output, json.dumps(output, ensure_ascii=False)
         return output, str(output)
+
+    def _resolve_from_container(value: Any, path: str) -> Any:
+        current: Any = value
+        for part in path.split("."):
+            if not part:
+                continue
+            if isinstance(current, dict):
+                current = current.get(part)
+            elif isinstance(current, (list, tuple)):
+                try:
+                    index = int(part)
+                except ValueError:
+                    return None
+                if 0 <= index < len(current):
+                    current = current[index]
+                else:
+                    return None
+            else:
+                if hasattr(current, part):
+                    current = getattr(current, part)
+                else:
+                    return None
+        return current
+
+    def _assign_state_value(target_path: str, value: Any) -> None:
+        path_parts = [part for part in target_path.split(".") if part]
+        if not path_parts:
+            raise ValueError("Chemin de mise à jour d'état manquant.")
+        if path_parts[0] != "state":
+            raise ValueError("Les mises à jour doivent commencer par 'state.'")
+        cursor: Any = state
+        for part in path_parts[1:-1]:
+            next_value = cursor.get(part)
+            if next_value is None:
+                next_value = {}
+                cursor[part] = next_value
+            elif not isinstance(next_value, dict):
+                raise ValueError(
+                    f"Impossible d'écrire dans state.{part} : valeur existante incompatible."
+                )
+            cursor = next_value
+        cursor[path_parts[-1]] = value
+
+    def _evaluate_state_expression(expression: Any) -> Any:
+        if expression is None:
+            return None
+        if isinstance(expression, (bool, int, float, dict, list)):
+            return expression
+        if isinstance(expression, str):
+            expr = expression.strip()
+            if not expr:
+                return None
+            if expr == "state":
+                return state
+            if expr == "input":
+                if last_step_context is None:
+                    raise RuntimeError(
+                        "Aucun résultat précédent disponible pour l'expression 'input'."
+                    )
+                return last_step_context
+            if expr.startswith("state."):
+                return _resolve_from_container(state, expr[len("state.") :])
+            if expr.startswith("input."):
+                if last_step_context is None:
+                    raise RuntimeError(
+                        "Aucun résultat précédent disponible pour les expressions basées sur 'input'."
+                    )
+                return _resolve_from_container(
+                    last_step_context, expr[len("input.") :]
+                )
+            try:
+                return json.loads(expr)
+            except json.JSONDecodeError:
+                return expr
+        return expression
+
+    def _apply_state_node(step: WorkflowStep) -> None:
+        params = step.parameters or {}
+        operations = params.get("state")
+        if operations is None:
+            return
+        if not isinstance(operations, list):
+            raise ValueError(
+                "Le paramètre 'state' doit être une liste d'opérations."
+            )
+        for entry in operations:
+            if not isinstance(entry, dict):
+                raise ValueError(
+                    "Chaque opération de mise à jour d'état doit être un objet."
+                )
+            target_raw = entry.get("target")
+            target = str(target_raw).strip() if target_raw is not None else ""
+            if not target:
+                raise ValueError(
+                    "Chaque opération doit préciser une cible 'target'."
+                )
+            value = _evaluate_state_expression(entry.get("expression"))
+            _assign_state_value(target, value)
 
     def _extract_delta(event: ThreadStreamEvent) -> str:
         if isinstance(event, ThreadItemUpdated):
@@ -1189,6 +1288,25 @@ async def run_workflow(
             current_slug = transition.target_step.slug
             continue
 
+        if current_node.kind == "state":
+            try:
+                _apply_state_node(current_node)
+            except Exception as exc:  # pragma: no cover - validation runtime
+                raise_step_error(current_node.slug, _node_title(current_node), exc)
+
+            transition = _next_edge(current_slug)
+            if transition is None:
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError(
+                        f"Aucune transition disponible après le nœud d'état {current_node.slug}"
+                    ),
+                    list(steps),
+                )
+            current_slug = transition.target_step.slug
+            continue
+
         if current_node.kind != "agent":
             raise WorkflowExecutionError(
                 "configuration",
@@ -1256,27 +1374,59 @@ async def run_workflow(
             state["infos_manquantes"] = text
             state["should_finalize"] = state["has_all_details"]
             await record_step(step_identifier, title, parsed)
+            last_step_context = {
+                "agent_key": agent_key,
+                "output": result_stream.final_output,
+                "output_parsed": parsed,
+                "output_text": text,
+            }
         elif agent_key == "get_data_from_web":
             text = result_stream.final_output_as(str)
             state["infos_manquantes"] = text
             await record_step(step_identifier, title, text)
+            last_step_context = {
+                "agent_key": agent_key,
+                "output": text,
+                "output_text": text,
+            }
         elif agent_key == "triage_2":
             parsed, text = _structured_output_as_json(result_stream.final_output)
             state["has_all_details"] = bool(parsed.get("has_all_details")) if isinstance(parsed, dict) else False
             state["infos_manquantes"] = text
             state["should_finalize"] = state["has_all_details"]
             await record_step(step_identifier, title, parsed)
+            last_step_context = {
+                "agent_key": agent_key,
+                "output": result_stream.final_output,
+                "output_parsed": parsed,
+                "output_text": text,
+            }
         elif agent_key == "get_data_from_user":
             text = result_stream.final_output_as(str)
             state["infos_manquantes"] = text
             state["should_finalize"] = True
             await record_step(step_identifier, title, text)
+            last_step_context = {
+                "agent_key": agent_key,
+                "output": text,
+                "output_text": text,
+            }
         elif agent_key == "r_dacteur":
             parsed, text = _structured_output_as_json(result_stream.final_output)
             final_output = {"output_text": text, "output_parsed": parsed}
             await record_step(step_identifier, title, final_output["output_text"])
+            last_step_context = {
+                "agent_key": agent_key,
+                "output": result_stream.final_output,
+                "output_parsed": parsed,
+                "output_text": text,
+            }
         else:
             await record_step(step_identifier, title, result_stream.final_output)
+            last_step_context = {
+                "agent_key": agent_key,
+                "output": result_stream.final_output,
+            }
 
         transition = _next_edge(current_slug)
         if agent_key == "r_dacteur":
