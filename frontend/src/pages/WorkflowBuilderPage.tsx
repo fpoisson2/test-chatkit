@@ -1362,16 +1362,43 @@ const WorkflowBuilderPage = () => {
     }
   }, [authHeader, edges, loadVersions, nodes, publishOnSave, selectedWorkflowId]);
 
-  const disableSave = useMemo(
-    () =>
-      !selectedWorkflowId ||
-      nodes.some(
-        (node) =>
-          node.data.parametersError ||
-          (node.data.kind === "agent" && (!node.data.agentKey || node.data.agentKey.trim() === "")),
-      ),
-    [nodes, selectedWorkflowId],
-  );
+  const disableSave = useMemo(() => {
+    if (!selectedWorkflowId) {
+      return true;
+    }
+
+    const availableVectorStoreSlugs = new Set(vectorStores.map((store) => store.slug));
+
+    return nodes.some((node) => {
+      if (node.data.parametersError) {
+        return true;
+      }
+
+      if (node.data.kind !== "agent") {
+        return false;
+      }
+
+      if (!node.data.agentKey || node.data.agentKey.trim() === "") {
+        return true;
+      }
+
+      const fileSearchConfig = getAgentFileSearchConfig(node.data.parameters);
+      if (!fileSearchConfig) {
+        return false;
+      }
+
+      const slug = fileSearchConfig.vector_store_slug?.trim() ?? "";
+      if (!slug) {
+        return true;
+      }
+
+      if (!vectorStoresError && vectorStores.length > 0 && !availableVectorStoreSlugs.has(slug)) {
+        return true;
+      }
+
+      return false;
+    });
+  }, [nodes, selectedWorkflowId, vectorStores, vectorStoresError]);
 
   return (
     <ReactFlowProvider>
@@ -1715,6 +1742,26 @@ const NodeInspector = ({
   const fileSearchConfig = getAgentFileSearchConfig(parameters);
   const fileSearchEnabled = Boolean(fileSearchConfig);
   const selectedVectorStoreSlug = fileSearchConfig?.vector_store_slug ?? "";
+  const trimmedVectorStoreSlug = selectedVectorStoreSlug.trim();
+  const selectedVectorStoreExists =
+    trimmedVectorStoreSlug.length > 0 && vectorStores.some((store) => store.slug === trimmedVectorStoreSlug);
+  const fileSearchMissingVectorStore =
+    fileSearchEnabled &&
+    (!trimmedVectorStoreSlug || (!vectorStoresError && vectorStores.length > 0 && !selectedVectorStoreExists));
+
+  let fileSearchValidationMessage: string | null = null;
+  if (fileSearchMissingVectorStore && !vectorStoresLoading) {
+    if (!vectorStoresError && vectorStores.length === 0) {
+      fileSearchValidationMessage =
+        "Créez un vector store avant d'activer la recherche documentaire.";
+    } else if (trimmedVectorStoreSlug && !selectedVectorStoreExists) {
+      fileSearchValidationMessage =
+        "Le vector store sélectionné n'est plus disponible. Choisissez-en un autre.";
+    } else {
+      fileSearchValidationMessage =
+        "Sélectionnez un vector store pour activer la recherche documentaire.";
+    }
+  }
   const globalAssignments = useMemo(
     () => getStateAssignments(parameters, "globals"),
     [parameters],
@@ -2059,6 +2106,9 @@ const NodeInspector = ({
                     <small style={{ color: "#475569" }}>
                       Le document complet du résultat sera transmis à l'agent.
                     </small>
+                    {fileSearchValidationMessage && (
+                      <p style={{ color: "#b91c1c", margin: 0 }}>{fileSearchValidationMessage}</p>
+                    )}
                   </label>
                 )}
               </>

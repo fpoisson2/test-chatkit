@@ -445,11 +445,13 @@ const sanitizeFileSearchConfig = (
     return null;
   }
 
+  const slug = typeof config.vector_store_slug === "string" ? config.vector_store_slug.trim() : "";
+
   const sanitized: Record<string, unknown> = {
     return_documents: "full",
+    vector_store_slug: slug,
   };
 
-  const slug = config.vector_store_slug?.trim();
   if (slug) {
     sanitized.store = { slug };
   }
@@ -510,7 +512,7 @@ export const getAgentFileSearchConfig = (
       return { vector_store_slug: store.slug };
     }
     const slug =
-      typeof config.vector_store_slug === "string" ? config.vector_store_slug : "";
+      typeof config.vector_store_slug === "string" ? config.vector_store_slug.trim() : "";
     return { vector_store_slug: slug };
   }
   return null;
