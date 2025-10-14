@@ -306,6 +306,7 @@ class WorkflowService:
         for transition in transitions:
             transition.source_step  # noqa: B018 - charge le nœud source
             transition.target_step  # noqa: B018 - charge le nœud cible
+        definition.workflow  # noqa: B018 - charge le workflow parent
         return definition
 
     def _get_session(self, session: Session | None) -> tuple[Session, bool]:
