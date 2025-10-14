@@ -1,4 +1,9 @@
-import { isPlainRecord, type AgentParameters } from "./workflows";
+import {
+  isPlainRecord,
+  type AgentParameters,
+  type StateAssignment,
+  type StateAssignmentScope,
+} from "./workflows";
 
 /**
  * Préconfigurations héritées des agents spécifiques afin de pré-remplir les blocs
@@ -744,6 +749,77 @@ const cloneParameters = (source: AgentParameters | null | undefined): AgentParam
   return JSON.parse(JSON.stringify(source)) as AgentParameters;
 };
 
+const STATE_PRESETS: Record<
+  string,
+  { scope: StateAssignmentScope; assignments: readonly StateAssignment[] }
+> = {
+  "maj-etat-triage": {
+    scope: "state",
+    assignments: [
+      {
+        target: "state.has_all_details",
+        expression: "input.output_parsed.has_all_details",
+      },
+      {
+        target: "state.infos_manquantes",
+        expression: "input.output_text",
+      },
+      {
+        target: "state.should_finalize",
+        expression: "input.output_parsed.has_all_details",
+      },
+    ] as const,
+  },
+  "maj-etat-validation": {
+    scope: "state",
+    assignments: [
+      {
+        target: "state.has_all_details",
+        expression: "input.output_parsed.has_all_details",
+      },
+      {
+        target: "state.infos_manquantes",
+        expression: "input.output_text",
+      },
+      {
+        target: "state.should_finalize",
+        expression: "input.output_parsed.has_all_details",
+      },
+    ] as const,
+  },
+};
+
+const isStateAssignment = (value: unknown): value is StateAssignment =>
+  isPlainRecord(value) && typeof value.target === "string" && typeof value.expression === "string";
+
+const normalizeAssignments = (
+  defaults: readonly StateAssignment[],
+  overrides: unknown,
+): StateAssignment[] => {
+  const base = new Map<string, string>();
+  for (const assignment of defaults) {
+    base.set(assignment.target, assignment.expression);
+  }
+
+  if (Array.isArray(overrides)) {
+    for (const entry of overrides) {
+      if (!isStateAssignment(entry)) {
+        continue;
+      }
+      const target = entry.target.trim();
+      if (!base.has(target)) {
+        continue;
+      }
+      base.set(target, entry.expression.trim());
+    }
+  }
+
+  return defaults.map((assignment) => ({
+    target: assignment.target,
+    expression: base.get(assignment.target) ?? assignment.expression,
+  }));
+};
+
 const mergeModelSettings = (
   defaults: Record<string, unknown> | undefined,
   overrides: Record<string, unknown> | undefined,
@@ -837,4 +913,24 @@ export const resolveAgentParameters = (
   }
 
   return mergeAgentParameters(defaults, overrides);
+};
+
+export const resolveStateParameters = (
+  slug: string,
+  rawParameters: AgentParameters | null | undefined,
+): AgentParameters => {
+  const overrides = cloneParameters(rawParameters);
+  const preset = STATE_PRESETS[slug];
+  if (!preset) {
+    return overrides;
+  }
+
+  const mergedAssignments = normalizeAssignments(
+    preset.assignments,
+    (overrides as Record<string, unknown>)[preset.scope],
+  );
+
+  (overrides as Record<string, unknown>)[preset.scope] = mergedAssignments;
+
+  return overrides;
 };
