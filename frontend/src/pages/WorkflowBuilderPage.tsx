@@ -26,7 +26,9 @@ import "reactflow/dist/style.css";
 import { useAuth } from "../auth";
 import {
   makeApiEndpointCandidates,
+  modelRegistryApi,
   vectorStoreApi,
+  type AvailableModel,
   type VectorStoreSummary,
 } from "../utils/backend";
 import { resolveAgentParameters, resolveStateParameters } from "../utils/agentPresets";
@@ -34,16 +36,26 @@ import {
   getAgentMessage,
   getAgentModel,
   getAgentReasoningEffort,
+  getAgentReasoningVerbosity,
+  getAgentReasoningSummary,
   getAgentFileSearchConfig,
   getAgentResponseFormat,
   getAgentTemperature,
   getAgentTopP,
+  getAgentMaxOutputTokens,
   getAgentWebSearchConfig,
+  getAgentIncludeChatHistory,
+  getAgentDisplayResponseInChat,
+  getAgentShowSearchSources,
+  getAgentContinueOnError,
+  getAgentStorePreference,
   parseAgentParameters,
   setStateAssignments,
   setAgentMessage,
   setAgentModel,
   setAgentReasoningEffort,
+  setAgentReasoningVerbosity,
+  setAgentReasoningSummary,
   setAgentFileSearchConfig,
   getAgentWeatherToolEnabled,
   setAgentWeatherToolEnabled,
@@ -52,7 +64,13 @@ import {
   setAgentResponseFormatSchema,
   setAgentTemperature,
   setAgentTopP,
+  setAgentMaxOutputTokens,
   setAgentWebSearchConfig,
+  setAgentIncludeChatHistory,
+  setAgentDisplayResponseInChat,
+  setAgentShowSearchSources,
+  setAgentContinueOnError,
+  setAgentStorePreference,
   getStateAssignments,
   stringifyAgentParameters,
   type AgentParameters,
@@ -186,6 +204,19 @@ const reasoningEffortOptions = [
   { value: "high", label: "Effort élevé" },
 ];
 
+const reasoningVerbosityOptions = [
+  { value: "", label: "Verbosité par défaut" },
+  { value: "low", label: "Verbosité faible" },
+  { value: "medium", label: "Verbosité moyenne" },
+  { value: "high", label: "Verbosité élevée" },
+];
+
+const reasoningSummaryOptions = [
+  { value: "none", label: "Pas de résumé" },
+  { value: "auto", label: "Résumé automatique" },
+  { value: "detailed", label: "Résumé détaillé" },
+];
+
 const defaultEdgeOptions: EdgeOptions = {
   markerEnd: { type: MarkerType.ArrowClosed, color: "#1e293b" },
   style: { stroke: "#1e293b", strokeWidth: 2 },
@@ -235,6 +266,9 @@ const WorkflowBuilderPage = () => {
   const [vectorStores, setVectorStores] = useState<VectorStoreSummary[]>([]);
   const [vectorStoresLoading, setVectorStoresLoading] = useState(false);
   const [vectorStoresError, setVectorStoresError] = useState<string | null>(null);
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
+  const [availableModelsLoading, setAvailableModelsLoading] = useState(false);
+  const [availableModelsError, setAvailableModelsError] = useState<string | null>(null);
 
   const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
   const selectedWorkflow = useMemo(
@@ -245,6 +279,21 @@ const WorkflowBuilderPage = () => {
   const selectedVersionSummary = useMemo(
     () => versions.find((version) => version.id === selectedVersionId) ?? null,
     [selectedVersionId, versions],
+  );
+
+  const isReasoningModel = useCallback(
+    (model: string): boolean => {
+      const trimmed = model.trim();
+      if (!trimmed) {
+        return true;
+      }
+      const match = availableModels.find((item) => item.name === trimmed);
+      if (match) {
+        return match.supports_reasoning;
+      }
+      return supportsReasoningModel(trimmed);
+    },
+    [availableModels],
   );
 
   useEffect(() => {
@@ -281,6 +330,47 @@ const WorkflowBuilderPage = () => {
       .finally(() => {
         if (isMounted) {
           setVectorStoresLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!token) {
+      setAvailableModels([]);
+      setAvailableModelsLoading(false);
+      setAvailableModelsError(null);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    setAvailableModelsLoading(true);
+    setAvailableModelsError(null);
+    modelRegistryApi
+      .list(token)
+      .then((models) => {
+        if (!isMounted) {
+          return;
+        }
+        setAvailableModels(models);
+      })
+      .catch((error) => {
+        if (!isMounted) {
+          return;
+        }
+        const message =
+          error instanceof Error ? error.message : "Impossible de charger les modèles autorisés.";
+        setAvailableModelsError(message);
+        setAvailableModels([]);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setAvailableModelsLoading(false);
         }
       });
 
@@ -653,8 +743,10 @@ const WorkflowBuilderPage = () => {
           return data;
         }
         let nextParameters = setAgentModel(data.parameters, value);
-        if (!supportsReasoningModel(value)) {
+        if (!isReasoningModel(value)) {
           nextParameters = setAgentReasoningEffort(nextParameters, "");
+          nextParameters = setAgentReasoningVerbosity(nextParameters, "");
+          nextParameters = setAgentReasoningSummary(nextParameters, "");
         }
         return {
           ...data,
@@ -664,7 +756,7 @@ const WorkflowBuilderPage = () => {
         } satisfies FlowNodeData;
       });
     },
-    [updateNodeData]
+    [isReasoningModel, updateNodeData],
   );
 
   const handleAgentReasoningChange = useCallback(
@@ -682,7 +774,43 @@ const WorkflowBuilderPage = () => {
         } satisfies FlowNodeData;
       });
     },
-    [updateNodeData]
+    [updateNodeData],
+  );
+
+  const handleAgentReasoningVerbosityChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentReasoningVerbosity(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleAgentReasoningSummaryChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentReasoningSummary(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
   );
 
   const handleAgentTemperatureChange = useCallback(
@@ -700,7 +828,7 @@ const WorkflowBuilderPage = () => {
         } satisfies FlowNodeData;
       });
     },
-    [updateNodeData]
+    [updateNodeData],
   );
 
   const handleAgentTopPChange = useCallback(
@@ -718,7 +846,115 @@ const WorkflowBuilderPage = () => {
         } satisfies FlowNodeData;
       });
     },
-    [updateNodeData]
+    [updateNodeData],
+  );
+
+  const handleAgentMaxOutputTokensChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentMaxOutputTokens(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleAgentIncludeChatHistoryChange = useCallback(
+    (nodeId: string, value: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentIncludeChatHistory(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleAgentDisplayResponseInChatChange = useCallback(
+    (nodeId: string, value: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentDisplayResponseInChat(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleAgentShowSearchSourcesChange = useCallback(
+    (nodeId: string, value: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentShowSearchSources(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleAgentContinueOnErrorChange = useCallback(
+    (nodeId: string, value: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentContinueOnError(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleAgentStorePreferenceChange = useCallback(
+    (nodeId: string, value: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentStorePreference(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
   );
 
   const handleAgentResponseFormatKindChange = useCallback(
@@ -1597,13 +1833,25 @@ const disableSave = useMemo(() => {
                   onAgentMessageChange={handleAgentMessageChange}
                   onAgentModelChange={handleAgentModelChange}
                   onAgentReasoningChange={handleAgentReasoningChange}
+                  onAgentReasoningVerbosityChange={handleAgentReasoningVerbosityChange}
+                  onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}
                   onAgentTemperatureChange={handleAgentTemperatureChange}
                   onAgentTopPChange={handleAgentTopPChange}
+                  onAgentMaxOutputTokensChange={handleAgentMaxOutputTokensChange}
                   onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
                   onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
                   onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
+                  onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}
+                  onAgentDisplayResponseInChatChange={handleAgentDisplayResponseInChatChange}
+                  onAgentShowSearchSourcesChange={handleAgentShowSearchSourcesChange}
+                  onAgentContinueOnErrorChange={handleAgentContinueOnErrorChange}
+                  onAgentStorePreferenceChange={handleAgentStorePreferenceChange}
                   onAgentWebSearchChange={handleAgentWebSearchChange}
                   onAgentFileSearchChange={handleAgentFileSearchChange}
+                  availableModels={availableModels}
+                  availableModelsLoading={availableModelsLoading}
+                  availableModelsError={availableModelsError}
+                  isReasoningModel={isReasoningModel}
                   onAgentWeatherToolChange={handleAgentWeatherToolChange}
                   vectorStores={vectorStores}
                   vectorStoresLoading={vectorStoresLoading}
@@ -1667,13 +1915,25 @@ type NodeInspectorProps = {
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onAgentModelChange: (nodeId: string, value: string) => void;
   onAgentReasoningChange: (nodeId: string, value: string) => void;
+  onAgentReasoningVerbosityChange: (nodeId: string, value: string) => void;
+  onAgentReasoningSummaryChange: (nodeId: string, value: string) => void;
   onAgentTemperatureChange: (nodeId: string, value: string) => void;
   onAgentTopPChange: (nodeId: string, value: string) => void;
+  onAgentMaxOutputTokensChange: (nodeId: string, value: string) => void;
   onAgentResponseFormatKindChange: (nodeId: string, kind: "text" | "json_schema") => void;
   onAgentResponseFormatNameChange: (nodeId: string, value: string) => void;
   onAgentResponseFormatSchemaChange: (nodeId: string, schema: unknown) => void;
+  onAgentIncludeChatHistoryChange: (nodeId: string, value: boolean) => void;
+  onAgentDisplayResponseInChatChange: (nodeId: string, value: boolean) => void;
+  onAgentShowSearchSourcesChange: (nodeId: string, value: boolean) => void;
+  onAgentContinueOnErrorChange: (nodeId: string, value: boolean) => void;
+  onAgentStorePreferenceChange: (nodeId: string, value: boolean) => void;
   onAgentWebSearchChange: (nodeId: string, config: WebSearchConfig | null) => void;
   onAgentFileSearchChange: (nodeId: string, config: FileSearchConfig | null) => void;
+  availableModels: AvailableModel[];
+  availableModelsLoading: boolean;
+  availableModelsError: string | null;
+  isReasoningModel: (model: string) => boolean;
   onAgentWeatherToolChange: (nodeId: string, enabled: boolean) => void;
   vectorStores: VectorStoreSummary[];
   vectorStoresLoading: boolean;
@@ -1694,13 +1954,25 @@ const NodeInspector = ({
   onAgentMessageChange,
   onAgentModelChange,
   onAgentReasoningChange,
+  onAgentReasoningVerbosityChange,
+  onAgentReasoningSummaryChange,
   onAgentTemperatureChange,
   onAgentTopPChange,
+  onAgentMaxOutputTokensChange,
   onAgentResponseFormatKindChange,
   onAgentResponseFormatNameChange,
   onAgentResponseFormatSchemaChange,
+  onAgentIncludeChatHistoryChange,
+  onAgentDisplayResponseInChatChange,
+  onAgentShowSearchSourcesChange,
+  onAgentContinueOnErrorChange,
+  onAgentStorePreferenceChange,
   onAgentWebSearchChange,
   onAgentFileSearchChange,
+  availableModels,
+  availableModelsLoading,
+  availableModelsError,
+  isReasoningModel,
   onAgentWeatherToolChange,
   vectorStores,
   vectorStoresLoading,
@@ -1718,6 +1990,17 @@ const NodeInspector = ({
   const responseFormat = getAgentResponseFormat(parameters);
   const temperature = getAgentTemperature(parameters);
   const topP = getAgentTopP(parameters);
+  const reasoningVerbosity = getAgentReasoningVerbosity(parameters);
+  const rawReasoningSummary = getAgentReasoningSummary(parameters);
+  const reasoningSummaryValue = rawReasoningSummary.trim() ? rawReasoningSummary : "none";
+  const maxOutputTokens = getAgentMaxOutputTokens(parameters);
+  const maxOutputTokensValue =
+    typeof maxOutputTokens === "number" ? String(maxOutputTokens) : "";
+  const includeChatHistory = getAgentIncludeChatHistory(parameters);
+  const displayResponseInChat = getAgentDisplayResponseInChat(parameters);
+  const showSearchSources = getAgentShowSearchSources(parameters);
+  const continueOnError = getAgentContinueOnError(parameters);
+  const storeResponses = getAgentStorePreference(parameters);
   const webSearchConfig = getAgentWebSearchConfig(parameters);
   const webSearchEnabled = Boolean(webSearchConfig);
   const fileSearchConfig = getAgentFileSearchConfig(parameters);
@@ -1744,6 +2027,11 @@ const NodeInspector = ({
         "Sélectionnez un vector store pour activer la recherche documentaire.";
     }
   }
+  const matchedModel = availableModels.find((model) => model.name === agentModel);
+  const selectedModelOption = matchedModel ? matchedModel.name : "";
+  const supportsReasoning = isReasoningModel(agentModel);
+  const temperatureValue = typeof temperature === "number" ? String(temperature) : "";
+  const topPValue = typeof topP === "number" ? String(topP) : "";
   const globalAssignments = useMemo(
     () => getStateAssignments(parameters, "globals"),
     [parameters],
@@ -1770,9 +2058,6 @@ const NodeInspector = ({
     }
     setSchemaError(null);
   }, [node.id, responseFormat.kind, schemaSignature]);
-  const supportsReasoning = supportsReasoningModel(agentModel);
-  const temperatureValue = typeof temperature === "number" ? String(temperature) : "";
-  const topPValue = typeof topP === "number" ? String(topP) : "";
   return (
     <section aria-label={`Propriétés du nœud ${node.data.slug}`}>
       <h2 style={{ fontSize: "1.25rem", marginBottom: "0.75rem" }}>Nœud sélectionné</h2>
@@ -1806,32 +2091,93 @@ const NodeInspector = ({
 
           <label style={fieldStyle}>
             <span>Modèle OpenAI</span>
+            <select
+              value={selectedModelOption}
+              onChange={(event) => onAgentModelChange(node.id, event.target.value)}
+              disabled={availableModelsLoading}
+            >
+              <option value="">Modèle personnalisé ou non listé</option>
+              {availableModels.map((model) => (
+                <option key={model.id} value={model.name}>
+                  {model.display_name?.trim()
+                    ? `${model.display_name} (${model.name})`
+                    : model.name}
+                  {model.supports_reasoning ? " – raisonnement" : ""}
+                </option>
+              ))}
+            </select>
             <input
               type="text"
               value={agentModel}
               placeholder="Ex. gpt-4.1-mini"
               onChange={(event) => onAgentModelChange(node.id, event.target.value)}
             />
+            {availableModelsLoading ? (
+              <small style={{ color: "#475569" }}>Chargement des modèles autorisés…</small>
+            ) : availableModelsError ? (
+              <span style={{ color: "#b91c1c", fontSize: "0.85rem" }}>{availableModelsError}</span>
+            ) : matchedModel?.description ? (
+              <small style={{ color: "#475569" }}>{matchedModel.description}</small>
+            ) : null}
+            <small style={{ color: "#475569" }}>
+              Sélectionnez un modèle autorisé ou saisissez une valeur personnalisée dans le champ texte.
+            </small>
           </label>
 
           {supportsReasoning ? (
-            <label style={fieldStyle}>
-              <span>Niveau de raisonnement</span>
-              <select
-                value={reasoningEffort}
-                onChange={(event) => onAgentReasoningChange(node.id, event.target.value)}
-              >
-                {reasoningEffortOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <small style={{ color: "#475569" }}>
-                Ajuste la profondeur d'analyse du modèle (laisser vide pour utiliser la valeur par
-                défaut).
-              </small>
-            </label>
+            <>
+              <label style={fieldStyle}>
+                <span>Niveau de raisonnement</span>
+                <select
+                  value={reasoningEffort}
+                  onChange={(event) => onAgentReasoningChange(node.id, event.target.value)}
+                >
+                  {reasoningEffortOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <small style={{ color: "#475569" }}>
+                  Ajuste la profondeur d'analyse du modèle (laisser vide pour utiliser la valeur par
+                  défaut).
+                </small>
+              </label>
+
+              <label style={fieldStyle}>
+                <span>Verbosité du raisonnement</span>
+                <select
+                  value={reasoningVerbosity}
+                  onChange={(event) => onAgentReasoningVerbosityChange(node.id, event.target.value)}
+                >
+                  {reasoningVerbosityOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <small style={{ color: "#475569" }}>
+                  Contrôle la quantité de texte générée pendant les étapes de raisonnement.
+                </small>
+              </label>
+
+              <label style={fieldStyle}>
+                <span>Résumé des étapes</span>
+                <select
+                  value={reasoningSummaryValue}
+                  onChange={(event) => onAgentReasoningSummaryChange(node.id, event.target.value)}
+                >
+                  {reasoningSummaryOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <small style={{ color: "#475569" }}>
+                  Détermine si l'agent doit générer un résumé automatique de son raisonnement.
+                </small>
+              </label>
+            </>
           ) : (
             <>
               <label style={fieldStyle}>
@@ -1866,6 +2212,74 @@ const NodeInspector = ({
               </label>
             </>
           )}
+
+          <label style={fieldStyle}>
+            <span>Nombre maximal de tokens générés</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={maxOutputTokensValue}
+              placeholder="Laisser vide pour la valeur par défaut"
+              onChange={(event) => onAgentMaxOutputTokensChange(node.id, event.target.value)}
+            />
+            <small style={{ color: "#475569" }}>
+              Limite la longueur maximale des réponses produites par cet agent.
+            </small>
+          </label>
+
+          <div style={{ display: "grid", gap: "0.5rem" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={includeChatHistory}
+                onChange={(event) =>
+                  onAgentIncludeChatHistoryChange(node.id, event.target.checked)
+                }
+              />
+              Inclure l'historique du chat
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={displayResponseInChat}
+                onChange={(event) =>
+                  onAgentDisplayResponseInChatChange(node.id, event.target.checked)
+                }
+              />
+              Afficher la réponse dans le chat
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={showSearchSources}
+                onChange={(event) =>
+                  onAgentShowSearchSourcesChange(node.id, event.target.checked)
+                }
+              />
+              Afficher les sources de recherche
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={continueOnError}
+                onChange={(event) =>
+                  onAgentContinueOnErrorChange(node.id, event.target.checked)
+                }
+              />
+              Continuer l'exécution en cas d'erreur
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={storeResponses}
+                onChange={(event) =>
+                  onAgentStorePreferenceChange(node.id, event.target.checked)
+                }
+              />
+              Enregistrer la réponse dans l'historique de conversation
+            </label>
+          </div>
 
           <label style={fieldStyle}>
             <span>Type de sortie</span>

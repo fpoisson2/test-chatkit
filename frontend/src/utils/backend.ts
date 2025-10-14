@@ -184,6 +184,55 @@ export const resetUserPassword = async (
   return response.json();
 };
 
+export type AvailableModel = {
+  id: number;
+  name: string;
+  display_name: string | null;
+  description: string | null;
+  supports_reasoning: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AvailableModelPayload = {
+  name: string;
+  display_name?: string | null;
+  description?: string | null;
+  supports_reasoning: boolean;
+};
+
+export const modelRegistryApi = {
+  async list(token: string | null): Promise<AvailableModel[]> {
+    const response = await requestWithFallback("/api/models", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async listAdmin(token: string | null): Promise<AvailableModel[]> {
+    const response = await requestWithFallback("/api/admin/models", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async create(token: string | null, payload: AvailableModelPayload): Promise<AvailableModel> {
+    const response = await requestWithFallback("/api/admin/models", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async delete(token: string | null, id: number): Promise<void> {
+    await requestWithFallback(`/api/admin/models/${id}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+  },
+};
+
 export type VectorStoreSummary = {
   slug: string;
   title: string | null;

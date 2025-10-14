@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { AdminPage } from "./pages/AdminPage";
+import { AdminModelsPage } from "./pages/AdminModelsPage";
 import { MyChat } from "./MyChat";
 import { useAuth } from "./auth";
 import { LoginPage } from "./pages/LoginPage";
@@ -53,6 +54,14 @@ export const App = () => (
       element={
         <RequireAdmin>
           <AdminPage />
+        </RequireAdmin>
+      }
+    />
+    <Route
+      path="/admin/models"
+      element={
+        <RequireAdmin>
+          <AdminModelsPage />
         </RequireAdmin>
       }
     />
