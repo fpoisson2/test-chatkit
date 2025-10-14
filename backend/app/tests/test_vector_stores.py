@@ -227,3 +227,58 @@ def test_ingest_search_and_retrieve_document() -> None:
     assert detail["document"]["title"] == "Guide de Paris"
     assert detail["chunk_count"] >= 1
 
+
+def test_admin_can_delete_document() -> None:
+    _reset_db()
+    admin = _make_user(email="deleter@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    create_response = client.post(
+        "/api/vector-stores",
+        headers=_auth_headers(token),
+        json={"slug": "archives"},
+    )
+    assert create_response.status_code == 201
+
+    vector_service._load_model.cache_clear()
+    with patch("backend.app.vector_store.service._load_model", new=lambda _: DummyModel()):
+        ingest_payload = {
+            "doc_id": "obsolete-doc",
+            "document": {"title": "Ancien guide"},
+        }
+        ingest_response = client.post(
+            "/api/vector-stores/archives/documents",
+            headers=_auth_headers(token),
+            json=ingest_payload,
+        )
+        assert ingest_response.status_code == 201
+
+    listing = client.get(
+        "/api/vector-stores/archives/documents",
+        headers=_auth_headers(token),
+    )
+    assert listing.status_code == 200
+    documents = listing.json()
+    assert len(documents) == 1
+    assert documents[0]["doc_id"] == "obsolete-doc"
+    assert documents[0]["chunk_count"] >= 1
+
+    deletion = client.delete(
+        "/api/vector-stores/archives/documents/obsolete-doc",
+        headers=_auth_headers(token),
+    )
+    assert deletion.status_code == 204
+
+    missing = client.get(
+        "/api/vector-stores/archives/documents/obsolete-doc",
+        headers=_auth_headers(token),
+    )
+    assert missing.status_code == 404
+
+    after = client.get(
+        "/api/vector-stores/archives/documents",
+        headers=_auth_headers(token),
+    )
+    assert after.status_code == 200
+    assert after.json() == []
+

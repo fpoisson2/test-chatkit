@@ -174,6 +174,33 @@ async def ingest_document(
     )
 
 
+@router.get(
+    "/api/vector-stores/{store_slug}/documents",
+    response_model=list[VectorStoreDocumentResponse],
+)
+async def list_documents(
+    store_slug: str,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+) -> list[VectorStoreDocumentResponse]:
+    service = JsonVectorStoreService(session)
+    try:
+        documents = service.list_documents(store_slug)
+    except LookupError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Magasin introuvable")
+
+    return [
+        VectorStoreDocumentResponse(
+            doc_id=document.doc_id,
+            metadata=dict(document.metadata_json or {}),
+            chunk_count=chunk_count,
+            created_at=document.created_at,
+            updated_at=document.updated_at,
+        )
+        for document, chunk_count in documents
+    ]
+
+
 @router.post(
     "/api/vector-stores/{store_slug}/search_json",
     response_model=list[VectorStoreSearchResult],
@@ -236,3 +263,23 @@ async def get_document(
         updated_at=document.updated_at,
         document=document.raw_document,
     )
+
+
+@router.delete(
+    "/api/vector-stores/{store_slug}/documents/{doc_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_document(
+    store_slug: str,
+    doc_id: str,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+) -> Response:
+    service = JsonVectorStoreService(session)
+    try:
+        service.delete_document(store_slug, doc_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
