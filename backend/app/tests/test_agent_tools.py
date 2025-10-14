@@ -66,6 +66,48 @@ def test_coerce_agent_tools_from_serialized_file_search() -> None:
     assert tool.name == "file_search_plan_cadre"
 
 
+def test_coerce_agent_tools_from_weather_function() -> None:
+    tools = _coerce_agent_tools(
+        [
+            {
+                "type": "function",
+                "function": {
+                    "name": "fetch_weather",
+                    "description": "Retourne la météo.",
+                },
+            }
+        ]
+    )
+
+    assert isinstance(tools, list)
+    assert len(tools) == 1
+    tool = tools[0]
+    assert isinstance(tool, FunctionTool)
+    assert tool.name == "fetch_weather"
+    assert hasattr(tool, "description")
+    if hasattr(tool, "description"):
+        assert "météo" in (tool.description or "")
+
+
+def test_coerce_agent_tools_accepts_weather_alias() -> None:
+    tools = _coerce_agent_tools(
+        [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                },
+            }
+        ]
+    )
+
+    assert isinstance(tools, list)
+    assert len(tools) == 1
+    tool = tools[0]
+    assert isinstance(tool, FunctionTool)
+    assert tool.name == "get_weather"
+
+
 def test_coerce_agent_tools_accepts_empty_list() -> None:
     tools = _coerce_agent_tools([], [web_search_preview])
     assert isinstance(tools, list)
