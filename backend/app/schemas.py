@@ -136,6 +136,7 @@ class WorkflowDefinitionResponse(BaseModel):
     workflow_id: int
     workflow_slug: str | None = None
     workflow_display_name: str | None = None
+    workflow_is_chatkit_default: bool = False
     name: str
     version: int
     is_active: bool
@@ -161,6 +162,7 @@ class WorkflowSummaryResponse(BaseModel):
     updated_at: datetime.datetime
     active_version_id: int | None = None
     active_version_number: int | None = None
+    is_chatkit_default: bool
     versions_count: int
 
 
@@ -190,6 +192,10 @@ class WorkflowVersionCreateRequest(BaseModel):
 class WorkflowProductionUpdate(BaseModel):
     version_id: int
 
+
+
+class WorkflowChatKitUpdate(BaseModel):
+    workflow_id: int
 
 class VectorStoreCreateRequest(BaseModel):
     slug: str

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import atexit
 import os
+from typing import Any
 
 from backend.app.config import get_settings
 
@@ -59,6 +60,26 @@ def _auth_headers(token: str | None = None) -> dict[str, str]:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers
+
+
+def _simple_graph() -> dict[str, Any]:
+    return {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {
+                "slug": "agent-triage",
+                "kind": "agent",
+                "agent_key": "triage",
+                "is_enabled": True,
+                "parameters": {},
+            },
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [
+            {"source": "start", "target": "agent-triage"},
+            {"source": "agent-triage", "target": "end"},
+        ],
+    }
 
 
 def test_get_workflow_requires_authentication() -> None:
@@ -504,3 +525,109 @@ def test_default_workflow_cannot_be_deleted() -> None:
     )
     assert deletion.status_code == 400
     assert "peut pas" in deletion.json()["detail"].lower()
+
+
+def test_cannot_set_chatkit_workflow_without_active_version() -> None:
+    admin = _make_user(email="selector@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    creation = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-sans-prod",
+            "display_name": "Workflow sans prod",
+            "graph": None,
+        },
+    )
+    workflow_id = creation.json()["workflow_id"]
+
+    response = client.post(
+        "/api/workflows/chatkit",
+        headers=_auth_headers(token),
+        json={"workflow_id": workflow_id},
+    )
+
+    assert response.status_code == 400
+    assert "production" in response.json()["detail"].lower()
+
+
+def test_admin_can_select_chatkit_workflow() -> None:
+    admin = _make_user(email="switcher@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    creation = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-alternatif",
+            "display_name": "Workflow alternatif",
+            "graph": {
+                "nodes": _simple_graph()["nodes"],
+                "edges": _simple_graph()["edges"],
+            },
+        },
+    )
+    assert creation.status_code == 201
+    workflow_id = creation.json()["workflow_id"]
+
+    version_response = client.post(
+        f"/api/workflows/{workflow_id}/versions",
+        headers=_auth_headers(token),
+        json={"graph": _simple_graph(), "mark_as_active": True},
+    )
+    assert version_response.status_code == 201
+
+    selection = client.post(
+        "/api/workflows/chatkit",
+        headers=_auth_headers(token),
+        json={"workflow_id": workflow_id},
+    )
+    assert selection.status_code == 200
+    payload = selection.json()
+    assert payload["id"] == workflow_id
+    assert payload["is_chatkit_default"] is True
+
+    current = client.get("/api/workflows/current", headers=_auth_headers(token))
+    assert current.status_code == 200
+    assert current.json()["workflow_id"] == workflow_id
+    assert current.json()["workflow_is_chatkit_default"] is True
+
+
+def test_chatkit_workflow_cannot_be_deleted() -> None:
+    admin = _make_user(email="keeper@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    creation = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-a-garder",
+            "display_name": "Workflow à garder",
+            "graph": {
+                "nodes": _simple_graph()["nodes"],
+                "edges": _simple_graph()["edges"],
+            },
+        },
+    )
+    workflow_id = creation.json()["workflow_id"]
+
+    client.post(
+        f"/api/workflows/{workflow_id}/versions",
+        headers=_auth_headers(token),
+        json={"graph": _simple_graph(), "mark_as_active": True},
+    )
+
+    client.post(
+        "/api/workflows/chatkit",
+        headers=_auth_headers(token),
+        json={"workflow_id": workflow_id},
+    )
+
+    deletion = client.delete(
+        f"/api/workflows/{workflow_id}",
+        headers=_auth_headers(token),
+    )
+
+    assert deletion.status_code == 400
+    assert "chatkit" in deletion.json()["detail"].lower()

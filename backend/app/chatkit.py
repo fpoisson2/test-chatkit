@@ -1012,12 +1012,15 @@ async def run_workflow(
         edge_list.sort(key=lambda tr: tr.id or 0)
 
     def _workflow_run_config() -> RunConfig:
-        return RunConfig(
-            trace_metadata={
-                "__trace_source__": "agent-builder",
-                "workflow_id": "wf_68e556bd92048190a549d12e4cf03b220dbf1b19ef9993ae",
-            }
-        )
+        metadata: dict[str, Any] = {
+            "__trace_source__": "agent-builder",
+            "workflow_db_id": definition.workflow_id,
+        }
+        if definition.workflow and definition.workflow.slug:
+            metadata["workflow_slug"] = definition.workflow.slug
+        if definition.workflow and definition.workflow.display_name:
+            metadata["workflow_name"] = definition.workflow.display_name
+        return RunConfig(trace_metadata=metadata)
 
     async def record_step(step_key: str, title: str, payload: Any) -> None:
         summary = WorkflowStepSummary(
