@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { ApiError, type WidgetTemplate } from "../utils/backend";
+import { WidgetPreview } from "./WidgetPreview";
 
 type WidgetTemplateFormProps = {
   mode: "create" | "edit";
@@ -65,7 +66,7 @@ export const WidgetTemplateForm = ({
   );
   const [error, setError] = useState<string | null>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
-  const [previewJson, setPreviewJson] = useState<string | null>(null);
+  const [previewDefinition, setPreviewDefinition] = useState<Record<string, unknown> | null>(null);
   const [isSubmitting, setSubmitting] = useState(false);
   const [isPreviewing, setPreviewing] = useState(false);
 
@@ -88,7 +89,7 @@ export const WidgetTemplateForm = ({
     }
     setError(null);
     setValidationErrors([]);
-    setPreviewJson(null);
+    setPreviewDefinition(null);
   }, [initialValue, mode]);
 
   const parseDefinition = (): Record<string, unknown> | null => {
@@ -163,9 +164,9 @@ export const WidgetTemplateForm = ({
     setPreviewing(true);
     try {
       const normalized = await onPreview(definition);
-      setPreviewJson(toJson(normalized));
+      setPreviewDefinition(normalized);
     } catch (previewError) {
-      setPreviewJson(null);
+      setPreviewDefinition(null);
       if (previewError instanceof ApiError) {
         const details = extractApiErrorDetails(previewError);
         if (details.message) {
@@ -259,13 +260,17 @@ export const WidgetTemplateForm = ({
           {isSubmitting ? "Enregistrement…" : mode === "edit" ? "Mettre à jour" : "Créer"}
         </button>
       </div>
-      {previewJson ? (
-        <details className="accordion" open>
-          <summary>Définition normalisée</summary>
-          <pre className="code-block" aria-label="Prévisualisation du widget">
-            {previewJson}
-          </pre>
-        </details>
+      {previewDefinition ? (
+        <section className="widget-preview-section">
+          <h4 className="widget-preview-section__title">Prévisualisation du widget</h4>
+          <WidgetPreview definition={previewDefinition} />
+          <details className="accordion">
+            <summary>Définition normalisée</summary>
+            <pre className="code-block" aria-label="Prévisualisation du widget">
+              {toJson(previewDefinition)}
+            </pre>
+          </details>
+        </section>
       ) : null}
     </form>
   );
