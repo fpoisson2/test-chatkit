@@ -35,6 +35,9 @@ type VoiceSessionSecret = {
   instructions: string;
   model: string;
   voice: string;
+  prompt_id?: string | null;
+  prompt_version?: string | null;
+  prompt_variables?: Record<string, string>;
 };
 
 type StopOptions = {
@@ -73,6 +76,66 @@ const resolveApiKey = (clientSecret: VoiceSessionSecret["client_secret"]): strin
 };
 
 const isMessageItem = (item: RealtimeItem): item is RealtimeMessageItem => item.type === "message";
+
+const buildPromptUpdate = (
+  secret: VoiceSessionSecret,
+): Record<string, unknown> | null => {
+  const prompt: Record<string, unknown> = {};
+  const promptId = typeof secret.prompt_id === "string" ? secret.prompt_id.trim() : "";
+  if (promptId) {
+    prompt.id = promptId;
+  }
+  const promptVersion =
+    typeof secret.prompt_version === "string" ? secret.prompt_version.trim() : "";
+  if (promptVersion) {
+    prompt.version = promptVersion;
+  }
+  const variablesSource = secret.prompt_variables ?? {};
+  const variableEntries = Object.entries(variablesSource).filter(([key]) => key.trim().length > 0);
+  if (variableEntries.length > 0) {
+    const variables: Record<string, string> = {};
+    variableEntries.forEach(([key, value]) => {
+      const trimmedKey = key.trim();
+      if (!trimmedKey) {
+        return;
+      }
+      variables[trimmedKey] = value;
+    });
+    if (Object.keys(variables).length > 0) {
+      prompt.variables = variables;
+    }
+  }
+  if (Object.keys(prompt).length === 0) {
+    return null;
+  }
+  return { prompt };
+};
+
+const applySessionUpdate = (session: RealtimeSession, update: Record<string, unknown>) => {
+  const candidate = session as unknown as {
+    sendSessionUpdate?: (payload: Record<string, unknown>) => void;
+    updateSession?: (payload: { session: Record<string, unknown> }) => void;
+    send?: (event: Record<string, unknown>) => void;
+  };
+
+  try {
+    if (typeof candidate.sendSessionUpdate === "function") {
+      candidate.sendSessionUpdate(update);
+      return;
+    }
+    if (typeof candidate.updateSession === "function") {
+      candidate.updateSession({ session: update });
+      return;
+    }
+    if (typeof candidate.send === "function") {
+      candidate.send({ type: "session.update", session: update });
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("Échec de l'application des paramètres Realtime", error);
+    }
+  }
+};
 
 const collectTextFromMessage = (item: RealtimeMessageItem): string => {
   return item.content
@@ -377,6 +440,10 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
         attachSessionListeners(session);
 
         await session.connect({ apiKey, model: secret.model });
+        const promptUpdate = buildPromptUpdate(secret);
+        if (promptUpdate) {
+          applySessionUpdate(session, promptUpdate);
+        }
         setStatus("connected");
         setIsListening(true);
 

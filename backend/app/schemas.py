@@ -36,6 +36,35 @@ class VoiceSessionResponse(BaseModel):
     model: str
     instructions: str
     voice: str
+    prompt_id: str | None = None
+    prompt_version: str | None = None
+    prompt_variables: dict[str, str] = Field(default_factory=dict)
+
+
+class VoiceSettingsResponse(BaseModel):
+    instructions: str
+    model: str
+    voice: str
+    prompt_id: str | None = None
+    prompt_version: str | None = None
+    prompt_variables: dict[str, str] = Field(default_factory=dict)
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
+class VoiceSettingsUpdateRequest(BaseModel):
+    instructions: str | None = Field(default=None, description="Instructions vocales personnalisées.")
+    model: str | None = Field(default=None, description="Modèle Realtime à utiliser.")
+    voice: str | None = Field(default=None, description="Identifiant de la voix Realtime.")
+    prompt_id: str | None = Field(default=None, description="Identifiant du prompt stocké côté serveur.")
+    prompt_version: str | None = Field(default=None, description="Version optionnelle du prompt.")
+    prompt_variables: dict[str, str] | None = Field(
+        default=None,
+        description="Variables injectées lors de la résolution du prompt.",
+    )
 
 
 class UserCreate(BaseModel):

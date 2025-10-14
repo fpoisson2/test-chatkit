@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
 
 try:  # pragma: no cover - dépendance optionnelle pour les tests
     from chatkit.server import StreamingResult
@@ -21,9 +22,11 @@ if TYPE_CHECKING:  # pragma: no cover - uniquement pour l'auto-complétion
 from ..chatkit_realtime import create_realtime_voice_session
 from ..chatkit_sessions import create_chatkit_session, proxy_chatkit_request
 from ..config import get_settings
+from ..database import get_session
 from ..dependencies import get_current_user
 from ..models import User
 from ..schemas import SessionRequest, VoiceSessionRequest, VoiceSessionResponse
+from ..voice_settings import get_or_create_voice_settings
 
 router = APIRouter()
 
@@ -153,11 +156,26 @@ async def create_session(
 async def create_voice_session(
     req: VoiceSessionRequest,
     current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
 ):
-    settings = get_settings()
-    resolved_model = req.model or settings.chatkit_realtime_model
-    resolved_instructions = req.instructions or settings.chatkit_realtime_instructions
-    resolved_voice = req.voice or settings.chatkit_realtime_voice
+    app_settings = get_settings()
+    voice_settings = get_or_create_voice_settings(session)
+
+    resolved_model = (
+        req.model
+        or voice_settings.model
+        or app_settings.chatkit_realtime_model
+    )
+    resolved_instructions = (
+        req.instructions
+        or voice_settings.instructions
+        or app_settings.chatkit_realtime_instructions
+    )
+    resolved_voice = (
+        req.voice
+        or voice_settings.voice
+        or app_settings.chatkit_realtime_voice
+    )
     user_id = f"user:{current_user.id}"
 
     secret_payload = await create_realtime_voice_session(
@@ -187,6 +205,9 @@ async def create_voice_session(
         model=resolved_model,
         instructions=resolved_instructions,
         voice=resolved_voice,
+        prompt_id=voice_settings.prompt_id,
+        prompt_version=voice_settings.prompt_version,
+        prompt_variables=voice_settings.prompt_variables,
     )
 
 

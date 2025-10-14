@@ -53,6 +53,7 @@ const buildNavigationItems = ({
   handleSidebarHome,
   handleSidebarAdmin,
   handleSidebarWorkflows,
+  handleSidebarVoice,
   handleSidebarSettings,
   handleSidebarLogin,
   handleSidebarLogout,
@@ -62,6 +63,7 @@ const buildNavigationItems = ({
   handleSidebarHome: () => void;
   handleSidebarAdmin: () => void;
   handleSidebarWorkflows: () => void;
+  handleSidebarVoice: () => void;
   handleSidebarSettings: () => void;
   handleSidebarLogin: () => void;
   handleSidebarLogout: () => void;
@@ -92,6 +94,12 @@ const buildNavigationItems = ({
 
   if (isAuthenticated) {
     items.push(
+      {
+        key: "voice",
+        label: "Mode voix",
+        icon: "voice",
+        onClick: handleSidebarVoice,
+      },
       {
         key: "settings",
         label: "Paramètres rapides",
@@ -528,6 +536,13 @@ export function MyChat() {
     navigate("/admin/workflows");
   }, [closeSidebar, isDesktopLayout, navigate]);
 
+  const handleSidebarVoice = useCallback(() => {
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
+    navigate("/voice");
+  }, [closeSidebar, isDesktopLayout, navigate]);
+
   const handleSidebarLogin = useCallback(() => {
     if (!isDesktopLayout) {
       closeSidebar();
@@ -715,6 +730,7 @@ export function MyChat() {
         handleSidebarHome,
         handleSidebarAdmin,
         handleSidebarWorkflows,
+        handleSidebarVoice,
         handleSidebarSettings,
         handleSidebarLogin,
         handleSidebarLogout,
@@ -724,12 +740,17 @@ export function MyChat() {
       handleSidebarAdmin,
       handleSidebarHome,
       handleSidebarWorkflows,
+      handleSidebarVoice,
       handleSidebarLogout,
       handleSidebarSettings,
       handleSidebarLogin,
       user?.is_admin,
     ],
   );
+
+  const handleGoToVoiceMode = useCallback(() => {
+    navigate("/voice");
+  }, [navigate]);
 
   const handleScrimPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -823,6 +844,24 @@ export function MyChat() {
       />
       <div className="chatkit-layout__main" {...mainInteractionHandlers}>
         <div className="chatkit-layout__widget">
+          {isAuthenticated ? (
+            <nav className="chatkit-mode-switch" aria-label="Changer de mode de conversation">
+              <span className="chatkit-mode-switch__label">Mode</span>
+              <div className="chatkit-mode-switch__group">
+                <span className="chatkit-mode-switch__pill chatkit-mode-switch__pill--active" aria-current="page">
+                  Chat texte
+                </span>
+                <button
+                  type="button"
+                  className="chatkit-mode-switch__pill"
+                  onClick={handleGoToVoiceMode}
+                >
+                  <SidebarIcon name="voice" className="chatkit-mode-switch__icon" />
+                  Mode voix
+                </button>
+              </div>
+            </nav>
+          ) : null}
           <ChatKit
             control={control}
             className="chatkit-host"
