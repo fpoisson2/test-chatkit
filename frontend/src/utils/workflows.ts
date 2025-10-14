@@ -82,7 +82,7 @@ export const setAgentMessage = (
     const { instructions: _ignored, ...rest } = next;
     return stripEmpty(rest);
   }
-  return { ...next, instructions: trimmed };
+  return { ...next, instructions: message };
 };
 
 export const setAgentModel = (parameters: AgentParameters, model: string): AgentParameters => {
