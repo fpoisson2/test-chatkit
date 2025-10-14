@@ -542,6 +542,40 @@ export function MyChat() {
     logout();
   }, [closeSidebar, isDesktopLayout, logout]);
 
+  const chatkitOptions = useMemo(
+    () =>
+      ({
+        api: apiConfig,
+        initialThread: initialThreadId,
+        header: {
+          leftAction: {
+            icon: "menu",
+            onClick: openSidebar,
+          },
+          rightAction: {
+            icon: "settings-cog",
+            onClick: openProfileSettings,
+          },
+        },
+        theme: {
+          colorScheme: "light" as const,
+        },
+        composer: {
+          placeholder: "Posez votre question...",
+          attachments: attachmentsConfig,
+        },
+        onClientTool: async (toolCall) => {
+          const { name, params } = toolCall as ClientToolCall;
+
+          switch (name) {
+            case "get_weather": {
+              const city = params?.city?.trim();
+              const country = params?.country?.trim();
+
+              if (!city) {
+                throw new Error("Le paramètre 'city' est requis pour l'outil météo.");
+              }
+
               const searchParams = new URLSearchParams({ city });
               if (country) {
                 searchParams.set("country", country);
