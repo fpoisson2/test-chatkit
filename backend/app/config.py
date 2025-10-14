@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from functools import lru_cache
@@ -7,14 +8,41 @@ from typing import Mapping
 
 from dotenv import load_dotenv
 
+logger = logging.getLogger("chatkit.settings")
+
+
 @dataclass(frozen=True)
 class Settings:
+    """Paramètres de configuration centralisés pour le backend.
+
+    Attributes:
+        allowed_origins: Liste d'origines autorisées pour le CORS.
+        openai_api_key: Jeton API OpenAI utilisé pour contacter ChatKit.
+        chatkit_workflow_id: Identifiant du workflow hébergé (optionnel).
+        chatkit_api_base: URL de base de l'API OpenAI/ChatKit.
+        chatkit_agent_model: Modèle utilisé pour les agents classiques.
+        chatkit_agent_instructions: Instructions de l'agent historique.
+        chatkit_realtime_model: Modèle Realtime par défaut pour les sessions vocales.
+        chatkit_realtime_instructions: Instructions transmises aux sessions Realtime.
+        chatkit_realtime_voice: Voix utilisée pour la synthèse Realtime.
+        database_url: Chaîne de connexion SQLAlchemy.
+        auth_secret_key: Clé secrète pour signer les JWT d'authentification.
+        access_token_expire_minutes: Durée de vie des tokens d'accès.
+        admin_email: Email administrateur initial (optionnel).
+        admin_password: Mot de passe administrateur initial (optionnel).
+        database_connect_retries: Nombre de tentatives de connexion à la base.
+        database_connect_delay: Délai entre deux tentatives (en secondes).
+    """
+
     allowed_origins: list[str]
     openai_api_key: str
     chatkit_workflow_id: str | None
     chatkit_api_base: str
     chatkit_agent_model: str
     chatkit_agent_instructions: str
+    chatkit_realtime_model: str
+    chatkit_realtime_instructions: str
+    chatkit_realtime_voice: str
     database_url: str
     auth_secret_key: str
     access_token_expire_minutes: int
@@ -37,6 +65,14 @@ class Settings:
             if value:
                 return value
             error = message or f"{name} environment variable is required"
+            if name == "OPENAI_API_KEY":
+                logger.error(
+                    "OPENAI_API_KEY manquante : %s", error
+                )
+            else:
+                logger.error(
+                    "Variable d'environnement manquante (%s) : %s", name, error
+                )
             raise RuntimeError(error)
 
         return cls(
@@ -51,6 +87,18 @@ class Settings:
             chatkit_agent_instructions=env.get(
                 "CHATKIT_AGENT_INSTRUCTIONS",
                 "Assistant conversationnel",
+            ),
+            chatkit_realtime_model=env.get(
+                "CHATKIT_REALTIME_MODEL",
+                "gpt-4o-realtime-preview-2024-12-17",
+            ),
+            chatkit_realtime_instructions=env.get(
+                "CHATKIT_REALTIME_INSTRUCTIONS",
+                "Assistant vocal ChatKit",
+            ),
+            chatkit_realtime_voice=env.get(
+                "CHATKIT_REALTIME_VOICE",
+                "verse",
             ),
             database_url=require(
                 "DATABASE_URL",
