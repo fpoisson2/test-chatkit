@@ -6,6 +6,9 @@ import atexit
 import os
 from unittest.mock import patch
 
+os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("USE_FLAX", "0")
+
 from fastapi.testclient import TestClient
 
 from backend.app import app
@@ -13,13 +16,26 @@ from backend.app.database import SessionLocal, engine
 from backend.app.models import Base, User, EMBEDDING_DIMENSION
 from backend.app.security import create_access_token, hash_password
 from backend.app.vector_store import service as vector_service
+from sqlalchemy import text
 
 _db_path = engine.url.database or ""
 
 
 def _reset_db() -> None:
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    if engine.dialect.name == "postgresql":
+        Base.metadata.create_all(bind=engine)
+        table_names = ", ".join(f'"{name}"' for name in Base.metadata.tables)
+        if not table_names:
+            return
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    f"TRUNCATE TABLE {table_names} RESTART IDENTITY CASCADE"
+                )
+            )
+    else:
+        Base.metadata.drop_all(bind=engine)
+        Base.metadata.create_all(bind=engine)
 
 
 _reset_db()
@@ -125,7 +141,7 @@ def test_admin_can_create_vector_store() -> None:
 
 def test_ingest_search_and_retrieve_document() -> None:
     _reset_db()
-    admin = _make_user(email="admin@example.com", is_admin=True)
+    admin = _make_user(email="vector-admin@example.com", is_admin=True)
     agent = _make_user(email="agent@example.com", is_admin=False)
     admin_token = create_access_token(admin)
     agent_token = create_access_token(agent)

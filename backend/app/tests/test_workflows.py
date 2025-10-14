@@ -3,12 +3,17 @@ from __future__ import annotations
 import atexit
 import os
 
+os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("USE_FLAX", "0")
+os.environ.pop("ADMIN_EMAIL", None)
+os.environ.pop("ADMIN_PASSWORD", None)
+
 from backend.app.config import get_settings
 
 get_settings.cache_clear()
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from backend.app import app
 from backend.app.database import SessionLocal, engine
@@ -24,8 +29,27 @@ from backend.app.security import create_access_token, hash_password
 
 _db_path = engine.url.database or ""
 
-Base.metadata.drop_all(bind=engine)
-Base.metadata.create_all(bind=engine)
+
+def _reset_db() -> None:
+    """Réinitialise le schéma en fonction du dialecte utilisé."""
+
+    if engine.dialect.name == "postgresql":
+        Base.metadata.create_all(bind=engine)
+        table_names = ", ".join(f'"{name}"' for name in Base.metadata.tables)
+        if not table_names:
+            return
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    f"TRUNCATE TABLE {table_names} RESTART IDENTITY CASCADE"
+                )
+            )
+    else:
+        Base.metadata.drop_all(bind=engine)
+        Base.metadata.create_all(bind=engine)
+
+
+_reset_db()
 
 client = TestClient(app)
 
@@ -74,7 +98,7 @@ def test_get_workflow_requires_admin() -> None:
 
 
 def test_admin_can_read_default_graph() -> None:
-    admin = _make_user(email="admin@example.com", is_admin=True)
+    admin = _make_user(email="workflow-admin@example.com", is_admin=True)
     token = create_access_token(admin)
     response = client.get("/api/workflows/current", headers=_auth_headers(token))
     assert response.status_code == 200
