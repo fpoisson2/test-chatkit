@@ -1338,12 +1338,8 @@ const disableSave = useMemo(() => {
   const availableVectorStoreSlugs = new Set(vectorStores.map((store) => store.slug));
 
   return nodes.some((node) => {
-    if (node.data.kind !== "agent") {
+    if (node.data.kind !== "agent" || !node.data.isEnabled) {
       return false;
-    }
-
-    if (!node.data.agentKey || node.data.agentKey.trim() === "") {
-      return true;
     }
 
     const fileSearchConfig = getAgentFileSearchConfig(node.data.parameters);
