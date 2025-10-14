@@ -358,7 +358,10 @@ def test_create_workflow_without_graph_creates_empty_version() -> None:
     assert data["name"] == "Version initiale"
     assert data["is_active"] is False
     assert data["steps"] == []
-    assert data["graph"] == {"nodes": [], "edges": []}
+    node_slugs = {node["slug"] for node in data["graph"]["nodes"]}
+    assert node_slugs == {"start", "end"}
+    edge_pairs = {(edge["source"], edge["target"]) for edge in data["graph"]["edges"]}
+    assert edge_pairs == {("start", "end")}
 
     library_response = client.get("/api/workflows", headers=_auth_headers(token))
     assert library_response.status_code == 200
@@ -392,3 +395,47 @@ def test_create_two_workflows_with_same_initial_name() -> None:
     assert library_response.status_code == 200
     slugs = {item["slug"] for item in library_response.json()}
     assert {"workflow-0", "workflow-1"}.issubset(slugs)
+
+
+def test_admin_can_delete_a_workflow() -> None:
+    admin = _make_user(email="deleter@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    creation = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-a-supprimer",
+            "display_name": "Workflow à supprimer",
+            "graph": None,
+        },
+    )
+    assert creation.status_code == 201
+    workflow_id = creation.json()["workflow_id"]
+
+    deletion = client.delete(
+        f"/api/workflows/{workflow_id}",
+        headers=_auth_headers(token),
+    )
+    assert deletion.status_code == 204
+
+    library_response = client.get("/api/workflows", headers=_auth_headers(token))
+    assert library_response.status_code == 200
+    ids = {item["id"] for item in library_response.json()}
+    assert workflow_id not in ids
+
+
+def test_default_workflow_cannot_be_deleted() -> None:
+    admin = _make_user(email="guardian@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    library_response = client.get("/api/workflows", headers=_auth_headers(token))
+    assert library_response.status_code == 200
+    default_id = next(item["id"] for item in library_response.json() if item["slug"] == "workflow-par-defaut")
+
+    deletion = client.delete(
+        f"/api/workflows/{default_id}",
+        headers=_auth_headers(token),
+    )
+    assert deletion.status_code == 400
+    assert "peut pas" in deletion.json()["detail"].lower()

@@ -218,6 +218,30 @@ DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
     ],
 }
 
+MINIMAL_WORKFLOW_GRAPH: dict[str, Any] = {
+    "nodes": [
+        {
+            "slug": "start",
+            "kind": "start",
+            "display_name": "Début",
+            "is_enabled": True,
+            "parameters": {},
+            "metadata": {"position": {"x": 0, "y": 0}},
+        },
+        {
+            "slug": "end",
+            "kind": "end",
+            "display_name": "Fin",
+            "is_enabled": True,
+            "parameters": {},
+            "metadata": {"position": {"x": 320, "y": 0}},
+        },
+    ],
+    "edges": [
+        {"source": "start", "target": "end", "metadata": {"label": ""}},
+    ],
+}
+
 DEFAULT_WORKFLOW_SLUG = "workflow-par-defaut"
 DEFAULT_WORKFLOW_DISPLAY_NAME = "Workflow par défaut"
 
@@ -544,13 +568,9 @@ class WorkflowService:
             db.add(workflow)
             db.flush()
 
-            if graph_payload is None:
-                nodes: list[NormalizedNode] = []
-                edges: list[NormalizedEdge] = []
-            else:
-                nodes, edges = self._normalize_graph(graph_payload, allow_empty=True)
+            nodes, edges = self._normalize_graph(graph_payload, allow_empty=True)
 
-            mark_active = bool(nodes)
+            mark_active = bool(graph_payload and (graph_payload.get("nodes") or []))
 
             definition = self._create_definition_from_graph(
                 workflow=workflow,
@@ -563,6 +583,24 @@ class WorkflowService:
             db.commit()
             db.refresh(definition)
             return self._fully_load_definition(definition)
+        finally:
+            if owns_session:
+                db.close()
+
+    def delete_workflow(
+        self, workflow_id: int, *, session: Session | None = None
+    ) -> None:
+        db, owns_session = self._get_session(session)
+        try:
+            workflow = db.get(Workflow, workflow_id)
+            if workflow is None:
+                raise WorkflowNotFoundError(workflow_id)
+            if workflow.slug == DEFAULT_WORKFLOW_SLUG:
+                raise WorkflowValidationError(
+                    "Le workflow par défaut ne peut pas être supprimé."
+                )
+            db.delete(workflow)
+            db.commit()
         finally:
             if owns_session:
                 db.close()
@@ -709,7 +747,7 @@ class WorkflowService:
     ) -> tuple[list[NormalizedNode], list[NormalizedEdge]]:
         if not payload:
             if allow_empty:
-                return [], []
+                return self._build_minimal_graph()
             raise WorkflowValidationError("Le workflow doit contenir un graphe valide.")
 
         raw_nodes = payload.get("nodes") or []
@@ -720,7 +758,7 @@ class WorkflowService:
                     raise WorkflowValidationError(
                         "Impossible de définir des connexions sans nœuds."
                     )
-                return [], []
+                return self._build_minimal_graph()
             raise WorkflowValidationError("Le workflow doit contenir au moins un nœud.")
 
         normalized_nodes: list[NormalizedNode] = []
@@ -786,7 +824,7 @@ class WorkflowService:
             raise WorkflowValidationError("Le workflow doit contenir un nœud de début actif.")
         if not any(node.kind == "end" and node.is_enabled for node in normalized_nodes):
             raise WorkflowValidationError("Le workflow doit contenir un nœud de fin actif.")
-        if not enabled_agent_slugs:
+        if not enabled_agent_slugs and not allow_empty:
             raise WorkflowValidationError("Au moins un agent doit être actif dans le workflow.")
         # Les anciens workflows imposaient la présence d'un rédacteur final, mais la
         # bibliothèque permet désormais de créer des workflows plus simples.
@@ -823,6 +861,30 @@ class WorkflowService:
 
         self._validate_graph_structure(normalized_nodes, normalized_edges)
         return normalized_nodes, normalized_edges
+
+    def _build_minimal_graph(self) -> tuple[list[NormalizedNode], list[NormalizedEdge]]:
+        nodes = [
+            NormalizedNode(
+                slug=str(entry["slug"]),
+                kind=str(entry["kind"]),
+                display_name=str(entry.get("display_name") or "") or None,
+                agent_key=None,
+                is_enabled=bool(entry.get("is_enabled", True)),
+                parameters=dict(entry.get("parameters") or {}),
+                metadata=dict(entry.get("metadata") or {}),
+            )
+            for entry in MINIMAL_WORKFLOW_GRAPH["nodes"]
+        ]
+        edges = [
+            NormalizedEdge(
+                source_slug=str(entry.get("source", "")),
+                target_slug=str(entry.get("target", "")),
+                condition=None,
+                metadata=dict(entry.get("metadata") or {}),
+            )
+            for entry in MINIMAL_WORKFLOW_GRAPH["edges"]
+        ]
+        return nodes, edges
 
     def _ensure_dict(self, value: Any, label: str) -> dict[str, Any]:
         if value is None:
