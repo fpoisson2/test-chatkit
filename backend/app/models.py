@@ -110,6 +110,18 @@ class Workflow(Base):
 
 class WorkflowDefinition(Base):
     __tablename__ = "workflow_definitions"
+    __table_args__ = (
+        UniqueConstraint(
+            "workflow_id",
+            "version",
+            name="workflow_definitions_workflow_version",
+        ),
+        UniqueConstraint(
+            "workflow_id",
+            "name",
+            name="workflow_definitions_workflow_name",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     workflow_id: Mapped[int] = mapped_column(

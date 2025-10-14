@@ -340,6 +340,63 @@ def _run_ad_hoc_migrations() -> None:
                     )
                 )
 
+            inspector = inspect(connection)
+            unique_constraints = {
+                constraint["name"]
+                for constraint in inspector.get_unique_constraints("workflow_definitions")
+            }
+            indexes = {
+                index["name"]
+                for index in inspector.get_indexes("workflow_definitions")
+                if index.get("name")
+            }
+
+            if "workflow_definitions_name_key" in unique_constraints:
+                connection.execute(
+                    text("ALTER TABLE workflow_definitions DROP CONSTRAINT workflow_definitions_name_key")
+                )
+                unique_constraints.discard("workflow_definitions_name_key")
+            elif "workflow_definitions_name_key" in indexes:
+                connection.execute(
+                    text("DROP INDEX IF EXISTS workflow_definitions_name_key")
+                )
+                indexes.discard("workflow_definitions_name_key")
+
+            if dialect == "postgresql":
+                if "workflow_definitions_workflow_version" not in unique_constraints:
+                    connection.execute(
+                        text(
+                            "ALTER TABLE workflow_definitions "
+                            "ADD CONSTRAINT workflow_definitions_workflow_version "
+                            "UNIQUE (workflow_id, version)"
+                        )
+                    )
+                if "workflow_definitions_workflow_name" not in unique_constraints:
+                    connection.execute(
+                        text(
+                            "ALTER TABLE workflow_definitions "
+                            "ADD CONSTRAINT workflow_definitions_workflow_name "
+                            "UNIQUE (workflow_id, name)"
+                        )
+                    )
+            else:
+                if "workflow_definitions_workflow_version" not in indexes:
+                    connection.execute(
+                        text(
+                            "CREATE UNIQUE INDEX IF NOT EXISTS "
+                            "workflow_definitions_workflow_version "
+                            "ON workflow_definitions (workflow_id, version)"
+                        )
+                    )
+                if "workflow_definitions_workflow_name" not in indexes:
+                    connection.execute(
+                        text(
+                            "CREATE UNIQUE INDEX IF NOT EXISTS "
+                            "workflow_definitions_workflow_name "
+                            "ON workflow_definitions (workflow_id, name)"
+                        )
+                    )
+
 
 def register_startup_events(app: FastAPI) -> None:
     @app.on_event("startup")

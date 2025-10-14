@@ -366,3 +366,29 @@ def test_create_workflow_without_graph_creates_empty_version() -> None:
     created = next(item for item in summaries if item["id"] == data["workflow_id"])
     assert created["versions_count"] == 1
     assert created["active_version_id"] is None
+
+
+def test_create_two_workflows_with_same_initial_name() -> None:
+    admin = _make_user(email="librarian@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    for index in range(2):
+        payload = {
+            "slug": f"workflow-{index}",
+            "display_name": f"Workflow {index}",
+            "description": None,
+            "graph": None,
+        }
+        response = client.post(
+            "/api/workflows",
+            headers=_auth_headers(token),
+            json=payload,
+        )
+        assert response.status_code == 201
+        body = response.json()
+        assert body["name"] == "Version initiale"
+
+    library_response = client.get("/api/workflows", headers=_auth_headers(token))
+    assert library_response.status_code == 200
+    slugs = {item["slug"] for item in library_response.json()}
+    assert {"workflow-0", "workflow-1"}.issubset(slugs)
