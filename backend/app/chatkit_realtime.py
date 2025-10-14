@@ -23,11 +23,11 @@ async def create_realtime_voice_session(
 
     settings = get_settings()
     payload = {
-        "voice": voice,
         "user": {"id": user_id},
         "session": {
             "instructions": instructions,
             "model": model,
+            "voice": voice,
         },
     }
 
