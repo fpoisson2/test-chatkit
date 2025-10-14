@@ -16,7 +16,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from sqlalchemy_pgvector import Vector
+from pgvector.sqlalchemy import Vector
 
 EMBEDDING_DIMENSION = 384
 
