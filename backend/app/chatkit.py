@@ -1034,10 +1034,9 @@ async def run_workflow(
         edge_list.sort(key=lambda tr: tr.id or 0)
 
     def _workflow_run_config() -> RunConfig:
-        metadata: dict[str, Any] = {
-            "__trace_source__": "agent-builder",
-            "workflow_db_id": definition.workflow_id,
-        }
+        metadata: dict[str, str] = {"__trace_source__": "agent-builder"}
+        if definition.workflow_id is not None:
+            metadata["workflow_db_id"] = str(definition.workflow_id)
         if definition.workflow and definition.workflow.slug:
             metadata["workflow_slug"] = definition.workflow.slug
         if definition.workflow and definition.workflow.display_name:
