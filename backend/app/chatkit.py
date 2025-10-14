@@ -44,6 +44,7 @@ from .models import WorkflowStep, WorkflowTransition
 from .token_sanitizer import sanitize_model_like
 from .workflows import WorkflowService
 from .vector_store import JsonVectorStoreService, SearchResult
+from .weather import fetch_weather
 
 logger = logging.getLogger("chatkit.server")
 
@@ -709,6 +710,44 @@ def _build_file_search_tool(payload: Any) -> FunctionTool | None:
     return search_tool
 
 
+_WEATHER_FUNCTION_TOOL_ALIASES = {"fetch_weather", "get_weather"}
+_WEATHER_FUNCTION_TOOL_DEFAULT_DESCRIPTION = (
+    "Récupère les conditions météorologiques actuelles via le service Python interne."
+)
+
+
+def _build_weather_function_tool(payload: Any) -> FunctionTool | None:
+    """Construit un FunctionTool pointant vers la fonction Python fetch_weather."""
+
+    if isinstance(payload, FunctionTool):
+        return payload
+
+    name_override = "fetch_weather"
+    description = _WEATHER_FUNCTION_TOOL_DEFAULT_DESCRIPTION
+
+    if isinstance(payload, dict):
+        raw_name = payload.get("name") or payload.get("id") or payload.get("function_name")
+        if isinstance(raw_name, str) and raw_name.strip():
+            candidate = raw_name.strip()
+            if candidate.lower() in _WEATHER_FUNCTION_TOOL_ALIASES:
+                name_override = candidate
+            else:
+                return None
+        raw_description = payload.get("description")
+        if isinstance(raw_description, str) and raw_description.strip():
+            description = raw_description.strip()
+    elif isinstance(payload, str) and payload.strip():
+        candidate = payload.strip()
+        if candidate.lower() in _WEATHER_FUNCTION_TOOL_ALIASES:
+            name_override = candidate
+        else:
+            return None
+
+    tool = function_tool(name_override=name_override)(fetch_weather)
+    tool.description = description
+    return tool
+
+
 def _clone_tools(value: Sequence[Any] | None) -> list[Any]:
     if value is None:
         return []
@@ -740,15 +779,22 @@ def _coerce_agent_tools(
 
         if isinstance(entry, dict):
             tool_type = entry.get("type") or entry.get("tool") or entry.get("name")
-            tool_payload = entry.get("web_search")
-            if isinstance(tool_type, str) and tool_type.strip().lower() == "web_search":
-                tool = _build_web_search_tool(tool_payload)
+            normalized_type = tool_type.strip().lower() if isinstance(tool_type, str) else ""
+
+            if normalized_type == "web_search":
+                tool = _build_web_search_tool(entry.get("web_search"))
                 if tool is not None:
                     coerced.append(tool)
                 continue
 
-            if isinstance(tool_type, str) and tool_type.strip().lower() == "file_search":
+            if normalized_type == "file_search":
                 tool = _build_file_search_tool(entry.get("file_search"))
+                if tool is not None:
+                    coerced.append(tool)
+                continue
+
+            if normalized_type == "function":
+                tool = _build_weather_function_tool(entry.get("function"))
                 if tool is not None:
                     coerced.append(tool)
                 continue
