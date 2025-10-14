@@ -45,6 +45,8 @@ import {
   setAgentModel,
   setAgentReasoningEffort,
   setAgentFileSearchConfig,
+  getAgentWeatherToolEnabled,
+  setAgentWeatherToolEnabled,
   setAgentResponseFormatKind,
   setAgentResponseFormatName,
   setAgentResponseFormatSchema,
@@ -798,6 +800,24 @@ const WorkflowBuilderPage = () => {
           return data;
         }
         const nextParameters = setAgentFileSearchConfig(data.parameters, config);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleAgentWeatherToolChange = useCallback(
+    (nodeId: string, enabled: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentWeatherToolEnabled(data.parameters, enabled);
         return {
           ...data,
           parameters: nextParameters,
@@ -1584,6 +1604,7 @@ const disableSave = useMemo(() => {
                   onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
                   onAgentWebSearchChange={handleAgentWebSearchChange}
                   onAgentFileSearchChange={handleAgentFileSearchChange}
+                  onAgentWeatherToolChange={handleAgentWeatherToolChange}
                   vectorStores={vectorStores}
                   vectorStoresLoading={vectorStoresLoading}
                   vectorStoresError={vectorStoresError}
@@ -1653,6 +1674,7 @@ type NodeInspectorProps = {
   onAgentResponseFormatSchemaChange: (nodeId: string, schema: unknown) => void;
   onAgentWebSearchChange: (nodeId: string, config: WebSearchConfig | null) => void;
   onAgentFileSearchChange: (nodeId: string, config: FileSearchConfig | null) => void;
+  onAgentWeatherToolChange: (nodeId: string, enabled: boolean) => void;
   vectorStores: VectorStoreSummary[];
   vectorStoresLoading: boolean;
   vectorStoresError: string | null;
@@ -1679,6 +1701,7 @@ const NodeInspector = ({
   onAgentResponseFormatSchemaChange,
   onAgentWebSearchChange,
   onAgentFileSearchChange,
+  onAgentWeatherToolChange,
   vectorStores,
   vectorStoresLoading,
   vectorStoresError,
@@ -1699,6 +1722,7 @@ const NodeInspector = ({
   const webSearchEnabled = Boolean(webSearchConfig);
   const fileSearchConfig = getAgentFileSearchConfig(parameters);
   const fileSearchEnabled = Boolean(fileSearchConfig);
+  const weatherFunctionEnabled = getAgentWeatherToolEnabled(parameters);
   const selectedVectorStoreSlug = fileSearchConfig?.vector_store_slug ?? "";
   const trimmedVectorStoreSlug = selectedVectorStoreSlug.trim();
   const selectedVectorStoreExists =
@@ -2053,6 +2077,32 @@ const NodeInspector = ({
                 )}
               </>
             )}
+            <div
+              style={{
+                border: "1px solid rgba(148, 163, 184, 0.35)",
+                borderRadius: "0.65rem",
+                padding: "0.75rem",
+                display: "grid",
+                gap: "0.5rem",
+                backgroundColor: "rgba(226, 232, 240, 0.25)",
+              }}
+            >
+              <strong style={{ fontSize: "0.9rem" }}>Function tool</strong>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <input
+                  type="checkbox"
+                  checked={weatherFunctionEnabled}
+                  onChange={(event) =>
+                    onAgentWeatherToolChange(node.id, event.target.checked)
+                  }
+                />
+                Autoriser la fonction météo Python
+              </label>
+              <small style={{ color: "#475569" }}>
+                Ajoute l'outil <code>fetch_weather</code> pour récupérer la météo via le
+                backend.
+              </small>
+            </div>
           </div>
         </>
       )}
