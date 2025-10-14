@@ -26,7 +26,6 @@ async def create_realtime_voice_session(
             "type": "realtime",
             "instructions": instructions,
             "model": model,
-            "user": {"id": user_id},
         },
     }
 

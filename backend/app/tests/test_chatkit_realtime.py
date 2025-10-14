@@ -65,3 +65,4 @@ async def test_create_realtime_voice_session_uses_realtime_type(monkeypatch) -> 
     assert captured["path"] == "/v1/realtime/client_secrets"
     assert captured["payload"]["session"]["type"] == "realtime"
     assert "voice" not in captured["payload"]["session"]
+    assert "user" not in captured["payload"]["session"]
