@@ -280,6 +280,23 @@ export const vectorStoreApi = {
     return response.json();
   },
 
+  async listDocuments(token: string | null, slug: string): Promise<VectorStoreDocument[]> {
+    const response = await requestWithFallback(`/api/vector-stores/${slug}/documents`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async deleteDocument(token: string | null, slug: string, docId: string): Promise<void> {
+    await requestWithFallback(
+      `/api/vector-stores/${slug}/documents/${encodeURIComponent(docId)}`,
+      {
+        method: "DELETE",
+        headers: withAuthHeaders(token),
+      },
+    );
+  },
+
   async search(
     token: string | null,
     slug: string,

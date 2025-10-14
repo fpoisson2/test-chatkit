@@ -207,6 +207,41 @@ class JsonVectorStoreService:
         self.session.delete(store)
         self.session.flush()
 
+    def list_documents(self, store_slug: str) -> list[tuple[JsonDocument, int]]:
+        """Retourne les documents d'un magasin et le nombre de chunks associés."""
+
+        store = self.get_store(store_slug)
+        if store is None:
+            raise LookupError("Magasin introuvable")
+
+        stmt = (
+            select(JsonDocument, func.count(JsonChunk.id))
+            .outerjoin(JsonChunk, JsonChunk.document_id == JsonDocument.id)
+            .where(JsonDocument.store_id == store.id)
+            .group_by(JsonDocument.id)
+            .order_by(JsonDocument.doc_id.asc())
+        )
+        rows = self.session.execute(stmt).all()
+        return [(row[0], int(row[1])) for row in rows]
+
+    def delete_document(self, store_slug: str, doc_id: str) -> None:
+        """Supprime un document et ses chunks associés d'un magasin donné."""
+
+        store = self.get_store(store_slug)
+        if store is None:
+            raise LookupError("Magasin introuvable")
+
+        document = self.session.scalar(
+            select(JsonDocument)
+            .where(JsonDocument.store_id == store.id)
+            .where(JsonDocument.doc_id == doc_id)
+        )
+        if document is None:
+            raise LookupError("Document introuvable")
+
+        self.session.delete(document)
+        self.session.flush()
+
     # Ingestion ------------------------------------------------------------------
 
     def ingest(

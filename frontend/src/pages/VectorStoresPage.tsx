@@ -4,12 +4,14 @@ import { useAuth } from "../auth";
 import { AdminLayout } from "../components/AdminLayout";
 import { AdminTabs } from "../components/AdminTabs";
 import { Modal } from "../components/Modal";
+import { VectorStoreDocumentsTable } from "../components/VectorStoreDocumentsTable";
 import { VectorStoreForm } from "../components/VectorStoreForm";
 import { VectorStoreIngestionForm } from "../components/VectorStoreIngestionForm";
 import { VectorStoreSearchForm } from "../components/VectorStoreSearchForm";
 import { VectorStoreSearchResults } from "../components/VectorStoreSearchResults";
 import { VectorStoreTable } from "../components/VectorStoreTable";
 import {
+  VectorStoreDocument,
   VectorStoreDocumentDetail,
   VectorStoreSearchPayload,
   VectorStoreSearchResult,
@@ -36,6 +38,10 @@ export const VectorStoresPage = () => {
   const [hasSearched, setHasSearched] = useState(false);
   const [documentPreview, setDocumentPreview] = useState<VectorStoreDocumentDetail | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
+  const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+  const [documents, setDocuments] = useState<VectorStoreDocument[]>([]);
+  const [documentsError, setDocumentsError] = useState<string | null>(null);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
 
   const storeBadge = useMemo(() => {
     const storeCountLabel = stores.length
@@ -65,6 +71,33 @@ export const VectorStoresPage = () => {
       setLoading(false);
     }
   }, [logout, token]);
+
+  const loadDocuments = useCallback(
+    async (slug: string) => {
+      if (!token) {
+        return;
+      }
+      setDocumentsLoading(true);
+      setDocumentsError(null);
+      try {
+        const data = await vectorStoreApi.listDocuments(token, slug);
+        setDocuments(data);
+      } catch (err) {
+        if (isUnauthorizedError(err)) {
+          logout();
+          setShowDocumentsModal(false);
+          setError("Session expirée, veuillez vous reconnecter.");
+          return;
+        }
+        setDocumentsError(
+          err instanceof Error ? err.message : "Impossible de récupérer les documents",
+        );
+      } finally {
+        setDocumentsLoading(false);
+      }
+    },
+    [logout, token],
+  );
 
   useEffect(() => {
     if (!token) {
@@ -133,6 +166,16 @@ export const VectorStoresPage = () => {
     setDocumentError(null);
   };
 
+  const openDocumentsModal = (store: VectorStoreSummary) => {
+    setSelectedStore(store);
+    setShowDocumentsModal(true);
+    setDocuments([]);
+    setDocumentsError(null);
+    setDocumentPreview(null);
+    setDocumentError(null);
+    void loadDocuments(store.slug);
+  };
+
   const handleIngestion = async (
     payload: Parameters<typeof vectorStoreApi.ingestDocument>[2],
   ) => {
@@ -198,6 +241,50 @@ export const VectorStoresPage = () => {
     }
   };
 
+  const handleInspectDocument = async (document: VectorStoreDocument) => {
+    if (!token || !selectedStore) {
+      return;
+    }
+    setDocumentError(null);
+    try {
+      const detail = await vectorStoreApi.getDocument(token, selectedStore.slug, document.doc_id);
+      setDocumentPreview(detail);
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        logout();
+        setShowDocumentsModal(false);
+        return;
+      }
+      setDocumentError(err instanceof Error ? err.message : "Impossible de récupérer le document");
+    }
+  };
+
+  const handleDeleteDocument = async (document: VectorStoreDocument) => {
+    if (!token || !selectedStore) {
+      return;
+    }
+    if (!window.confirm(`Supprimer le document « ${document.doc_id} » ?`)) {
+      return;
+    }
+    setDocumentsError(null);
+    try {
+      await vectorStoreApi.deleteDocument(token, selectedStore.slug, document.doc_id);
+      setDocuments((prev) => prev.filter((item) => item.doc_id !== document.doc_id));
+      setDocumentPreview((current) => (current?.doc_id === document.doc_id ? null : current));
+      setSuccess(`Document « ${document.doc_id} » supprimé.`);
+      await refreshStores();
+    } catch (err) {
+      setSuccess(null);
+      if (isUnauthorizedError(err)) {
+        logout();
+        setShowDocumentsModal(false);
+        setError("Session expirée, veuillez vous reconnecter.");
+        return;
+      }
+      setDocumentsError(err instanceof Error ? err.message : "Suppression impossible");
+    }
+  };
+
   return (
     <AdminLayout
       title="Vector stores JSON"
@@ -227,6 +314,7 @@ export const VectorStoresPage = () => {
             isLoading={isLoading}
             onIngest={openIngestionModal}
             onSearch={openSearchModal}
+            onDocuments={openDocumentsModal}
             onDelete={handleDeleteStore}
           />
         </section>
@@ -282,6 +370,41 @@ export const VectorStoresPage = () => {
               Soumettez une requête pour afficher les résultats issus du vector store.
             </p>
           )}
+          {documentError ? <div className="alert alert--danger">{documentError}</div> : null}
+          {documentPreview ? (
+            <div className="vector-store__preview">
+              <h3>Document « {documentPreview.doc_id} »</h3>
+              <p className="admin-card__subtitle">
+                {documentPreview.chunk_count} segment{documentPreview.chunk_count > 1 ? "s" : ""} indexé{documentPreview.chunk_count > 1 ? "s" : ""}.
+              </p>
+              <pre className="code-block">{JSON.stringify(documentPreview.document, null, 2)}</pre>
+            </div>
+          ) : null}
+        </Modal>
+      ) : null}
+
+      {showDocumentsModal && selectedStore ? (
+        <Modal
+          title={`Documents — ${selectedStore.slug}`}
+          onClose={() => setShowDocumentsModal(false)}
+          size="lg"
+        >
+          <div className="admin-table__actions" style={{ justifyContent: "flex-end", marginBottom: "1rem" }}>
+            <button
+              className="button button--ghost button--sm"
+              type="button"
+              onClick={() => void loadDocuments(selectedStore.slug)}
+            >
+              Actualiser
+            </button>
+          </div>
+          {documentsError ? <div className="alert alert--danger">{documentsError}</div> : null}
+          <VectorStoreDocumentsTable
+            documents={documents}
+            isLoading={documentsLoading}
+            onInspect={handleInspectDocument}
+            onDelete={handleDeleteDocument}
+          />
           {documentError ? <div className="alert alert--danger">{documentError}</div> : null}
           {documentPreview ? (
             <div className="vector-store__preview">
