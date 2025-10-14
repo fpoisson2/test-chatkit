@@ -5,6 +5,7 @@ type VectorStoreTableProps = {
   isLoading: boolean;
   onIngest: (store: VectorStoreSummary) => void;
   onSearch: (store: VectorStoreSummary) => void;
+  onDocuments?: (store: VectorStoreSummary) => void;
   onDelete?: (store: VectorStoreSummary) => void;
 };
 
@@ -13,6 +14,7 @@ export const VectorStoreTable = ({
   isLoading,
   onIngest,
   onSearch,
+  onDocuments,
   onDelete,
 }: VectorStoreTableProps) => {
   if (isLoading) {
@@ -62,6 +64,15 @@ export const VectorStoreTable = ({
                   >
                     Tester une requête
                   </button>
+                  {onDocuments ? (
+                    <button
+                      className="button button--ghost button--sm"
+                      type="button"
+                      onClick={() => onDocuments(store)}
+                    >
+                      Documents
+                    </button>
+                  ) : null}
                   {onDelete ? (
                     <button
                       className="button button--danger button--sm"
