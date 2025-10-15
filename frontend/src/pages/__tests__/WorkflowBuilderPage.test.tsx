@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import WorkflowBuilderPage from "../WorkflowBuilderPage";
@@ -187,6 +188,7 @@ describe("WorkflowBuilderPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    listWidgetsMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -328,6 +330,85 @@ describe("WorkflowBuilderPage", () => {
           },
         },
       ],
+    });
+  });
+
+  test("détecte les variables du widget et permet de les ingérer", async () => {
+    const user = userEvent.setup();
+    listWidgetsMock.mockResolvedValue([
+      {
+        slug: "resume",
+        title: "Résumé",
+        description: null,
+        definition: {
+          type: "Card",
+          children: [
+            { type: "Text", id: "title", value: "Titre" },
+            { type: "Markdown", id: "details", value: "Détails" },
+          ],
+        },
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    const fetchMock = setupWorkflowApi();
+
+    const { container } = render(<WorkflowBuilderPage />);
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const triageNode = container.querySelector('[data-id="agent-triage"]');
+    expect(triageNode).not.toBeNull();
+    fireEvent.click(triageNode!);
+
+    const outputTypeSelect = await screen.findByLabelText(/type de sortie/i);
+    await user.selectOptions(outputTypeSelect, "widget");
+
+    await waitFor(() => {
+      expect(screen.getByRole("combobox", { name: /type de sortie/i })).toHaveValue("widget");
+    });
+
+    await waitFor(() => {
+      expect(listWidgetsMock).toHaveBeenCalled();
+    });
+
+    const widgetSelect = await screen.findByRole("combobox", { name: /widget de sortie/i });
+    await user.selectOptions(widgetSelect, "resume");
+
+    const variablesRegion = await screen.findByRole("region", { name: /variables du widget/i });
+    const titleInput = within(variablesRegion).getByLabelText(/variable «\s*title/i);
+    const detailsInput = within(variablesRegion).getByLabelText(/variable «\s*details/i);
+    expect(titleInput).toHaveValue("");
+    expect(detailsInput).toHaveValue("");
+
+    const importButton = within(variablesRegion).getByRole("button", {
+      name: /importer depuis le module précédent/i,
+    });
+    fireEvent.click(importButton);
+
+    expect(titleInput).toHaveValue("input.output_parsed.title");
+    expect(detailsInput).toHaveValue("input.output_parsed.details");
+
+    const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
+      ).toBe(true);
+    });
+
+    const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
+    const payload = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const agentNode = payload.graph.nodes.find((node: any) => node.slug === "agent-triage");
+    expect(agentNode.parameters.response_widget).toEqual({
+      slug: "resume",
+      variables: {
+        title: "input.output_parsed.title",
+        details: "input.output_parsed.details",
+      },
     });
   });
 

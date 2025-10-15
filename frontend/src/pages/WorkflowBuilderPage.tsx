@@ -51,6 +51,7 @@ import {
   getAgentShowSearchSources,
   getAgentContinueOnError,
   getAgentStorePreference,
+  isPlainRecord,
   parseAgentParameters,
   setStateAssignments,
   setAgentMessage,
@@ -65,6 +66,7 @@ import {
   setAgentResponseFormatName,
   setAgentResponseFormatSchema,
   setAgentResponseWidgetSlug,
+  setAgentResponseWidgetVariables,
   setAgentTemperature,
   setAgentTopP,
   setAgentMaxOutputTokens,
@@ -1076,6 +1078,24 @@ const WorkflowBuilderPage = () => {
     [updateNodeData]
   );
 
+  const handleAgentResponseWidgetVariablesChange = useCallback(
+    (nodeId: string, variables: Record<string, string>) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentResponseWidgetVariables(data.parameters, variables);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
   const handleAgentWebSearchChange = useCallback(
     (nodeId: string, config: WebSearchConfig | null) => {
       updateNodeData(nodeId, (data) => {
@@ -1970,6 +1990,7 @@ const disableSave = useMemo(() => {
                   onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
                   onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
                   onAgentResponseWidgetSlugChange={handleAgentResponseWidgetSlugChange}
+                  onAgentResponseWidgetVariablesChange={handleAgentResponseWidgetVariablesChange}
                   onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}
                   onAgentDisplayResponseInChatChange={handleAgentDisplayResponseInChatChange}
                   onAgentShowSearchSourcesChange={handleAgentShowSearchSourcesChange}
@@ -2056,6 +2077,10 @@ type NodeInspectorProps = {
   onAgentResponseFormatNameChange: (nodeId: string, value: string) => void;
   onAgentResponseFormatSchemaChange: (nodeId: string, schema: unknown) => void;
   onAgentResponseWidgetSlugChange: (nodeId: string, slug: string) => void;
+  onAgentResponseWidgetVariablesChange: (
+    nodeId: string,
+    variables: Record<string, string>,
+  ) => void;
   onAgentIncludeChatHistoryChange: (nodeId: string, value: boolean) => void;
   onAgentDisplayResponseInChatChange: (nodeId: string, value: boolean) => void;
   onAgentShowSearchSourcesChange: (nodeId: string, value: boolean) => void;
@@ -2083,6 +2108,48 @@ type NodeInspectorProps = {
   onRemove: (nodeId: string) => void;
 };
 
+const extractWidgetVariableIds = (definition: unknown): string[] => {
+  if (!definition) {
+    return [];
+  }
+  const result: string[] = [];
+  const seen = new Set<string>();
+  const stack: unknown[] = [definition];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+    if (Array.isArray(current)) {
+      for (const entry of current) {
+        stack.push(entry);
+      }
+      continue;
+    }
+    if (!isPlainRecord(current)) {
+      continue;
+    }
+
+    const id = typeof current.id === "string" ? current.id.trim() : "";
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      result.push(id);
+    }
+
+    for (const value of Object.values(current)) {
+      if (!value) {
+        continue;
+      }
+      if (Array.isArray(value) || isPlainRecord(value)) {
+        stack.push(value);
+      }
+    }
+  }
+
+  return result;
+};
+
 const NodeInspector = ({
   node,
   onToggle,
@@ -2099,6 +2166,7 @@ const NodeInspector = ({
   onAgentResponseFormatNameChange,
   onAgentResponseFormatSchemaChange,
   onAgentResponseWidgetSlugChange,
+  onAgentResponseWidgetVariablesChange,
   onAgentIncludeChatHistoryChange,
   onAgentDisplayResponseInChatChange,
   onAgentShowSearchSourcesChange,
@@ -2128,6 +2196,8 @@ const NodeInspector = ({
   const agentModel = getAgentModel(parameters);
   const reasoningEffort = getAgentReasoningEffort(parameters);
   const responseFormat = getAgentResponseFormat(parameters);
+  const responseWidgetVariables: Record<string, string> =
+    responseFormat.kind === "widget" ? responseFormat.variables : {};
   const temperature = getAgentTemperature(parameters);
   const topP = getAgentTopP(parameters);
   const reasoningVerbosity = getAgentReasoningVerbosity(parameters);
@@ -2155,10 +2225,40 @@ const NodeInspector = ({
     (!trimmedVectorStoreSlug || (!vectorStoresError && vectorStores.length > 0 && !selectedVectorStoreExists));
   const responseWidgetSlug = responseFormat.kind === "widget" ? responseFormat.slug : "";
   const trimmedWidgetSlug = responseWidgetSlug.trim();
+  const selectedWidget = useMemo(() => {
+    if (responseFormat.kind !== "widget") {
+      return null;
+    }
+    if (!trimmedWidgetSlug) {
+      return null;
+    }
+    return widgets.find((widget) => widget.slug === trimmedWidgetSlug) ?? null;
+  }, [responseFormat.kind, trimmedWidgetSlug, widgets]);
   const selectedWidgetExists =
-    responseFormat.kind === "widget" &&
-    trimmedWidgetSlug.length > 0 &&
-    widgets.some((widget) => widget.slug === trimmedWidgetSlug);
+    responseFormat.kind === "widget" && trimmedWidgetSlug.length > 0 && Boolean(selectedWidget);
+  const widgetVariableIds = useMemo(
+    () => (selectedWidget ? extractWidgetVariableIds(selectedWidget.definition) : []),
+    [selectedWidget],
+  );
+  const handleWidgetVariableInputChange = (variableId: string, value: string) => {
+    const nextVariables: Record<string, string> = { ...responseWidgetVariables };
+    if (!value.trim()) {
+      delete nextVariables[variableId];
+    } else {
+      nextVariables[variableId] = value;
+    }
+    onAgentResponseWidgetVariablesChange(node.id, nextVariables);
+  };
+  const prefillWidgetVariables = () => {
+    if (widgetVariableIds.length === 0) {
+      return;
+    }
+    const nextVariables: Record<string, string> = { ...responseWidgetVariables };
+    for (const variableId of widgetVariableIds) {
+      nextVariables[variableId] = `input.output_parsed.${variableId}`;
+    }
+    onAgentResponseWidgetVariablesChange(node.id, nextVariables);
+  };
 
   let fileSearchValidationMessage: string | null = null;
   if (fileSearchMissingVectorStore && !vectorStoresLoading) {
@@ -2537,6 +2637,62 @@ const NodeInspector = ({
               )}
             </label>
           )}
+
+          {responseFormat.kind === "widget" &&
+            !widgetsLoading &&
+            !widgetsError &&
+            selectedWidget &&
+            (widgetVariableIds.length > 0 ? (
+              <section
+                aria-label="Variables du widget"
+                style={{
+                  marginTop: "0.75rem",
+                  border: "1px solid rgba(15, 23, 42, 0.12)",
+                  borderRadius: "0.75rem",
+                  padding: "0.75rem",
+                  display: "grid",
+                  gap: "0.75rem",
+                }}
+              >
+                <header>
+                  <h3 style={{ margin: 0, fontSize: "1rem" }}>Variables du widget</h3>
+                  <p style={{ margin: "0.25rem 0 0", color: "#475569", fontSize: "0.95rem" }}>
+                    Associez chaque variable du widget aux données produites par le module précédent via l'objet
+                    <code style={{ marginLeft: "0.25rem" }}>input</code>.
+                  </p>
+                </header>
+
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={prefillWidgetVariables}
+                    disabled={widgetVariableIds.length === 0}
+                  >
+                    Importer depuis le module précédent
+                  </button>
+                </div>
+
+                {widgetVariableIds.map((variableId) => (
+                  <label key={variableId} style={fieldStyle}>
+                    <span>Variable « {variableId} »</span>
+                    <input
+                      type="text"
+                      value={responseWidgetVariables[variableId] ?? ""}
+                      placeholder={`Ex. input.output_parsed.${variableId}`}
+                      onChange={(event) => handleWidgetVariableInputChange(variableId, event.target.value)}
+                    />
+                    <small style={{ color: "#64748b" }}>
+                      Utilisez une expression CEL (ex. <code>input.output_parsed.{variableId}</code>) pour peupler le widget.
+                    </small>
+                  </label>
+                ))}
+              </section>
+            ) : (
+              <p style={{ color: "#64748b", margin: 0 }}>
+                Ce widget ne contient aucune variable modifiable détectée.
+              </p>
+            ))}
 
           <div
             style={{
