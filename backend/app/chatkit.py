@@ -1605,12 +1605,83 @@ def _build_widget_output_model(
     return widget_model
 
 
+def _load_widget_definition(slug: str, *, context: str) -> Any | None:
+    """Charge la définition JSON d'un widget depuis la bibliothèque."""
+
+    try:
+        with SessionLocal() as session:
+            service = WidgetLibraryService(session)
+            template = service.get_widget(slug)
+    except Exception as exc:  # pragma: no cover - dépend du stockage
+        logger.exception(
+            "Impossible de charger le widget %s dans le contexte %s",
+            slug,
+            context,
+            exc_info=exc,
+        )
+        return None
+
+    if template is None:
+        return None
+
+    try:
+        return json.loads(json.dumps(template.definition, ensure_ascii=False))
+    except Exception as exc:  # pragma: no cover - dépend du SDK installé
+        logger.exception(
+            "Impossible de sérialiser le widget %s dans le contexte %s",
+            slug,
+            context,
+            exc_info=exc,
+        )
+        return None
+
+
+def _collect_widget_editable_names(definition: Any) -> list[str]:
+    """Retourne les identifiants éditables présents dans une définition de widget."""
+
+    names: list[str] = []
+
+    def _walk(node: Any) -> None:
+        if isinstance(node, dict):
+            editable = node.get("editable")
+            if isinstance(editable, dict):
+                editable_names = editable.get("name") or editable.get("names")
+                if isinstance(editable_names, str):
+                    names.append(editable_names)
+                elif isinstance(editable_names, (list, tuple)):
+                    for entry in editable_names:
+                        if isinstance(entry, str):
+                            names.append(entry)
+            for child in node.values():
+                if isinstance(child, (dict, list)):
+                    _walk(child)
+        elif isinstance(node, list):
+            for entry in node:
+                _walk(entry)
+
+    _walk(definition)
+    return names
+
+
 def _ensure_widget_output_model(
     config: _ResponseWidgetConfig,
 ) -> _ResponseWidgetConfig:
     if config.output_model is not None:
         return config
-    model = _build_widget_output_model(config.slug, config.variables.keys())
+
+    variable_ids = list(config.variables.keys())
+    definition = _load_widget_definition(config.slug, context="configuration")
+    if definition is None:
+        logger.warning(
+            "Widget %s introuvable lors de la préparation du schéma de sortie",
+            config.slug,
+        )
+    else:
+        for editable_name in _collect_widget_editable_names(definition):
+            if editable_name not in variable_ids:
+                variable_ids.append(editable_name)
+
+    model = _build_widget_output_model(config.slug, variable_ids)
     if model is None:
         return config
     return replace(config, output_model=model)
@@ -2130,23 +2201,14 @@ async def run_workflow(
         step_title: str,
         step_context: dict[str, Any] | None,
     ) -> None:
-        try:
-            with SessionLocal() as session:
-                service = WidgetLibraryService(session)
-                template = service.get_widget(config.slug)
-                if template is None:
-                    logger.warning(
-                        "Widget %s introuvable pour l'étape %s",
-                        config.slug,
-                        step_slug,
-                    )
-                    return
-                definition = json.loads(
-                    json.dumps(template.definition, ensure_ascii=False)
-                )
-        except Exception as exc:  # pragma: no cover - dépend du stockage
-            logger.exception(
-                "Impossible de charger le widget %s depuis la base", config.slug, exc_info=exc
+        definition = _load_widget_definition(
+            config.slug, context=f"étape {step_slug}"
+        )
+        if definition is None:
+            logger.warning(
+                "Widget %s introuvable pour l'étape %s",
+                config.slug,
+                step_slug,
             )
             return
 
