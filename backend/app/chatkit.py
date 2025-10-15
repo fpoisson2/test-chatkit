@@ -5,6 +5,7 @@ import inspect
 import json
 import logging
 import re
+import uuid
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import (
@@ -2256,6 +2257,239 @@ async def run_workflow(
 
         return enriched
 
+    async def _ingest_vector_store_document(
+        slug: str,
+        doc_id: str,
+        document: dict[str, Any],
+        metadata: dict[str, Any],
+    ) -> None:
+        def _ingest_sync() -> None:
+            with SessionLocal() as session:
+                service = JsonVectorStoreService(session)
+                try:
+                    service.ingest(
+                        slug,
+                        doc_id,
+                        document,
+                        document_metadata=metadata,
+                    )
+                    session.commit()
+                except Exception:
+                    session.rollback()
+                    raise
+
+        try:
+            await asyncio.to_thread(_ingest_sync)
+        except LookupError:
+            logger.warning(
+                "Vector store %s introuvable : impossible d'enregistrer le document %s",
+                slug,
+                doc_id,
+            )
+        except Exception as exc:  # pragma: no cover - dépend du runtime
+            logger.exception(
+                "Erreur lors de l'ingestion du document %s dans %s",
+                doc_id,
+                slug,
+                exc_info=exc,
+            )
+
+    async def _apply_vector_store_ingestion(
+        *,
+        config: dict[str, Any] | None,
+        step_slug: str,
+        step_title: str,
+        step_context: dict[str, Any] | None,
+    ) -> None:
+        if not isinstance(config, dict):
+            return
+
+        slug_raw = config.get("vector_store_slug")
+        slug = str(slug_raw).strip() if isinstance(slug_raw, str) else ""
+        if not slug:
+            logger.debug(
+                "Configuration vector_store_ingestion ignorée pour %s : slug absent.",
+                step_slug,
+            )
+            return
+
+        if not isinstance(step_context, dict):
+            logger.warning(
+                "Impossible d'ingérer le document JSON pour %s : aucun contexte disponible.",
+                step_slug,
+            )
+            return
+
+        def _to_mapping(candidate: Any, *, purpose: str) -> dict[str, Any] | None:
+            if hasattr(candidate, "model_dump"):
+                try:
+                    return candidate.model_dump(by_alias=True)
+                except TypeError:
+                    return candidate.model_dump()
+            if hasattr(candidate, "dict"):
+                try:
+                    return candidate.dict(by_alias=True)
+                except TypeError:
+                    return candidate.dict()
+            if isinstance(candidate, str):
+                trimmed = candidate.strip()
+                if not trimmed:
+                    return None
+                try:
+                    decoded = json.loads(trimmed)
+                except json.JSONDecodeError:
+                    if purpose == "document":
+                        logger.warning(
+                            "Le document produit par %s n'est pas un JSON valide pour l'ingestion.",
+                            step_slug,
+                        )
+                    else:
+                        logger.warning(
+                            "Les métadonnées calculées pour %s ne sont pas un JSON valide.",
+                            step_slug,
+                        )
+                    return None
+                if isinstance(decoded, dict):
+                    return decoded
+                if purpose == "document":
+                    logger.warning(
+                        "Le document généré par %s doit être un objet JSON pour être indexé (type %s).",
+                        step_slug,
+                        type(decoded).__name__,
+                    )
+                else:
+                    logger.warning(
+                        "Les métadonnées calculées pour %s doivent être un objet JSON (type %s).",
+                        step_slug,
+                        type(decoded).__name__,
+                    )
+                return None
+            if isinstance(candidate, dict):
+                return candidate
+            return None
+
+        doc_id_expression_raw = config.get("doc_id_expression") or config.get("doc_id")
+        doc_id_expression = (
+            doc_id_expression_raw.strip()
+            if isinstance(doc_id_expression_raw, str)
+            else ""
+        )
+        doc_id_value: Any = None
+        if doc_id_expression:
+            try:
+                doc_id_value = _evaluate_state_expression(
+                    doc_id_expression, input_context=step_context
+                )
+            except Exception as exc:  # pragma: no cover - dépend des expressions fournies
+                logger.exception(
+                    "Impossible d'évaluer l'expression d'identifiant '%s' pour %s",
+                    doc_id_expression,
+                    step_slug,
+                    exc_info=exc,
+                )
+
+        doc_id = str(doc_id_value).strip() if doc_id_value is not None else ""
+        if not doc_id:
+            parsed_context = step_context.get("output_parsed")
+            if isinstance(parsed_context, dict):
+                for key in ("doc_id", "id", "slug", "reference", "uid"):
+                    candidate = parsed_context.get(key)
+                    if candidate is None:
+                        continue
+                    candidate_str = str(candidate).strip()
+                    if candidate_str:
+                        doc_id = candidate_str
+                        break
+            if not doc_id:
+                generated = uuid.uuid4().hex
+                doc_id = f"{step_slug}-{generated}" if step_slug else generated
+                logger.info(
+                    "Identifiant de document généré automatiquement pour %s : %s",
+                    step_slug,
+                    doc_id,
+                )
+
+        document_expression_raw = (
+            config.get("document_expression") or config.get("document")
+        )
+        document_expression = (
+            document_expression_raw.strip()
+            if isinstance(document_expression_raw, str)
+            else ""
+        )
+        document_value: Any = None
+        if document_expression:
+            try:
+                document_value = _evaluate_state_expression(
+                    document_expression, input_context=step_context
+                )
+            except Exception as exc:  # pragma: no cover - dépend des expressions fournies
+                logger.exception(
+                    "Impossible d'évaluer l'expression de document '%s' pour %s",
+                    document_expression,
+                    step_slug,
+                    exc_info=exc,
+                )
+
+        if document_value is None:
+            for candidate_key in ("output_parsed", "output", "output_text"):
+                candidate_value = step_context.get(candidate_key)
+                mapping = _to_mapping(candidate_value, purpose="document")
+                if mapping is not None:
+                    document_value = mapping
+                    break
+
+        document_mapping = _to_mapping(document_value, purpose="document")
+        if document_mapping is None:
+            logger.warning(
+                "Le document généré par %s doit être un objet JSON pour être indexé (type %s).",
+                step_slug,
+                type(document_value).__name__ if document_value is not None else "None",
+            )
+            return
+
+        metadata: dict[str, Any] = {
+            "workflow_step": step_slug,
+            "workflow_step_title": step_title,
+        }
+
+        metadata_expression_raw = config.get("metadata_expression")
+        metadata_expression = (
+            metadata_expression_raw.strip()
+            if isinstance(metadata_expression_raw, str)
+            else ""
+        )
+
+        if metadata_expression:
+            try:
+                metadata_value = _evaluate_state_expression(
+                    metadata_expression, input_context=step_context
+                )
+            except Exception as exc:  # pragma: no cover - dépend des expressions fournies
+                logger.exception(
+                    "Impossible d'évaluer l'expression de métadonnées '%s' pour %s",
+                    metadata_expression,
+                    step_slug,
+                    exc_info=exc,
+                )
+            else:
+                metadata_mapping = _to_mapping(metadata_value, purpose="metadata")
+                if metadata_mapping is not None:
+                    metadata.update(metadata_mapping)
+                elif metadata_value is not None:
+                    logger.warning(
+                        "Les métadonnées calculées pour %s doivent être un objet JSON.",
+                        step_slug,
+                    )
+
+        logger.info(
+            "Ingestion du résultat JSON de %s dans le vector store %s (doc_id=%s)",
+            step_slug,
+            slug,
+            doc_id,
+        )
+        await _ingest_vector_store_document(slug, doc_id, document_mapping, metadata)
+
     def _evaluate_widget_variable_expression(
         expression: str, *, input_context: dict[str, Any] | None
     ) -> str | None:
@@ -2657,6 +2891,27 @@ async def run_workflow(
             current_slug = transition.target_step.slug
             continue
 
+        if current_node.kind == "json_vector_store":
+            title = _node_title(current_node)
+            await _apply_vector_store_ingestion(
+                config=current_node.parameters or {},
+                step_slug=current_node.slug,
+                step_title=title,
+                step_context=last_step_context,
+            )
+            transition = _next_edge(current_slug)
+            if transition is None:
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError(
+                        f"Aucune transition disponible après le nœud {current_node.slug}"
+                    ),
+                    list(steps),
+                )
+            current_slug = transition.target_step.slug
+            continue
+
         if current_node.kind != "agent":
             raise WorkflowExecutionError(
                 "configuration",
@@ -2782,6 +3037,13 @@ async def run_workflow(
                 "output_parsed": parsed,
                 "output_text": text,
             }
+
+        await _apply_vector_store_ingestion(
+            config=(current_node.parameters or {}).get("vector_store_ingestion"),
+            step_slug=current_node.slug,
+            step_title=title,
+            step_context=last_step_context,
+        )
 
         if widget_config is not None:
             await _stream_response_widget(

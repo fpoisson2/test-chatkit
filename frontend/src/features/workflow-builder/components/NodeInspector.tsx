@@ -23,6 +23,7 @@ import {
   getAgentTopP,
   getAgentWeatherToolEnabled,
   getAgentWebSearchConfig,
+  getVectorStoreNodeConfig,
   getStateAssignments,
 } from "../../../utils/workflows";
 import type {
@@ -30,6 +31,7 @@ import type {
   FlowNode,
   StateAssignment,
   StateAssignmentScope,
+  VectorStoreNodeConfig,
   WebSearchConfig,
 } from "../types";
 import { labelForKind } from "../utils";
@@ -87,6 +89,10 @@ export type NodeInspectorProps = {
   onAgentStorePreferenceChange: (nodeId: string, value: boolean) => void;
   onAgentWebSearchChange: (nodeId: string, config: WebSearchConfig | null) => void;
   onAgentFileSearchChange: (nodeId: string, config: FileSearchConfig | null) => void;
+  onVectorStoreNodeConfigChange: (
+    nodeId: string,
+    updates: Partial<VectorStoreNodeConfig>,
+  ) => void;
   availableModels: AvailableModel[];
   availableModelsLoading: boolean;
   availableModelsError: string | null;
@@ -130,6 +136,7 @@ const NodeInspector = ({
   onAgentStorePreferenceChange,
   onAgentWebSearchChange,
   onAgentFileSearchChange,
+  onVectorStoreNodeConfigChange,
   availableModels,
   availableModelsLoading,
   availableModelsError,
@@ -177,6 +184,11 @@ const NodeInspector = ({
   const fileSearchMissingVectorStore =
     fileSearchEnabled &&
     (!trimmedVectorStoreSlug || (!vectorStoresError && vectorStores.length > 0 && !selectedVectorStoreExists));
+  const vectorStoreNodeConfig = getVectorStoreNodeConfig(parameters);
+  const vectorStoreNodeSlug = vectorStoreNodeConfig.vector_store_slug.trim();
+  const vectorStoreNodeDocIdExpression = vectorStoreNodeConfig.doc_id_expression.trim();
+  const vectorStoreNodeDocumentExpression = vectorStoreNodeConfig.document_expression.trim();
+  const vectorStoreNodeMetadataExpression = vectorStoreNodeConfig.metadata_expression.trim();
   const responseWidgetSlug = responseFormat.kind === "widget" ? responseFormat.slug : "";
   const trimmedWidgetSlug = responseWidgetSlug.trim();
   const selectedWidget = useMemo(() => {
@@ -209,6 +221,24 @@ const NodeInspector = ({
       widgetValidationMessage = "Sélectionnez un widget de sortie.";
     } else if (!selectedWidgetExists) {
       widgetValidationMessage = "Le widget sélectionné n'est plus disponible. Choisissez-en un autre.";
+    }
+  }
+  const vectorStoreNodeExists =
+    vectorStoreNodeSlug.length > 0 && vectorStores.some((store) => store.slug === vectorStoreNodeSlug);
+  const vectorStoreNodeValidationMessages: string[] = [];
+  if (kind === "json_vector_store") {
+    if (!vectorStoreNodeSlug) {
+      vectorStoreNodeValidationMessages.push(
+        "Sélectionnez un vector store pour enregistrer la réponse.",
+      );
+    } else if (
+      !vectorStoresError &&
+      vectorStores.length > 0 &&
+      !vectorStoreNodeExists
+    ) {
+      vectorStoreNodeValidationMessages.push(
+        "Le vector store sélectionné n'est plus disponible. Choisissez-en un autre.",
+      );
     }
   }
   const matchedModel = availableModels.find((model) => model.name === agentModel);
@@ -744,6 +774,101 @@ const NodeInspector = ({
               </small>
             </div>
           </div>
+        </>
+      )}
+
+      {kind === "json_vector_store" && (
+        <>
+          <p style={{ color: "#475569", margin: "0 0 0.75rem" }}>
+            Ce bloc enregistre le JSON produit par le bloc précédent dans le vector store
+            sélectionné.
+          </p>
+          {vectorStoresError ? (
+            <p style={{ color: "#b91c1c", margin: "0 0 0.75rem" }}>{vectorStoresError}</p>
+          ) : null}
+          {vectorStoresLoading ? (
+            <p style={{ color: "#475569", margin: "0 0 0.75rem" }}>Chargement des vector stores…</p>
+          ) : vectorStores.length === 0 ? (
+            <p style={{ color: "#475569", margin: "0 0 0.75rem" }}>
+              Aucun vector store disponible. Créez-en un depuis l'onglet « Vector stores JSON ».
+            </p>
+          ) : (
+            <label style={fieldStyle}>
+              <span>Vector store cible</span>
+              <select
+                value={vectorStoreNodeSlug}
+                onChange={(event) =>
+                  onVectorStoreNodeConfigChange(node.id, {
+                    vector_store_slug: event.target.value,
+                  })
+                }
+              >
+                <option value="">Sélectionnez un vector store…</option>
+                {vectorStores.map((store) => (
+                  <option key={store.slug} value={store.slug}>
+                    {store.title?.trim() ? `${store.title} (${store.slug})` : store.slug}
+                  </option>
+                ))}
+              </select>
+              <small style={{ color: "#475569" }}>
+                Choisissez le magasin JSON dans lequel indexer la réponse structurée.
+              </small>
+            </label>
+          )}
+          <label style={fieldStyle}>
+            <span>Expression de l'identifiant du document (facultatif)</span>
+            <input
+              type="text"
+              value={vectorStoreNodeDocIdExpression}
+              onChange={(event) =>
+                onVectorStoreNodeConfigChange(node.id, {
+                  doc_id_expression: event.target.value,
+                })
+              }
+              placeholder="Ex. input.output_parsed.doc_id"
+            />
+            <small style={{ color: "#475569" }}>
+              Laissez vide pour réutiliser la clé <code>doc_id</code> du JSON structuré ou générer un
+              identifiant automatique.
+            </small>
+          </label>
+          <label style={fieldStyle}>
+            <span>Expression JSON à indexer (facultatif)</span>
+            <input
+              type="text"
+              value={vectorStoreNodeDocumentExpression}
+              onChange={(event) =>
+                onVectorStoreNodeConfigChange(node.id, {
+                  document_expression: event.target.value,
+                })
+              }
+              placeholder="Ex. input.output_parsed"
+            />
+            <small style={{ color: "#475569" }}>
+              Laissez vide pour indexer automatiquement la sortie structurée du bloc précédent.
+            </small>
+          </label>
+          <label style={fieldStyle}>
+            <span>Expression des métadonnées (facultatif)</span>
+            <input
+              type="text"
+              value={vectorStoreNodeMetadataExpression}
+              onChange={(event) =>
+                onVectorStoreNodeConfigChange(node.id, {
+                  metadata_expression: event.target.value,
+                })
+              }
+              placeholder='Ex. {"source": "workflow"}'
+            />
+            <small style={{ color: "#475569" }}>
+              Retourne un objet JSON fusionné avec les métadonnées automatiques du workflow.
+            </small>
+          </label>
+          {vectorStoreNodeValidationMessages.map((message, index) => (
+            <p key={`vector-store-node-${index}`} style={{ color: "#b91c1c", margin: 0 }}>
+              {message}
+            </p>
+          ))}
         </>
       )}
 

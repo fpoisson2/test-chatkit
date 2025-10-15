@@ -6,7 +6,13 @@ import type {
   StateAssignmentScope,
 } from "../../utils/workflows";
 
-export type NodeKind = "start" | "agent" | "condition" | "state" | "end";
+export type NodeKind =
+  | "start"
+  | "agent"
+  | "condition"
+  | "state"
+  | "json_vector_store"
+  | "end";
 
 export type ApiWorkflowNode = {
   id: number;
@@ -101,7 +107,9 @@ export type SaveState = "idle" | "saving" | "saved" | "error";
 
 export type {
   AgentParameters,
+  AgentVectorStoreIngestionConfig,
   FileSearchConfig,
+  VectorStoreNodeConfig,
   StateAssignment,
   StateAssignmentScope,
   WebSearchConfig,

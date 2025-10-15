@@ -56,6 +56,9 @@ import {
   setAgentWebSearchConfig,
   setStateAssignments,
   stringifyAgentParameters,
+  createVectorStoreNodeParameters,
+  getVectorStoreNodeConfig,
+  setVectorStoreNodeConfig,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
@@ -70,6 +73,7 @@ import type {
   SaveState,
   StateAssignment,
   StateAssignmentScope,
+  VectorStoreNodeConfig,
   WebSearchConfig,
   WorkflowSummary,
   WorkflowVersionResponse,
@@ -452,7 +456,12 @@ const WorkflowBuilderPage = () => {
                 ? resolveAgentParameters(agentKey, node.parameters)
                 : node.kind === "state"
                   ? resolveStateParameters(node.slug, node.parameters)
-                  : resolveAgentParameters(null, node.parameters);
+                  : node.kind === "json_vector_store"
+                    ? setVectorStoreNodeConfig(
+                        {},
+                        getVectorStoreNodeConfig(node.parameters),
+                      )
+                    : resolveAgentParameters(null, node.parameters);
             return {
               id: node.slug,
               position: positionFromMetadata ?? { x: 150 * index, y: 120 * index },
@@ -1151,6 +1160,24 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleVectorStoreNodeConfigChange = useCallback(
+    (nodeId: string, updates: Partial<VectorStoreNodeConfig>) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "json_vector_store") {
+          return data;
+        }
+        const nextParameters = setVectorStoreNodeConfig(data.parameters, updates);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleAgentWeatherToolChange = useCallback(
     (nodeId: string, enabled: boolean) => {
       updateNodeData(nodeId, (data) => {
@@ -1333,6 +1360,33 @@ const WorkflowBuilderPage = () => {
     setSelectedNodeId(slug);
     setSelectedEdgeId(null);
   }, [setNodes]);
+
+  const handleAddVectorStoreNode = useCallback(() => {
+    const slug = `json-vector-store-${Date.now()}`;
+    const fallbackSlug = vectorStores[0]?.slug?.trim() ?? "";
+    const parameters = createVectorStoreNodeParameters({ vector_store_slug: fallbackSlug });
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 420, y: 320 },
+      data: {
+        slug,
+        kind: "json_vector_store",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("json_vector_store"),
+    };
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes, vectorStores]);
 
   const handleWorkflowChange = useCallback(
     (event: ChangeEvent<HTMLSelectElement>) => {
@@ -1931,31 +1985,51 @@ const WorkflowBuilderPage = () => {
     const availableWidgetSlugs = new Set(widgets.map((widget) => widget.slug));
 
     return nodes.some((node) => {
-      if (node.data.kind !== "agent" || !node.data.isEnabled) {
+      if (!node.data.isEnabled) {
         return false;
       }
 
-      const fileSearchConfig = getAgentFileSearchConfig(node.data.parameters);
-      if (fileSearchConfig) {
-        const slug = fileSearchConfig.vector_store_slug?.trim() ?? "";
+      if (node.data.kind === "agent") {
+        const fileSearchConfig = getAgentFileSearchConfig(node.data.parameters);
+        if (fileSearchConfig) {
+          const slug = fileSearchConfig.vector_store_slug?.trim() ?? "";
+          if (!slug) {
+            return true;
+          }
+
+          if (
+            !vectorStoresError &&
+            vectorStores.length > 0 &&
+            !availableVectorStoreSlugs.has(slug)
+          ) {
+            return true;
+          }
+        }
+
+        const responseFormat = getAgentResponseFormat(node.data.parameters);
+        if (responseFormat.kind === "widget") {
+          const slug = responseFormat.slug.trim();
+          if (!slug) {
+            return true;
+          }
+          if (!widgetsError && widgets.length > 0 && !availableWidgetSlugs.has(slug)) {
+            return true;
+          }
+        }
+
+        return false;
+      }
+
+      if (node.data.kind === "json_vector_store") {
+        const config = getVectorStoreNodeConfig(node.data.parameters);
+        const slug = config.vector_store_slug.trim();
         if (!slug) {
           return true;
         }
-
         if (!vectorStoresError && vectorStores.length > 0 && !availableVectorStoreSlugs.has(slug)) {
           return true;
         }
-      }
-
-      const responseFormat = getAgentResponseFormat(node.data.parameters);
-      if (responseFormat.kind === "widget") {
-        const slug = responseFormat.slug.trim();
-        if (!slug) {
-          return true;
-        }
-        if (!widgetsError && widgets.length > 0 && !availableWidgetSlugs.has(slug)) {
-          return true;
-        }
+        return false;
       }
 
       return false;
@@ -2031,8 +2105,15 @@ const WorkflowBuilderPage = () => {
         color: NODE_COLORS.state,
         onClick: handleAddStateNode,
       },
+      {
+        key: "json-vector-store",
+        label: "Stockage JSON",
+        shortLabel: "VS",
+        color: NODE_COLORS.json_vector_store,
+        onClick: handleAddVectorStoreNode,
+      },
     ],
-    [handleAddAgentNode, handleAddConditionNode, handleAddStateNode],
+    [handleAddAgentNode, handleAddConditionNode, handleAddStateNode, handleAddVectorStoreNode],
   );
 
   const showPropertiesPanel = Boolean(selectedNode || selectedEdge);
@@ -2541,12 +2622,17 @@ const WorkflowBuilderPage = () => {
                         display: "grid",
                         placeItems: "center",
                         fontWeight: 700,
-                        fontSize: "1.1rem",
+                        fontSize: "1.05rem",
                       }}
                     >
                       {item.shortLabel}
                     </span>
-                    <span style={{ fontWeight: 600, color: "#0f172a" }}>{item.label}</span>
+                    <div style={{ textAlign: "left" }}>
+                      <strong style={{ fontSize: "1rem", color: "#0f172a" }}>{item.label}</strong>
+                      <p style={{ margin: 0, color: "#475569", fontSize: "0.85rem" }}>
+                        Ajoute un bloc « {item.label.toLowerCase()} » au workflow.
+                      </p>
+                    </div>
                   </button>
                 );
               })}
@@ -2633,6 +2719,7 @@ const WorkflowBuilderPage = () => {
                     onAgentStorePreferenceChange={handleAgentStorePreferenceChange}
                     onAgentWebSearchChange={handleAgentWebSearchChange}
                     onAgentFileSearchChange={handleAgentFileSearchChange}
+                    onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
                     availableModels={availableModels}
                     availableModelsLoading={availableModelsLoading}
                     availableModelsError={availableModelsError}

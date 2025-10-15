@@ -139,7 +139,14 @@ class WeatherResponse(BaseModel):
 
 class WorkflowNodeBase(BaseModel):
     slug: str
-    kind: Literal["start", "agent", "condition", "state", "end"]
+    kind: Literal[
+        "start",
+        "agent",
+        "condition",
+        "state",
+        "json_vector_store",
+        "end",
+    ]
     display_name: str | None = None
     agent_key: str | None = None
     is_enabled: bool = True
