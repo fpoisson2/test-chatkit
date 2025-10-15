@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, AsyncIterator, Awaitable, Callable, Coroutine, Sequence
+from typing import Any, AsyncIterator, Awaitable, Callable, Coroutine, Sequence, Literal
 
 from agents import (
     Agent,
@@ -19,7 +20,7 @@ from agents import (
     function_tool,
 )
 from openai.types.shared.reasoning import Reasoning
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, create_model
 
 from chatkit.agents import AgentContext, stream_agent_response
 from chatkit.server import ChatKitServer
@@ -760,6 +761,211 @@ def _clone_tools(value: Sequence[Any] | None) -> list[Any]:
     return [value]
 
 
+_JSON_TYPE_MAPPING: dict[str, Any] = {
+    "string": str,
+    "integer": int,
+    "number": float,
+    "boolean": bool,
+}
+
+
+def _sanitize_model_name(name: str | None) -> str:
+    candidate = (name or "workflow_output").strip()
+    sanitized = re.sub(r"[^0-9a-zA-Z_]", "_", candidate) or "workflow_output"
+    if sanitized[0].isdigit():
+        sanitized = f"model_{sanitized}"
+    return sanitized
+
+
+def _lookup_known_output_type(name: str) -> type[BaseModel] | None:
+    obj = globals().get(name)
+    if isinstance(obj, type) and issubclass(obj, BaseModel):
+        return obj
+    return None
+
+
+class _JsonSchemaOutputBuilder:
+    """Convertit un schéma JSON simple en type Python compatible Pydantic."""
+
+    def __init__(self) -> None:
+        self._models: dict[str, type[BaseModel]] = {}
+
+    def build_type(self, schema: Any, *, name: str) -> Any | None:
+        if not isinstance(schema, dict):
+            return None
+        py_type, _nullable = self._resolve(schema, _sanitize_model_name(name))
+        return py_type
+
+    def _resolve(self, schema: dict[str, Any], name: str) -> tuple[Any, bool]:
+        nullable = False
+        schema_type = schema.get("type")
+
+        if isinstance(schema_type, list):
+            normalized = [value for value in schema_type if isinstance(value, str)]
+            if "null" in normalized:
+                nullable = True
+                normalized = [value for value in normalized if value != "null"]
+            if len(normalized) == 1:
+                schema_type = normalized[0]
+            elif not normalized:
+                schema_type = None
+            else:
+                return Any, nullable
+        elif isinstance(schema_type, str):
+            if schema_type == "null":
+                return type(None), True
+        else:
+            schema_type = None
+
+        if schema.get("nullable") is True:
+            nullable = True
+
+        if "enum" in schema and isinstance(schema["enum"], list) and schema["enum"]:
+            enum_values = tuple(schema["enum"])
+            try:
+                literal_type = Literal.__getitem__(enum_values)
+            except TypeError:
+                return Any, nullable
+            return literal_type, nullable
+
+        if "const" in schema:
+            try:
+                literal_type = Literal.__getitem__((schema["const"],))
+            except TypeError:
+                return Any, nullable
+            return literal_type, nullable
+
+        if schema_type == "array":
+            items_schema = schema.get("items")
+            items_type, _ = self._resolve(items_schema if isinstance(items_schema, dict) else {}, f"{name}Item")
+            if items_type is None:
+                items_type = Any
+            return list[items_type], nullable
+
+        if schema_type == "object" or "properties" in schema or "additionalProperties" in schema:
+            return self._build_object(schema, name), nullable
+
+        if isinstance(schema_type, str):
+            primitive = _JSON_TYPE_MAPPING.get(schema_type)
+            if primitive is not None:
+                return primitive, nullable
+
+        return Any, nullable
+
+    def _build_object(self, schema: dict[str, Any], name: str) -> Any:
+        sanitized = _sanitize_model_name(name)
+        cached = self._models.get(sanitized)
+        if cached is not None:
+            return cached
+
+        properties = schema.get("properties")
+        if not isinstance(properties, dict):
+            additional = schema.get("additionalProperties")
+            if isinstance(additional, dict):
+                value_type, _ = self._resolve(additional, f"{sanitized}Value")
+                value_type = value_type if value_type is not None else Any
+                return dict[str, value_type]
+            if additional:
+                return dict[str, Any]
+            model = create_model(sanitized, __module__=__name__)
+            self._models[sanitized] = model
+            return model
+
+        if not properties:
+            model = create_model(sanitized, __module__=__name__)
+            self._models[sanitized] = model
+            return model
+
+        if any((not isinstance(prop, str) or not prop.isidentifier()) for prop in properties):
+            return dict[str, Any]
+
+        required_raw = schema.get("required")
+        required: set[str] = set()
+        if isinstance(required_raw, list):
+            for item in required_raw:
+                if isinstance(item, str):
+                    required.add(item)
+
+        field_definitions: dict[str, tuple[Any, Any]] = {}
+        for prop_name, prop_schema in properties.items():
+            nested_schema = prop_schema if isinstance(prop_schema, dict) else {}
+            prop_type, prop_nullable = self._resolve(
+                nested_schema,
+                f"{sanitized}_{prop_name}",
+            )
+            if prop_type is None:
+                prop_type = Any
+            field_type = prop_type
+            is_required = prop_name in required
+            if prop_nullable:
+                field_type = field_type | None
+            if not is_required:
+                if not prop_nullable:
+                    field_type = field_type | None if field_type is not Any else Any
+                field_definitions[prop_name] = (field_type, Field(default=None))
+            else:
+                field_definitions[prop_name] = (field_type, Field(...))
+
+        model = create_model(sanitized, __module__=__name__, **field_definitions)
+        self._models[sanitized] = model
+        return model
+
+
+def _build_output_type_from_response_format(response_format: Any, *, fallback: Any | None) -> Any | None:
+    if not isinstance(response_format, dict):
+        logger.warning(
+            "Format de réponse agent invalide (type inattendu) : %s. Utilisation du type existant.",
+            response_format,
+        )
+        return fallback
+
+    fmt_type = response_format.get("type")
+    if fmt_type != "json_schema":
+        logger.warning(
+            "Format de réponse %s non pris en charge, utilisation du type existant.",
+            fmt_type,
+        )
+        return fallback
+
+    json_schema = response_format.get("json_schema")
+    if not isinstance(json_schema, dict):
+        logger.warning(
+            "Format JSON Schema invalide pour la configuration agent : %s. Utilisation du type existant.",
+            response_format,
+        )
+        return fallback
+
+    schema_name_raw = json_schema.get("name")
+    original_name = schema_name_raw if isinstance(schema_name_raw, str) and schema_name_raw.strip() else None
+    schema_name = _sanitize_model_name(original_name)
+    schema_payload = json_schema.get("schema")
+    if not isinstance(schema_payload, dict):
+        logger.warning(
+            "Format JSON Schema sans contenu pour %s, utilisation du type existant.",
+            schema_name,
+        )
+        return fallback
+
+    known = None
+    if original_name:
+        known = _lookup_known_output_type(original_name)
+    if known is None:
+        known = _lookup_known_output_type(schema_name)
+    if known is not None:
+        return known
+
+    builder = _JsonSchemaOutputBuilder()
+    built = builder.build_type(schema_payload, name=schema_name)
+    if built is None:
+        logger.warning(
+            "Impossible de construire un output_type depuis le schéma %s, utilisation du type existant.",
+            schema_name,
+        )
+        return fallback
+
+    return built
+
+
 def _coerce_agent_tools(
     value: Any, fallback: Sequence[Any] | None = None
 ) -> Sequence[Any] | None:
@@ -825,6 +1031,18 @@ def _build_agent_kwargs(
         merged["tools"] = _coerce_agent_tools(
             merged["tools"], base_kwargs.get("tools") if base_kwargs else None
         )
+    if "response_format" in merged:
+        response_format = merged.pop("response_format")
+        output_type = merged.get("output_type")
+        resolved = _build_output_type_from_response_format(
+            response_format,
+            fallback=output_type,
+        )
+        if resolved is not None:
+            merged["output_type"] = resolved
+        elif "output_type" not in base_kwargs and "output_type" in merged:
+            # Aucun type exploitable fourni, on retire la clé pour éviter les incohérences.
+            merged.pop("output_type", None)
     return merged
 
 
