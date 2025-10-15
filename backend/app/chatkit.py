@@ -1484,6 +1484,43 @@ class _ResponseWidgetConfig:
     output_model: type[BaseModel] | None = None
 
 
+def _parse_response_widget_config(
+    parameters: dict[str, Any] | None,
+) -> _ResponseWidgetConfig | None:
+    """Extrait la configuration de widget depuis les paramètres d'étape."""
+
+    if not parameters or not isinstance(parameters, dict):
+        return None
+
+    candidate = parameters.get("response_widget")
+    if isinstance(candidate, str):
+        slug = candidate.strip()
+        if not slug:
+            return None
+        return _ResponseWidgetConfig(slug=slug, variables={})
+
+    if not isinstance(candidate, dict):
+        return None
+
+    slug_raw = candidate.get("slug")
+    slug = slug_raw.strip() if isinstance(slug_raw, str) else ""
+    if not slug:
+        return None
+
+    variables: dict[str, str] = {}
+    raw_variables = candidate.get("variables")
+    if isinstance(raw_variables, dict):
+        for key, expression in raw_variables.items():
+            if not isinstance(key, str) or not isinstance(expression, str):
+                continue
+            trimmed_key = key.strip()
+            trimmed_expression = expression.strip()
+            if trimmed_key and trimmed_expression:
+                variables[trimmed_key] = trimmed_expression
+
+    return _ResponseWidgetConfig(slug=slug, variables=variables)
+
+
 def _sanitize_widget_field_name(candidate: str, *, fallback: str = "value") -> str:
     """Transforme un identifiant de variable en nom de champ valide."""
 
@@ -1894,35 +1931,6 @@ async def run_workflow(
             if isinstance(update, AssistantMessageContentPartTextDelta):
                 return update.delta or ""
         return ""
-
-    def _parse_response_widget_config(
-        parameters: dict[str, Any] | None,
-    ) -> _ResponseWidgetConfig | None:
-        if not parameters or not isinstance(parameters, dict):
-            return None
-        candidate = parameters.get("response_widget")
-        if isinstance(candidate, str):
-            slug = candidate.strip()
-            if not slug:
-                return None
-            return _ResponseWidgetConfig(slug=slug, variables={})
-        if not isinstance(candidate, dict):
-            return None
-        slug_raw = candidate.get("slug")
-        slug = slug_raw.strip() if isinstance(slug_raw, str) else ""
-        if not slug:
-            return None
-        variables: dict[str, str] = {}
-        raw_variables = candidate.get("variables")
-        if isinstance(raw_variables, dict):
-            for key, expression in raw_variables.items():
-                if not isinstance(key, str) or not isinstance(expression, str):
-                    continue
-                trimmed_key = key.strip()
-                trimmed_expression = expression.strip()
-                if trimmed_key and trimmed_expression:
-                    variables[trimmed_key] = trimmed_expression
-        return _ResponseWidgetConfig(slug=slug, variables=variables)
 
     def _stringify_widget_value(value: Any) -> str:
         if value is None:
