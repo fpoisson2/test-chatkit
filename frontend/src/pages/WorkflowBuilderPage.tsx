@@ -2112,6 +2112,19 @@ const extractWidgetVariableIds = (definition: unknown): string[] => {
   if (!definition) {
     return [];
   }
+
+  const register = (candidate: unknown, seen: Set<string>, result: string[]) => {
+    if (typeof candidate !== "string") {
+      return;
+    }
+    const trimmed = candidate.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      return;
+    }
+    seen.add(trimmed);
+    result.push(trimmed);
+  };
+
   const result: string[] = [];
   const seen = new Set<string>();
   const stack: unknown[] = [definition];
@@ -2131,10 +2144,19 @@ const extractWidgetVariableIds = (definition: unknown): string[] => {
       continue;
     }
 
-    const id = typeof current.id === "string" ? current.id.trim() : "";
-    if (id && !seen.has(id)) {
-      seen.add(id);
-      result.push(id);
+    register((current as Record<string, unknown>).id, seen, result);
+
+    const editable = (current as Record<string, unknown>).editable;
+    if (isPlainRecord(editable)) {
+      register(editable.name, seen, result);
+      const editableNames = editable.names;
+      if (Array.isArray(editableNames)) {
+        for (const name of editableNames) {
+          register(name, seen, result);
+        }
+      } else {
+        register(editableNames, seen, result);
+      }
     }
 
     for (const value of Object.values(current)) {

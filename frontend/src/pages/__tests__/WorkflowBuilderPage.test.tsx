@@ -337,14 +337,114 @@ describe("WorkflowBuilderPage", () => {
     const user = userEvent.setup();
     listWidgetsMock.mockResolvedValue([
       {
-        slug: "resume",
-        title: "Résumé",
+        slug: "email-card",
+        title: "Email",
         description: null,
         definition: {
+          size: "lg",
           type: "Card",
+          cancel: {
+            label: "Discard",
+            action: {
+              type: "email.discard",
+              handler: "server",
+              loadingBehavior: "auto",
+            },
+          },
+          confirm: {
+            label: "Send email",
+            action: {
+              type: "email.send",
+              handler: "server",
+              loadingBehavior: "auto",
+            },
+          },
           children: [
-            { type: "Text", id: "title", value: "Titre" },
-            { type: "Markdown", id: "details", value: "Détails" },
+            {
+              type: "Row",
+              children: [
+                {
+                  size: "xs",
+                  type: "Text",
+                  color: "tertiary",
+                  value: "FROM",
+                  width: 80,
+                  weight: "semibold",
+                },
+                {
+                  type: "Text",
+                  color: "tertiary",
+                  value: "zj@openai.com",
+                },
+              ],
+            },
+            {
+              type: "Divider",
+              flush: true,
+            },
+            {
+              type: "Row",
+              children: [
+                {
+                  size: "xs",
+                  type: "Text",
+                  color: "tertiary",
+                  value: "TO",
+                  width: 80,
+                  weight: "semibold",
+                },
+                {
+                  type: "Text",
+                  value: "weedon@openai.com",
+                  editable: {
+                    name: "email.to",
+                    required: true,
+                    placeholder: "name@example.com",
+                  },
+                },
+              ],
+            },
+            {
+              type: "Divider",
+              flush: true,
+            },
+            {
+              type: "Row",
+              children: [
+                {
+                  size: "xs",
+                  type: "Text",
+                  color: "tertiary",
+                  value: "SUBJECT",
+                  width: 80,
+                  weight: "semibold",
+                },
+                {
+                  type: "Text",
+                  value: "ChatKit Roadmap",
+                  editable: {
+                    name: "email.subject",
+                    required: true,
+                    placeholder: "Email subject",
+                  },
+                },
+              ],
+            },
+            {
+              type: "Divider",
+              flush: true,
+            },
+            {
+              type: "Text",
+              value:
+                "Hey David, \n\nHope you're doing well! Just wanted to check in and see if there are any updates on the ChatKit roadmap. We're excited to see what's coming next and how we can make the most of the upcoming features.\n\nEspecially curious to see how you support widgets!\n\nBest, Zach",
+              editable: {
+                name: "email.body",
+                required: true,
+                placeholder: "Write your message…",
+              },
+              minLines: 9,
+            },
           ],
         },
         created_at: "2024-01-01T00:00:00Z",
@@ -375,21 +475,24 @@ describe("WorkflowBuilderPage", () => {
     });
 
     const widgetSelect = await screen.findByRole("combobox", { name: /widget de sortie/i });
-    await user.selectOptions(widgetSelect, "resume");
+    await user.selectOptions(widgetSelect, "email-card");
 
     const variablesRegion = await screen.findByRole("region", { name: /variables du widget/i });
-    const titleInput = within(variablesRegion).getByLabelText(/variable «\s*title/i);
-    const detailsInput = within(variablesRegion).getByLabelText(/variable «\s*details/i);
-    expect(titleInput).toHaveValue("");
-    expect(detailsInput).toHaveValue("");
+    const toInput = within(variablesRegion).getByLabelText(/variable «\s*email\.to/i);
+    const subjectInput = within(variablesRegion).getByLabelText(/variable «\s*email\.subject/i);
+    const bodyInput = within(variablesRegion).getByLabelText(/variable «\s*email\.body/i);
+    expect(toInput).toHaveValue("");
+    expect(subjectInput).toHaveValue("");
+    expect(bodyInput).toHaveValue("");
 
     const importButton = within(variablesRegion).getByRole("button", {
       name: /importer depuis le module précédent/i,
     });
     fireEvent.click(importButton);
 
-    expect(titleInput).toHaveValue("input.output_parsed.title");
-    expect(detailsInput).toHaveValue("input.output_parsed.details");
+    expect(toInput).toHaveValue("input.output_parsed.email.to");
+    expect(subjectInput).toHaveValue("input.output_parsed.email.subject");
+    expect(bodyInput).toHaveValue("input.output_parsed.email.body");
 
     const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
     fireEvent.click(saveButton);
@@ -404,10 +507,11 @@ describe("WorkflowBuilderPage", () => {
     const payload = JSON.parse((putCall?.[1] as RequestInit).body as string);
     const agentNode = payload.graph.nodes.find((node: any) => node.slug === "agent-triage");
     expect(agentNode.parameters.response_widget).toEqual({
-      slug: "resume",
+      slug: "email-card",
       variables: {
-        title: "input.output_parsed.title",
-        details: "input.output_parsed.details",
+        "email.to": "input.output_parsed.email.to",
+        "email.subject": "input.output_parsed.email.subject",
+        "email.body": "input.output_parsed.email.body",
       },
     });
   });
