@@ -1683,14 +1683,33 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
 
     bindings: dict[str, _WidgetBinding] = {}
 
+    value_keys = {
+        "value",
+        "text",
+        "title",
+        "label",
+        "caption",
+        "description",
+        "body",
+        "content",
+        "heading",
+        "subtitle",
+    }
+
+    manual_paths: set[tuple[str | int, ...]] = set()
+
     def _register(
         identifier: str | None,
         path: tuple[str | int, ...],
         node: dict[str, Any],
+        *,
+        is_manual: bool,
     ) -> None:
         if not identifier:
             return
         if identifier in bindings:
+            return
+        if not is_manual and path in manual_paths:
             return
         component_type = node.get("type") if isinstance(node.get("type"), str) else None
         sample: str | list[str] | None = None
@@ -1709,27 +1728,50 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
             component_type=component_type,
             sample=sample,
         )
+        if is_manual:
+            manual_paths.add(path)
 
     def _walk(node: Any, path: tuple[str | int, ...]) -> None:
         if isinstance(node, dict):
             identifier = node.get("id")
             if isinstance(identifier, str):
-                _register(identifier, path, node)
+                _register(identifier, path, node, is_manual=True)
 
             editable = node.get("editable")
             if isinstance(editable, dict):
                 editable_name = editable.get("name")
                 if isinstance(editable_name, str):
-                    _register(editable_name, path, node)
+                    _register(editable_name, path, node, is_manual=True)
                 editable_names = editable.get("names")
                 if isinstance(editable_names, (list, tuple)):
                     for entry in editable_names:
                         if isinstance(entry, str):
-                            _register(entry, path, node)
+                            _register(entry, path, node, is_manual=True)
 
             name_attr = node.get("name")
             if isinstance(name_attr, str):
-                _register(name_attr, path, node)
+                _register(name_attr, path, node, is_manual=True)
+
+            for key in value_keys:
+                if key not in node:
+                    continue
+                raw_value = node[key]
+                identifier_parts = [
+                    str(part) for part in (*path, key) if str(part)
+                ]
+                if not identifier_parts:
+                    continue
+                identifier = ".".join(identifier_parts)
+                if isinstance(raw_value, (str, int, float, bool)):
+                    _register(identifier, path, node, is_manual=False)
+                elif isinstance(raw_value, list):
+                    simple_values = [
+                        str(item)
+                        for item in raw_value
+                        if isinstance(item, (str, int, float, bool))
+                    ]
+                    if simple_values:
+                        _register(identifier, path, node, is_manual=False)
 
             for key, child in node.items():
                 if isinstance(child, (dict, list)):
