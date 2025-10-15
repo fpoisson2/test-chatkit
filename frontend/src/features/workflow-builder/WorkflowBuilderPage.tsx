@@ -34,7 +34,6 @@ import {
   parseAgentParameters,
   getAgentFileSearchConfig,
   getAgentResponseFormat,
-  getAgentVectorStoreIngestion,
   setAgentContinueOnError,
   setAgentDisplayResponseInChat,
   setAgentFileSearchConfig,
@@ -55,15 +54,16 @@ import {
   setAgentTopP,
   setAgentWeatherToolEnabled,
   setAgentWebSearchConfig,
-  setAgentVectorStoreIngestion,
   setStateAssignments,
   stringifyAgentParameters,
+  createVectorStoreNodeParameters,
+  getVectorStoreNodeConfig,
+  setVectorStoreNodeConfig,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
 import type {
   AgentParameters,
-  AgentVectorStoreIngestionConfig,
   FileSearchConfig,
   FlowEdge,
   FlowEdgeData,
@@ -73,6 +73,7 @@ import type {
   SaveState,
   StateAssignment,
   StateAssignmentScope,
+  VectorStoreNodeConfig,
   WebSearchConfig,
   WorkflowSummary,
   WorkflowVersionResponse,
@@ -455,7 +456,12 @@ const WorkflowBuilderPage = () => {
                 ? resolveAgentParameters(agentKey, node.parameters)
                 : node.kind === "state"
                   ? resolveStateParameters(node.slug, node.parameters)
-                  : resolveAgentParameters(null, node.parameters);
+                  : node.kind === "json_vector_store"
+                    ? setVectorStoreNodeConfig(
+                        {},
+                        getVectorStoreNodeConfig(node.parameters),
+                      )
+                    : resolveAgentParameters(null, node.parameters);
             return {
               id: node.slug,
               position: positionFromMetadata ?? { x: 150 * index, y: 120 * index },
@@ -727,18 +733,6 @@ const WorkflowBuilderPage = () => {
     () => edges.find((edge) => edge.id === selectedEdgeId) ?? null,
     [edges, selectedEdgeId]
   );
-
-  const selectedAgentNode = useMemo<FlowNode | null>(
-    () => (selectedNode?.data.kind === "agent" ? selectedNode : null),
-    [selectedNode]
-  );
-
-  const selectedAgentVectorStoreIngestion = useMemo(() => {
-    if (!selectedAgentNode) {
-      return null;
-    }
-    return getAgentVectorStoreIngestion(selectedAgentNode.data.parameters);
-  }, [selectedAgentNode]);
 
   const handleNodeClick = useCallback((_: unknown, node: FlowNode) => {
     setSelectedNodeId(node.id);
@@ -1166,13 +1160,13 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
-  const handleAgentVectorStoreIngestionChange = useCallback(
-    (nodeId: string, config: AgentVectorStoreIngestionConfig | null) => {
+  const handleVectorStoreNodeConfigChange = useCallback(
+    (nodeId: string, updates: Partial<VectorStoreNodeConfig>) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (data.kind !== "json_vector_store") {
           return data;
         }
-        const nextParameters = setAgentVectorStoreIngestion(data.parameters, config);
+        const nextParameters = setVectorStoreNodeConfig(data.parameters, updates);
         return {
           ...data,
           parameters: nextParameters,
@@ -1183,63 +1177,6 @@ const WorkflowBuilderPage = () => {
     },
     [updateNodeData],
   );
-
-  const handleEnableVectorStoreModule = useCallback(() => {
-    if (!selectedAgentNode) {
-      setSaveState("error");
-      setSaveMessage("Sélectionnez un agent pour activer ce module.");
-      setTimeout(() => {
-        setSaveState("idle");
-        setSaveMessage(null);
-      }, 2000);
-      return;
-    }
-
-    const existingConfig = getAgentVectorStoreIngestion(selectedAgentNode.data.parameters);
-    if (existingConfig) {
-      setSaveState("saved");
-      setSaveMessage(
-        "Le module de stockage JSON est déjà activé pour cet agent. Ajustez la configuration dans le panneau de droite.",
-      );
-      setTimeout(() => {
-        setSaveState("idle");
-        setSaveMessage(null);
-      }, 2000);
-      return;
-    }
-
-    const fallbackSlug = vectorStores[0]?.slug?.trim() ?? "";
-    const defaultConfig: AgentVectorStoreIngestionConfig = {
-      vector_store_slug: fallbackSlug,
-      doc_id_expression: "input.output_parsed.doc_id",
-      document_expression: "input.output_parsed",
-      metadata_expression: "",
-    };
-
-    handleAgentVectorStoreIngestionChange(selectedAgentNode.id, defaultConfig);
-
-    if (!fallbackSlug) {
-      setSaveState("error");
-      setSaveMessage(
-        "Module activé. Sélectionnez un vector store dans le panneau de droite pour finaliser la configuration.",
-      );
-    } else {
-      setSaveState("saved");
-      setSaveMessage(
-        `Module activé. Le vector store « ${fallbackSlug} » est sélectionné par défaut – vérifiez sa configuration dans le panneau de droite.`,
-      );
-    }
-
-    setTimeout(() => {
-      setSaveState("idle");
-      setSaveMessage(null);
-    }, 2200);
-  }, [
-    handleAgentVectorStoreIngestionChange,
-    selectedAgentNode,
-    setSaveMessage,
-    vectorStores,
-  ]);
 
   const handleAgentWeatherToolChange = useCallback(
     (nodeId: string, enabled: boolean) => {
@@ -1423,6 +1360,33 @@ const WorkflowBuilderPage = () => {
     setSelectedNodeId(slug);
     setSelectedEdgeId(null);
   }, [setNodes]);
+
+  const handleAddVectorStoreNode = useCallback(() => {
+    const slug = `json-vector-store-${Date.now()}`;
+    const fallbackSlug = vectorStores[0]?.slug?.trim() ?? "";
+    const parameters = createVectorStoreNodeParameters({ vector_store_slug: fallbackSlug });
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 420, y: 320 },
+      data: {
+        slug,
+        kind: "json_vector_store",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("json_vector_store"),
+    };
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes, vectorStores]);
 
   const handleWorkflowChange = useCallback(
     (event: ChangeEvent<HTMLSelectElement>) => {
@@ -2021,48 +1985,54 @@ const WorkflowBuilderPage = () => {
     const availableWidgetSlugs = new Set(widgets.map((widget) => widget.slug));
 
     return nodes.some((node) => {
-      if (node.data.kind !== "agent" || !node.data.isEnabled) {
+      if (!node.data.isEnabled) {
         return false;
       }
 
-      const fileSearchConfig = getAgentFileSearchConfig(node.data.parameters);
-      if (fileSearchConfig) {
-        const slug = fileSearchConfig.vector_store_slug?.trim() ?? "";
+      if (node.data.kind === "agent") {
+        const fileSearchConfig = getAgentFileSearchConfig(node.data.parameters);
+        if (fileSearchConfig) {
+          const slug = fileSearchConfig.vector_store_slug?.trim() ?? "";
+          if (!slug) {
+            return true;
+          }
+
+          if (
+            !vectorStoresError &&
+            vectorStores.length > 0 &&
+            !availableVectorStoreSlugs.has(slug)
+          ) {
+            return true;
+          }
+        }
+
+        const responseFormat = getAgentResponseFormat(node.data.parameters);
+        if (responseFormat.kind === "widget") {
+          const slug = responseFormat.slug.trim();
+          if (!slug) {
+            return true;
+          }
+          if (!widgetsError && widgets.length > 0 && !availableWidgetSlugs.has(slug)) {
+            return true;
+          }
+        }
+
+        return false;
+      }
+
+      if (node.data.kind === "json_vector_store") {
+        const config = getVectorStoreNodeConfig(node.data.parameters);
+        const slug = config.vector_store_slug.trim();
         if (!slug) {
           return true;
         }
-
         if (!vectorStoresError && vectorStores.length > 0 && !availableVectorStoreSlugs.has(slug)) {
           return true;
         }
-      }
-
-      const vectorStoreIngestion = getAgentVectorStoreIngestion(node.data.parameters);
-      if (vectorStoreIngestion) {
-        const slug = vectorStoreIngestion.vector_store_slug.trim();
-        if (!slug) {
+        if (!config.doc_id_expression.trim() || !config.document_expression.trim()) {
           return true;
         }
-        if (!vectorStoresError && vectorStores.length > 0 && !availableVectorStoreSlugs.has(slug)) {
-          return true;
-        }
-        if (
-          !vectorStoreIngestion.doc_id_expression.trim() ||
-          !vectorStoreIngestion.document_expression.trim()
-        ) {
-          return true;
-        }
-      }
-
-      const responseFormat = getAgentResponseFormat(node.data.parameters);
-      if (responseFormat.kind === "widget") {
-        const slug = responseFormat.slug.trim();
-        if (!slug) {
-          return true;
-        }
-        if (!widgetsError && widgets.length > 0 && !availableWidgetSlugs.has(slug)) {
-          return true;
-        }
+        return false;
       }
 
       return false;
@@ -2138,13 +2108,16 @@ const WorkflowBuilderPage = () => {
         color: NODE_COLORS.state,
         onClick: handleAddStateNode,
       },
+      {
+        key: "json-vector-store",
+        label: "Stockage JSON",
+        shortLabel: "VS",
+        color: NODE_COLORS.json_vector_store,
+        onClick: handleAddVectorStoreNode,
+      },
     ],
-    [handleAddAgentNode, handleAddConditionNode, handleAddStateNode],
+    [handleAddAgentNode, handleAddConditionNode, handleAddStateNode, handleAddVectorStoreNode],
   );
-
-  const vectorStoreModuleDescription = selectedAgentVectorStoreIngestion
-    ? "Module actif : la réponse JSON de l'agent est indexée dans le vector store sélectionné."
-    : "Active l'ingestion automatique de la réponse JSON structurée de l'agent dans un vector store.";
 
   const showPropertiesPanel = Boolean(selectedNode || selectedEdge);
   const selectedElementLabel = selectedNode
@@ -2667,101 +2640,6 @@ const WorkflowBuilderPage = () => {
                 );
               })}
             </div>
-            {selectedAgentNode ? (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.75rem",
-                  marginTop: "0.5rem",
-                  paddingTop: "0.75rem",
-                  borderTop: "1px solid rgba(148, 163, 184, 0.24)",
-                }}
-              >
-                <div>
-                  <h3 style={{ margin: 0, fontSize: "1rem", color: "#0f172a" }}>Modules de l'agent</h3>
-                  <p style={{ margin: "0.25rem 0 0", color: "#475569", fontSize: "0.85rem" }}>
-                    Activez des modules avancés pour l'agent «
-                    {" "}
-                    {selectedAgentNode.data.displayName.trim()
-                      ? selectedAgentNode.data.displayName.trim()
-                      : labelForKind("agent")}
-                    ».
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleEnableVectorStoreModule}
-                  disabled={loading || !selectedWorkflowId}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.75rem",
-                    padding: "0.75rem",
-                    borderRadius: "0.9rem",
-                    border: "1px solid rgba(14, 165, 233, 0.18)",
-                    background: "rgba(14, 165, 233, 0.08)",
-                    boxShadow: "0 10px 20px rgba(14, 165, 233, 0.16)",
-                    cursor:
-                      loading || !selectedWorkflowId ? "not-allowed" : "pointer",
-                    opacity: loading || !selectedWorkflowId ? 0.5 : 1,
-                    textAlign: "left",
-                  }}
-                >
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: "2.35rem",
-                      height: "2.35rem",
-                      borderRadius: "0.75rem",
-                      background: "#0ea5e9",
-                      color: "#fff",
-                      display: "grid",
-                      placeItems: "center",
-                      fontWeight: 700,
-                      fontSize: "0.95rem",
-                    }}
-                  >
-                    VS
-                  </span>
-                  <div style={{ flex: 1 }}>
-                    <strong style={{ fontSize: "1rem", color: "#0f172a" }}>
-                      Stockage JSON → Vector store
-                    </strong>
-                    <p style={{ margin: "0.35rem 0 0", color: "#0f172a", fontSize: "0.85rem" }}>
-                      {vectorStoreModuleDescription}
-                    </p>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: "0.8rem",
-                      fontWeight: 700,
-                      color: selectedAgentVectorStoreIngestion ? "#047857" : "#0f172a",
-                      backgroundColor: selectedAgentVectorStoreIngestion
-                        ? "rgba(34, 197, 94, 0.16)"
-                        : "rgba(15, 23, 42, 0.08)",
-                      borderRadius: "999px",
-                      padding: "0.25rem 0.75rem",
-                    }}
-                  >
-                    {selectedAgentVectorStoreIngestion ? "Actif" : "Activer"}
-                  </span>
-                </button>
-              </div>
-            ) : (
-              <div
-                style={{
-                  marginTop: "0.5rem",
-                  padding: "0.75rem",
-                  borderRadius: "0.9rem",
-                  background: "rgba(148, 163, 184, 0.16)",
-                  color: "#1e293b",
-                  fontSize: "0.85rem",
-                }}
-              >
-                Sélectionnez un agent dans le workflow pour activer le module « Stockage JSON → Vector store ».
-              </div>
-            )}
           </aside>
           {showPropertiesPanel ? (
             <aside
@@ -2844,7 +2722,7 @@ const WorkflowBuilderPage = () => {
                     onAgentStorePreferenceChange={handleAgentStorePreferenceChange}
                     onAgentWebSearchChange={handleAgentWebSearchChange}
                     onAgentFileSearchChange={handleAgentFileSearchChange}
-                    onAgentVectorStoreIngestionChange={handleAgentVectorStoreIngestionChange}
+                    onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
                     availableModels={availableModels}
                     availableModelsLoading={availableModelsLoading}
                     availableModelsError={availableModelsError}

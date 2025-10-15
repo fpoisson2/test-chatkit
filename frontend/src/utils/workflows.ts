@@ -668,6 +668,13 @@ export type AgentVectorStoreIngestionConfig = {
   metadata_expression: string;
 };
 
+export type VectorStoreNodeConfig = {
+  vector_store_slug: string;
+  doc_id_expression: string;
+  document_expression: string;
+  metadata_expression: string;
+};
+
 export const getAgentVectorStoreIngestion = (
   parameters: AgentParameters | null | undefined,
 ): AgentVectorStoreIngestionConfig | null => {
@@ -731,6 +738,98 @@ export const setAgentVectorStoreIngestion = (
   next.vector_store_ingestion = payload;
   return next as AgentParameters;
 };
+
+const sanitizeVectorStoreNodeValue = (value: string | undefined): string =>
+  value?.trim() ?? "";
+
+export const getVectorStoreNodeConfig = (
+  parameters: AgentParameters | null | undefined,
+): VectorStoreNodeConfig => {
+  if (!parameters) {
+    return {
+      vector_store_slug: "",
+      doc_id_expression: "",
+      document_expression: "",
+      metadata_expression: "",
+    };
+  }
+
+  const raw = parameters as Record<string, unknown>;
+  const slug = sanitizeVectorStoreNodeValue(
+    typeof raw.vector_store_slug === "string" ? raw.vector_store_slug : undefined,
+  );
+  const docIdCandidate =
+    typeof raw.doc_id_expression === "string"
+      ? raw.doc_id_expression
+      : typeof raw.doc_id === "string"
+        ? raw.doc_id
+        : undefined;
+  const documentCandidate =
+    typeof raw.document_expression === "string"
+      ? raw.document_expression
+      : typeof raw.document === "string"
+        ? raw.document
+        : undefined;
+  const metadata =
+    typeof raw.metadata_expression === "string"
+      ? raw.metadata_expression
+      : undefined;
+
+  return {
+    vector_store_slug: sanitizeVectorStoreNodeValue(slug),
+    doc_id_expression: sanitizeVectorStoreNodeValue(docIdCandidate),
+    document_expression: sanitizeVectorStoreNodeValue(documentCandidate),
+    metadata_expression: sanitizeVectorStoreNodeValue(metadata),
+  };
+};
+
+export const setVectorStoreNodeConfig = (
+  parameters: AgentParameters,
+  updates: Partial<VectorStoreNodeConfig>,
+): AgentParameters => {
+  const current = getVectorStoreNodeConfig(parameters);
+  const next: VectorStoreNodeConfig = {
+    vector_store_slug: sanitizeVectorStoreNodeValue(
+      updates.vector_store_slug ?? current.vector_store_slug,
+    ),
+    doc_id_expression: sanitizeVectorStoreNodeValue(
+      updates.doc_id_expression ?? current.doc_id_expression,
+    ),
+    document_expression: sanitizeVectorStoreNodeValue(
+      updates.document_expression ?? current.document_expression,
+    ),
+    metadata_expression: sanitizeVectorStoreNodeValue(
+      updates.metadata_expression ?? current.metadata_expression,
+    ),
+  };
+
+  const payload: Record<string, string> = {
+    vector_store_slug: next.vector_store_slug,
+    doc_id_expression: next.doc_id_expression,
+    document_expression: next.document_expression,
+  };
+
+  if (next.metadata_expression) {
+    payload.metadata_expression = next.metadata_expression;
+  }
+
+  return payload as AgentParameters;
+};
+
+export const createVectorStoreNodeParameters = (
+  overrides: Partial<VectorStoreNodeConfig> = {},
+): AgentParameters =>
+  setVectorStoreNodeConfig(
+    {},
+    {
+      vector_store_slug: overrides.vector_store_slug ?? "",
+      doc_id_expression:
+        overrides.doc_id_expression ?? "input.output_parsed.doc_id",
+      document_expression:
+        overrides.document_expression ?? "input.output_parsed",
+      metadata_expression: overrides.metadata_expression ?? "",
+    },
+  );
 
 const isWebSearchTool = (value: unknown): value is Record<string, unknown> =>
   isPlainRecord(value) && value.type === "web_search";

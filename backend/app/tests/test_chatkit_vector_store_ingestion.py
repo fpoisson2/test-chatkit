@@ -776,20 +776,28 @@ def test_run_workflow_ingests_agent_json(monkeypatch: pytest.MonkeyPatch) -> Non
         display_name="Début",
     )
     agent_step = SimpleNamespace(
-        slug="store-json",
+        slug="vector-agent",
         kind="agent",
         is_enabled=True,
-        parameters={
-            "vector_store_ingestion": {
-                "vector_store_slug": "demo-store",
-                "doc_id_expression": "input.output_parsed.doc_id",
-                "document_expression": "input.output_parsed.record",
-                "metadata_expression": '{"source": "workflow"}',
-            }
-        },
+        parameters={},
         agent_key="vector_scribe",
         position=1,
         id=2,
+        display_name="Préparation",
+    )
+    storage_step = SimpleNamespace(
+        slug="store-json",
+        kind="json_vector_store",
+        is_enabled=True,
+        parameters={
+            "vector_store_slug": "demo-store",
+            "doc_id_expression": "input.output_parsed.doc_id",
+            "document_expression": "input.output_parsed.record",
+            "metadata_expression": '{"source": "workflow"}',
+        },
+        agent_key=None,
+        position=2,
+        id=3,
         display_name="Sauvegarde",
     )
     end_step = SimpleNamespace(
@@ -798,18 +806,19 @@ def test_run_workflow_ingests_agent_json(monkeypatch: pytest.MonkeyPatch) -> Non
         is_enabled=True,
         parameters={},
         agent_key=None,
-        position=2,
-        id=3,
+        position=3,
+        id=4,
         display_name="Fin",
     )
 
     transitions = [
         SimpleNamespace(id=1, source_step=start_step, target_step=agent_step, condition=None),
-        SimpleNamespace(id=2, source_step=agent_step, target_step=end_step, condition=None),
+        SimpleNamespace(id=2, source_step=agent_step, target_step=storage_step, condition=None),
+        SimpleNamespace(id=3, source_step=storage_step, target_step=end_step, condition=None),
     ]
 
     definition = SimpleNamespace(
-        steps=[start_step, agent_step, end_step],
+        steps=[start_step, agent_step, storage_step, end_step],
         transitions=transitions,
         workflow_id=1,
         workflow=SimpleNamespace(slug="demo", display_name="Démo"),

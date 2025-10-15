@@ -2293,43 +2293,42 @@ async def run_workflow(
                 exc_info=exc,
             )
 
-    async def _maybe_store_agent_output(
-        step: WorkflowStep,
+    async def _apply_vector_store_ingestion(
         *,
+        config: dict[str, Any] | None,
+        step_slug: str,
         step_title: str,
         step_context: dict[str, Any] | None,
     ) -> None:
-        params = step.parameters or {}
-        raw_config = params.get("vector_store_ingestion")
-        if not isinstance(raw_config, dict):
+        if not isinstance(config, dict):
             return
 
-        slug_raw = raw_config.get("vector_store_slug")
+        slug_raw = config.get("vector_store_slug")
         slug = str(slug_raw).strip() if isinstance(slug_raw, str) else ""
         if not slug:
             logger.debug(
                 "Configuration vector_store_ingestion ignorée pour %s : slug absent.",
-                step.slug,
+                step_slug,
             )
             return
 
-        doc_id_expression = raw_config.get("doc_id_expression") or raw_config.get("doc_id")
+        doc_id_expression = config.get("doc_id_expression") or config.get("doc_id")
         if not isinstance(doc_id_expression, str) or not doc_id_expression.strip():
             logger.warning(
                 "Expression d'identifiant manquante pour l'ingestion vectorielle (%s).",
-                step.slug,
+                step_slug,
             )
             return
 
-        document_expression = raw_config.get("document_expression") or raw_config.get("document")
+        document_expression = config.get("document_expression") or config.get("document")
         if not isinstance(document_expression, str) or not document_expression.strip():
             logger.warning(
                 "Expression JSON manquante pour l'ingestion vectorielle (%s).",
-                step.slug,
+                step_slug,
             )
             return
 
-        metadata_expression_raw = raw_config.get("metadata_expression")
+        metadata_expression_raw = config.get("metadata_expression")
         metadata_expression = (
             metadata_expression_raw.strip()
             if isinstance(metadata_expression_raw, str)
@@ -2344,7 +2343,7 @@ async def run_workflow(
             logger.exception(
                 "Impossible d'évaluer l'expression d'identifiant '%s' pour %s",
                 doc_id_expression,
-                step.slug,
+                step_slug,
                 exc_info=exc,
             )
             return
@@ -2353,7 +2352,7 @@ async def run_workflow(
         if not doc_id:
             logger.warning(
                 "Identifiant de document vide après évaluation pour %s.",
-                step.slug,
+                step_slug,
             )
             return
 
@@ -2365,7 +2364,7 @@ async def run_workflow(
             logger.exception(
                 "Impossible d'évaluer l'expression de document '%s' pour %s",
                 document_expression,
-                step.slug,
+                step_slug,
                 exc_info=exc,
             )
             return
@@ -2395,21 +2394,21 @@ async def run_workflow(
             except json.JSONDecodeError:
                 logger.warning(
                     "Le document produit par %s n'est pas un JSON valide pour l'ingestion.",
-                    step.slug,
+                    step_slug,
                 )
                 return
 
         if not isinstance(document_value, dict):
             logger.warning(
                 "Le document généré par %s doit être un objet JSON pour être indexé (type %s).",
-                step.slug,
+                step_slug,
                 type(document_value).__name__,
             )
             return
 
         metadata: dict[str, Any] = {
-            "workflow_step": step.slug,
-            "workflow_step_title": step.display_name or step_title,
+            "workflow_step": step_slug,
+            "workflow_step_title": step_title,
         }
 
         if metadata_expression:
@@ -2421,7 +2420,7 @@ async def run_workflow(
                 logger.exception(
                     "Impossible d'évaluer l'expression de métadonnées '%s' pour %s",
                     metadata_expression,
-                    step.slug,
+                    step_slug,
                     exc_info=exc,
                 )
             else:
@@ -2455,12 +2454,12 @@ async def run_workflow(
                 elif metadata_value is not None:
                     logger.warning(
                         "Les métadonnées calculées pour %s doivent être un objet JSON.",
-                        step.slug,
+                        step_slug,
                     )
 
         logger.info(
             "Ingestion du résultat JSON de %s dans le vector store %s (doc_id=%s)",
-            step.slug,
+            step_slug,
             slug,
             doc_id,
         )
@@ -2867,6 +2866,27 @@ async def run_workflow(
             current_slug = transition.target_step.slug
             continue
 
+        if current_node.kind == "json_vector_store":
+            title = _node_title(current_node)
+            await _apply_vector_store_ingestion(
+                config=current_node.parameters or {},
+                step_slug=current_node.slug,
+                step_title=title,
+                step_context=last_step_context,
+            )
+            transition = _next_edge(current_slug)
+            if transition is None:
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError(
+                        f"Aucune transition disponible après le nœud {current_node.slug}"
+                    ),
+                    list(steps),
+                )
+            current_slug = transition.target_step.slug
+            continue
+
         if current_node.kind != "agent":
             raise WorkflowExecutionError(
                 "configuration",
@@ -2993,8 +3013,11 @@ async def run_workflow(
                 "output_text": text,
             }
 
-        await _maybe_store_agent_output(
-            current_node, step_title=title, step_context=last_step_context
+        await _apply_vector_store_ingestion(
+            config=(current_node.parameters or {}).get("vector_store_ingestion"),
+            step_slug=current_node.slug,
+            step_title=title,
+            step_context=last_step_context,
         )
 
         if widget_config is not None:
