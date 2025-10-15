@@ -1534,74 +1534,6 @@ button {
   font-size: 0.9rem;
 }
 
-.chatkit-mode-switch {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px clamp(16px, 4vw, 24px) 0;
-}
-
-.chatkit-mode-switch__label {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.chatkit-mode-switch__group {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.05);
-}
-
-.chatkit-mode-switch__pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  color: var(--text-color);
-  font-weight: 600;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.chatkit-mode-switch__pill:hover,
-.chatkit-mode-switch__pill:focus-visible {
-  background: rgba(37, 99, 235, 0.12);
-  color: var(--primary-hover);
-}
-
-.chatkit-mode-switch__pill--active {
-  background: var(--primary-color);
-  color: #fff;
-  border-color: transparent;
-  box-shadow: 0 12px 22px rgba(37, 99, 235, 0.22);
-  cursor: default;
-}
-
-.chatkit-mode-switch__pill--active:hover,
-.chatkit-mode-switch__pill--active:focus-visible {
-  background: var(--primary-color);
-  color: #fff;
-}
-
-.chatkit-mode-switch__pill[aria-current="page"] {
-  cursor: default;
-}
-
-.chatkit-mode-switch__icon {
-  width: 18px;
-  height: 18px;
-}
 
 .voice-page {
   padding: clamp(32px, 6vw, 64px) clamp(24px, 6vw, 64px);
@@ -1860,11 +1792,6 @@ button {
 }
 
 @media (max-width: 768px) {
-  .chatkit-mode-switch {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
   .voice-page {
     padding: clamp(24px, 8vw, 48px) clamp(16px, 6vw, 32px);
   }
