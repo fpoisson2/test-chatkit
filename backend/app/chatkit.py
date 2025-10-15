@@ -43,6 +43,7 @@ from chatkit.server import ChatKitServer
 from chatkit.store import NotFoundError
 from chatkit.types import (
     AssistantMessageContentPartTextDelta,
+    ClosedStatus,
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
@@ -207,6 +208,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 workflow_service=self._workflow_service,
             )
 
+            thread.status = ClosedStatus(reason="workflow_completed")
             await on_stream_event(
                 EndOfTurnItem(
                     id=self.store.generate_item_id(
