@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ChangeEvent,
@@ -268,6 +269,8 @@ const WorkflowBuilderPage = () => {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [publishOnSave, setPublishOnSave] = useState(false);
+  const [isPaletteOpen, setIsPaletteOpen] = useState(true);
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [vectorStores, setVectorStores] = useState<VectorStoreSummary[]>([]);
   const [vectorStoresLoading, setVectorStoresLoading] = useState(false);
   const [vectorStoresError, setVectorStoresError] = useState<string | null>(null);
@@ -277,6 +280,8 @@ const WorkflowBuilderPage = () => {
   const [widgets, setWidgets] = useState<WidgetTemplate[]>([]);
   const [widgetsLoading, setWidgetsLoading] = useState(false);
   const [widgetsError, setWidgetsError] = useState<string | null>(null);
+
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
 
   const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
   const selectedWorkflow = useMemo(
@@ -427,6 +432,32 @@ const WorkflowBuilderPage = () => {
       isMounted = false;
     };
   }, [token]);
+
+  useEffect(() => {
+    if (!isActionMenuOpen) {
+      return;
+    }
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target as Node)) {
+        setIsActionMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsActionMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isActionMenuOpen]);
 
   const loadVersionDetail = useCallback(
     async (workflowId: number, versionId: number): Promise<boolean> => {
@@ -1348,6 +1379,18 @@ const WorkflowBuilderPage = () => {
     setPublishOnSave(event.target.checked);
   }, []);
 
+  const handleTogglePalette = useCallback(() => {
+    setIsPaletteOpen((current) => !current);
+  }, []);
+
+  const handleToggleActionMenu = useCallback(() => {
+    setIsActionMenuOpen((current) => !current);
+  }, []);
+
+  const handleCloseActionMenu = useCallback(() => {
+    setIsActionMenuOpen(false);
+  }, []);
+
   const handleCreateWorkflow = useCallback(async () => {
     const proposed = window.prompt("Nom du nouveau workflow ?");
     if (!proposed) {
@@ -1393,7 +1436,105 @@ const WorkflowBuilderPage = () => {
     setSaveMessage(lastError?.message ?? "Impossible de créer le workflow.");
   }, [authHeader, loadWorkflows]);
 
+  const handleRenameWorkflow = useCallback(() => {
+    handleCloseActionMenu();
+    if (!selectedWorkflow) {
+      setSaveState("error");
+      setSaveMessage("Sélectionnez un workflow à renommer.");
+      return;
+    }
+
+    const proposed = window.prompt(
+      `Nouveau nom pour "${selectedWorkflow.display_name}" ?`,
+      selectedWorkflow.display_name,
+    );
+    if (!proposed || proposed.trim() === selectedWorkflow.display_name.trim()) {
+      return;
+    }
+
+    setSaveState("error");
+    setSaveMessage("Le renommage des workflows sera bientôt disponible.");
+  }, [handleCloseActionMenu, selectedWorkflow]);
+
+  const handleDuplicateWorkflow = useCallback(async () => {
+    handleCloseActionMenu();
+    if (!selectedWorkflow) {
+      setSaveState("error");
+      setSaveMessage("Sélectionnez un workflow à dupliquer.");
+      return;
+    }
+
+    if (nodes.some((node) => node.data.parametersError)) {
+      setSaveState("error");
+      setSaveMessage("Corrigez les paramètres JSON invalides avant de dupliquer.");
+      return;
+    }
+
+    const proposed = window.prompt(
+      `Nom du duplicata pour "${selectedWorkflow.display_name}" ?`,
+    );
+    if (!proposed) {
+      return;
+    }
+    const displayName = proposed.trim();
+    if (!displayName) {
+      return;
+    }
+
+    const slug = slugifyWorkflowName(displayName);
+    const payload = {
+      slug,
+      display_name: displayName,
+      description: selectedWorkflow.description,
+      graph: buildGraphPayload(),
+    };
+
+    const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows");
+    let lastError: Error | null = null;
+    setSaveState("saving");
+    setSaveMessage("Duplication en cours…");
+
+    for (const url of candidates) {
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          throw new Error(`Échec de la duplication (${response.status})`);
+        }
+        const data: WorkflowVersionResponse = await response.json();
+        await loadWorkflows({ selectWorkflowId: data.workflow_id, selectVersionId: data.id });
+        setSaveState("saved");
+        setSaveMessage(`Workflow dupliqué sous "${displayName}".`);
+        setTimeout(() => setSaveState("idle"), 1500);
+        return;
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          continue;
+        }
+        lastError =
+          error instanceof Error ? error : new Error("Impossible de dupliquer le workflow.");
+      }
+    }
+
+    setSaveState("error");
+    setSaveMessage(lastError?.message ?? "Impossible de dupliquer le workflow.");
+  }, [
+    authHeader,
+    buildGraphPayload,
+    handleCloseActionMenu,
+    loadWorkflows,
+    nodes,
+    selectedWorkflow,
+  ]);
+
   const handleDeleteWorkflow = useCallback(async () => {
+    handleCloseActionMenu();
     if (!selectedWorkflowId) {
       return;
     }
@@ -1464,6 +1605,7 @@ const WorkflowBuilderPage = () => {
     setSaveMessage(lastError?.message ?? "Impossible de supprimer le workflow.");
   }, [
     authHeader,
+    handleCloseActionMenu,
     loadWorkflows,
     selectedWorkflowId,
     setSelectedEdgeId,
@@ -1472,6 +1614,7 @@ const WorkflowBuilderPage = () => {
   ]);
 
   const handleSelectChatkitWorkflow = useCallback(async () => {
+    handleCloseActionMenu();
     if (!selectedWorkflowId) {
       return;
     }
@@ -1544,6 +1687,7 @@ const WorkflowBuilderPage = () => {
   }, [
     authHeader,
     loadWorkflows,
+    handleCloseActionMenu,
     selectedVersionId,
     selectedWorkflowId,
     workflows,
@@ -1590,6 +1734,34 @@ const WorkflowBuilderPage = () => {
     );
   }, [authHeader, loadWorkflows, selectedVersionId, selectedWorkflowId]);
 
+  const buildGraphPayload = useCallback(() => {
+    return {
+      nodes: nodes.map((node, index) => ({
+        slug: node.data.slug,
+        kind: node.data.kind,
+        display_name: node.data.displayName.trim() || null,
+        agent_key: node.data.kind === "agent" ? node.data.agentKey : null,
+        is_enabled: node.data.isEnabled,
+        parameters: prepareNodeParametersForSave(node.data.kind, node.data.parameters),
+        metadata: {
+          ...node.data.metadata,
+          position: { x: node.position.x, y: node.position.y },
+          order: index + 1,
+        },
+      })),
+      edges: edges.map((edge, index) => ({
+        source: edge.source,
+        target: edge.target,
+        condition: edge.data?.condition ? edge.data.condition : null,
+        metadata: {
+          ...edge.data?.metadata,
+          label: edge.label ?? "",
+          order: index + 1,
+        },
+      })),
+    };
+  }, [edges, nodes]);
+
   const handleSave = useCallback(async () => {
     setSaveMessage(null);
     if (!selectedWorkflowId) {
@@ -1606,31 +1778,7 @@ const WorkflowBuilderPage = () => {
     }
 
     try {
-      const graphPayload = {
-        nodes: nodes.map((node, index) => ({
-          slug: node.data.slug,
-          kind: node.data.kind,
-          display_name: node.data.displayName.trim() || null,
-          agent_key: node.data.kind === "agent" ? node.data.agentKey : null,
-          is_enabled: node.data.isEnabled,
-          parameters: prepareNodeParametersForSave(node.data.kind, node.data.parameters),
-          metadata: {
-            ...node.data.metadata,
-            position: { x: node.position.x, y: node.position.y },
-            order: index + 1,
-          },
-        })),
-        edges: edges.map((edge, index) => ({
-          source: edge.source,
-          target: edge.target,
-          condition: edge.data?.condition ? edge.data.condition : null,
-          metadata: {
-            ...edge.data?.metadata,
-            label: edge.label ?? "",
-            order: index + 1,
-          },
-        })),
-      };
+      const graphPayload = buildGraphPayload();
 
       const endpoint = `/api/workflows/${selectedWorkflowId}/versions`;
       const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
@@ -1708,7 +1856,7 @@ const WorkflowBuilderPage = () => {
     }
   }, [
     authHeader,
-    edges,
+    buildGraphPayload,
     loadVersions,
     nodes,
     publishOnSave,
@@ -1764,299 +1912,481 @@ const disableSave = useMemo(() => {
   widgetsError,
 ]);
 
+  const paletteItems = useMemo(
+    () => [
+      {
+        icon: "🧠",
+        label: "Bloc agent",
+        onClick: handleAddAgentNode,
+        disabled: loading,
+      },
+      {
+        icon: "🔀",
+        label: "Bloc conditionnel",
+        onClick: handleAddConditionNode,
+        disabled: loading,
+      },
+      {
+        icon: "🗂️",
+        label: "Bloc état",
+        onClick: handleAddStateNode,
+        disabled: loading,
+      },
+    ],
+    [handleAddAgentNode, handleAddConditionNode, handleAddStateNode, loading],
+  );
+
+  const paletteButtonLabel = isPaletteOpen
+    ? "Masquer la bibliothèque de blocs"
+    : "Afficher la bibliothèque de blocs";
+
+  const canSelectForChatkit =
+    !loading &&
+    Boolean(
+      selectedWorkflowId &&
+        selectedWorkflow &&
+        !selectedWorkflow.is_chatkit_default &&
+        selectedWorkflow.active_version_id,
+    );
+
 
   return (
     <ReactFlowProvider>
-      <main
+      <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) 340px",
-          gap: "1.25rem",
-          height: "calc(100vh - 4rem)",
-          padding: "1.5rem",
+          display: "flex",
+          flexDirection: "column",
+          height: "100vh",
+          background: "#e2e8f0",
         }}
       >
-        <section
-          style={{
-            position: "relative",
-            border: "1px solid rgba(15, 23, 42, 0.08)",
-            borderRadius: "1rem",
-            overflow: "hidden",
-            background: "#fff",
-          }}
-          aria-label="Éditeur visuel du workflow"
-        >
-          {loading ? (
-            <div style={loadingStyle}>Chargement du workflow…</div>
-          ) : loadError ? (
-            <div style={loadingStyle} role="alert">
-              {loadError}
-            </div>
-          ) : (
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onNodeClick={handleNodeClick}
-              onEdgeClick={handleEdgeClick}
-              onConnect={onConnect}
-              defaultEdgeOptions={defaultEdgeOptions}
-              connectionLineStyle={connectionLineStyle}
-              style={{ background: "#f8fafc" }}
-              fitView
-              fitViewOptions={{ padding: 0.2 }}
-            >
-              <Background gap={18} size={1} />
-              <MiniMap
-                nodeStrokeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
-                nodeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
-              />
-              <Controls />
-            </ReactFlow>
-          )}
-        </section>
-
-        <aside
+        <header
           style={{
             display: "flex",
-            flexDirection: "column",
+            alignItems: "center",
             gap: "1rem",
-            padding: "1rem",
-            borderRadius: "1rem",
-            border: "1px solid rgba(15, 23, 42, 0.08)",
+            padding: "0.75rem 1.5rem",
+            borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
             background: "#fff",
-            overflowY: "auto",
+            position: "sticky",
+            top: 0,
+            zIndex: 20,
           }}
         >
-          <header>
-            <h1 style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>Bibliothèque de workflows</h1>
-            <p style={{ color: "#475569" }}>
-              Ajoutez des agents, connectez-les entre eux et ajustez leurs paramètres pour piloter le
-              workflow ChatKit.
-            </p>
-          </header>
+          <button
+            type="button"
+            onClick={handleTogglePalette}
+            aria-pressed={isPaletteOpen}
+            aria-label={paletteButtonLabel}
+            style={{
+              borderRadius: "0.75rem",
+              border: "1px solid rgba(15, 23, 42, 0.12)",
+              background: "#f8fafc",
+              padding: "0.45rem 0.75rem",
+              cursor: "pointer",
+              fontSize: "1rem",
+            }}
+          >
+            {isPaletteOpen ? "⟨" : "☰"}
+          </button>
 
-          <section style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem",
+              flexWrap: "wrap",
+              flex: 1,
+            }}
+          >
             <label htmlFor="workflow-select" style={{ fontWeight: 600, color: "#0f172a" }}>
               Workflow
             </label>
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              <select
-                id="workflow-select"
-                value={selectedWorkflowId ? String(selectedWorkflowId) : ""}
-                onChange={handleWorkflowChange}
-                disabled={loading}
-                style={{ flexGrow: 1, minWidth: "12rem" }}
-              >
-                {workflows.length === 0 ? (
-                  <option value="">Aucun workflow disponible</option>
-                ) : (
-                  workflows.map((workflow) => (
-                    <option key={workflow.id} value={workflow.id}>
-                      {workflow.display_name}
-                      {workflow.active_version_number
-                        ? ` (prod : v${workflow.active_version_number})`
-                        : ""}
-                      {workflow.is_chatkit_default ? " – utilisé par ChatKit" : ""}
-                    </option>
-                  ))
-                )}
-              </select>
-              <button type="button" className="btn" onClick={handleCreateWorkflow} disabled={loading}>
-                Nouveau workflow
-              </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={handleSelectChatkitWorkflow}
-                disabled={
-                  loading ||
-                  !selectedWorkflowId ||
-                  selectedWorkflow?.is_chatkit_default ||
-                  !selectedWorkflow?.active_version_id
-                }
-              >
-                Utiliser pour ChatKit
-              </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={handleDeleteWorkflow}
-                disabled={loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default}
-                style={{ backgroundColor: "#fee2e2", color: "#b91c1c", borderColor: "#fecaca" }}
-              >
-                Supprimer le workflow
-              </button>
-            </div>
-            {selectedWorkflow?.description && (
-              <p style={{ color: "#475569", margin: 0 }}>{selectedWorkflow.description}</p>
-            )}
-            {selectedWorkflow?.is_chatkit_default ? (
-              <p style={{ color: "#047857", margin: "0.25rem 0 0" }}>
-                Ce workflow alimente actuellement ChatKit.
-              </p>
-            ) : selectedWorkflow && !selectedWorkflow.active_version_id ? (
-              <p style={{ color: "#b45309", margin: "0.25rem 0 0" }}>
-                Publiez une version de production pour pouvoir l'utiliser avec ChatKit.
-              </p>
-            ) : null}
-          </section>
+            <select
+              id="workflow-select"
+              value={selectedWorkflowId ? String(selectedWorkflowId) : ""}
+              onChange={handleWorkflowChange}
+              disabled={loading}
+              style={{ minWidth: "14rem", padding: "0.5rem", borderRadius: "0.5rem" }}
+            >
+              {workflows.length === 0 ? (
+                <option value="">Aucun workflow disponible</option>
+              ) : (
+                workflows.map((workflow) => (
+                  <option key={workflow.id} value={workflow.id}>
+                    {workflow.display_name}
+                    {workflow.active_version_number
+                      ? ` (prod : v${workflow.active_version_number})`
+                      : ""}
+                    {workflow.is_chatkit_default ? " – utilisé par ChatKit" : ""}
+                  </option>
+                ))
+              )}
+            </select>
+            <button type="button" className="btn" onClick={handleCreateWorkflow} disabled={loading}>
+              Nouveau
+            </button>
 
-          {workflows.length === 0 ? (
-            <div style={{ color: "#475569" }}>
-              <p style={{ margin: "0.5rem 0" }}>
-                Aucun workflow n'est encore disponible. Créez-en un pour commencer.
-              </p>
-            </div>
-          ) : (
-            <>
-              <section style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                <label htmlFor="version-select" style={{ fontWeight: 600, color: "#0f172a" }}>
-                  Version
-                </label>
-                <select
-                  id="version-select"
-                  value={selectedVersionId ? String(selectedVersionId) : ""}
-                  onChange={handleVersionChange}
-                  disabled={loading || versions.length === 0}
-                >
-                  {versions.map((version) => (
-                    <option key={version.id} value={version.id}>
-                      {`v${version.version}${version.name ? ` – ${version.name}` : ""}${
-                        version.is_active ? " (production)" : ""
-                      }`}
-                    </option>
-                  ))}
-                </select>
-                {selectedVersionSummary && (
-                  <p style={{ color: "#475569", margin: 0 }}>
-                    Dernière mise à jour : {formatDateTime(selectedVersionSummary.updated_at)}
-                  </p>
-                )}
-                {selectedVersionSummary && !selectedVersionSummary.is_active && (
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={handlePromoteVersion}
-                    disabled={loading}
-                  >
-                    Définir comme version de production
-                  </button>
-                )}
-              </section>
+            <label htmlFor="version-select" style={{ fontWeight: 600, color: "#0f172a" }}>
+              Révision
+            </label>
+            <select
+              id="version-select"
+              value={selectedVersionId ? String(selectedVersionId) : ""}
+              onChange={handleVersionChange}
+              disabled={loading || versions.length === 0}
+              style={{ minWidth: "12rem", padding: "0.5rem", borderRadius: "0.5rem" }}
+            >
+              {versions.length === 0 ? (
+                <option value="">Aucune version</option>
+              ) : (
+                versions.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    {`v${version.version}${version.name ? ` – ${version.name}` : ""}${
+                      version.is_active ? " (production)" : ""
+                    }`}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
 
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={handleSave}
+            disabled={disableSave || saveState === "saving" || loading}
+          >
+            {saveState === "saving" ? "Enregistrement…" : "Sauvegarder"}
+          </button>
+
+          <div style={{ position: "relative" }} ref={actionMenuRef}>
+            <button
+              type="button"
+              onClick={handleToggleActionMenu}
+              aria-haspopup="menu"
+              aria-expanded={isActionMenuOpen}
+              style={{
+                borderRadius: "0.75rem",
+                border: "1px solid rgba(15, 23, 42, 0.12)",
+                background: "#f8fafc",
+                padding: "0.45rem 0.75rem",
+                cursor: "pointer",
+                fontSize: "1.15rem",
+              }}
+            >
+              ⋯
+            </button>
+            {isActionMenuOpen && (
+              <div
+                role="menu"
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: "calc(100% + 0.5rem)",
+                  background: "#fff",
+                  borderRadius: "0.75rem",
+                  boxShadow: "0 20px 45px rgba(15, 23, 42, 0.18)",
+                  border: "1px solid rgba(15, 23, 42, 0.08)",
+                  padding: "0.5rem",
+                  minWidth: "220px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.25rem",
+                  zIndex: 30,
+                }}
+              >
                 <button
                   type="button"
-                  className="btn"
-                  onClick={handleAddAgentNode}
-                  disabled={loading}
+                  onClick={handleRenameWorkflow}
+                  role="menuitem"
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    textAlign: "left",
+                    padding: "0.5rem 0.75rem",
+                    borderRadius: "0.5rem",
+                    cursor: "pointer",
+                  }}
                 >
-                  Ajouter un agent
+                  Renommer…
                 </button>
                 <button
                   type="button"
-                  className="btn"
-                  onClick={handleAddConditionNode}
-                  disabled={loading}
+                  onClick={handleDuplicateWorkflow}
+                  role="menuitem"
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    textAlign: "left",
+                    padding: "0.5rem 0.75rem",
+                    borderRadius: "0.5rem",
+                    cursor: "pointer",
+                  }}
                 >
-                  Ajouter un bloc conditionnel
+                  Dupliquer…
                 </button>
                 <button
                   type="button"
-                  className="btn"
-                  onClick={handleAddStateNode}
-                  disabled={loading}
+                  onClick={handleSelectChatkitWorkflow}
+                  disabled={!canSelectForChatkit}
+                  role="menuitem"
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    textAlign: "left",
+                    padding: "0.5rem 0.75rem",
+                    borderRadius: "0.5rem",
+                    cursor: canSelectForChatkit ? "pointer" : "not-allowed",
+                    opacity: canSelectForChatkit ? 1 : 0.6,
+                  }}
                 >
-                  Ajouter un bloc état
+                  Utiliser pour ChatKit
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteWorkflow}
+                  disabled={
+                    loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default
+                  }
+                  role="menuitem"
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    textAlign: "left",
+                    padding: "0.5rem 0.75rem",
+                    borderRadius: "0.5rem",
+                    cursor:
+                      loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default
+                        ? "not-allowed"
+                        : "pointer",
+                    color: "#b91c1c",
+                    opacity:
+                      loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default
+                        ? 0.6
+                        : 1,
+                  }}
+                >
+                  Supprimer…
                 </button>
               </div>
+            )}
+          </div>
+        </header>
 
-              {selectedNode ? (
-                <NodeInspector
-                  node={selectedNode}
-                  onToggle={handleToggleNode}
-                  onDisplayNameChange={handleDisplayNameChange}
-                  onAgentMessageChange={handleAgentMessageChange}
-                  onAgentModelChange={handleAgentModelChange}
-                  onAgentReasoningChange={handleAgentReasoningChange}
-                  onAgentReasoningVerbosityChange={handleAgentReasoningVerbosityChange}
-                  onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}
-                  onAgentTemperatureChange={handleAgentTemperatureChange}
-                  onAgentTopPChange={handleAgentTopPChange}
-                  onAgentMaxOutputTokensChange={handleAgentMaxOutputTokensChange}
-                  onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
-                  onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
-                  onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
-                  onAgentResponseWidgetSlugChange={handleAgentResponseWidgetSlugChange}
-                  onAgentResponseWidgetVariablesChange={handleAgentResponseWidgetVariablesChange}
-                  onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}
-                  onAgentDisplayResponseInChatChange={handleAgentDisplayResponseInChatChange}
-                  onAgentShowSearchSourcesChange={handleAgentShowSearchSourcesChange}
-                  onAgentContinueOnErrorChange={handleAgentContinueOnErrorChange}
-                  onAgentStorePreferenceChange={handleAgentStorePreferenceChange}
-                  onAgentWebSearchChange={handleAgentWebSearchChange}
-                  onAgentFileSearchChange={handleAgentFileSearchChange}
-                  availableModels={availableModels}
-                  availableModelsLoading={availableModelsLoading}
-                  availableModelsError={availableModelsError}
-                  isReasoningModel={isReasoningModel}
-                  onAgentWeatherToolChange={handleAgentWeatherToolChange}
-                  vectorStores={vectorStores}
-                  vectorStoresLoading={vectorStoresLoading}
-                  vectorStoresError={vectorStoresError}
-                  widgets={widgets}
-                  widgetsLoading={widgetsLoading}
-                  widgetsError={widgetsError}
-                  onStateAssignmentsChange={handleStateAssignmentsChange}
-                  onParametersChange={handleParametersChange}
-                  onRemove={handleRemoveNode}
+        <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
+          <div style={{ position: "absolute", inset: 0 }} aria-label="Éditeur visuel du workflow">
+            {loading ? (
+              <div style={loadingStyle}>Chargement du workflow…</div>
+            ) : loadError ? (
+              <div style={loadingStyle} role="alert">
+                {loadError}
+              </div>
+            ) : (
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onNodeClick={handleNodeClick}
+                onEdgeClick={handleEdgeClick}
+                onConnect={onConnect}
+                defaultEdgeOptions={defaultEdgeOptions}
+                connectionLineStyle={connectionLineStyle}
+                style={{ background: "#f8fafc" }}
+                fitView
+                fitViewOptions={{ padding: 0.2 }}
+              >
+                <Background gap={18} size={1} />
+                <MiniMap
+                  nodeStrokeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
+                  nodeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
                 />
-              ) : selectedEdge ? (
-                <EdgeInspector
-                  edge={selectedEdge}
-                  onConditionChange={handleConditionChange}
-                  onLabelChange={handleEdgeLabelChange}
-                  onRemove={handleRemoveEdge}
-                />
-              ) : (
-                <EmptyInspector />
-              )}
+                <Controls />
+              </ReactFlow>
+            )}
+          </div>
 
-              <footer style={{ marginTop: "auto" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <input
-                    type="checkbox"
-                    checked={publishOnSave}
-                    onChange={handlePublishToggle}
-                    disabled={loading}
-                  />
-                  <span>Publier cette version immédiatement</span>
-                </label>
-                <button
-                  type="button"
-                  className="btn primary"
-                  onClick={handleSave}
-                  disabled={disableSave || saveState === "saving" || loading}
-                >
-                  {saveState === "saving" ? "Enregistrement…" : "Enregistrer les modifications"}
-                </button>
-                {saveMessage && (
-                  <p
+          {isPaletteOpen && (
+            <aside
+              style={{
+                position: "absolute",
+                top: "1.5rem",
+                left: "1.5rem",
+                width: "240px",
+                background: "rgba(255, 255, 255, 0.98)",
+                borderRadius: "1rem",
+                boxShadow: "0 20px 45px rgba(15, 23, 42, 0.18)",
+                border: "1px solid rgba(15, 23, 42, 0.08)",
+                padding: "1rem",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.75rem",
+                zIndex: 25,
+              }}
+            >
+              <h2 style={{ margin: 0, fontSize: "1rem", color: "#0f172a" }}>Bibliothèque de blocs</h2>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {paletteItems.map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={item.onClick}
+                    disabled={item.disabled}
                     style={{
-                      marginTop: "0.5rem",
-                      color: saveState === "error" ? "#b91c1c" : "#047857",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.75rem",
+                      border: "1px solid rgba(15, 23, 42, 0.12)",
+                      background: "rgba(248, 250, 252, 0.95)",
+                      borderRadius: "0.75rem",
+                      padding: "0.5rem 0.75rem",
+                      cursor: item.disabled ? "not-allowed" : "pointer",
+                      fontSize: "0.95rem",
                     }}
                   >
-                    {saveMessage}
-                  </p>
-                )}
-              </footer>
-            </>
+                    <span style={{ fontSize: "1.1rem" }}>{item.icon}</span>
+                    <span style={{ flex: 1, textAlign: "left" }}>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </aside>
           )}
-        </aside>
-      </main>
+
+          <aside
+            style={{
+              position: "absolute",
+              top: "1.5rem",
+              right: "1.5rem",
+              bottom: "1.5rem",
+              width: "360px",
+              background: "rgba(255, 255, 255, 0.98)",
+              borderRadius: "1rem",
+              boxShadow: "0 20px 45px rgba(15, 23, 42, 0.18)",
+              border: "1px solid rgba(15, 23, 42, 0.08)",
+              padding: "1rem",
+              display: "flex",
+              flexDirection: "column",
+              gap: "1rem",
+              zIndex: 25,
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ overflowY: "auto", paddingRight: "0.5rem" }}>
+              {workflows.length === 0 ? (
+                <p style={{ color: "#475569", marginTop: 0 }}>
+                  Aucun workflow n'est encore disponible. Créez-en un pour commencer.
+                </p>
+              ) : null}
+              {selectedWorkflow?.description && (
+                <p style={{ color: "#475569", marginTop: 0 }}>{selectedWorkflow.description}</p>
+              )}
+              {selectedWorkflow?.is_chatkit_default ? (
+                <p style={{ color: "#047857", marginTop: 0 }}>
+                  Ce workflow alimente actuellement ChatKit.
+                </p>
+              ) : selectedWorkflow && !selectedWorkflow.active_version_id ? (
+                <p style={{ color: "#b45309", marginTop: 0 }}>
+                  Publiez une version de production pour l'utiliser avec ChatKit.
+                </p>
+              ) : null}
+
+              {selectedVersionSummary && (
+                <p style={{ color: "#475569", fontSize: "0.85rem" }}>
+                  Dernière mise à jour : {formatDateTime(selectedVersionSummary.updated_at)}
+                </p>
+              )}
+
+              {selectedVersionSummary && !selectedVersionSummary.is_active && (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={handlePromoteVersion}
+                  disabled={loading}
+                  style={{ width: "100%" }}
+                >
+                  Définir comme version de production
+                </button>
+              )}
+
+              <div style={{ marginTop: "1rem" }}>
+                {selectedNode ? (
+                  <NodeInspector
+                    node={selectedNode}
+                    onToggle={handleToggleNode}
+                    onDisplayNameChange={handleDisplayNameChange}
+                    onAgentMessageChange={handleAgentMessageChange}
+                    onAgentModelChange={handleAgentModelChange}
+                    onAgentReasoningChange={handleAgentReasoningChange}
+                    onAgentReasoningVerbosityChange={handleAgentReasoningVerbosityChange}
+                    onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}
+                    onAgentTemperatureChange={handleAgentTemperatureChange}
+                    onAgentTopPChange={handleAgentTopPChange}
+                    onAgentMaxOutputTokensChange={handleAgentMaxOutputTokensChange}
+                    onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
+                    onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
+                    onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
+                    onAgentResponseWidgetSlugChange={handleAgentResponseWidgetSlugChange}
+                    onAgentResponseWidgetVariablesChange={handleAgentResponseWidgetVariablesChange}
+                    onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}
+                    onAgentDisplayResponseInChatChange={handleAgentDisplayResponseInChatChange}
+                    onAgentShowSearchSourcesChange={handleAgentShowSearchSourcesChange}
+                    onAgentContinueOnErrorChange={handleAgentContinueOnErrorChange}
+                    onAgentStorePreferenceChange={handleAgentStorePreferenceChange}
+                    onAgentWebSearchChange={handleAgentWebSearchChange}
+                    onAgentFileSearchChange={handleAgentFileSearchChange}
+                    availableModels={availableModels}
+                    availableModelsLoading={availableModelsLoading}
+                    availableModelsError={availableModelsError}
+                    isReasoningModel={isReasoningModel}
+                    onAgentWeatherToolChange={handleAgentWeatherToolChange}
+                    vectorStores={vectorStores}
+                    vectorStoresLoading={vectorStoresLoading}
+                    vectorStoresError={vectorStoresError}
+                    widgets={widgets}
+                    widgetsLoading={widgetsLoading}
+                    widgetsError={widgetsError}
+                    onStateAssignmentsChange={handleStateAssignmentsChange}
+                    onParametersChange={handleParametersChange}
+                    onRemove={handleRemoveNode}
+                  />
+                ) : selectedEdge ? (
+                  <EdgeInspector
+                    edge={selectedEdge}
+                    onConditionChange={handleConditionChange}
+                    onLabelChange={handleEdgeLabelChange}
+                    onRemove={handleRemoveEdge}
+                  />
+                ) : (
+                  <EmptyInspector />
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: "auto" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <input
+                  type="checkbox"
+                  checked={publishOnSave}
+                  onChange={handlePublishToggle}
+                  disabled={loading}
+                />
+                <span>Publier cette version immédiatement</span>
+              </label>
+              {saveMessage && (
+                <p
+                  style={{
+                    marginTop: "0.5rem",
+                    color: saveState === "error" ? "#b91c1c" : "#047857",
+                  }}
+                >
+                  {saveMessage}
+                </p>
+              )}
+            </div>
+          </aside>
+        </div>
+      </div>
     </ReactFlowProvider>
   );
 };
