@@ -32,6 +32,7 @@ from .types import (
     AttachmentsDeleteReq,
     ChatKitReq,
     ClientToolCallItem,
+    ClosedStatus,
     ErrorCode,
     ErrorEvent,
     FeedbackKind,
@@ -442,6 +443,14 @@ class ChatKitServer(ABC, Generic[TContext]):
                 thread = await self.store.load_thread(
                     request.params.thread_id, context=context
                 )
+                if isinstance(thread.status, ClosedStatus):
+                    yield ErrorEvent(
+                        message=(
+                            "Ce fil est clos. Veuillez créer un nouveau fil pour poursuivre la conversation."
+                        ),
+                        allow_retry=False,
+                    )
+                    return
                 user_message = await self._build_user_message_item(
                     request.params.input, thread, context
                 )

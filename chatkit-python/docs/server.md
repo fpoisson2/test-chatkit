@@ -60,6 +60,12 @@ class MyChatKitServer(ChatKitServer):
     # ...
 ```
 
+### Gestion des fils clos
+
+Lorsqu'un client tente d'ajouter un message utilisateur à l'aide de `threads.add_user_message` sur un fil marqué comme `closed`,
+le serveur émet un `ErrorEvent` sans possibilité de réessayer (`allow_retry=False`) et invite l'utilisateur à créer un nouveau fil.
+Ce comportement évite de rouvrir involontairement des conversations considérées comme terminées.
+
 ## Setting up the endpoint
 
 ChatKit is server-agnostic. All communication happens through a single POST endpoint that returns either JSON directly or streams SSE JSON events.
