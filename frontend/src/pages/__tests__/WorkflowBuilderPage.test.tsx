@@ -39,14 +39,14 @@ vi.mock("../../utils/backend", () => ({
 
 describe("WorkflowBuilderPage", () => {
   const defaultResponse = {
-    id: 1,
+    id: 2,
     workflow_id: 1,
     workflow_slug: "workflow",
     workflow_display_name: "Workflow de test",
     workflow_is_chatkit_default: true,
-    name: "Version 1",
-    version: 1,
-    is_active: true,
+    name: "Brouillon",
+    version: 2,
+    is_active: false,
     graph: {
       nodes: [
         {
@@ -109,19 +109,39 @@ describe("WorkflowBuilderPage", () => {
     active_version_id: 1,
     active_version_number: 1,
     is_chatkit_default: true,
-    versions_count: 1,
+    versions_count: 2,
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-02T00:00:00Z",
   } as const;
 
-  const defaultVersionSummary = {
-    id: 1,
+  const draftVersionSummary = {
+    id: 2,
     workflow_id: 1,
-    name: "Version 1",
-    version: 1,
-    is_active: true,
+    name: "Brouillon",
+    version: 2,
+    is_active: false,
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-02T00:00:00Z",
+  } as const;
+
+  const productionVersionSummary = {
+    id: 1,
+    workflow_id: 1,
+    name: "Production",
+    version: 1,
+    is_active: true,
+    created_at: "2023-12-30T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
+  } as const;
+
+  const productionResponse = {
+    ...defaultResponse,
+    id: 1,
+    name: "Production",
+    version: 1,
+    is_active: true,
+    created_at: "2023-12-30T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
   } as const;
 
   const renderWorkflowBuilder = () =>
@@ -135,14 +155,18 @@ describe("WorkflowBuilderPage", () => {
     overrides: {
       workflowDetail?: typeof defaultResponse;
       workflowList?: typeof defaultWorkflowSummary[];
-      versions?: typeof defaultVersionSummary[];
+      versions?: Array<typeof draftVersionSummary | typeof productionVersionSummary>;
       putResponse?: unknown;
     } = {},
   ) => {
     const workflowDetail = overrides.workflowDetail ?? defaultResponse;
     const workflowList = overrides.workflowList ?? [defaultWorkflowSummary];
-    const versions = overrides.versions ?? [defaultVersionSummary];
+    const versions = overrides.versions ?? [draftVersionSummary, productionVersionSummary];
     const putResponse = overrides.putResponse ?? { success: true };
+    const versionDetails = new Map<number, typeof defaultResponse | typeof productionResponse>([
+      [workflowDetail.id, workflowDetail],
+      [productionResponse.id, productionResponse],
+    ]);
 
     return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = typeof input === "string" ? input : input.url;
@@ -164,13 +188,36 @@ describe("WorkflowBuilderPage", () => {
         } as Response;
       }
       if (
-        url.endsWith(`/api/workflows/${workflowDetail.workflow_id}/versions/${workflowDetail.id}`) &&
-        (!init || !init.method || init.method === "GET")
+        url.endsWith(`/api/workflows/${workflowDetail.workflow_id}/versions`) &&
+        init?.method === "POST"
       ) {
+        const created = { ...defaultResponse, id: 3, version: 3, name: "Nouvelle version" };
+        versionDetails.set(created.id, created);
         return {
           ok: true,
           status: 200,
-          json: async () => workflowDetail,
+          json: async () => created,
+        } as Response;
+      }
+      const versionDetailMatch = url.match(/\/api\/workflows\/\d+\/versions\/(\d+)$/);
+      if (versionDetailMatch && init?.method === "PUT") {
+        const versionId = Number(versionDetailMatch[1]);
+        const detail = versionDetails.get(versionId) ?? defaultResponse;
+        const updated = { ...detail, updated_at: "2024-01-03T00:00:00Z" };
+        versionDetails.set(versionId, updated);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => updated,
+        } as Response;
+      }
+      if (versionDetailMatch && (!init || !init.method || init.method === "GET")) {
+        const versionId = Number(versionDetailMatch[1]);
+        const detail = versionDetails.get(versionId) ?? defaultResponse;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => detail,
         } as Response;
       }
       if (url.endsWith("/api/workflows/current") && init?.method === "PUT") {
@@ -259,14 +306,24 @@ describe("WorkflowBuilderPage", () => {
     await waitFor(
       () => {
         expect(
-          fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST"),
+          fetchMock.mock.calls.some(
+            ([input, init]) =>
+              typeof input === "string" &&
+              input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`) &&
+              (init as RequestInit | undefined)?.method === "PUT",
+          ),
         ).toBe(true);
       },
       { timeout: 4000 },
     );
 
-    const postCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
-    const body = JSON.parse((postCall?.[1] as RequestInit).body as string);
+    const putCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        typeof input === "string" &&
+        input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`) &&
+        (init as RequestInit | undefined)?.method === "PUT",
+    );
+    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
     expect(body).toHaveProperty("graph");
     const agentNode = body.graph.nodes.find((node: any) => node.slug === "agent-triage");
     expect(agentNode.agent_key).toBe("triage");
@@ -322,14 +379,24 @@ describe("WorkflowBuilderPage", () => {
     await waitFor(
       () => {
         expect(
-          fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST"),
+          fetchMock.mock.calls.some(
+            ([input, init]) =>
+              typeof input === "string" &&
+              input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`) &&
+              (init as RequestInit | undefined)?.method === "PUT",
+          ),
         ).toBe(true);
       },
       { timeout: 4000 },
     );
 
-    const postCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
-    const body = JSON.parse((postCall?.[1] as RequestInit).body as string);
+    const putCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        typeof input === "string" &&
+        input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`) &&
+        (init as RequestInit | undefined)?.method === "PUT",
+    );
+    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
     const agentNode = body.graph.nodes.find((node: any) => node.slug === "agent-triage");
     expect(agentNode.parameters).toMatchObject({
       tools: [
@@ -493,8 +560,13 @@ describe("WorkflowBuilderPage", () => {
 
     await screen.findByText(/modifications enregistrées automatiquement/i, { timeout: 4000 });
 
-    const postCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
-    const payload = JSON.parse((postCall?.[1] as RequestInit).body as string);
+    const putCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        typeof input === "string" &&
+        input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`) &&
+        (init as RequestInit | undefined)?.method === "PUT",
+    );
+    const payload = JSON.parse((putCall?.[1] as RequestInit).body as string);
     const agentNode = payload.graph.nodes.find((node: any) => node.slug === "agent-triage");
     expect(agentNode.parameters.response_widget).toEqual({ slug: "email-card" });
   });
@@ -725,8 +797,13 @@ describe("WorkflowBuilderPage", () => {
 
     await screen.findByText(/modifications enregistrées automatiquement/i, { timeout: 4000 });
 
-    const postCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
-    const body = JSON.parse((postCall?.[1] as RequestInit).body as string);
+    const putCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        typeof input === "string" &&
+        input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`) &&
+        (init as RequestInit | undefined)?.method === "PUT",
+    );
+    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
     const writerPayload = body.graph.nodes.find((node: any) => node.slug === "writer");
     expect(writerPayload.parameters.response_format).toEqual({
       type: "json_schema",

@@ -310,6 +310,9 @@ const WorkflowBuilderPage = () => {
   const [widgetsError, setWidgetsError] = useState<string | null>(null);
   const [isNavigationOpen, setNavigationOpen] = useState(false);
   const [isActionMenuOpen, setActionMenuOpen] = useState(false);
+  const [isDeployModalOpen, setDeployModalOpen] = useState(false);
+  const [deployToProduction, setDeployToProduction] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const autoSaveTimeoutRef = useRef<number | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
@@ -348,6 +351,7 @@ const WorkflowBuilderPage = () => {
       window.removeEventListener("keydown", handleKey);
     };
   }, [isActionMenuOpen]);
+
 
   const navigationItems = useMemo(
     () => {
@@ -714,8 +718,13 @@ const WorkflowBuilderPage = () => {
           } else if (selectedVersionId && availableIds.has(selectedVersionId)) {
             nextVersionId = selectedVersionId;
           } else {
-            const active = data.find((version) => version.is_active);
-            nextVersionId = active?.id ?? data[0]?.id ?? null;
+            const draft = data.find((version) => !version.is_active);
+            if (draft) {
+              nextVersionId = draft.id;
+            } else {
+              const active = data.find((version) => version.is_active);
+              nextVersionId = active?.id ?? data[0]?.id ?? null;
+            }
           }
           setSelectedVersionId(nextVersionId);
           if (nextVersionId != null) {
@@ -1701,47 +1710,6 @@ const WorkflowBuilderPage = () => {
     workflows,
   ]);
 
-  const handlePromoteVersion = useCallback(async () => {
-    if (!selectedWorkflowId || !selectedVersionId) {
-      return;
-    }
-    const endpoint = `/api/workflows/${selectedWorkflowId}/production`;
-    const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
-    let lastError: Error | null = null;
-    for (const url of candidates) {
-      try {
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...authHeader,
-          },
-          body: JSON.stringify({ version_id: selectedVersionId }),
-        });
-        if (!response.ok) {
-          throw new Error(`Échec de la mise en production (${response.status})`);
-        }
-        await loadWorkflows({
-          selectWorkflowId: selectedWorkflowId,
-          selectVersionId: selectedVersionId,
-        });
-        setSaveState("saved");
-        setSaveMessage("Version définie comme production.");
-        setTimeout(() => setSaveState("idle"), 1500);
-        return;
-      } catch (error) {
-        lastError =
-          error instanceof Error
-            ? error
-            : new Error("Impossible de définir la version en production.");
-      }
-    }
-    setSaveState("error");
-    setSaveMessage(
-      lastError?.message ?? "Impossible de définir la version en production."
-    );
-  }, [authHeader, loadWorkflows, selectedVersionId, selectedWorkflowId]);
-
   const buildGraphPayload = useCallback(
     () => buildGraphPayloadFrom(nodes, edges),
     [edges, nodes],
@@ -1770,6 +1738,141 @@ const WorkflowBuilderPage = () => {
     setHasPendingChanges(graphSnapshot !== lastSavedSnapshotRef.current);
   }, [graphSnapshot, selectedWorkflowId]);
 
+  const handleOpenDeployModal = useCallback(() => {
+    setSaveMessage(null);
+    setDeployToProduction(false);
+    setDeployModalOpen(true);
+  }, []);
+
+  const handleCloseDeployModal = useCallback(() => {
+    if (isDeploying) {
+      return;
+    }
+    setDeployModalOpen(false);
+  }, [isDeploying]);
+
+  const handleConfirmDeploy = useCallback(async () => {
+    if (!selectedWorkflowId) {
+      return;
+    }
+
+    const graphPayload = buildGraphPayload();
+    const graphSnapshot = JSON.stringify(graphPayload);
+    const endpoint = `/api/workflows/${selectedWorkflowId}/versions`;
+    const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
+    let lastError: Error | null = null;
+    setIsDeploying(true);
+    setSaveState("saving");
+    setSaveMessage("Création de la nouvelle version…");
+    for (const url of candidates) {
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify({
+            graph: graphPayload,
+            mark_as_active: deployToProduction,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(`Échec de la publication (${response.status})`);
+        }
+        const data: WorkflowVersionResponse = await response.json();
+
+        if (selectedWorkflow?.is_chatkit_default) {
+          const updateCandidates = makeApiEndpointCandidates(
+            backendUrl,
+            "/api/workflows/current",
+          );
+          let updateError: Error | null = null;
+          for (const updateUrl of updateCandidates) {
+            try {
+              const updateResponse = await fetch(updateUrl, {
+                method: "PUT",
+                headers: {
+                  "Content-Type": "application/json",
+                  ...authHeader,
+                },
+                body: JSON.stringify({ graph: graphPayload }),
+              });
+              if (!updateResponse.ok) {
+                throw new Error(
+                  `Échec de la mise à jour du workflow ChatKit (${updateResponse.status})`,
+                );
+              }
+              updateError = null;
+              break;
+            } catch (error) {
+              if (error instanceof Error && error.name === "AbortError") {
+                continue;
+              }
+              updateError =
+                error instanceof Error
+                  ? error
+                  : new Error("Impossible de mettre à jour le workflow ChatKit.");
+            }
+          }
+          if (updateError) {
+            throw updateError;
+          }
+        }
+
+        await loadVersions(selectedWorkflowId, data.id);
+        await loadWorkflows({ selectWorkflowId: selectedWorkflowId, selectVersionId: data.id });
+        lastSavedSnapshotRef.current = graphSnapshot;
+        setHasPendingChanges(false);
+        setSaveState("saved");
+        setSaveMessage(
+          deployToProduction
+            ? "Version déployée en production."
+            : "Nouvelle version publiée."
+        );
+        setTimeout(() => setSaveState("idle"), 1500);
+        setDeployModalOpen(false);
+        setIsDeploying(false);
+        return;
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          continue;
+        }
+        lastError =
+          error instanceof Error ? error : new Error("Impossible de publier le workflow.");
+      }
+    }
+
+    setIsDeploying(false);
+    setSaveState("error");
+    setSaveMessage(lastError?.message ?? "Impossible de publier le workflow.");
+  }, [
+    authHeader,
+    buildGraphPayload,
+    deployToProduction,
+    loadVersions,
+    loadWorkflows,
+    selectedWorkflow,
+    selectedWorkflowId,
+  ]);
+
+  useEffect(() => {
+    if (!isDeployModalOpen) {
+      return;
+    }
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        handleCloseDeployModal();
+      }
+    };
+
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [handleCloseDeployModal, isDeployModalOpen]);
+
   const handleSave = useCallback(async () => {
     setSaveMessage(null);
     if (!selectedWorkflowId) {
@@ -1788,27 +1891,47 @@ const WorkflowBuilderPage = () => {
     try {
       const graphPayload = buildGraphPayload();
       const graphSnapshot = JSON.stringify(graphPayload);
+      const currentWorkflow = workflows.find((workflow) => workflow.id === selectedWorkflowId);
+      const draftVersion =
+        selectedVersionSummary && !selectedVersionSummary.is_active
+          ? selectedVersionSummary
+          : null;
 
-      const endpoint = `/api/workflows/${selectedWorkflowId}/versions`;
+      const endpoint = draftVersion
+        ? `/api/workflows/${selectedWorkflowId}/versions/${draftVersion.id}`
+        : `/api/workflows/${selectedWorkflowId}/versions`;
       const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
       setSaveState("saving");
       for (const url of candidates) {
         const response = await fetch(url, {
-          method: "POST",
+          method: draftVersion ? "PUT" : "POST",
           headers: {
             "Content-Type": "application/json",
             ...authHeader,
           },
-          body: JSON.stringify({
-            graph: graphPayload,
-            mark_as_active: false,
-          }),
+          body: JSON.stringify(
+            draftVersion
+              ? { graph: graphPayload }
+              : { graph: graphPayload, mark_as_active: false },
+          ),
         });
         if (!response.ok) {
           throw new Error(`Échec de l'enregistrement (${response.status})`);
         }
-        const data: WorkflowVersionResponse = await response.json();
-        const currentWorkflow = workflows.find((workflow) => workflow.id === selectedWorkflowId);
+
+        let savedVersionId = draftVersion?.id ?? null;
+        let responseData: WorkflowVersionResponse | null = null;
+        try {
+          responseData = (await response.json()) as WorkflowVersionResponse;
+        } catch (error) {
+          responseData = null;
+        }
+        if (responseData?.id) {
+          savedVersionId = responseData.id;
+        } else if (!savedVersionId) {
+          throw new Error("Réponse invalide du serveur lors de l'enregistrement.");
+        }
+
         if (currentWorkflow?.is_chatkit_default) {
           const updateCandidates = makeApiEndpointCandidates(
             backendUrl,
@@ -1846,7 +1969,8 @@ const WorkflowBuilderPage = () => {
             throw updateError;
           }
         }
-        await loadVersions(selectedWorkflowId, data.id);
+
+        await loadVersions(selectedWorkflowId, savedVersionId);
         setSaveState("saved");
         lastSavedSnapshotRef.current = graphSnapshot;
         setHasPendingChanges(false);
@@ -1866,6 +1990,7 @@ const WorkflowBuilderPage = () => {
     authHeader,
     buildGraphPayload,
     loadVersions,
+    selectedVersionSummary,
     selectedWorkflowId,
     workflows,
   ]);
@@ -2073,11 +2198,11 @@ const WorkflowBuilderPage = () => {
 
 
   return (
-    <ReactFlowProvider>
-      <div
-        style={{
-          position: "relative",
-          display: "flex",
+        <ReactFlowProvider>
+          <div
+            style={{
+              position: "relative",
+              display: "flex",
           flexDirection: "column",
           height: "100vh",
           background: "#f1f5f9",
@@ -2212,11 +2337,20 @@ const WorkflowBuilderPage = () => {
                 {versions.length === 0 ? (
                   <option value="">Aucune version disponible</option>
                 ) : (
-                  versions.map((version) => (
-                    <option key={version.id} value={version.id}>
-                      {`v${version.version}${version.name ? ` · ${version.name}` : ""}`}
-                    </option>
-                  ))
+                  versions.map((version) => {
+                    const labelParts = [`v${version.version}`];
+                    if (version.name) {
+                      labelParts.push(version.name);
+                    }
+                    if (version.is_active) {
+                      labelParts.push("Production");
+                    }
+                    return (
+                      <option key={version.id} value={version.id}>
+                        {labelParts.join(" · ")}
+                      </option>
+                    );
+                  })
                 )}
               </select>
               {selectedVersionSummary?.is_active ? (
@@ -2245,10 +2379,8 @@ const WorkflowBuilderPage = () => {
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
               <button
                 type="button"
-                onClick={handlePromoteVersion}
-                disabled={
-                  loading || !selectedWorkflowId || !selectedVersionId || selectedVersionSummary?.is_active
-                }
+                onClick={handleOpenDeployModal}
+                disabled={loading || !selectedWorkflowId || versions.length === 0 || isDeploying}
                 style={{
                   padding: "0.55rem 1.1rem",
                   borderRadius: "0.75rem",
@@ -2257,11 +2389,11 @@ const WorkflowBuilderPage = () => {
                   color: "#0f172a",
                   fontWeight: 600,
                   cursor:
-                    loading || !selectedWorkflowId || !selectedVersionId || selectedVersionSummary?.is_active
+                    loading || !selectedWorkflowId || versions.length === 0 || isDeploying
                       ? "not-allowed"
                       : "pointer",
                   opacity:
-                    loading || !selectedWorkflowId || !selectedVersionId || selectedVersionSummary?.is_active
+                    loading || !selectedWorkflowId || versions.length === 0 || isDeploying
                       ? 0.5
                       : 1,
                 }}
@@ -2707,8 +2839,125 @@ const WorkflowBuilderPage = () => {
             </div>
           ) : null}
         </div>
-      </div>
-    </ReactFlowProvider>
+          </div>
+          {isDeployModalOpen ? (
+            <div
+              role="presentation"
+              onClick={handleCloseDeployModal}
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(15, 23, 42, 0.45)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "1.5rem",
+                zIndex: 30,
+              }}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="deploy-dialog-title"
+                onClick={(event) => event.stopPropagation()}
+                style={{
+                  width: "100%",
+                  maxWidth: "460px",
+                  background: "#fff",
+                  borderRadius: "1rem",
+                  boxShadow: "0 30px 70px rgba(15, 23, 42, 0.25)",
+                  padding: "1.75rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "1.25rem",
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  <h2
+                    id="deploy-dialog-title"
+                    style={{ fontSize: "1.35rem", fontWeight: 700, color: "#0f172a", margin: 0 }}
+                  >
+                    Publish changes?
+                  </h2>
+                  <p style={{ margin: 0, color: "#475569", lineHeight: 1.45 }}>
+                    Create a new version of the workflow with your latest changes.
+                  </p>
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      fontWeight: 600,
+                      color: "#0f172a",
+                    }}
+                  >
+                    <span style={{ padding: "0.25rem 0.5rem", background: "#e2e8f0", borderRadius: "999px" }}>
+                      Draft
+                    </span>
+                    <span aria-hidden="true">→</span>
+                    <span style={{ padding: "0.25rem 0.5rem", background: "#dcfce7", borderRadius: "999px" }}>
+                      New version
+                    </span>
+                  </div>
+                </div>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.6rem",
+                    fontWeight: 600,
+                    color: "#0f172a",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={deployToProduction}
+                    onChange={(event) => setDeployToProduction(event.target.checked)}
+                    disabled={isDeploying}
+                    style={{ width: "1.2rem", height: "1.2rem" }}
+                  />
+                  Deploy to production
+                </label>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
+                  <button
+                    type="button"
+                    onClick={handleCloseDeployModal}
+                    disabled={isDeploying}
+                    style={{
+                      padding: "0.6rem 1.2rem",
+                      borderRadius: "0.75rem",
+                      border: "1px solid rgba(15, 23, 42, 0.15)",
+                      background: "#fff",
+                      color: "#0f172a",
+                      fontWeight: 600,
+                      cursor: isDeploying ? "not-allowed" : "pointer",
+                      opacity: isDeploying ? 0.5 : 1,
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmDeploy}
+                    disabled={isDeploying}
+                    style={{
+                      padding: "0.6rem 1.2rem",
+                      borderRadius: "0.75rem",
+                      border: "none",
+                      background: "#2563eb",
+                      color: "#fff",
+                      fontWeight: 700,
+                      cursor: isDeploying ? "not-allowed" : "pointer",
+                      opacity: isDeploying ? 0.7 : 1,
+                    }}
+                  >
+                    Publish
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </ReactFlowProvider>
   );
 };
 
