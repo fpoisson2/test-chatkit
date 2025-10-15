@@ -2253,8 +2253,9 @@ async def run_workflow(
             for suffix in ("value", "text", "src", "url", "href"):
                 key = f"{base_path}.{suffix}" if base_path else suffix
                 if key in collected:
-                    enriched.setdefault(identifier, collected[key])
-                    consumed_keys.add(key)
+                    enriched[identifier] = collected[key]
+                    if identifier != key:
+                        consumed_keys.add(key)
                     break
 
         for key in consumed_keys:
