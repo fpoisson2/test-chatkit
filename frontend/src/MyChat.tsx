@@ -844,24 +844,6 @@ export function MyChat() {
       />
       <div className="chatkit-layout__main" {...mainInteractionHandlers}>
         <div className="chatkit-layout__widget">
-          {isAuthenticated ? (
-            <nav className="chatkit-mode-switch" aria-label="Changer de mode de conversation">
-              <span className="chatkit-mode-switch__label">Mode</span>
-              <div className="chatkit-mode-switch__group">
-                <span className="chatkit-mode-switch__pill chatkit-mode-switch__pill--active" aria-current="page">
-                  Chat texte
-                </span>
-                <button
-                  type="button"
-                  className="chatkit-mode-switch__pill"
-                  onClick={handleGoToVoiceMode}
-                >
-                  <SidebarIcon name="voice" className="chatkit-mode-switch__icon" />
-                  Mode voix
-                </button>
-              </div>
-            </nav>
-          ) : null}
           <ChatKit
             control={control}
             className="chatkit-host"
