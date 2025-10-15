@@ -256,21 +256,17 @@ describe("WorkflowBuilderPage", () => {
     const rawParameters = parametersTextarea.value;
     expect(rawParameters).toContain("Analyse les entrées et produis un résumé clair.");
 
-    const saveButton = screen.getByRole("button", { name: /sauvegarder/i });
-    expect(saveButton).not.toBeDisabled();
-    fireEvent.click(saveButton);
+    await waitFor(
+      () => {
+        expect(
+          fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST"),
+        ).toBe(true);
+      },
+      { timeout: 4000 },
+    );
 
-    await waitFor(() => {
-      expect(
-        fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
-      ).toBe(true);
-    });
-
-    const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
-    expect(putCall?.[0]).toBe("/api/workflows/current");
-    expect(putCall?.[1]).toMatchObject({ method: "PUT" });
-
-    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const postCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
+    const body = JSON.parse((postCall?.[1] as RequestInit).body as string);
     expect(body).toHaveProperty("graph");
     const agentNode = body.graph.nodes.find((node: any) => node.slug === "agent-triage");
     expect(agentNode.agent_key).toBe("triage");
@@ -296,7 +292,7 @@ describe("WorkflowBuilderPage", () => {
       },
     });
 
-    await screen.findByText(/workflow enregistré avec succès/i);
+    await screen.findByText(/modifications enregistrées automatiquement/i);
   });
 
   test("permet d'activer le function tool météo Python", async () => {
@@ -316,19 +312,24 @@ describe("WorkflowBuilderPage", () => {
     expect(weatherCheckbox).not.toBeChecked();
     fireEvent.click(weatherCheckbox);
 
-    const saveButton = screen.getByRole("button", { name: /sauvegarder/i });
-    expect(saveButton).not.toBeDisabled();
-    fireEvent.click(saveButton);
-
     await waitFor(() => {
-      expect(
-        fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
-      ).toBe(true);
+      expect(weatherCheckbox).toBeChecked();
     });
 
-    const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
-    expect(putCall?.[0]).toBe("/api/workflows/current");
-    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const modelInput = await screen.findByPlaceholderText(/ex\. gpt-4\.1-mini/i);
+    fireEvent.change(modelInput, { target: { value: "gpt-4.1-mini" } });
+
+    await waitFor(
+      () => {
+        expect(
+          fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "POST"),
+        ).toBe(true);
+      },
+      { timeout: 4000 },
+    );
+
+    const postCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
+    const body = JSON.parse((postCall?.[1] as RequestInit).body as string);
     const agentNode = body.graph.nodes.find((node: any) => node.slug === "agent-triage");
     expect(agentNode.parameters).toMatchObject({
       tools: [
@@ -490,17 +491,10 @@ describe("WorkflowBuilderPage", () => {
       expect(screen.queryByRole("region", { name: /variables du widget/i })).not.toBeInTheDocument();
     });
 
-    const saveButton = screen.getByRole("button", { name: /sauvegarder/i });
-    fireEvent.click(saveButton);
+    await screen.findByText(/modifications enregistrées automatiquement/i, { timeout: 4000 });
 
-    await waitFor(() => {
-      expect(
-        fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
-      ).toBe(true);
-    });
-
-    const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
-    const payload = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const postCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
+    const payload = JSON.parse((postCall?.[1] as RequestInit).body as string);
     const agentNode = payload.graph.nodes.find((node: any) => node.slug === "agent-triage");
     expect(agentNode.parameters.response_widget).toEqual({ slug: "email-card" });
   });
@@ -664,14 +658,14 @@ describe("WorkflowBuilderPage", () => {
       target: { value: "global.validation" },
     });
 
-    const saveButton = screen.getByRole("button", { name: /sauvegarder/i });
-    fireEvent.click(saveButton);
-
-    await waitFor(() => {
-      expect(
-        fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
-      ).toBe(true);
-    });
+    await waitFor(
+      () => {
+        expect(
+          fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
+        ).toBe(true);
+      },
+      { timeout: 4000 },
+    );
 
     const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
     const payload = JSON.parse((putCall?.[1] as RequestInit).body as string);
@@ -729,17 +723,10 @@ describe("WorkflowBuilderPage", () => {
     const countryInput = await screen.findByLabelText(/pays/i);
     fireEvent.change(countryInput, { target: { value: "CA" } });
 
-    const saveButton = screen.getByRole("button", { name: /sauvegarder/i });
-    fireEvent.click(saveButton);
+    await screen.findByText(/modifications enregistrées automatiquement/i, { timeout: 4000 });
 
-    await waitFor(() => {
-      expect(
-        fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
-      ).toBe(true);
-    });
-
-    const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
-    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const postCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "POST");
+    const body = JSON.parse((postCall?.[1] as RequestInit).body as string);
     const writerPayload = body.graph.nodes.find((node: any) => node.slug === "writer");
     expect(writerPayload.parameters.response_format).toEqual({
       type: "json_schema",

@@ -26,6 +26,7 @@ import "reactflow/dist/style.css";
 
 import { useAuth } from "../auth";
 import { useNavigate } from "react-router-dom";
+import { SidebarIcon, type SidebarIconName } from "../components/SidebarIcon";
 import {
   makeApiEndpointCandidates,
   modelRegistryApi,
@@ -181,6 +182,34 @@ type FlowEdge = Edge<FlowEdgeData>;
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
+const AUTO_SAVE_DELAY_MS = 800;
+
+const buildGraphPayloadFrom = (flowNodes: FlowNode[], flowEdges: FlowEdge[]) => ({
+  nodes: flowNodes.map((node, index) => ({
+    slug: node.data.slug,
+    kind: node.data.kind,
+    display_name: node.data.displayName.trim() || null,
+    agent_key: node.data.kind === "agent" ? node.data.agentKey : null,
+    is_enabled: node.data.isEnabled,
+    parameters: prepareNodeParametersForSave(node.data.kind, node.data.parameters),
+    metadata: {
+      ...node.data.metadata,
+      position: { x: node.position.x, y: node.position.y },
+      order: index + 1,
+    },
+  })),
+  edges: flowEdges.map((edge, index) => ({
+    source: edge.source,
+    target: edge.target,
+    condition: edge.data?.condition ? edge.data.condition : null,
+    metadata: {
+      ...edge.data?.metadata,
+      label: edge.label ?? "",
+      order: index + 1,
+    },
+  })),
+});
+
 const NODE_COLORS: Record<NodeKind, string> = {
   start: "#2563eb",
   agent: "#16a34a",
@@ -255,7 +284,7 @@ const WEB_SEARCH_LOCATION_LABELS = {
 } as const;
 
 const WorkflowBuilderPage = () => {
-  const { token, logout } = useAuth();
+  const { token, logout, user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -269,7 +298,7 @@ const WorkflowBuilderPage = () => {
   const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
-  const [publishOnSave, setPublishOnSave] = useState(false);
+  const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const [vectorStores, setVectorStores] = useState<VectorStoreSummary[]>([]);
   const [vectorStoresLoading, setVectorStoresLoading] = useState(false);
   const [vectorStoresError, setVectorStoresError] = useState<string | null>(null);
@@ -282,8 +311,13 @@ const WorkflowBuilderPage = () => {
   const [isNavigationOpen, setNavigationOpen] = useState(false);
   const [isActionMenuOpen, setActionMenuOpen] = useState(false);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
+  const autoSaveTimeoutRef = useRef<number | null>(null);
+  const lastSavedSnapshotRef = useRef<string | null>(null);
+  const isHydratingRef = useRef(false);
 
   const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+  const isAuthenticated = Boolean(user);
+  const isAdmin = Boolean(user?.is_admin);
   const closeNavigation = useCallback(() => setNavigationOpen(false), []);
   const toggleNavigation = useCallback(() => setNavigationOpen((prev) => !prev), []);
 
@@ -316,59 +350,89 @@ const WorkflowBuilderPage = () => {
   }, [isActionMenuOpen]);
 
   const navigationItems = useMemo(
-    () => [
-      { key: "home", label: "Chat", action: () => { navigate("/"); closeNavigation(); } },
-      { key: "admin", label: "Administration", action: () => { navigate("/admin"); closeNavigation(); } },
-      {
-        key: "workflows",
-        label: "Workflows",
-        action: () => {
-          navigate("/admin/workflows");
-          closeNavigation();
+    () => {
+      const items: Array<{
+        key: string;
+        label: string;
+        icon: SidebarIconName;
+        action: () => void;
+      }> = [
+        {
+          key: "home",
+          label: "Accueil",
+          icon: "home",
+          action: () => {
+            navigate("/");
+            closeNavigation();
+          },
         },
-      },
-      {
-        key: "models",
-        label: "Modèles",
-        action: () => {
-          navigate("/admin/models");
-          closeNavigation();
-        },
-      },
-      {
-        key: "vector-stores",
-        label: "Vector stores",
-        action: () => {
-          navigate("/admin/vector-stores");
-          closeNavigation();
-        },
-      },
-      {
-        key: "widgets",
-        label: "Widgets",
-        action: () => {
-          navigate("/admin/widgets");
-          closeNavigation();
-        },
-      },
-      {
-        key: "voice",
-        label: "Voix",
-        action: () => {
-          navigate("/voice");
-          closeNavigation();
-        },
-      },
-      {
-        key: "logout",
-        label: "Déconnexion",
-        action: () => {
-          closeNavigation();
-          logout();
-        },
-      },
+      ];
+
+      if (isAdmin) {
+        items.push(
+          {
+            key: "admin",
+            label: "Administration",
+            icon: "admin",
+            action: () => {
+              navigate("/admin");
+              closeNavigation();
+            },
+          },
+          {
+            key: "workflows",
+            label: "Workflows",
+            icon: "workflow",
+            action: () => {
+              navigate("/admin/workflows");
+              closeNavigation();
+            },
+          },
+        );
+      }
+
+      if (isAuthenticated) {
+        items.push(
+          {
+            key: "voice",
+            label: "Mode voix",
+            icon: "voice",
+            action: () => {
+              navigate("/voice");
+              closeNavigation();
+            },
+          },
+          {
+            key: "logout",
+            label: "Déconnexion",
+            icon: "logout",
+            action: () => {
+              closeNavigation();
+              logout();
+            },
+          },
+        );
+      } else {
+        items.push({
+          key: "login",
+          label: "Connexion",
+          icon: "login",
+          action: () => {
+            navigate("/login");
+            closeNavigation();
+          },
+        });
+      }
+
+      return items;
+    },
+    [
+      closeNavigation,
+      isAdmin,
+      isAuthenticated,
+      logout,
+      navigate,
     ],
-    [closeNavigation, logout, navigate],
   );
 
   const selectedWorkflow = useMemo(
@@ -581,13 +645,16 @@ const WorkflowBuilderPage = () => {
             },
             markerEnd: { type: MarkerType.ArrowClosed, color: "#1e293b" },
           }));
+          const nextSnapshot = JSON.stringify(buildGraphPayloadFrom(flowNodes, flowEdges));
+          isHydratingRef.current = true;
+          lastSavedSnapshotRef.current = nextSnapshot;
+          setHasPendingChanges(false);
           setNodes(flowNodes);
           setEdges(flowEdges);
           setSelectedNodeId(null);
           setSelectedEdgeId(null);
           setSaveState("idle");
           setSaveMessage(null);
-          setPublishOnSave(false);
           setLoading(false);
           return true;
         } catch (error) {
@@ -603,7 +670,7 @@ const WorkflowBuilderPage = () => {
       setLoading(false);
       return false;
     },
-    [authHeader, setEdges, setNodes],
+    [authHeader, setEdges, setHasPendingChanges, setNodes],
   );
 
   const loadVersions = useCallback(
@@ -634,6 +701,9 @@ const WorkflowBuilderPage = () => {
             setSelectedVersionId(null);
             setNodes([]);
             setEdges([]);
+            isHydratingRef.current = true;
+            lastSavedSnapshotRef.current = JSON.stringify(buildGraphPayloadFrom([], []));
+            setHasPendingChanges(false);
             setLoading(false);
             return true;
           }
@@ -667,7 +737,7 @@ const WorkflowBuilderPage = () => {
       setLoading(false);
       return false;
     },
-    [authHeader, loadVersionDetail, selectedVersionId, setEdges, setNodes],
+    [authHeader, loadVersionDetail, selectedVersionId, setEdges, setHasPendingChanges, setNodes],
   );
 
   const loadWorkflows = useCallback(
@@ -701,6 +771,9 @@ const WorkflowBuilderPage = () => {
             setVersions([]);
             setNodes([]);
             setEdges([]);
+            isHydratingRef.current = true;
+            lastSavedSnapshotRef.current = JSON.stringify(buildGraphPayloadFrom([], []));
+            setHasPendingChanges(false);
             setLoading(false);
             return;
           }
@@ -750,7 +823,7 @@ const WorkflowBuilderPage = () => {
       }
       setLoading(false);
     },
-    [authHeader, loadVersions, selectedWorkflowId, setEdges, setNodes],
+    [authHeader, loadVersions, selectedWorkflowId, setEdges, setHasPendingChanges, setNodes],
   );
 
   useEffect(() => {
@@ -1406,9 +1479,11 @@ const WorkflowBuilderPage = () => {
         setVersions([]);
         setNodes([]);
         setEdges([]);
+        lastSavedSnapshotRef.current = null;
+        setHasPendingChanges(false);
       }
     },
-    [loadVersions, setEdges, setNodes],
+    [loadVersions, setEdges, setHasPendingChanges, setNodes],
   );
 
   const handleVersionChange = useCallback(
@@ -1422,10 +1497,6 @@ const WorkflowBuilderPage = () => {
     },
     [loadVersionDetail, selectedWorkflowId],
   );
-
-  const handlePublishToggle = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    setPublishOnSave(event.target.checked);
-  }, []);
 
   const handleCreateWorkflow = useCallback(async () => {
     const proposed = window.prompt("Nom du nouveau workflow ?");
@@ -1671,31 +1742,33 @@ const WorkflowBuilderPage = () => {
     );
   }, [authHeader, loadWorkflows, selectedVersionId, selectedWorkflowId]);
 
-  const buildGraphPayload = useCallback(() => ({
-    nodes: nodes.map((node, index) => ({
-      slug: node.data.slug,
-      kind: node.data.kind,
-      display_name: node.data.displayName.trim() || null,
-      agent_key: node.data.kind === "agent" ? node.data.agentKey : null,
-      is_enabled: node.data.isEnabled,
-      parameters: prepareNodeParametersForSave(node.data.kind, node.data.parameters),
-      metadata: {
-        ...node.data.metadata,
-        position: { x: node.position.x, y: node.position.y },
-        order: index + 1,
-      },
-    })),
-    edges: edges.map((edge, index) => ({
-      source: edge.source,
-      target: edge.target,
-      condition: edge.data?.condition ? edge.data.condition : null,
-      metadata: {
-        ...edge.data?.metadata,
-        label: edge.label ?? "",
-        order: index + 1,
-      },
-    })),
-  }), [edges, nodes]);
+  const buildGraphPayload = useCallback(
+    () => buildGraphPayloadFrom(nodes, edges),
+    [edges, nodes],
+  );
+
+  const graphSnapshot = useMemo(() => JSON.stringify(buildGraphPayload()), [buildGraphPayload]);
+
+  useEffect(() => {
+    if (!selectedWorkflowId) {
+      lastSavedSnapshotRef.current = null;
+      setHasPendingChanges(false);
+      return;
+    }
+
+    if (isHydratingRef.current) {
+      isHydratingRef.current = false;
+      return;
+    }
+
+    if (!lastSavedSnapshotRef.current) {
+      lastSavedSnapshotRef.current = graphSnapshot;
+      setHasPendingChanges(false);
+      return;
+    }
+
+    setHasPendingChanges(graphSnapshot !== lastSavedSnapshotRef.current);
+  }, [graphSnapshot, selectedWorkflowId]);
 
   const handleSave = useCallback(async () => {
     setSaveMessage(null);
@@ -1714,6 +1787,7 @@ const WorkflowBuilderPage = () => {
 
     try {
       const graphPayload = buildGraphPayload();
+      const graphSnapshot = JSON.stringify(graphPayload);
 
       const endpoint = `/api/workflows/${selectedWorkflowId}/versions`;
       const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
@@ -1727,7 +1801,7 @@ const WorkflowBuilderPage = () => {
           },
           body: JSON.stringify({
             graph: graphPayload,
-            mark_as_active: publishOnSave,
+            mark_as_active: false,
           }),
         });
         if (!response.ok) {
@@ -1774,17 +1848,16 @@ const WorkflowBuilderPage = () => {
         }
         await loadVersions(selectedWorkflowId, data.id);
         setSaveState("saved");
-        setSaveMessage(
-          publishOnSave
-            ? "Workflow enregistré et défini en production."
-            : "Workflow enregistré avec succès."
-        );
+        lastSavedSnapshotRef.current = graphSnapshot;
+        setHasPendingChanges(false);
+        setSaveMessage("Modifications enregistrées automatiquement.");
         setTimeout(() => setSaveState("idle"), 1500);
         return;
       }
       throw new Error("Impossible de contacter le serveur pour enregistrer la version.");
     } catch (error) {
       setSaveState("error");
+      setHasPendingChanges(true);
       setSaveMessage(
         error instanceof Error ? error.message : "Impossible d'enregistrer le workflow."
       );
@@ -1793,7 +1866,6 @@ const WorkflowBuilderPage = () => {
     authHeader,
     buildGraphPayload,
     loadVersions,
-    publishOnSave,
     selectedWorkflowId,
     workflows,
   ]);
@@ -1863,53 +1935,95 @@ const WorkflowBuilderPage = () => {
     setTimeout(() => setSaveState("idle"), 1500);
   }, []);
 
-const disableSave = useMemo(() => {
-  if (!selectedWorkflowId) return true;
+  const disableSave = useMemo(() => {
+    if (!selectedWorkflowId) {
+      return true;
+    }
 
-  // Si un simple parametersError est présent, inutile d'aller plus loin
-  if (nodes.some((node) => node.data.parametersError)) return true;
+    if (nodes.some((node) => node.data.parametersError)) {
+      return true;
+    }
 
-  const availableVectorStoreSlugs = new Set(vectorStores.map((store) => store.slug));
-  const availableWidgetSlugs = new Set(widgets.map((widget) => widget.slug));
+    const availableVectorStoreSlugs = new Set(vectorStores.map((store) => store.slug));
+    const availableWidgetSlugs = new Set(widgets.map((widget) => widget.slug));
 
-  return nodes.some((node) => {
-    if (node.data.kind !== "agent" || !node.data.isEnabled) {
+    return nodes.some((node) => {
+      if (node.data.kind !== "agent" || !node.data.isEnabled) {
+        return false;
+      }
+
+      const fileSearchConfig = getAgentFileSearchConfig(node.data.parameters);
+      if (fileSearchConfig) {
+        const slug = fileSearchConfig.vector_store_slug?.trim() ?? "";
+        if (!slug) {
+          return true;
+        }
+
+        if (!vectorStoresError && vectorStores.length > 0 && !availableVectorStoreSlugs.has(slug)) {
+          return true;
+        }
+      }
+
+      const responseFormat = getAgentResponseFormat(node.data.parameters);
+      if (responseFormat.kind === "widget") {
+        const slug = responseFormat.slug.trim();
+        if (!slug) {
+          return true;
+        }
+        if (!widgetsError && widgets.length > 0 && !availableWidgetSlugs.has(slug)) {
+          return true;
+        }
+      }
+
       return false;
+    });
+  }, [
+    nodes,
+    selectedWorkflowId,
+    vectorStores,
+    vectorStoresError,
+    widgets,
+    widgetsError,
+  ]);
+
+  useEffect(() => {
+    if (
+      !hasPendingChanges ||
+      disableSave ||
+      saveState === "saving" ||
+      loading ||
+      !selectedWorkflowId
+    ) {
+      if (autoSaveTimeoutRef.current !== null) {
+        clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = null;
+      }
+      return;
     }
 
-    const fileSearchConfig = getAgentFileSearchConfig(node.data.parameters);
-    if (fileSearchConfig) {
-      const slug = fileSearchConfig.vector_store_slug?.trim() ?? "";
-      if (!slug) {
-        return true;
-      }
-
-      if (!vectorStoresError && vectorStores.length > 0 && !availableVectorStoreSlugs.has(slug)) {
-        return true;
-      }
+    if (autoSaveTimeoutRef.current !== null) {
+      clearTimeout(autoSaveTimeoutRef.current);
     }
 
-    const responseFormat = getAgentResponseFormat(node.data.parameters);
-    if (responseFormat.kind === "widget") {
-      const slug = responseFormat.slug.trim();
-      if (!slug) {
-        return true;
-      }
-      if (!widgetsError && widgets.length > 0 && !availableWidgetSlugs.has(slug)) {
-        return true;
-      }
-    }
+    autoSaveTimeoutRef.current = window.setTimeout(() => {
+      autoSaveTimeoutRef.current = null;
+      void handleSave();
+    }, AUTO_SAVE_DELAY_MS);
 
-    return false;
-  });
-}, [
-  nodes,
-  selectedWorkflowId,
-  vectorStores,
-  vectorStoresError,
-  widgets,
-  widgetsError,
-]);
+    return () => {
+      if (autoSaveTimeoutRef.current !== null) {
+        clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = null;
+      }
+    };
+  }, [
+    disableSave,
+    handleSave,
+    hasPendingChanges,
+    loading,
+    saveState,
+    selectedWorkflowId,
+  ]);
 
   const blockLibraryItems = useMemo(
     () => [
@@ -2006,12 +2120,6 @@ const disableSave = useMemo(() => {
                 <path d="M3 5h14M3 10h14M3 15h14" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
               </svg>
             </button>
-            <div>
-              <h1 style={{ margin: 0, fontSize: "1.5rem", color: "#0f172a" }}>Workflow Builder</h1>
-              <p style={{ margin: "0.15rem 0 0", color: "#475569" }}>
-                Composez visuellement les étapes de votre automation.
-              </p>
-            </div>
           </div>
           <div
             style={{
@@ -2053,7 +2161,7 @@ const disableSave = useMemo(() => {
                           {workflow.active_version_number
                             ? ` · prod v${workflow.active_version_number}`
                             : ""}
-                          {workflow.is_chatkit_default ? " · ChatKit" : ""}
+                          {workflow.is_chatkit_default ? " · 🟢 Actif" : ""}
                         </option>
                       ))}
                     </>
@@ -2080,21 +2188,7 @@ const disableSave = useMemo(() => {
               {selectedWorkflow?.description ? (
                 <small style={{ color: "#475569" }}>{selectedWorkflow.description}</small>
               ) : null}
-              {selectedWorkflow?.is_chatkit_default ? (
-                <span
-                  style={{
-                    alignSelf: "flex-start",
-                    padding: "0.25rem 0.6rem",
-                    borderRadius: "9999px",
-                    background: "rgba(16, 185, 129, 0.18)",
-                    color: "#047857",
-                    fontWeight: 600,
-                    fontSize: "0.75rem",
-                  }}
-                >
-                  Utilisé par ChatKit
-                </span>
-              ) : selectedWorkflow && !selectedWorkflow.active_version_id ? (
+              {selectedWorkflow && !selectedWorkflow.active_version_id ? (
                 <span style={{ color: "#b45309", fontSize: "0.75rem" }}>
                   Publiez une version de production pour l'utiliser avec ChatKit.
                 </span>
@@ -2120,49 +2214,35 @@ const disableSave = useMemo(() => {
                 ) : (
                   versions.map((version) => (
                     <option key={version.id} value={version.id}>
-                      {`v${version.version}${version.name ? ` · ${version.name}` : ""}${
-                        version.is_active ? " · production" : ""
-                      }`}
+                      {`v${version.version}${version.name ? ` · ${version.name}` : ""}`}
                     </option>
                   ))
                 )}
               </select>
+              {selectedVersionSummary?.is_active ? (
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "0.3rem",
+                    fontSize: "0.75rem",
+                    color: "#047857",
+                    fontWeight: 600,
+                  }}
+                >
+                  <span aria-hidden="true" style={{ fontSize: "0.65rem" }}>
+                    ●
+                  </span>
+                  Production
+                </span>
+              ) : null}
               {selectedVersionSummary ? (
                 <small style={{ color: "#475569" }}>
                   Dernière mise à jour : {formatDateTime(selectedVersionSummary.updated_at)}
                 </small>
               ) : null}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
-              <span style={controlLabelStyle}>Publication</span>
-              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#0f172a" }}>
-                <input
-                  type="checkbox"
-                  checked={publishOnSave}
-                  onChange={handlePublishToggle}
-                  disabled={loading}
-                />
-                <span>Publier après sauvegarde</span>
-              </label>
-            </div>
             <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={disableSave || saveState === "saving" || loading}
-                style={{
-                  padding: "0.55rem 1.1rem",
-                  borderRadius: "0.75rem",
-                  border: "1px solid #1d4ed8",
-                  background: "#2563eb",
-                  color: "#fff",
-                  fontWeight: 600,
-                  cursor: disableSave || saveState === "saving" || loading ? "not-allowed" : "pointer",
-                  opacity: disableSave || saveState === "saving" || loading ? 0.65 : 1,
-                }}
-              >
-                {saveState === "saving" ? "Sauvegarde…" : "Sauvegarder"}
-              </button>
               <button
                 type="button"
                 onClick={handlePromoteVersion}
@@ -2582,56 +2662,36 @@ const disableSave = useMemo(() => {
               }}
             >
               <aside
+                className="chatkit-sidebar chatkit-sidebar--open"
                 style={{
-                  width: "min(320px, 80vw)",
-                  background: "#fff",
-                  padding: "1.5rem",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "1rem",
+                  position: "relative",
+                  transform: "none",
                   boxShadow: "0 24px 48px rgba(15, 23, 42, 0.18)",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <h2 style={{ margin: 0, fontSize: "1.25rem", color: "#0f172a" }}>Navigation</h2>
-                  <button
-                    type="button"
-                    onClick={closeNavigation}
-                    aria-label="Fermer la navigation"
-                    style={{
-                      width: "2.25rem",
-                      height: "2.25rem",
-                      borderRadius: "0.6rem",
-                      border: "1px solid rgba(15, 23, 42, 0.12)",
-                      background: "#f8fafc",
-                      color: "#0f172a",
-                      fontSize: "1.15rem",
-                      cursor: "pointer",
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
-                <nav aria-label="Navigation générale">
-                  <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.5rem" }}>
+                <header className="chatkit-sidebar__header">
+                  <div className="chatkit-sidebar__topline">
+                    <div className="chatkit-sidebar__brand">
+                      <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
+                      <span className="chatkit-sidebar__brand-text">ChatKit Demo</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="chatkit-sidebar__dismiss"
+                      onClick={closeNavigation}
+                      aria-label="Fermer la navigation"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </header>
+                <nav className="chatkit-sidebar__nav" aria-label="Navigation générale">
+                  <ul className="chatkit-sidebar__list">
                     {navigationItems.map((item) => (
-                      <li key={item.key}>
-                        <button
-                          type="button"
-                          onClick={item.action}
-                          style={{
-                            width: "100%",
-                            textAlign: "left",
-                            padding: "0.65rem 0.75rem",
-                            borderRadius: "0.75rem",
-                            border: "1px solid rgba(15, 23, 42, 0.12)",
-                            background: "#fff",
-                            color: "#0f172a",
-                            fontWeight: 600,
-                            cursor: "pointer",
-                          }}
-                        >
-                          {item.label}
+                      <li key={item.key} className="chatkit-sidebar__item">
+                        <button type="button" onClick={item.action} aria-label={item.label}>
+                          <SidebarIcon name={item.icon} className="chatkit-sidebar__icon" />
+                          <span className="chatkit-sidebar__label">{item.label}</span>
                         </button>
                       </li>
                     ))}
