@@ -2212,126 +2212,151 @@ const WorkflowBuilderPage = () => {
           style={{
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
             gap: "1.5rem",
-            padding: "1rem 1.5rem",
-            background: "#fff",
+            padding: "0.75rem 1.5rem",
+            background: "#f8fafc",
             borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
-            boxShadow: "0 4px 12px rgba(15, 23, 42, 0.05)",
             zIndex: 10,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-            <button
-              type="button"
-              onClick={toggleNavigation}
-              aria-expanded={isNavigationOpen}
-              aria-controls="workflow-navigation-panel"
-              aria-label={
-                isNavigationOpen ? "Fermer la navigation générale" : "Ouvrir la navigation générale"
-              }
-              style={{
-                width: "2.75rem",
-                height: "2.75rem",
-                borderRadius: "0.75rem",
-                border: "1px solid rgba(15, 23, 42, 0.18)",
-                background: "#f8fafc",
-                display: "grid",
-                placeItems: "center",
-                cursor: "pointer",
-              }}
-            >
-              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                <path d="M3 5h14M3 10h14M3 15h14" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={toggleNavigation}
+            aria-expanded={isNavigationOpen}
+            aria-controls="workflow-navigation-panel"
+            aria-label={
+              isNavigationOpen ? "Fermer la navigation générale" : "Ouvrir la navigation générale"
+            }
+            style={{
+              width: "2.75rem",
+              height: "2.75rem",
+              borderRadius: "0.75rem",
+              border: "1px solid rgba(15, 23, 42, 0.18)",
+              background: "#f8fafc",
+              display: "grid",
+              placeItems: "center",
+              cursor: "pointer",
+            }}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M3 5h14M3 10h14M3 15h14" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </button>
           <div
             style={{
               display: "flex",
-              alignItems: "flex-end",
-              gap: "1rem",
-              flexWrap: "wrap",
-              justifyContent: "flex-end",
+              alignItems: "center",
+              gap: "1.5rem",
+              flex: 1,
+              minWidth: 0,
+              flexWrap: "nowrap",
             }}
           >
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", minWidth: "240px" }}>
-              <span style={controlLabelStyle}>Workflow</span>
-              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                <select
-                  id="workflow-select"
-                  value={selectedWorkflowId ? String(selectedWorkflowId) : ""}
-                  onChange={handleWorkflowChange}
-                  disabled={loading || workflows.length === 0}
-                  style={{
-                    flexGrow: 1,
-                    minWidth: "180px",
-                    padding: "0.5rem 0.75rem",
-                    borderRadius: "0.75rem",
-                    border: "1px solid rgba(15, 23, 42, 0.15)",
-                    background: "#fff",
-                    color: "#0f172a",
-                  }}
-                >
-                  {workflows.length === 0 ? (
-                    <option value="">Aucun workflow disponible</option>
-                  ) : (
-                    <>
-                      <option value="" disabled>
-                        Sélectionnez un workflow
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.75rem",
+                minWidth: 0,
+              }}
+            >
+              <label htmlFor="workflow-select" style={controlLabelStyle}>
+                Workflow
+              </label>
+              <select
+                id="workflow-select"
+                value={selectedWorkflowId ? String(selectedWorkflowId) : ""}
+                onChange={handleWorkflowChange}
+                disabled={loading || workflows.length === 0}
+                title={selectedWorkflow?.description ?? undefined}
+                style={{
+                  minWidth: "220px",
+                  maxWidth: "340px",
+                  padding: "0.5rem 0.75rem",
+                  borderRadius: "0.75rem",
+                  border: "1px solid rgba(15, 23, 42, 0.15)",
+                  background: "#fff",
+                  color: "#0f172a",
+                  fontWeight: 600,
+                  cursor: loading || workflows.length === 0 ? "not-allowed" : "pointer",
+                  opacity: loading || workflows.length === 0 ? 0.5 : 1,
+                }}
+              >
+                {workflows.length === 0 ? (
+                  <option value="">Aucun workflow disponible</option>
+                ) : (
+                  <>
+                    <option value="" disabled>
+                      Sélectionnez un workflow
+                    </option>
+                    {workflows.map((workflow) => (
+                      <option key={workflow.id} value={workflow.id}>
+                        {workflow.display_name}
+                        {workflow.active_version_number
+                          ? ` · prod v${workflow.active_version_number}`
+                          : ""}
+                        {workflow.is_chatkit_default ? " · 🟢 Actif" : ""}
                       </option>
-                      {workflows.map((workflow) => (
-                        <option key={workflow.id} value={workflow.id}>
-                          {workflow.display_name}
-                          {workflow.active_version_number
-                            ? ` · prod v${workflow.active_version_number}`
-                            : ""}
-                          {workflow.is_chatkit_default ? " · 🟢 Actif" : ""}
-                        </option>
-                      ))}
-                    </>
-                  )}
-                </select>
-                <button
-                  type="button"
-                  onClick={handleCreateWorkflow}
-                  disabled={loading}
+                    ))}
+                  </>
+                )}
+              </select>
+              {selectedWorkflow?.is_chatkit_default ? (
+                <span
                   style={{
-                    padding: "0.5rem 0.9rem",
-                    borderRadius: "0.75rem",
-                    border: "1px solid rgba(15, 23, 42, 0.15)",
-                    background: "#fff",
-                    color: "#0f172a",
+                    color: "#047857",
                     fontWeight: 600,
-                    cursor: loading ? "not-allowed" : "pointer",
-                    opacity: loading ? 0.5 : 1,
+                    fontSize: "0.85rem",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  Nouveau
-                </button>
-              </div>
-              {selectedWorkflow?.description ? (
-                <small style={{ color: "#475569" }}>{selectedWorkflow.description}</small>
-              ) : null}
-              {selectedWorkflow && !selectedWorkflow.active_version_id ? (
-                <span style={{ color: "#b45309", fontSize: "0.75rem" }}>
-                  Publiez une version de production pour l'utiliser avec ChatKit.
+                  🟢 Actif
                 </span>
               ) : null}
+              <button
+                type="button"
+                onClick={handleCreateWorkflow}
+                disabled={loading}
+                style={{
+                  padding: "0.5rem 0.9rem",
+                  borderRadius: "0.75rem",
+                  border: "1px solid rgba(15, 23, 42, 0.15)",
+                  background: "#fff",
+                  color: "#0f172a",
+                  fontWeight: 600,
+                  cursor: loading ? "not-allowed" : "pointer",
+                  opacity: loading ? 0.5 : 1,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Nouveau
+              </button>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", minWidth: "220px" }}>
-              <span style={controlLabelStyle}>Révision</span>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.75rem",
+                minWidth: 0,
+              }}
+            >
+              <label htmlFor="version-select" style={controlLabelStyle}>
+                Révision
+              </label>
               <select
                 id="version-select"
                 value={selectedVersionId ? String(selectedVersionId) : ""}
                 onChange={handleVersionChange}
                 disabled={loading || versions.length === 0}
                 style={{
+                  minWidth: "200px",
                   padding: "0.5rem 0.75rem",
                   borderRadius: "0.75rem",
                   border: "1px solid rgba(15, 23, 42, 0.15)",
                   background: "#fff",
                   color: "#0f172a",
+                  cursor: loading || versions.length === 0 ? "not-allowed" : "pointer",
+                  opacity: loading || versions.length === 0 ? 0.5 : 1,
                 }}
               >
                 {versions.length === 0 ? (
@@ -2353,195 +2378,200 @@ const WorkflowBuilderPage = () => {
                   })
                 )}
               </select>
-              {selectedVersionSummary?.is_active ? (
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "0.3rem",
-                    fontSize: "0.75rem",
-                    color: "#047857",
-                    fontWeight: 600,
-                  }}
-                >
-                  <span aria-hidden="true" style={{ fontSize: "0.65rem" }}>
-                    ●
-                  </span>
-                  Production
-                </span>
-              ) : null}
-              {selectedVersionSummary ? (
-                <small style={{ color: "#475569" }}>
-                  Dernière mise à jour : {formatDateTime(selectedVersionSummary.updated_at)}
-                </small>
-              ) : null}
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <button
+              type="button"
+              onClick={handleOpenDeployModal}
+              disabled={loading || !selectedWorkflowId || versions.length === 0 || isDeploying}
+              style={{
+                padding: "0.55rem 1.1rem",
+                borderRadius: "0.75rem",
+                border: "1px solid rgba(15, 23, 42, 0.15)",
+                background: "#fff",
+                color: "#0f172a",
+                fontWeight: 600,
+                cursor:
+                  loading || !selectedWorkflowId || versions.length === 0 || isDeploying
+                    ? "not-allowed"
+                    : "pointer",
+                opacity:
+                  loading || !selectedWorkflowId || versions.length === 0 || isDeploying
+                    ? 0.5
+                    : 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Déployer
+            </button>
+            <div ref={actionMenuRef} style={{ position: "relative" }}>
               <button
                 type="button"
-                onClick={handleOpenDeployModal}
-                disabled={loading || !selectedWorkflowId || versions.length === 0 || isDeploying}
+                onClick={() => setActionMenuOpen((prev) => !prev)}
+                aria-haspopup="true"
+                aria-expanded={isActionMenuOpen}
                 style={{
-                  padding: "0.55rem 1.1rem",
+                  width: "2.5rem",
+                  height: "2.5rem",
                   borderRadius: "0.75rem",
                   border: "1px solid rgba(15, 23, 42, 0.15)",
                   background: "#fff",
-                  color: "#0f172a",
-                  fontWeight: 600,
-                  cursor:
-                    loading || !selectedWorkflowId || versions.length === 0 || isDeploying
-                      ? "not-allowed"
-                      : "pointer",
-                  opacity:
-                    loading || !selectedWorkflowId || versions.length === 0 || isDeploying
-                      ? 0.5
-                      : 1,
+                  display: "grid",
+                  placeItems: "center",
+                  cursor: "pointer",
                 }}
               >
-                Déployer
+                <span style={{ fontSize: "1.5rem", lineHeight: 1, color: "#0f172a" }}>…</span>
               </button>
-              <div ref={actionMenuRef} style={{ position: "relative" }}>
-                <button
-                  type="button"
-                  onClick={() => setActionMenuOpen((prev) => !prev)}
-                  aria-haspopup="true"
-                  aria-expanded={isActionMenuOpen}
+              {isActionMenuOpen ? (
+                <div
                   style={{
-                    width: "2.5rem",
-                    height: "2.5rem",
-                    borderRadius: "0.75rem",
-                    border: "1px solid rgba(15, 23, 42, 0.15)",
+                    position: "absolute",
+                    top: "calc(100% + 0.5rem)",
+                    right: 0,
                     background: "#fff",
-                    display: "grid",
-                    placeItems: "center",
-                    cursor: "pointer",
+                    borderRadius: "0.75rem",
+                    border: "1px solid rgba(15, 23, 42, 0.1)",
+                    boxShadow: "0 20px 40px rgba(15, 23, 42, 0.12)",
+                    padding: "0.5rem",
+                    minWidth: "220px",
+                    zIndex: 30,
                   }}
                 >
-                  <span style={{ fontSize: "1.5rem", lineHeight: 1, color: "#0f172a" }}>…</span>
-                </button>
-                {isActionMenuOpen ? (
-                  <div
+                  <button
+                    type="button"
+                    onClick={handleRenameWorkflow}
+                    disabled={!selectedWorkflowId}
                     style={{
-                      position: "absolute",
-                      top: "calc(100% + 0.5rem)",
-                      right: 0,
-                      background: "#fff",
-                      borderRadius: "0.75rem",
-                      border: "1px solid rgba(15, 23, 42, 0.1)",
-                      boxShadow: "0 20px 40px rgba(15, 23, 42, 0.12)",
-                      padding: "0.5rem",
-                      minWidth: "220px",
-                      zIndex: 30,
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "0.6rem 0.75rem",
+                      borderRadius: "0.6rem",
+                      border: "none",
+                      background: "transparent",
+                      color: "#0f172a",
+                      fontWeight: 500,
+                      cursor: !selectedWorkflowId ? "not-allowed" : "pointer",
+                      opacity: !selectedWorkflowId ? 0.5 : 1,
                     }}
                   >
-                    <button
-                      type="button"
-                      onClick={handleRenameWorkflow}
-                      disabled={!selectedWorkflowId}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "0.6rem 0.75rem",
-                        borderRadius: "0.6rem",
-                        border: "none",
-                        background: "transparent",
-                        color: "#0f172a",
-                        fontWeight: 500,
-                        cursor: !selectedWorkflowId ? "not-allowed" : "pointer",
-                        opacity: !selectedWorkflowId ? 0.5 : 1,
-                      }}
-                    >
-                      Renommer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSelectChatkitWorkflow}
-                      disabled={
+                    Renommer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSelectChatkitWorkflow}
+                    disabled={
+                      loading ||
+                      !selectedWorkflowId ||
+                      selectedWorkflow?.is_chatkit_default ||
+                      !selectedWorkflow?.active_version_id
+                    }
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "0.6rem 0.75rem",
+                      borderRadius: "0.6rem",
+                      border: "none",
+                      background: "transparent",
+                      color: "#0f172a",
+                      fontWeight: 500,
+                      cursor:
                         loading ||
                         !selectedWorkflowId ||
                         selectedWorkflow?.is_chatkit_default ||
                         !selectedWorkflow?.active_version_id
-                      }
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "0.6rem 0.75rem",
-                        borderRadius: "0.6rem",
-                        border: "none",
-                        background: "transparent",
-                        color: "#0f172a",
-                        fontWeight: 500,
-                        cursor:
-                          loading ||
-                          !selectedWorkflowId ||
-                          selectedWorkflow?.is_chatkit_default ||
-                          !selectedWorkflow?.active_version_id
-                            ? "not-allowed"
-                            : "pointer",
-                        opacity:
-                          loading ||
-                          !selectedWorkflowId ||
-                          selectedWorkflow?.is_chatkit_default ||
-                          !selectedWorkflow?.active_version_id
-                            ? 0.5
-                            : 1,
-                      }}
-                    >
-                      Définir pour ChatKit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDuplicateWorkflow}
-                      disabled={loading || !selectedWorkflowId}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "0.6rem 0.75rem",
-                        borderRadius: "0.6rem",
-                        border: "none",
-                        background: "transparent",
-                        color: "#0f172a",
-                        fontWeight: 500,
-                        cursor: loading || !selectedWorkflowId ? "not-allowed" : "pointer",
-                        opacity: loading || !selectedWorkflowId ? 0.5 : 1,
-                      }}
-                    >
-                      Dupliquer
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDeleteWorkflow}
-                      disabled={loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default}
-                      style={{
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "0.6rem 0.75rem",
-                        borderRadius: "0.6rem",
-                        border: "none",
-                        background: "transparent",
-                        color: "#b91c1c",
-                        fontWeight: 500,
-                        cursor:
-                          loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default
-                            ? "not-allowed"
-                            : "pointer",
-                        opacity:
-                          loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default ? 0.5 : 1,
-                      }}
-                    >
-                      Supprimer
-                    </button>
-                  </div>
-                ) : null}
-              </div>
+                          ? "not-allowed"
+                          : "pointer",
+                      opacity:
+                        loading ||
+                        !selectedWorkflowId ||
+                        selectedWorkflow?.is_chatkit_default ||
+                        !selectedWorkflow?.active_version_id
+                          ? 0.5
+                          : 1,
+                    }}
+                  >
+                    Définir pour ChatKit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDuplicateWorkflow}
+                    disabled={loading || !selectedWorkflowId}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "0.6rem 0.75rem",
+                      borderRadius: "0.6rem",
+                      border: "none",
+                      background: "transparent",
+                      color: "#0f172a",
+                      fontWeight: 500,
+                      cursor: loading || !selectedWorkflowId ? "not-allowed" : "pointer",
+                      opacity: loading || !selectedWorkflowId ? 0.5 : 1,
+                    }}
+                  >
+                    Dupliquer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteWorkflow}
+                    disabled={loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default}
+                    style={{
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "0.6rem 0.75rem",
+                      borderRadius: "0.6rem",
+                      border: "none",
+                      background: "transparent",
+                      color: "#b91c1c",
+                      fontWeight: 500,
+                      cursor:
+                        loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default
+                          ? "not-allowed"
+                          : "pointer",
+                      opacity:
+                        loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default ? 0.5 : 1,
+                    }}
+                  >
+                    Supprimer
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </header>
+
         <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
-          <div style={{ position: "absolute", inset: 0, padding: "1.5rem" }}>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              padding: "1.5rem",
+              display: "flex",
+              flexDirection: "column",
+              gap: "1rem",
+            }}
+          >
+            {selectedWorkflow?.description ? (
+              <div style={{ color: "#475569", fontSize: "0.95rem" }}>
+                {selectedWorkflow.description}
+              </div>
+            ) : null}
+            {selectedWorkflow && !selectedWorkflow.active_version_id ? (
+              <div
+                style={{
+                  color: "#b45309",
+                  fontSize: "0.85rem",
+                  fontWeight: 600,
+                }}
+              >
+                Publiez une version pour l'utiliser avec ChatKit.
+              </div>
+            ) : null}
             <div
               style={{
-                height: "100%",
+                flex: 1,
                 borderRadius: "1.25rem",
                 border: "1px solid rgba(15, 23, 42, 0.08)",
                 background: "#fff",
@@ -2798,6 +2828,8 @@ const WorkflowBuilderPage = () => {
                 style={{
                   position: "relative",
                   transform: "none",
+                  height: "100%",
+                  maxHeight: "100%",
                   boxShadow: "0 24px 48px rgba(15, 23, 42, 0.18)",
                 }}
               >
@@ -3909,6 +3941,9 @@ const controlLabelStyle: CSSProperties = {
   textTransform: "uppercase",
   fontWeight: 600,
   color: "#64748b",
+  display: "inline-flex",
+  alignItems: "center",
+  whiteSpace: "nowrap",
 };
 
 const loadingStyle: CSSProperties = {
