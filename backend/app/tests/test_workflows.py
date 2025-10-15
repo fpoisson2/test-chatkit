@@ -517,6 +517,124 @@ def test_can_save_minimal_graph_version() -> None:
     assert body["steps"] == []
 
 
+def test_can_update_existing_draft_version() -> None:
+    admin = _make_user(email="draft-update@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    creation = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-update",
+            "display_name": "Workflow update",
+            "description": None,
+            "graph": None,
+        },
+    )
+    assert creation.status_code == 201
+    workflow_id = creation.json()["workflow_id"]
+
+    draft = client.post(
+        f"/api/workflows/{workflow_id}/versions",
+        headers=_auth_headers(token),
+        json={
+            "graph": {
+                "nodes": [
+                    {"slug": "start", "kind": "start", "is_enabled": True},
+                    {"slug": "writer", "kind": "agent", "agent_key": "r_dacteur", "is_enabled": True},
+                    {"slug": "end", "kind": "end", "is_enabled": True},
+                ],
+                "edges": [
+                    {"source": "start", "target": "writer"},
+                    {"source": "writer", "target": "end"},
+                ],
+            },
+            "mark_as_active": False,
+        },
+    )
+    assert draft.status_code == 201
+    draft_body = draft.json()
+    draft_id = draft_body["id"]
+
+    update = client.put(
+        f"/api/workflows/{workflow_id}/versions/{draft_id}",
+        headers=_auth_headers(token),
+        json={
+            "graph": {
+                "nodes": [
+                    {"slug": "start", "kind": "start", "is_enabled": True},
+                    {"slug": "decision", "kind": "condition", "is_enabled": True},
+                    {"slug": "approve", "kind": "agent", "agent_key": "triage", "is_enabled": True},
+                    {"slug": "reject", "kind": "end", "is_enabled": True},
+                ],
+                "edges": [
+                    {"source": "start", "target": "decision"},
+                    {"source": "decision", "target": "approve", "condition": "true"},
+                    {"source": "approve", "target": "reject"},
+                ],
+            }
+        },
+    )
+
+    assert update.status_code == 200
+    body = update.json()
+    assert body["id"] == draft_id
+    assert body["version"] == draft_body["version"]
+    node_slugs = {node["slug"] for node in body["graph"]["nodes"]}
+    assert node_slugs == {"start", "decision", "approve", "reject"}
+    edge_pairs = {(edge["source"], edge["target"]) for edge in body["graph"]["edges"]}
+    assert edge_pairs == {("start", "decision"), ("decision", "approve"), ("approve", "reject")}
+
+
+def test_updating_active_version_is_rejected() -> None:
+    admin = _make_user(email="active-update@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    creation = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-active-update",
+            "display_name": "Workflow active update",
+            "description": None,
+            "graph": {
+                "nodes": [
+                    {"slug": "start", "kind": "start", "is_enabled": True},
+                    {"slug": "end", "kind": "end", "is_enabled": True},
+                ],
+                "edges": [
+                    {"source": "start", "target": "end"},
+                ],
+            },
+        },
+    )
+    assert creation.status_code == 201
+    created = creation.json()
+    workflow_id = created["workflow_id"]
+    active_version_id = created["id"]
+
+    update = client.put(
+        f"/api/workflows/{workflow_id}/versions/{active_version_id}",
+        headers=_auth_headers(token),
+        json={
+            "graph": {
+                "nodes": [
+                    {"slug": "start", "kind": "start", "is_enabled": True},
+                    {"slug": "agent", "kind": "agent", "agent_key": "triage", "is_enabled": True},
+                    {"slug": "end", "kind": "end", "is_enabled": True},
+                ],
+                "edges": [
+                    {"source": "start", "target": "agent"},
+                    {"source": "agent", "target": "end"},
+                ],
+            }
+        },
+    )
+
+    assert update.status_code == 400
+    assert "version active" in update.json()["detail"].lower()
+
+
 def test_create_two_workflows_with_same_initial_name() -> None:
     admin = _make_user(email="librarian@example.com", is_admin=True)
     token = create_access_token(admin)
