@@ -29,7 +29,7 @@ const RequireGuest = ({ children }: { children: ReactElement }) => {
   const { user } = useAuth();
 
   if (user) {
-    return <Navigate to={user.is_admin ? "/admin" : "/"} replace />;
+    return <Navigate to="/" replace />;
   }
 
   return children;
@@ -51,7 +51,11 @@ export const App = () => (
   <Routes>
     <Route
       path="/"
-      element={<HomePage />}
+      element={
+        <RequireUser>
+          <HomePage />
+        </RequireUser>
+      }
     />
     <Route
       path="/login"
