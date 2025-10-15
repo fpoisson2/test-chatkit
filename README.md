@@ -22,6 +22,8 @@ This repository mirrors the walkthrough in `chatkit.md`, providing both the lega
 - `npm run frontend:build` — construit le bundle de production
 - `npm run frontend:preview` — aperçu local du bundle
 
+Le backend référence désormais la copie locale du package `openai-chatkit` située dans `chatkit-python/`, ce qui garantit que `npm run backend:sync` synchronise la version embarquée avec le reste du dépôt.
+
 Les scripts utilisent `uv` et `npm` en ciblant les sous-dossiers, évitant ainsi les `cd`. Si `uv` n'est pas installé, les commandes tombent automatiquement sur l'équivalent `python3 -m pip` / `python3 -m uvicorn`.
 
 ### Activer le mode voix

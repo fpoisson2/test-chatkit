@@ -7,7 +7,7 @@ dependencies = [
     "agents",
     "fastapi",
     "openai",
-    "openai-chatkit",
+    "openai-chatkit @ file:../chatkit-python",
     "uvicorn[standard]",
     "python-dotenv",
     "httpx",
