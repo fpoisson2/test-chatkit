@@ -613,6 +613,8 @@ class _ChatAttachment(SimpleNamespace):
     pass
 
 
+backend_app_models_stub.Workflow = type("Workflow", (), {})
+backend_app_models_stub.WorkflowDefinition = type("WorkflowDefinition", (), {})
 backend_app_models_stub.WorkflowStep = _WorkflowStep
 backend_app_models_stub.WorkflowTransition = _WorkflowTransition
 backend_app_models_stub.ChatThread = _ChatThread
@@ -676,6 +678,7 @@ sys.modules["backend.app.chatkit"] = chatkit_module
 chatkit_spec.loader.exec_module(chatkit_module)  # type: ignore[union-attr]
 
 from backend.app.chatkit import WorkflowInput, run_workflow
+from backend.app.workflows.service import WorkflowService
 
 
 class _DummyRunnerResult:
@@ -695,6 +698,42 @@ class _DummyWorkflowService:
 
     def get_current(self) -> SimpleNamespace:
         return self._definition
+
+
+def test_normalize_graph_accepts_json_vector_store_node() -> None:
+    service = WorkflowService(session_factory=lambda: None)
+    payload = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {
+                "slug": "agent-triage",
+                "kind": "agent",
+                "agent_key": "triage",
+                "is_enabled": True,
+            },
+            {
+                "slug": "json-store",
+                "kind": "json_vector_store",
+                "is_enabled": True,
+                "parameters": {
+                    "vector_store_slug": "dossiers-clients",
+                    "doc_id_expression": "input.output_parsed.id",
+                    "document_expression": "input.output_parsed",
+                },
+            },
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [
+            {"source": "start", "target": "agent-triage"},
+            {"source": "agent-triage", "target": "json-store"},
+            {"source": "json-store", "target": "end"},
+        ],
+    }
+
+    nodes, edges = service._normalize_graph(payload)
+
+    assert any(node.kind == "json_vector_store" for node in nodes)
+    assert any(edge.target_slug == "json-store" for edge in edges)
 
 
 def test_run_workflow_ingests_agent_json(monkeypatch: pytest.MonkeyPatch) -> None:
