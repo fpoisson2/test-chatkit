@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, AsyncIterator, Awaitable, Callable, Coroutine, Sequence, Literal
 
@@ -1481,6 +1481,96 @@ class WorkflowStepStreamUpdate:
 class _ResponseWidgetConfig:
     slug: str
     variables: dict[str, str]
+    output_model: type[BaseModel] | None = None
+
+
+def _sanitize_widget_field_name(candidate: str, *, fallback: str = "value") -> str:
+    """Transforme un identifiant de variable en nom de champ valide."""
+
+    normalized = re.sub(r"[^0-9a-zA-Z_]+", "_", candidate).strip("_")
+    if not normalized:
+        normalized = fallback
+    if normalized[0].isdigit():
+        normalized = f"_{normalized}"
+    return normalized
+
+
+def _build_widget_output_model(
+    slug: str, variable_ids: Sequence[str]
+) -> type[BaseModel] | None:
+    """Construit un modèle Pydantic correspondant aux variables attendues."""
+
+    unique_variables = [var for var in dict.fromkeys(variable_ids) if var]
+    if not unique_variables:
+        return None
+
+    field_definitions: dict[str, tuple[Any, Any]] = {}
+    used_names: set[str] = set()
+    for index, variable_id in enumerate(unique_variables, start=1):
+        field_name = _sanitize_widget_field_name(variable_id, fallback=f"field_{index}")
+        if field_name in used_names:
+            suffix = 1
+            base_name = field_name
+            while f"{base_name}_{suffix}" in used_names:
+                suffix += 1
+            field_name = f"{base_name}_{suffix}"
+        used_names.add(field_name)
+        try:
+            field = Field(default=None, alias=variable_id, serialization_alias=variable_id)
+        except TypeError:
+            # Compatibilité avec Pydantic v1 qui n'accepte pas serialization_alias.
+            field = Field(default=None, alias=variable_id)
+            if hasattr(field, "serialization_alias"):
+                try:
+                    setattr(field, "serialization_alias", variable_id)
+                except Exception:  # pragma: no cover - dépend des versions de Pydantic
+                    pass
+        annotation = str | list[str] | None
+        field_definitions[field_name] = (annotation, field)
+
+    model_name_parts = [part.capitalize() for part in re.split(r"[^0-9a-zA-Z]+", slug) if part]
+    model_name = "".join(model_name_parts) or "Widget"
+    model_name = f"{model_name}Response"
+
+    try:
+        widget_model = create_model(
+            model_name,
+            __base__=BaseModel,
+            __module__=__name__,
+            **field_definitions,
+        )
+    except Exception as exc:  # pragma: no cover - dépend des versions de Pydantic
+        logger.warning(
+            "Impossible de créer le modèle structuré pour le widget %s: %s", slug, exc
+        )
+        return None
+
+    if hasattr(widget_model, "model_config"):
+        widget_model.model_config["populate_by_name"] = True
+    else:  # pragma: no cover - compatibilité Pydantic v1
+        config = getattr(widget_model, "Config", None)
+        if config is None:
+            class Config:
+                allow_population_by_field_name = True
+                allow_population_by_alias = True
+
+            widget_model.Config = Config
+        else:
+            setattr(config, "allow_population_by_field_name", True)
+            setattr(config, "allow_population_by_alias", True)
+
+    return widget_model
+
+
+def _ensure_widget_output_model(
+    config: _ResponseWidgetConfig,
+) -> _ResponseWidgetConfig:
+    if config.output_model is not None:
+        return config
+    model = _build_widget_output_model(config.slug, config.variables.keys())
+    if model is None:
+        return config
+    return replace(config, output_model=model)
 
 
 class WorkflowExecutionError(RuntimeError):
@@ -1619,10 +1709,24 @@ async def run_workflow(
     }
     total_runtime_steps = len(agent_steps_ordered)
 
+    widget_configs_by_step: dict[str, _ResponseWidgetConfig] = {}
+
     agent_instances: dict[str, Agent] = {}
     for step in agent_steps_ordered:
+        widget_config = _parse_response_widget_config(step.parameters)
+        if widget_config is not None:
+            widget_config = _ensure_widget_output_model(widget_config)
+            widget_configs_by_step[step.slug] = widget_config
+
         agent_key = (step.agent_key or "").strip()
         builder = _AGENT_BUILDERS.get(agent_key)
+        overrides_raw = step.parameters or {}
+        overrides = dict(overrides_raw)
+
+        if widget_config is not None and widget_config.output_model is not None:
+            overrides.pop("response_format", None)
+            overrides["output_type"] = widget_config.output_model
+
         if builder is None:
             if agent_key:
                 raise WorkflowExecutionError(
@@ -1631,9 +1735,9 @@ async def run_workflow(
                     RuntimeError(f"Agent inconnu : {agent_key}"),
                     [],
                 )
-            agent_instances[step.slug] = _build_custom_agent(step.parameters or {})
+            agent_instances[step.slug] = _build_custom_agent(overrides)
         else:
-            agent_instances[step.slug] = builder(step.parameters or {})
+            agent_instances[step.slug] = builder(overrides)
 
     if all((step.agent_key == "r_dacteur") for step in agent_steps_ordered):
         state["should_finalize"] = True
@@ -1669,7 +1773,16 @@ async def run_workflow(
 
     def _structured_output_as_json(output: Any) -> tuple[Any, str]:
         if hasattr(output, "model_dump"):
-            parsed = output.model_dump()
+            try:
+                parsed = output.model_dump(by_alias=True)
+            except TypeError:
+                parsed = output.model_dump()
+            return parsed, json.dumps(parsed, ensure_ascii=False)
+        if hasattr(output, "dict"):
+            try:
+                parsed = output.dict(by_alias=True)
+            except TypeError:
+                parsed = output.dict()
             return parsed, json.dumps(parsed, ensure_ascii=False)
         if isinstance(output, (dict, list)):
             return output, json.dumps(output, ensure_ascii=False)
@@ -1815,7 +1928,10 @@ async def run_workflow(
         if value is None:
             return ""
         if isinstance(value, BaseModel):
-            value = value.model_dump()
+            try:
+                value = value.model_dump(by_alias=True)
+            except TypeError:
+                value = value.model_dump()
         if isinstance(value, (dict, list)):
             try:
                 return json.dumps(value, ensure_ascii=False)
@@ -2157,7 +2273,7 @@ async def run_workflow(
         step_identifier = f"{agent_key}_{position}"
         agent = agent_instances[current_slug]
         title = _node_title(current_node)
-        widget_config = _parse_response_widget_config(current_node.parameters)
+        widget_config = widget_configs_by_step.get(current_node.slug)
 
         if (
             agent_key in {"get_data_from_web", "triage_2", "get_data_from_user"}
@@ -2260,10 +2376,13 @@ async def run_workflow(
                 "output_text": text,
             }
         else:
+            parsed, text = _structured_output_as_json(result_stream.final_output)
             await record_step(step_identifier, title, result_stream.final_output)
             last_step_context = {
                 "agent_key": agent_key,
                 "output": result_stream.final_output,
+                "output_parsed": parsed,
+                "output_text": text,
             }
 
         if widget_config is not None:
