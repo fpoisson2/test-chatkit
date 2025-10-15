@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { MemoryRouter } from "react-router-dom";
+
 import WorkflowBuilderPage from "../WorkflowBuilderPage";
 
 const logoutMock = vi.hoisted(() => vi.fn());
@@ -122,6 +124,13 @@ describe("WorkflowBuilderPage", () => {
     updated_at: "2024-01-02T00:00:00Z",
   } as const;
 
+  const renderWorkflowBuilder = () =>
+    render(
+      <MemoryRouter>
+        <WorkflowBuilderPage />
+      </MemoryRouter>,
+    );
+
   const setupWorkflowApi = (
     overrides: {
       workflowDetail?: typeof defaultResponse;
@@ -198,7 +207,7 @@ describe("WorkflowBuilderPage", () => {
   test("permet de modifier un nœud et d'enregistrer le graphe", async () => {
     const fetchMock = setupWorkflowApi();
 
-    const { container } = render(<WorkflowBuilderPage />);
+    const { container } = renderWorkflowBuilder();
 
     await waitFor(() => {
       expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
@@ -247,7 +256,7 @@ describe("WorkflowBuilderPage", () => {
     const rawParameters = parametersTextarea.value;
     expect(rawParameters).toContain("Analyse les entrées et produis un résumé clair.");
 
-    const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
+    const saveButton = screen.getByRole("button", { name: /sauvegarder/i });
     expect(saveButton).not.toBeDisabled();
     fireEvent.click(saveButton);
 
@@ -293,7 +302,7 @@ describe("WorkflowBuilderPage", () => {
   test("permet d'activer le function tool météo Python", async () => {
     const fetchMock = setupWorkflowApi();
 
-    const { container } = render(<WorkflowBuilderPage />);
+    const { container } = renderWorkflowBuilder();
 
     await waitFor(() => {
       expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
@@ -307,7 +316,7 @@ describe("WorkflowBuilderPage", () => {
     expect(weatherCheckbox).not.toBeChecked();
     fireEvent.click(weatherCheckbox);
 
-    const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
+    const saveButton = screen.getByRole("button", { name: /sauvegarder/i });
     expect(saveButton).not.toBeDisabled();
     fireEvent.click(saveButton);
 
@@ -453,7 +462,7 @@ describe("WorkflowBuilderPage", () => {
     ]);
     const fetchMock = setupWorkflowApi();
 
-    const { container } = render(<WorkflowBuilderPage />);
+    const { container } = renderWorkflowBuilder();
 
     await waitFor(() => {
       expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
@@ -481,7 +490,7 @@ describe("WorkflowBuilderPage", () => {
       expect(screen.queryByRole("region", { name: /variables du widget/i })).not.toBeInTheDocument();
     });
 
-    const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
+    const saveButton = screen.getByRole("button", { name: /sauvegarder/i });
     fireEvent.click(saveButton);
 
     await waitFor(() => {
@@ -499,7 +508,7 @@ describe("WorkflowBuilderPage", () => {
   test("pré-remplit un agent hérité avec les valeurs par défaut", async () => {
     setupWorkflowApi({ workflowDetail: JSON.parse(JSON.stringify(defaultResponse)) });
 
-    const { container } = render(<WorkflowBuilderPage />);
+    const { container } = renderWorkflowBuilder();
 
     await waitFor(() => {
       expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
@@ -568,7 +577,7 @@ describe("WorkflowBuilderPage", () => {
 
     setupWorkflowApi({ workflowDetail: responseWithWeb });
 
-    const { container } = render(<WorkflowBuilderPage />);
+    const { container } = renderWorkflowBuilder();
 
     await waitFor(() => {
       expect(container.querySelector('[data-id="collecte-web"]')).not.toBeNull();
@@ -617,7 +626,7 @@ describe("WorkflowBuilderPage", () => {
 
     const fetchMock = setupWorkflowApi({ workflowDetail: responseWithState });
 
-    const { container } = render(<WorkflowBuilderPage />);
+    const { container } = renderWorkflowBuilder();
 
     await waitFor(() => {
       expect(container.querySelector('[data-id="maj-etat"]')).not.toBeNull();
@@ -655,7 +664,7 @@ describe("WorkflowBuilderPage", () => {
       target: { value: "global.validation" },
     });
 
-    const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
+    const saveButton = screen.getByRole("button", { name: /sauvegarder/i });
     fireEvent.click(saveButton);
 
     await waitFor(() => {
@@ -682,7 +691,7 @@ describe("WorkflowBuilderPage", () => {
   test("permet de configurer le schéma JSON et les outils", async () => {
     const fetchMock = setupWorkflowApi({ workflowDetail: JSON.parse(JSON.stringify(defaultResponse)) });
 
-    const { container } = render(<WorkflowBuilderPage />);
+    const { container } = renderWorkflowBuilder();
 
     await waitFor(() => {
       expect(container.querySelector('[data-id="writer"]')).not.toBeNull();
@@ -720,7 +729,7 @@ describe("WorkflowBuilderPage", () => {
     const countryInput = await screen.findByLabelText(/pays/i);
     fireEvent.change(countryInput, { target: { value: "CA" } });
 
-    const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
+    const saveButton = screen.getByRole("button", { name: /sauvegarder/i });
     fireEvent.click(saveButton);
 
     await waitFor(() => {

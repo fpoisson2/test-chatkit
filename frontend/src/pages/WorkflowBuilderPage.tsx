@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ChangeEvent,
@@ -24,6 +25,7 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 
 import { useAuth } from "../auth";
+import { useNavigate } from "react-router-dom";
 import {
   makeApiEndpointCandidates,
   modelRegistryApi,
@@ -253,7 +255,8 @@ const WEB_SEARCH_LOCATION_LABELS = {
 } as const;
 
 const WorkflowBuilderPage = () => {
-  const { token } = useAuth();
+  const { token, logout } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -276,8 +279,98 @@ const WorkflowBuilderPage = () => {
   const [widgets, setWidgets] = useState<WidgetTemplate[]>([]);
   const [widgetsLoading, setWidgetsLoading] = useState(false);
   const [widgetsError, setWidgetsError] = useState<string | null>(null);
+  const [isNavigationOpen, setNavigationOpen] = useState(false);
+  const [isActionMenuOpen, setActionMenuOpen] = useState(false);
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
 
   const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+  const closeNavigation = useCallback(() => setNavigationOpen(false), []);
+  const toggleNavigation = useCallback(() => setNavigationOpen((prev) => !prev), []);
+
+  useEffect(() => {
+    if (!isActionMenuOpen) {
+      return;
+    }
+
+    const handleClick = (event: MouseEvent) => {
+      if (!actionMenuRef.current) {
+        return;
+      }
+      if (!actionMenuRef.current.contains(event.target as Node)) {
+        setActionMenuOpen(false);
+      }
+    };
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActionMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handleClick);
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("mousedown", handleClick);
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [isActionMenuOpen]);
+
+  const navigationItems = useMemo(
+    () => [
+      { key: "home", label: "Chat", action: () => { navigate("/"); closeNavigation(); } },
+      { key: "admin", label: "Administration", action: () => { navigate("/admin"); closeNavigation(); } },
+      {
+        key: "workflows",
+        label: "Workflows",
+        action: () => {
+          navigate("/admin/workflows");
+          closeNavigation();
+        },
+      },
+      {
+        key: "models",
+        label: "Modèles",
+        action: () => {
+          navigate("/admin/models");
+          closeNavigation();
+        },
+      },
+      {
+        key: "vector-stores",
+        label: "Vector stores",
+        action: () => {
+          navigate("/admin/vector-stores");
+          closeNavigation();
+        },
+      },
+      {
+        key: "widgets",
+        label: "Widgets",
+        action: () => {
+          navigate("/admin/widgets");
+          closeNavigation();
+        },
+      },
+      {
+        key: "voice",
+        label: "Voix",
+        action: () => {
+          navigate("/voice");
+          closeNavigation();
+        },
+      },
+      {
+        key: "logout",
+        label: "Déconnexion",
+        action: () => {
+          closeNavigation();
+          logout();
+        },
+      },
+    ],
+    [closeNavigation, logout, navigate],
+  );
+
   const selectedWorkflow = useMemo(
     () => workflows.find((workflow) => workflow.id === selectedWorkflowId) ?? null,
     [selectedWorkflowId, workflows],
@@ -700,6 +793,11 @@ const WorkflowBuilderPage = () => {
   const handleEdgeClick = useCallback((_: unknown, edge: FlowEdge) => {
     setSelectedEdgeId(edge.id);
     setSelectedNodeId(null);
+  }, []);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
   }, []);
 
   const updateNodeData = useCallback(
@@ -1395,6 +1493,7 @@ const WorkflowBuilderPage = () => {
     if (!confirmed) {
       return;
     }
+    setActionMenuOpen(false);
     const endpoint = `/api/workflows/${selectedWorkflowId}`;
     const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
     let lastError: Error | null = null;
@@ -1468,6 +1567,7 @@ const WorkflowBuilderPage = () => {
       return;
     }
 
+    setActionMenuOpen(false);
     const endpoint = "/api/workflows/chatkit";
     const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
     let lastError: Error | null = null;
@@ -1571,6 +1671,32 @@ const WorkflowBuilderPage = () => {
     );
   }, [authHeader, loadWorkflows, selectedVersionId, selectedWorkflowId]);
 
+  const buildGraphPayload = useCallback(() => ({
+    nodes: nodes.map((node, index) => ({
+      slug: node.data.slug,
+      kind: node.data.kind,
+      display_name: node.data.displayName.trim() || null,
+      agent_key: node.data.kind === "agent" ? node.data.agentKey : null,
+      is_enabled: node.data.isEnabled,
+      parameters: prepareNodeParametersForSave(node.data.kind, node.data.parameters),
+      metadata: {
+        ...node.data.metadata,
+        position: { x: node.position.x, y: node.position.y },
+        order: index + 1,
+      },
+    })),
+    edges: edges.map((edge, index) => ({
+      source: edge.source,
+      target: edge.target,
+      condition: edge.data?.condition ? edge.data.condition : null,
+      metadata: {
+        ...edge.data?.metadata,
+        label: edge.label ?? "",
+        order: index + 1,
+      },
+    })),
+  }), [edges, nodes]);
+
   const handleSave = useCallback(async () => {
     setSaveMessage(null);
     if (!selectedWorkflowId) {
@@ -1587,31 +1713,7 @@ const WorkflowBuilderPage = () => {
     }
 
     try {
-      const graphPayload = {
-        nodes: nodes.map((node, index) => ({
-          slug: node.data.slug,
-          kind: node.data.kind,
-          display_name: node.data.displayName.trim() || null,
-          agent_key: node.data.kind === "agent" ? node.data.agentKey : null,
-          is_enabled: node.data.isEnabled,
-          parameters: prepareNodeParametersForSave(node.data.kind, node.data.parameters),
-          metadata: {
-            ...node.data.metadata,
-            position: { x: node.position.x, y: node.position.y },
-            order: index + 1,
-          },
-        })),
-        edges: edges.map((edge, index) => ({
-          source: edge.source,
-          target: edge.target,
-          condition: edge.data?.condition ? edge.data.condition : null,
-          metadata: {
-            ...edge.data?.metadata,
-            label: edge.label ?? "",
-            order: index + 1,
-          },
-        })),
-      };
+      const graphPayload = buildGraphPayload();
 
       const endpoint = `/api/workflows/${selectedWorkflowId}/versions`;
       const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
@@ -1689,13 +1791,77 @@ const WorkflowBuilderPage = () => {
     }
   }, [
     authHeader,
-    edges,
+    buildGraphPayload,
     loadVersions,
-    nodes,
     publishOnSave,
     selectedWorkflowId,
     workflows,
   ]);
+
+  const handleDuplicateWorkflow = useCallback(async () => {
+    if (!selectedWorkflow) {
+      return;
+    }
+
+    const baseName = selectedWorkflow.display_name?.trim() || "Workflow sans nom";
+    const proposed = window.prompt("Nom du duplicata ?", `${baseName} (copie)`);
+    if (!proposed) {
+      return;
+    }
+
+    const displayName = proposed.trim();
+    if (!displayName) {
+      return;
+    }
+
+    const payload = {
+      slug: slugifyWorkflowName(displayName),
+      display_name: displayName,
+      description: selectedWorkflow.description,
+      graph: buildGraphPayload(),
+    };
+
+    const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows");
+    let lastError: Error | null = null;
+    setSaveState("saving");
+    setSaveMessage("Duplication en cours…");
+    for (const url of candidates) {
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Échec de la duplication (${response.status})`);
+        }
+
+        const data: WorkflowVersionResponse = await response.json();
+        setActionMenuOpen(false);
+        await loadWorkflows({ selectWorkflowId: data.workflow_id, selectVersionId: data.id });
+        setSaveState("saved");
+        setSaveMessage(`Workflow dupliqué sous "${displayName}".`);
+        setTimeout(() => setSaveState("idle"), 1500);
+        return;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error("Impossible de dupliquer le workflow.");
+      }
+    }
+
+    setSaveState("error");
+    setSaveMessage(lastError?.message ?? "Impossible de dupliquer le workflow.");
+  }, [authHeader, buildGraphPayload, loadWorkflows, selectedWorkflow]);
+
+  const handleRenameWorkflow = useCallback(() => {
+    setActionMenuOpen(false);
+    setSaveState("error");
+    setSaveMessage("Le renommage de workflow sera bientôt disponible.");
+    setTimeout(() => setSaveState("idle"), 1500);
+  }, []);
 
 const disableSave = useMemo(() => {
   if (!selectedWorkflowId) return true;
@@ -1745,298 +1911,743 @@ const disableSave = useMemo(() => {
   widgetsError,
 ]);
 
+  const blockLibraryItems = useMemo(
+    () => [
+      {
+        key: "agent",
+        label: "Agent",
+        shortLabel: "A",
+        color: NODE_COLORS.agent,
+        onClick: handleAddAgentNode,
+      },
+      {
+        key: "condition",
+        label: "Condition",
+        shortLabel: "C",
+        color: NODE_COLORS.condition,
+        onClick: handleAddConditionNode,
+      },
+      {
+        key: "state",
+        label: "Bloc état",
+        shortLabel: "É",
+        color: NODE_COLORS.state,
+        onClick: handleAddStateNode,
+      },
+    ],
+    [handleAddAgentNode, handleAddConditionNode, handleAddStateNode],
+  );
+
+  const showPropertiesPanel = Boolean(selectedNode || selectedEdge);
+  const selectedElementLabel = selectedNode
+    ? selectedNode.data.displayName.trim() || labelForKind(selectedNode.data.kind)
+    : selectedEdge
+      ? `${selectedEdge.source} → ${selectedEdge.target}`
+      : "";
+  const toastStyles = useMemo(() => {
+    switch (saveState) {
+      case "error":
+        return { background: "#fee2e2", color: "#b91c1c", border: "1px solid #fecaca" } as const;
+      case "saving":
+        return { background: "#e0f2fe", color: "#0369a1", border: "1px solid #bae6fd" } as const;
+      case "saved":
+        return { background: "#dcfce7", color: "#166534", border: "1px solid #bbf7d0" } as const;
+      default:
+        return { background: "#f1f5f9", color: "#0f172a", border: "1px solid #cbd5f5" } as const;
+    }
+  }, [saveState]);
+
 
   return (
     <ReactFlowProvider>
-      <main
+      <div
         style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0, 1fr) 340px",
-          gap: "1.25rem",
-          height: "calc(100vh - 4rem)",
-          padding: "1.5rem",
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          height: "100vh",
+          background: "#f1f5f9",
         }}
       >
-        <section
-          style={{
-            position: "relative",
-            border: "1px solid rgba(15, 23, 42, 0.08)",
-            borderRadius: "1rem",
-            overflow: "hidden",
-            background: "#fff",
-          }}
-          aria-label="Éditeur visuel du workflow"
-        >
-          {loading ? (
-            <div style={loadingStyle}>Chargement du workflow…</div>
-          ) : loadError ? (
-            <div style={loadingStyle} role="alert">
-              {loadError}
-            </div>
-          ) : (
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onNodeClick={handleNodeClick}
-              onEdgeClick={handleEdgeClick}
-              onConnect={onConnect}
-              defaultEdgeOptions={defaultEdgeOptions}
-              connectionLineStyle={connectionLineStyle}
-              style={{ background: "#f8fafc" }}
-              fitView
-              fitViewOptions={{ padding: 0.2 }}
-            >
-              <Background gap={18} size={1} />
-              <MiniMap
-                nodeStrokeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
-                nodeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
-              />
-              <Controls />
-            </ReactFlow>
-          )}
-        </section>
-
-        <aside
+        <header
           style={{
             display: "flex",
-            flexDirection: "column",
-            gap: "1rem",
-            padding: "1rem",
-            borderRadius: "1rem",
-            border: "1px solid rgba(15, 23, 42, 0.08)",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "1.5rem",
+            padding: "1rem 1.5rem",
             background: "#fff",
-            overflowY: "auto",
+            borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
+            boxShadow: "0 4px 12px rgba(15, 23, 42, 0.05)",
+            zIndex: 10,
           }}
         >
-          <header>
-            <h1 style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>Bibliothèque de workflows</h1>
-            <p style={{ color: "#475569" }}>
-              Ajoutez des agents, connectez-les entre eux et ajustez leurs paramètres pour piloter le
-              workflow ChatKit.
-            </p>
-          </header>
-
-          <section style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-            <label htmlFor="workflow-select" style={{ fontWeight: 600, color: "#0f172a" }}>
-              Workflow
-            </label>
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <button
+              type="button"
+              onClick={toggleNavigation}
+              aria-expanded={isNavigationOpen}
+              aria-controls="workflow-navigation-panel"
+              aria-label={
+                isNavigationOpen ? "Fermer la navigation générale" : "Ouvrir la navigation générale"
+              }
+              style={{
+                width: "2.75rem",
+                height: "2.75rem",
+                borderRadius: "0.75rem",
+                border: "1px solid rgba(15, 23, 42, 0.18)",
+                background: "#f8fafc",
+                display: "grid",
+                placeItems: "center",
+                cursor: "pointer",
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path d="M3 5h14M3 10h14M3 15h14" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </button>
+            <div>
+              <h1 style={{ margin: 0, fontSize: "1.5rem", color: "#0f172a" }}>Workflow Builder</h1>
+              <p style={{ margin: "0.15rem 0 0", color: "#475569" }}>
+                Composez visuellement les étapes de votre automation.
+              </p>
+            </div>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-end",
+              gap: "1rem",
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+            }}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", minWidth: "240px" }}>
+              <span style={controlLabelStyle}>Workflow</span>
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                <select
+                  id="workflow-select"
+                  value={selectedWorkflowId ? String(selectedWorkflowId) : ""}
+                  onChange={handleWorkflowChange}
+                  disabled={loading || workflows.length === 0}
+                  style={{
+                    flexGrow: 1,
+                    minWidth: "180px",
+                    padding: "0.5rem 0.75rem",
+                    borderRadius: "0.75rem",
+                    border: "1px solid rgba(15, 23, 42, 0.15)",
+                    background: "#fff",
+                    color: "#0f172a",
+                  }}
+                >
+                  {workflows.length === 0 ? (
+                    <option value="">Aucun workflow disponible</option>
+                  ) : (
+                    <>
+                      <option value="" disabled>
+                        Sélectionnez un workflow
+                      </option>
+                      {workflows.map((workflow) => (
+                        <option key={workflow.id} value={workflow.id}>
+                          {workflow.display_name}
+                          {workflow.active_version_number
+                            ? ` · prod v${workflow.active_version_number}`
+                            : ""}
+                          {workflow.is_chatkit_default ? " · ChatKit" : ""}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleCreateWorkflow}
+                  disabled={loading}
+                  style={{
+                    padding: "0.5rem 0.9rem",
+                    borderRadius: "0.75rem",
+                    border: "1px solid rgba(15, 23, 42, 0.15)",
+                    background: "#fff",
+                    color: "#0f172a",
+                    fontWeight: 600,
+                    cursor: loading ? "not-allowed" : "pointer",
+                    opacity: loading ? 0.5 : 1,
+                  }}
+                >
+                  Nouveau
+                </button>
+              </div>
+              {selectedWorkflow?.description ? (
+                <small style={{ color: "#475569" }}>{selectedWorkflow.description}</small>
+              ) : null}
+              {selectedWorkflow?.is_chatkit_default ? (
+                <span
+                  style={{
+                    alignSelf: "flex-start",
+                    padding: "0.25rem 0.6rem",
+                    borderRadius: "9999px",
+                    background: "rgba(16, 185, 129, 0.18)",
+                    color: "#047857",
+                    fontWeight: 600,
+                    fontSize: "0.75rem",
+                  }}
+                >
+                  Utilisé par ChatKit
+                </span>
+              ) : selectedWorkflow && !selectedWorkflow.active_version_id ? (
+                <span style={{ color: "#b45309", fontSize: "0.75rem" }}>
+                  Publiez une version de production pour l'utiliser avec ChatKit.
+                </span>
+              ) : null}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", minWidth: "220px" }}>
+              <span style={controlLabelStyle}>Révision</span>
               <select
-                id="workflow-select"
-                value={selectedWorkflowId ? String(selectedWorkflowId) : ""}
-                onChange={handleWorkflowChange}
-                disabled={loading}
-                style={{ flexGrow: 1, minWidth: "12rem" }}
+                id="version-select"
+                value={selectedVersionId ? String(selectedVersionId) : ""}
+                onChange={handleVersionChange}
+                disabled={loading || versions.length === 0}
+                style={{
+                  padding: "0.5rem 0.75rem",
+                  borderRadius: "0.75rem",
+                  border: "1px solid rgba(15, 23, 42, 0.15)",
+                  background: "#fff",
+                  color: "#0f172a",
+                }}
               >
-                {workflows.length === 0 ? (
-                  <option value="">Aucun workflow disponible</option>
+                {versions.length === 0 ? (
+                  <option value="">Aucune version disponible</option>
                 ) : (
-                  workflows.map((workflow) => (
-                    <option key={workflow.id} value={workflow.id}>
-                      {workflow.display_name}
-                      {workflow.active_version_number
-                        ? ` (prod : v${workflow.active_version_number})`
-                        : ""}
-                      {workflow.is_chatkit_default ? " – utilisé par ChatKit" : ""}
+                  versions.map((version) => (
+                    <option key={version.id} value={version.id}>
+                      {`v${version.version}${version.name ? ` · ${version.name}` : ""}${
+                        version.is_active ? " · production" : ""
+                      }`}
                     </option>
                   ))
                 )}
               </select>
-              <button type="button" className="btn" onClick={handleCreateWorkflow} disabled={loading}>
-                Nouveau workflow
+              {selectedVersionSummary ? (
+                <small style={{ color: "#475569" }}>
+                  Dernière mise à jour : {formatDateTime(selectedVersionSummary.updated_at)}
+                </small>
+              ) : null}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+              <span style={controlLabelStyle}>Publication</span>
+              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#0f172a" }}>
+                <input
+                  type="checkbox"
+                  checked={publishOnSave}
+                  onChange={handlePublishToggle}
+                  disabled={loading}
+                />
+                <span>Publier après sauvegarde</span>
+              </label>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={disableSave || saveState === "saving" || loading}
+                style={{
+                  padding: "0.55rem 1.1rem",
+                  borderRadius: "0.75rem",
+                  border: "1px solid #1d4ed8",
+                  background: "#2563eb",
+                  color: "#fff",
+                  fontWeight: 600,
+                  cursor: disableSave || saveState === "saving" || loading ? "not-allowed" : "pointer",
+                  opacity: disableSave || saveState === "saving" || loading ? 0.65 : 1,
+                }}
+              >
+                {saveState === "saving" ? "Sauvegarde…" : "Sauvegarder"}
               </button>
               <button
                 type="button"
-                className="btn"
-                onClick={handleSelectChatkitWorkflow}
+                onClick={handlePromoteVersion}
                 disabled={
-                  loading ||
-                  !selectedWorkflowId ||
-                  selectedWorkflow?.is_chatkit_default ||
-                  !selectedWorkflow?.active_version_id
+                  loading || !selectedWorkflowId || !selectedVersionId || selectedVersionSummary?.is_active
                 }
+                style={{
+                  padding: "0.55rem 1.1rem",
+                  borderRadius: "0.75rem",
+                  border: "1px solid rgba(15, 23, 42, 0.15)",
+                  background: "#fff",
+                  color: "#0f172a",
+                  fontWeight: 600,
+                  cursor:
+                    loading || !selectedWorkflowId || !selectedVersionId || selectedVersionSummary?.is_active
+                      ? "not-allowed"
+                      : "pointer",
+                  opacity:
+                    loading || !selectedWorkflowId || !selectedVersionId || selectedVersionSummary?.is_active
+                      ? 0.5
+                      : 1,
+                }}
               >
-                Utiliser pour ChatKit
+                Déployer
               </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={handleDeleteWorkflow}
-                disabled={loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default}
-                style={{ backgroundColor: "#fee2e2", color: "#b91c1c", borderColor: "#fecaca" }}
-              >
-                Supprimer le workflow
-              </button>
-            </div>
-            {selectedWorkflow?.description && (
-              <p style={{ color: "#475569", margin: 0 }}>{selectedWorkflow.description}</p>
-            )}
-            {selectedWorkflow?.is_chatkit_default ? (
-              <p style={{ color: "#047857", margin: "0.25rem 0 0" }}>
-                Ce workflow alimente actuellement ChatKit.
-              </p>
-            ) : selectedWorkflow && !selectedWorkflow.active_version_id ? (
-              <p style={{ color: "#b45309", margin: "0.25rem 0 0" }}>
-                Publiez une version de production pour pouvoir l'utiliser avec ChatKit.
-              </p>
-            ) : null}
-          </section>
-
-          {workflows.length === 0 ? (
-            <div style={{ color: "#475569" }}>
-              <p style={{ margin: "0.5rem 0" }}>
-                Aucun workflow n'est encore disponible. Créez-en un pour commencer.
-              </p>
-            </div>
-          ) : (
-            <>
-              <section style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                <label htmlFor="version-select" style={{ fontWeight: 600, color: "#0f172a" }}>
-                  Version
-                </label>
-                <select
-                  id="version-select"
-                  value={selectedVersionId ? String(selectedVersionId) : ""}
-                  onChange={handleVersionChange}
-                  disabled={loading || versions.length === 0}
-                >
-                  {versions.map((version) => (
-                    <option key={version.id} value={version.id}>
-                      {`v${version.version}${version.name ? ` – ${version.name}` : ""}${
-                        version.is_active ? " (production)" : ""
-                      }`}
-                    </option>
-                  ))}
-                </select>
-                {selectedVersionSummary && (
-                  <p style={{ color: "#475569", margin: 0 }}>
-                    Dernière mise à jour : {formatDateTime(selectedVersionSummary.updated_at)}
-                  </p>
-                )}
-                {selectedVersionSummary && !selectedVersionSummary.is_active && (
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={handlePromoteVersion}
-                    disabled={loading}
-                  >
-                    Définir comme version de production
-                  </button>
-                )}
-              </section>
-
-              <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <div ref={actionMenuRef} style={{ position: "relative" }}>
                 <button
                   type="button"
-                  className="btn"
-                  onClick={handleAddAgentNode}
-                  disabled={loading}
+                  onClick={() => setActionMenuOpen((prev) => !prev)}
+                  aria-haspopup="true"
+                  aria-expanded={isActionMenuOpen}
+                  style={{
+                    width: "2.5rem",
+                    height: "2.5rem",
+                    borderRadius: "0.75rem",
+                    border: "1px solid rgba(15, 23, 42, 0.15)",
+                    background: "#fff",
+                    display: "grid",
+                    placeItems: "center",
+                    cursor: "pointer",
+                  }}
                 >
-                  Ajouter un agent
+                  <span style={{ fontSize: "1.5rem", lineHeight: 1, color: "#0f172a" }}>…</span>
                 </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={handleAddConditionNode}
-                  disabled={loading}
-                >
-                  Ajouter un bloc conditionnel
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={handleAddStateNode}
-                  disabled={loading}
-                >
-                  Ajouter un bloc état
-                </button>
-              </div>
-
-              {selectedNode ? (
-                <NodeInspector
-                  node={selectedNode}
-                  onToggle={handleToggleNode}
-                  onDisplayNameChange={handleDisplayNameChange}
-                  onAgentMessageChange={handleAgentMessageChange}
-                  onAgentModelChange={handleAgentModelChange}
-                  onAgentReasoningChange={handleAgentReasoningChange}
-                  onAgentReasoningVerbosityChange={handleAgentReasoningVerbosityChange}
-                  onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}
-                  onAgentTemperatureChange={handleAgentTemperatureChange}
-                  onAgentTopPChange={handleAgentTopPChange}
-                  onAgentMaxOutputTokensChange={handleAgentMaxOutputTokensChange}
-                  onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
-                  onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
-                  onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
-                  onAgentResponseWidgetSlugChange={handleAgentResponseWidgetSlugChange}
-                  onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}
-                  onAgentDisplayResponseInChatChange={handleAgentDisplayResponseInChatChange}
-                  onAgentShowSearchSourcesChange={handleAgentShowSearchSourcesChange}
-                  onAgentContinueOnErrorChange={handleAgentContinueOnErrorChange}
-                  onAgentStorePreferenceChange={handleAgentStorePreferenceChange}
-                  onAgentWebSearchChange={handleAgentWebSearchChange}
-                  onAgentFileSearchChange={handleAgentFileSearchChange}
-                  availableModels={availableModels}
-                  availableModelsLoading={availableModelsLoading}
-                  availableModelsError={availableModelsError}
-                  isReasoningModel={isReasoningModel}
-                  onAgentWeatherToolChange={handleAgentWeatherToolChange}
-                  vectorStores={vectorStores}
-                  vectorStoresLoading={vectorStoresLoading}
-                  vectorStoresError={vectorStoresError}
-                  widgets={widgets}
-                  widgetsLoading={widgetsLoading}
-                  widgetsError={widgetsError}
-                  onStateAssignmentsChange={handleStateAssignmentsChange}
-                  onParametersChange={handleParametersChange}
-                  onRemove={handleRemoveNode}
-                />
-              ) : selectedEdge ? (
-                <EdgeInspector
-                  edge={selectedEdge}
-                  onConditionChange={handleConditionChange}
-                  onLabelChange={handleEdgeLabelChange}
-                  onRemove={handleRemoveEdge}
-                />
-              ) : (
-                <EmptyInspector />
-              )}
-
-              <footer style={{ marginTop: "auto" }}>
-                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <input
-                    type="checkbox"
-                    checked={publishOnSave}
-                    onChange={handlePublishToggle}
-                    disabled={loading}
-                  />
-                  <span>Publier cette version immédiatement</span>
-                </label>
-                <button
-                  type="button"
-                  className="btn primary"
-                  onClick={handleSave}
-                  disabled={disableSave || saveState === "saving" || loading}
-                >
-                  {saveState === "saving" ? "Enregistrement…" : "Enregistrer les modifications"}
-                </button>
-                {saveMessage && (
-                  <p
+                {isActionMenuOpen ? (
+                  <div
                     style={{
-                      marginTop: "0.5rem",
-                      color: saveState === "error" ? "#b91c1c" : "#047857",
+                      position: "absolute",
+                      top: "calc(100% + 0.5rem)",
+                      right: 0,
+                      background: "#fff",
+                      borderRadius: "0.75rem",
+                      border: "1px solid rgba(15, 23, 42, 0.1)",
+                      boxShadow: "0 20px 40px rgba(15, 23, 42, 0.12)",
+                      padding: "0.5rem",
+                      minWidth: "220px",
+                      zIndex: 30,
                     }}
                   >
-                    {saveMessage}
+                    <button
+                      type="button"
+                      onClick={handleRenameWorkflow}
+                      disabled={!selectedWorkflowId}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "0.6rem 0.75rem",
+                        borderRadius: "0.6rem",
+                        border: "none",
+                        background: "transparent",
+                        color: "#0f172a",
+                        fontWeight: 500,
+                        cursor: !selectedWorkflowId ? "not-allowed" : "pointer",
+                        opacity: !selectedWorkflowId ? 0.5 : 1,
+                      }}
+                    >
+                      Renommer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSelectChatkitWorkflow}
+                      disabled={
+                        loading ||
+                        !selectedWorkflowId ||
+                        selectedWorkflow?.is_chatkit_default ||
+                        !selectedWorkflow?.active_version_id
+                      }
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "0.6rem 0.75rem",
+                        borderRadius: "0.6rem",
+                        border: "none",
+                        background: "transparent",
+                        color: "#0f172a",
+                        fontWeight: 500,
+                        cursor:
+                          loading ||
+                          !selectedWorkflowId ||
+                          selectedWorkflow?.is_chatkit_default ||
+                          !selectedWorkflow?.active_version_id
+                            ? "not-allowed"
+                            : "pointer",
+                        opacity:
+                          loading ||
+                          !selectedWorkflowId ||
+                          selectedWorkflow?.is_chatkit_default ||
+                          !selectedWorkflow?.active_version_id
+                            ? 0.5
+                            : 1,
+                      }}
+                    >
+                      Définir pour ChatKit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDuplicateWorkflow}
+                      disabled={loading || !selectedWorkflowId}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "0.6rem 0.75rem",
+                        borderRadius: "0.6rem",
+                        border: "none",
+                        background: "transparent",
+                        color: "#0f172a",
+                        fontWeight: 500,
+                        cursor: loading || !selectedWorkflowId ? "not-allowed" : "pointer",
+                        opacity: loading || !selectedWorkflowId ? 0.5 : 1,
+                      }}
+                    >
+                      Dupliquer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteWorkflow}
+                      disabled={loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "0.6rem 0.75rem",
+                        borderRadius: "0.6rem",
+                        border: "none",
+                        background: "transparent",
+                        color: "#b91c1c",
+                        fontWeight: 500,
+                        cursor:
+                          loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default
+                            ? "not-allowed"
+                            : "pointer",
+                        opacity:
+                          loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default ? 0.5 : 1,
+                      }}
+                    >
+                      Supprimer
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </header>
+        <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
+          <div style={{ position: "absolute", inset: 0, padding: "1.5rem" }}>
+            <div
+              style={{
+                height: "100%",
+                borderRadius: "1.25rem",
+                border: "1px solid rgba(15, 23, 42, 0.08)",
+                background: "#fff",
+                overflow: "hidden",
+                boxShadow: "0 20px 40px rgba(15, 23, 42, 0.06)",
+              }}
+              aria-label="Éditeur visuel du workflow"
+            >
+              {loading ? (
+                <div style={loadingStyle}>Chargement du workflow…</div>
+              ) : loadError ? (
+                <div style={loadingStyle} role="alert">
+                  {loadError}
+                </div>
+              ) : (
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onNodeClick={handleNodeClick}
+                  onEdgeClick={handleEdgeClick}
+                  onPaneClick={handleClearSelection}
+                  onConnect={onConnect}
+                  defaultEdgeOptions={defaultEdgeOptions}
+                  connectionLineStyle={connectionLineStyle}
+                  style={{ background: "#f8fafc" }}
+                  fitView
+                  fitViewOptions={{ padding: 0.2 }}
+                >
+                  <Background gap={18} size={1} />
+                  <MiniMap
+                    nodeStrokeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
+                    nodeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
+                  />
+                  <Controls />
+                </ReactFlow>
+              )}
+            </div>
+          </div>
+          <aside
+            aria-label="Bibliothèque de blocs"
+            style={{
+              position: "absolute",
+              top: "1.5rem",
+              left: "1.5rem",
+              width: "280px",
+              maxWidth: "calc(100% - 3rem)",
+              maxHeight: "calc(100% - 3rem)",
+              padding: "1.25rem",
+              borderRadius: "1rem",
+              border: "1px solid rgba(15, 23, 42, 0.1)",
+              background: "#fff",
+              boxShadow: "0 16px 32px rgba(15, 23, 42, 0.08)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.75rem",
+              zIndex: 20,
+            }}
+          >
+            <div>
+              <h2 style={{ margin: 0, fontSize: "1.25rem", color: "#0f172a" }}>Bibliothèque de blocs</h2>
+              <p style={{ margin: "0.25rem 0 0", color: "#475569" }}>
+                Ajoutez des blocs pour construire votre workflow.
+              </p>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              {blockLibraryItems.map((item) => {
+                const disabled = loading || !selectedWorkflowId;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => item.onClick()}
+                    disabled={disabled}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.75rem",
+                      padding: "0.75rem",
+                      borderRadius: "0.9rem",
+                      border: "1px solid rgba(15, 23, 42, 0.12)",
+                      background: "#fff",
+                      boxShadow: "0 8px 18px rgba(15, 23, 42, 0.08)",
+                      cursor: disabled ? "not-allowed" : "pointer",
+                      opacity: disabled ? 0.5 : 1,
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: "2.35rem",
+                        height: "2.35rem",
+                        borderRadius: "0.75rem",
+                        background: item.color,
+                        color: "#fff",
+                        display: "grid",
+                        placeItems: "center",
+                        fontWeight: 700,
+                        fontSize: "1.1rem",
+                      }}
+                    >
+                      {item.shortLabel}
+                    </span>
+                    <span style={{ fontWeight: 600, color: "#0f172a" }}>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+          {showPropertiesPanel ? (
+            <aside
+              aria-label="Propriétés du bloc sélectionné"
+              style={{
+                position: "absolute",
+                top: "1.5rem",
+                right: "1.5rem",
+                width: "360px",
+                maxWidth: "calc(100% - 3rem)",
+                maxHeight: "calc(100% - 3rem)",
+                borderRadius: "1rem",
+                border: "1px solid rgba(15, 23, 42, 0.1)",
+                background: "#fff",
+                boxShadow: "0 16px 32px rgba(15, 23, 42, 0.1)",
+                display: "flex",
+                flexDirection: "column",
+                zIndex: 25,
+              }}
+            >
+              <header
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "1rem 1.25rem",
+                  borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
+                  gap: "0.75rem",
+                }}
+              >
+                <div>
+                  <p style={{ margin: 0, fontSize: "0.75rem", letterSpacing: "0.08em", color: "#64748b" }}>
+                    Propriétés du bloc
                   </p>
-                )}
-              </footer>
-            </>
-          )}
-        </aside>
-      </main>
+                  <h2 style={{ margin: "0.25rem 0 0", fontSize: "1.25rem", color: "#0f172a" }}>
+                    {selectedElementLabel || "Bloc"}
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleClearSelection}
+                  aria-label="Fermer le panneau de propriétés"
+                  style={{
+                    width: "2.25rem",
+                    height: "2.25rem",
+                    borderRadius: "0.6rem",
+                    border: "1px solid rgba(15, 23, 42, 0.12)",
+                    background: "#f8fafc",
+                    color: "#0f172a",
+                    fontSize: "1.25rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  ×
+                </button>
+              </header>
+              <div style={{ flex: 1, overflowY: "auto", padding: "1rem 1.25rem" }}>
+                {selectedNode ? (
+                  <NodeInspector
+                    node={selectedNode}
+                    onToggle={handleToggleNode}
+                    onDisplayNameChange={handleDisplayNameChange}
+                    onAgentMessageChange={handleAgentMessageChange}
+                    onAgentModelChange={handleAgentModelChange}
+                    onAgentReasoningChange={handleAgentReasoningChange}
+                    onAgentReasoningVerbosityChange={handleAgentReasoningVerbosityChange}
+                    onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}
+                    onAgentTemperatureChange={handleAgentTemperatureChange}
+                    onAgentTopPChange={handleAgentTopPChange}
+                    onAgentMaxOutputTokensChange={handleAgentMaxOutputTokensChange}
+                    onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
+                    onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
+                    onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
+                    onAgentResponseWidgetSlugChange={handleAgentResponseWidgetSlugChange}
+                    onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}
+                    onAgentDisplayResponseInChatChange={handleAgentDisplayResponseInChatChange}
+                    onAgentShowSearchSourcesChange={handleAgentShowSearchSourcesChange}
+                    onAgentContinueOnErrorChange={handleAgentContinueOnErrorChange}
+                    onAgentStorePreferenceChange={handleAgentStorePreferenceChange}
+                    onAgentWebSearchChange={handleAgentWebSearchChange}
+                    onAgentFileSearchChange={handleAgentFileSearchChange}
+                    availableModels={availableModels}
+                    availableModelsLoading={availableModelsLoading}
+                    availableModelsError={availableModelsError}
+                    isReasoningModel={isReasoningModel}
+                    onAgentWeatherToolChange={handleAgentWeatherToolChange}
+                    vectorStores={vectorStores}
+                    vectorStoresLoading={vectorStoresLoading}
+                    vectorStoresError={vectorStoresError}
+                    widgets={widgets}
+                    widgetsLoading={widgetsLoading}
+                    widgetsError={widgetsError}
+                    onStateAssignmentsChange={handleStateAssignmentsChange}
+                    onParametersChange={handleParametersChange}
+                    onRemove={handleRemoveNode}
+                  />
+                ) : selectedEdge ? (
+                  <EdgeInspector
+                    edge={selectedEdge}
+                    onConditionChange={handleConditionChange}
+                    onLabelChange={handleEdgeLabelChange}
+                    onRemove={handleRemoveEdge}
+                  />
+                ) : null}
+              </div>
+            </aside>
+          ) : null}
+          {saveMessage ? (
+            <div
+              style={{
+                position: "absolute",
+                bottom: "1.5rem",
+                left: "50%",
+                transform: "translateX(-50%)",
+                padding: "0.65rem 1.25rem",
+                borderRadius: "9999px",
+                boxShadow: "0 12px 28px rgba(15, 23, 42, 0.12)",
+                zIndex: 30,
+                ...toastStyles,
+              }}
+              role={saveState === "error" ? "alert" : "status"}
+            >
+              {saveMessage}
+            </div>
+          ) : null}
+          {isNavigationOpen ? (
+            <div
+              id="workflow-navigation-panel"
+              role="dialog"
+              aria-modal="true"
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "stretch",
+                justifyContent: "flex-start",
+                background: "rgba(15, 23, 42, 0.45)",
+                backdropFilter: "blur(2px)",
+                zIndex: 40,
+              }}
+            >
+              <aside
+                style={{
+                  width: "min(320px, 80vw)",
+                  background: "#fff",
+                  padding: "1.5rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "1rem",
+                  boxShadow: "0 24px 48px rgba(15, 23, 42, 0.18)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <h2 style={{ margin: 0, fontSize: "1.25rem", color: "#0f172a" }}>Navigation</h2>
+                  <button
+                    type="button"
+                    onClick={closeNavigation}
+                    aria-label="Fermer la navigation"
+                    style={{
+                      width: "2.25rem",
+                      height: "2.25rem",
+                      borderRadius: "0.6rem",
+                      border: "1px solid rgba(15, 23, 42, 0.12)",
+                      background: "#f8fafc",
+                      color: "#0f172a",
+                      fontSize: "1.15rem",
+                      cursor: "pointer",
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <nav aria-label="Navigation générale">
+                  <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: "0.5rem" }}>
+                    {navigationItems.map((item) => (
+                      <li key={item.key}>
+                        <button
+                          type="button"
+                          onClick={item.action}
+                          style={{
+                            width: "100%",
+                            textAlign: "left",
+                            padding: "0.65rem 0.75rem",
+                            borderRadius: "0.75rem",
+                            border: "1px solid rgba(15, 23, 42, 0.12)",
+                            background: "#fff",
+                            color: "#0f172a",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </nav>
+              </aside>
+              <button
+                type="button"
+                onClick={closeNavigation}
+                aria-label="Fermer le panneau de navigation"
+                style={{ flexGrow: 1, background: "transparent", border: "none", cursor: "pointer" }}
+              />
+            </div>
+          ) : null}
+        </div>
+      </div>
     </ReactFlowProvider>
   );
 };
@@ -2955,15 +3566,6 @@ const EdgeInspector = ({ edge, onConditionChange, onLabelChange, onRemove }: Edg
   </section>
 );
 
-const EmptyInspector = () => (
-  <section aria-label="Aucun élément sélectionné">
-    <h2 style={{ fontSize: "1.25rem", marginBottom: "0.75rem" }}>Sélectionnez un élément</h2>
-    <p style={{ color: "#475569" }}>
-      Cliquez sur un nœud ou une connexion dans le graphe pour en modifier les paramètres.
-    </p>
-  </section>
-);
-
 const STATE_ASSIGNMENT_SCOPES: StateAssignmentScope[] = ["globals", "state"];
 
 const prepareNodeParametersForSave = (kind: NodeKind, parameters: AgentParameters): AgentParameters => {
@@ -2990,6 +3592,14 @@ const prepareNodeParametersForSave = (kind: NodeKind, parameters: AgentParameter
   }
 
   return Object.keys(sanitized).length === 0 ? {} : (sanitized as AgentParameters);
+};
+
+const controlLabelStyle: CSSProperties = {
+  fontSize: "0.75rem",
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  fontWeight: 600,
+  color: "#64748b",
 };
 
 const loadingStyle: CSSProperties = {
