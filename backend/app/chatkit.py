@@ -5,9 +5,18 @@ import inspect
 import json
 import logging
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime
-from typing import Any, AsyncIterator, Awaitable, Callable, Coroutine, Sequence, Literal
+from typing import (
+    Any,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Coroutine,
+    Mapping,
+    Sequence,
+    Literal,
+)
 
 from agents import (
     Agent,
@@ -1484,10 +1493,18 @@ class WorkflowStepStreamUpdate:
 
 
 @dataclass(frozen=True)
+class _WidgetBinding:
+    path: tuple[str | int, ...]
+    component_type: str | None = None
+    sample: str | list[str] | None = None
+
+
+@dataclass(frozen=True)
 class _ResponseWidgetConfig:
     slug: str
     variables: dict[str, str]
     output_model: type[BaseModel] | None = None
+    bindings: dict[str, _WidgetBinding] = field(default_factory=dict)
 
 
 def _parse_response_widget_config(
@@ -1539,7 +1556,10 @@ def _sanitize_widget_field_name(candidate: str, *, fallback: str = "value") -> s
 
 
 def _build_widget_output_model(
-    slug: str, variable_ids: Sequence[str]
+    slug: str,
+    variable_ids: Sequence[str],
+    *,
+    bindings: Mapping[str, _WidgetBinding] | None = None,
 ) -> type[BaseModel] | None:
     """Construit un modèle Pydantic correspondant aux variables attendues."""
 
@@ -1558,11 +1578,33 @@ def _build_widget_output_model(
                 suffix += 1
             field_name = f"{base_name}_{suffix}"
         used_names.add(field_name)
+        binding = bindings.get(variable_id) if bindings else None
+        description = None
+        if binding:
+            parts: list[str] = []
+            if binding.component_type:
+                parts.append(f"Composant : {binding.component_type}")
+            sample = binding.sample
+            if isinstance(sample, list):
+                sample_text = ", ".join(str(item) for item in sample if item is not None)
+            elif sample is not None:
+                sample_text = str(sample)
+            else:
+                sample_text = None
+            if sample_text:
+                parts.append(f"Valeur initiale : {sample_text}")
+            if parts:
+                description = " | ".join(parts)
         try:
-            field = Field(default=None, alias=variable_id, serialization_alias=variable_id)
+            field = Field(
+                default=None,
+                alias=variable_id,
+                serialization_alias=variable_id,
+                description=description,
+            )
         except TypeError:
             # Compatibilité avec Pydantic v1 qui n'accepte pas serialization_alias.
-            field = Field(default=None, alias=variable_id)
+            field = Field(default=None, alias=variable_id, description=description)
             if hasattr(field, "serialization_alias"):
                 try:
                     setattr(field, "serialization_alias", variable_id)
@@ -1636,31 +1678,69 @@ def _load_widget_definition(slug: str, *, context: str) -> Any | None:
         return None
 
 
-def _collect_widget_editable_names(definition: Any) -> list[str]:
-    """Retourne les identifiants éditables présents dans une définition de widget."""
+def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
+    """Recense les identifiants dynamiques d'un widget et leur position."""
 
-    names: list[str] = []
+    bindings: dict[str, _WidgetBinding] = {}
 
-    def _walk(node: Any) -> None:
+    def _register(
+        identifier: str | None,
+        path: tuple[str | int, ...],
+        node: dict[str, Any],
+    ) -> None:
+        if not identifier:
+            return
+        if identifier in bindings:
+            return
+        component_type = node.get("type") if isinstance(node.get("type"), str) else None
+        sample: str | list[str] | None = None
+        for candidate_key in ("value", "text", "src", "url", "href"):
+            if candidate_key not in node:
+                continue
+            raw_value = node.get(candidate_key)
+            if isinstance(raw_value, list):
+                sample = [str(item) for item in raw_value]
+                break
+            if isinstance(raw_value, (str, int, float, bool)):
+                sample = str(raw_value)
+                break
+        bindings[identifier] = _WidgetBinding(
+            path=path,
+            component_type=component_type,
+            sample=sample,
+        )
+
+    def _walk(node: Any, path: tuple[str | int, ...]) -> None:
         if isinstance(node, dict):
+            identifier = node.get("id")
+            if isinstance(identifier, str):
+                _register(identifier, path, node)
+
             editable = node.get("editable")
             if isinstance(editable, dict):
-                editable_names = editable.get("name") or editable.get("names")
-                if isinstance(editable_names, str):
-                    names.append(editable_names)
-                elif isinstance(editable_names, (list, tuple)):
+                editable_name = editable.get("name")
+                if isinstance(editable_name, str):
+                    _register(editable_name, path, node)
+                editable_names = editable.get("names")
+                if isinstance(editable_names, (list, tuple)):
                     for entry in editable_names:
                         if isinstance(entry, str):
-                            names.append(entry)
-            for child in node.values():
-                if isinstance(child, (dict, list)):
-                    _walk(child)
-        elif isinstance(node, list):
-            for entry in node:
-                _walk(entry)
+                            _register(entry, path, node)
 
-    _walk(definition)
-    return names
+            name_attr = node.get("name")
+            if isinstance(name_attr, str):
+                _register(name_attr, path, node)
+
+            for key, child in node.items():
+                if isinstance(child, (dict, list)):
+                    _walk(child, (*path, key))
+        elif isinstance(node, list):
+            for index, entry in enumerate(node):
+                if isinstance(entry, (dict, list)):
+                    _walk(entry, (*path, index))
+
+    _walk(definition, ())
+    return bindings
 
 
 def _ensure_widget_output_model(
@@ -1677,11 +1757,18 @@ def _ensure_widget_output_model(
             config.slug,
         )
     else:
-        for editable_name in _collect_widget_editable_names(definition):
-            if editable_name not in variable_ids:
-                variable_ids.append(editable_name)
+        bindings = _collect_widget_bindings(definition)
+        for identifier in bindings:
+            if identifier not in variable_ids:
+                variable_ids.append(identifier)
+        config = replace(config, bindings=bindings)
 
-    model = _build_widget_output_model(config.slug, variable_ids)
+    if config.bindings and not variable_ids:
+        variable_ids.extend(config.bindings.keys())
+
+    model = _build_widget_output_model(
+        config.slug, variable_ids, bindings=config.bindings
+    )
     if model is None:
         return config
     return replace(config, output_model=model)
@@ -2063,6 +2150,8 @@ async def run_workflow(
 
     def _collect_widget_values_from_output(
         output: Any,
+        *,
+        bindings: Mapping[str, _WidgetBinding] | None = None,
     ) -> dict[str, str | list[str]]:
         """Aplati les sorties structurées en valeurs consommables par un widget."""
 
@@ -2105,7 +2194,31 @@ async def run_workflow(
                 collected[path] = _stringify_widget_value(current)
 
         _walk(output, "")
-        return collected
+
+        if not bindings:
+            return collected
+
+        enriched = dict(collected)
+        consumed_keys: set[str] = set()
+        for identifier, binding in bindings.items():
+            path_parts: list[str] = []
+            for step in binding.path:
+                if isinstance(step, str):
+                    path_parts.append(step)
+                else:
+                    path_parts.append(str(step))
+            base_path = ".".join(path_parts)
+            for suffix in ("value", "text", "src", "url", "href"):
+                key = f"{base_path}.{suffix}" if base_path else suffix
+                if key in collected:
+                    enriched.setdefault(identifier, collected[key])
+                    consumed_keys.add(key)
+                    break
+
+        for key in consumed_keys:
+            enriched.pop(key, None)
+
+        return enriched
 
     def _evaluate_widget_variable_expression(
         expression: str, *, input_context: dict[str, Any] | None
@@ -2143,7 +2256,10 @@ async def run_workflow(
             node["value"] = text
 
     def _apply_widget_variable_values(
-        definition: Any, values: dict[str, str | list[str]]
+        definition: Any,
+        values: dict[str, str | list[str]],
+        *,
+        bindings: Mapping[str, _WidgetBinding] | None = None,
     ) -> set[str]:
         matched: set[str] = set()
 
@@ -2192,6 +2308,37 @@ async def run_workflow(
                     _walk(entry)
 
         _walk(definition)
+
+        if bindings:
+            for identifier, binding in bindings.items():
+                if identifier in matched:
+                    continue
+                if identifier not in values:
+                    continue
+
+                target: Any = definition
+                valid_path = True
+                for step in binding.path:
+                    if isinstance(step, str):
+                        if not isinstance(target, dict) or step not in target:
+                            valid_path = False
+                            break
+                        target = target[step]
+                    else:
+                        if not isinstance(target, list):
+                            valid_path = False
+                            break
+                        if step < 0 or step >= len(target):
+                            valid_path = False
+                            break
+                        target = target[step]
+
+                if not valid_path or not isinstance(target, dict):
+                    continue
+
+                _update_widget_node_value(target, values[identifier])
+                matched.add(identifier)
+
         return matched
 
     async def _stream_response_widget(
@@ -2225,12 +2372,16 @@ async def run_workflow(
             for key in ("output_parsed", "output"):
                 if key not in step_context:
                     continue
-                auto_values = _collect_widget_values_from_output(step_context[key])
+                auto_values = _collect_widget_values_from_output(
+                    step_context[key], bindings=config.bindings
+                )
                 for identifier, value in auto_values.items():
                     resolved.setdefault(identifier, value)
 
         if resolved:
-            matched = _apply_widget_variable_values(definition, resolved)
+            matched = _apply_widget_variable_values(
+                definition, resolved, bindings=config.bindings
+            )
             missing = set(resolved) - matched
             if missing:
                 logger.warning(
