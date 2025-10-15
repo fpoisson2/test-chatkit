@@ -2179,6 +2179,13 @@ async def run_workflow(
                 exc_info=exc,
             )
 
+    def _should_forward_agent_event(
+        event: ThreadStreamEvent, *, suppress: bool
+    ) -> bool:
+        if not suppress:
+            return True
+        return isinstance(event, EndOfTurnItem)
+
     async def run_agent_step(
         step_key: str,
         title: str,
@@ -2186,6 +2193,7 @@ async def run_workflow(
         *,
         agent_context: AgentContext[Any],
         run_context: Any | None = None,
+        suppress_stream_events: bool = False,
     ) -> _WorkflowStreamResult:
         step_index = len(steps) + 1
         if on_step_stream is not None:
@@ -2207,7 +2215,12 @@ async def run_workflow(
         )
         try:
             async for event in stream_agent_response(agent_context, result):
-                if on_stream_event is not None:
+                if (
+                    on_stream_event is not None
+                    and _should_forward_agent_event(
+                        event, suppress=suppress_stream_events
+                    )
+                ):
                     await on_stream_event(event)
                 if on_step_stream is not None:
                     delta_text = _extract_delta(event)
@@ -2401,6 +2414,7 @@ async def run_workflow(
             agent,
             agent_context=agent_context,
             run_context=run_context,
+            suppress_stream_events=widget_config is not None,
         )
 
         if agent_key == "triage":
