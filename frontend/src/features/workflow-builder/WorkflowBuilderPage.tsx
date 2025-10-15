@@ -2029,9 +2029,6 @@ const WorkflowBuilderPage = () => {
         if (!vectorStoresError && vectorStores.length > 0 && !availableVectorStoreSlugs.has(slug)) {
           return true;
         }
-        if (!config.doc_id_expression.trim() || !config.document_expression.trim()) {
-          return true;
-        }
         return false;
       }
 

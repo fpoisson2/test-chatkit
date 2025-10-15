@@ -700,52 +700,24 @@ class _DummyWorkflowService:
         return self._definition
 
 
-def test_normalize_graph_accepts_json_vector_store_node() -> None:
-    service = WorkflowService(session_factory=lambda: None)
-    payload = {
-        "nodes": [
-            {"slug": "start", "kind": "start", "is_enabled": True},
-            {
-                "slug": "agent-triage",
-                "kind": "agent",
-                "agent_key": "triage",
-                "is_enabled": True,
-            },
-            {
-                "slug": "json-store",
-                "kind": "json_vector_store",
-                "is_enabled": True,
-                "parameters": {
-                    "vector_store_slug": "dossiers-clients",
-                    "doc_id_expression": "input.output_parsed.id",
-                    "document_expression": "input.output_parsed",
-                },
-            },
-            {"slug": "end", "kind": "end", "is_enabled": True},
-        ],
-        "edges": [
-            {"source": "start", "target": "agent-triage"},
-            {"source": "agent-triage", "target": "json-store"},
-            {"source": "json-store", "target": "end"},
-        ],
-    }
-
-    nodes, edges = service._normalize_graph(payload)
-
-    assert any(node.kind == "json_vector_store" for node in nodes)
-    assert any(edge.target_slug == "json-store" for edge in edges)
-
-
-def test_run_workflow_ingests_agent_json(monkeypatch: pytest.MonkeyPatch) -> None:
+def _execute_json_vector_store_workflow(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    storage_parameters: dict[str, object],
+    runner_payload: dict[str, object],
+) -> tuple[
+    list[tuple[str, str, dict[str, object], dict[str, object]]],
+    list[SimpleNamespace],
+]:
     calls: list[tuple[str, str, dict[str, object], dict[str, object]]] = []
     sessions: list[SimpleNamespace] = []
 
-    class _DummySession:
+    class _TrackingSession:
         def __init__(self) -> None:
             self.committed = False
             self.rolled_back = False
 
-        def __enter__(self) -> _DummySession:
+        def __enter__(self) -> "_TrackingSession":
             return self
 
         def __exit__(self, exc_type, exc, tb) -> bool:
@@ -757,13 +729,13 @@ def test_run_workflow_ingests_agent_json(monkeypatch: pytest.MonkeyPatch) -> Non
         def rollback(self) -> None:
             self.rolled_back = True
 
-    def _fake_session() -> _DummySession:
-        session = _DummySession()
+    def _fake_session() -> _TrackingSession:
+        session = _TrackingSession()
         sessions.append(session)
         return session
 
     class _VectorStoreRecorder:
-        def __init__(self, session: _DummySession) -> None:
+        def __init__(self, session: _TrackingSession) -> None:
             self.session = session
 
         def ingest(
@@ -790,12 +762,7 @@ def test_run_workflow_ingests_agent_json(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setattr(
         chatkit_module.Runner,
         "run_streamed",
-        lambda *args, **kwargs: _DummyRunnerResult(
-            {
-                "doc_id": "demo-doc",
-                "record": {"title": "Nouvelle fiche"},
-            }
-        ),
+        lambda *args, **kwargs: _DummyRunnerResult(dict(runner_payload)),
     )
     monkeypatch.setattr(chatkit_module, "stream_agent_response", _fake_stream_agent_response)
     monkeypatch.setitem(
@@ -828,12 +795,7 @@ def test_run_workflow_ingests_agent_json(monkeypatch: pytest.MonkeyPatch) -> Non
         slug="store-json",
         kind="json_vector_store",
         is_enabled=True,
-        parameters={
-            "vector_store_slug": "demo-store",
-            "doc_id_expression": "input.output_parsed.doc_id",
-            "document_expression": "input.output_parsed.record",
-            "metadata_expression": '{"source": "workflow"}',
-        },
+        parameters=dict(storage_parameters),
         agent_key=None,
         position=2,
         id=3,
@@ -874,6 +836,60 @@ def test_run_workflow_ingests_agent_json(monkeypatch: pytest.MonkeyPatch) -> Non
 
     asyncio.run(_exercise())
 
+    return calls, sessions
+
+
+def test_normalize_graph_accepts_json_vector_store_node() -> None:
+    service = WorkflowService(session_factory=lambda: None)
+    payload = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {
+                "slug": "agent-triage",
+                "kind": "agent",
+                "agent_key": "triage",
+                "is_enabled": True,
+            },
+            {
+                "slug": "json-store",
+                "kind": "json_vector_store",
+                "is_enabled": True,
+                "parameters": {
+                    "vector_store_slug": "dossiers-clients",
+                    "doc_id_expression": "input.output_parsed.id",
+                    "document_expression": "input.output_parsed",
+                },
+            },
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [
+            {"source": "start", "target": "agent-triage"},
+            {"source": "agent-triage", "target": "json-store"},
+            {"source": "json-store", "target": "end"},
+        ],
+    }
+
+    nodes, edges = service._normalize_graph(payload)
+
+    assert any(node.kind == "json_vector_store" for node in nodes)
+    assert any(edge.target_slug == "json-store" for edge in edges)
+
+
+def test_run_workflow_ingests_agent_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls, sessions = _execute_json_vector_store_workflow(
+        monkeypatch,
+        storage_parameters={
+            "vector_store_slug": "demo-store",
+            "doc_id_expression": "input.output_parsed.doc_id",
+            "document_expression": "input.output_parsed.record",
+            "metadata_expression": '{"source": "workflow"}',
+        },
+        runner_payload={
+            "doc_id": "demo-doc",
+            "record": {"title": "Nouvelle fiche"},
+        },
+    )
+
     assert len(calls) == 1
     slug, doc_id, payload, metadata = calls[0]
     assert slug == "demo-store"
@@ -882,5 +898,54 @@ def test_run_workflow_ingests_agent_json(monkeypatch: pytest.MonkeyPatch) -> Non
     assert metadata["workflow_step"] == "store-json"
     assert metadata["workflow_step_title"] == "Sauvegarde"
     assert metadata["source"] == "workflow"
+
+    assert sessions and sessions[0].committed is True
+
+
+def test_json_vector_store_node_uses_structured_output_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls, sessions = _execute_json_vector_store_workflow(
+        monkeypatch,
+        storage_parameters={"vector_store_slug": "demo-store"},
+        runner_payload={
+            "doc_id": "auto-doc",
+            "payload": {"title": "Nouvelle fiche"},
+        },
+    )
+
+    assert len(calls) == 1
+    slug, doc_id, payload, metadata = calls[0]
+    assert slug == "demo-store"
+    assert doc_id == "auto-doc"
+    assert payload == {
+        "doc_id": "auto-doc",
+        "payload": {"title": "Nouvelle fiche"},
+    }
+    assert metadata["workflow_step"] == "store-json"
+    assert metadata["workflow_step_title"] == "Sauvegarde"
+
+    assert sessions and sessions[0].committed is True
+
+
+def test_json_vector_store_node_generates_identifier_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_uuid = SimpleNamespace(hex="cafebabedeadbeefcafebabedeadbeef")
+    monkeypatch.setattr(chatkit_module.uuid, "uuid4", lambda: fake_uuid)
+
+    calls, sessions = _execute_json_vector_store_workflow(
+        monkeypatch,
+        storage_parameters={"vector_store_slug": "demo-store"},
+        runner_payload={"payload": {"title": "Nouvelle fiche"}},
+    )
+
+    assert len(calls) == 1
+    slug, doc_id, payload, metadata = calls[0]
+    assert slug == "demo-store"
+    assert doc_id == "store-json-cafebabedeadbeefcafebabedeadbeef"
+    assert payload == {"payload": {"title": "Nouvelle fiche"}}
+    assert metadata["workflow_step"] == "store-json"
+    assert metadata["workflow_step_title"] == "Sauvegarde"
 
     assert sessions and sessions[0].committed is True

@@ -240,16 +240,6 @@ const NodeInspector = ({
         "Le vector store sélectionné n'est plus disponible. Choisissez-en un autre.",
       );
     }
-    if (!vectorStoreNodeDocIdExpression) {
-      vectorStoreNodeValidationMessages.push(
-        "Précisez l'expression qui identifie le document à stocker.",
-      );
-    }
-    if (!vectorStoreNodeDocumentExpression) {
-      vectorStoreNodeValidationMessages.push(
-        "Indiquez l'expression JSON à indexer dans le vector store.",
-      );
-    }
   }
   const matchedModel = availableModels.find((model) => model.name === agentModel);
   const selectedModelOption = matchedModel ? matchedModel.name : "";
@@ -826,7 +816,7 @@ const NodeInspector = ({
             </label>
           )}
           <label style={fieldStyle}>
-            <span>Expression de l'identifiant du document</span>
+            <span>Expression de l'identifiant du document (facultatif)</span>
             <input
               type="text"
               value={vectorStoreNodeDocIdExpression}
@@ -838,12 +828,12 @@ const NodeInspector = ({
               placeholder="Ex. input.output_parsed.doc_id"
             />
             <small style={{ color: "#475569" }}>
-              Utilisez les expressions <code>input.*</code> ou <code>state.*</code> pour identifier
-              chaque document.
+              Laissez vide pour réutiliser la clé <code>doc_id</code> du JSON structuré ou générer un
+              identifiant automatique.
             </small>
           </label>
           <label style={fieldStyle}>
-            <span>Expression JSON à indexer</span>
+            <span>Expression JSON à indexer (facultatif)</span>
             <input
               type="text"
               value={vectorStoreNodeDocumentExpression}
@@ -855,8 +845,7 @@ const NodeInspector = ({
               placeholder="Ex. input.output_parsed"
             />
             <small style={{ color: "#475569" }}>
-              Cette expression doit renvoyer un objet JSON (par exemple la sortie structurée du bloc
-              précédent).
+              Laissez vide pour indexer automatiquement la sortie structurée du bloc précédent.
             </small>
           </label>
           <label style={fieldStyle}>
