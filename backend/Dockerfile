@@ -12,12 +12,14 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# Pré-installe les dépendances Python pour éviter les réinstallations à chaque démarrage
-COPY requirements.txt pyproject.toml ./
+# Pré-installe les dépendances Python (dont la version locale d'openai-chatkit)
+COPY chatkit-python ./chatkit-python
+COPY backend/requirements.txt backend/pyproject.toml ./backend/
 RUN pip install --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r backend/requirements.txt \
+    && rm -rf backend
 
 # Copie du code (écrasé ensuite par le volume monté en développement)
-COPY . .
+COPY backend/ .
 
 CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
