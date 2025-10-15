@@ -477,22 +477,9 @@ describe("WorkflowBuilderPage", () => {
     const widgetSelect = await screen.findByRole("combobox", { name: /widget de sortie/i });
     await user.selectOptions(widgetSelect, "email-card");
 
-    const variablesRegion = await screen.findByRole("region", { name: /variables du widget/i });
-    const toInput = within(variablesRegion).getByLabelText(/variable «\s*email\.to/i);
-    const subjectInput = within(variablesRegion).getByLabelText(/variable «\s*email\.subject/i);
-    const bodyInput = within(variablesRegion).getByLabelText(/variable «\s*email\.body/i);
-    expect(toInput).toHaveValue("");
-    expect(subjectInput).toHaveValue("");
-    expect(bodyInput).toHaveValue("");
-
-    const importButton = within(variablesRegion).getByRole("button", {
-      name: /importer depuis le module précédent/i,
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: /variables du widget/i })).not.toBeInTheDocument();
     });
-    fireEvent.click(importButton);
-
-    expect(toInput).toHaveValue("input.output_parsed.email.to");
-    expect(subjectInput).toHaveValue("input.output_parsed.email.subject");
-    expect(bodyInput).toHaveValue("input.output_parsed.email.body");
 
     const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
     fireEvent.click(saveButton);
@@ -506,14 +493,7 @@ describe("WorkflowBuilderPage", () => {
     const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
     const payload = JSON.parse((putCall?.[1] as RequestInit).body as string);
     const agentNode = payload.graph.nodes.find((node: any) => node.slug === "agent-triage");
-    expect(agentNode.parameters.response_widget).toEqual({
-      slug: "email-card",
-      variables: {
-        "email.to": "input.output_parsed.email.to",
-        "email.subject": "input.output_parsed.email.subject",
-        "email.body": "input.output_parsed.email.body",
-      },
-    });
+    expect(agentNode.parameters.response_widget).toEqual({ slug: "email-card" });
   });
 
   test("pré-remplit un agent hérité avec les valeurs par défaut", async () => {
