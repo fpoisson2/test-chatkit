@@ -102,7 +102,7 @@ La prévisualisation en direct évite de propager des définitions invalides dan
   - Optionnel : `CHATKIT_AGENT_MODEL` / `CHATKIT_AGENT_INSTRUCTIONS` pour personnaliser l'agent exécuté par `/api/chatkit` (par défaut, le dépôt charge le workflow local défini dans `backend/app/chatkit.py`).
   - Optionnel : `ALLOWED_ORIGINS` pour lister les origines autorisées par CORS (séparées par des virgules, par défaut `*`)
   - Optionnel : `ACCESS_TOKEN_EXPIRE_MINUTES` pour ajuster la durée de validité du token (par défaut 120 min)
-  - Optionnel : `ADMIN_EMAIL` et `ADMIN_PASSWORD` pour provisionner automatiquement un compte administrateur au démarrage
+  - Optionnel : `ADMIN_EMAIL` et `ADMIN_PASSWORD` pour provisionner automatiquement un compte administrateur au démarrage. Sans ces deux variables définies dans votre fichier `.env`, aucun compte n'est créé.
   - Optionnel : `DATABASE_CONNECT_RETRIES` / `DATABASE_CONNECT_DELAY` pour ajuster la stratégie d'attente au démarrage
 - Start the dev server from the `backend/` directory: `uv run uvicorn server:app --reload` (ou `npm run backend:dev` à la racine)
 
@@ -338,8 +338,6 @@ Depuis la racine du dépôt, vous pouvez orchestrer le backend FastAPI et le fro
    ```env
    OPENAI_API_KEY="sk-..."
    AUTH_SECRET_KEY="change-me"
-   ADMIN_EMAIL="admin@example.com"
-   ADMIN_PASSWORD="adminpass"
    # Optionnel : ajustez la connexion PostgreSQL (défaut : postgresql+psycopg://chatkit:chatkit@db:5432/chatkit).
    # En Docker Compose, laissez `db` comme hostname ou omettez complètement cette variable pour conserver la valeur par défaut.
    # DATABASE_URL="postgresql+psycopg://user:password@host:5432/chatkit"
@@ -362,6 +360,14 @@ Depuis la racine du dépôt, vous pouvez orchestrer le backend FastAPI et le fro
    # Optionnel : alignez la liste d'hôtes autorisés par Vite (séparés par des virgules)
    # VITE_ALLOWED_HOSTS="chatkit.example.com"
    ```
+   Pour créer automatiquement un compte administrateur lors du démarrage du backend, ajoutez dans ce même fichier :
+
+   ```env
+   ADMIN_EMAIL="admin@example.com"
+   ADMIN_PASSWORD="adminpass"
+   ```
+
+   Tant que ces variables ne figurent pas dans votre `.env`, aucun compte administrateur n'est provisionné par défaut.
    Les autres variables d'environnement exposées dans `docker-compose.yml` disposent de valeurs par défaut (`VITE_ALLOWED_HOSTS`, `VITE_HMR_PROTOCOL`, `VITE_HMR_CLIENT_PORT`, `VITE_BACKEND_URL`, etc.) que vous pouvez également surcharger dans `.env` si nécessaire.
 2. Depuis la racine du projet, lancez `docker compose up --build` pour démarrer les trois services (backend, frontend, base PostgreSQL). Cette première exécution construit l'image `backend` à partir de `backend/Dockerfile` (installation de `libgomp1` + dépendances Python) et récupère l'image `pgvector/pgvector:pg16` pour la base de données, avec l'extension `vector` déjà disponible. Le backend répond sur `http://localhost:8000`, la base de données sur `localhost:5432` et le frontend sur `http://localhost:${VITE_PORT}`. Le build Docker copie le dossier `chatkit-python/` afin que `pip` installe la version embarquée d'`openai-chatkit`.
 3. Utilisez `docker compose down` pour arrêter l'environnement de développement. Rejouez `docker compose up --build` à chaque fois que vous modifiez `backend/requirements.txt` ou le Dockerfile ; dans les autres cas, un simple `docker compose up` suffit.
