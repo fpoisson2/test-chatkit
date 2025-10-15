@@ -413,7 +413,8 @@ export const setAgentStorePreference = (
 
 export type AgentResponseFormat =
   | { kind: "text" }
-  | { kind: "json_schema"; name: string; schema: unknown };
+  | { kind: "json_schema"; name: string; schema: unknown }
+  | { kind: "widget"; slug: string; variables: Record<string, string> };
 
 const DEFAULT_SCHEMA_NAME = "workflow_output";
 const DEFAULT_JSON_SCHEMA = { type: "object", properties: {} } as const;
@@ -434,12 +435,46 @@ const buildJsonSchemaFormat = (
   },
 });
 
+const sanitizeWidgetVariables = (
+  variables: unknown,
+): Record<string, string> => {
+  if (!isPlainRecord(variables)) {
+    return {};
+  }
+  const entries: Array<[string, string]> = [];
+  for (const [key, value] of Object.entries(variables)) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    const trimmedKey = key.trim();
+    const trimmedValue = value.trim();
+    if (!trimmedKey || !trimmedValue) {
+      continue;
+    }
+    entries.push([trimmedKey, trimmedValue]);
+  }
+  return Object.fromEntries(entries);
+};
+
 export const getAgentResponseFormat = (
   parameters: AgentParameters | null | undefined,
 ): AgentResponseFormat => {
   if (!parameters) {
     return { kind: "text" };
   }
+
+  const widget = (parameters as Record<string, unknown>).response_widget;
+  if (typeof widget === "string") {
+    const slug = widget.trim();
+    if (slug) {
+      return { kind: "widget", slug, variables: {} };
+    }
+  } else if (isPlainRecord(widget) && typeof widget.slug === "string") {
+    const slug = widget.slug.trim();
+    const variables = sanitizeWidgetVariables(widget.variables);
+    return { kind: "widget", slug, variables };
+  }
+
   const responseFormat = parameters.response_format;
   if (!isPlainRecord(responseFormat)) {
     return { kind: "text" };
@@ -461,25 +496,36 @@ const setAgentResponseFormat = (
   parameters: AgentParameters,
   format: AgentResponseFormat,
 ): AgentParameters => {
-  const next = { ...parameters } as AgentParameters;
   if (format.kind === "text") {
-    const { response_format: _ignored, ...rest } = next;
-    return stripEmpty(rest);
+    const next = { ...(parameters as Record<string, unknown>) };
+    delete next.response_format;
+    delete next.response_widget;
+    return stripEmpty(next);
   }
-  return {
-    ...next,
-    response_format: buildJsonSchemaFormat(format.name, format.schema),
-  };
+
+  if (format.kind === "json_schema") {
+    const next = { ...(parameters as Record<string, unknown>) };
+    delete next.response_widget;
+    next.response_format = buildJsonSchemaFormat(format.name, format.schema);
+    return next as AgentParameters;
+  }
+
+  return setAgentResponseWidget(parameters, format.slug, format.variables);
 };
 
 export const setAgentResponseFormatKind = (
   parameters: AgentParameters,
-  kind: "text" | "json_schema",
+  kind: "text" | "json_schema" | "widget",
 ): AgentParameters => {
   if (kind === "text") {
     return setAgentResponseFormat(parameters, { kind: "text" });
   }
   const current = getAgentResponseFormat(parameters);
+  if (kind === "widget") {
+    const slug = current.kind === "widget" ? current.slug : "";
+    const variables = current.kind === "widget" ? current.variables : {};
+    return setAgentResponseWidget(parameters, slug, variables);
+  }
   const name = current.kind === "json_schema" ? current.name : DEFAULT_SCHEMA_NAME;
   const schema = current.kind === "json_schema" ? current.schema : DEFAULT_JSON_SCHEMA;
   return setAgentResponseFormat(parameters, { kind: "json_schema", name, schema });
@@ -501,6 +547,45 @@ export const setAgentResponseFormatSchema = (
   const current = getAgentResponseFormat(parameters);
   const name = current.kind === "json_schema" ? current.name : DEFAULT_SCHEMA_NAME;
   return setAgentResponseFormat(parameters, { kind: "json_schema", name, schema });
+};
+
+const setAgentResponseWidget = (
+  parameters: AgentParameters,
+  slug: string,
+  variables: Record<string, string>,
+): AgentParameters => {
+  const trimmedSlug = slug.trim();
+  const normalizedVariables = sanitizeWidgetVariables(variables);
+  const next = { ...(parameters as Record<string, unknown>) };
+  delete next.response_format;
+
+  if (Object.keys(normalizedVariables).length > 0) {
+    next.response_widget = { slug: trimmedSlug, variables: normalizedVariables };
+  } else {
+    next.response_widget = { slug: trimmedSlug };
+  }
+  return next as AgentParameters;
+};
+
+export const setAgentResponseWidgetSlug = (
+  parameters: AgentParameters,
+  slug: string,
+): AgentParameters => {
+  const current = getAgentResponseFormat(parameters);
+  const variables =
+    current.kind === "widget" && current.slug === slug.trim() ? current.variables : {};
+  return setAgentResponseWidget(parameters, slug, variables);
+};
+
+export const setAgentResponseWidgetVariables = (
+  parameters: AgentParameters,
+  variables: Record<string, string>,
+): AgentParameters => {
+  const current = getAgentResponseFormat(parameters);
+  if (current.kind !== "widget") {
+    return parameters;
+  }
+  return setAgentResponseWidget(parameters, current.slug, variables);
 };
 
 export type StateAssignment = {
