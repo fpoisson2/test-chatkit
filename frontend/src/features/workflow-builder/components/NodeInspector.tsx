@@ -23,9 +23,11 @@ import {
   getAgentTopP,
   getAgentWeatherToolEnabled,
   getAgentWebSearchConfig,
+  getAgentVectorStoreIngestion,
   getStateAssignments,
 } from "../../../utils/workflows";
 import type {
+  AgentVectorStoreIngestionConfig,
   FileSearchConfig,
   FlowNode,
   StateAssignment,
@@ -87,6 +89,10 @@ export type NodeInspectorProps = {
   onAgentStorePreferenceChange: (nodeId: string, value: boolean) => void;
   onAgentWebSearchChange: (nodeId: string, config: WebSearchConfig | null) => void;
   onAgentFileSearchChange: (nodeId: string, config: FileSearchConfig | null) => void;
+  onAgentVectorStoreIngestionChange: (
+    nodeId: string,
+    config: AgentVectorStoreIngestionConfig | null,
+  ) => void;
   availableModels: AvailableModel[];
   availableModelsLoading: boolean;
   availableModelsError: string | null;
@@ -130,6 +136,7 @@ const NodeInspector = ({
   onAgentStorePreferenceChange,
   onAgentWebSearchChange,
   onAgentFileSearchChange,
+  onAgentVectorStoreIngestionChange,
   availableModels,
   availableModelsLoading,
   availableModelsError,
@@ -177,6 +184,50 @@ const NodeInspector = ({
   const fileSearchMissingVectorStore =
     fileSearchEnabled &&
     (!trimmedVectorStoreSlug || (!vectorStoresError && vectorStores.length > 0 && !selectedVectorStoreExists));
+  const vectorStoreIngestion = getAgentVectorStoreIngestion(parameters);
+  const ingestionEnabled = Boolean(vectorStoreIngestion);
+  const ingestionConfig: AgentVectorStoreIngestionConfig =
+    vectorStoreIngestion ?? {
+      vector_store_slug: "",
+      doc_id_expression: "",
+      document_expression: "input.output_parsed",
+      metadata_expression: "",
+    };
+  const ingestionSlug = ingestionConfig.vector_store_slug.trim();
+  const ingestionDocIdExpression = ingestionConfig.doc_id_expression.trim();
+  const ingestionDocumentExpression = ingestionConfig.document_expression.trim();
+  const ingestionMetadataExpression = ingestionConfig.metadata_expression.trim();
+  const ingestionVectorStoreExists =
+    ingestionSlug.length > 0 && vectorStores.some((store) => store.slug === ingestionSlug);
+  const ingestionValidationMessages: string[] = [];
+  if (ingestionEnabled && !ingestionSlug) {
+    ingestionValidationMessages.push("Sélectionnez un vector store pour enregistrer la réponse.");
+  } else if (
+    ingestionEnabled &&
+    ingestionSlug &&
+    !vectorStoresError &&
+    vectorStores.length > 0 &&
+    !ingestionVectorStoreExists
+  ) {
+    ingestionValidationMessages.push(
+      "Le vector store sélectionné n'est plus disponible. Choisissez-en un autre.",
+    );
+  }
+  if (ingestionEnabled && !ingestionDocIdExpression) {
+    ingestionValidationMessages.push(
+      "Précisez l'expression qui identifie le document à stocker.",
+    );
+  }
+  if (ingestionEnabled && !ingestionDocumentExpression) {
+    ingestionValidationMessages.push(
+      "Indiquez l'expression JSON à indexer dans le vector store.",
+    );
+  }
+  const updateVectorStoreIngestion = (
+    updates: Partial<AgentVectorStoreIngestionConfig>,
+  ): void => {
+    onAgentVectorStoreIngestionChange(node.id, { ...ingestionConfig, ...updates });
+  };
   const responseWidgetSlug = responseFormat.kind === "widget" ? responseFormat.slug : "";
   const trimmedWidgetSlug = responseWidgetSlug.trim();
   const selectedWidget = useMemo(() => {
@@ -715,6 +766,119 @@ const NodeInspector = ({
                     )}
                   </label>
                 )}
+              </>
+            )}
+            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <input
+                type="checkbox"
+                checked={ingestionEnabled}
+                onChange={(event) => {
+                  if (event.target.checked) {
+                    const fallbackSlug =
+                      ingestionSlug || trimmedVectorStoreSlug || vectorStores[0]?.slug || "";
+                    const fallbackDocId =
+                      ingestionDocIdExpression || "input.output_parsed.doc_id";
+                    updateVectorStoreIngestion({
+                      vector_store_slug: fallbackSlug,
+                      doc_id_expression: fallbackDocId,
+                      document_expression:
+                        ingestionDocumentExpression || "input.output_parsed",
+                      metadata_expression: ingestionMetadataExpression,
+                    });
+                  } else {
+                    onAgentVectorStoreIngestionChange(node.id, null);
+                  }
+                }}
+              />
+              Stocker la réponse JSON dans un vector store
+            </label>
+            {ingestionEnabled && (
+              <>
+                {vectorStoresError ? (
+                  <p style={{ color: "#b91c1c", margin: 0 }}>{vectorStoresError}</p>
+                ) : null}
+                {vectorStoresLoading ? (
+                  <p style={{ color: "#475569", margin: 0 }}>Chargement des vector stores…</p>
+                ) : vectorStores.length === 0 ? (
+                  <p style={{ color: "#475569", margin: 0 }}>
+                    Aucun vector store disponible. Créez-en un avant d'activer le stockage.
+                  </p>
+                ) : (
+                  <label style={fieldStyle}>
+                    <span>Vector store cible</span>
+                    <select
+                      value={ingestionSlug}
+                      onChange={(event) =>
+                        updateVectorStoreIngestion({
+                          vector_store_slug: event.target.value,
+                        })
+                      }
+                    >
+                      <option value="">Sélectionnez un vector store…</option>
+                      {vectorStores.map((store) => (
+                        <option key={store.slug} value={store.slug}>
+                          {store.title?.trim() ? `${store.title} (${store.slug})` : store.slug}
+                        </option>
+                      ))}
+                    </select>
+                    <small style={{ color: "#475569" }}>
+                      Choisissez le magasin JSON dans lequel indexer la réponse structurée.
+                    </small>
+                  </label>
+                )}
+                <label style={fieldStyle}>
+                  <span>Expression de l'identifiant du document</span>
+                  <input
+                    type="text"
+                    value={ingestionDocIdExpression}
+                    onChange={(event) =>
+                      updateVectorStoreIngestion({ doc_id_expression: event.target.value })
+                    }
+                    placeholder="Ex. input.output_parsed.doc_id"
+                  />
+                  <small style={{ color: "#475569" }}>
+                    Utilisez les expressions <code>input.*</code> ou <code>state.*</code> pour
+                    identifier chaque document.
+                  </small>
+                </label>
+                <label style={fieldStyle}>
+                  <span>Expression JSON à indexer</span>
+                  <input
+                    type="text"
+                    value={ingestionDocumentExpression}
+                    onChange={(event) =>
+                      updateVectorStoreIngestion({
+                        document_expression: event.target.value,
+                      })
+                    }
+                    placeholder="Ex. input.output_parsed"
+                  />
+                  <small style={{ color: "#475569" }}>
+                    Cette expression doit renvoyer un objet JSON (par exemple la sortie structurée de
+                    l'agent).
+                  </small>
+                </label>
+                <label style={fieldStyle}>
+                  <span>Expression des métadonnées (facultatif)</span>
+                  <input
+                    type="text"
+                    value={ingestionMetadataExpression}
+                    onChange={(event) =>
+                      updateVectorStoreIngestion({
+                        metadata_expression: event.target.value,
+                      })
+                    }
+                    placeholder='Ex. {"source": "workflow"}'
+                  />
+                  <small style={{ color: "#475569" }}>
+                    Retourne un objet JSON fusionné avec les métadonnées automatiques du workflow.
+                  </small>
+                </label>
+                {ingestionValidationMessages.map((message, index) => (
+                  <p key={`vector-store-ingestion-${index}`} style={{ color: "#b91c1c", margin: 0 }}>
+                    {message}
+                  </p>
+                ))}
               </>
             )}
             <div

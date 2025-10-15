@@ -661,6 +661,77 @@ export type FileSearchConfig = {
   vector_store_slug: string;
 };
 
+export type AgentVectorStoreIngestionConfig = {
+  vector_store_slug: string;
+  doc_id_expression: string;
+  document_expression: string;
+  metadata_expression: string;
+};
+
+export const getAgentVectorStoreIngestion = (
+  parameters: AgentParameters | null | undefined,
+): AgentVectorStoreIngestionConfig | null => {
+  if (!parameters) {
+    return null;
+  }
+  const raw = (parameters as Record<string, unknown>).vector_store_ingestion;
+  if (!isPlainRecord(raw)) {
+    return null;
+  }
+
+  const slug = typeof raw.vector_store_slug === "string" ? raw.vector_store_slug.trim() : "";
+  const docIdCandidate = raw.doc_id_expression ?? raw.doc_id;
+  const docIdExpression = typeof docIdCandidate === "string" ? docIdCandidate.trim() : "";
+  const documentCandidate = raw.document_expression ?? raw.document;
+  const documentExpression =
+    typeof documentCandidate === "string" ? documentCandidate.trim() : "";
+  const metadataExpression =
+    typeof raw.metadata_expression === "string" ? raw.metadata_expression.trim() : "";
+
+  if (!slug && !docIdExpression && !documentExpression && !metadataExpression) {
+    return null;
+  }
+
+  return {
+    vector_store_slug: slug,
+    doc_id_expression: docIdExpression,
+    document_expression: documentExpression,
+    metadata_expression: metadataExpression,
+  };
+};
+
+export const setAgentVectorStoreIngestion = (
+  parameters: AgentParameters,
+  config: AgentVectorStoreIngestionConfig | null,
+): AgentParameters => {
+  const next = { ...(parameters as Record<string, unknown>) };
+  if (!config) {
+    delete next.vector_store_ingestion;
+    return next as AgentParameters;
+  }
+
+  const slug = config.vector_store_slug.trim();
+  const docId = config.doc_id_expression.trim();
+  const document = config.document_expression.trim();
+  const metadata = config.metadata_expression.trim();
+
+  if (!slug && !docId && !document && !metadata) {
+    delete next.vector_store_ingestion;
+    return next as AgentParameters;
+  }
+
+  const payload: Record<string, string> = {
+    vector_store_slug: slug,
+    doc_id_expression: docId,
+    document_expression: document,
+  };
+  if (metadata) {
+    payload.metadata_expression = metadata;
+  }
+  next.vector_store_ingestion = payload;
+  return next as AgentParameters;
+};
+
 const isWebSearchTool = (value: unknown): value is Record<string, unknown> =>
   isPlainRecord(value) && value.type === "web_search";
 

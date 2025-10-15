@@ -101,6 +101,7 @@ export type SaveState = "idle" | "saving" | "saved" | "error";
 
 export type {
   AgentParameters,
+  AgentVectorStoreIngestionConfig,
   FileSearchConfig,
   StateAssignment,
   StateAssignmentScope,

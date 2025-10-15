@@ -34,6 +34,7 @@ import {
   parseAgentParameters,
   getAgentFileSearchConfig,
   getAgentResponseFormat,
+  getAgentVectorStoreIngestion,
   setAgentContinueOnError,
   setAgentDisplayResponseInChat,
   setAgentFileSearchConfig,
@@ -54,6 +55,7 @@ import {
   setAgentTopP,
   setAgentWeatherToolEnabled,
   setAgentWebSearchConfig,
+  setAgentVectorStoreIngestion,
   setStateAssignments,
   stringifyAgentParameters,
 } from "../../utils/workflows";
@@ -61,6 +63,7 @@ import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
 import type {
   AgentParameters,
+  AgentVectorStoreIngestionConfig,
   FileSearchConfig,
   FlowEdge,
   FlowEdgeData,
@@ -1151,6 +1154,24 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleAgentVectorStoreIngestionChange = useCallback(
+    (nodeId: string, config: AgentVectorStoreIngestionConfig | null) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentVectorStoreIngestion(data.parameters, config);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleAgentWeatherToolChange = useCallback(
     (nodeId: string, enabled: boolean) => {
       updateNodeData(nodeId, (data) => {
@@ -1947,6 +1968,23 @@ const WorkflowBuilderPage = () => {
         }
       }
 
+      const vectorStoreIngestion = getAgentVectorStoreIngestion(node.data.parameters);
+      if (vectorStoreIngestion) {
+        const slug = vectorStoreIngestion.vector_store_slug.trim();
+        if (!slug) {
+          return true;
+        }
+        if (!vectorStoresError && vectorStores.length > 0 && !availableVectorStoreSlugs.has(slug)) {
+          return true;
+        }
+        if (
+          !vectorStoreIngestion.doc_id_expression.trim() ||
+          !vectorStoreIngestion.document_expression.trim()
+        ) {
+          return true;
+        }
+      }
+
       const responseFormat = getAgentResponseFormat(node.data.parameters);
       if (responseFormat.kind === "widget") {
         const slug = responseFormat.slug.trim();
@@ -2633,6 +2671,7 @@ const WorkflowBuilderPage = () => {
                     onAgentStorePreferenceChange={handleAgentStorePreferenceChange}
                     onAgentWebSearchChange={handleAgentWebSearchChange}
                     onAgentFileSearchChange={handleAgentFileSearchChange}
+                    onAgentVectorStoreIngestionChange={handleAgentVectorStoreIngestionChange}
                     availableModels={availableModels}
                     availableModelsLoading={availableModelsLoading}
                     availableModelsError={availableModelsError}
