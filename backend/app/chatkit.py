@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import logging
 import re
@@ -2090,6 +2091,10 @@ async def run_workflow(
 
         stream_method = getattr(agent_context, "stream_widget", None)
         if stream_method is None:
+            context_owner = getattr(agent_context, "context", None)
+            if context_owner is not None:
+                stream_method = getattr(context_owner, "stream_widget", None)
+        if stream_method is None:
             logger.warning(
                 "L'Agents SDK ne propose pas stream_widget : impossible de diffuser %s",
                 config.slug,
@@ -2097,7 +2102,9 @@ async def run_workflow(
             return
 
         try:
-            await stream_method(widget)
+            result = stream_method(widget)
+            if inspect.isawaitable(result):
+                await result
         except Exception as exc:  # pragma: no cover - dépend de l'Agents SDK
             logger.exception(
                 "Impossible de diffuser le widget %s pour %s",
