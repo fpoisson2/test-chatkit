@@ -1832,27 +1832,64 @@ async def run_workflow(
         return output, str(output)
 
     def _resolve_from_container(value: Any, path: str) -> Any:
-        current: Any = value
-        for part in path.split("."):
-            if not part:
-                continue
-            if isinstance(current, dict):
-                current = current.get(part)
-            elif isinstance(current, (list, tuple)):
+        """Récupère une valeur imbriquée en gérant les alias Pydantic."""
+
+        def _as_mapping(candidate: Any) -> dict[str, Any] | None:
+            if isinstance(candidate, dict):
+                return candidate
+            if hasattr(candidate, "model_dump"):
                 try:
-                    index = int(part)
+                    dumped = candidate.model_dump(by_alias=True)
+                except TypeError:
+                    dumped = candidate.model_dump()
+                if isinstance(dumped, dict):
+                    return dumped
+            if hasattr(candidate, "dict"):
+                try:
+                    dumped = candidate.dict(by_alias=True)
+                except TypeError:
+                    dumped = candidate.dict()
+                if isinstance(dumped, dict):
+                    return dumped
+            return None
+
+        def _resolve(current: Any, parts: list[str]) -> Any:
+            if not parts:
+                return current
+
+            if isinstance(current, (list, tuple)):
+                head, *tail = parts
+                try:
+                    index = int(head)
                 except ValueError:
                     return None
                 if 0 <= index < len(current):
-                    current = current[index]
-                else:
-                    return None
-            else:
-                if hasattr(current, part):
-                    current = getattr(current, part)
-                else:
-                    return None
-        return current
+                    return _resolve(current[index], tail)
+                return None
+
+            mapping = _as_mapping(current)
+            if mapping is not None:
+                head, *tail = parts
+                if head in mapping:
+                    return _resolve(mapping[head], tail)
+                if tail:
+                    for join_index in range(len(parts), 1, -1):
+                        candidate_key = ".".join(parts[:join_index])
+                        if candidate_key in mapping:
+                            return _resolve(
+                                mapping[candidate_key],
+                                parts[join_index:],
+                            )
+                return None
+
+            head, *tail = parts
+            if hasattr(current, head):
+                return _resolve(getattr(current, head), tail)
+
+            return None
+
+        parts = [segment for segment in path.split(".") if segment]
+        return _resolve(value, parts)
 
     def _assign_state_value(target_path: str, value: Any) -> None:
         path_parts = [part for part in target_path.split(".") if part]
