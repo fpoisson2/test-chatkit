@@ -189,7 +189,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
                 waiting_text = step_progress_text.get(update.key)
                 if waiting_text is None:
-                    waiting_text = f"{header}\n\n en cours..."
+                    waiting_text = f"{header}\n\n..."
                     step_progress_text[update.key] = waiting_text
                     step_progress_headers[update.key] = header
                     await on_stream_event(ProgressUpdateEvent(text=waiting_text))
