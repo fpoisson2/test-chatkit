@@ -501,7 +501,7 @@ class WorkflowService:
         db, owns_session = self._get_session(session)
         try:
             normalized_nodes, normalized_edges = self._normalize_graph(graph_payload)
-            workflow = self._get_or_create_default_workflow(db)
+            workflow = self._get_chatkit_workflow(db)
             definition = self._create_definition_from_graph(
                 workflow=workflow,
                 nodes=normalized_nodes,

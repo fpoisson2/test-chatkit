@@ -17,7 +17,9 @@ import ReactFlow, {
   type Edge,
   type EdgeOptions,
   type Node,
+  type ReactFlowInstance,
   ReactFlowProvider,
+  type Viewport,
   useEdgesState,
   useNodesState,
 } from "reactflow";
@@ -317,6 +319,9 @@ const WorkflowBuilderPage = () => {
   const autoSaveTimeoutRef = useRef<number | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const isHydratingRef = useRef(false);
+  const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const viewportRef = useRef<Viewport | null>(null);
+  const pendingViewportRestoreRef = useRef(false);
 
   const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
   const isAuthenticated = Boolean(user);
@@ -655,6 +660,8 @@ const WorkflowBuilderPage = () => {
           setHasPendingChanges(false);
           setNodes(flowNodes);
           setEdges(flowEdges);
+          pendingViewportRestoreRef.current = true;
+          restoreViewport();
           setSelectedNodeId(null);
           setSelectedEdgeId(null);
           setSaveState("idle");
@@ -674,7 +681,7 @@ const WorkflowBuilderPage = () => {
       setLoading(false);
       return false;
     },
-    [authHeader, setEdges, setHasPendingChanges, setNodes],
+    [authHeader, restoreViewport, setEdges, setHasPendingChanges, setNodes],
   );
 
   const loadVersions = useCallback(
@@ -709,6 +716,9 @@ const WorkflowBuilderPage = () => {
             lastSavedSnapshotRef.current = JSON.stringify(buildGraphPayloadFrom([], []));
             setHasPendingChanges(false);
             setLoading(false);
+            viewportRef.current = null;
+            pendingViewportRestoreRef.current = true;
+            restoreViewport();
             return true;
           }
           const availableIds = new Set(data.map((version) => version.id));
@@ -746,7 +756,15 @@ const WorkflowBuilderPage = () => {
       setLoading(false);
       return false;
     },
-    [authHeader, loadVersionDetail, selectedVersionId, setEdges, setHasPendingChanges, setNodes],
+    [
+      authHeader,
+      loadVersionDetail,
+      restoreViewport,
+      selectedVersionId,
+      setEdges,
+      setHasPendingChanges,
+      setNodes,
+    ],
   );
 
   const loadWorkflows = useCallback(
@@ -784,6 +802,9 @@ const WorkflowBuilderPage = () => {
             lastSavedSnapshotRef.current = JSON.stringify(buildGraphPayloadFrom([], []));
             setHasPendingChanges(false);
             setLoading(false);
+            viewportRef.current = null;
+            pendingViewportRestoreRef.current = true;
+            restoreViewport();
             return;
           }
           const availableIds = new Set(data.map((workflow) => workflow.id));
@@ -832,7 +853,15 @@ const WorkflowBuilderPage = () => {
       }
       setLoading(false);
     },
-    [authHeader, loadVersions, selectedWorkflowId, setEdges, setHasPendingChanges, setNodes],
+    [
+      authHeader,
+      loadVersions,
+      restoreViewport,
+      selectedWorkflowId,
+      setEdges,
+      setHasPendingChanges,
+      setNodes,
+    ],
   );
 
   useEffect(() => {
@@ -2196,6 +2225,33 @@ const WorkflowBuilderPage = () => {
     }
   }, [saveState]);
 
+  const restoreViewport = useCallback(() => {
+    const instance = reactFlowInstanceRef.current;
+    if (!instance) {
+      pendingViewportRestoreRef.current = true;
+      return;
+    }
+
+    pendingViewportRestoreRef.current = false;
+    requestAnimationFrame(() => {
+      const flow = reactFlowInstanceRef.current;
+      if (!flow) {
+        return;
+      }
+      const savedViewport = viewportRef.current;
+      if (savedViewport) {
+        flow.setViewport(savedViewport, { duration: 0 });
+      } else {
+        flow.fitView({ padding: 0.2, duration: 0 });
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    viewportRef.current = null;
+    pendingViewportRestoreRef.current = true;
+  }, [selectedWorkflowId]);
+
 
   return (
         <ReactFlowProvider>
@@ -2599,8 +2655,15 @@ const WorkflowBuilderPage = () => {
                   defaultEdgeOptions={defaultEdgeOptions}
                   connectionLineStyle={connectionLineStyle}
                   style={{ background: "#f8fafc" }}
-                  fitView
-                  fitViewOptions={{ padding: 0.2 }}
+                  onInit={(instance) => {
+                    reactFlowInstanceRef.current = instance;
+                    if (pendingViewportRestoreRef.current) {
+                      restoreViewport();
+                    }
+                  }}
+                  onMoveEnd={(_, viewport) => {
+                    viewportRef.current = viewport;
+                  }}
                 >
                   <Background gap={18} size={1} />
                   <MiniMap

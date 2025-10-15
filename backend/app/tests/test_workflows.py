@@ -188,6 +188,90 @@ def test_admin_can_update_workflow_graph_with_parameters() -> None:
     assert redacteur["parameters"]["model"] == "gpt-4.1"
 
 
+def test_updating_current_workflow_targets_selected_chatkit_workflow() -> None:
+    admin = _make_user(email="switch-current@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    creation = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-experimental",
+            "display_name": "Workflow expérimental",
+            "graph": _simple_graph(),
+        },
+    )
+    assert creation.status_code == 201
+    workflow_id = creation.json()["workflow_id"]
+
+    selection = client.post(
+        "/api/workflows/chatkit",
+        headers=_auth_headers(token),
+        json={"workflow_id": workflow_id},
+    )
+    assert selection.status_code == 200
+
+    updated_graph = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {
+                "slug": "agent-mis-a-jour",
+                "kind": "agent",
+                "agent_key": "triage",
+                "is_enabled": True,
+                "parameters": {},
+            },
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [
+            {"source": "start", "target": "agent-mis-a-jour"},
+            {"source": "agent-mis-a-jour", "target": "end"},
+        ],
+    }
+
+    update_response = client.put(
+        "/api/workflows/current",
+        headers=_auth_headers(token),
+        json={"graph": updated_graph},
+    )
+    assert update_response.status_code == 200
+
+    library_response = client.get("/api/workflows", headers=_auth_headers(token))
+    assert library_response.status_code == 200
+    workflows = library_response.json()
+    assert len(workflows) >= 2
+    chatkit_workflow = next(workflow for workflow in workflows if workflow["is_chatkit_default"])
+    other_workflow = next(workflow for workflow in workflows if workflow["id"] != chatkit_workflow["id"])
+
+    chatkit_versions = client.get(
+        f"/api/workflows/{chatkit_workflow['id']}/versions",
+        headers=_auth_headers(token),
+    )
+    assert chatkit_versions.status_code == 200
+    chatkit_latest_id = chatkit_versions.json()[0]["id"]
+    chatkit_detail = client.get(
+        f"/api/workflows/{chatkit_workflow['id']}/versions/{chatkit_latest_id}",
+        headers=_auth_headers(token),
+    )
+    assert chatkit_detail.status_code == 200
+    chatkit_nodes = {node["slug"] for node in chatkit_detail.json()["graph"]["nodes"]}
+    assert "agent-mis-a-jour" in chatkit_nodes
+
+    other_versions = client.get(
+        f"/api/workflows/{other_workflow['id']}/versions",
+        headers=_auth_headers(token),
+    )
+    assert other_versions.status_code == 200
+    other_latest_id = other_versions.json()[0]["id"]
+    other_detail = client.get(
+        f"/api/workflows/{other_workflow['id']}/versions/{other_latest_id}",
+        headers=_auth_headers(token),
+    )
+    assert other_detail.status_code == 200
+    other_nodes = {node["slug"] for node in other_detail.json()["graph"]["nodes"]}
+    assert "agent-mis-a-jour" not in other_nodes
+
+
 def test_legacy_workflow_is_backfilled_with_default_graph() -> None:
     admin = _make_user(email="legacy@example.com", is_admin=True)
     token = create_access_token(admin)
