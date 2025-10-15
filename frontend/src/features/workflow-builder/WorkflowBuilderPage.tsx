@@ -92,9 +92,56 @@ import {
   supportsReasoningModel,
   defaultEdgeOptions,
 } from "./utils";
-import { controlLabelStyle, loadingStyle } from "./styles";
+import {
+  activeWorkflowBadgeStyle,
+  actionMenuTriggerIconStyle,
+  actionMenuTriggerLabelStyle,
+  controlLabelStyle,
+  getActionMenuItemStyle,
+  getActionMenuStyle,
+  getActionMenuTriggerStyle,
+  getActionMenuWrapperStyle,
+  getCreateWorkflowButtonStyle,
+  getDeployButtonStyle,
+  getHeaderActionAreaStyle,
+  getHeaderContainerStyle,
+  getHeaderGroupStyle,
+  getHeaderLayoutStyle,
+  getHeaderNavigationButtonStyle,
+  getVersionSelectStyle,
+  getWorkflowSelectStyle,
+  loadingStyle,
+} from "./styles";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
+
+const useMediaQuery = (query: string) => {
+  const [matches, setMatches] = useState<boolean>(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    return window.matchMedia(query).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const mediaQueryList = window.matchMedia(query);
+    const handleChange = (event: MediaQueryListEvent) => {
+      setMatches(event.matches);
+    };
+    setMatches(mediaQueryList.matches);
+    if (typeof mediaQueryList.addEventListener === "function") {
+      mediaQueryList.addEventListener("change", handleChange);
+      return () => mediaQueryList.removeEventListener("change", handleChange);
+    }
+    mediaQueryList.addListener(handleChange);
+    return () => mediaQueryList.removeListener(handleChange);
+  }, [query]);
+
+  return matches;
+};
 
 const WorkflowBuilderPage = () => {
   const { token, logout, user } = useAuth();
@@ -135,6 +182,7 @@ const WorkflowBuilderPage = () => {
   const pendingViewportRestoreRef = useRef(false);
 
   const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
+  const isMobileLayout = useMediaQuery("(max-width: 768px)");
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
   const closeNavigation = useCallback(() => setNavigationOpen(false), []);
@@ -2152,17 +2200,7 @@ const WorkflowBuilderPage = () => {
           background: "#f1f5f9",
         }}
       >
-        <header
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "1.5rem",
-            padding: "0.75rem 1.5rem",
-            background: "#f8fafc",
-            borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
-            zIndex: 10,
-          }}
-        >
+        <header style={getHeaderContainerStyle(isMobileLayout)}>
           <button
             type="button"
             onClick={toggleNavigation}
@@ -2171,39 +2209,14 @@ const WorkflowBuilderPage = () => {
             aria-label={
               isNavigationOpen ? "Fermer la navigation générale" : "Ouvrir la navigation générale"
             }
-            style={{
-              width: "2.75rem",
-              height: "2.75rem",
-              borderRadius: "0.75rem",
-              border: "1px solid rgba(15, 23, 42, 0.18)",
-              background: "#f8fafc",
-              display: "grid",
-              placeItems: "center",
-              cursor: "pointer",
-            }}
+            style={getHeaderNavigationButtonStyle(isMobileLayout)}
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
               <path d="M3 5h14M3 10h14M3 15h14" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
           </button>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "1.5rem",
-              flex: 1,
-              minWidth: 0,
-              flexWrap: "nowrap",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.75rem",
-                minWidth: 0,
-              }}
-            >
+          <div style={getHeaderLayoutStyle(isMobileLayout)}>
+            <div style={getHeaderGroupStyle(isMobileLayout)}>
               <label htmlFor="workflow-select" style={controlLabelStyle}>
                 Workflow
               </label>
@@ -2213,18 +2226,9 @@ const WorkflowBuilderPage = () => {
                 onChange={handleWorkflowChange}
                 disabled={loading || workflows.length === 0}
                 title={selectedWorkflow?.description ?? undefined}
-                style={{
-                  minWidth: "220px",
-                  maxWidth: "340px",
-                  padding: "0.5rem 0.75rem",
-                  borderRadius: "0.75rem",
-                  border: "1px solid rgba(15, 23, 42, 0.15)",
-                  background: "#fff",
-                  color: "#0f172a",
-                  fontWeight: 600,
-                  cursor: loading || workflows.length === 0 ? "not-allowed" : "pointer",
-                  opacity: loading || workflows.length === 0 ? 0.5 : 1,
-                }}
+                style={getWorkflowSelectStyle(isMobileLayout, {
+                  disabled: loading || workflows.length === 0,
+                })}
               >
                 {workflows.length === 0 ? (
                   <option value="">Aucun workflow disponible</option>
@@ -2246,14 +2250,7 @@ const WorkflowBuilderPage = () => {
                 )}
               </select>
               {selectedWorkflow?.is_chatkit_default ? (
-                <span
-                  style={{
-                    color: "#047857",
-                    fontWeight: 600,
-                    fontSize: "0.85rem",
-                    whiteSpace: "nowrap",
-                  }}
-                >
+                <span style={activeWorkflowBadgeStyle}>
                   🟢 Actif
                 </span>
               ) : null}
@@ -2261,29 +2258,12 @@ const WorkflowBuilderPage = () => {
                 type="button"
                 onClick={handleCreateWorkflow}
                 disabled={loading}
-                style={{
-                  padding: "0.5rem 0.9rem",
-                  borderRadius: "0.75rem",
-                  border: "1px solid rgba(15, 23, 42, 0.15)",
-                  background: "#fff",
-                  color: "#0f172a",
-                  fontWeight: 600,
-                  cursor: loading ? "not-allowed" : "pointer",
-                  opacity: loading ? 0.5 : 1,
-                  whiteSpace: "nowrap",
-                }}
+                style={getCreateWorkflowButtonStyle(isMobileLayout, { disabled: loading })}
               >
                 Nouveau
               </button>
             </div>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "0.75rem",
-                minWidth: 0,
-              }}
-            >
+            <div style={getHeaderGroupStyle(isMobileLayout)}>
               <label htmlFor="version-select" style={controlLabelStyle}>
                 Révision
               </label>
@@ -2292,16 +2272,9 @@ const WorkflowBuilderPage = () => {
                 value={selectedVersionId ? String(selectedVersionId) : ""}
                 onChange={handleVersionChange}
                 disabled={loading || versions.length === 0}
-                style={{
-                  minWidth: "200px",
-                  padding: "0.5rem 0.75rem",
-                  borderRadius: "0.75rem",
-                  border: "1px solid rgba(15, 23, 42, 0.15)",
-                  background: "#fff",
-                  color: "#0f172a",
-                  cursor: loading || versions.length === 0 ? "not-allowed" : "pointer",
-                  opacity: loading || versions.length === 0 ? 0.5 : 1,
-                }}
+                style={getVersionSelectStyle(isMobileLayout, {
+                  disabled: loading || versions.length === 0,
+                })}
               >
                 {versions.length === 0 ? (
                   <option value="">Aucune version disponible</option>
@@ -2324,81 +2297,48 @@ const WorkflowBuilderPage = () => {
               </select>
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <div style={getHeaderActionAreaStyle(isMobileLayout)}>
             <button
               type="button"
               onClick={handleOpenDeployModal}
               disabled={loading || !selectedWorkflowId || versions.length === 0 || isDeploying}
-              style={{
-                padding: "0.55rem 1.1rem",
-                borderRadius: "0.75rem",
-                border: "1px solid rgba(15, 23, 42, 0.15)",
-                background: "#fff",
-                color: "#0f172a",
-                fontWeight: 600,
-                cursor:
-                  loading || !selectedWorkflowId || versions.length === 0 || isDeploying
-                    ? "not-allowed"
-                    : "pointer",
-                opacity:
-                  loading || !selectedWorkflowId || versions.length === 0 || isDeploying
-                    ? 0.5
-                    : 1,
-                whiteSpace: "nowrap",
-              }}
+              style={getDeployButtonStyle(isMobileLayout, {
+                disabled: loading || !selectedWorkflowId || versions.length === 0 || isDeploying,
+              })}
             >
               Déployer
             </button>
-            <div ref={actionMenuRef} style={{ position: "relative" }}>
+            <div ref={actionMenuRef} style={getActionMenuWrapperStyle(isMobileLayout)}>
               <button
                 type="button"
                 onClick={() => setActionMenuOpen((prev) => !prev)}
                 aria-haspopup="true"
                 aria-expanded={isActionMenuOpen}
-                style={{
-                  width: "2.5rem",
-                  height: "2.5rem",
-                  borderRadius: "0.75rem",
-                  border: "1px solid rgba(15, 23, 42, 0.15)",
-                  background: "#fff",
-                  display: "grid",
-                  placeItems: "center",
-                  cursor: "pointer",
-                }}
+                aria-label="Afficher les actions supplémentaires"
+                style={getActionMenuTriggerStyle(isMobileLayout)}
               >
-                <span style={{ fontSize: "1.5rem", lineHeight: 1, color: "#0f172a" }}>…</span>
+                {isMobileLayout ? (
+                  <>
+                    <span style={actionMenuTriggerLabelStyle}>Actions</span>
+                    <span aria-hidden="true" style={actionMenuTriggerIconStyle}>
+                      …
+                    </span>
+                  </>
+                ) : (
+                  <span aria-hidden="true" style={actionMenuTriggerIconStyle}>
+                    …
+                  </span>
+                )}
               </button>
               {isActionMenuOpen ? (
-                <div
-                  style={{
-                    position: "absolute",
-                    top: "calc(100% + 0.5rem)",
-                    right: 0,
-                    background: "#fff",
-                    borderRadius: "0.75rem",
-                    border: "1px solid rgba(15, 23, 42, 0.1)",
-                    boxShadow: "0 20px 40px rgba(15, 23, 42, 0.12)",
-                    padding: "0.5rem",
-                    minWidth: "220px",
-                    zIndex: 30,
-                  }}
-                >
+                <div style={getActionMenuStyle(isMobileLayout)}>
                   <button
                     type="button"
                     onClick={handleRenameWorkflow}
                     disabled={!selectedWorkflowId}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "0.6rem 0.75rem",
-                      borderRadius: "0.6rem",
-                      border: "none",
-                      background: "transparent",
-                      color: "#0f172a",
-                      fontWeight: 500,
-                      cursor: !selectedWorkflowId ? "not-allowed" : "pointer",
-                      opacity: !selectedWorkflowId ? 0.5 : 1,
-                    }}
+                    style={getActionMenuItemStyle(isMobileLayout, {
+                      disabled: !selectedWorkflowId,
+                    })}
                   >
                     Renommer
                   </button>
@@ -2411,30 +2351,13 @@ const WorkflowBuilderPage = () => {
                       selectedWorkflow?.is_chatkit_default ||
                       !selectedWorkflow?.active_version_id
                     }
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "0.6rem 0.75rem",
-                      borderRadius: "0.6rem",
-                      border: "none",
-                      background: "transparent",
-                      color: "#0f172a",
-                      fontWeight: 500,
-                      cursor:
+                    style={getActionMenuItemStyle(isMobileLayout, {
+                      disabled:
                         loading ||
                         !selectedWorkflowId ||
                         selectedWorkflow?.is_chatkit_default ||
-                        !selectedWorkflow?.active_version_id
-                          ? "not-allowed"
-                          : "pointer",
-                      opacity:
-                        loading ||
-                        !selectedWorkflowId ||
-                        selectedWorkflow?.is_chatkit_default ||
-                        !selectedWorkflow?.active_version_id
-                          ? 0.5
-                          : 1,
-                    }}
+                        !selectedWorkflow?.active_version_id,
+                    })}
                   >
                     Définir pour ChatKit
                   </button>
@@ -2442,18 +2365,9 @@ const WorkflowBuilderPage = () => {
                     type="button"
                     onClick={handleDuplicateWorkflow}
                     disabled={loading || !selectedWorkflowId}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "0.6rem 0.75rem",
-                      borderRadius: "0.6rem",
-                      border: "none",
-                      background: "transparent",
-                      color: "#0f172a",
-                      fontWeight: 500,
-                      cursor: loading || !selectedWorkflowId ? "not-allowed" : "pointer",
-                      opacity: loading || !selectedWorkflowId ? 0.5 : 1,
-                    }}
+                    style={getActionMenuItemStyle(isMobileLayout, {
+                      disabled: loading || !selectedWorkflowId,
+                    })}
                   >
                     Dupliquer
                   </button>
@@ -2461,22 +2375,10 @@ const WorkflowBuilderPage = () => {
                     type="button"
                     onClick={handleDeleteWorkflow}
                     disabled={loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "0.6rem 0.75rem",
-                      borderRadius: "0.6rem",
-                      border: "none",
-                      background: "transparent",
-                      color: "#b91c1c",
-                      fontWeight: 500,
-                      cursor:
-                        loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default
-                          ? "not-allowed"
-                          : "pointer",
-                      opacity:
-                        loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default ? 0.5 : 1,
-                    }}
+                    style={getActionMenuItemStyle(isMobileLayout, {
+                      disabled: loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default,
+                      danger: true,
+                    })}
                   >
                     Supprimer
                   </button>
