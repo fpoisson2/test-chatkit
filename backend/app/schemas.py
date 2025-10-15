@@ -265,6 +265,10 @@ class WorkflowVersionCreateRequest(BaseModel):
     mark_as_active: bool = False
 
 
+class WorkflowVersionUpdateRequest(BaseModel):
+    graph: WorkflowGraphInput
+
+
 class WorkflowProductionUpdate(BaseModel):
     version_id: int
 

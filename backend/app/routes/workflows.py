@@ -13,6 +13,7 @@ from ..schemas import (
     WorkflowProductionUpdate,
     WorkflowSummaryResponse,
     WorkflowVersionCreateRequest,
+    WorkflowVersionUpdateRequest,
     WorkflowVersionSummaryResponse,
     WorkflowChatKitUpdate,
 )
@@ -168,6 +169,33 @@ async def create_workflow_version(
             session=session,
         )
     except WorkflowNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except WorkflowValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
+    return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
+
+
+@router.put(
+    "/api/workflows/{workflow_id}/versions/{version_id}",
+    response_model=WorkflowDefinitionResponse,
+)
+async def update_workflow_version(
+    workflow_id: int,
+    version_id: int,
+    payload: WorkflowVersionUpdateRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowDefinitionResponse:
+    _ensure_admin(current_user)
+    service = WorkflowService()
+    try:
+        definition = service.update_version(
+            workflow_id,
+            version_id,
+            payload.graph.model_dump(),
+            session=session,
+        )
+    except WorkflowVersionNotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
 from sqlalchemy import func, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ..database import SessionLocal
 from ..models import Workflow, WorkflowDefinition, WorkflowStep, WorkflowTransition
@@ -398,24 +398,17 @@ class WorkflowService:
         workflow.active_version_id = definition.id
         session.flush()
 
-    def _create_definition_from_graph(
+    def _replace_definition_graph(
         self,
+        definition: WorkflowDefinition,
         *,
-        workflow: Workflow,
         nodes: list[NormalizedNode],
         edges: list[NormalizedEdge],
         session: Session,
-        name: str | None = None,
-        mark_active: bool = False,
     ) -> WorkflowDefinition:
-        version_number = self._get_next_version(workflow, session)
-        definition = WorkflowDefinition(
-            workflow=workflow,
-            name=name or f"v{version_number}",
-            version=version_number,
-            is_active=False,
-        )
-        session.add(definition)
+        definition.transitions[:] = []
+        session.flush()
+        definition.steps[:] = []
         session.flush()
 
         slug_to_step: dict[str, WorkflowStep] = {}
@@ -444,6 +437,34 @@ class WorkflowService:
             )
 
         session.flush()
+        return definition
+
+    def _create_definition_from_graph(
+        self,
+        *,
+        workflow: Workflow,
+        nodes: list[NormalizedNode],
+        edges: list[NormalizedEdge],
+        session: Session,
+        name: str | None = None,
+        mark_active: bool = False,
+    ) -> WorkflowDefinition:
+        version_number = self._get_next_version(workflow, session)
+        definition = WorkflowDefinition(
+            workflow=workflow,
+            name=name or f"v{version_number}",
+            version=version_number,
+            is_active=False,
+        )
+        session.add(definition)
+        session.flush()
+
+        self._replace_definition_graph(
+            definition,
+            nodes=nodes,
+            edges=edges,
+            session=session,
+        )
         if mark_active:
             self._set_active_definition(workflow, definition, session)
 
@@ -480,7 +501,7 @@ class WorkflowService:
         db, owns_session = self._get_session(session)
         try:
             normalized_nodes, normalized_edges = self._normalize_graph(graph_payload)
-            workflow = self._get_or_create_default_workflow(db)
+            workflow = self._get_chatkit_workflow(db)
             definition = self._create_definition_from_graph(
                 workflow=workflow,
                 nodes=normalized_nodes,
@@ -680,6 +701,49 @@ class WorkflowService:
                 session=db,
                 name=name,
                 mark_active=mark_as_active,
+            )
+            db.commit()
+            db.refresh(definition)
+            return self._fully_load_definition(definition)
+        finally:
+            if owns_session:
+                db.close()
+
+    def update_version(
+        self,
+        workflow_id: int,
+        version_id: int,
+        graph_payload: dict[str, Any],
+        *,
+        session: Session | None = None,
+    ) -> WorkflowDefinition:
+        db, owns_session = self._get_session(session)
+        try:
+            definition = db.scalar(
+                select(WorkflowDefinition)
+                .where(
+                    WorkflowDefinition.workflow_id == workflow_id,
+                    WorkflowDefinition.id == version_id,
+                )
+                .options(
+                    selectinload(WorkflowDefinition.workflow),
+                    selectinload(WorkflowDefinition.steps),
+                    selectinload(WorkflowDefinition.transitions),
+                )
+            )
+            if definition is None:
+                raise WorkflowVersionNotFoundError(workflow_id, version_id)
+            if definition.is_active:
+                raise WorkflowValidationError(
+                    "Impossible de modifier une version active."
+                )
+
+            nodes, edges = self._normalize_graph(graph_payload)
+            self._replace_definition_graph(
+                definition,
+                nodes=nodes,
+                edges=edges,
+                session=db,
             )
             db.commit()
             db.refresh(definition)
