@@ -208,7 +208,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 workflow_service=self._workflow_service,
             )
 
-            thread.status = ClosedStatus(reason="workflow_completed")
+            thread.status = ClosedStatus(reason="Workflow terminé")
             await on_stream_event(
                 EndOfTurnItem(
                     id=self.store.generate_item_id(

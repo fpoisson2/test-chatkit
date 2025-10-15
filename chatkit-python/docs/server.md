@@ -64,7 +64,7 @@ class MyChatKitServer(ChatKitServer):
 
 Lorsqu'un client tente d'ajouter un message utilisateur à l'aide de `threads.add_user_message` sur un fil marqué comme `closed`,
 le serveur émet un `ErrorEvent` sans possibilité de réessayer (`allow_retry=False`) et invite l'utilisateur à créer un nouveau fil.
-Ce comportement évite de rouvrir involontairement des conversations considérées comme terminées.
+Ce comportement évite de rouvrir involontairement des conversations considérées comme terminées. Une fois le workflow achevé avec succès, le serveur positionne le statut du fil sur `ClosedStatus` avec la raison « Workflow terminé », ce qui permet d'afficher un message convivial côté client.
 
 ## Setting up the endpoint
 
