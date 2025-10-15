@@ -185,7 +185,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             async def on_step_stream(
                 update: WorkflowStepStreamUpdate,
             ) -> None:
-                header = f"Étape {update.index} – {update.title}"
+                header = update.title
 
                 if update.key not in step_progress_text:
                     waiting_text = f"{header}\n\nGénération en cours..."
@@ -193,16 +193,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     step_progress_headers[update.key] = header
                     await on_stream_event(ProgressUpdateEvent(text=waiting_text))
 
-                aggregated_text = update.text
-                if not aggregated_text.strip():
+                if not update.text.strip():
                     return
 
-                progress_text = f"{header}\n\n{aggregated_text}"
-                if step_progress_text.get(update.key) == progress_text:
-                    return
-
-                step_progress_text[update.key] = progress_text
-                await on_stream_event(ProgressUpdateEvent(text=progress_text))
+                # Nous ignorons volontairement le texte généré pour ne pas l'afficher
+                # dans le suivi de progression.
+                step_progress_text[update.key] = waiting_text
 
             await run_workflow(
                 workflow_input,
