@@ -46,6 +46,7 @@ from .token_sanitizer import sanitize_model_like
 from .workflows import WorkflowService
 from .vector_store import JsonVectorStoreService, SearchResult
 from .weather import fetch_weather
+from .widgets import WidgetLibraryService
 
 logger = logging.getLogger("chatkit.server")
 
@@ -1025,6 +1026,12 @@ def _build_agent_kwargs(
     if overrides:
         for key, value in overrides.items():
             merged[key] = value
+
+    # Les paramètres orientés interface utilisateur ne sont pas reconnus par
+    # l'Agents SDK. Ils proviennent du concepteur de workflow et doivent être
+    # retirés avant l'instanciation de l'agent afin d'éviter les erreurs de
+    # type lors de la création du modèle (ex. response_widget).
+    merged.pop("response_widget", None)
     if "model_settings" in merged:
         merged["model_settings"] = _coerce_model_settings(merged["model_settings"])
     if "tools" in merged:
@@ -1470,6 +1477,12 @@ class WorkflowStepStreamUpdate:
     text: str
 
 
+@dataclass(frozen=True)
+class _ResponseWidgetConfig:
+    slug: str
+    variables: dict[str, str]
+
+
 class WorkflowExecutionError(RuntimeError):
     def __init__(
         self,
@@ -1704,7 +1717,9 @@ async def run_workflow(
             cursor = next_value
         cursor[path_parts[-1]] = value
 
-    def _evaluate_state_expression(expression: Any) -> Any:
+    def _evaluate_state_expression(
+        expression: Any, *, input_context: dict[str, Any] | None = None
+    ) -> Any:
         if expression is None:
             return None
         if isinstance(expression, (bool, int, float, dict, list)):
@@ -1716,21 +1731,21 @@ async def run_workflow(
             if expr == "state":
                 return state
             if expr == "input":
-                if last_step_context is None:
+                context = last_step_context if input_context is None else input_context
+                if context is None:
                     raise RuntimeError(
                         "Aucun résultat précédent disponible pour l'expression 'input'."
                     )
-                return last_step_context
+                return context
             if expr.startswith("state."):
                 return _resolve_from_container(state, expr[len("state.") :])
             if expr.startswith("input."):
-                if last_step_context is None:
+                context = last_step_context if input_context is None else input_context
+                if context is None:
                     raise RuntimeError(
                         "Aucun résultat précédent disponible pour les expressions basées sur 'input'."
                     )
-                return _resolve_from_container(
-                    last_step_context, expr[len("input.") :]
-                )
+                return _resolve_from_container(context, expr[len("input.") :])
             try:
                 return json.loads(expr)
             except json.JSONDecodeError:
@@ -1766,6 +1781,206 @@ async def run_workflow(
             if isinstance(update, AssistantMessageContentPartTextDelta):
                 return update.delta or ""
         return ""
+
+    def _parse_response_widget_config(
+        parameters: dict[str, Any] | None,
+    ) -> _ResponseWidgetConfig | None:
+        if not parameters or not isinstance(parameters, dict):
+            return None
+        candidate = parameters.get("response_widget")
+        if isinstance(candidate, str):
+            slug = candidate.strip()
+            if not slug:
+                return None
+            return _ResponseWidgetConfig(slug=slug, variables={})
+        if not isinstance(candidate, dict):
+            return None
+        slug_raw = candidate.get("slug")
+        slug = slug_raw.strip() if isinstance(slug_raw, str) else ""
+        if not slug:
+            return None
+        variables: dict[str, str] = {}
+        raw_variables = candidate.get("variables")
+        if isinstance(raw_variables, dict):
+            for key, expression in raw_variables.items():
+                if not isinstance(key, str) or not isinstance(expression, str):
+                    continue
+                trimmed_key = key.strip()
+                trimmed_expression = expression.strip()
+                if trimmed_key and trimmed_expression:
+                    variables[trimmed_key] = trimmed_expression
+        return _ResponseWidgetConfig(slug=slug, variables=variables)
+
+    def _stringify_widget_value(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, BaseModel):
+            value = value.model_dump()
+        if isinstance(value, (dict, list)):
+            try:
+                return json.dumps(value, ensure_ascii=False)
+            except TypeError:
+                return str(value)
+        return str(value)
+
+    def _evaluate_widget_variable_expression(
+        expression: str, *, input_context: dict[str, Any] | None
+    ) -> str | None:
+        if not expression.strip():
+            return None
+        try:
+            raw_value = _evaluate_state_expression(
+                expression, input_context=input_context
+            )
+        except Exception as exc:  # pragma: no cover - dépend du contenu utilisateur
+            logger.warning(
+                "Impossible d'évaluer l'expression %s pour un widget : %s",
+                expression,
+                exc,
+            )
+            return None
+        if raw_value is None:
+            return None
+        return _stringify_widget_value(raw_value)
+
+    def _update_widget_node_value(
+        node: dict[str, Any],
+        value: str | list[str],
+    ) -> None:
+        if isinstance(value, list):
+            node["value"] = value
+            return
+        text = value
+        if "value" in node:
+            node["value"] = text
+        elif "text" in node:
+            node["text"] = text
+        else:
+            node["value"] = text
+
+    def _apply_widget_variable_values(
+        definition: Any, values: dict[str, str]
+    ) -> set[str]:
+        matched: set[str] = set()
+
+        def _walk(node: Any) -> None:
+            if isinstance(node, dict):
+                identifier = node.get("id")
+                if isinstance(identifier, str) and identifier in values:
+                    _update_widget_node_value(node, values[identifier])
+                    matched.add(identifier)
+                editable = node.get("editable")
+                if isinstance(editable, dict):
+                    editable_name = editable.get("name")
+                    if (
+                        isinstance(editable_name, str)
+                        and editable_name in values
+                        and editable_name not in matched
+                    ):
+                        _update_widget_node_value(node, values[editable_name])
+                        matched.add(editable_name)
+                    editable_names = editable.get("names")
+                    if isinstance(editable_names, list):
+                        collected = [
+                            values[name]
+                            for name in editable_names
+                            if isinstance(name, str) and name in values
+                        ]
+                        if collected:
+                            _update_widget_node_value(node, collected)
+                            matched.update(
+                                name
+                                for name in editable_names
+                                if isinstance(name, str) and name in values
+                            )
+                    elif (
+                        isinstance(editable_names, str)
+                        and editable_names in values
+                        and editable_names not in matched
+                    ):
+                        _update_widget_node_value(node, values[editable_names])
+                        matched.add(editable_names)
+                for child in node.values():
+                    if isinstance(child, (dict, list)):
+                        _walk(child)
+            elif isinstance(node, list):
+                for entry in node:
+                    _walk(entry)
+
+        _walk(definition)
+        return matched
+
+    async def _stream_response_widget(
+        config: _ResponseWidgetConfig,
+        *,
+        step_slug: str,
+        step_title: str,
+        step_context: dict[str, Any] | None,
+    ) -> None:
+        try:
+            with SessionLocal() as session:
+                service = WidgetLibraryService(session)
+                template = service.get_widget(config.slug)
+                if template is None:
+                    logger.warning(
+                        "Widget %s introuvable pour l'étape %s",
+                        config.slug,
+                        step_slug,
+                    )
+                    return
+                definition = json.loads(
+                    json.dumps(template.definition, ensure_ascii=False)
+                )
+        except Exception as exc:  # pragma: no cover - dépend du stockage
+            logger.exception(
+                "Impossible de charger le widget %s depuis la base", config.slug, exc_info=exc
+            )
+            return
+
+        resolved: dict[str, str] = {}
+        for variable_id, expression in config.variables.items():
+            value = _evaluate_widget_variable_expression(
+                expression, input_context=step_context
+            )
+            if value is None:
+                continue
+            resolved[variable_id] = value
+
+        if resolved:
+            matched = _apply_widget_variable_values(definition, resolved)
+            missing = set(resolved) - matched
+            if missing:
+                logger.warning(
+                    "Variables de widget non appliquées (%s) pour %s",
+                    ", ".join(sorted(missing)),
+                    config.slug,
+                )
+
+        try:
+            widget = WidgetLibraryService._validate_widget(definition)
+        except Exception as exc:  # pragma: no cover - dépend du SDK installé
+            logger.exception(
+                "Le widget %s est invalide après interpolation", config.slug, exc_info=exc
+            )
+            return
+
+        stream_method = getattr(agent_context, "stream_widget", None)
+        if stream_method is None:
+            logger.warning(
+                "L'Agents SDK ne propose pas stream_widget : impossible de diffuser %s",
+                config.slug,
+            )
+            return
+
+        try:
+            await stream_method(widget)
+        except Exception as exc:  # pragma: no cover - dépend de l'Agents SDK
+            logger.exception(
+                "Impossible de diffuser le widget %s pour %s",
+                config.slug,
+                step_title,
+                exc_info=exc,
+            )
 
     async def run_agent_step(
         step_key: str,
@@ -1942,6 +2157,7 @@ async def run_workflow(
         step_identifier = f"{agent_key}_{position}"
         agent = agent_instances[current_slug]
         title = _node_title(current_node)
+        widget_config = _parse_response_widget_config(current_node.parameters)
 
         if (
             agent_key in {"get_data_from_web", "triage_2", "get_data_from_user"}
@@ -2049,6 +2265,14 @@ async def run_workflow(
                 "agent_key": agent_key,
                 "output": result_stream.final_output,
             }
+
+        if widget_config is not None:
+            await _stream_response_widget(
+                widget_config,
+                step_slug=current_node.slug,
+                step_title=title,
+                step_context=last_step_context,
+            )
 
         transition = _next_edge(current_slug)
         if agent_key == "r_dacteur":
