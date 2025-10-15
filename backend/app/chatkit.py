@@ -24,6 +24,11 @@ from openai.types.shared.reasoning import Reasoning
 from pydantic import BaseModel, Field, create_model
 
 from chatkit.agents import AgentContext, stream_agent_response
+
+try:  # pragma: no cover - dépend de la version du SDK Agents installée
+    from chatkit.agents import stream_widget as _sdk_stream_widget
+except ImportError:  # pragma: no cover - compatibilité avec les anciennes versions
+    _sdk_stream_widget = None  # type: ignore[assignment]
 from chatkit.server import ChatKitServer
 from chatkit.store import NotFoundError
 from chatkit.types import (
@@ -2089,23 +2094,47 @@ async def run_workflow(
             )
             return
 
-        stream_method = getattr(agent_context, "stream_widget", None)
-        if stream_method is None:
-            context_owner = getattr(agent_context, "context", None)
-            if context_owner is not None:
-                stream_method = getattr(context_owner, "stream_widget", None)
-        if stream_method is None:
+        if _sdk_stream_widget is None:
             logger.warning(
-                "L'Agents SDK ne propose pas stream_widget : impossible de diffuser %s",
+                "Le SDK Agents installé ne supporte pas stream_widget : impossible de diffuser %s",
                 config.slug,
             )
             return
 
+        store = getattr(agent_context, "store", None)
+        thread_metadata = getattr(agent_context, "thread", None)
+        if store is None or thread_metadata is None:
+            logger.warning(
+                "Contexte Agent incomplet : impossible de diffuser le widget %s",
+                config.slug,
+            )
+            return
+
+        request_context = getattr(agent_context, "request_context", None)
+
+        def _generate_item_id(item_type: str) -> str:
+            try:
+                return store.generate_item_id(
+                    item_type,
+                    thread_metadata,
+                    request_context,
+                )
+            except Exception as exc:  # pragma: no cover - dépend du stockage sous-jacent
+                logger.exception(
+                    "Impossible de générer un identifiant pour le widget %s",
+                    config.slug,
+                    exc_info=exc,
+                )
+                raise
+
         try:
-            result = stream_method(widget)
-            if inspect.isawaitable(result):
-                await result
-        except Exception as exc:  # pragma: no cover - dépend de l'Agents SDK
+            async for event in _sdk_stream_widget(
+                thread_metadata,
+                widget,
+                generate_id=_generate_item_id,
+            ):
+                await on_stream_event(event)
+        except Exception as exc:  # pragma: no cover - dépend du SDK Agents
             logger.exception(
                 "Impossible de diffuser le widget %s pour %s",
                 config.slug,
