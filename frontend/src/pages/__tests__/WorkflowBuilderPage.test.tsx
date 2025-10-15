@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import WorkflowBuilderPage from "../WorkflowBuilderPage";
@@ -19,6 +20,7 @@ const makeApiEndpointCandidatesMock = vi.hoisted(() =>
 
 const listVectorStoresMock = vi.hoisted(() => vi.fn(async () => []));
 const listModelsMock = vi.hoisted(() => vi.fn(async () => []));
+const listWidgetsMock = vi.hoisted(() => vi.fn(async () => []));
 
 vi.mock("../../utils/backend", () => ({
   makeApiEndpointCandidates: makeApiEndpointCandidatesMock,
@@ -27,6 +29,9 @@ vi.mock("../../utils/backend", () => ({
   },
   modelRegistryApi: {
     list: listModelsMock,
+  },
+  widgetLibraryApi: {
+    listWidgets: listWidgetsMock,
   },
 }));
 
@@ -183,6 +188,7 @@ describe("WorkflowBuilderPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    listWidgetsMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -204,9 +210,6 @@ describe("WorkflowBuilderPage", () => {
     const triageNode = container.querySelector('[data-id="agent-triage"]');
     expect(triageNode).not.toBeNull();
     fireEvent.click(triageNode!);
-
-    const agentSelect = await screen.findByLabelText(/agent chatkit/i);
-    expect(agentSelect).toHaveValue("triage");
 
     const displayNameInput = await screen.findByLabelText(/nom affiché/i);
     fireEvent.change(displayNameInput, { target: { value: "Analyse enrichie" } });
@@ -245,6 +248,7 @@ describe("WorkflowBuilderPage", () => {
     expect(rawParameters).toContain("Analyse les entrées et produis un résumé clair.");
 
     const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
+    expect(saveButton).not.toBeDisabled();
     fireEvent.click(saveButton);
 
     await waitFor(() => {
@@ -304,6 +308,7 @@ describe("WorkflowBuilderPage", () => {
     fireEvent.click(weatherCheckbox);
 
     const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
+    expect(saveButton).not.toBeDisabled();
     fireEvent.click(saveButton);
 
     await waitFor(() => {
@@ -328,6 +333,189 @@ describe("WorkflowBuilderPage", () => {
     });
   });
 
+  test("détecte les variables du widget et permet de les ingérer", async () => {
+    const user = userEvent.setup();
+    listWidgetsMock.mockResolvedValue([
+      {
+        slug: "email-card",
+        title: "Email",
+        description: null,
+        definition: {
+          size: "lg",
+          type: "Card",
+          cancel: {
+            label: "Discard",
+            action: {
+              type: "email.discard",
+              handler: "server",
+              loadingBehavior: "auto",
+            },
+          },
+          confirm: {
+            label: "Send email",
+            action: {
+              type: "email.send",
+              handler: "server",
+              loadingBehavior: "auto",
+            },
+          },
+          children: [
+            {
+              type: "Row",
+              children: [
+                {
+                  size: "xs",
+                  type: "Text",
+                  color: "tertiary",
+                  value: "FROM",
+                  width: 80,
+                  weight: "semibold",
+                },
+                {
+                  type: "Text",
+                  color: "tertiary",
+                  value: "zj@openai.com",
+                },
+              ],
+            },
+            {
+              type: "Divider",
+              flush: true,
+            },
+            {
+              type: "Row",
+              children: [
+                {
+                  size: "xs",
+                  type: "Text",
+                  color: "tertiary",
+                  value: "TO",
+                  width: 80,
+                  weight: "semibold",
+                },
+                {
+                  type: "Text",
+                  value: "weedon@openai.com",
+                  editable: {
+                    name: "email.to",
+                    required: true,
+                    placeholder: "name@example.com",
+                  },
+                },
+              ],
+            },
+            {
+              type: "Divider",
+              flush: true,
+            },
+            {
+              type: "Row",
+              children: [
+                {
+                  size: "xs",
+                  type: "Text",
+                  color: "tertiary",
+                  value: "SUBJECT",
+                  width: 80,
+                  weight: "semibold",
+                },
+                {
+                  type: "Text",
+                  value: "ChatKit Roadmap",
+                  editable: {
+                    name: "email.subject",
+                    required: true,
+                    placeholder: "Email subject",
+                  },
+                },
+              ],
+            },
+            {
+              type: "Divider",
+              flush: true,
+            },
+            {
+              type: "Text",
+              value:
+                "Hey David, \n\nHope you're doing well! Just wanted to check in and see if there are any updates on the ChatKit roadmap. We're excited to see what's coming next and how we can make the most of the upcoming features.\n\nEspecially curious to see how you support widgets!\n\nBest, Zach",
+              editable: {
+                name: "email.body",
+                required: true,
+                placeholder: "Write your message…",
+              },
+              minLines: 9,
+            },
+          ],
+        },
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      },
+    ]);
+    const fetchMock = setupWorkflowApi();
+
+    const { container } = render(<WorkflowBuilderPage />);
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const triageNode = container.querySelector('[data-id="agent-triage"]');
+    expect(triageNode).not.toBeNull();
+    fireEvent.click(triageNode!);
+
+    const outputTypeSelect = await screen.findByLabelText(/type de sortie/i);
+    await user.selectOptions(outputTypeSelect, "widget");
+
+    await waitFor(() => {
+      expect(screen.getByRole("combobox", { name: /type de sortie/i })).toHaveValue("widget");
+    });
+
+    await waitFor(() => {
+      expect(listWidgetsMock).toHaveBeenCalled();
+    });
+
+    const widgetSelect = await screen.findByRole("combobox", { name: /widget de sortie/i });
+    await user.selectOptions(widgetSelect, "email-card");
+
+    const variablesRegion = await screen.findByRole("region", { name: /variables du widget/i });
+    const toInput = within(variablesRegion).getByLabelText(/variable «\s*email\.to/i);
+    const subjectInput = within(variablesRegion).getByLabelText(/variable «\s*email\.subject/i);
+    const bodyInput = within(variablesRegion).getByLabelText(/variable «\s*email\.body/i);
+    expect(toInput).toHaveValue("");
+    expect(subjectInput).toHaveValue("");
+    expect(bodyInput).toHaveValue("");
+
+    const importButton = within(variablesRegion).getByRole("button", {
+      name: /importer depuis le module précédent/i,
+    });
+    fireEvent.click(importButton);
+
+    expect(toInput).toHaveValue("input.output_parsed.email.to");
+    expect(subjectInput).toHaveValue("input.output_parsed.email.subject");
+    expect(bodyInput).toHaveValue("input.output_parsed.email.body");
+
+    const saveButton = screen.getByRole("button", { name: /enregistrer les modifications/i });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
+      ).toBe(true);
+    });
+
+    const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
+    const payload = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const agentNode = payload.graph.nodes.find((node: any) => node.slug === "agent-triage");
+    expect(agentNode.parameters.response_widget).toEqual({
+      slug: "email-card",
+      variables: {
+        "email.to": "input.output_parsed.email.to",
+        "email.subject": "input.output_parsed.email.subject",
+        "email.body": "input.output_parsed.email.body",
+      },
+    });
+  });
+
   test("pré-remplit un agent hérité avec les valeurs par défaut", async () => {
     setupWorkflowApi({ workflowDetail: JSON.parse(JSON.stringify(defaultResponse)) });
 
@@ -341,15 +529,12 @@ describe("WorkflowBuilderPage", () => {
     expect(triageNode).not.toBeNull();
     fireEvent.click(triageNode!);
 
-    const agentSelect = await screen.findByLabelText(/agent chatkit/i);
-    expect(agentSelect).toHaveValue("triage");
-
     const messageTextarea = await screen.findByLabelText<HTMLTextAreaElement>(/message système/i);
     expect(messageTextarea.value).toContain(
       "Ton rôle : Vérifier si toutes les informations nécessaires sont présentes pour générer un plan-cadre.",
     );
 
-    const modelInput = await screen.findByLabelText(/modèle openai/i);
+    const modelInput = await screen.findByPlaceholderText(/ex\. gpt-4\.1-mini/i);
     expect(modelInput).toHaveValue("gpt-5");
 
     const reasoningSelect = await screen.findByLabelText(/niveau de raisonnement/i);
@@ -364,9 +549,6 @@ describe("WorkflowBuilderPage", () => {
     const writerNode = container.querySelector('[data-id="writer"]');
     expect(writerNode).not.toBeNull();
     fireEvent.click(writerNode!);
-
-    const writerAgentSelect = await screen.findByLabelText(/agent chatkit/i);
-    expect(writerAgentSelect).toHaveValue("r_dacteur");
 
     await waitFor(() => {
       expect(screen.queryByLabelText(/niveau de raisonnement/i)).toBeNull();

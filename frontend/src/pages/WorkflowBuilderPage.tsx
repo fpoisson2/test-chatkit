@@ -27,8 +27,10 @@ import { useAuth } from "../auth";
 import {
   makeApiEndpointCandidates,
   modelRegistryApi,
+  widgetLibraryApi,
   vectorStoreApi,
   type AvailableModel,
+  type WidgetTemplate,
   type VectorStoreSummary,
 } from "../utils/backend";
 import { resolveAgentParameters, resolveStateParameters } from "../utils/agentPresets";
@@ -49,6 +51,7 @@ import {
   getAgentShowSearchSources,
   getAgentContinueOnError,
   getAgentStorePreference,
+  isPlainRecord,
   parseAgentParameters,
   setStateAssignments,
   setAgentMessage,
@@ -62,6 +65,8 @@ import {
   setAgentResponseFormatKind,
   setAgentResponseFormatName,
   setAgentResponseFormatSchema,
+  setAgentResponseWidgetSlug,
+  setAgentResponseWidgetVariables,
   setAgentTemperature,
   setAgentTopP,
   setAgentMaxOutputTokens,
@@ -269,6 +274,9 @@ const WorkflowBuilderPage = () => {
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [availableModelsLoading, setAvailableModelsLoading] = useState(false);
   const [availableModelsError, setAvailableModelsError] = useState<string | null>(null);
+  const [widgets, setWidgets] = useState<WidgetTemplate[]>([]);
+  const [widgetsLoading, setWidgetsLoading] = useState(false);
+  const [widgetsError, setWidgetsError] = useState<string | null>(null);
 
   const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
   const selectedWorkflow = useMemo(
@@ -371,6 +379,47 @@ const WorkflowBuilderPage = () => {
       .finally(() => {
         if (isMounted) {
           setAvailableModelsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!token) {
+      setWidgets([]);
+      setWidgetsLoading(false);
+      setWidgetsError(null);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    setWidgetsLoading(true);
+    setWidgetsError(null);
+    widgetLibraryApi
+      .listWidgets(token)
+      .then((items) => {
+        if (!isMounted) {
+          return;
+        }
+        setWidgets(items);
+      })
+      .catch((error) => {
+        if (!isMounted) {
+          return;
+        }
+        const message =
+          error instanceof Error ? error.message : "Impossible de charger la bibliothèque de widgets.";
+        setWidgetsError(message);
+        setWidgets([]);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setWidgetsLoading(false);
         }
       });
 
@@ -958,7 +1007,7 @@ const WorkflowBuilderPage = () => {
   );
 
   const handleAgentResponseFormatKindChange = useCallback(
-    (nodeId: string, kind: "text" | "json_schema") => {
+    (nodeId: string, kind: "text" | "json_schema" | "widget") => {
       updateNodeData(nodeId, (data) => {
         if (data.kind !== "agent") {
           return data;
@@ -1000,6 +1049,42 @@ const WorkflowBuilderPage = () => {
           return data;
         }
         const nextParameters = setAgentResponseFormatSchema(data.parameters, schema);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentResponseWidgetSlugChange = useCallback(
+    (nodeId: string, slug: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentResponseWidgetSlug(data.parameters, slug);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentResponseWidgetVariablesChange = useCallback(
+    (nodeId: string, variables: Record<string, string>) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentResponseWidgetVariables(data.parameters, variables);
         return {
           ...data,
           parameters: nextParameters,
@@ -1566,12 +1651,50 @@ const WorkflowBuilderPage = () => {
           throw new Error(`Échec de l'enregistrement (${response.status})`);
         }
         const data: WorkflowVersionResponse = await response.json();
+        const currentWorkflow = workflows.find((workflow) => workflow.id === selectedWorkflowId);
+        if (currentWorkflow?.is_chatkit_default) {
+          const updateCandidates = makeApiEndpointCandidates(
+            backendUrl,
+            "/api/workflows/current",
+          );
+          let updateError: Error | null = null;
+          for (const updateUrl of updateCandidates) {
+            try {
+              const updateResponse = await fetch(updateUrl, {
+                method: "PUT",
+                headers: {
+                  "Content-Type": "application/json",
+                  ...authHeader,
+                },
+                body: JSON.stringify({ graph: graphPayload }),
+              });
+              if (!updateResponse.ok) {
+                throw new Error(
+                  `Échec de la mise à jour du workflow ChatKit (${updateResponse.status})`,
+                );
+              }
+              updateError = null;
+              break;
+            } catch (error) {
+              if (error instanceof Error && error.name === "AbortError") {
+                continue;
+              }
+              updateError =
+                error instanceof Error
+                  ? error
+                  : new Error("Impossible de mettre à jour le workflow ChatKit.");
+            }
+          }
+          if (updateError) {
+            throw updateError;
+          }
+        }
         await loadVersions(selectedWorkflowId, data.id);
         setSaveState("saved");
         setSaveMessage(
           publishOnSave
-            ? "Nouvelle version enregistrée et définie en production."
-            : "Nouvelle version enregistrée avec succès."
+            ? "Workflow enregistré et défini en production."
+            : "Workflow enregistré avec succès."
         );
         setTimeout(() => setSaveState("idle"), 1500);
         return;
@@ -1583,7 +1706,15 @@ const WorkflowBuilderPage = () => {
         error instanceof Error ? error.message : "Impossible d'enregistrer le workflow."
       );
     }
-  }, [authHeader, edges, loadVersions, nodes, publishOnSave, selectedWorkflowId]);
+  }, [
+    authHeader,
+    edges,
+    loadVersions,
+    nodes,
+    publishOnSave,
+    selectedWorkflowId,
+    workflows,
+  ]);
 
 const disableSave = useMemo(() => {
   if (!selectedWorkflowId) return true;
@@ -1592,6 +1723,7 @@ const disableSave = useMemo(() => {
   if (nodes.some((node) => node.data.parametersError)) return true;
 
   const availableVectorStoreSlugs = new Set(vectorStores.map((store) => store.slug));
+  const availableWidgetSlugs = new Set(widgets.map((widget) => widget.slug));
 
   return nodes.some((node) => {
     if (node.data.kind !== "agent" || !node.data.isEnabled) {
@@ -1599,22 +1731,38 @@ const disableSave = useMemo(() => {
     }
 
     const fileSearchConfig = getAgentFileSearchConfig(node.data.parameters);
-    if (!fileSearchConfig) {
-      return false;
+    if (fileSearchConfig) {
+      const slug = fileSearchConfig.vector_store_slug?.trim() ?? "";
+      if (!slug) {
+        return true;
+      }
+
+      if (!vectorStoresError && vectorStores.length > 0 && !availableVectorStoreSlugs.has(slug)) {
+        return true;
+      }
     }
 
-    const slug = fileSearchConfig.vector_store_slug?.trim() ?? "";
-    if (!slug) {
-      return true;
-    }
-
-    if (!vectorStoresError && vectorStores.length > 0 && !availableVectorStoreSlugs.has(slug)) {
-      return true;
+    const responseFormat = getAgentResponseFormat(node.data.parameters);
+    if (responseFormat.kind === "widget") {
+      const slug = responseFormat.slug.trim();
+      if (!slug) {
+        return true;
+      }
+      if (!widgetsError && widgets.length > 0 && !availableWidgetSlugs.has(slug)) {
+        return true;
+      }
     }
 
     return false;
   });
-}, [nodes, selectedWorkflowId, vectorStores, vectorStoresError]);
+}, [
+  nodes,
+  selectedWorkflowId,
+  vectorStores,
+  vectorStoresError,
+  widgets,
+  widgetsError,
+]);
 
 
   return (
@@ -1841,6 +1989,8 @@ const disableSave = useMemo(() => {
                   onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
                   onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
                   onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
+                  onAgentResponseWidgetSlugChange={handleAgentResponseWidgetSlugChange}
+                  onAgentResponseWidgetVariablesChange={handleAgentResponseWidgetVariablesChange}
                   onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}
                   onAgentDisplayResponseInChatChange={handleAgentDisplayResponseInChatChange}
                   onAgentShowSearchSourcesChange={handleAgentShowSearchSourcesChange}
@@ -1856,6 +2006,9 @@ const disableSave = useMemo(() => {
                   vectorStores={vectorStores}
                   vectorStoresLoading={vectorStoresLoading}
                   vectorStoresError={vectorStoresError}
+                  widgets={widgets}
+                  widgetsLoading={widgetsLoading}
+                  widgetsError={widgetsError}
                   onStateAssignmentsChange={handleStateAssignmentsChange}
                   onParametersChange={handleParametersChange}
                   onRemove={handleRemoveNode}
@@ -1920,9 +2073,14 @@ type NodeInspectorProps = {
   onAgentTemperatureChange: (nodeId: string, value: string) => void;
   onAgentTopPChange: (nodeId: string, value: string) => void;
   onAgentMaxOutputTokensChange: (nodeId: string, value: string) => void;
-  onAgentResponseFormatKindChange: (nodeId: string, kind: "text" | "json_schema") => void;
+  onAgentResponseFormatKindChange: (nodeId: string, kind: "text" | "json_schema" | "widget") => void;
   onAgentResponseFormatNameChange: (nodeId: string, value: string) => void;
   onAgentResponseFormatSchemaChange: (nodeId: string, schema: unknown) => void;
+  onAgentResponseWidgetSlugChange: (nodeId: string, slug: string) => void;
+  onAgentResponseWidgetVariablesChange: (
+    nodeId: string,
+    variables: Record<string, string>,
+  ) => void;
   onAgentIncludeChatHistoryChange: (nodeId: string, value: boolean) => void;
   onAgentDisplayResponseInChatChange: (nodeId: string, value: boolean) => void;
   onAgentShowSearchSourcesChange: (nodeId: string, value: boolean) => void;
@@ -1938,6 +2096,9 @@ type NodeInspectorProps = {
   vectorStores: VectorStoreSummary[];
   vectorStoresLoading: boolean;
   vectorStoresError: string | null;
+  widgets: WidgetTemplate[];
+  widgetsLoading: boolean;
+  widgetsError: string | null;
   onStateAssignmentsChange: (
     nodeId: string,
     scope: StateAssignmentScope,
@@ -1945,6 +2106,70 @@ type NodeInspectorProps = {
   ) => void;
   onParametersChange: (nodeId: string, value: string) => void;
   onRemove: (nodeId: string) => void;
+};
+
+const extractWidgetVariableIds = (definition: unknown): string[] => {
+  if (!definition) {
+    return [];
+  }
+
+  const register = (candidate: unknown, seen: Set<string>, result: string[]) => {
+    if (typeof candidate !== "string") {
+      return;
+    }
+    const trimmed = candidate.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      return;
+    }
+    seen.add(trimmed);
+    result.push(trimmed);
+  };
+
+  const result: string[] = [];
+  const seen = new Set<string>();
+  const stack: unknown[] = [definition];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+    if (Array.isArray(current)) {
+      for (const entry of current) {
+        stack.push(entry);
+      }
+      continue;
+    }
+    if (!isPlainRecord(current)) {
+      continue;
+    }
+
+    register((current as Record<string, unknown>).id, seen, result);
+
+    const editable = (current as Record<string, unknown>).editable;
+    if (isPlainRecord(editable)) {
+      register(editable.name, seen, result);
+      const editableNames = editable.names;
+      if (Array.isArray(editableNames)) {
+        for (const name of editableNames) {
+          register(name, seen, result);
+        }
+      } else {
+        register(editableNames, seen, result);
+      }
+    }
+
+    for (const value of Object.values(current)) {
+      if (!value) {
+        continue;
+      }
+      if (Array.isArray(value) || isPlainRecord(value)) {
+        stack.push(value);
+      }
+    }
+  }
+
+  return result;
 };
 
 const NodeInspector = ({
@@ -1962,6 +2187,8 @@ const NodeInspector = ({
   onAgentResponseFormatKindChange,
   onAgentResponseFormatNameChange,
   onAgentResponseFormatSchemaChange,
+  onAgentResponseWidgetSlugChange,
+  onAgentResponseWidgetVariablesChange,
   onAgentIncludeChatHistoryChange,
   onAgentDisplayResponseInChatChange,
   onAgentShowSearchSourcesChange,
@@ -1977,6 +2204,9 @@ const NodeInspector = ({
   vectorStores,
   vectorStoresLoading,
   vectorStoresError,
+  widgets,
+  widgetsLoading,
+  widgetsError,
   onStateAssignmentsChange,
   onParametersChange,
   onRemove,
@@ -1988,6 +2218,8 @@ const NodeInspector = ({
   const agentModel = getAgentModel(parameters);
   const reasoningEffort = getAgentReasoningEffort(parameters);
   const responseFormat = getAgentResponseFormat(parameters);
+  const responseWidgetVariables: Record<string, string> =
+    responseFormat.kind === "widget" ? responseFormat.variables : {};
   const temperature = getAgentTemperature(parameters);
   const topP = getAgentTopP(parameters);
   const reasoningVerbosity = getAgentReasoningVerbosity(parameters);
@@ -2013,6 +2245,42 @@ const NodeInspector = ({
   const fileSearchMissingVectorStore =
     fileSearchEnabled &&
     (!trimmedVectorStoreSlug || (!vectorStoresError && vectorStores.length > 0 && !selectedVectorStoreExists));
+  const responseWidgetSlug = responseFormat.kind === "widget" ? responseFormat.slug : "";
+  const trimmedWidgetSlug = responseWidgetSlug.trim();
+  const selectedWidget = useMemo(() => {
+    if (responseFormat.kind !== "widget") {
+      return null;
+    }
+    if (!trimmedWidgetSlug) {
+      return null;
+    }
+    return widgets.find((widget) => widget.slug === trimmedWidgetSlug) ?? null;
+  }, [responseFormat.kind, trimmedWidgetSlug, widgets]);
+  const selectedWidgetExists =
+    responseFormat.kind === "widget" && trimmedWidgetSlug.length > 0 && Boolean(selectedWidget);
+  const widgetVariableIds = useMemo(
+    () => (selectedWidget ? extractWidgetVariableIds(selectedWidget.definition) : []),
+    [selectedWidget],
+  );
+  const handleWidgetVariableInputChange = (variableId: string, value: string) => {
+    const nextVariables: Record<string, string> = { ...responseWidgetVariables };
+    if (!value.trim()) {
+      delete nextVariables[variableId];
+    } else {
+      nextVariables[variableId] = value;
+    }
+    onAgentResponseWidgetVariablesChange(node.id, nextVariables);
+  };
+  const prefillWidgetVariables = () => {
+    if (widgetVariableIds.length === 0) {
+      return;
+    }
+    const nextVariables: Record<string, string> = { ...responseWidgetVariables };
+    for (const variableId of widgetVariableIds) {
+      nextVariables[variableId] = `input.output_parsed.${variableId}`;
+    }
+    onAgentResponseWidgetVariablesChange(node.id, nextVariables);
+  };
 
   let fileSearchValidationMessage: string | null = null;
   if (fileSearchMissingVectorStore && !vectorStoresLoading) {
@@ -2025,6 +2293,14 @@ const NodeInspector = ({
     } else {
       fileSearchValidationMessage =
         "Sélectionnez un vector store pour activer la recherche documentaire.";
+    }
+  }
+  let widgetValidationMessage: string | null = null;
+  if (responseFormat.kind === "widget" && !widgetsLoading && !widgetsError && widgets.length > 0) {
+    if (!trimmedWidgetSlug) {
+      widgetValidationMessage = "Sélectionnez un widget de sortie.";
+    } else if (!selectedWidgetExists) {
+      widgetValidationMessage = "Le widget sélectionné n'est plus disponible. Choisissez-en un autre.";
     }
   }
   const matchedModel = availableModels.find((model) => model.name === agentModel);
@@ -2285,15 +2561,14 @@ const NodeInspector = ({
             <span>Type de sortie</span>
             <select
               value={responseFormat.kind}
-              onChange={(event) =>
-                onAgentResponseFormatKindChange(
-                  node.id,
-                  event.target.value as "text" | "json_schema",
-                )
-              }
+              onChange={(event) => {
+                const nextKind = event.target.value as "text" | "json_schema" | "widget";
+                onAgentResponseFormatKindChange(node.id, nextKind);
+              }}
             >
               <option value="text">Texte libre</option>
               <option value="json_schema">Schéma JSON</option>
+              <option value="widget">Widget de la bibliothèque</option>
             </select>
             <small style={{ color: "#475569" }}>
               Choisissez le format attendu pour la réponse de l'agent.
@@ -2341,6 +2616,105 @@ const NodeInspector = ({
               </label>
             </>
           )}
+
+          {responseFormat.kind === "widget" && (
+            <label style={fieldStyle}>
+              <span>Widget de sortie</span>
+              {widgetsLoading ? (
+                <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
+              ) : widgetsError ? (
+                <p style={{ color: "#b91c1c", margin: 0 }}>{widgetsError}</p>
+              ) : widgets.length === 0 ? (
+                <>
+                  <select value="" disabled>
+                    <option value="">Aucun widget disponible</option>
+                  </select>
+                  <p style={{ color: "#b45309", margin: "0.25rem 0 0" }}>
+                    Créez un widget dans la bibliothèque dédiée pour l'afficher dans le chat.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <select
+                    value={responseWidgetSlug}
+                    onChange={(event) => onAgentResponseWidgetSlugChange(node.id, event.target.value)}
+                  >
+                    <option value="">Sélectionnez un widget</option>
+                    {widgets.map((widget) => (
+                      <option key={widget.slug} value={widget.slug}>
+                        {widget.title?.trim()
+                          ? `${widget.title} (${widget.slug})`
+                          : widget.slug}
+                      </option>
+                    ))}
+                  </select>
+                  {widgetValidationMessage ? (
+                    <p style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}>{widgetValidationMessage}</p>
+                  ) : (
+                    <small style={{ color: "#475569" }}>
+                      Le widget sélectionné sera affiché dans ChatKit lorsque l'agent répondra.
+                    </small>
+                  )}
+                </>
+              )}
+            </label>
+          )}
+
+          {responseFormat.kind === "widget" &&
+            !widgetsLoading &&
+            !widgetsError &&
+            selectedWidget &&
+            (widgetVariableIds.length > 0 ? (
+              <section
+                aria-label="Variables du widget"
+                style={{
+                  marginTop: "0.75rem",
+                  border: "1px solid rgba(15, 23, 42, 0.12)",
+                  borderRadius: "0.75rem",
+                  padding: "0.75rem",
+                  display: "grid",
+                  gap: "0.75rem",
+                }}
+              >
+                <header>
+                  <h3 style={{ margin: 0, fontSize: "1rem" }}>Variables du widget</h3>
+                  <p style={{ margin: "0.25rem 0 0", color: "#475569", fontSize: "0.95rem" }}>
+                    Associez chaque variable du widget aux données produites par le module précédent via l'objet
+                    <code style={{ marginLeft: "0.25rem" }}>input</code>.
+                  </p>
+                </header>
+
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={prefillWidgetVariables}
+                    disabled={widgetVariableIds.length === 0}
+                  >
+                    Importer depuis le module précédent
+                  </button>
+                </div>
+
+                {widgetVariableIds.map((variableId) => (
+                  <label key={variableId} style={fieldStyle}>
+                    <span>Variable « {variableId} »</span>
+                    <input
+                      type="text"
+                      value={responseWidgetVariables[variableId] ?? ""}
+                      placeholder={`Ex. input.output_parsed.${variableId}`}
+                      onChange={(event) => handleWidgetVariableInputChange(variableId, event.target.value)}
+                    />
+                    <small style={{ color: "#64748b" }}>
+                      Utilisez une expression CEL (ex. <code>input.output_parsed.{variableId}</code>) pour peupler le widget.
+                    </small>
+                  </label>
+                ))}
+              </section>
+            ) : (
+              <p style={{ color: "#64748b", margin: 0 }}>
+                Ce widget ne contient aucune variable modifiable détectée.
+              </p>
+            ))}
 
           <div
             style={{
