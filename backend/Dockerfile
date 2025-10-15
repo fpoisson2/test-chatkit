@@ -13,11 +13,13 @@ RUN apt-get update \
 WORKDIR /app
 
 # Pré-installe les dépendances Python (dont la version locale d'openai-chatkit)
-COPY chatkit-python ./chatkit-python
-COPY backend/requirements.txt backend/pyproject.toml ./backend/
+COPY chatkit-python /tmp/chatkit-python
+COPY backend/requirements.txt backend/pyproject.toml /tmp/backend/
 RUN pip install --upgrade pip \
-    && pip install --no-cache-dir -r backend/requirements.txt \
-    && rm -rf backend
+    && cd /tmp/backend \
+    && pip install --no-cache-dir -r requirements.txt \
+    && rm -rf /tmp/backend /tmp/chatkit-python \
+    && cd /app
 
 # Copie du code (écrasé ensuite par le volume monté en développement)
 COPY backend/ .
