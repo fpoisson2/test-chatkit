@@ -1990,6 +1990,52 @@ async def run_workflow(
                 return str(value)
         return str(value)
 
+    def _collect_widget_values_from_output(
+        output: Any,
+    ) -> dict[str, str | list[str]]:
+        """Aplati les sorties structurées en valeurs consommables par un widget."""
+
+        collected: dict[str, str | list[str]] = {}
+
+        def _normalize(candidate: Any) -> Any:
+            if isinstance(candidate, BaseModel):
+                try:
+                    return candidate.model_dump(by_alias=True)
+                except TypeError:
+                    return candidate.model_dump()
+            return candidate
+
+        def _walk(current: Any, path: str) -> None:
+            current = _normalize(current)
+            if isinstance(current, dict):
+                for key, value in current.items():
+                    if not isinstance(key, str):
+                        continue
+                    next_path = f"{path}.{key}" if path else key
+                    _walk(value, next_path)
+                return
+            if isinstance(current, list):
+                simple_values: list[str] = []
+                has_complex_items = False
+                for item in current:
+                    normalized = _normalize(item)
+                    if isinstance(normalized, (dict, list)):
+                        has_complex_items = True
+                        break
+                    simple_values.append(_stringify_widget_value(normalized))
+                if simple_values and not has_complex_items and path:
+                    collected[path] = simple_values
+                    return
+                for index, item in enumerate(current):
+                    next_path = f"{path}.{index}" if path else str(index)
+                    _walk(item, next_path)
+                return
+            if path:
+                collected[path] = _stringify_widget_value(current)
+
+        _walk(output, "")
+        return collected
+
     def _evaluate_widget_variable_expression(
         expression: str, *, input_context: dict[str, Any] | None
     ) -> str | None:
@@ -2026,7 +2072,7 @@ async def run_workflow(
             node["value"] = text
 
     def _apply_widget_variable_values(
-        definition: Any, values: dict[str, str]
+        definition: Any, values: dict[str, str | list[str]]
     ) -> set[str]:
         matched: set[str] = set()
 
@@ -2104,7 +2150,7 @@ async def run_workflow(
             )
             return
 
-        resolved: dict[str, str] = {}
+        resolved: dict[str, str | list[str]] = {}
         for variable_id, expression in config.variables.items():
             value = _evaluate_widget_variable_expression(
                 expression, input_context=step_context
@@ -2112,6 +2158,14 @@ async def run_workflow(
             if value is None:
                 continue
             resolved[variable_id] = value
+
+        if step_context:
+            for key in ("output_parsed", "output"):
+                if key not in step_context:
+                    continue
+                auto_values = _collect_widget_values_from_output(step_context[key])
+                for identifier, value in auto_values.items():
+                    resolved.setdefault(identifier, value)
 
         if resolved:
             matched = _apply_widget_variable_values(definition, resolved)
