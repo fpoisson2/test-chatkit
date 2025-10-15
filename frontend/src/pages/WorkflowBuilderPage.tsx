@@ -357,6 +357,28 @@ const WorkflowBuilderPage = () => {
     };
   }, [isActionMenuOpen]);
 
+  const restoreViewport = useCallback(() => {
+    const instance = reactFlowInstanceRef.current;
+    if (!instance) {
+      pendingViewportRestoreRef.current = true;
+      return;
+    }
+
+    pendingViewportRestoreRef.current = false;
+    requestAnimationFrame(() => {
+      const flow = reactFlowInstanceRef.current;
+      if (!flow) {
+        return;
+      }
+      const savedViewport = viewportRef.current;
+      if (savedViewport) {
+        flow.setViewport(savedViewport, { duration: 0 });
+      } else {
+        flow.fitView({ padding: 0.2, duration: 0 });
+      }
+    });
+  }, []);
+
 
   const navigationItems = useMemo(
     () => {
@@ -2224,28 +2246,6 @@ const WorkflowBuilderPage = () => {
         return { background: "#f1f5f9", color: "#0f172a", border: "1px solid #cbd5f5" } as const;
     }
   }, [saveState]);
-
-  const restoreViewport = useCallback(() => {
-    const instance = reactFlowInstanceRef.current;
-    if (!instance) {
-      pendingViewportRestoreRef.current = true;
-      return;
-    }
-
-    pendingViewportRestoreRef.current = false;
-    requestAnimationFrame(() => {
-      const flow = reactFlowInstanceRef.current;
-      if (!flow) {
-        return;
-      }
-      const savedViewport = viewportRef.current;
-      if (savedViewport) {
-        flow.setViewport(savedViewport, { duration: 0 });
-      } else {
-        flow.fitView({ padding: 0.2, duration: 0 });
-      }
-    });
-  }, []);
 
   useEffect(() => {
     viewportRef.current = null;
