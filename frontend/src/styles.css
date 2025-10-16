@@ -644,6 +644,7 @@ button {
   justify-content: center;
   padding: clamp(24px, 6vw, 48px);
   position: relative;
+  overflow-y: auto;
 }
 
 .login-layout::before,
@@ -755,6 +756,18 @@ button {
 .admin-shell {
   width: min(1180px, 100%);
   gap: clamp(24px, 5vh, 36px);
+}
+
+@media (max-width: 768px) {
+  .admin-layout {
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: clamp(16px, 4vw, 24px);
+  }
+
+  .admin-shell {
+    width: 100%;
+  }
 }
 
 .admin-shell__header {
