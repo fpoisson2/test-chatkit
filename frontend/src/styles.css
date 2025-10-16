@@ -317,6 +317,126 @@ button {
   gap: 16px;
 }
 
+.chatkit-sidebar__dynamic {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0 0 16px;
+}
+
+.chatkit-sidebar__section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(248, 250, 252, 0.9);
+  color: var(--text-color);
+}
+
+.chatkit-sidebar__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chatkit-sidebar__section-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-color);
+}
+
+.chatkit-sidebar__section-text {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: #475569;
+}
+
+.chatkit-sidebar__section-text--muted {
+  color: #64748b;
+}
+
+.chatkit-sidebar__section-error {
+  margin: 0;
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.chatkit-sidebar__section-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.chatkit-sidebar__section-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.chatkit-sidebar__section-select {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  padding: 10px 12px;
+  font-weight: 600;
+  color: var(--text-color);
+  background: #fff;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chatkit-sidebar__section-select:focus-visible {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+.chatkit-sidebar__section-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.chatkit-sidebar__section-button {
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  background: transparent;
+  color: #1d4ed8;
+  font-weight: 600;
+  padding: 10px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: center;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.chatkit-sidebar__section-button:hover,
+.chatkit-sidebar__section-button:focus-visible {
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  outline: none;
+}
+
+.chatkit-sidebar__section-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.chatkit-sidebar__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #22c55e;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -602,6 +722,10 @@ button {
 .chatkit-sidebar--collapsed .chatkit-sidebar__brand-select,
 .chatkit-sidebar--collapsed .chatkit-sidebar__label,
 .chatkit-sidebar--collapsed .chatkit-sidebar__dismiss {
+  display: none;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__dynamic {
   display: none;
 }
 

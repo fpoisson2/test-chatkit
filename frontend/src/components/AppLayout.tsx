@@ -94,11 +94,28 @@ type AppLayoutContextValue = {
 
 const AppLayoutContext = createContext<AppLayoutContextValue | undefined>(undefined);
 
+type SidebarPortalContextValue = {
+  setSidebarContent: (content: ReactNode | null) => void;
+  clearSidebarContent: () => void;
+};
+
+const SidebarPortalContext = createContext<SidebarPortalContextValue | undefined>(undefined);
+
 export const useAppLayout = () => {
   const context = useContext(AppLayoutContext);
 
   if (!context) {
     throw new Error("useAppLayout doit être utilisé à l'intérieur d'AppLayout");
+  }
+
+  return context;
+};
+
+export const useSidebarPortal = () => {
+  const context = useContext(SidebarPortalContext);
+
+  if (!context) {
+    throw new Error("useSidebarPortal doit être utilisé à l'intérieur d'AppLayout");
   }
 
   return context;
@@ -119,6 +136,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   );
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
 
   useEffect(() => {
     const wasDesktop = previousIsDesktopRef.current;
@@ -379,14 +397,31 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     [closeSidebar, handleOpenSettings, isDesktopLayout, isSidebarOpen, openSidebar],
   );
 
+  const handleSetSidebarContent = useCallback((content: ReactNode | null) => {
+    setSidebarContent(content);
+  }, []);
+
+  const handleClearSidebarContent = useCallback(() => {
+    setSidebarContent(null);
+  }, []);
+
+  const sidebarPortalValue = useMemo(
+    () => ({
+      setSidebarContent: handleSetSidebarContent,
+      clearSidebarContent: handleClearSidebarContent,
+    }),
+    [handleClearSidebarContent, handleSetSidebarContent],
+  );
+
   return (
-    <AppLayoutContext.Provider value={contextValue}>
-      <div className={layoutClassName}>
-        <aside
-          className={sidebarClassName}
-          aria-label="Navigation principale"
-          aria-hidden={!isSidebarOpen && !isDesktopLayout}
-        >
+    <SidebarPortalContext.Provider value={sidebarPortalValue}>
+      <AppLayoutContext.Provider value={contextValue}>
+        <div className={layoutClassName}>
+          <aside
+            className={sidebarClassName}
+            aria-label="Navigation principale"
+            aria-hidden={!isSidebarOpen && !isDesktopLayout}
+          >
           <header className="chatkit-sidebar__header">
             <div className="chatkit-sidebar__topline">
               <div className="chatkit-sidebar__brand">
@@ -423,6 +458,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
               )}
             </div>
           </header>
+          {sidebarContent ? (
+            <div className="chatkit-sidebar__dynamic">{sidebarContent}</div>
+          ) : null}
           {navigationItems.length > 0 && (
             <nav className="chatkit-sidebar__nav" aria-label="Menu principal">
               <ul className="chatkit-sidebar__list">
@@ -498,7 +536,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
               </div>
             </footer>
           )}
-        </aside>
+          </aside>
         <button
           type="button"
           className={`chatkit-layout__scrim${isSidebarOpen ? " chatkit-layout__scrim--active" : ""}`}
@@ -527,8 +565,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
           onOpenWorkflows={handleOpenWorkflowsFromModal}
           adminUsers={adminUsers}
         />
-      </div>
-    </AppLayoutContext.Provider>
+        </div>
+      </AppLayoutContext.Provider>
+    </SidebarPortalContext.Provider>
   );
 };
 

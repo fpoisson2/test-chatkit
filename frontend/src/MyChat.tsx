@@ -22,6 +22,8 @@ import {
   loadStoredThreadId,
   persistStoredThreadId,
 } from "./utils/chatkitThread";
+import type { WorkflowSummary } from "./types/workflows";
+import { ChatWorkflowSidebar } from "./features/workflows/ChatWorkflowSidebar";
 
 type WeatherToolCall = {
   name: "get_weather";
@@ -44,9 +46,31 @@ export function MyChat() {
   const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
     loadStoredThreadId(sessionOwner),
   );
+  const [activeWorkflow, setActiveWorkflow] = useState<WorkflowSummary | null>(null);
+  const [chatInstanceKey, setChatInstanceKey] = useState(0);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const lastVisibilityRefreshRef = useRef(0);
   const previousSessionOwnerRef = useRef<string | null>(null);
+
+  const handleWorkflowActivated = useCallback(
+    (workflow: WorkflowSummary | null, { reason }: { reason: "initial" | "user" }) => {
+      setActiveWorkflow((current) => {
+        const currentId = current?.id ?? null;
+        const nextId = workflow?.id ?? null;
+
+        if (reason === "user" && currentId !== nextId) {
+          clearStoredChatKitSecret(sessionOwner);
+          clearStoredThreadId(sessionOwner);
+          lastThreadSnapshotRef.current = null;
+          setInitialThreadId(null);
+          setChatInstanceKey((value) => value + 1);
+        }
+
+        return workflow;
+      });
+    },
+    [sessionOwner],
+  );
 
   useEffect(() => {
     const previousOwner = previousSessionOwnerRef.current;
@@ -405,6 +429,8 @@ export function MyChat() {
       initialThreadId,
       openSidebar,
       sessionOwner,
+      activeWorkflow?.id,
+      chatInstanceKey,
     ],
   );
 
@@ -472,8 +498,10 @@ export function MyChat() {
 
   return (
     <>
+      <ChatWorkflowSidebar onWorkflowActivated={handleWorkflowActivated} />
       <div className="chatkit-layout__widget">
         <ChatKit
+          key={chatInstanceKey}
           control={control}
           className="chatkit-host"
           style={{ width: "100%", height: "100%" }}
