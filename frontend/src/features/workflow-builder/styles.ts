@@ -109,7 +109,7 @@ export const activeWorkflowBadgeStyle: CSSProperties = {
 
 export const getHeaderActionAreaStyle = (isMobile: boolean): CSSProperties => ({
   display: "flex",
-  alignItems: isMobile ? "stretch" : "center",
+  alignItems: isMobile ? "flex-start" : "center",
   gap: "0.5rem",
   width: isMobile ? "100%" : "auto",
   flexDirection: isMobile ? "column" : "row",
@@ -140,37 +140,41 @@ export const getDeployButtonStyle = (
   isMobile: boolean,
   options?: DisabledOptions,
 ): CSSProperties => ({
-  padding: isMobile ? "0.6rem 1.1rem" : "0.55rem 1.1rem",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.35rem",
+  padding: 0,
   borderRadius: "0.75rem",
   border: "none",
-  background: "transparent",
+  background: "none",
   color: "#0f172a",
   fontWeight: 600,
   whiteSpace: "nowrap",
-  width: isMobile ? "100%" : "auto",
+  width: "auto",
+  alignSelf: isMobile ? "flex-start" : undefined,
   ...pointerState(options),
 });
 
 export const getActionMenuWrapperStyle = (isMobile: boolean): CSSProperties => ({
   position: "relative",
-  width: isMobile ? "100%" : "auto",
+  width: "auto",
 });
 
 export const getActionMenuTriggerStyle = (isMobile: boolean): CSSProperties => ({
+  display: isMobile ? "inline-flex" : "grid",
+  alignItems: isMobile ? "center" : undefined,
+  gap: isMobile ? "0.5rem" : undefined,
   borderRadius: "0.75rem",
   border: "none",
-  background: "transparent",
+  background: "none",
   color: "#0f172a",
   fontWeight: 600,
   cursor: "pointer",
-  width: isMobile ? "100%" : "2.5rem",
+  width: isMobile ? "auto" : "2.5rem",
   height: isMobile ? "auto" : "2.5rem",
-  padding: isMobile ? "0.6rem 1rem" : 0,
-  display: isMobile ? "flex" : "grid",
+  padding: 0,
   placeItems: isMobile ? undefined : "center",
-  justifyContent: isMobile ? "center" : undefined,
-  alignItems: isMobile ? "center" : undefined,
-  gap: isMobile ? "0.5rem" : undefined,
+  justifyContent: isMobile ? "flex-start" : "center",
   ...pointerState(),
 });
 
