@@ -112,19 +112,20 @@ import {
   getWorkflowSelectStyle,
   loadingStyle,
 } from "./styles";
+import styles from "./WorkflowBuilderPage.module.css";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 
 const useMediaQuery = (query: string) => {
   const [matches, setMatches] = useState<boolean>(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
       return false;
     }
     return window.matchMedia(query).matches;
   });
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
       return;
     }
     const mediaQueryList = window.matchMedia(query);
@@ -183,8 +184,20 @@ const WorkflowBuilderPage = () => {
 
   const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
+  const [isBlockLibraryOpen, setBlockLibraryOpen] = useState<boolean>(() => !isMobileLayout);
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
+  const blockLibraryId = "workflow-builder-block-library";
+  const toggleBlockLibrary = useCallback(() => {
+    setBlockLibraryOpen((prev) => !prev);
+  }, []);
+  const closeBlockLibrary = useCallback(() => {
+    setBlockLibraryOpen(false);
+  }, []);
+
+  useEffect(() => {
+    setBlockLibraryOpen(!isMobileLayout);
+  }, [isMobileLayout]);
   const closeNavigation = useCallback(() => setNavigationOpen(false), []);
   const toggleNavigation = useCallback(() => setNavigationOpen((prev) => !prev), []);
 
@@ -2466,30 +2479,42 @@ const WorkflowBuilderPage = () => {
             </div>
           </div>
           <aside
+            id={blockLibraryId}
             aria-label="Bibliothèque de blocs"
-            style={{
-              position: "absolute",
-              top: "1.5rem",
-              left: "1.5rem",
-              width: "280px",
-              maxWidth: "calc(100% - 3rem)",
-              maxHeight: "calc(100% - 3rem)",
-              padding: "1.25rem",
-              borderRadius: "1rem",
-              border: "1px solid rgba(15, 23, 42, 0.1)",
-              background: "#fff",
-              boxShadow: "0 16px 32px rgba(15, 23, 42, 0.08)",
-              display: "flex",
-              flexDirection: "column",
-              gap: "0.75rem",
-              zIndex: 20,
-            }}
+            className={`${styles.blockLibrary} ${isMobileLayout ? styles.blockLibraryMobile : ""}`.trim()}
+            hidden={isMobileLayout && !isBlockLibraryOpen}
           >
-            <div>
-              <h2 style={{ margin: 0, fontSize: "1.25rem", color: "#0f172a" }}>Bibliothèque de blocs</h2>
-              <p style={{ margin: "0.25rem 0 0", color: "#475569" }}>
-                Ajoutez des blocs pour construire votre workflow.
-              </p>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                gap: "0.75rem",
+              }}
+            >
+              <div>
+                <h2 style={{ margin: 0, fontSize: "1.25rem", color: "#0f172a" }}>Bibliothèque de blocs</h2>
+                <p style={{ margin: "0.25rem 0 0", color: "#475569" }}>
+                  Ajoutez des blocs pour construire votre workflow.
+                </p>
+              </div>
+              {isMobileLayout ? (
+                <button
+                  type="button"
+                  onClick={closeBlockLibrary}
+                  aria-controls={blockLibraryId}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "#0f172a",
+                    fontWeight: 600,
+                    fontSize: "0.95rem",
+                    cursor: "pointer",
+                  }}
+                >
+                  Fermer
+                </button>
+              ) : null}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
               {blockLibraryItems.map((item) => {
@@ -2540,6 +2565,17 @@ const WorkflowBuilderPage = () => {
               })}
             </div>
           </aside>
+          {isMobileLayout ? (
+            <button
+              type="button"
+              className={styles.mobileToggleButton}
+              onClick={toggleBlockLibrary}
+              aria-controls={blockLibraryId}
+              aria-expanded={isBlockLibraryOpen}
+            >
+              {isBlockLibraryOpen ? "Fermer la bibliothèque" : "Ouvrir la bibliothèque"}
+            </button>
+          ) : null}
           {showPropertiesPanel ? (
             <aside
               aria-label="Propriétés du bloc sélectionné"
