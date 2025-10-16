@@ -2639,9 +2639,6 @@ const WorkflowBuilderPage = () => {
             </span>
             <div style={{ textAlign: "left", color: primaryTextColor }}>
               <strong style={{ fontSize: "1rem" }}>{item.label}</strong>
-              <p style={{ margin: 0, color: secondaryTextColor, fontSize: "0.85rem" }}>
-                Ajoute un bloc « {item.label.toLowerCase()} » au workflow.
-              </p>
             </div>
             </button>
           );
