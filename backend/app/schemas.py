@@ -145,6 +145,7 @@ class WorkflowNodeBase(BaseModel):
         "condition",
         "state",
         "json_vector_store",
+        "widget",
         "end",
     ]
     display_name: str | None = None

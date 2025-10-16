@@ -822,4 +822,56 @@ describe("WorkflowBuilderPage", () => {
       },
     ]);
   });
+
+  test("permet d'ajouter un bloc widget et de le configurer", async () => {
+    listWidgetsMock.mockResolvedValue([
+      { slug: "resume", title: "Résumé automatique" },
+      { slug: "graphique", title: "Graphique" },
+    ]);
+    const fetchMock = setupWorkflowApi();
+
+    const { container } = renderWorkflowBuilder();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const widgetButton = await screen.findByRole("button", { name: /bloc widget/i });
+    fireEvent.click(widgetButton);
+
+    const widgetNode = await waitFor(() => container.querySelector('[data-id^="widget-"]'));
+    expect(widgetNode).not.toBeNull();
+    fireEvent.click(widgetNode!);
+
+    const widgetSelect = await screen.findByLabelText(/widget à afficher/i);
+    fireEvent.change(widgetSelect, { target: { value: "resume" } });
+
+    const addVariableButton = await screen.findByRole("button", { name: /ajouter une variable/i });
+    fireEvent.click(addVariableButton);
+
+    const identifierInput = await screen.findByPlaceholderText(/ex\. title/i);
+    fireEvent.change(identifierInput, { target: { value: "title" } });
+
+    const expressionInput = await screen.findByPlaceholderText(/ex\. input\.output_parsed\.titre/i);
+    fireEvent.change(expressionInput, { target: { value: "state.resume" } });
+
+    await waitFor(
+      () => {
+        expect(
+          fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
+        ).toBe(true);
+      },
+      { timeout: 4000 },
+    );
+
+    const putCall = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+    );
+    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const widgetPayload = body.graph.nodes.find((node: any) => node.kind === "widget");
+    expect(widgetPayload).toBeTruthy();
+    expect(widgetPayload.parameters).toEqual({
+      widget: { slug: "resume", variables: { title: "state.resume" } },
+    });
+  });
 });

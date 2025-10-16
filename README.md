@@ -196,6 +196,17 @@ curl -X POST http://localhost:8000/api/widgets/preview \
 
 Le JSON renvoyé peut être utilisé tel quel comme sortie d'un module d'agent dans le workflow builder ChatKit.
 
+### Bloc widget dans le workflow builder
+
+Une fois la bibliothèque alimentée, le workflow builder propose un **bloc widget** autonome dans la palette de gauche. Ajoutez-le après n'importe quel nœud (agent, état, condition…) pour diffuser le widget correspondant dans ChatKit dès que l'exécution atteint ce bloc.
+
+- Depuis la page **Workflows**, sélectionnez une version de workflow et cliquez sur **Modifier** pour afficher le builder.
+- Dans la colonne de gauche, cliquez sur **Bloc widget** : un nouveau nœud rose apparaît dans le canvas.
+- Sélectionnez le nœud afin d'ouvrir l'inspecteur, choisissez le slug du widget à afficher puis, si besoin, mappez les variables du widget avec des expressions de l'état (ex. `state.resume`).
+- Le bloc est complètement indépendant des étapes d'agent : les widgets s'affichent immédiatement dans ChatKit sans attendre une réponse textuelle.
+
+Vous pouvez ainsi enchaîner plusieurs widgets (cartes, formulaires, listes…) pour enrichir la conversation, tout en gardant la possibilité d'utiliser les widgets comme format de sortie d'un agent classique si nécessaire.
+
 ### Outil météo exposé au workflow ChatKit
 
 Le backend expose également un point d'entrée `GET /api/tools/weather` qui interroge l'API libre [Open-Meteo](https://open-meteo.com/) pour fournir les conditions actuelles d'une ville donnée. Cette route est pensée pour être appelée depuis un outil de workflow ChatKit, mais elle reste publique afin de faciliter les tests manuels.

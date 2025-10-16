@@ -26,6 +26,7 @@ import {
   getVectorStoreNodeConfig,
   getStateAssignments,
   getEndMessage,
+  getWidgetNodeConfig,
 } from "../../../utils/workflows";
 import type {
   FileSearchConfig,
@@ -34,6 +35,7 @@ import type {
   StateAssignmentScope,
   VectorStoreNodeConfig,
   WebSearchConfig,
+  WidgetVariableAssignment,
 } from "../types";
 import { labelForKind } from "../utils";
 
@@ -83,6 +85,11 @@ export type NodeInspectorProps = {
   onAgentResponseFormatNameChange: (nodeId: string, value: string) => void;
   onAgentResponseFormatSchemaChange: (nodeId: string, schema: unknown) => void;
   onAgentResponseWidgetSlugChange: (nodeId: string, slug: string) => void;
+  onWidgetNodeSlugChange: (nodeId: string, slug: string) => void;
+  onWidgetNodeVariablesChange: (
+    nodeId: string,
+    assignments: WidgetVariableAssignment[],
+  ) => void;
   onAgentIncludeChatHistoryChange: (nodeId: string, value: boolean) => void;
   onAgentDisplayResponseInChatChange: (nodeId: string, value: boolean) => void;
   onAgentShowSearchSourcesChange: (nodeId: string, value: boolean) => void;
@@ -131,6 +138,8 @@ const NodeInspector = ({
   onAgentResponseFormatNameChange,
   onAgentResponseFormatSchemaChange,
   onAgentResponseWidgetSlugChange,
+  onWidgetNodeSlugChange,
+  onWidgetNodeVariablesChange,
   onAgentIncludeChatHistoryChange,
   onAgentDisplayResponseInChatChange,
   onAgentShowSearchSourcesChange,
@@ -206,6 +215,16 @@ const NodeInspector = ({
   }, [responseFormat.kind, trimmedWidgetSlug, widgets]);
   const selectedWidgetExists =
     responseFormat.kind === "widget" && trimmedWidgetSlug.length > 0 && Boolean(selectedWidget);
+  const widgetNodeConfig = useMemo(() => getWidgetNodeConfig(parameters), [parameters]);
+  const widgetNodeSlug = widgetNodeConfig.slug;
+  const widgetNodeVariables = widgetNodeConfig.variables;
+  const trimmedWidgetNodeSlug = widgetNodeSlug.trim();
+  const widgetNodeSelectedWidget = useMemo(() => {
+    if (!trimmedWidgetNodeSlug) {
+      return null;
+    }
+    return widgets.find((widget) => widget.slug === trimmedWidgetNodeSlug) ?? null;
+  }, [trimmedWidgetNodeSlug, widgets]);
   let fileSearchValidationMessage: string | null = null;
   if (fileSearchMissingVectorStore && !vectorStoresLoading) {
     if (!vectorStoresError && vectorStores.length === 0) {
@@ -225,6 +244,14 @@ const NodeInspector = ({
       widgetValidationMessage = "Sélectionnez un widget de sortie.";
     } else if (!selectedWidgetExists) {
       widgetValidationMessage = "Le widget sélectionné n'est plus disponible. Choisissez-en un autre.";
+    }
+  }
+  let widgetNodeValidationMessage: string | null = null;
+  if (kind === "widget" && !widgetsLoading && !widgetsError && widgets.length > 0) {
+    if (!trimmedWidgetNodeSlug) {
+      widgetNodeValidationMessage = "Sélectionnez un widget à afficher.";
+    } else if (!widgetNodeSelectedWidget) {
+      widgetNodeValidationMessage = "Le widget sélectionné n'est plus disponible. Choisissez-en un autre.";
     }
   }
   const vectorStoreNodeExists =
@@ -613,15 +640,69 @@ const NodeInspector = ({
                     </small>
                   )}
                 </>
-              )}
-            </label>
           )}
+        </label>
+      )}
 
-          <div
-            style={{
-              border: "1px solid rgba(15, 23, 42, 0.12)",
-              borderRadius: "0.75rem",
-              padding: "0.75rem",
+      {kind === "widget" && (
+        <>
+          <p style={{ color: "#475569", margin: "0 0 0.75rem" }}>
+            Ce bloc diffuse un widget ChatKit en utilisant les données produites par le bloc
+            précédent ou les variables d'état du workflow.
+          </p>
+          <label style={fieldStyle}>
+            <span>Widget à afficher</span>
+            {widgetsLoading ? (
+              <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
+            ) : widgetsError ? (
+              <p style={{ color: "#b91c1c", margin: 0 }}>{widgetsError}</p>
+            ) : widgets.length === 0 ? (
+              <>
+                <select value="" disabled>
+                  <option value="">Aucun widget disponible</option>
+                </select>
+                <p style={{ color: "#b45309", margin: "0.25rem 0 0" }}>
+                  Créez un widget dans la bibliothèque dédiée pour l'afficher dans le chat.
+                </p>
+              </>
+            ) : (
+              <>
+                <select
+                  value={widgetNodeSlug}
+                  onChange={(event) => onWidgetNodeSlugChange(node.id, event.target.value)}
+                >
+                  <option value="">Sélectionnez un widget</option>
+                  {widgets.map((widget) => (
+                    <option key={widget.slug} value={widget.slug}>
+                      {widget.title?.trim() ? `${widget.title} (${widget.slug})` : widget.slug}
+                    </option>
+                  ))}
+                </select>
+                {widgetNodeValidationMessage ? (
+                  <p style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}>
+                    {widgetNodeValidationMessage}
+                  </p>
+                ) : (
+                  <small style={{ color: "#475569" }}>
+                    Le widget sélectionné est diffusé immédiatement dans ChatKit lorsqu'on atteint ce bloc.
+                  </small>
+                )}
+              </>
+            )}
+          </label>
+
+          <WidgetVariablesPanel
+            assignments={widgetNodeVariables}
+            onChange={(next) => onWidgetNodeVariablesChange(node.id, next)}
+          />
+        </>
+      )}
+
+      <div
+        style={{
+          border: "1px solid rgba(15, 23, 42, 0.12)",
+          borderRadius: "0.75rem",
+          padding: "0.75rem",
               display: "flex",
               flexDirection: "column",
               gap: "0.5rem",
@@ -1073,6 +1154,116 @@ const StateAssignmentsPanel = ({
       <div>
         <button type="button" className="btn" onClick={handleAddAssignment}>
           {addLabel}
+        </button>
+      </div>
+    </section>
+  );
+};
+
+type WidgetVariablesPanelProps = {
+  assignments: WidgetVariableAssignment[];
+  onChange: (assignments: WidgetVariableAssignment[]) => void;
+};
+
+const WidgetVariablesPanel = ({ assignments, onChange }: WidgetVariablesPanelProps) => {
+  const handleAssignmentChange = (
+    index: number,
+    field: keyof WidgetVariableAssignment,
+    value: string,
+  ) => {
+    const next = assignments.map((assignment, currentIndex) =>
+      currentIndex === index ? { ...assignment, [field]: value } : assignment,
+    );
+    onChange(next);
+  };
+
+  const handleRemoveAssignment = (index: number) => {
+    onChange(assignments.filter((_, currentIndex) => currentIndex !== index));
+  };
+
+  const handleAddAssignment = () => {
+    onChange([...assignments, { identifier: "", expression: "" }]);
+  };
+
+  return (
+    <section
+      aria-label="Variables de widget"
+      style={{
+        marginTop: "1rem",
+        border: "1px solid rgba(15, 23, 42, 0.12)",
+        borderRadius: "0.75rem",
+        padding: "0.75rem",
+        display: "grid",
+        gap: "0.75rem",
+      }}
+    >
+      <header>
+        <h3 style={{ margin: 0, fontSize: "1rem" }}>Variables de widget</h3>
+        <p style={{ margin: "0.25rem 0 0", color: "#475569", fontSize: "0.95rem" }}>
+          Associez les identifiants du widget aux expressions évaluées lors de l'exécution.
+        </p>
+      </header>
+
+      {assignments.length === 0 ? (
+        <p style={{ margin: 0, color: "#64748b", fontSize: "0.9rem" }}>
+          Aucune variable dynamique n'est configurée pour ce widget.
+        </p>
+      ) : (
+        assignments.map((assignment, index) => (
+          <div
+            key={`widget-variable-${index}`}
+            style={{
+              border: "1px solid rgba(148, 163, 184, 0.35)",
+              borderRadius: "0.65rem",
+              padding: "0.75rem",
+              display: "grid",
+              gap: "0.75rem",
+            }}
+          >
+            <label style={fieldStyle}>
+              <span>Identifiant du widget</span>
+              <input
+                type="text"
+                value={assignment.identifier}
+                placeholder="Ex. title"
+                onChange={(event) =>
+                  handleAssignmentChange(index, "identifier", event.target.value)
+                }
+              />
+              <small style={{ color: "#64748b" }}>
+                Correspond aux attributs <code>id</code>, <code>name</code> ou aux zones éditables du widget.
+              </small>
+            </label>
+            <label style={fieldStyle}>
+              <span>Expression associée</span>
+              <input
+                type="text"
+                value={assignment.expression}
+                placeholder="Ex. input.output_parsed.titre"
+                onChange={(event) =>
+                  handleAssignmentChange(index, "expression", event.target.value)
+                }
+              />
+              <small style={{ color: "#64748b" }}>
+                Utilisez <code>state.</code> ou <code>input.</code> pour référencer les données du workflow.
+              </small>
+            </label>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="btn danger"
+                onClick={() => handleRemoveAssignment(index)}
+              >
+                Supprimer la variable
+              </button>
+            </div>
+          </div>
+        ))
+      )}
+
+      <div>
+        <button type="button" className="btn" onClick={handleAddAssignment}>
+          Ajouter une variable
         </button>
       </div>
     </section>

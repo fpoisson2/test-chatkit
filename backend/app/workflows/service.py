@@ -902,7 +902,15 @@ class WorkflowService:
             slugs.add(slug)
 
             kind = str(entry.get("kind", "")).strip().lower()
-            if kind not in {"start", "agent", "condition", "state", "json_vector_store", "end"}:
+            if kind not in {
+                "start",
+                "agent",
+                "condition",
+                "state",
+                "json_vector_store",
+                "widget",
+                "end",
+            }:
                 raise WorkflowValidationError(f"Type de nœud invalide : {kind or 'inconnu'}")
 
             agent_key: str | None = None
