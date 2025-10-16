@@ -425,6 +425,52 @@ button {
   cursor: not-allowed;
 }
 
+.chatkit-sidebar__workflow-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.chatkit-sidebar__workflow-list-item {
+  margin: 0;
+}
+
+.chatkit-sidebar__workflow-button {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  border: none;
+  background: transparent;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font: inherit;
+  font-weight: 600;
+  color: #0f172a;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.chatkit-sidebar__workflow-button[disabled] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.chatkit-sidebar__workflow-button:hover,
+.chatkit-sidebar__workflow-button:focus-visible {
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  outline: none;
+}
+
+.chatkit-sidebar__workflow-button[aria-current="true"] {
+  background: rgba(37, 99, 235, 0.18);
+  color: #1d4ed8;
+}
+
 .chatkit-sidebar__badge {
   display: inline-flex;
   align-items: center;

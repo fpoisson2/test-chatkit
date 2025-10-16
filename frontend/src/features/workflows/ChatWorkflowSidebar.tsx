@@ -1,20 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../auth";
 import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
 import { workflowsApi } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
-
-const buildWorkflowOptionLabel = (workflow: WorkflowSummary): string => {
-  const parts = [workflow.display_name];
-  if (workflow.active_version_number) {
-    parts.push(`prod v${workflow.active_version_number}`);
-  } else {
-    parts.push("aucune version en production");
-  }
-  return parts.join(" · ");
-};
 
 const isApiError = (error: unknown): error is { status?: number; message?: string } =>
   Boolean(error) && typeof error === "object" && "status" in error;
@@ -36,16 +26,6 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
-
-  const selectedWorkflow = useMemo(
-    () => workflows.find((workflow) => workflow.id === selectedWorkflowId) ?? null,
-    [workflows, selectedWorkflowId],
-  );
-
-  const publishedWorkflows = useMemo(
-    () => workflows.filter((workflow) => workflow.active_version_id !== null),
-    [workflows],
-  );
 
   const loadWorkflows = useCallback(async () => {
     if (!token || !isAdmin) {
@@ -86,28 +66,21 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
     void loadWorkflows();
   }, [loadWorkflows]);
 
-  const handleSelectWorkflow = useCallback(
-    async (event: ChangeEvent<HTMLSelectElement>) => {
-      const { value } = event.target;
-      if (value === "" || !token || !isAdmin) {
+  const handleWorkflowClick = useCallback(
+    async (workflowId: number) => {
+      if (!token || !isAdmin || workflowId === selectedWorkflowId) {
         return;
       }
 
-      const nextId = Number.parseInt(value, 10);
-      if (!Number.isFinite(nextId) || nextId === selectedWorkflowId) {
-        return;
-      }
-
-      const workflowToActivate = workflows.find((workflow) => workflow.id === nextId);
+      const workflowToActivate = workflows.find((workflow) => workflow.id === workflowId);
       if (!workflowToActivate || workflowToActivate.active_version_id === null) {
-        setError("Publiez une version de production avant d'activer ce workflow.");
         return;
       }
 
       setIsUpdating(true);
       setError(null);
       try {
-        const updated = await workflowsApi.setChatkitWorkflow(token, nextId);
+        const updated = await workflowsApi.setChatkitWorkflow(token, workflowId);
         setWorkflows((current) => {
           const exists = current.some((workflow) => workflow.id === updated.id);
           if (!exists) {
@@ -224,8 +197,6 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
       );
     }
 
-    const hasPublishedWorkflow = publishedWorkflows.length > 0;
-
     return (
       <section className="chatkit-sidebar__section" aria-labelledby={`${sectionId}-title`}>
         <div className="chatkit-sidebar__section-header">
@@ -233,64 +204,35 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
             Workflow actif
           </h2>
         </div>
-        <label htmlFor={`${sectionId}-select`} className="chatkit-sidebar__section-label">
-          Workflow de production
-        </label>
-        <select
-          id={`${sectionId}-select`}
-          className="chatkit-sidebar__section-select"
-          value={selectedWorkflowId ?? ""}
-          onChange={handleSelectWorkflow}
-          disabled={isUpdating}
-        >
-          <option value="" disabled={hasPublishedWorkflow}>
-            {hasPublishedWorkflow
-              ? "Choisissez un workflow de production"
-              : "Aucune version de production disponible"}
-          </option>
-          {workflows.map((workflow) => (
-            <option
-              key={workflow.id}
-              value={workflow.id}
-              disabled={workflow.active_version_id === null}
-            >
-              {buildWorkflowOptionLabel(workflow)}
-            </option>
-          ))}
-        </select>
-        {isUpdating ? (
-          <p className="chatkit-sidebar__section-text">Activation du workflow…</p>
-        ) : null}
-        {selectedWorkflow?.description ? (
-          <p className="chatkit-sidebar__section-text chatkit-sidebar__section-text--muted">
-            {selectedWorkflow.description}
-          </p>
-        ) : null}
-        {selectedWorkflow?.active_version_number ? (
-          <p className="chatkit-sidebar__section-hint">
-            Production : v{selectedWorkflow.active_version_number}
-          </p>
-        ) : null}
-        {!hasPublishedWorkflow ? (
-          <p className="chatkit-sidebar__section-text">
-            Publiez une version de production pour activer un workflow.
-          </p>
-        ) : null}
-        <button type="button" className="chatkit-sidebar__section-button" onClick={handleOpenBuilder}>
-          Gérer dans le workflow builder
-        </button>
+        <ul className="chatkit-sidebar__workflow-list">
+          {workflows.map((workflow) => {
+            const isActive = workflow.id === selectedWorkflowId;
+            const hasProduction = workflow.active_version_id !== null;
+            return (
+              <li key={workflow.id} className="chatkit-sidebar__workflow-list-item">
+                <button
+                  type="button"
+                  className="chatkit-sidebar__workflow-button"
+                  onClick={() => void handleWorkflowClick(workflow.id)}
+                  disabled={!hasProduction || isUpdating}
+                  aria-current={isActive ? "true" : undefined}
+                >
+                  {workflow.display_name}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       </section>
     );
   }, [
     error,
     handleOpenBuilder,
-    handleSelectWorkflow,
+    handleWorkflowClick,
     isAdmin,
     isUpdating,
     loadWorkflows,
     loading,
-    publishedWorkflows,
-    selectedWorkflow,
     selectedWorkflowId,
     user,
     workflows,
