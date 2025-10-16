@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+} from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -110,9 +118,11 @@ import {
   getHeaderGroupStyle,
   getHeaderLayoutStyle,
   getHeaderNavigationButtonStyle,
+  getMobileHeaderMenuButtonStyle,
   getVersionSelectStyle,
   getWorkflowSelectStyle,
   loadingStyle,
+  mobileHeaderMenuIconStyle,
 } from "./styles";
 import styles from "./WorkflowBuilderPage.module.css";
 
@@ -191,13 +201,16 @@ const WorkflowBuilderPage = () => {
   const propertiesPanelToggleRef = useRef<HTMLButtonElement | null>(null);
   const propertiesPanelCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isPropertiesPanelOpen, setPropertiesPanelOpen] = useState(false);
+  const [isMobileHeaderMenuOpen, setMobileHeaderMenuOpen] = useState(false);
+  const mobileHeaderMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousSelectedElementRef = useRef<string | null>(null);
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
   const blockLibraryId = "workflow-builder-block-library";
-  const blockLibraryTitleId = `${blockLibraryId}-title`;
   const propertiesPanelId = "workflow-builder-properties-panel";
   const propertiesPanelTitleId = `${propertiesPanelId}-title`;
+  const headerMenuId = "workflow-builder-header-menu";
+  const headerMenuTitleId = `${headerMenuId}-title`;
   const toggleBlockLibrary = useCallback(() => {
     setBlockLibraryOpen((prev) => !prev);
   }, []);
@@ -230,6 +243,24 @@ const WorkflowBuilderPage = () => {
   }, [closeBlockLibrary, isBlockLibraryOpen, isMobileLayout]);
   const closeNavigation = useCallback(() => setNavigationOpen(false), []);
   const toggleNavigation = useCallback(() => setNavigationOpen((prev) => !prev), []);
+  const closeMobileHeaderMenu = useCallback(
+    (options: { focusToggle?: boolean } = {}) => {
+      setMobileHeaderMenuOpen(false);
+      setActionMenuOpen(false);
+      if (options.focusToggle && mobileHeaderMenuButtonRef.current) {
+        mobileHeaderMenuButtonRef.current.focus();
+      }
+    },
+    [],
+  );
+  const handleToggleMobileHeaderMenu = useCallback(() => {
+    setMobileHeaderMenuOpen((prev) => {
+      if (prev) {
+        setActionMenuOpen(false);
+      }
+      return !prev;
+    });
+  }, []);
 
   useEffect(() => {
     if (!isActionMenuOpen) {
@@ -258,6 +289,224 @@ const WorkflowBuilderPage = () => {
       window.removeEventListener("keydown", handleKey);
     };
   }, [isActionMenuOpen]);
+
+  useEffect(() => {
+    if (!isMobileLayout) {
+      setMobileHeaderMenuOpen(false);
+    }
+  }, [isMobileLayout]);
+
+  useEffect(() => {
+    if (!isMobileLayout || !isMobileHeaderMenuOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMobileHeaderMenu({ focusToggle: true });
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeMobileHeaderMenu, isMobileHeaderMenuOpen, isMobileLayout]);
+
+  useEffect(() => {
+    if (!isMobileHeaderMenuOpen) {
+      setActionMenuOpen(false);
+    }
+  }, [isMobileHeaderMenuOpen]);
+
+  const renderWorkflowDescription = (className?: string) =>
+    selectedWorkflow?.description ? (
+      <div className={className} style={{ color: "#475569", fontSize: "0.95rem" }}>
+        {selectedWorkflow.description}
+      </div>
+    ) : null;
+
+  const renderWorkflowPublicationReminder = (className?: string) =>
+    selectedWorkflow && !selectedWorkflow.active_version_id ? (
+      <div className={className} style={{ color: "#b45309", fontSize: "0.85rem", fontWeight: 600 }}>
+        Publiez une version pour l'utiliser avec ChatKit.
+      </div>
+    ) : null;
+
+  const renderHeaderControls = () => (
+    <>
+      <div style={getHeaderLayoutStyle(isMobileLayout)}>
+        <div style={getHeaderGroupStyle(isMobileLayout)}>
+          <label htmlFor="workflow-select" style={controlLabelStyle}>
+            Workflow
+          </label>
+          <select
+            id="workflow-select"
+            value={selectedWorkflowId ? String(selectedWorkflowId) : ""}
+            onChange={handleWorkflowChange}
+            disabled={loading || workflows.length === 0}
+            title={selectedWorkflow?.description ?? undefined}
+            style={getWorkflowSelectStyle(isMobileLayout, {
+              disabled: loading || workflows.length === 0,
+            })}
+          >
+            {workflows.length === 0 ? (
+              <option value="">Aucun workflow disponible</option>
+            ) : (
+              <>
+                <option value="" disabled>
+                  Sélectionnez un workflow
+                </option>
+                {workflows.map((workflow) => (
+                  <option key={workflow.id} value={workflow.id}>
+                    {workflow.display_name}
+                    {workflow.active_version_number
+                      ? ` · prod v${workflow.active_version_number}`
+                      : ""}
+                    {workflow.is_chatkit_default ? " · 🟢 Actif" : ""}
+                  </option>
+                ))}
+              </>
+            )}
+          </select>
+          {selectedWorkflow?.is_chatkit_default ? (
+            <span style={activeWorkflowBadgeStyle}>
+              🟢 Actif
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={handleCreateWorkflow}
+            disabled={loading}
+            style={getCreateWorkflowButtonStyle(isMobileLayout, { disabled: loading })}
+          >
+            Nouveau
+          </button>
+        </div>
+        <div style={getHeaderGroupStyle(isMobileLayout)}>
+          <label htmlFor="version-select" style={controlLabelStyle}>
+            Révision
+          </label>
+          <select
+            id="version-select"
+            value={selectedVersionId ? String(selectedVersionId) : ""}
+            onChange={handleVersionChange}
+            disabled={loading || versions.length === 0}
+            style={getVersionSelectStyle(isMobileLayout, {
+              disabled: loading || versions.length === 0,
+            })}
+          >
+            {versions.length === 0 ? (
+              <option value="">Aucune version disponible</option>
+            ) : (
+              versions.map((version) => {
+                const labelParts = [`v${version.version}`];
+                if (version.name) {
+                  labelParts.push(version.name);
+                }
+                if (version.is_active) {
+                  labelParts.push("Production");
+                }
+                return (
+                  <option key={version.id} value={version.id}>
+                    {labelParts.join(" · ")}
+                  </option>
+                );
+              })
+            )}
+          </select>
+        </div>
+      </div>
+      <div style={getHeaderActionAreaStyle(isMobileLayout)}>
+        <button
+          type="button"
+          onClick={handleOpenDeployModal}
+          disabled={loading || !selectedWorkflowId || versions.length === 0 || isDeploying}
+          style={getDeployButtonStyle(isMobileLayout, {
+            disabled: loading || !selectedWorkflowId || versions.length === 0 || isDeploying,
+          })}
+        >
+          Déployer
+        </button>
+        <div ref={actionMenuRef} style={getActionMenuWrapperStyle(isMobileLayout)}>
+          <button
+            type="button"
+            onClick={() => setActionMenuOpen((prev) => !prev)}
+            aria-haspopup="true"
+            aria-expanded={isActionMenuOpen}
+            aria-label="Afficher les actions supplémentaires"
+            style={getActionMenuTriggerStyle(isMobileLayout)}
+          >
+            {isMobileLayout ? (
+              <>
+                <span style={actionMenuTriggerLabelStyle}>Actions</span>
+                <span aria-hidden="true" style={actionMenuTriggerIconStyle}>
+                  …
+                </span>
+              </>
+            ) : (
+              <span aria-hidden="true" style={actionMenuTriggerIconStyle}>
+                …
+              </span>
+            )}
+          </button>
+          {isActionMenuOpen ? (
+            <div style={getActionMenuStyle(isMobileLayout)}>
+              <button
+                type="button"
+                onClick={handleRenameWorkflow}
+                disabled={!selectedWorkflowId}
+                style={getActionMenuItemStyle(isMobileLayout, {
+                  disabled: !selectedWorkflowId,
+                })}
+              >
+                Renommer
+              </button>
+              <button
+                type="button"
+                onClick={handleSelectChatkitWorkflow}
+                disabled={
+                  loading ||
+                  !selectedWorkflowId ||
+                  selectedWorkflow?.is_chatkit_default ||
+                  !selectedWorkflow?.active_version_id
+                }
+                style={getActionMenuItemStyle(isMobileLayout, {
+                  disabled:
+                    loading ||
+                    !selectedWorkflowId ||
+                    selectedWorkflow?.is_chatkit_default ||
+                    !selectedWorkflow?.active_version_id,
+                })}
+              >
+                Définir pour ChatKit
+              </button>
+              <button
+                type="button"
+                onClick={handleDuplicateWorkflow}
+                disabled={loading || !selectedWorkflowId}
+                style={getActionMenuItemStyle(isMobileLayout, {
+                  disabled: loading || !selectedWorkflowId,
+                })}
+              >
+                Dupliquer
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteWorkflow}
+                disabled={loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default}
+                style={getActionMenuItemStyle(isMobileLayout, {
+                  disabled: loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default,
+                  danger: true,
+                })}
+              >
+                Supprimer
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </>
+  );
 
   const restoreViewport = useCallback(() => {
     const instance = reactFlowInstanceRef.current;
@@ -2331,6 +2580,63 @@ const WorkflowBuilderPage = () => {
     ],
   );
 
+  const getBlockLibraryButtonStyle = (disabled: boolean): CSSProperties => ({
+    display: "flex",
+    alignItems: "center",
+    gap: "0.75rem",
+    padding: "0.5rem 0",
+    border: "none",
+    background: "transparent",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
+    width: "100%",
+    textAlign: "left",
+  });
+
+  const renderBlockLibraryButtons = () => {
+    const primaryTextColor = isMobileLayout ? "#f8fafc" : "#0f172a";
+    const secondaryTextColor = isMobileLayout ? "rgba(248, 250, 252, 0.8)" : "#475569";
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        {blockLibraryItems.map((item) => {
+          const disabled = loading || !selectedWorkflowId;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => item.onClick()}
+              disabled={disabled}
+            style={getBlockLibraryButtonStyle(disabled)}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                width: "2.35rem",
+                height: "2.35rem",
+                borderRadius: "0.75rem",
+                background: item.color,
+                color: "#fff",
+                display: "grid",
+                placeItems: "center",
+                fontWeight: 700,
+                fontSize: "1.05rem",
+              }}
+            >
+              {item.shortLabel}
+            </span>
+            <div style={{ textAlign: "left", color: primaryTextColor }}>
+              <strong style={{ fontSize: "1rem" }}>{item.label}</strong>
+              <p style={{ margin: 0, color: secondaryTextColor, fontSize: "0.85rem" }}>
+                Ajoute un bloc « {item.label.toLowerCase()} » au workflow.
+              </p>
+            </div>
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
+
   const hasSelectedElement = Boolean(selectedNode || selectedEdge);
   const showPropertiesPanel = hasSelectedElement && (!isMobileLayout || isPropertiesPanelOpen);
   const selectedElementLabel = selectedNode
@@ -2436,19 +2742,34 @@ const WorkflowBuilderPage = () => {
     pendingViewportRestoreRef.current = true;
   }, [selectedWorkflowId]);
 
+  const headerStyle = useMemo(() => {
+    const baseStyle = getHeaderContainerStyle(isMobileLayout);
+    if (isMobileLayout) {
+      return { ...baseStyle, position: "absolute", top: 0, left: 0, right: 0 };
+    }
+    return baseStyle;
+  }, [isMobileLayout]);
+
+  const workspaceWrapperStyle = useMemo<CSSProperties>(() => {
+    if (isMobileLayout) {
+      return { position: "absolute", inset: 0, overflow: "hidden" };
+    }
+    return { position: "relative", flex: 1, overflow: "hidden" };
+  }, [isMobileLayout]);
 
   return (
-        <ReactFlowProvider>
-          <div
-            style={{
-              position: "relative",
-              display: "flex",
+    <ReactFlowProvider>
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
           flexDirection: "column",
           height: "100vh",
-          background: "#f1f5f9",
+          background: isMobileLayout ? "transparent" : "#f1f5f9",
+          overflow: "hidden",
         }}
       >
-        <header style={getHeaderContainerStyle(isMobileLayout)}>
+        <header style={headerStyle}>
           <button
             type="button"
             onClick={toggleNavigation}
@@ -2463,214 +2784,83 @@ const WorkflowBuilderPage = () => {
               <path d="M3 5h14M3 10h14M3 15h14" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
           </button>
-          <div style={getHeaderLayoutStyle(isMobileLayout)}>
-            <div style={getHeaderGroupStyle(isMobileLayout)}>
-              <label htmlFor="workflow-select" style={controlLabelStyle}>
-                Workflow
-              </label>
-              <select
-                id="workflow-select"
-                value={selectedWorkflowId ? String(selectedWorkflowId) : ""}
-                onChange={handleWorkflowChange}
-                disabled={loading || workflows.length === 0}
-                title={selectedWorkflow?.description ?? undefined}
-                style={getWorkflowSelectStyle(isMobileLayout, {
-                  disabled: loading || workflows.length === 0,
-                })}
-              >
-                {workflows.length === 0 ? (
-                  <option value="">Aucun workflow disponible</option>
-                ) : (
-                  <>
-                    <option value="" disabled>
-                      Sélectionnez un workflow
-                    </option>
-                    {workflows.map((workflow) => (
-                      <option key={workflow.id} value={workflow.id}>
-                        {workflow.display_name}
-                        {workflow.active_version_number
-                          ? ` · prod v${workflow.active_version_number}`
-                          : ""}
-                        {workflow.is_chatkit_default ? " · 🟢 Actif" : ""}
-                      </option>
-                    ))}
-                  </>
-                )}
-              </select>
-              {selectedWorkflow?.is_chatkit_default ? (
-                <span style={activeWorkflowBadgeStyle}>
-                  🟢 Actif
-                </span>
-              ) : null}
-              <button
-                type="button"
-                onClick={handleCreateWorkflow}
-                disabled={loading}
-                style={getCreateWorkflowButtonStyle(isMobileLayout, { disabled: loading })}
-              >
-                Nouveau
-              </button>
-            </div>
-            <div style={getHeaderGroupStyle(isMobileLayout)}>
-              <label htmlFor="version-select" style={controlLabelStyle}>
-                Révision
-              </label>
-              <select
-                id="version-select"
-                value={selectedVersionId ? String(selectedVersionId) : ""}
-                onChange={handleVersionChange}
-                disabled={loading || versions.length === 0}
-                style={getVersionSelectStyle(isMobileLayout, {
-                  disabled: loading || versions.length === 0,
-                })}
-              >
-                {versions.length === 0 ? (
-                  <option value="">Aucune version disponible</option>
-                ) : (
-                  versions.map((version) => {
-                    const labelParts = [`v${version.version}`];
-                    if (version.name) {
-                      labelParts.push(version.name);
-                    }
-                    if (version.is_active) {
-                      labelParts.push("Production");
-                    }
-                    return (
-                      <option key={version.id} value={version.id}>
-                        {labelParts.join(" · ")}
-                      </option>
-                    );
-                  })
-                )}
-              </select>
-            </div>
-          </div>
-          <div style={getHeaderActionAreaStyle(isMobileLayout)}>
+          {isMobileLayout ? (
             <button
               type="button"
-              onClick={handleOpenDeployModal}
-              disabled={loading || !selectedWorkflowId || versions.length === 0 || isDeploying}
-              style={getDeployButtonStyle(isMobileLayout, {
-                disabled: loading || !selectedWorkflowId || versions.length === 0 || isDeploying,
-              })}
+              ref={mobileHeaderMenuButtonRef}
+              onClick={handleToggleMobileHeaderMenu}
+              aria-haspopup="dialog"
+              aria-controls={headerMenuId}
+              aria-expanded={isMobileHeaderMenuOpen}
+              style={getMobileHeaderMenuButtonStyle({ active: isMobileHeaderMenuOpen })}
             >
-              Déployer
+              <span>Workflow</span>
+              <span aria-hidden="true" style={mobileHeaderMenuIconStyle}>
+                {isMobileHeaderMenuOpen ? "▴" : "▾"}
+              </span>
             </button>
-            <div ref={actionMenuRef} style={getActionMenuWrapperStyle(isMobileLayout)}>
-              <button
-                type="button"
-                onClick={() => setActionMenuOpen((prev) => !prev)}
-                aria-haspopup="true"
-                aria-expanded={isActionMenuOpen}
-                aria-label="Afficher les actions supplémentaires"
-                style={getActionMenuTriggerStyle(isMobileLayout)}
-              >
-                {isMobileLayout ? (
-                  <>
-                    <span style={actionMenuTriggerLabelStyle}>Actions</span>
-                    <span aria-hidden="true" style={actionMenuTriggerIconStyle}>
-                      …
-                    </span>
-                  </>
-                ) : (
-                  <span aria-hidden="true" style={actionMenuTriggerIconStyle}>
-                    …
-                  </span>
-                )}
-              </button>
-              {isActionMenuOpen ? (
-                <div style={getActionMenuStyle(isMobileLayout)}>
-                  <button
-                    type="button"
-                    onClick={handleRenameWorkflow}
-                    disabled={!selectedWorkflowId}
-                    style={getActionMenuItemStyle(isMobileLayout, {
-                      disabled: !selectedWorkflowId,
-                    })}
-                  >
-                    Renommer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSelectChatkitWorkflow}
-                    disabled={
-                      loading ||
-                      !selectedWorkflowId ||
-                      selectedWorkflow?.is_chatkit_default ||
-                      !selectedWorkflow?.active_version_id
-                    }
-                    style={getActionMenuItemStyle(isMobileLayout, {
-                      disabled:
-                        loading ||
-                        !selectedWorkflowId ||
-                        selectedWorkflow?.is_chatkit_default ||
-                        !selectedWorkflow?.active_version_id,
-                    })}
-                  >
-                    Définir pour ChatKit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDuplicateWorkflow}
-                    disabled={loading || !selectedWorkflowId}
-                    style={getActionMenuItemStyle(isMobileLayout, {
-                      disabled: loading || !selectedWorkflowId,
-                    })}
-                  >
-                    Dupliquer
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleDeleteWorkflow}
-                    disabled={loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default}
-                    style={getActionMenuItemStyle(isMobileLayout, {
-                      disabled: loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default,
-                      danger: true,
-                    })}
-                  >
-                    Supprimer
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>
+          ) : (
+            renderHeaderControls()
+          )}
         </header>
 
-        <div style={{ position: "relative", flex: 1, overflow: "hidden" }}>
+        {isMobileLayout && isMobileHeaderMenuOpen ? (
+          <div
+            className={styles.mobileHeaderOverlay}
+            role="presentation"
+            onClick={() => closeMobileHeaderMenu({ focusToggle: true })}
+          >
+            <div
+              id={headerMenuId}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={headerMenuTitleId}
+              className={styles.mobileHeaderModal}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className={styles.mobileHeaderModalHeader}>
+                <h2 id={headerMenuTitleId} className={styles.mobileHeaderModalTitle}>
+                  Paramètres du workflow
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => closeMobileHeaderMenu({ focusToggle: true })}
+                  aria-label="Fermer le menu du workflow"
+                  className={styles.mobileHeaderModalClose}
+                >
+                  ×
+                </button>
+              </div>
+              <div className={styles.mobileHeaderModalContent}>
+                {renderWorkflowDescription(styles.mobileHeaderModalInfo)}
+                {renderWorkflowPublicationReminder(styles.mobileHeaderModalInfoWarning)}
+                {renderHeaderControls()}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <div style={workspaceWrapperStyle}>
           <div
             style={{
               position: "absolute",
               inset: 0,
-              padding: "1.5rem",
+              padding: isMobileLayout ? "0" : "1.5rem",
               display: "flex",
               flexDirection: "column",
-              gap: "1rem",
+              gap: isMobileLayout ? "0" : "1rem",
             }}
           >
-            {selectedWorkflow?.description ? (
-              <div style={{ color: "#475569", fontSize: "0.95rem" }}>
-                {selectedWorkflow.description}
-              </div>
-            ) : null}
-            {selectedWorkflow && !selectedWorkflow.active_version_id ? (
-              <div
-                style={{
-                  color: "#b45309",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                }}
-              >
-                Publiez une version pour l'utiliser avec ChatKit.
-              </div>
-            ) : null}
+            {!isMobileLayout ? renderWorkflowDescription() : null}
+            {!isMobileLayout ? renderWorkflowPublicationReminder() : null}
             <div
               style={{
                 flex: 1,
-                borderRadius: "1.25rem",
-                border: "1px solid rgba(15, 23, 42, 0.08)",
+                borderRadius: isMobileLayout ? 0 : "1.25rem",
+                border: isMobileLayout ? "none" : "1px solid rgba(15, 23, 42, 0.08)",
                 background: "#fff",
                 overflow: "hidden",
-                boxShadow: "0 20px 40px rgba(15, 23, 42, 0.06)",
+                boxShadow: isMobileLayout ? "none" : "0 20px 40px rgba(15, 23, 42, 0.06)",
               }}
               aria-label="Éditeur visuel du workflow"
             >
@@ -2692,7 +2882,7 @@ const WorkflowBuilderPage = () => {
                   onConnect={onConnect}
                   defaultEdgeOptions={defaultEdgeOptions}
                   connectionLineStyle={connectionLineStyle}
-                  style={{ background: "#f8fafc" }}
+                  style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
                   onInit={(instance) => {
                     reactFlowInstanceRef.current = instance;
                     if (pendingViewportRestoreRef.current) {
@@ -2704,10 +2894,12 @@ const WorkflowBuilderPage = () => {
                   }}
                 >
                   <Background gap={18} size={1} />
-                  <MiniMap
-                    nodeStrokeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
-                    nodeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
-                  />
+                  {!isMobileLayout ? (
+                    <MiniMap
+                      nodeStrokeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
+                      nodeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
+                    />
+                  ) : null}
                   <Controls />
                 </ReactFlow>
               )}
@@ -2727,87 +2919,12 @@ const WorkflowBuilderPage = () => {
                 >
                   <aside
                     id={blockLibraryId}
-                    aria-labelledby={blockLibraryTitleId}
+                    aria-label="Bibliothèque de blocs"
                     className={`${styles.blockLibrary} ${styles.blockLibraryMobile}`}
                     role="dialog"
                     aria-modal="true"
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        gap: "0.75rem",
-                      }}
-                    >
-                      <div>
-                        <h2
-                          id={blockLibraryTitleId}
-                          style={{ margin: 0, fontSize: "1.25rem", color: "#0f172a" }}
-                        >
-                          Bibliothèque de blocs
-                        </h2>
-                        <p style={{ margin: "0.25rem 0 0", color: "#475569" }}>
-                          Ajoutez des blocs pour construire votre workflow.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => closeBlockLibrary({ focusToggle: true })}
-                        aria-controls={blockLibraryId}
-                        className={styles.closeLinkButton}
-                      >
-                        Fermer
-                      </button>
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                      {blockLibraryItems.map((item) => {
-                        const disabled = loading || !selectedWorkflowId;
-                        return (
-                          <button
-                            key={item.key}
-                            type="button"
-                            onClick={() => item.onClick()}
-                            disabled={disabled}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "0.75rem",
-                              padding: "0.75rem",
-                              borderRadius: "0.9rem",
-                              border: "1px solid rgba(15, 23, 42, 0.12)",
-                              background: "#fff",
-                              boxShadow: "0 8px 18px rgba(15, 23, 42, 0.08)",
-                              cursor: disabled ? "not-allowed" : "pointer",
-                              opacity: disabled ? 0.5 : 1,
-                            }}
-                          >
-                            <span
-                              aria-hidden="true"
-                              style={{
-                                width: "2.35rem",
-                                height: "2.35rem",
-                                borderRadius: "0.75rem",
-                                background: item.color,
-                                color: "#fff",
-                                display: "grid",
-                                placeItems: "center",
-                                fontWeight: 700,
-                                fontSize: "1.05rem",
-                              }}
-                            >
-                              {item.shortLabel}
-                            </span>
-                            <div style={{ textAlign: "left" }}>
-                              <strong style={{ fontSize: "1rem", color: "#0f172a" }}>{item.label}</strong>
-                              <p style={{ margin: 0, color: "#475569", fontSize: "0.85rem" }}>
-                                Ajoute un bloc « {item.label.toLowerCase()} » au workflow.
-                              </p>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {renderBlockLibraryButtons()}
                   </aside>
                 </div>
               ) : null}
@@ -2828,74 +2945,10 @@ const WorkflowBuilderPage = () => {
           ) : (
             <aside
               id={blockLibraryId}
-              aria-labelledby={blockLibraryTitleId}
+              aria-label="Bibliothèque de blocs"
               className={styles.blockLibrary}
             >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  gap: "0.75rem",
-                }}
-              >
-                <div>
-                  <h2 id={blockLibraryTitleId} style={{ margin: 0, fontSize: "1.25rem", color: "#0f172a" }}>
-                    Bibliothèque de blocs
-                  </h2>
-                  <p style={{ margin: "0.25rem 0 0", color: "#475569" }}>
-                    Ajoutez des blocs pour construire votre workflow.
-                  </p>
-                </div>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {blockLibraryItems.map((item) => {
-                  const disabled = loading || !selectedWorkflowId;
-                  return (
-                    <button
-                      key={item.key}
-                      type="button"
-                      onClick={() => item.onClick()}
-                      disabled={disabled}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.75rem",
-                        padding: "0.75rem",
-                        borderRadius: "0.9rem",
-                        border: "1px solid rgba(15, 23, 42, 0.12)",
-                        background: "#fff",
-                        boxShadow: "0 8px 18px rgba(15, 23, 42, 0.08)",
-                        cursor: disabled ? "not-allowed" : "pointer",
-                        opacity: disabled ? 0.5 : 1,
-                      }}
-                    >
-                      <span
-                        aria-hidden="true"
-                        style={{
-                          width: "2.35rem",
-                          height: "2.35rem",
-                          borderRadius: "0.75rem",
-                          background: item.color,
-                          color: "#fff",
-                          display: "grid",
-                          placeItems: "center",
-                          fontWeight: 700,
-                          fontSize: "1.05rem",
-                        }}
-                      >
-                        {item.shortLabel}
-                      </span>
-                      <div style={{ textAlign: "left" }}>
-                        <strong style={{ fontSize: "1rem", color: "#0f172a" }}>{item.label}</strong>
-                        <p style={{ margin: 0, color: "#475569", fontSize: "0.85rem" }}>
-                          Ajoute un bloc « {item.label.toLowerCase()} » au workflow.
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+              {renderBlockLibraryButtons()}
             </aside>
           )}
           {isMobileLayout && hasSelectedElement ? (
