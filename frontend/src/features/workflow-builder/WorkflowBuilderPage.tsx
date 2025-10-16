@@ -2456,7 +2456,7 @@ const WorkflowBuilderPage = () => {
     const warningStyle: CSSProperties = { color: "#b45309", fontWeight: 600 };
 
     const renderWorkflowList = () => {
-      if (loading) {
+      if (loading && workflows.length === 0) {
         return (
           <p className="chatkit-sidebar__section-text" aria-live="polite">
             Chargement des workflows…
