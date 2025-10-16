@@ -54,6 +54,14 @@ export const getAgentModel = (parameters: AgentParameters | null | undefined): s
   return typeof model === "string" ? model : "";
 };
 
+export const getVoiceName = (parameters: AgentParameters | null | undefined): string => {
+  if (!parameters) {
+    return "";
+  }
+  const voice = parameters.voice;
+  return typeof voice === "string" ? voice : "";
+};
+
 export const getAgentReasoningEffort = (
   parameters: AgentParameters | null | undefined,
 ): string => {
@@ -93,6 +101,16 @@ export const setAgentModel = (parameters: AgentParameters, model: string): Agent
     return stripEmpty(rest);
   }
   return { ...next, model: trimmed };
+};
+
+export const setVoiceName = (parameters: AgentParameters, voice: string): AgentParameters => {
+  const trimmed = voice.trim();
+  const next = { ...parameters } as AgentParameters;
+  if (!trimmed) {
+    const { voice: _ignored, ...rest } = next;
+    return stripEmpty(rest);
+  }
+  return { ...next, voice: trimmed };
 };
 
 export const setAgentReasoningEffort = (

@@ -3,6 +3,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { VoiceChat } from "../VoiceChat";
 
+if (!("navigator" in globalThis)) {
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    writable: true,
+    value: {} as Navigator,
+  });
+}
+
 const startSessionMock = vi.fn();
 const stopSessionMock = vi.fn();
 const clearErrorsMock = vi.fn();
@@ -21,14 +29,14 @@ vi.mock("../useVoiceSession", () => ({
 }));
 
 describe("VoiceChat", () => {
-  const originalMediaDevices = navigator.mediaDevices;
+  const originalMediaDevices = globalThis.navigator.mediaDevices;
 
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    Object.defineProperty(navigator, "mediaDevices", {
+    Object.defineProperty(globalThis.navigator, "mediaDevices", {
       configurable: true,
       value: originalMediaDevices,
     });
@@ -39,7 +47,7 @@ describe("VoiceChat", () => {
       .fn()
       .mockRejectedValue(new DOMException("Permission refusée", "NotAllowedError"));
 
-    Object.defineProperty(navigator, "mediaDevices", {
+    Object.defineProperty(globalThis.navigator, "mediaDevices", {
       configurable: true,
       value: { getUserMedia },
     });

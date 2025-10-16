@@ -601,6 +601,63 @@ def test_can_save_minimal_graph_version() -> None:
     assert body["steps"] == []
 
 
+def test_workflow_version_accepts_voice_node() -> None:
+    admin = _make_user(email="voice-workflow@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    creation = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-voice",
+            "display_name": "Workflow voix",
+            "description": None,
+            "graph": None,
+        },
+    )
+    assert creation.status_code == 201
+    workflow_id = creation.json()["workflow_id"]
+
+    response = client.post(
+        f"/api/workflows/{workflow_id}/versions",
+        headers=_auth_headers(token),
+        json={
+            "graph": {
+                "nodes": [
+                    {"slug": "start", "kind": "start", "is_enabled": True},
+                    {
+                        "slug": "voice-step",
+                        "kind": "voice",
+                        "is_enabled": True,
+                        "parameters": {
+                            "model": "gpt-4o-realtime-preview",
+                            "instructions": "Bienvenue",
+                            "voice": "alloy",
+                        },
+                        "metadata": {"position": {"x": 180, "y": 0}},
+                    },
+                    {"slug": "end", "kind": "end", "is_enabled": True},
+                ],
+                "edges": [
+                    {"source": "start", "target": "voice-step"},
+                    {"source": "voice-step", "target": "end"},
+                ],
+            },
+            "mark_as_active": False,
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    voice_nodes = [node for node in payload["graph"]["nodes"] if node["kind"] == "voice"]
+    assert len(voice_nodes) == 1
+    voice_node = voice_nodes[0]
+    assert voice_node["parameters"]["model"] == "gpt-4o-realtime-preview"
+    assert voice_node["parameters"]["instructions"] == "Bienvenue"
+    assert voice_node["parameters"]["voice"] == "alloy"
+    assert voice_node["metadata"]["position"] == {"x": 180, "y": 0}
+
+
 def test_can_update_existing_draft_version() -> None:
     admin = _make_user(email="draft-update@example.com", is_admin=True)
     token = create_access_token(admin)

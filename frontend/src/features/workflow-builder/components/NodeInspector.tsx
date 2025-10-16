@@ -23,6 +23,7 @@ import {
   getAgentTopP,
   getAgentWeatherToolEnabled,
   getAgentWebSearchConfig,
+  getVoiceName,
   getVectorStoreNodeConfig,
   getStateAssignments,
 } from "../../../utils/workflows";
@@ -72,6 +73,7 @@ export type NodeInspectorProps = {
   onDisplayNameChange: (nodeId: string, value: string) => void;
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onAgentModelChange: (nodeId: string, value: string) => void;
+  onVoiceNameChange: (nodeId: string, value: string) => void;
   onAgentReasoningChange: (nodeId: string, value: string) => void;
   onAgentReasoningVerbosityChange: (nodeId: string, value: string) => void;
   onAgentReasoningSummaryChange: (nodeId: string, value: string) => void;
@@ -119,6 +121,7 @@ const NodeInspector = ({
   onDisplayNameChange,
   onAgentMessageChange,
   onAgentModelChange,
+  onVoiceNameChange,
   onAgentReasoningChange,
   onAgentReasoningVerbosityChange,
   onAgentReasoningSummaryChange,
@@ -157,6 +160,7 @@ const NodeInspector = ({
   const isFixed = kind === "start" || kind === "end";
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
+  const voiceName = getVoiceName(parameters);
   const reasoningEffort = getAgentReasoningEffort(parameters);
   const responseFormat = getAgentResponseFormat(parameters);
   const temperature = getAgentTemperature(parameters);
@@ -777,6 +781,51 @@ const NodeInspector = ({
         </>
       )}
 
+      {kind === "voice" && (
+        <>
+          <p style={{ color: "#475569", margin: "0 0 0.75rem" }}>
+            Ce bloc prépare une session Realtime vocale et fournit au frontend le secret
+            éphémère à utiliser.
+          </p>
+          <label style={fieldStyle}>
+            <span>Instructions Realtime</span>
+            <textarea
+              value={agentMessage}
+              rows={4}
+              placeholder="Texte partagé avec le modèle Realtime pour cadrer la session"
+              onChange={(event) => onAgentMessageChange(node.id, event.target.value)}
+            />
+            <small style={{ color: "#475569" }}>
+              Ce texte est envoyé à l'API Realtime pour contextualiser l'assistant vocal.
+            </small>
+          </label>
+          <label style={fieldStyle}>
+            <span>Modèle Realtime</span>
+            <input
+              type="text"
+              value={agentModel}
+              placeholder="Ex. gpt-4o-realtime-preview"
+              onChange={(event) => onAgentModelChange(node.id, event.target.value)}
+            />
+            <small style={{ color: "#475569" }}>
+              Utilisé lors de la génération du client_secret Realtime.
+            </small>
+          </label>
+          <label style={fieldStyle}>
+            <span>Voix par défaut</span>
+            <input
+              type="text"
+              value={voiceName}
+              placeholder="Ex. coral"
+              onChange={(event) => onVoiceNameChange(node.id, event.target.value)}
+            />
+            <small style={{ color: "#475569" }}>
+              Identifiant de la voix Realtime proposé au client.
+            </small>
+          </label>
+        </>
+      )}
+
       {kind === "json_vector_store" && (
         <>
           <p style={{ color: "#475569", margin: "0 0 0.75rem" }}>
@@ -908,7 +957,7 @@ const NodeInspector = ({
         {parametersError && (
           <span style={{ color: "#b91c1c", fontSize: "0.875rem" }}>{parametersError}</span>
         )}
-        {kind === "agent" && !parametersError && (
+        {(kind === "agent" || kind === "voice") && !parametersError && (
           <span style={{ color: "#475569", fontSize: "0.85rem" }}>
             Utilisez ce champ pour ajouter des paramètres avancés (JSON) comme les réglages du modèle
             ou des options d'inférence supplémentaires.

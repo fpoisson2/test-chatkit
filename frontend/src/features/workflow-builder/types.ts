@@ -11,6 +11,7 @@ export type NodeKind =
   | "agent"
   | "condition"
   | "state"
+  | "voice"
   | "json_vector_store"
   | "end";
 

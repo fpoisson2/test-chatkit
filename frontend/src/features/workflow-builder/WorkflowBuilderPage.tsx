@@ -54,6 +54,7 @@ import {
   setAgentTopP,
   setAgentWeatherToolEnabled,
   setAgentWebSearchConfig,
+  setVoiceName,
   setStateAssignments,
   stringifyAgentParameters,
   createVectorStoreNodeParameters,
@@ -117,17 +118,24 @@ const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 
 const useMediaQuery = (query: string) => {
   const [matches, setMatches] = useState<boolean>(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
       return false;
     }
-    return window.matchMedia(query).matches;
+    const mediaQueryList = window.matchMedia(query);
+    if (!mediaQueryList || typeof mediaQueryList.matches !== "boolean") {
+      return false;
+    }
+    return mediaQueryList.matches;
   });
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
       return;
     }
     const mediaQueryList = window.matchMedia(query);
+    if (!mediaQueryList || typeof mediaQueryList.matches !== "boolean") {
+      return;
+    }
     const handleChange = (event: MediaQueryListEvent) => {
       setMatches(event.matches);
     };
@@ -864,7 +872,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentMessageChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (data.kind !== "agent" && data.kind !== "voice") {
           return data;
         }
         const nextParameters = setAgentMessage(data.parameters, value);
@@ -882,11 +890,11 @@ const WorkflowBuilderPage = () => {
   const handleAgentModelChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (data.kind !== "agent" && data.kind !== "voice") {
           return data;
         }
         let nextParameters = setAgentModel(data.parameters, value);
-        if (!isReasoningModel(value)) {
+        if (data.kind === "agent" && !isReasoningModel(value)) {
           nextParameters = setAgentReasoningEffort(nextParameters, "");
           nextParameters = setAgentReasoningVerbosity(nextParameters, "");
           nextParameters = setAgentReasoningSummary(nextParameters, "");
@@ -900,6 +908,24 @@ const WorkflowBuilderPage = () => {
       });
     },
     [isReasoningModel, updateNodeData],
+  );
+
+  const handleVoiceNameChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "voice") {
+          return data;
+        }
+        const nextParameters = setVoiceName(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
   );
 
   const handleAgentReasoningChange = useCallback(
@@ -1347,6 +1373,32 @@ const WorkflowBuilderPage = () => {
       draggable: true,
       style: buildNodeStyle("agent"),
     };
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes]);
+
+  const handleAddVoiceNode = useCallback(() => {
+    const slug = `voice-${Date.now()}`;
+    const parameters = resolveAgentParameters(null, {});
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 320, y: 200 },
+      data: {
+        slug,
+        kind: "voice",
+        displayName: humanizeSlug(slug),
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+        label: humanizeSlug(slug),
+      },
+      draggable: true,
+      style: buildNodeStyle("voice"),
+    } satisfies FlowNode;
     setNodes((current) => [...current, newNode]);
     setSelectedNodeId(slug);
     setSelectedEdgeId(null);
@@ -2140,6 +2192,13 @@ const WorkflowBuilderPage = () => {
         onClick: handleAddAgentNode,
       },
       {
+        key: "voice",
+        label: "Session vocale",
+        shortLabel: "V",
+        color: NODE_COLORS.voice,
+        onClick: handleAddVoiceNode,
+      },
+      {
         key: "condition",
         label: "Condition",
         shortLabel: "C",
@@ -2161,7 +2220,13 @@ const WorkflowBuilderPage = () => {
         onClick: handleAddVectorStoreNode,
       },
     ],
-    [handleAddAgentNode, handleAddConditionNode, handleAddStateNode, handleAddVectorStoreNode],
+    [
+      handleAddAgentNode,
+      handleAddVoiceNode,
+      handleAddConditionNode,
+      handleAddStateNode,
+      handleAddVectorStoreNode,
+    ],
   );
 
   const showPropertiesPanel = Boolean(selectedNode || selectedEdge);
@@ -2604,6 +2669,7 @@ const WorkflowBuilderPage = () => {
                     onDisplayNameChange={handleDisplayNameChange}
                     onAgentMessageChange={handleAgentMessageChange}
                     onAgentModelChange={handleAgentModelChange}
+                    onVoiceNameChange={handleVoiceNameChange}
                     onAgentReasoningChange={handleAgentReasoningChange}
                     onAgentReasoningVerbosityChange={handleAgentReasoningVerbosityChange}
                     onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}

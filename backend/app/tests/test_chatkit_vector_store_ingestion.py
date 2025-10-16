@@ -11,6 +11,8 @@ import types
 from pathlib import Path
 from types import SimpleNamespace
 
+from typing import Any
+
 import pytest
 
 sys.path.append(str(Path(__file__).resolve().parents[3]))
@@ -949,3 +951,124 @@ def test_json_vector_store_node_generates_identifier_when_missing(
     assert metadata["workflow_step_title"] == "Sauvegarde"
 
     assert sessions and sessions[0].committed is True
+
+
+def test_voice_step_emits_session_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_calls: list[dict[str, str]] = []
+    events: list[Any] = []
+    summaries: list[Any] = []
+
+    async def _fake_create_voice_session(*, user_id: str, model: str, instructions: str) -> dict[str, Any]:
+        captured_calls.append({
+            "user_id": user_id,
+            "model": model,
+            "instructions": instructions,
+        })
+        return {
+            "client_secret": {"value": "voice-secret"},
+            "expires_at": "2024-01-01T00:00:00Z",
+        }
+
+    monkeypatch.setattr(chatkit_module, "create_realtime_voice_session", _fake_create_voice_session)
+    monkeypatch.setattr(
+        chatkit_module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            chatkit_realtime_model="fallback-model",
+            chatkit_realtime_instructions="Fallback",
+            chatkit_realtime_voice="fallback-voice",
+        ),
+    )
+
+    start_step = SimpleNamespace(
+        slug="start",
+        kind="start",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=0,
+        id=1,
+        display_name="Début",
+    )
+    voice_step = SimpleNamespace(
+        slug="voice",
+        kind="voice",
+        is_enabled=True,
+        parameters={
+            "model": "gpt-4o-realtime-preview",
+            "instructions": "Bienvenue",
+            "voice": "alloy",
+        },
+        agent_key=None,
+        position=1,
+        id=2,
+        display_name="Voix",
+    )
+    end_step = SimpleNamespace(
+        slug="end",
+        kind="end",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=2,
+        id=3,
+        display_name="Fin",
+    )
+
+    transitions = [
+        SimpleNamespace(id=1, source_step=start_step, target_step=voice_step, condition=None),
+        SimpleNamespace(id=2, source_step=voice_step, target_step=end_step, condition=None),
+    ]
+
+    definition = SimpleNamespace(
+        steps=[start_step, voice_step, end_step],
+        transitions=transitions,
+        workflow_id=42,
+        workflow=SimpleNamespace(slug="demo", display_name="Démo"),
+    )
+
+    async def _run() -> None:
+        workflow_input = chatkit_module.WorkflowInput(input_as_text="Bonjour")
+
+        async def _on_step(summary: Any, _index: int) -> None:
+            summaries.append(summary)
+
+        async def _on_stream_event(event: Any) -> None:
+            events.append(event)
+
+        await chatkit_module.run_workflow(
+            workflow_input,
+            agent_context=SimpleNamespace(
+                request_context=SimpleNamespace(user_id="user:42", email="voice@example.com")
+            ),
+            on_step=_on_step,
+            on_stream_event=_on_stream_event,
+            workflow_service=_DummyWorkflowService(definition),
+        )
+
+    asyncio.run(_run())
+
+    assert captured_calls == [
+        {
+            "user_id": "user:42",
+            "model": "gpt-4o-realtime-preview",
+            "instructions": "Bienvenue",
+        }
+    ]
+
+    voice_events = [event for event in events if isinstance(event, chatkit_module.ProgressUpdateEvent)]
+    assert any("Initialisation de la session vocale" in event.text for event in voice_events)
+    payload_events = [
+        event
+        for event in voice_events
+        if event.text.strip().startswith("{") and "voice_session" in event.text
+    ]
+    assert payload_events, "Voice session payload should be streamed"
+    payload = json.loads(payload_events[0].text)
+    assert payload["voice_session"]["client_secret"] == {"value": "voice-secret"}
+    assert payload["voice_session"]["voice"] == "alloy"
+
+    assert summaries, "Voice step should be recorded"
+    summary_output = summaries[0].output
+    assert "voice-secret" not in summary_output
+    assert "\"client_secret\": \"***\"" in summary_output

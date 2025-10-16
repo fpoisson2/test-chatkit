@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { MemoryRouter } from "react-router-dom";
 
@@ -36,6 +36,22 @@ vi.mock("../../utils/backend", () => ({
     listWidgets: listWidgetsMock,
   },
 }));
+
+beforeAll(() => {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+});
 
 describe("WorkflowBuilderPage", () => {
   const defaultResponse = {
@@ -751,6 +767,46 @@ describe("WorkflowBuilderPage", () => {
         { target: "state.has_all_details", expression: "input.output_parsed.has_all_details" },
         { target: "state.details_a_collecter", expression: "input.output_structured.details" },
       ],
+    });
+  });
+
+  test("permet d'ajouter et de configurer un bloc voix", async () => {
+    const fetchMock = setupWorkflowApi();
+
+    renderWorkflowBuilder();
+
+    const voiceButton = await screen.findByRole("button", { name: /session vocale/i });
+    await userEvent.click(voiceButton);
+
+    const instructionsField = await screen.findByLabelText(/instructions realtime/i);
+    expect(instructionsField).toHaveValue("");
+    await userEvent.type(instructionsField, "Session de test");
+
+    const modelInput = await screen.findByLabelText(/modèle realtime/i);
+    await userEvent.clear(modelInput);
+    await userEvent.type(modelInput, "gpt-4o-realtime-preview");
+
+    const voiceInput = await screen.findByLabelText(/voix par défaut/i);
+    await userEvent.type(voiceInput, "alloy");
+
+    await waitFor(
+      () => {
+        expect(
+          fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
+        ).toBe(true);
+      },
+      { timeout: 4000 },
+    );
+
+    const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
+    expect(putCall).toBeDefined();
+    const payload = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const voiceNode = payload.graph.nodes.find((node: any) => node.kind === "voice");
+    expect(voiceNode).toBeDefined();
+    expect(voiceNode.parameters).toEqual({
+      instructions: "Session de test",
+      model: "gpt-4o-realtime-preview",
+      voice: "alloy",
     });
   });
 

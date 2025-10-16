@@ -55,6 +55,7 @@ from chatkit.types import (
     UserMessageItem,
 )
 
+from .chatkit_realtime import create_realtime_voice_session
 from .config import Settings, get_settings
 from .chatkit_store import PostgresChatKitStore
 from .database import SessionLocal
@@ -1892,6 +1893,96 @@ async def run_workflow(
     }
     final_output: dict[str, Any] | None = None
     last_step_context: dict[str, Any] | None = None
+    app_settings = get_settings()
+
+    def _ensure_voice_value(value: Any, fallback: str) -> str:
+        if isinstance(value, str):
+            trimmed = value.strip()
+            if trimmed:
+                return trimmed
+        return fallback.strip()
+
+    def _normalize_voice_expiration(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (int, float)):
+            return str(value)
+        return None
+
+    def _extract_voice_secret(container: Any) -> tuple[Any | None, str | None]:
+        if not isinstance(container, dict):
+            return None, None
+
+        secret = container.get("client_secret") or container.get("clientSecret")
+        if not secret and "value" in container:
+            secret = container["value"]
+        if not secret:
+            return None, None
+
+        expires = (
+            _normalize_voice_expiration(container.get("expires_at"))
+            or _normalize_voice_expiration(container.get("expires_after"))
+        )
+
+        if isinstance(secret, dict):
+            expires = (
+                expires
+                or _normalize_voice_expiration(secret.get("expires_at"))
+                or _normalize_voice_expiration(secret.get("expires_after"))
+            )
+
+        return secret, expires
+
+    def _resolve_voice_secret(payload: Any) -> tuple[Any | None, str | None]:
+        if not isinstance(payload, dict):
+            return None, None
+
+        direct_secret, direct_expiration = _extract_voice_secret(payload)
+        if direct_secret is not None:
+            expires = (
+                direct_expiration
+                or _normalize_voice_expiration(payload.get("expires_at"))
+                or _normalize_voice_expiration(payload.get("expires_after"))
+            )
+            return direct_secret, expires
+
+        for key in ("data", "session"):
+            nested_secret, nested_expiration = _extract_voice_secret(payload.get(key))
+            if nested_secret is not None:
+                expires = (
+                    nested_expiration
+                    or _normalize_voice_expiration(payload.get("expires_at"))
+                    or _normalize_voice_expiration(payload.get("expires_after"))
+                )
+                return nested_secret, expires
+
+        fallback_expiration = (
+            _normalize_voice_expiration(payload.get("expires_at"))
+            or _normalize_voice_expiration(payload.get("expires_after"))
+        )
+        return None, fallback_expiration
+
+    def _summarize_voice_payload(payload: Any) -> dict[str, Any] | str:
+        if not isinstance(payload, dict):
+            return str(type(payload))
+
+        summary: dict[str, Any] = {}
+        for key, value in payload.items():
+            if key in {"client_secret", "value"}:
+                summary[key] = "***"
+                continue
+            if isinstance(value, dict):
+                summary[key] = {
+                    sub_key: type(sub_value).__name__
+                    for sub_key, sub_value in value.items()
+                }
+            elif isinstance(value, list):
+                summary[key] = f"list(len={len(value)})"
+            else:
+                summary[key] = type(value).__name__
+        return summary
 
     service = workflow_service or WorkflowService()
     definition = service.get_current()
@@ -1930,16 +2021,18 @@ async def run_workflow(
             [],
         )
 
+    ordered_steps = sorted(definition.steps, key=lambda s: s.position)
     agent_steps_ordered = [
-        step
-        for step in sorted(definition.steps, key=lambda s: s.position)
-        if step.kind == "agent" and step.is_enabled and step.slug in nodes_by_slug
+        step for step in ordered_steps if step.kind == "agent" and step.is_enabled and step.slug in nodes_by_slug
     ]
-    if not agent_steps_ordered:
+    voice_steps_ordered = [
+        step for step in ordered_steps if step.kind == "voice" and step.is_enabled and step.slug in nodes_by_slug
+    ]
+    if not agent_steps_ordered and not voice_steps_ordered:
         raise WorkflowExecutionError(
             "configuration",
             "Configuration du workflow invalide",
-            RuntimeError("Aucun agent actif utilisable"),
+            RuntimeError("Aucun agent ou bloc voix actif utilisable"),
             [],
         )
 
@@ -2887,6 +2980,105 @@ async def run_workflow(
                     "Configuration du workflow invalide",
                     RuntimeError(
                         f"Aucune transition disponible après le nœud d'état {current_node.slug}"
+                    ),
+                    list(steps),
+                )
+            current_slug = transition.target_step.slug
+            continue
+
+        if current_node.kind == "voice":
+            title = _node_title(current_node)
+            if on_stream_event is not None:
+                await on_stream_event(
+                    ProgressUpdateEvent(
+                        text=f"{title}\n\nInitialisation de la session vocale…"
+                    )
+                )
+
+            parameters = current_node.parameters or {}
+            model = _ensure_voice_value(
+                parameters.get("model"), app_settings.chatkit_realtime_model
+            )
+            instructions = _ensure_voice_value(
+                parameters.get("instructions"), app_settings.chatkit_realtime_instructions
+            )
+            voice_name = _ensure_voice_value(
+                parameters.get("voice"), app_settings.chatkit_realtime_voice
+            )
+
+            request_context = getattr(agent_context, "request_context", None)
+            raw_user_id = getattr(request_context, "user_id", None) if request_context else None
+            user_id = str(raw_user_id).strip() if raw_user_id else ""
+            if not user_id and request_context is not None:
+                raw_email = getattr(request_context, "email", None)
+                if raw_email:
+                    user_id = f"email:{str(raw_email).strip()}"
+            if not user_id:
+                user_id = f"workflow-user:{uuid.uuid4()}"
+
+            voice_payload = await create_realtime_voice_session(
+                user_id=user_id,
+                model=model,
+                instructions=instructions,
+            )
+            client_secret, expires_at = _resolve_voice_secret(voice_payload)
+            if client_secret is None:
+                summary = _summarize_voice_payload(voice_payload)
+                logger.error(
+                    "Client secret introuvable pour le bloc voix %s : %s",
+                    current_node.slug,
+                    summary,
+                )
+                raise WorkflowExecutionError(
+                    current_node.slug,
+                    title,
+                    RuntimeError("ChatKit Realtime response missing client_secret"),
+                    list(steps),
+                )
+
+            session_info: dict[str, Any] = {
+                "client_secret": client_secret,
+                "expires_at": expires_at,
+                "model": model,
+                "instructions": instructions,
+                "voice": voice_name,
+            }
+            state["voice_session"] = session_info
+
+            summary_info = dict(session_info)
+            summary_info["client_secret"] = "***"
+            summary_text = json.dumps(summary_info, ensure_ascii=False)
+
+            await record_step(current_node.slug, title, summary_info)
+
+            if on_stream_event is not None:
+                event_payload = {
+                    "type": "voice_session",
+                    "title": title,
+                    "voice_session": session_info,
+                }
+                await on_stream_event(
+                    ProgressUpdateEvent(
+                        text=json.dumps(event_payload, ensure_ascii=False)
+                    )
+                )
+                await on_stream_event(ProgressUpdateEvent(text=""))
+
+            last_step_context = {
+                "agent_key": "voice",
+                "voice_session": session_info,
+                "output": summary_info,
+                "output_parsed": summary_info,
+                "output_text": summary_text,
+            }
+
+            transition = _next_edge(current_slug)
+            if transition is None:
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError(
+                        f"Aucune transition disponible après le bloc voix {current_node.slug}"
                     ),
                     list(steps),
                 )
