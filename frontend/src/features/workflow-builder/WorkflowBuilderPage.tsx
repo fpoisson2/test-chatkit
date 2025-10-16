@@ -6,9 +6,6 @@ import {
   useState,
   type ChangeEvent,
   type CSSProperties,
-  type MouseEvent,
-  type PointerEvent,
-  type TouchEvent,
 } from "react";
 import ReactFlow, {
   Background,
@@ -118,10 +115,8 @@ import {
   getHeaderGroupStyle,
   getHeaderLayoutStyle,
   getHeaderNavigationButtonStyle,
-  getMobileHeaderMenuButtonStyle,
   getVersionSelectStyle,
   loadingStyle,
-  mobileHeaderMenuIconStyle,
 } from "./styles";
 import styles from "./WorkflowBuilderPage.module.css";
 
@@ -199,16 +194,12 @@ const WorkflowBuilderPage = () => {
   const propertiesPanelToggleRef = useRef<HTMLButtonElement | null>(null);
   const propertiesPanelCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isPropertiesPanelOpen, setPropertiesPanelOpen] = useState(false);
-  const [isMobileHeaderMenuOpen, setMobileHeaderMenuOpen] = useState(false);
-  const mobileHeaderMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const previousSelectedElementRef = useRef<string | null>(null);
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
   const blockLibraryId = "workflow-builder-block-library";
   const propertiesPanelId = "workflow-builder-properties-panel";
   const propertiesPanelTitleId = `${propertiesPanelId}-title`;
-  const headerMenuId = "workflow-builder-header-menu";
-  const headerMenuTitleId = `${headerMenuId}-title`;
   const toggleBlockLibrary = useCallback(() => {
     setBlockLibraryOpen((prev) => !prev);
   }, []);
@@ -239,71 +230,6 @@ const WorkflowBuilderPage = () => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [closeBlockLibrary, isBlockLibraryOpen, isMobileLayout]);
-
-  const closeMobileHeaderMenu = useCallback(
-    (options: { focusToggle?: boolean } = {}) => {
-      setMobileHeaderMenuOpen(false);
-      setOpenWorkflowMenuId(null);
-      if (options.focusToggle && mobileHeaderMenuButtonRef.current) {
-        mobileHeaderMenuButtonRef.current.focus();
-      }
-    },
-    [],
-  );
-  const handleToggleMobileHeaderMenu = useCallback(() => {
-    setMobileHeaderMenuOpen((prev) => !prev);
-    setOpenWorkflowMenuId(null);
-  }, []);
-
-  const handleMobileHeaderMenuButtonPointerDown = useCallback(
-    (event: PointerEvent<HTMLButtonElement>) => {
-      event.stopPropagation();
-    },
-    [],
-  );
-
-  const handleMobileHeaderMenuButtonTouchStart = useCallback(
-    (event: TouchEvent<HTMLButtonElement>) => {
-      event.stopPropagation();
-    },
-    [],
-  );
-
-  const handleMobileHeaderMenuButtonClick = useCallback(
-    (event: MouseEvent<HTMLButtonElement>) => {
-      event.stopPropagation();
-      handleToggleMobileHeaderMenu();
-    },
-    [handleToggleMobileHeaderMenu],
-  );
-
-  useEffect(() => {
-    if (!isMobileLayout) {
-      setMobileHeaderMenuOpen(false);
-    }
-  }, [isMobileLayout]);
-
-  useEffect(() => {
-    if (!isMobileLayout || !isMobileHeaderMenuOpen) {
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        closeMobileHeaderMenu({ focusToggle: true });
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [closeMobileHeaderMenu, isMobileHeaderMenuOpen, isMobileLayout]);
-
-  useEffect(() => {
-    if (!isMobileHeaderMenuOpen) {
-      setOpenWorkflowMenuId(null);
-    }
-  }, [isMobileHeaderMenuOpen]);
 
   useEffect(() => {
     if (!isBlockLibraryOpen) {
@@ -368,11 +294,14 @@ const WorkflowBuilderPage = () => {
     <>
       <div style={getHeaderLayoutStyle(isMobileLayout)}>
         <div style={getHeaderGroupStyle(isMobileLayout)}>
-          <label htmlFor="version-select" style={controlLabelStyle}>
-            Révision
-          </label>
+          {!isMobileLayout ? (
+            <label htmlFor="version-select" style={controlLabelStyle}>
+              Révision
+            </label>
+          ) : null}
           <select
             id="version-select"
+            aria-label={isMobileLayout ? "Sélectionner une révision" : undefined}
             value={selectedVersionId ? String(selectedVersionId) : ""}
             onChange={handleVersionChange}
             disabled={loading || versions.length === 0}
@@ -2867,63 +2796,8 @@ const WorkflowBuilderPage = () => {
               <path d="M3 5h14M3 10h14M3 15h14" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
           </button>
-          {isMobileLayout ? (
-            <button
-              type="button"
-              ref={mobileHeaderMenuButtonRef}
-              onPointerDown={handleMobileHeaderMenuButtonPointerDown}
-              onTouchStart={handleMobileHeaderMenuButtonTouchStart}
-              onClick={handleMobileHeaderMenuButtonClick}
-              aria-haspopup="dialog"
-              aria-controls={headerMenuId}
-              aria-expanded={isMobileHeaderMenuOpen}
-              style={getMobileHeaderMenuButtonStyle({ active: isMobileHeaderMenuOpen })}
-            >
-              <span>Workflow</span>
-              <span aria-hidden="true" style={mobileHeaderMenuIconStyle}>
-                {isMobileHeaderMenuOpen ? "▴" : "▾"}
-              </span>
-            </button>
-          ) : (
-            renderHeaderControls()
-          )}
+          {renderHeaderControls()}
         </header>
-
-        {isMobileLayout && isMobileHeaderMenuOpen ? (
-          <div
-            className={styles.mobileHeaderOverlay}
-            role="presentation"
-            onClick={() => closeMobileHeaderMenu({ focusToggle: true })}
-          >
-            <div
-              id={headerMenuId}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby={headerMenuTitleId}
-              className={styles.mobileHeaderModal}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className={styles.mobileHeaderModalHeader}>
-                <h2 id={headerMenuTitleId} className={styles.mobileHeaderModalTitle}>
-                  Paramètres du workflow
-                </h2>
-                <button
-                  type="button"
-                  onClick={() => closeMobileHeaderMenu({ focusToggle: true })}
-                  aria-label="Fermer le menu du workflow"
-                  className={styles.mobileHeaderModalClose}
-                >
-                  ×
-                </button>
-              </div>
-              <div className={styles.mobileHeaderModalContent}>
-                {renderWorkflowDescription(styles.mobileHeaderModalInfo)}
-                {renderWorkflowPublicationReminder(styles.mobileHeaderModalInfoWarning)}
-                {renderHeaderControls()}
-              </div>
-            </div>
-          </div>
-        ) : null}
 
         <div style={workspaceWrapperStyle}>
           <div
