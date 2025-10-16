@@ -316,6 +316,38 @@ button {
   gap: 16px;
 }
 
+.chatkit-sidebar__app-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chatkit-sidebar__app-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.chatkit-sidebar__app-select {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-color);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chatkit-sidebar__app-select:hover,
+.chatkit-sidebar__app-select:focus-visible {
+  border-color: rgba(15, 23, 42, 0.4);
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.15);
+  outline: none;
+}
+
 .chatkit-sidebar__topline {
   display: flex;
   align-items: center;
@@ -415,6 +447,38 @@ button {
   white-space: nowrap;
 }
 
+.chatkit-sidebar__footer {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.chatkit-sidebar__footer-link {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-color);
+  font-weight: 600;
+  padding: 10px 4px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.chatkit-sidebar__footer-link:hover,
+.chatkit-sidebar__footer-link:focus-visible {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.chatkit-sidebar__footer-link:focus-visible {
+  outline: 2px solid rgba(15, 23, 42, 0.3);
+  outline-offset: 2px;
+}
+
 .chatkit-sidebar--collapsed {
   align-items: center;
 }
@@ -427,6 +491,15 @@ button {
 .chatkit-sidebar--collapsed .chatkit-sidebar__label,
 .chatkit-sidebar--collapsed .chatkit-sidebar__dismiss {
   display: none;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__app-switcher {
+  display: none;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__footer-link {
+  justify-content: center;
+  padding: 10px 0;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__list {
