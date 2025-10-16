@@ -1780,6 +1780,17 @@ button {
   gap: 18px;
 }
 
+.voice-page__header-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.voice-page__menu-button {
+  white-space: nowrap;
+}
+
 .voice-page__intro {
   max-width: 720px;
   margin: 8px 0 0;
@@ -2038,6 +2049,17 @@ button {
   gap: clamp(16px, 2vh, 24px);
 }
 
+.app-content__leading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.app-content__menu-button {
+  align-self: flex-start;
+  white-space: nowrap;
+}
+
 .app-content__heading {
   display: flex;
   flex-direction: column;
@@ -2088,6 +2110,12 @@ button {
     flex-direction: row;
     justify-content: space-between;
     align-items: flex-start;
+  }
+
+  .app-content__leading {
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
   }
 
   .app-content__toolbar {

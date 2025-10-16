@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "../auth";
+import { useAppLayout } from "../components/AppLayout";
 import { Modal } from "../components/Modal";
 import { WidgetPreviewModal } from "../components/WidgetPreviewModal";
 import { WidgetTemplateForm } from "../components/WidgetTemplateForm";
@@ -24,6 +25,7 @@ const sortWidgets = (widgets: WidgetTemplate[]): WidgetTemplate[] =>
 
 export const WidgetLibraryPage = () => {
   const { token, user, logout } = useAuth();
+  const { openSidebar, isDesktopLayout, isSidebarOpen } = useAppLayout();
   const [widgets, setWidgets] = useState<WidgetTemplate[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +44,7 @@ export const WidgetLibraryPage = () => {
       : "";
     return `${user?.email ?? "Administrateur"}${widgetCountLabel}`;
   }, [user?.email, widgets.length]);
+  const showSidebarButton = !isDesktopLayout || !isSidebarOpen;
 
   const refreshWidgets = useCallback(async () => {
     if (!token) {
@@ -176,11 +179,22 @@ export const WidgetLibraryPage = () => {
   return (
     <div className="app-content">
       <header className="app-content__header">
-        <div className="app-content__heading">
-          <h1 className="app-content__title">Bibliothèque de widgets</h1>
-          <p className="app-content__subtitle">
-            Centralisez les widgets ChatKit prêts à être utilisés dans vos workflows agents.
-          </p>
+        <div className="app-content__leading">
+          {showSidebarButton ? (
+            <button
+              className="button button--ghost app-content__menu-button"
+              type="button"
+              onClick={openSidebar}
+            >
+              Ouvrir le menu
+            </button>
+          ) : null}
+          <div className="app-content__heading">
+            <h1 className="app-content__title">Bibliothèque de widgets</h1>
+            <p className="app-content__subtitle">
+              Centralisez les widgets ChatKit prêts à être utilisés dans vos workflows agents.
+            </p>
+          </div>
         </div>
         <div className="app-content__toolbar">
           <span className="app-content__badge">{badge}</span>

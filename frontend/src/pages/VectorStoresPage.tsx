@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "../auth";
+import { useAppLayout } from "../components/AppLayout";
 import { Modal } from "../components/Modal";
 import { VectorStoreDocumentsTable } from "../components/VectorStoreDocumentsTable";
 import { VectorStoreForm } from "../components/VectorStoreForm";
@@ -23,6 +24,7 @@ const sortStores = (stores: VectorStoreSummary[]): VectorStoreSummary[] =>
 
 export const VectorStoresPage = () => {
   const { token, user, logout } = useAuth();
+  const { openSidebar, isDesktopLayout, isSidebarOpen } = useAppLayout();
   const [stores, setStores] = useState<VectorStoreSummary[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +49,7 @@ export const VectorStoresPage = () => {
       : "";
     return `${user?.email ?? "Administrateur"}${storeCountLabel}`;
   }, [stores.length, user?.email]);
+  const showSidebarButton = !isDesktopLayout || !isSidebarOpen;
 
   const refreshStores = useCallback(async () => {
     if (!token) {
@@ -286,11 +289,22 @@ export const VectorStoresPage = () => {
   return (
     <div className="app-content">
       <header className="app-content__header">
-        <div className="app-content__heading">
-          <h1 className="app-content__title">Vector stores JSON</h1>
-          <p className="app-content__subtitle">
-            Indexez vos fichiers JSON dans PostgreSQL + pgvector puis testez vos requêtes de recherche hybride.
-          </p>
+        <div className="app-content__leading">
+          {showSidebarButton ? (
+            <button
+              className="button button--ghost app-content__menu-button"
+              type="button"
+              onClick={openSidebar}
+            >
+              Ouvrir le menu
+            </button>
+          ) : null}
+          <div className="app-content__heading">
+            <h1 className="app-content__title">Vector stores JSON</h1>
+            <p className="app-content__subtitle">
+              Indexez vos fichiers JSON dans PostgreSQL + pgvector puis testez vos requêtes de recherche hybride.
+            </p>
+          </div>
         </div>
         <div className="app-content__toolbar">
           <span className="app-content__badge">{storeBadge}</span>
