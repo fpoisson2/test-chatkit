@@ -248,7 +248,8 @@ button {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding: 28px 24px;
+  --chatkit-sidebar-padding-x: 24px;
+  padding: 28px var(--chatkit-sidebar-padding-x);
   overflow-y: auto;
   transform: translateX(calc(-1 * var(--chatkit-sidebar-width)));
   transition: transform 0.95s cubic-bezier(0.16, 1, 0.3, 1);
@@ -262,7 +263,8 @@ button {
 
 .chatkit-sidebar--collapsed {
   width: var(--chatkit-sidebar-collapsed-width);
-  padding: 28px 18px;
+  --chatkit-sidebar-padding-x: 18px;
+  padding: 28px var(--chatkit-sidebar-padding-x);
   gap: 20px;
   pointer-events: auto;
 }
@@ -438,13 +440,14 @@ button {
 }
 
 .chatkit-sidebar__workflow-button {
-  width: 100%;
+  width: calc(100% + (var(--chatkit-sidebar-padding-x) * 2));
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
   border: none;
   background: transparent;
-  padding: 12px 0;
+  padding: 12px var(--chatkit-sidebar-padding-x);
+  margin-inline: calc(-1 * var(--chatkit-sidebar-padding-x));
   border-radius: 0;
   font: inherit;
   font-weight: 600;
