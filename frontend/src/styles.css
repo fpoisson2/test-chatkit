@@ -473,6 +473,29 @@ button {
   color: #1d4ed8;
 }
 
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-title {
+  color: #f8fafc;
+}
+
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__section-text {
+  color: rgba(248, 250, 252, 0.85);
+}
+
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button {
+  color: #f8fafc;
+}
+
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:hover,
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button:focus-visible {
+  background: rgba(148, 163, 184, 0.35);
+  color: #f8fafc;
+}
+
+.chatkit-sidebar__section[data-variant="overlay"] .chatkit-sidebar__workflow-button[aria-current="true"] {
+  background: rgba(148, 163, 184, 0.45);
+  color: #f8fafc;
+}
+
 .chatkit-sidebar__badge {
   display: inline-flex;
   align-items: center;

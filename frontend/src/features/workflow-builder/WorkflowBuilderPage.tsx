@@ -109,7 +109,6 @@ import {
   defaultEdgeOptions,
 } from "./utils";
 import {
-  activeWorkflowBadgeStyle,
   actionMenuTriggerIconStyle,
   actionMenuTriggerLabelStyle,
   controlLabelStyle,
@@ -126,7 +125,6 @@ import {
   getHeaderNavigationButtonStyle,
   getMobileHeaderMenuButtonStyle,
   getVersionSelectStyle,
-  getWorkflowSelectStyle,
   loadingStyle,
   mobileHeaderMenuIconStyle,
 } from "./styles";
@@ -350,6 +348,12 @@ const WorkflowBuilderPage = () => {
     }
   }, [isBlockLibraryOpen]);
 
+  useEffect(() => {
+    if (workflows.length === 0) {
+      setActionMenuOpen(false);
+    }
+  }, [workflows.length]);
+
   const renderWorkflowDescription = (className?: string) =>
     selectedWorkflow?.description ? (
       <div className={className} style={{ color: "#475569", fontSize: "0.95rem" }}>
@@ -367,45 +371,6 @@ const WorkflowBuilderPage = () => {
   const renderHeaderControls = () => (
     <>
       <div style={getHeaderLayoutStyle(isMobileLayout)}>
-        <div style={getHeaderGroupStyle(isMobileLayout)}>
-          <label htmlFor="workflow-select" style={controlLabelStyle}>
-            Workflow
-          </label>
-          <select
-            id="workflow-select"
-            value={selectedWorkflowId ? String(selectedWorkflowId) : ""}
-            onChange={handleWorkflowChange}
-            disabled={loading || workflows.length === 0}
-            title={selectedWorkflow?.description ?? undefined}
-            style={getWorkflowSelectStyle(isMobileLayout, {
-              disabled: loading || workflows.length === 0,
-            })}
-          >
-            {workflows.length === 0 ? (
-              <option value="">Aucun workflow disponible</option>
-            ) : (
-              <>
-                <option value="" disabled>
-                  Sélectionnez un workflow
-                </option>
-                {workflows.map((workflow) => (
-                  <option key={workflow.id} value={workflow.id}>
-                    {workflow.display_name}
-                    {workflow.active_version_number
-                      ? ` · prod v${workflow.active_version_number}`
-                      : ""}
-                    {workflow.is_chatkit_default ? " · 🟢 Actif" : ""}
-                  </option>
-                ))}
-              </>
-            )}
-          </select>
-          {selectedWorkflow?.is_chatkit_default ? (
-            <span style={activeWorkflowBadgeStyle}>
-              🟢 Actif
-            </span>
-          ) : null}
-        </div>
         <div style={getHeaderGroupStyle(isMobileLayout)}>
           <label htmlFor="version-select" style={controlLabelStyle}>
             Révision
@@ -1765,23 +1730,17 @@ const WorkflowBuilderPage = () => {
     setSelectedEdgeId(null);
   }, [setNodes]);
 
-  const handleWorkflowChange = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      const value = Number(event.target.value);
-      const workflowId = Number.isFinite(value) ? value : null;
+  const handleSelectWorkflow = useCallback(
+    (workflowId: number) => {
+      if (workflowId === selectedWorkflowId) {
+        return;
+      }
       setSelectedWorkflowId(workflowId);
       setSelectedVersionId(null);
-      if (workflowId) {
-        void loadVersions(workflowId, null);
-      } else {
-        setVersions([]);
-        setNodes([]);
-        setEdges([]);
-        lastSavedSnapshotRef.current = null;
-        setHasPendingChanges(false);
-      }
+      setActionMenuOpen(false);
+      void loadVersions(workflowId, null);
     },
-    [loadVersions, setEdges, setHasPendingChanges, setNodes],
+    [loadVersions, selectedWorkflowId],
   );
 
   const handleVersionChange = useCallback(
@@ -2527,186 +2486,181 @@ const WorkflowBuilderPage = () => {
     textAlign: "left",
   });
 
-  const renderWorkflowSidebarSection = (
-    primaryTextColor: string,
-    secondaryTextColor: string,
-  ) => {
-    const selectId = isMobileLayout ? "workflow-sidebar-select-mobile" : "workflow-sidebar-select";
-    const cardBackground = isMobileLayout ? "rgba(15, 23, 42, 0.55)" : "#fff";
-    const cardBorder = isMobileLayout
-      ? "1px solid rgba(248, 250, 252, 0.2)"
-      : "1px solid rgba(15, 23, 42, 0.1)";
-    const hintColor = isMobileLayout ? "rgba(248, 250, 252, 0.8)" : secondaryTextColor;
-    return (
-      <section
-        aria-label="Gestion du workflow"
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "0.75rem",
-          padding: "1rem",
-          borderRadius: "1rem",
-          border: cardBorder,
-          background: cardBackground,
-          color: primaryTextColor,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "0.5rem",
-          }}
-        >
-          <h2 style={{ margin: 0, fontSize: "1rem", color: primaryTextColor }}>Workflows</h2>
-          {selectedWorkflow?.is_chatkit_default ? (
-            <span style={activeWorkflowBadgeStyle}>🟢 Actif</span>
-          ) : null}
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          <label
-            htmlFor={selectId}
-            style={{ fontSize: "0.85rem", fontWeight: 600, color: hintColor }}
-          >
-            Workflow de production
-          </label>
-          <select
-            id={selectId}
-            value={selectedWorkflowId ? String(selectedWorkflowId) : ""}
-            onChange={handleWorkflowChange}
-            disabled={loading || workflows.length === 0}
-            title={selectedWorkflow?.description ?? undefined}
-            style={getWorkflowSelectStyle(isMobileLayout, {
-              disabled: loading || workflows.length === 0,
-            })}
-          >
-            {workflows.length === 0 ? (
-              <option value="">Aucun workflow disponible</option>
-            ) : (
-              <>
-                <option value="" disabled>
-                  Sélectionnez un workflow
-                </option>
-                {workflows.map((workflow) => (
-                  <option key={workflow.id} value={workflow.id}>
-                    {workflow.display_name}
-                    {workflow.active_version_number
-                      ? ` · prod v${workflow.active_version_number}`
-                      : ""}
-                    {workflow.is_chatkit_default ? " · 🟢 Actif" : ""}
-                  </option>
-                ))}
-              </>
-            )}
-          </select>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "0.5rem",
-            alignItems: "center",
-          }}
-        >
-          <button
-            type="button"
-            onClick={handleCreateWorkflow}
-            disabled={loading}
-            style={getCreateWorkflowButtonStyle(isMobileLayout, { disabled: loading })}
-          >
-            Nouveau
-          </button>
-          <div ref={actionMenuRef} style={getActionMenuWrapperStyle(isMobileLayout)}>
+  const renderWorkflowSidebarSection = () => {
+    const sectionId = "workflow-builder-sidebar";
+    const overlayVariant = isMobileLayout ? "overlay" : undefined;
+    const titleStyle = isMobileLayout ? { color: "#f8fafc" } : undefined;
+    const textStyle = isMobileLayout ? { color: "rgba(248, 250, 252, 0.8)" } : undefined;
+    const warningStyle = isMobileLayout
+      ? { color: "#fde68a", fontWeight: 600 }
+      : { color: "#b45309", fontWeight: 600 };
+
+    const renderWorkflowList = () => {
+      if (loading) {
+        return (
+          <p className="chatkit-sidebar__section-text" style={textStyle} aria-live="polite">
+            Chargement des workflows…
+          </p>
+        );
+      }
+
+      if (workflows.length === 0) {
+        return (
+          <>
+            <p className="chatkit-sidebar__section-text" style={textStyle} aria-live="polite">
+              Aucun workflow disponible pour le moment.
+            </p>
             <button
               type="button"
-              onClick={() => setActionMenuOpen((prev) => !prev)}
-              aria-haspopup="true"
-              aria-expanded={isActionMenuOpen}
-              aria-label="Afficher les actions du workflow"
-              style={getActionMenuTriggerStyle(isMobileLayout)}
+              onClick={handleCreateWorkflow}
+              disabled={loading}
+              style={getCreateWorkflowButtonStyle(isMobileLayout, { disabled: loading })}
             >
-              {isMobileLayout ? (
-                <>
-                  <span style={actionMenuTriggerLabelStyle}>Actions</span>
+              Nouveau
+            </button>
+          </>
+        );
+      }
+
+      return (
+        <ul className="chatkit-sidebar__workflow-list">
+          {workflows.map((workflow) => {
+            const isActive = workflow.id === selectedWorkflowId;
+            return (
+              <li key={workflow.id} className="chatkit-sidebar__workflow-list-item">
+                <button
+                  type="button"
+                  className="chatkit-sidebar__workflow-button"
+                  onClick={() => handleSelectWorkflow(workflow.id)}
+                  aria-current={isActive ? "true" : undefined}
+                >
+                  {workflow.display_name}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      );
+    };
+
+    return (
+      <section
+        className="chatkit-sidebar__section"
+        aria-labelledby={`${sectionId}-title`}
+        data-variant={overlayVariant}
+      >
+        <div className="chatkit-sidebar__section-header">
+          <h2 id={`${sectionId}-title`} className="chatkit-sidebar__section-title" style={titleStyle}>
+            Workflow
+          </h2>
+        </div>
+        {renderWorkflowList()}
+        {workflows.length > 0 ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: isMobileLayout ? "column" : "row",
+              gap: "0.5rem",
+              alignItems: isMobileLayout ? "stretch" : "center",
+            }}
+          >
+            <button
+              type="button"
+              onClick={handleCreateWorkflow}
+              disabled={loading}
+              style={getCreateWorkflowButtonStyle(isMobileLayout, { disabled: loading })}
+            >
+              Nouveau
+            </button>
+            <div ref={actionMenuRef} style={getActionMenuWrapperStyle(isMobileLayout)}>
+              <button
+                type="button"
+                onClick={() => setActionMenuOpen((prev) => !prev)}
+                aria-haspopup="true"
+                aria-expanded={isActionMenuOpen}
+                aria-label="Afficher les actions du workflow"
+                style={getActionMenuTriggerStyle(isMobileLayout)}
+              >
+                {isMobileLayout ? (
+                  <>
+                    <span style={actionMenuTriggerLabelStyle}>Actions</span>
+                    <span aria-hidden="true" style={actionMenuTriggerIconStyle}>
+                      …
+                    </span>
+                  </>
+                ) : (
                   <span aria-hidden="true" style={actionMenuTriggerIconStyle}>
                     …
                   </span>
-                </>
-              ) : (
-                <span aria-hidden="true" style={actionMenuTriggerIconStyle}>
-                  …
-                </span>
-              )}
-            </button>
-            {isActionMenuOpen ? (
-              <div style={getActionMenuStyle(isMobileLayout)}>
-                <button
-                  type="button"
-                  onClick={handleRenameWorkflow}
-                  disabled={!selectedWorkflowId}
-                  style={getActionMenuItemStyle(isMobileLayout, {
-                    disabled: !selectedWorkflowId,
-                  })}
-                >
-                  Renommer
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSelectChatkitWorkflow}
-                  disabled={
-                    loading ||
-                    !selectedWorkflowId ||
-                    selectedWorkflow?.is_chatkit_default ||
-                    !selectedWorkflow?.active_version_id
-                  }
-                  style={getActionMenuItemStyle(isMobileLayout, {
-                    disabled:
+                )}
+              </button>
+              {isActionMenuOpen ? (
+                <div style={getActionMenuStyle(isMobileLayout)}>
+                  <button
+                    type="button"
+                    onClick={handleRenameWorkflow}
+                    disabled={!selectedWorkflowId}
+                    style={getActionMenuItemStyle(isMobileLayout, {
+                      disabled: !selectedWorkflowId,
+                    })}
+                  >
+                    Renommer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSelectChatkitWorkflow}
+                    disabled={
                       loading ||
                       !selectedWorkflowId ||
                       selectedWorkflow?.is_chatkit_default ||
-                      !selectedWorkflow?.active_version_id,
-                  })}
-                >
-                  Définir pour ChatKit
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDuplicateWorkflow}
-                  disabled={loading || !selectedWorkflowId}
-                  style={getActionMenuItemStyle(isMobileLayout, {
-                    disabled: loading || !selectedWorkflowId,
-                  })}
-                >
-                  Dupliquer
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDeleteWorkflow}
-                  disabled={loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default}
-                  style={getActionMenuItemStyle(isMobileLayout, {
-                    disabled:
-                      loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default,
-                    danger: true,
-                  })}
-                >
-                  Supprimer
-                </button>
-              </div>
-            ) : null}
+                      !selectedWorkflow?.active_version_id
+                    }
+                    style={getActionMenuItemStyle(isMobileLayout, {
+                      disabled:
+                        loading ||
+                        !selectedWorkflowId ||
+                        selectedWorkflow?.is_chatkit_default ||
+                        !selectedWorkflow?.active_version_id,
+                    })}
+                  >
+                    Définir pour ChatKit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDuplicateWorkflow}
+                    disabled={loading || !selectedWorkflowId}
+                    style={getActionMenuItemStyle(isMobileLayout, {
+                      disabled: loading || !selectedWorkflowId,
+                    })}
+                  >
+                    Dupliquer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteWorkflow}
+                    disabled={
+                      loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default
+                    }
+                    style={getActionMenuItemStyle(isMobileLayout, {
+                      disabled:
+                        loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default,
+                      danger: true,
+                    })}
+                  >
+                    Supprimer
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
-        </div>
+        ) : null}
         {selectedWorkflow?.description ? (
-          <p style={{ margin: 0, color: hintColor }}>{selectedWorkflow.description}</p>
+          <p className="chatkit-sidebar__section-text" style={textStyle}>
+            {selectedWorkflow.description}
+          </p>
         ) : null}
         {selectedWorkflow && !selectedWorkflow.active_version_id ? (
-          <p
-            style={{
-              margin: 0,
-              color: isMobileLayout ? "#fcd34d" : "#b45309",
-              fontWeight: 600,
-            }}
-          >
+          <p className="chatkit-sidebar__section-text" style={warningStyle}>
             Publiez une version pour l'utiliser avec ChatKit.
           </p>
         ) : null}
@@ -2719,7 +2673,7 @@ const WorkflowBuilderPage = () => {
     const secondaryTextColor = isMobileLayout ? "rgba(248, 250, 252, 0.8)" : "#475569";
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-        {renderWorkflowSidebarSection(primaryTextColor, secondaryTextColor)}
+        {renderWorkflowSidebarSection()}
         <div>
           <div
             style={{
