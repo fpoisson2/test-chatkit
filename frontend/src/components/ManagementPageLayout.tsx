@@ -15,6 +15,7 @@ type ManagementPageLayoutProps = {
   toolbar?: ReactNode;
   children: ReactNode;
   maxWidth?: ContentWidth;
+  hideHeader?: boolean;
 };
 
 const contentWidthClassName: Record<ContentWidth, string> = {
@@ -32,38 +33,41 @@ export const ManagementPageLayout = ({
   toolbar,
   children,
   maxWidth = "lg",
+  hideHeader = false,
 }: ManagementPageLayoutProps) => {
   const { openSidebar, isDesktopLayout, isSidebarOpen } = useAppLayout();
   const showSidebarButton = !isDesktopLayout || !isSidebarOpen;
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        {showSidebarButton ? (
-          <button
-            type="button"
-            onClick={openSidebar}
-            className={styles.menuButton}
-            aria-label="Ouvrir la navigation générale"
-          >
-            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path d="M3 5h14M3 10h14M3 15h14" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-          </button>
-        ) : null}
+      {hideHeader ? null : (
+        <header className={styles.header}>
+          {showSidebarButton ? (
+            <button
+              type="button"
+              onClick={openSidebar}
+              className={styles.menuButton}
+              aria-label="Ouvrir la navigation générale"
+            >
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path d="M3 5h14M3 10h14M3 15h14" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </button>
+          ) : null}
 
-        <div className={styles.headerMain}>
-          <h1 className={styles.title}>{title}</h1>
-          {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
-        </div>
-
-        {badge || actions ? (
-          <div className={styles.headerAside}>
-            {badge ? <span className={styles.badge}>{badge}</span> : null}
-            {actions ? <div className={styles.headerActions}>{actions}</div> : null}
+          <div className={styles.headerMain}>
+            <h1 className={styles.title}>{title}</h1>
+            {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
           </div>
-        ) : null}
-      </header>
+
+          {badge || actions ? (
+            <div className={styles.headerAside}>
+              {badge ? <span className={styles.badge}>{badge}</span> : null}
+              {actions ? <div className={styles.headerActions}>{actions}</div> : null}
+            </div>
+          ) : null}
+        </header>
+      )}
 
       <div className={styles.inner}>
         <div className={`${styles.content} ${contentWidthClassName[maxWidth]}`}>

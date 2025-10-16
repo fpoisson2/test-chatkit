@@ -37,22 +37,8 @@ export const VoicePage = () => {
 
   return (
     <ManagementPageLayout
-      title="Assistant vocal Realtime"
-      subtitle="Retrouvez ici une expérience conversationnelle en voix avec l'agent ChatKit."
-      badge={user.email ?? "Utilisateur connecté"}
-      actions={
-        <Link className="button button--subtle" to="/">
-          ← Chat texte
-        </Link>
-      }
-      toolbar={
-        <nav className={styles.modeSwitch} aria-label="Changer de mode de conversation">
-          <span className={`${styles.mode} ${styles.modeActive}`}>Mode voix</span>
-          <Link className={`${styles.mode} ${styles.modeLink}`} to="/">
-            Chat texte
-          </Link>
-        </nav>
-      }
+      title="Assistant vocal"
+      hideHeader
       maxWidth="lg"
     >
       <VoiceChat />
