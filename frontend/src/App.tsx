@@ -11,6 +11,7 @@ import { VectorStoresPage } from "./pages/VectorStoresPage";
 import WidgetLibraryPage from "./pages/WidgetLibraryPage";
 import { AdminPage } from "./pages/AdminPage";
 import { AdminModelsPage } from "./pages/AdminModelsPage";
+import { AdminVoicePage } from "./pages/AdminVoicePage";
 
 const RequireAdmin = ({ children }: { children: ReactElement }) => {
   const { user } = useAuth();
@@ -99,6 +100,16 @@ export const App = () => (
         <RequireAdmin>
           <AppLayout>
             <AdminPage />
+          </AppLayout>
+        </RequireAdmin>
+      }
+    />
+    <Route
+      path="/admin/voice"
+      element={
+        <RequireAdmin>
+          <AppLayout>
+            <AdminVoicePage />
           </AppLayout>
         </RequireAdmin>
       }
