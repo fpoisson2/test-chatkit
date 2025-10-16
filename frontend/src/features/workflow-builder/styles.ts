@@ -7,7 +7,7 @@ type DisabledOptions = {
 export const getHeaderContainerStyle = (isMobile: boolean): CSSProperties => ({
   display: "flex",
   alignItems: "center",
-  justifyContent: isMobile ? "space-between" : "flex-start",
+  justifyContent: "flex-start",
   gap: isMobile ? "0.75rem" : "1.5rem",
   padding: isMobile ? "0.75rem 1rem" : "0.75rem 1.5rem",
   background: isMobile ? "transparent" : "#f8fafc",
@@ -31,19 +31,21 @@ export const getHeaderNavigationButtonStyle = (isMobile: boolean): CSSProperties
 
 export const getHeaderLayoutStyle = (isMobile: boolean): CSSProperties => ({
   display: "flex",
-  alignItems: isMobile ? "stretch" : "center",
-  flexDirection: isMobile ? "column" : "row",
-  gap: isMobile ? "1rem" : "1.5rem",
+  alignItems: "center",
+  flexDirection: "row",
+  justifyContent: isMobile ? "center" : "flex-start",
+  gap: isMobile ? "0.5rem" : "1.5rem",
   flex: 1,
   minWidth: 0,
-  flexWrap: isMobile ? "wrap" : "nowrap",
+  flexWrap: "nowrap",
   width: "100%",
 });
 
 export const getHeaderGroupStyle = (isMobile: boolean): CSSProperties => ({
   display: "flex",
-  alignItems: isMobile ? "stretch" : "center",
-  flexDirection: isMobile ? "column" : "row",
+  alignItems: "center",
+  flexDirection: "row",
+  justifyContent: isMobile ? "center" : "flex-start",
   gap: "0.75rem",
   minWidth: 0,
   flex: isMobile ? "1 1 auto" : undefined,
@@ -73,45 +75,44 @@ export const getCreateWorkflowButtonStyle = (
 export const getVersionSelectStyle = (
   isMobile: boolean,
   options?: DisabledOptions,
-): CSSProperties => ({
-  minWidth: isMobile ? undefined : "200px",
-  width: isMobile ? "100%" : undefined,
-  padding: "0.5rem 0.75rem",
-  borderRadius: "0.75rem",
-  border: "1px solid rgba(15, 23, 42, 0.15)",
-  background: "#fff",
-  color: "#0f172a",
-  ...pointerState(options),
-});
+): CSSProperties => {
+  if (isMobile) {
+    return {
+      minWidth: 0,
+      width: "100%",
+      maxWidth: "240px",
+      padding: "0.45rem 1.1rem",
+      borderRadius: "9999px",
+      border: "1px solid rgba(15, 23, 42, 0.18)",
+      background: "rgba(248, 250, 252, 0.7)",
+      color: "#0f172a",
+      fontWeight: 600,
+      backdropFilter: "blur(8px)",
+      ...pointerState(options),
+    };
+  }
+
+  return {
+    minWidth: "200px",
+    padding: "0.5rem 0.75rem",
+    borderRadius: "0.75rem",
+    border: "1px solid rgba(15, 23, 42, 0.15)",
+    background: "#fff",
+    color: "#0f172a",
+    ...pointerState(options),
+  };
+};
 
 export const getHeaderActionAreaStyle = (isMobile: boolean): CSSProperties => ({
   display: "flex",
-  alignItems: isMobile ? "stretch" : "center",
-  gap: "0.5rem",
-  width: isMobile ? "100%" : "auto",
-  flexDirection: isMobile ? "column" : "row",
-});
-
-export const getMobileHeaderMenuButtonStyle = (
-  options?: DisabledOptions & { active?: boolean },
-): CSSProperties => ({
-  display: "inline-flex",
   alignItems: "center",
-  justifyContent: "center",
+  justifyContent: isMobile ? "flex-end" : "flex-start",
   gap: "0.5rem",
-  padding: "0.6rem 0",
-  borderRadius: "0.75rem",
-  border: "none",
-  background: "transparent",
-  color: "#0f172a",
-  fontWeight: 600,
-  ...pointerState(options),
+  width: "auto",
+  flexDirection: "row",
+  flexShrink: 0,
+  marginLeft: isMobile ? "auto" : 0,
 });
-
-export const mobileHeaderMenuIconStyle: CSSProperties = {
-  fontSize: "1.35rem",
-  lineHeight: 1,
-};
 
 export const getDeployButtonStyle = (
   isMobile: boolean,
@@ -124,7 +125,7 @@ export const getDeployButtonStyle = (
   color: "#0f172a",
   fontWeight: 600,
   whiteSpace: "nowrap",
-  width: isMobile ? "100%" : "auto",
+  width: "auto",
   ...pointerState(options),
 });
 
