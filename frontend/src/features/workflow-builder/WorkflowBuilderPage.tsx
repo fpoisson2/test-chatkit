@@ -2166,6 +2166,39 @@ const WorkflowBuilderPage = () => {
   const graphSnapshot = useMemo(() => JSON.stringify(buildGraphPayload()), [buildGraphPayload]);
 
   useEffect(() => {
+    if (!selectedVersionSummary || !selectedVersionSummary.is_active) {
+      return;
+    }
+
+    if (!latestDraftVersion) {
+      return;
+    }
+
+    if (latestDraftVersion.id === selectedVersionId) {
+      return;
+    }
+
+    if (lastSavedSnapshotRef.current === graphSnapshot) {
+      return;
+    }
+
+    setSelectedVersionId(latestDraftVersion.id);
+    setVersions((current) => {
+      if (current.some((version) => version.id === latestDraftVersion.id)) {
+        return sortVersionsWithDraftFirst(current);
+      }
+      return current;
+    });
+    setHasPendingChanges(true);
+  }, [
+    graphSnapshot,
+    latestDraftVersion,
+    selectedVersionId,
+    selectedVersionSummary,
+    setHasPendingChanges,
+  ]);
+
+  useEffect(() => {
     if (!selectedWorkflowId) {
       lastSavedSnapshotRef.current = null;
       setHasPendingChanges(false);
@@ -2183,7 +2216,8 @@ const WorkflowBuilderPage = () => {
       return;
     }
 
-    setHasPendingChanges(graphSnapshot !== lastSavedSnapshotRef.current);
+    const pending = graphSnapshot !== lastSavedSnapshotRef.current;
+    setHasPendingChanges(pending);
   }, [graphSnapshot, selectedWorkflowId]);
 
   const handleOpenDeployModal = useCallback(() => {

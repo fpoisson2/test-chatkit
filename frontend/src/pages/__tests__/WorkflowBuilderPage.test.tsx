@@ -428,6 +428,10 @@ describe("WorkflowBuilderPage", () => {
       await new Promise((resolve) => setTimeout(resolve, AUTO_SAVE_DELAY_MS + 200));
     });
 
+    await waitFor(() => {
+      expect(versionSelect).toHaveValue(String(draftVersionSummary.id));
+    });
+
     const postCalls = fetchMock.mock.calls.filter(
       ([input, init]) =>
         typeof input === "string" &&
@@ -435,6 +439,7 @@ describe("WorkflowBuilderPage", () => {
         ((init as RequestInit | undefined)?.method ?? "GET").toUpperCase() === "POST",
     );
     expect(postCalls).toHaveLength(0);
+
   });
 
   test("permet d'activer le function tool météo Python", async () => {
