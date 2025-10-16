@@ -151,6 +151,18 @@ export const sortVersionsWithDraftFirst = (
   const remaining = versions.filter((version) => version.id !== draft.id);
   return [normalizedDraft, ...remaining];
 };
+
+const toVersionSummary = (
+  version: WorkflowVersionResponse,
+): WorkflowVersionSummary => ({
+  id: version.id,
+  workflow_id: version.workflow_id,
+  name: version.name,
+  version: version.version,
+  is_active: version.is_active,
+  created_at: version.created_at,
+  updated_at: version.updated_at,
+});
 import {
   AUTO_SAVE_DELAY_MS,
   buildGraphPayloadFrom,
@@ -871,6 +883,7 @@ const WorkflowBuilderPage = () => {
     async (
       workflowId: number,
       preferredVersionId: number | null = null,
+      options: { skipGraphReload?: boolean } = {},
     ): Promise<boolean> => {
       setLoadError(null);
       const candidates = makeApiEndpointCandidates(
@@ -922,7 +935,11 @@ const WorkflowBuilderPage = () => {
           }
           setSelectedVersionId(nextVersionId);
           if (nextVersionId != null) {
-            await loadVersionDetail(workflowId, nextVersionId);
+            if (!options.skipGraphReload) {
+              await loadVersionDetail(workflowId, nextVersionId);
+            } else {
+              setLoading(false);
+            }
           } else {
             setLoading(false);
           }
@@ -2401,7 +2418,31 @@ const WorkflowBuilderPage = () => {
           }
         }
 
-        await loadVersions(selectedWorkflowId, savedVersionId);
+        let savedVersionSummary: WorkflowVersionSummary | null = null;
+        if (responseData) {
+          savedVersionSummary = toVersionSummary(responseData);
+        } else if (draftVersion) {
+          savedVersionSummary = {
+            ...draftVersion,
+            updated_at: new Date().toISOString(),
+          };
+        }
+
+        if (savedVersionSummary) {
+          setVersions((current) => {
+            const withoutSaved = current.filter(
+              (version) => version.id !== savedVersionSummary.id,
+            );
+            return sortVersionsWithDraftFirst([...withoutSaved, savedVersionSummary]);
+          });
+          setSelectedVersionId(savedVersionSummary.id);
+        }
+
+        if (savedVersionId != null) {
+          await loadVersions(selectedWorkflowId, savedVersionId, { skipGraphReload: true });
+        } else {
+          await loadVersions(selectedWorkflowId, null, { skipGraphReload: true });
+        }
         setSaveState("saved");
         lastSavedSnapshotRef.current = graphSnapshot;
         setHasPendingChanges(false);

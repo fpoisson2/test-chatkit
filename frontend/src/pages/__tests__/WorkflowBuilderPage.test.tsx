@@ -388,6 +388,14 @@ describe("WorkflowBuilderPage", () => {
       },
     });
 
+    const postCalls = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        typeof input === "string" &&
+        input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions`) &&
+        ((init as RequestInit | undefined)?.method ?? "GET").toUpperCase() === "POST",
+    );
+    expect(postCalls).toHaveLength(0);
+
     await screen.findByText(/modifications enregistrées automatiquement/i);
   });
 
