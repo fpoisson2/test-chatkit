@@ -299,12 +299,6 @@ describe("WorkflowBuilderPage", () => {
     const showSourcesCheckbox = await screen.findByLabelText(/afficher les sources de recherche/i);
     fireEvent.click(showSourcesCheckbox);
 
-    const parametersTextarea = await screen.findByLabelText<HTMLTextAreaElement>(
-      /paramètres json avancés/i,
-    );
-    const rawParameters = parametersTextarea.value;
-    expect(rawParameters).toContain("Analyse les entrées et produis un résumé clair.");
-
     await waitFor(
       () => {
         expect(

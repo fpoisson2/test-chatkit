@@ -40,7 +40,6 @@ import {
 import { resolveAgentParameters, resolveStateParameters } from "../../utils/agentPresets";
 import {
   isPlainRecord,
-  parseAgentParameters,
   getAgentFileSearchConfig,
   getAgentResponseFormat,
   setAgentContinueOnError,
@@ -1142,26 +1141,6 @@ const WorkflowBuilderPage = () => {
     [updateNodeData]
   );
 
-  const handleParametersChange = useCallback(
-    (nodeId: string, rawValue: string) => {
-      updateNodeData(nodeId, (data) => {
-        let error: string | null = null;
-        let parsed = data.parameters;
-        try {
-          parsed = parseAgentParameters(rawValue);
-        } catch (err) {
-          error = err instanceof Error ? err.message : "Paramètres invalides";
-        }
-        return {
-          ...data,
-          parameters: error ? data.parameters : parsed,
-          parametersText: rawValue,
-          parametersError: error,
-        };
-      });
-    },
-    [updateNodeData]
-  );
 
   const handleAgentMessageChange = useCallback(
     (nodeId: string, value: string) => {
@@ -2724,7 +2703,6 @@ const WorkflowBuilderPage = () => {
             widgetsLoading={widgetsLoading}
             widgetsError={widgetsError}
             onStateAssignmentsChange={handleStateAssignmentsChange}
-            onParametersChange={handleParametersChange}
             onEndMessageChange={handleEndMessageChange}
             onRemove={handleRemoveNode}
           />
