@@ -231,20 +231,26 @@
   align-items: flex-start;
   background: rgba(15, 23, 42, 0.35);
   backdrop-filter: blur(4px);
-  padding: 1.5rem 1rem 0;
+  padding: 1.5rem 1rem 1.25rem;
   z-index: 45;
 }
 
 .propertiesPanelMobile {
   width: min(640px, 100%);
   max-height: min(85vh, 720px);
-  border-radius: 1.25rem 1.25rem 0 0;
+  border-radius: 1.25rem;
   border: 1px solid rgba(15, 23, 42, 0.12);
   background: #fff;
   box-shadow: 0 -16px 32px rgba(15, 23, 42, 0.18);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+@supports (padding-bottom: calc(1.25rem + env(safe-area-inset-bottom))) {
+  .propertiesPanelOverlay {
+    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom));
+  }
 }
 
 .propertiesPanelMobile .propertiesPanelBody {
