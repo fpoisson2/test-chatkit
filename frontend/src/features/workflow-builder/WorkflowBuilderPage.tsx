@@ -2767,9 +2767,9 @@ const WorkflowBuilderPage = () => {
 
   const workspaceWrapperStyle = useMemo<CSSProperties>(() => {
     if (isMobileLayout) {
-      return { position: "absolute", inset: 0, overflow: "hidden" };
+      return { position: "absolute", inset: 0, overflow: "hidden", minHeight: 0 };
     }
-    return { position: "relative", flex: 1, overflow: "hidden" };
+    return { position: "relative", flex: 1, overflow: "hidden", minHeight: 0 };
   }, [isMobileLayout]);
 
   return (
@@ -2858,10 +2858,12 @@ const WorkflowBuilderPage = () => {
             style={{
               position: "absolute",
               inset: 0,
-              padding: isMobileLayout ? "0" : "1.5rem",
+              padding: isMobileLayout ? "0" : "1.5rem 1.5rem 0",
               display: "flex",
               flexDirection: "column",
               gap: isMobileLayout ? "0" : "1rem",
+              height: "100%",
+              minHeight: 0,
             }}
           >
             {!isMobileLayout ? renderWorkflowDescription() : null}
@@ -2869,6 +2871,8 @@ const WorkflowBuilderPage = () => {
             <div
               style={{
                 flex: 1,
+                display: "flex",
+                minHeight: 0,
                 borderRadius: isMobileLayout ? 0 : "1.25rem",
                 border: isMobileLayout ? "none" : "1px solid rgba(15, 23, 42, 0.08)",
                 background: "#fff",
@@ -2895,7 +2899,7 @@ const WorkflowBuilderPage = () => {
                   onConnect={onConnect}
                   defaultEdgeOptions={defaultEdgeOptions}
                   connectionLineStyle={connectionLineStyle}
-                  style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
+                  style={{ background: isMobileLayout ? "transparent" : "#f8fafc", flex: 1 }}
                   onInit={(instance) => {
                     reactFlowInstanceRef.current = instance;
                     if (pendingViewportRestoreRef.current) {

@@ -140,10 +140,10 @@ export const getDeployButtonStyle = (
   isMobile: boolean,
   options?: DisabledOptions,
 ): CSSProperties => ({
-  padding: "0.55rem 1.1rem",
+  padding: isMobile ? "0.6rem 1.1rem" : "0.55rem 1.1rem",
   borderRadius: "0.75rem",
-  border: "none",
-  background: "transparent",
+  border: isMobile ? "1px solid rgba(15, 23, 42, 0.15)" : "none",
+  background: isMobile ? "#fff" : "transparent",
   color: "#0f172a",
   fontWeight: 600,
   whiteSpace: "nowrap",
@@ -158,8 +158,8 @@ export const getActionMenuWrapperStyle = (isMobile: boolean): CSSProperties => (
 
 export const getActionMenuTriggerStyle = (isMobile: boolean): CSSProperties => ({
   borderRadius: "0.75rem",
-  border: "none",
-  background: "transparent",
+  border: isMobile ? "1px solid rgba(15, 23, 42, 0.15)" : "none",
+  background: isMobile ? "#fff" : "transparent",
   color: "#0f172a",
   fontWeight: 600,
   cursor: "pointer",
@@ -171,6 +171,7 @@ export const getActionMenuTriggerStyle = (isMobile: boolean): CSSProperties => (
   justifyContent: isMobile ? "center" : undefined,
   alignItems: isMobile ? "center" : undefined,
   gap: isMobile ? "0.5rem" : undefined,
+  ...pointerState(),
 });
 
 export const actionMenuTriggerIconStyle: CSSProperties = {
