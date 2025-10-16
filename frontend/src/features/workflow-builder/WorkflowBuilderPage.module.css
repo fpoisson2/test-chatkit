@@ -2,7 +2,7 @@
   position: absolute;
   top: 1.5rem;
   left: 1.5rem;
-  width: 280px;
+  width: min(520px, calc(100% - 3rem));
   max-width: calc(100% - 3rem);
   max-height: calc(100% - 3rem);
   padding: 0;
@@ -16,6 +16,51 @@
   z-index: 20;
 }
 
+.blockLibraryContent {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+}
+
+.blockLibraryScroller {
+  display: flex;
+  gap: 1.25rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.5rem 0.5rem 0.75rem;
+  margin: 0 -0.5rem;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.blockLibraryScroller::-webkit-scrollbar {
+  height: 6px;
+}
+
+.blockLibraryScroller::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.08);
+  border-radius: 9999px;
+}
+
+.blockLibraryScroller::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.25);
+  border-radius: 9999px;
+}
+
+.blockLibraryItemWrapper {
+  flex: 0 0 auto;
+  scroll-snap-align: center;
+  display: flex;
+  justify-content: center;
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.35s ease;
+  transform: translateY(18px) scale(0.9);
+  transform-origin: center bottom;
+}
+
 .blockLibraryMobile {
   position: relative;
   width: min(480px, 100%);
@@ -25,7 +70,7 @@
   background: transparent;
   box-shadow: none;
   border: none;
-  overflow-y: auto;
+  overflow-y: hidden;
   gap: 1rem;
 }
 
