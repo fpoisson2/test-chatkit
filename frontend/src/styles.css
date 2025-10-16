@@ -981,11 +981,22 @@ button {
 @media (max-width: 640px) {
   .modal {
     align-items: flex-start;
+    padding: 1.5rem 1rem 2rem;
   }
 
   .modal__container {
-    margin: 1.5rem auto;
-    max-height: calc(100vh - 3rem);
+    margin: 0 auto;
+    max-height: calc(100vh - 3.5rem);
+  }
+
+  @supports (padding-bottom: calc(2rem + env(safe-area-inset-bottom))) {
+    .modal {
+      padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+    }
+
+    .modal__container {
+      max-height: calc(100vh - 3.5rem - env(safe-area-inset-bottom));
+    }
   }
 }
 
