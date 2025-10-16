@@ -73,6 +73,9 @@ export const App = () => (
         </RequireAdmin>
       }
     />
+    <Route path="/admin/vector-stores" element={<Navigate to="/vector-stores" replace />} />
+    <Route path="/admin/widgets" element={<Navigate to="/widgets" replace />} />
+    <Route path="/admin/workflows" element={<Navigate to="/workflows" replace />} />
     <Route
       path="/admin/models"
       element={
@@ -82,7 +85,7 @@ export const App = () => (
       }
     />
     <Route
-      path="/admin/vector-stores"
+      path="/vector-stores"
       element={
         <RequireAdmin>
           <VectorStoresPage />
@@ -90,7 +93,7 @@ export const App = () => (
       }
     />
     <Route
-      path="/admin/widgets"
+      path="/widgets"
       element={
         <RequireAdmin>
           <WidgetLibraryPage />
@@ -98,7 +101,7 @@ export const App = () => (
       }
     />
     <Route
-      path="/admin/workflows"
+      path="/workflows"
       element={
         <RequireAdmin>
           <WorkflowBuilderPage />

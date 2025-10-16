@@ -4,10 +4,11 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
   type HTMLAttributes,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
 import type { ChatKitOptions } from "@openai/chatkit";
 
@@ -49,48 +50,18 @@ type NavigationItem = {
 
 const buildNavigationItems = ({
   isAuthenticated,
-  isAdmin,
-  handleSidebarHome,
-  handleSidebarAdmin,
-  handleSidebarWorkflows,
   handleSidebarVoice,
   handleSidebarSettings,
   handleSidebarLogin,
   handleSidebarLogout,
 }: {
   isAuthenticated: boolean;
-  isAdmin: boolean;
-  handleSidebarHome: () => void;
-  handleSidebarAdmin: () => void;
-  handleSidebarWorkflows: () => void;
   handleSidebarVoice: () => void;
   handleSidebarSettings: () => void;
   handleSidebarLogin: () => void;
   handleSidebarLogout: () => void;
 }) => {
-  const items: NavigationItem[] = [
-    {
-      key: "home",
-      label: "Accueil",
-      icon: "home",
-      onClick: handleSidebarHome,
-    },
-  ];
-
-  if (isAdmin) {
-    items.push({
-      key: "admin",
-      label: "Administration",
-      icon: "admin",
-      onClick: handleSidebarAdmin,
-    });
-    items.push({
-      key: "workflow",
-      label: "Workflow",
-      icon: "workflow",
-      onClick: handleSidebarWorkflows,
-    });
-  }
+  const items: NavigationItem[] = [];
 
   if (isAuthenticated) {
     items.push(
@@ -124,6 +95,20 @@ const buildNavigationItems = ({
 
   return items;
 };
+
+type ApplicationKey = "chat" | "workflows" | "vector-stores" | "widgets";
+
+const APPLICATIONS: {
+  key: ApplicationKey;
+  label: string;
+  path: string;
+  requiresAdmin?: boolean;
+}[] = [
+  { key: "chat", label: "Chat", path: "/" },
+  { key: "workflows", label: "Workflow Builder", path: "/workflows", requiresAdmin: true },
+  { key: "vector-stores", label: "Vector Store", path: "/vector-stores", requiresAdmin: true },
+  { key: "widgets", label: "Widget Library", path: "/widgets", requiresAdmin: true },
+];
 
 const useSidebarInteractions = ({
   isDesktopLayout,
@@ -500,13 +485,6 @@ export function MyChat() {
     navigate("/");
   }, [navigate]);
 
-  const handleSidebarHome = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-    goToHome();
-  }, [closeSidebar, goToHome, isDesktopLayout]);
-
   const handleHomeFromModal = useCallback(() => {
     closeProfileSettings();
     goToHome();
@@ -514,27 +492,13 @@ export function MyChat() {
 
   const handleOpenWorkflows = useCallback(() => {
     closeProfileSettings();
-    navigate("/admin/workflows");
+    navigate("/workflows");
   }, [closeProfileSettings, navigate]);
 
   const handleLogout = useCallback(() => {
     closeProfileSettings();
     logout();
   }, [closeProfileSettings, logout]);
-
-  const handleSidebarAdmin = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-    navigate("/admin");
-  }, [closeSidebar, isDesktopLayout, navigate]);
-
-  const handleSidebarWorkflows = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-    navigate("/admin/workflows");
-  }, [closeSidebar, isDesktopLayout, navigate]);
 
   const handleSidebarVoice = useCallback(() => {
     if (!isDesktopLayout) {
@@ -556,6 +520,13 @@ export function MyChat() {
     }
     logout();
   }, [closeSidebar, isDesktopLayout, logout]);
+
+  const handleGoToAdmin = useCallback(() => {
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
+    navigate("/admin");
+  }, [closeSidebar, isDesktopLayout, navigate]);
 
   const chatkitOptions = useMemo(
     () =>
@@ -722,14 +693,49 @@ export function MyChat() {
 
   const sidebarTabIndex = isSidebarOpen || isDesktopLayout ? 0 : -1;
 
+  const location = useLocation();
+
+  const availableApplications = useMemo(
+    () =>
+      APPLICATIONS.filter((application) =>
+        application.requiresAdmin ? Boolean(user?.is_admin) : true,
+      ),
+    [user?.is_admin],
+  );
+
+  const activeApplication = useMemo<ApplicationKey>(() => {
+    const matchingApplication = availableApplications.find((application) =>
+      location.pathname === "/"
+        ? application.path === "/"
+        : location.pathname.startsWith(application.path),
+    );
+
+    return matchingApplication?.key ?? "chat";
+  }, [availableApplications, location.pathname]);
+
+  const handleApplicationChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const nextApplication = availableApplications.find(
+        (application) => application.key === event.target.value,
+      );
+
+      if (!nextApplication) {
+        return;
+      }
+
+      if (!isDesktopLayout) {
+        closeSidebar();
+      }
+
+      navigate(nextApplication.path);
+    },
+    [availableApplications, closeSidebar, isDesktopLayout, navigate],
+  );
+
   const navigationItems = useMemo(
     () =>
       buildNavigationItems({
         isAuthenticated,
-        isAdmin: Boolean(user?.is_admin),
-        handleSidebarHome,
-        handleSidebarAdmin,
-        handleSidebarWorkflows,
         handleSidebarVoice,
         handleSidebarSettings,
         handleSidebarLogin,
@@ -737,20 +743,12 @@ export function MyChat() {
       }),
     [
       isAuthenticated,
-      handleSidebarAdmin,
-      handleSidebarHome,
-      handleSidebarWorkflows,
       handleSidebarVoice,
       handleSidebarLogout,
       handleSidebarSettings,
       handleSidebarLogin,
-      user?.is_admin,
     ],
   );
-
-  const handleGoToVoiceMode = useCallback(() => {
-    navigate("/voice");
-  }, [navigate]);
 
   const handleScrimPointerDown = useCallback(
     (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -810,6 +808,24 @@ export function MyChat() {
               </button>
             )}
           </div>
+          <div className="chatkit-sidebar__app-switcher">
+            <label htmlFor="chatkit-app-switcher" className="chatkit-sidebar__app-label">
+              Applications
+            </label>
+            <select
+              id="chatkit-app-switcher"
+              className="chatkit-sidebar__app-select"
+              value={activeApplication}
+              onChange={handleApplicationChange}
+              tabIndex={sidebarTabIndex}
+            >
+              {availableApplications.map((application) => (
+                <option key={application.key} value={application.key}>
+                  {application.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </header>
         <nav className="chatkit-sidebar__nav" aria-label="Menu principal">
           <ul className="chatkit-sidebar__list">
@@ -828,6 +844,19 @@ export function MyChat() {
             ))}
           </ul>
         </nav>
+        {user?.is_admin && (
+          <footer className="chatkit-sidebar__footer">
+            <button
+              type="button"
+              className="chatkit-sidebar__footer-link"
+              onClick={handleGoToAdmin}
+              tabIndex={sidebarTabIndex}
+            >
+              <SidebarIcon name="admin" className="chatkit-sidebar__icon" />
+              <span className="chatkit-sidebar__label">Administration</span>
+            </button>
+          </footer>
+        )}
       </aside>
       <button
         type="button"
