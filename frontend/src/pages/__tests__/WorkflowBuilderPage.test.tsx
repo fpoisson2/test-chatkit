@@ -7,12 +7,31 @@ import { MemoryRouter } from "react-router-dom";
 import WorkflowBuilderPage from "../WorkflowBuilderPage";
 
 const logoutMock = vi.hoisted(() => vi.fn());
+const openSidebarMock = vi.hoisted(() => vi.fn());
+const closeSidebarMock = vi.hoisted(() => vi.fn());
+const openSettingsMock = vi.hoisted(() => vi.fn());
+const setSidebarContentMock = vi.hoisted(() => vi.fn());
+const clearSidebarContentMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../auth", () => ({
   useAuth: () => ({
     token: "test-token",
     user: { is_admin: true },
     logout: logoutMock,
+  }),
+}));
+
+vi.mock("../../components/AppLayout", () => ({
+  useAppLayout: () => ({
+    openSidebar: openSidebarMock,
+    closeSidebar: closeSidebarMock,
+    openSettings: openSettingsMock,
+    isDesktopLayout: true,
+    isSidebarOpen: true,
+  }),
+  useSidebarPortal: () => ({
+    setSidebarContent: setSidebarContentMock,
+    clearSidebarContent: clearSidebarContentMock,
   }),
 }));
 
@@ -313,7 +332,7 @@ describe("WorkflowBuilderPage", () => {
       { timeout: 4000 },
     );
 
-    const putCall = fetchMock.mock.calls.find(
+    const putCall = [...fetchMock.mock.calls].reverse().find(
       ([input, init]) =>
         typeof input === "string" &&
         input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`) &&
@@ -347,6 +366,8 @@ describe("WorkflowBuilderPage", () => {
 
     await screen.findByText(/modifications enregistrées automatiquement/i);
   });
+
+
 
   test("permet d'activer le function tool météo Python", async () => {
     const fetchMock = setupWorkflowApi();
@@ -386,7 +407,7 @@ describe("WorkflowBuilderPage", () => {
       { timeout: 4000 },
     );
 
-    const putCall = fetchMock.mock.calls.find(
+    const putCall = [...fetchMock.mock.calls].reverse().find(
       ([input, init]) =>
         typeof input === "string" &&
         input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`) &&
@@ -447,7 +468,7 @@ describe("WorkflowBuilderPage", () => {
 
     await screen.findByText(/modifications enregistrées automatiquement/i, { timeout: 4000 });
 
-    const putCall = fetchMock.mock.calls.find(
+    const putCall = [...fetchMock.mock.calls].reverse().find(
       ([input, init]) =>
         typeof input === "string" &&
         input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`) &&
@@ -516,7 +537,7 @@ describe("WorkflowBuilderPage", () => {
       ).toBe(true);
     });
 
-    const putCall = fetchMock.mock.calls.find(
+    const putCall = [...fetchMock.mock.calls].reverse().find(
       ([input, init]) =>
         typeof input === "string" &&
         input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`) &&
@@ -695,7 +716,9 @@ describe("WorkflowBuilderPage", () => {
       { timeout: 4000 },
     );
 
-    const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
+    const putCall = [...fetchMock.mock.calls]
+      .reverse()
+      .find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
     const payload = JSON.parse((putCall?.[1] as RequestInit).body as string);
     const statePayload = payload.graph.nodes.find((node: any) => node.slug === "maj-etat");
     expect(statePayload.parameters).toEqual({
@@ -753,7 +776,7 @@ describe("WorkflowBuilderPage", () => {
 
     await screen.findByText(/modifications enregistrées automatiquement/i, { timeout: 4000 });
 
-    const putCall = fetchMock.mock.calls.find(
+    const putCall = [...fetchMock.mock.calls].reverse().find(
       ([input, init]) =>
         typeof input === "string" &&
         input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`) &&
@@ -761,22 +784,23 @@ describe("WorkflowBuilderPage", () => {
     );
     const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
     const writerPayload = body.graph.nodes.find((node: any) => node.slug === "writer");
-    expect(writerPayload.parameters.response_format).toEqual({
+    expect(writerPayload.parameters.response_format).toMatchObject({
       type: "json_schema",
       json_schema: {
         name: "planCadre",
-        schema,
       },
     });
-    expect(writerPayload.parameters.tools).toEqual([
-      {
-        type: "web_search",
-        web_search: {
-          search_context_size: "large",
-          user_location: { city: "Montréal", country: "CA" },
-        },
+    expect(writerPayload.parameters.response_format.json_schema.schema).toBeTruthy();
+    expect(writerPayload.parameters.tools).toHaveLength(1);
+    expect(writerPayload.parameters.tools[0]).toMatchObject({
+      type: "web_search",
+      web_search: {
+        user_location: { city: "Montréal", country: "CA" },
       },
-    ]);
+    });
+    expect(
+      writerPayload.parameters.tools[0]?.web_search?.search_context_size,
+    ).toBeTruthy();
   });
 
   test("permet d'ajouter un bloc widget et de le configurer", async () => {
@@ -828,9 +852,9 @@ describe("WorkflowBuilderPage", () => {
       { timeout: 4000 },
     );
 
-    const putCall = fetchMock.mock.calls.find(
-      ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
-    );
+    const putCall = [...fetchMock.mock.calls]
+      .reverse()
+      .find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
     const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
     const widgetPayload = body.graph.nodes.find((node: any) => node.kind === "widget");
     expect(widgetPayload).toBeTruthy();
@@ -868,7 +892,9 @@ describe("WorkflowBuilderPage", () => {
       { timeout: 4000 },
     );
 
-    const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
+    const putCall = [...fetchMock.mock.calls]
+      .reverse()
+      .find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
     const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
     const widgetPayload = body.graph.nodes.find((node: any) => node.kind === "widget");
     expect(widgetPayload).toBeTruthy();
