@@ -171,10 +171,10 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   }, []);
 
   const handleMainInteraction = useCallback(() => {
-    if (!isDesktopLayout) {
+    if (!isDesktopLayout && isSidebarOpen) {
       closeSidebar();
     }
-  }, [closeSidebar, isDesktopLayout]);
+  }, [closeSidebar, isDesktopLayout, isSidebarOpen]);
 
   const mainInteractionHandlers = useSidebarInteractions({
     isDesktopLayout,
