@@ -1211,6 +1211,31 @@ button {
   top: 96px;
 }
 
+.widget-library__add-button {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.75rem;
+  border: none;
+  background: #f8fafc;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.12);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  color: #0f172a;
+}
+
+.widget-library__add-button:hover,
+.widget-library__add-button:focus-visible {
+  background: #f1f5f9;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.16);
+}
+
+.widget-library__add-button:focus-visible {
+  outline: none;
+}
+
 .widget-gallery {
   display: grid;
   gap: clamp(18px, 3vw, 28px);
@@ -1302,6 +1327,19 @@ button {
   opacity: 1;
   pointer-events: auto;
   transform: translateY(0);
+}
+
+@media (hover: none) {
+  .widget-gallery__item {
+    transform: none;
+    box-shadow: none;
+  }
+
+  .widget-gallery__actions {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
 }
 
 .modal {

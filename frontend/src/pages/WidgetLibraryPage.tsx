@@ -170,8 +170,27 @@ export const WidgetLibraryPage = () => {
   return (
     <ManagementPageLayout
       actions={
-        <button className="button" type="button" onClick={() => setShowCreateModal(true)}>
-          Nouveau widget
+        <button
+          type="button"
+          className="widget-library__add-button"
+          aria-label="Créer un nouveau widget"
+          title="Nouveau widget"
+          onClick={() => setShowCreateModal(true)}
+        >
+          <svg
+            aria-hidden={true}
+            width="20"
+            height="20"
+            viewBox="0 0 20 20"
+            fill="none"
+          >
+            <path
+              d="M10 4v12M4 10h12"
+              stroke="#0f172a"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
+          </svg>
         </button>
       }
     >
