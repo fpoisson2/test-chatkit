@@ -59,6 +59,8 @@ import {
   createVectorStoreNodeParameters,
   getVectorStoreNodeConfig,
   setVectorStoreNodeConfig,
+  setEndMessage,
+  DEFAULT_END_MESSAGE,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
@@ -1262,6 +1264,24 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleEndMessageChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "end") {
+          return data;
+        }
+        const nextParameters = setEndMessage(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleConditionChange = useCallback(
     (edgeId: string, value: string) => {
       setEdges((current) =>
@@ -1302,7 +1322,7 @@ const WorkflowBuilderPage = () => {
   const handleRemoveNode = useCallback(
     (nodeId: string) => {
       const nodeToRemove = nodes.find((node) => node.id === nodeId);
-      if (!nodeToRemove || nodeToRemove.data.kind === "start" || nodeToRemove.data.kind === "end") {
+      if (!nodeToRemove || nodeToRemove.data.kind === "start") {
         return;
       }
       setNodes((currentNodes) => currentNodes.filter((node) => node.id !== nodeId));
@@ -1435,6 +1455,32 @@ const WorkflowBuilderPage = () => {
     setSelectedNodeId(slug);
     setSelectedEdgeId(null);
   }, [setNodes, vectorStores]);
+
+  const handleAddEndNode = useCallback(() => {
+    const slug = `end-${Date.now()}`;
+    const parameters = setEndMessage({}, DEFAULT_END_MESSAGE);
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 640, y: 120 },
+      data: {
+        slug,
+        kind: "end",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("end"),
+    };
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes]);
 
   const handleWorkflowChange = useCallback(
     (event: ChangeEvent<HTMLSelectElement>) => {
@@ -2160,8 +2206,21 @@ const WorkflowBuilderPage = () => {
         color: NODE_COLORS.json_vector_store,
         onClick: handleAddVectorStoreNode,
       },
+      {
+        key: "end",
+        label: "Fin",
+        shortLabel: "F",
+        color: NODE_COLORS.end,
+        onClick: handleAddEndNode,
+      },
     ],
-    [handleAddAgentNode, handleAddConditionNode, handleAddStateNode, handleAddVectorStoreNode],
+    [
+      handleAddAgentNode,
+      handleAddConditionNode,
+      handleAddStateNode,
+      handleAddVectorStoreNode,
+      handleAddEndNode,
+    ],
   );
 
   const showPropertiesPanel = Boolean(selectedNode || selectedEdge);
@@ -2635,6 +2694,7 @@ const WorkflowBuilderPage = () => {
                     widgetsError={widgetsError}
                     onStateAssignmentsChange={handleStateAssignmentsChange}
                     onParametersChange={handleParametersChange}
+                    onEndMessageChange={handleEndMessageChange}
                     onRemove={handleRemoveNode}
                   />
                 ) : selectedEdge ? (

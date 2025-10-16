@@ -1,5 +1,7 @@
 export type AgentParameters = Record<string, unknown>;
 
+export const DEFAULT_END_MESSAGE = "Workflow terminé";
+
 export const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
@@ -36,6 +38,72 @@ const stripEmpty = (value: Record<string, unknown>): AgentParameters => {
     return {};
   }
   return value;
+};
+
+export const getEndMessage = (parameters: AgentParameters | null | undefined): string => {
+  if (!parameters) {
+    return "";
+  }
+  const message = parameters.message;
+  if (typeof message === "string") {
+    return message;
+  }
+  const status = parameters.status;
+  if (isPlainRecord(status)) {
+    const reason = (status as Record<string, unknown>).reason;
+    if (typeof reason === "string") {
+      return reason;
+    }
+  }
+  const fallback = parameters.status_reason ?? parameters.reason;
+  return typeof fallback === "string" ? fallback : "";
+};
+
+export const setEndMessage = (
+  parameters: AgentParameters,
+  message: string,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const trimmed = message.trim();
+
+  if (!trimmed) {
+    delete next.message;
+    const status = isPlainRecord(next.status)
+      ? { ...(next.status as Record<string, unknown>) }
+      : null;
+    if (status) {
+      delete status.reason;
+      if (typeof status.type !== "string" || !status.type.trim()) {
+        delete status.type;
+      }
+      if (Object.keys(status).length === 0) {
+        delete next.status;
+      } else {
+        next.status = status;
+      }
+    } else {
+      delete next.status;
+    }
+    if (typeof next.reason === "string") {
+      delete next.reason;
+    }
+    if (typeof next.status_reason === "string") {
+      delete next.status_reason;
+    }
+    return stripEmpty(next as Record<string, unknown>);
+  }
+
+  next.message = message;
+  const status = isPlainRecord(next.status)
+    ? { ...(next.status as Record<string, unknown>) }
+    : {};
+  status.reason = message;
+  if (typeof status.type !== "string" || !status.type.trim()) {
+    status.type = "closed";
+  }
+  next.status = status;
+
+  return stripEmpty(next as Record<string, unknown>);
 };
 
 export const getAgentMessage = (parameters: AgentParameters | null | undefined): string => {

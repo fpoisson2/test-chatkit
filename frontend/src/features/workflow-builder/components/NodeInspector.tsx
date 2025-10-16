@@ -25,6 +25,7 @@ import {
   getAgentWebSearchConfig,
   getVectorStoreNodeConfig,
   getStateAssignments,
+  getEndMessage,
 } from "../../../utils/workflows";
 import type {
   FileSearchConfig,
@@ -110,6 +111,7 @@ export type NodeInspectorProps = {
     assignments: StateAssignment[],
   ) => void;
   onParametersChange: (nodeId: string, value: string) => void;
+  onEndMessageChange: (nodeId: string, value: string) => void;
   onRemove: (nodeId: string) => void;
 };
 
@@ -150,11 +152,13 @@ const NodeInspector = ({
   widgetsError,
   onStateAssignmentsChange,
   onParametersChange,
+  onEndMessageChange,
   onRemove,
 }: NodeInspectorProps) => {
   const { kind, displayName, isEnabled, parameters, parametersText, parametersError } =
     node.data;
-  const isFixed = kind === "start" || kind === "end";
+  const isFixed = kind === "start";
+  const endMessage = kind === "end" ? getEndMessage(parameters) : "";
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
   const reasoningEffort = getAgentReasoningEffort(parameters);
@@ -290,6 +294,21 @@ const NodeInspector = ({
           onChange={(event) => onDisplayNameChange(node.id, event.target.value)}
         />
       </label>
+
+      {kind === "end" && (
+        <label style={fieldStyle}>
+          <span>Message de fin</span>
+          <textarea
+            value={endMessage}
+            rows={4}
+            placeholder="Texte affiché lorsque le workflow se termine sur ce bloc"
+            onChange={(event) => onEndMessageChange(node.id, event.target.value)}
+          />
+          <small style={{ color: "#475569" }}>
+            Ce message est utilisé comme raison de clôture lorsque ce bloc termine le fil.
+          </small>
+        </label>
+      )}
 
       {kind === "agent" && (
         <>

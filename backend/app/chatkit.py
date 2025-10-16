@@ -42,11 +42,13 @@ except ImportError:  # pragma: no cover - compatibilité avec les anciennes vers
 from chatkit.server import ChatKitServer
 from chatkit.store import NotFoundError
 from chatkit.types import (
+    ActiveStatus,
     AssistantMessageContentPartTextDelta,
     ClosedStatus,
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
+    LockedStatus,
     ProgressUpdateEvent,
     ThreadItem,
     ThreadItemUpdated,
@@ -60,7 +62,7 @@ from .chatkit_store import PostgresChatKitStore
 from .database import SessionLocal
 from .models import WorkflowStep, WorkflowTransition
 from .token_sanitizer import sanitize_model_like
-from .workflows import WorkflowService
+from .workflows import DEFAULT_END_MESSAGE, WorkflowService
 from .vector_store import JsonVectorStoreService, SearchResult
 from .weather import fetch_weather
 from .widgets import WidgetLibraryService
@@ -199,7 +201,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 if not update.text.strip():
                     return
 
-            await run_workflow(
+            summary = await run_workflow(
                 workflow_input,
                 agent_context=agent_context,
                 on_step=on_step,
@@ -208,7 +210,35 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 workflow_service=self._workflow_service,
             )
 
-            thread.status = ClosedStatus(reason="workflow_completed")
+            end_state = summary.end_state
+            applied_status = False
+            cleaned_reason: str | None = None
+            if end_state is not None:
+                status_type_raw = (end_state.status_type or "closed").strip().lower()
+                cleaned_reason = (
+                    (end_state.status_reason or end_state.message or DEFAULT_END_MESSAGE)
+                    or ""
+                ).strip() or None
+                status_reason = cleaned_reason or DEFAULT_END_MESSAGE
+
+                if status_type_raw in {"", "closed"}:
+                    thread.status = ClosedStatus(reason=status_reason)
+                    applied_status = True
+                elif status_type_raw == "locked":
+                    thread.status = LockedStatus(reason=status_reason)
+                    applied_status = True
+                elif status_type_raw == "active":
+                    thread.status = ActiveStatus()
+                    applied_status = True
+                else:
+                    logger.warning(
+                        "Type de statut inconnu '%s' pour le nœud de fin %s, fermeture par défaut.",
+                        status_type_raw,
+                        end_state.slug,
+                    )
+                    thread.status = ClosedStatus(reason=status_reason)
+                    applied_status = True
+
             await on_stream_event(
                 EndOfTurnItem(
                     id=self.store.generate_item_id(
@@ -218,7 +248,20 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     created_at=datetime.now(),
                 )
             )
-            logger.info("Workflow terminé avec succès pour le fil %s", thread.id)
+            if end_state is not None:
+                logger.info(
+                    "Workflow terminé pour le fil %s via le nœud %s (statut=%s, raison=%s)",
+                    thread.id,
+                    end_state.slug,
+                    getattr(thread.status, "type", "inconnu") if applied_status else "inconnu",
+                    cleaned_reason or DEFAULT_END_MESSAGE,
+                )
+            else:
+                logger.info(
+                    "Workflow terminé pour le fil %s sans bloc de fin (nœud final: %s)",
+                    thread.id,
+                    summary.final_node_slug,
+                )
         except WorkflowExecutionError as exc:  # pragma: no cover - erreurs connues du workflow
             logger.exception("Workflow execution failed")
             error_message = (
@@ -1474,9 +1517,19 @@ class WorkflowStepSummary:
 
 
 @dataclass
+class WorkflowEndState:
+    slug: str
+    status_type: str | None
+    status_reason: str | None
+    message: str | None
+
+
+@dataclass
 class WorkflowRunSummary:
     steps: list[WorkflowStepSummary]
     final_output: dict[str, Any] | None
+    final_node_slug: str | None = None
+    end_state: "WorkflowEndState | None" = None
 
 
 @dataclass
@@ -1918,15 +1971,11 @@ async def run_workflow(
         (step for step in nodes_by_slug.values() if step.kind == "start"),
         None,
     )
-    end_step = next(
-        (step for step in nodes_by_slug.values() if step.kind == "end"),
-        None,
-    )
-    if start_step is None or end_step is None:
+    if start_step is None:
         raise WorkflowExecutionError(
             "configuration",
             "Configuration du workflow invalide",
-            RuntimeError("Nœuds de début/fin introuvables"),
+            RuntimeError("Nœud de début introuvable"),
             [],
         )
 
@@ -1986,6 +2035,39 @@ async def run_workflow(
         edges_by_source.setdefault(transition.source_step.slug, []).append(transition)
     for edge_list in edges_by_source.values():
         edge_list.sort(key=lambda tr: tr.id or 0)
+
+    def _sanitize_end_value(value: Any) -> str | None:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if cleaned:
+                return cleaned
+        return None
+
+    def _parse_end_state(step: WorkflowStep) -> WorkflowEndState:
+        raw_params = step.parameters or {}
+        params = raw_params if isinstance(raw_params, Mapping) else {}
+
+        status_raw = params.get("status")
+        status_type = None
+        status_reason = None
+        if isinstance(status_raw, Mapping):
+            status_type = _sanitize_end_value(status_raw.get("type"))
+            status_reason = _sanitize_end_value(status_raw.get("reason")) or status_reason
+
+        for key in ("status_reason", "reason"):
+            fallback = _sanitize_end_value(params.get(key))
+            if fallback:
+                status_reason = status_reason or fallback
+                break
+
+        message = _sanitize_end_value(params.get("message"))
+
+        return WorkflowEndState(
+            slug=step.slug,
+            status_type=status_type,
+            status_reason=status_reason,
+            message=message,
+        )
 
     def _workflow_run_config() -> RunConfig:
         metadata: dict[str, str] = {"__trace_source__": "agent-builder"}
@@ -2832,6 +2914,8 @@ async def run_workflow(
         return candidates[0]
 
     current_slug = start_step.slug
+    final_node_slug: str | None = None
+    final_end_state: WorkflowEndState | None = None
     guard = 0
     while guard < 1000:
         guard += 1
@@ -2844,7 +2928,10 @@ async def run_workflow(
                 list(steps),
             )
 
+        final_node_slug = current_node.slug
+
         if current_node.kind == "end":
+            final_end_state = _parse_end_state(current_node)
             break
 
         if current_node.kind == "start":
@@ -3060,7 +3147,6 @@ async def run_workflow(
             # Après la rédaction finale, on rejoint la fin si disponible
             transition = transition or _next_edge(current_slug, "true")
         if transition is None:
-            current_slug = end_step.slug
             break
         current_slug = transition.target_step.slug
 
@@ -3072,15 +3158,20 @@ async def run_workflow(
             list(steps),
         )
 
-    if current_slug != end_step.slug:
+    if final_node_slug is None:
         raise WorkflowExecutionError(
             "configuration",
             "Configuration du workflow invalide",
-            RuntimeError("Le workflow ne se termine pas correctement"),
+            RuntimeError("Impossible de déterminer le nœud final du workflow"),
             list(steps),
         )
 
-    return WorkflowRunSummary(steps=steps, final_output=final_output)
+    return WorkflowRunSummary(
+        steps=steps,
+        final_output=final_output,
+        final_node_slug=final_node_slug,
+        end_state=final_end_state,
+    )
 _server: DemoChatKitServer | None = None
 
 
