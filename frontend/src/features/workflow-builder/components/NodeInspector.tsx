@@ -363,6 +363,96 @@ const NodeInspector = ({
         />
       </label>
 
+      {kind === "widget" && (
+        <>
+          <p style={{ color: "#475569", margin: "0.5rem 0 0" }}>
+            Choisissez un widget de la bibliothèque ou renseignez son slug pour l'afficher dans ChatKit.
+          </p>
+          <label style={fieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-input`}>
+            <span>Slug du widget</span>
+            <input
+              id={`${widgetNodeSlugSuggestionsId}-input`}
+              type="text"
+              value={widgetNodeSlug}
+              onChange={(event) => onWidgetNodeSlugChange(node.id, event.target.value)}
+              placeholder="Ex. mon-widget-personnalise"
+              list={widgets.length > 0 ? `${widgetNodeSlugSuggestionsId}-list` : undefined}
+            />
+            <small style={{ color: "#475569" }}>
+              Correspond au slug défini lors de l'enregistrement du widget dans la bibliothèque.
+            </small>
+          </label>
+          <label style={fieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-select`}>
+            <span>Widget enregistré</span>
+            <select
+              id={`${widgetNodeSlugSuggestionsId}-select`}
+              value={widgetNodeSelectValue}
+              onChange={(event) => onWidgetNodeSlugChange(node.id, event.target.value)}
+              disabled={widgetsLoading || !!widgetsError || widgets.length === 0}
+            >
+              <option value="">Sélectionnez un widget</option>
+              {widgets.map((widget) => (
+                <option key={widget.slug} value={widget.slug}>
+                  {widget.title?.trim() ? `${widget.title} (${widget.slug})` : widget.slug}
+                </option>
+              ))}
+            </select>
+            <small style={{ color: "#475569" }}>
+              La liste provient automatiquement de la bibliothèque des widgets partageables.
+            </small>
+          </label>
+          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => handleOpenWidgetPicker("widget")}
+              disabled={!canBrowseWidgets}
+              aria-label="Parcourir la bibliothèque de widgets pour le bloc widget"
+            >
+              Parcourir la bibliothèque
+            </button>
+          </div>
+          {widgetsLoading ? (
+            <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
+          ) : widgetsError ? (
+            <p style={{ color: "#b91c1c", margin: 0 }}>
+              {widgetsError}
+              <br />
+              Vous pouvez saisir le slug du widget manuellement ci-dessus.
+            </p>
+          ) : widgets.length === 0 ? (
+            <p style={{ color: "#475569", margin: 0 }}>
+              Créez un widget dans la bibliothèque dédiée ou saisissez son slug manuellement ci-dessus.
+            </p>
+          ) : null}
+
+          {widgetNodeValidationMessage ? (
+            <p style={{ color: "#b91c1c", margin: 0 }}>{widgetNodeValidationMessage}</p>
+          ) : (
+            <small style={{ color: "#475569" }}>
+              Le widget sélectionné est diffusé immédiatement dans ChatKit lorsqu'on atteint ce bloc.
+            </small>
+          )}
+
+          {widgets.length > 0 && (
+            <datalist id={`${widgetNodeSlugSuggestionsId}-list`}>
+              {widgets.map((widget) => (
+                <option key={widget.slug} value={widget.slug}>
+                  {widget.title?.trim() ? widget.title : widget.slug}
+                </option>
+              ))}
+            </datalist>
+          )}
+
+          <div style={{ marginTop: "0.75rem" }}>
+            <WidgetVariablesPanel
+              assignments={widgetNodeVariables}
+              onChange={(next) => onWidgetNodeVariablesChange(node.id, next)}
+            />
+          </div>
+        </>
+      )}
+
       {kind === "end" && (
         <label style={fieldStyle}>
           <span>Message de fin</span>
@@ -713,103 +803,6 @@ const NodeInspector = ({
               )}
             </>
           )}
-
-      {kind === "widget" && (
-        <>
-          <p style={{ color: "#475569", margin: "0.5rem 0 0" }}>
-            Choisissez un widget de la bibliothèque ou renseignez son slug pour l'afficher dans ChatKit.
-          </p>
-
-          <label style={fieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-input`}>
-            <span>Slug du widget</span>
-            <input
-              id={`${widgetNodeSlugSuggestionsId}-input`}
-              type="text"
-              value={widgetNodeSlug}
-              onChange={(event) => onWidgetNodeSlugChange(node.id, event.target.value)}
-              placeholder="Ex. resume"
-              list={widgets.length > 0 ? `${widgetNodeSlugSuggestionsId}-list` : undefined}
-            />
-            <small style={{ color: "#64748b" }}>
-              Correspond au slug défini lors de l'enregistrement du widget dans la bibliothèque.
-            </small>
-          </label>
-
-          <label style={fieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-select`}>
-            <span>Widget à afficher</span>
-            <select
-              id={`${widgetNodeSlugSuggestionsId}-select`}
-              value={widgetNodeSelectValue}
-              onChange={(event) => onWidgetNodeSlugChange(node.id, event.target.value)}
-              disabled={widgetsLoading || !!widgetsError || widgets.length === 0}
-            >
-              <option value="">Sélectionnez un widget</option>
-              {widgets.map((widget) => (
-                <option key={widget.slug} value={widget.slug}>
-                  {widget.title?.trim() ? `${widget.title} (${widget.slug})` : widget.slug}
-                </option>
-              ))}
-            </select>
-            <small style={{ color: "#64748b" }}>
-              La liste provient automatiquement de la bibliothèque des widgets partageables.
-            </small>
-          </label>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "0.5rem" }}>
-            <button
-              type="button"
-              className="btn secondary"
-              onClick={() => handleOpenWidgetPicker("widget")}
-              disabled={!canBrowseWidgets}
-              aria-label="Parcourir la bibliothèque de widgets pour le bloc widget"
-            >
-              Parcourir la bibliothèque
-            </button>
-            <small style={{ color: "#64748b" }}>
-              Ouvre la bibliothèque complète pour prévisualiser chaque widget.
-            </small>
-          </div>
-
-          {widgetsLoading ? (
-            <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
-          ) : widgetsError ? (
-            <p style={{ color: "#b91c1c", margin: 0 }}>
-              {widgetsError}
-              <br />
-              Vous pouvez saisir le slug du widget manuellement ci-dessus.
-            </p>
-          ) : widgets.length === 0 ? (
-            <p style={{ color: "#475569", margin: 0 }}>
-              Créez un widget dans la bibliothèque dédiée ou saisissez son slug manuellement ci-dessus.
-            </p>
-          ) : null}
-
-          {widgetNodeValidationMessage ? (
-            <p style={{ color: "#b91c1c", margin: 0 }}>{widgetNodeValidationMessage}</p>
-          ) : (
-            <small style={{ color: "#475569" }}>
-              Le widget sélectionné est diffusé immédiatement dans ChatKit lorsqu'on atteint ce bloc.
-            </small>
-          )}
-
-          {widgets.length > 0 && (
-            <datalist id={`${widgetNodeSlugSuggestionsId}-list`}>
-              {widgets.map((widget) => (
-                <option key={widget.slug} value={widget.slug}>
-                  {widget.title?.trim() ? widget.title : widget.slug}
-                </option>
-              ))}
-            </datalist>
-          )}
-
-          <div style={{ marginTop: "0.75rem" }}>
-            <WidgetVariablesPanel
-              assignments={widgetNodeVariables}
-              onChange={(next) => onWidgetNodeVariablesChange(node.id, next)}
-            />
-          </div>
-        </>
-      )}
 
       <div
         style={{
