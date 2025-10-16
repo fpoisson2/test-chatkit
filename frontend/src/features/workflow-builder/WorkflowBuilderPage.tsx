@@ -2442,7 +2442,7 @@ const WorkflowBuilderPage = () => {
   );
 
   const updateBlockLibraryTransforms = useCallback(() => {
-    if (typeof window === "undefined") {
+    if (!isMobileLayout || typeof window === "undefined") {
       return;
     }
     const container = blockLibraryScrollRef.current;
@@ -2450,11 +2450,11 @@ const WorkflowBuilderPage = () => {
       return;
     }
     const containerRect = container.getBoundingClientRect();
-    if (containerRect.width === 0) {
+    if (containerRect.height === 0) {
       return;
     }
-    const containerCenter = containerRect.left + containerRect.width / 2;
-    const maxDistance = Math.max(containerRect.width / 2, 1);
+    const containerCenter = containerRect.top + containerRect.height / 2;
+    const maxDistance = Math.max(containerRect.height / 2, 1);
 
     blockLibraryItems.forEach((item) => {
       const element = blockLibraryItemRefs.current[item.key];
@@ -2462,7 +2462,7 @@ const WorkflowBuilderPage = () => {
         return;
       }
       const rect = element.getBoundingClientRect();
-      const elementCenter = rect.left + rect.width / 2;
+      const elementCenter = rect.top + rect.height / 2;
       const distance = Math.abs(elementCenter - containerCenter);
       const normalized = Math.min(distance / maxDistance, 1);
       const eased = 1 - Math.pow(normalized, 1.6);
@@ -2470,23 +2470,26 @@ const WorkflowBuilderPage = () => {
       const arcOffset = Math.pow(normalized, 1.5) * 32;
       const opacity = 0.55 + eased * 0.45;
 
-      element.style.transform = `translateY(${arcOffset}px) scale(${scale})`;
+      element.style.transform = `translateX(${arcOffset}px) scale(${scale})`;
       element.style.opacity = opacity.toFixed(3);
       element.style.zIndex = String(100 + Math.round(eased * 100));
     });
-  }, [blockLibraryItems]);
+  }, [blockLibraryItems, isMobileLayout]);
 
   const scheduleBlockLibraryTransformUpdate = useCallback(() => {
-    if (typeof window === "undefined") {
+    if (!isMobileLayout || typeof window === "undefined") {
       return;
     }
     if (blockLibraryAnimationFrameRef.current !== null) {
       cancelAnimationFrame(blockLibraryAnimationFrameRef.current);
     }
     blockLibraryAnimationFrameRef.current = requestAnimationFrame(updateBlockLibraryTransforms);
-  }, [updateBlockLibraryTransforms]);
+  }, [isMobileLayout, updateBlockLibraryTransforms]);
 
   useEffect(() => {
+    if (!isMobileLayout || !isBlockLibraryOpen) {
+      return () => {};
+    }
     const container = blockLibraryScrollRef.current;
     if (!container) {
       return () => {};
@@ -2505,9 +2508,18 @@ const WorkflowBuilderPage = () => {
       container.removeEventListener("scroll", handleScroll);
       window.removeEventListener("resize", handleScroll);
     };
-  }, [scheduleBlockLibraryTransformUpdate, isMobileLayout, isBlockLibraryOpen]);
+  }, [isBlockLibraryOpen, isMobileLayout, scheduleBlockLibraryTransformUpdate]);
 
   useEffect(() => {
+    if (!isMobileLayout || !isBlockLibraryOpen) {
+      return () => {
+        if (blockLibraryAnimationFrameRef.current !== null) {
+          cancelAnimationFrame(blockLibraryAnimationFrameRef.current);
+          blockLibraryAnimationFrameRef.current = null;
+        }
+      };
+    }
+
     scheduleBlockLibraryTransformUpdate();
     return () => {
       if (blockLibraryAnimationFrameRef.current !== null) {
@@ -2515,25 +2527,47 @@ const WorkflowBuilderPage = () => {
         blockLibraryAnimationFrameRef.current = null;
       }
     };
-  }, [scheduleBlockLibraryTransformUpdate, blockLibraryItems, isBlockLibraryOpen, isMobileLayout]);
+  }, [
+    blockLibraryItems,
+    isBlockLibraryOpen,
+    isMobileLayout,
+    scheduleBlockLibraryTransformUpdate,
+  ]);
 
-  const getBlockLibraryButtonStyle = (disabled: boolean): CSSProperties => ({
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "0.85rem",
-    padding: "1.1rem 1rem",
-    border: "none",
-    background: "rgba(15, 23, 42, 0.04)",
-    borderRadius: "1rem",
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.5 : 1,
-    minWidth: "190px",
-    textAlign: "center",
-    transition: "background 0.3s ease",
-    backdropFilter: "blur(6px)",
-  });
+  const getBlockLibraryButtonStyle = useCallback(
+    (disabled: boolean): CSSProperties => {
+      if (isMobileLayout) {
+        return {
+          display: "flex",
+          alignItems: "center",
+          gap: "1rem",
+          padding: "1.15rem 1.1rem",
+          border: "none",
+          background: "rgba(15, 23, 42, 0.28)",
+          borderRadius: "1.1rem",
+          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: disabled ? 0.45 : 1,
+          width: "100%",
+          textAlign: "left",
+          transition: "background 0.3s ease, transform 0.3s ease",
+          color: "#f8fafc",
+        };
+      }
+      return {
+        display: "flex",
+        alignItems: "center",
+        gap: "0.75rem",
+        padding: "0.5rem 0",
+        border: "none",
+        background: "transparent",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        width: "100%",
+        textAlign: "left",
+      };
+    },
+    [isMobileLayout],
+  );
 
   const workflowSidebarContent = useMemo(() => {
     const sectionId = "workflow-builder-sidebar";
@@ -2755,71 +2789,122 @@ const WorkflowBuilderPage = () => {
     return () => clearSidebarContent();
   }, [clearSidebarContent, setSidebarContent, workflowSidebarContent]);
 
-  const renderBlockLibraryButtons = () => {
-    const primaryTextColor = isMobileLayout ? "#f8fafc" : "#0f172a";
+  const renderBlockLibraryContent = () => {
+    if (isMobileLayout) {
+      return (
+        <div className={styles.blockLibraryContent}>
+          <div
+            ref={(element) => {
+              blockLibraryScrollRef.current = element;
+              if (element && isBlockLibraryOpen) {
+                scheduleBlockLibraryTransformUpdate();
+              }
+            }}
+            className={styles.blockLibraryScroller}
+            role="list"
+            aria-label="Blocs disponibles"
+          >
+            {blockLibraryItems.map((item) => {
+              const disabled = loading || !selectedWorkflowId;
+              return (
+                <div
+                  key={item.key}
+                  role="listitem"
+                  className={styles.blockLibraryItemWrapper}
+                  ref={(node) => {
+                    if (node) {
+                      blockLibraryItemRefs.current[item.key] = node;
+                      scheduleBlockLibraryTransformUpdate();
+                    } else {
+                      delete blockLibraryItemRefs.current[item.key];
+                    }
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => item.onClick()}
+                    disabled={disabled}
+                    style={getBlockLibraryButtonStyle(disabled)}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: "2.85rem",
+                        height: "2.85rem",
+                        borderRadius: "0.95rem",
+                        background: item.color,
+                        color: "#fff",
+                        display: "grid",
+                        placeItems: "center",
+                        fontWeight: 700,
+                        fontSize: "1.25rem",
+                      }}
+                    >
+                      {item.shortLabel}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "1.05rem",
+                        fontWeight: 600,
+                        lineHeight: 1.1,
+                      }}
+                    >
+                      {item.label}
+                    </span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    const primaryTextColor = "#0f172a";
+    const secondaryTextColor = "#475569";
     return (
-      <div className={styles.blockLibraryContent}>
+      <div>
         <div
-          ref={(element) => {
-            blockLibraryScrollRef.current = element;
-            if (element) {
-              scheduleBlockLibraryTransformUpdate();
-            }
+          style={{
+            marginBottom: "0.5rem",
+            fontSize: "0.85rem",
+            fontWeight: 600,
+            color: secondaryTextColor,
           }}
-          className={styles.blockLibraryScroller}
-          role="list"
-          aria-label="Blocs disponibles"
         >
+          Bibliothèque de blocs
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           {blockLibraryItems.map((item) => {
             const disabled = loading || !selectedWorkflowId;
             return (
-              <div
+              <button
                 key={item.key}
-                role="listitem"
-                className={styles.blockLibraryItemWrapper}
-                ref={(node) => {
-                  if (node) {
-                    blockLibraryItemRefs.current[item.key] = node;
-                    scheduleBlockLibraryTransformUpdate();
-                  } else {
-                    delete blockLibraryItemRefs.current[item.key];
-                  }
-                }}
+                type="button"
+                onClick={() => item.onClick()}
+                disabled={disabled}
+                style={getBlockLibraryButtonStyle(disabled)}
               >
-                <button
-                  type="button"
-                  onClick={() => item.onClick()}
-                  disabled={disabled}
-                  style={getBlockLibraryButtonStyle(disabled)}
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: "2.35rem",
+                    height: "2.35rem",
+                    borderRadius: "0.75rem",
+                    background: item.color,
+                    color: "#fff",
+                    display: "grid",
+                    placeItems: "center",
+                    fontWeight: 700,
+                    fontSize: "1.05rem",
+                  }}
                 >
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: "2.6rem",
-                      height: "2.6rem",
-                      borderRadius: "0.85rem",
-                      background: item.color,
-                      color: "#fff",
-                      display: "grid",
-                      placeItems: "center",
-                      fontWeight: 700,
-                      fontSize: "1.2rem",
-                    }}
-                  >
-                    {item.shortLabel}
-                  </span>
-                  <span
-                    style={{
-                      color: primaryTextColor,
-                      fontSize: "1rem",
-                      fontWeight: 600,
-                      lineHeight: 1.1,
-                    }}
-                  >
-                    {item.label}
-                  </span>
-                </button>
-              </div>
+                  {item.shortLabel}
+                </span>
+                <div style={{ textAlign: "left", color: primaryTextColor }}>
+                  <strong style={{ fontSize: "1rem" }}>{item.label}</strong>
+                </div>
+              </button>
             );
           })}
         </div>
@@ -3112,7 +3197,7 @@ const WorkflowBuilderPage = () => {
                     role="dialog"
                     aria-modal="true"
                   >
-                    {renderBlockLibraryButtons()}
+                    {renderBlockLibraryContent()}
                   </aside>
                 </div>
               ) : null}
@@ -3136,7 +3221,7 @@ const WorkflowBuilderPage = () => {
               aria-label="Bibliothèque de blocs"
               className={styles.blockLibrary}
             >
-              {renderBlockLibraryButtons()}
+              {renderBlockLibraryContent()}
             </aside>
           )}
           {isMobileLayout && hasSelectedElement ? (
