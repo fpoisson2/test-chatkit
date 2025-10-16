@@ -1,15 +1,16 @@
 import type { ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import { AppLayout } from "./components/AppLayout";
+import { useAuth } from "./auth";
+import { MyChat } from "./MyChat";
+import { LoginPage } from "./pages/LoginPage";
+import { VoicePage } from "./pages/VoicePage";
+import WorkflowBuilderPage from "./features/workflow-builder/WorkflowBuilderPage";
+import { VectorStoresPage } from "./pages/VectorStoresPage";
+import WidgetLibraryPage from "./pages/WidgetLibraryPage";
 import { AdminPage } from "./pages/AdminPage";
 import { AdminModelsPage } from "./pages/AdminModelsPage";
-import { MyChat } from "./MyChat";
-import { useAuth } from "./auth";
-import { LoginPage } from "./pages/LoginPage";
-import { VectorStoresPage } from "./pages/VectorStoresPage";
-import WorkflowBuilderPage from "./pages/WorkflowBuilderPage";
-import { VoicePage } from "./pages/VoicePage";
-import WidgetLibraryPage from "./pages/WidgetLibraryPage";
 
 const RequireAdmin = ({ children }: { children: ReactElement }) => {
   const { user } = useAuth();
@@ -50,14 +51,6 @@ const HomePage = () => <MyChat />;
 export const App = () => (
   <Routes>
     <Route
-      path="/"
-      element={
-        <RequireUser>
-          <HomePage />
-        </RequireUser>
-      }
-    />
-    <Route
       path="/login"
       element={
         <RequireGuest>
@@ -65,6 +58,41 @@ export const App = () => (
         </RequireGuest>
       }
     />
+    <Route
+      path="/"
+      element={
+        <RequireUser>
+          <AppLayout />
+        </RequireUser>
+      }
+    >
+      <Route index element={<HomePage />} />
+      <Route path="voice" element={<VoicePage />} />
+      <Route
+        path="workflows"
+        element={
+          <RequireAdmin>
+            <WorkflowBuilderPage />
+          </RequireAdmin>
+        }
+      />
+      <Route
+        path="vector-stores"
+        element={
+          <RequireAdmin>
+            <VectorStoresPage />
+          </RequireAdmin>
+        }
+      />
+      <Route
+        path="widgets"
+        element={
+          <RequireAdmin>
+            <WidgetLibraryPage />
+          </RequireAdmin>
+        }
+      />
+    </Route>
     <Route
       path="/admin"
       element={
@@ -81,38 +109,9 @@ export const App = () => (
         </RequireAdmin>
       }
     />
-    <Route
-      path="/admin/vector-stores"
-      element={
-        <RequireAdmin>
-          <VectorStoresPage />
-        </RequireAdmin>
-      }
-    />
-    <Route
-      path="/admin/widgets"
-      element={
-        <RequireAdmin>
-          <WidgetLibraryPage />
-        </RequireAdmin>
-      }
-    />
-    <Route
-      path="/admin/workflows"
-      element={
-        <RequireAdmin>
-          <WorkflowBuilderPage />
-        </RequireAdmin>
-      }
-    />
-    <Route
-      path="/voice"
-      element={
-        <RequireUser>
-          <VoicePage />
-        </RequireUser>
-      }
-    />
+    <Route path="/admin/vector-stores" element={<Navigate to="/vector-stores" replace />} />
+    <Route path="/admin/widgets" element={<Navigate to="/widgets" replace />} />
+    <Route path="/admin/workflows" element={<Navigate to="/workflows" replace />} />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>
 );

@@ -6,6 +6,9 @@ import {
   useState,
   type ChangeEvent,
   type CSSProperties,
+  type MouseEvent,
+  type PointerEvent,
+  type TouchEvent,
 } from "react";
 import ReactFlow, {
   Background,
@@ -23,10 +26,8 @@ import ReactFlow, {
 
 import "reactflow/dist/style.css";
 
-import { useNavigate } from "react-router-dom";
-
 import { useAuth } from "../../auth";
-import { SidebarIcon, type SidebarIconName } from "../../components/SidebarIcon";
+import { useAppLayout } from "../../components/AppLayout";
 import {
   makeApiEndpointCandidates,
   modelRegistryApi,
@@ -158,7 +159,7 @@ const useMediaQuery = (query: string) => {
 
 const WorkflowBuilderPage = () => {
   const { token, logout, user } = useAuth();
-  const navigate = useNavigate();
+  const { openSidebar } = useAppLayout();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -181,7 +182,6 @@ const WorkflowBuilderPage = () => {
   const [widgets, setWidgets] = useState<WidgetTemplate[]>([]);
   const [widgetsLoading, setWidgetsLoading] = useState(false);
   const [widgetsError, setWidgetsError] = useState<string | null>(null);
-  const [isNavigationOpen, setNavigationOpen] = useState(false);
   const [isActionMenuOpen, setActionMenuOpen] = useState(false);
   const [isDeployModalOpen, setDeployModalOpen] = useState(false);
   const [deployToProduction, setDeployToProduction] = useState(false);
@@ -241,8 +241,7 @@ const WorkflowBuilderPage = () => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [closeBlockLibrary, isBlockLibraryOpen, isMobileLayout]);
-  const closeNavigation = useCallback(() => setNavigationOpen(false), []);
-  const toggleNavigation = useCallback(() => setNavigationOpen((prev) => !prev), []);
+
   const closeMobileHeaderMenu = useCallback(
     (options: { focusToggle?: boolean } = {}) => {
       setMobileHeaderMenuOpen(false);
@@ -261,6 +260,28 @@ const WorkflowBuilderPage = () => {
       return !prev;
     });
   }, []);
+
+  const handleMobileHeaderMenuButtonPointerDown = useCallback(
+    (event: PointerEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+    },
+    [],
+  );
+
+  const handleMobileHeaderMenuButtonTouchStart = useCallback(
+    (event: TouchEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+    },
+    [],
+  );
+
+  const handleMobileHeaderMenuButtonClick = useCallback(
+    (event: MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      handleToggleMobileHeaderMenu();
+    },
+    [handleToggleMobileHeaderMenu],
+  );
 
   useEffect(() => {
     if (!isActionMenuOpen) {
@@ -531,91 +552,6 @@ const WorkflowBuilderPage = () => {
   }, []);
 
 
-  const navigationItems = useMemo(
-    () => {
-      const items: Array<{
-        key: string;
-        label: string;
-        icon: SidebarIconName;
-        action: () => void;
-      }> = [
-        {
-          key: "home",
-          label: "Accueil",
-          icon: "home",
-          action: () => {
-            navigate("/");
-            closeNavigation();
-          },
-        },
-      ];
-
-      if (isAdmin) {
-        items.push(
-          {
-            key: "admin",
-            label: "Administration",
-            icon: "admin",
-            action: () => {
-              navigate("/admin");
-              closeNavigation();
-            },
-          },
-          {
-            key: "workflows",
-            label: "Workflows",
-            icon: "workflow",
-            action: () => {
-              navigate("/admin/workflows");
-              closeNavigation();
-            },
-          },
-        );
-      }
-
-      if (isAuthenticated) {
-        items.push(
-          {
-            key: "voice",
-            label: "Mode voix",
-            icon: "voice",
-            action: () => {
-              navigate("/voice");
-              closeNavigation();
-            },
-          },
-          {
-            key: "logout",
-            label: "Déconnexion",
-            icon: "logout",
-            action: () => {
-              closeNavigation();
-              logout();
-            },
-          },
-        );
-      } else {
-        items.push({
-          key: "login",
-          label: "Connexion",
-          icon: "login",
-          action: () => {
-            navigate("/login");
-            closeNavigation();
-          },
-        });
-      }
-
-      return items;
-    },
-    [
-      closeNavigation,
-      isAdmin,
-      isAuthenticated,
-      logout,
-      navigate,
-    ],
-  );
 
   const selectedWorkflow = useMemo(
     () => workflows.find((workflow) => workflow.id === selectedWorkflowId) ?? null,
@@ -2772,12 +2708,8 @@ const WorkflowBuilderPage = () => {
         <header style={headerStyle}>
           <button
             type="button"
-            onClick={toggleNavigation}
-            aria-expanded={isNavigationOpen}
-            aria-controls="workflow-navigation-panel"
-            aria-label={
-              isNavigationOpen ? "Fermer la navigation générale" : "Ouvrir la navigation générale"
-            }
+            onClick={openSidebar}
+            aria-label="Ouvrir la navigation générale"
             style={getHeaderNavigationButtonStyle(isMobileLayout)}
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -2788,7 +2720,9 @@ const WorkflowBuilderPage = () => {
             <button
               type="button"
               ref={mobileHeaderMenuButtonRef}
-              onClick={handleToggleMobileHeaderMenu}
+              onPointerDown={handleMobileHeaderMenuButtonPointerDown}
+              onTouchStart={handleMobileHeaderMenuButtonTouchStart}
+              onClick={handleMobileHeaderMenuButtonClick}
               aria-haspopup="dialog"
               aria-controls={headerMenuId}
               aria-expanded={isMobileHeaderMenuOpen}
@@ -2976,10 +2910,11 @@ const WorkflowBuilderPage = () => {
               propertiesPanelElement
             )
           ) : null}
-          {saveMessage ? (
-            <div
-              style={{
-                position: "absolute",
+        </div>
+        {saveMessage ? (
+          <div
+            style={{
+              position: "absolute",
                 bottom: "1.5rem",
                 left: "50%",
                 transform: "translateX(-50%)",
@@ -2994,71 +2929,6 @@ const WorkflowBuilderPage = () => {
               {saveMessage}
             </div>
           ) : null}
-          {isNavigationOpen ? (
-            <div
-              id="workflow-navigation-panel"
-              role="dialog"
-              aria-modal="true"
-              style={{
-                position: "absolute",
-                inset: 0,
-                display: "flex",
-                alignItems: "stretch",
-                justifyContent: "flex-start",
-                background: "rgba(15, 23, 42, 0.45)",
-                backdropFilter: "blur(2px)",
-                zIndex: 40,
-              }}
-            >
-              <aside
-                className="chatkit-sidebar chatkit-sidebar--open"
-                style={{
-                  position: "relative",
-                  transform: "none",
-                  height: "100%",
-                  maxHeight: "100%",
-                  boxShadow: "0 24px 48px rgba(15, 23, 42, 0.18)",
-                }}
-              >
-                <header className="chatkit-sidebar__header">
-                  <div className="chatkit-sidebar__topline">
-                    <div className="chatkit-sidebar__brand">
-                      <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
-                      <span className="chatkit-sidebar__brand-text">ChatKit Demo</span>
-                    </div>
-                    <button
-                      type="button"
-                      className="chatkit-sidebar__dismiss"
-                      onClick={closeNavigation}
-                      aria-label="Fermer la navigation"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </header>
-                <nav className="chatkit-sidebar__nav" aria-label="Navigation générale">
-                  <ul className="chatkit-sidebar__list">
-                    {navigationItems.map((item) => (
-                      <li key={item.key} className="chatkit-sidebar__item">
-                        <button type="button" onClick={item.action} aria-label={item.label}>
-                          <SidebarIcon name={item.icon} className="chatkit-sidebar__icon" />
-                          <span className="chatkit-sidebar__label">{item.label}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </nav>
-              </aside>
-              <button
-                type="button"
-                onClick={closeNavigation}
-                aria-label="Fermer le panneau de navigation"
-                style={{ flexGrow: 1, background: "transparent", border: "none", cursor: "pointer" }}
-              />
-            </div>
-          ) : null}
-        </div>
-          </div>
           {isDeployModalOpen ? (
             <div
               role="presentation"
@@ -3176,7 +3046,8 @@ const WorkflowBuilderPage = () => {
               </div>
             </div>
           ) : null}
-        </ReactFlowProvider>
+        </div>
+      </ReactFlowProvider>
   );
 };
 

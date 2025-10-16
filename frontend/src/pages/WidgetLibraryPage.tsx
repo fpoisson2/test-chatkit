@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "../auth";
-import { AdminLayout } from "../components/AdminLayout";
-import { AdminTabs } from "../components/AdminTabs";
 import { Modal } from "../components/Modal";
 import { WidgetPreviewModal } from "../components/WidgetPreviewModal";
 import { WidgetTemplateForm } from "../components/WidgetTemplateForm";
@@ -176,18 +174,24 @@ export const WidgetLibraryPage = () => {
   };
 
   return (
-    <AdminLayout
-      title="Bibliothèque de widgets"
-      subtitle="Centralisez les widgets ChatKit prêts à être utilisés dans vos workflows agents."
-      badge={badge}
-      onLogout={logout}
-      tabs={<AdminTabs activeTab="widgets" />}
-      toolbar={
-        <button className="button" type="button" onClick={() => setShowCreateModal(true)}>
-          Nouveau widget
-        </button>
-      }
-    >
+    <div className="app-content">
+      <header className="app-content__header">
+        <div className="app-content__heading">
+          <h1 className="app-content__title">Bibliothèque de widgets</h1>
+          <p className="app-content__subtitle">
+            Centralisez les widgets ChatKit prêts à être utilisés dans vos workflows agents.
+          </p>
+        </div>
+        <div className="app-content__toolbar">
+          <span className="app-content__badge">{badge}</span>
+          <div className="app-content__actions">
+            <button className="button" type="button" onClick={() => setShowCreateModal(true)}>
+              Nouveau widget
+            </button>
+          </div>
+        </div>
+      </header>
+
       {success ? <div className="alert alert--success">{success}</div> : null}
       {error ? <div className="alert alert--danger">{error}</div> : null}
 
@@ -196,8 +200,7 @@ export const WidgetLibraryPage = () => {
           <div>
             <h2 className="admin-card__title">Widgets disponibles</h2>
             <p className="admin-card__subtitle">
-              Chaque entrée correspond à une définition JSON validée par le SDK ChatKit. Utilisez ces widgets comme sorties de
-              vos agents dans le workflow builder.
+              Chaque entrée correspond à une définition JSON validée par le SDK ChatKit. Utilisez ces widgets comme sorties de vos agents dans le workflow builder.
             </p>
           </div>
           <WidgetTemplateTable
@@ -218,9 +221,7 @@ export const WidgetLibraryPage = () => {
           <div>
             <h2 className="admin-card__title">Pourquoi des widgets ?</h2>
             <p className="admin-card__subtitle">
-              Les widgets permettent d'afficher des réponses riches (cartes, tableaux, texte éditable) directement dans le
-              chat. Les agents du workflow builder peuvent référencer un widget par son slug et diffuser cette mise en forme à
-              l'utilisateur final.
+              Les widgets permettent d'afficher des réponses riches (cartes, tableaux, texte éditable) directement dans le chat. Les agents du workflow builder peuvent référencer un widget par son slug et diffuser cette mise en forme à l'utilisateur final.
             </p>
             <p className="admin-card__subtitle">
               Validez vos définitions JSON ici avant de les intégrer dans les modules ou outils de vos workflows agents.
@@ -241,11 +242,7 @@ export const WidgetLibraryPage = () => {
       ) : null}
 
       {editingWidget ? (
-        <Modal
-          title={`Modifier le widget « ${editingWidget.slug} »`}
-          onClose={() => setEditingWidget(null)}
-          size="lg"
-        >
+        <Modal title={`Modifier le widget « ${editingWidget.slug} »`} onClose={() => setEditingWidget(null)} size="lg">
           <WidgetTemplateForm
             mode="edit"
             initialValue={editingWidget}
@@ -264,7 +261,7 @@ export const WidgetLibraryPage = () => {
           onClose={() => setPreviewData(null)}
         />
       ) : null}
-    </AdminLayout>
+    </div>
   );
 };
 

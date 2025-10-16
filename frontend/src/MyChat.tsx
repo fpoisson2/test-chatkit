@@ -3,17 +3,13 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
-  type HTMLAttributes,
-  type PointerEvent as ReactPointerEvent,
+  useState
 } from "react";
-import { useNavigate } from "react-router-dom";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
 import type { ChatKitOptions } from "@openai/chatkit";
 
 import { useAuth } from "./auth";
-import { SidebarIcon, type SidebarIconName } from "./components/SidebarIcon";
-import { getDesktopLayoutPreference, useIsDesktopLayout } from "./hooks/useDesktopLayout";
+import { useAppLayout } from "./components/AppLayout";
 import { getOrCreateDeviceId } from "./utils/device";
 import {
   clearStoredChatKitSecret,
@@ -26,9 +22,6 @@ import {
   loadStoredThreadId,
   persistStoredThreadId,
 } from "./utils/chatkitThread";
-import { SettingsModal } from "./features/settings/SettingsModal";
-import { SETTINGS_SECTIONS, type SettingsSectionId } from "./features/settings/sections";
-import { useAdminUsers } from "./features/settings/useAdminUsers";
 
 type WeatherToolCall = {
   name: "get_weather";
@@ -40,152 +33,20 @@ type WeatherToolCall = {
 
 type ClientToolCall = WeatherToolCall;
 
-type NavigationItem = {
-  key: string;
-  label: string;
-  icon: SidebarIconName;
-  onClick: () => void;
-};
-
-const buildNavigationItems = ({
-  isAuthenticated,
-  isAdmin,
-  handleSidebarHome,
-  handleSidebarAdmin,
-  handleSidebarWorkflows,
-  handleSidebarVoice,
-  handleSidebarSettings,
-  handleSidebarLogin,
-  handleSidebarLogout,
-}: {
-  isAuthenticated: boolean;
-  isAdmin: boolean;
-  handleSidebarHome: () => void;
-  handleSidebarAdmin: () => void;
-  handleSidebarWorkflows: () => void;
-  handleSidebarVoice: () => void;
-  handleSidebarSettings: () => void;
-  handleSidebarLogin: () => void;
-  handleSidebarLogout: () => void;
-}) => {
-  const items: NavigationItem[] = [
-    {
-      key: "home",
-      label: "Accueil",
-      icon: "home",
-      onClick: handleSidebarHome,
-    },
-  ];
-
-  if (isAdmin) {
-    items.push({
-      key: "admin",
-      label: "Administration",
-      icon: "admin",
-      onClick: handleSidebarAdmin,
-    });
-    items.push({
-      key: "workflow",
-      label: "Workflow",
-      icon: "workflow",
-      onClick: handleSidebarWorkflows,
-    });
-  }
-
-  if (isAuthenticated) {
-    items.push(
-      {
-        key: "voice",
-        label: "Mode voix",
-        icon: "voice",
-        onClick: handleSidebarVoice,
-      },
-      {
-        key: "settings",
-        label: "Paramètres rapides",
-        icon: "settings",
-        onClick: handleSidebarSettings,
-      },
-      {
-        key: "logout",
-        label: "Déconnexion",
-        icon: "logout",
-        onClick: handleSidebarLogout,
-      },
-    );
-  } else {
-    items.push({
-      key: "login",
-      label: "Connexion",
-      icon: "login",
-      onClick: handleSidebarLogin,
-    });
-  }
-
-  return items;
-};
-
-const useSidebarInteractions = ({
-  isDesktopLayout,
-  onInteract,
-}: {
-  isDesktopLayout: boolean;
-  onInteract: () => void;
-}) =>
-  useMemo<Partial<HTMLAttributes<HTMLDivElement>>>(() => {
-    if (isDesktopLayout) {
-      return {};
-    }
-
-    return {
-      onClick: onInteract,
-      onPointerDown: onInteract,
-      onTouchStart: onInteract,
-    };
-  }, [isDesktopLayout, onInteract]);
 
 export function MyChat() {
-  const { token, user, logout } = useAuth();
-  const navigate = useNavigate();
-  const isAuthenticated = Boolean(user);
+  const { token, user } = useAuth();
+  const { openSidebar, openSettings } = useAppLayout();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSectionId>(
-    SETTINGS_SECTIONS[0].id,
-  );
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
   const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
     loadStoredThreadId(sessionOwner),
   );
-  const isDesktopLayout = useIsDesktopLayout();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(getDesktopLayoutPreference);
-  const previousIsDesktopRef = useRef(isDesktopLayout);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const lastVisibilityRefreshRef = useRef(0);
   const previousSessionOwnerRef = useRef<string | null>(null);
-
-  const closeProfileSettings = useCallback(() => {
-    setIsSettingsModalOpen(false);
-  }, []);
-
-  const handleSettingsUnauthorized = useCallback(() => {
-    closeProfileSettings();
-    logout();
-  }, [closeProfileSettings, logout]);
-
-  const adminUsers = useAdminUsers({
-    token,
-    isEnabled: Boolean(user?.is_admin) && isSettingsModalOpen,
-    onUnauthorized: handleSettingsUnauthorized,
-  });
-
-  useEffect(() => {
-    if (isSettingsModalOpen) {
-      setActiveSettingsSection(SETTINGS_SECTIONS[0].id);
-    }
-  }, [isSettingsModalOpen]);
 
   useEffect(() => {
     const previousOwner = previousSessionOwnerRef.current;
@@ -453,110 +314,6 @@ export function MyChat() {
     [attachmentsEnabled],
   );
 
-  useEffect(() => {
-    const wasDesktop = previousIsDesktopRef.current;
-
-    if (isDesktopLayout) {
-      if (!wasDesktop) {
-        setIsSidebarOpen(true);
-      }
-    } else {
-      setIsSidebarOpen(false);
-    }
-
-    previousIsDesktopRef.current = isDesktopLayout;
-  }, [isDesktopLayout]);
-
-  const openSidebar = useCallback(() => {
-    setIsSidebarOpen(true);
-  }, []);
-
-  const closeSidebar = useCallback(() => {
-    setIsSidebarOpen(false);
-  }, []);
-
-  const handleMainInteraction = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-  }, [closeSidebar, isDesktopLayout]);
-
-  const openProfileSettings = useCallback(() => {
-    if (!user) {
-      navigate("/login");
-      return;
-    }
-    setIsSettingsModalOpen(true);
-  }, [navigate, user]);
-
-  const handleSidebarSettings = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-    openProfileSettings();
-  }, [closeSidebar, isDesktopLayout, openProfileSettings]);
-
-  const goToHome = useCallback(() => {
-    navigate("/");
-  }, [navigate]);
-
-  const handleSidebarHome = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-    goToHome();
-  }, [closeSidebar, goToHome, isDesktopLayout]);
-
-  const handleHomeFromModal = useCallback(() => {
-    closeProfileSettings();
-    goToHome();
-  }, [closeProfileSettings, goToHome]);
-
-  const handleOpenWorkflows = useCallback(() => {
-    closeProfileSettings();
-    navigate("/admin/workflows");
-  }, [closeProfileSettings, navigate]);
-
-  const handleLogout = useCallback(() => {
-    closeProfileSettings();
-    logout();
-  }, [closeProfileSettings, logout]);
-
-  const handleSidebarAdmin = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-    navigate("/admin");
-  }, [closeSidebar, isDesktopLayout, navigate]);
-
-  const handleSidebarWorkflows = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-    navigate("/admin/workflows");
-  }, [closeSidebar, isDesktopLayout, navigate]);
-
-  const handleSidebarVoice = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-    navigate("/voice");
-  }, [closeSidebar, isDesktopLayout, navigate]);
-
-  const handleSidebarLogin = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-    navigate("/login");
-  }, [closeSidebar, isDesktopLayout, navigate]);
-
-  const handleSidebarLogout = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-    logout();
-  }, [closeSidebar, isDesktopLayout, logout]);
-
   const chatkitOptions = useMemo(
     () =>
       ({
@@ -569,7 +326,7 @@ export function MyChat() {
           },
           rightAction: {
             icon: "settings-cog",
-            onClick: openProfileSettings,
+            onClick: openSettings,
           },
         },
         theme: {
@@ -650,7 +407,7 @@ export function MyChat() {
       apiConfig,
       attachmentsConfig,
       initialThreadId,
-      openProfileSettings,
+      openSettings,
       openSidebar,
       sessionOwner,
     ],
@@ -718,156 +475,20 @@ export function MyChat() {
     .filter(Boolean)
     .join(" ");
 
-  const isSidebarCollapsed = isDesktopLayout && !isSidebarOpen;
-
-  const sidebarTabIndex = isSidebarOpen || isDesktopLayout ? 0 : -1;
-
-  const navigationItems = useMemo(
-    () =>
-      buildNavigationItems({
-        isAuthenticated,
-        isAdmin: Boolean(user?.is_admin),
-        handleSidebarHome,
-        handleSidebarAdmin,
-        handleSidebarWorkflows,
-        handleSidebarVoice,
-        handleSidebarSettings,
-        handleSidebarLogin,
-        handleSidebarLogout,
-      }),
-    [
-      isAuthenticated,
-      handleSidebarAdmin,
-      handleSidebarHome,
-      handleSidebarWorkflows,
-      handleSidebarVoice,
-      handleSidebarLogout,
-      handleSidebarSettings,
-      handleSidebarLogin,
-      user?.is_admin,
-    ],
-  );
-
-  const handleGoToVoiceMode = useCallback(() => {
-    navigate("/voice");
-  }, [navigate]);
-
-  const handleScrimPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (isDesktopLayout) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      closeSidebar();
-    },
-    [closeSidebar, isDesktopLayout],
-  );
-
-  const layoutClassName = [
-    "chatkit-layout",
-    isSidebarOpen ? "chatkit-layout--sidebar-open" : "",
-    isDesktopLayout ? "chatkit-layout--desktop" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  const mainInteractionHandlers = useSidebarInteractions({
-    isDesktopLayout,
-    onInteract: handleMainInteraction,
-  });
-
-  const sidebarClassName = [
-    "chatkit-sidebar",
-    isSidebarOpen ? "chatkit-sidebar--open" : "",
-    isSidebarCollapsed ? "chatkit-sidebar--collapsed" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
   return (
-    <div className={layoutClassName}>
-      <aside
-        className={sidebarClassName}
-        aria-label="Navigation principale"
-        aria-hidden={!isSidebarOpen && !isDesktopLayout}
-      >
-        <header className="chatkit-sidebar__header">
-          <div className="chatkit-sidebar__topline">
-            <div className="chatkit-sidebar__brand">
-              <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
-              <span className="chatkit-sidebar__brand-text">ChatKit Demo</span>
-            </div>
-            {isSidebarOpen && (
-              <button
-                type="button"
-                className="chatkit-sidebar__dismiss"
-                onClick={closeSidebar}
-                tabIndex={sidebarTabIndex}
-                aria-label="Fermer la barre latérale"
-              >
-                ×
-              </button>
-            )}
-          </div>
-        </header>
-        <nav className="chatkit-sidebar__nav" aria-label="Menu principal">
-          <ul className="chatkit-sidebar__list">
-            {navigationItems.map((item) => (
-              <li key={item.key} className="chatkit-sidebar__item">
-                <button
-                  type="button"
-                  onClick={item.onClick}
-                  tabIndex={sidebarTabIndex}
-                  aria-label={item.label}
-                >
-                  <SidebarIcon name={item.icon} className="chatkit-sidebar__icon" />
-                  <span className="chatkit-sidebar__label">{item.label}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      </aside>
-      <button
-        type="button"
-        className={`chatkit-layout__scrim${isSidebarOpen ? " chatkit-layout__scrim--active" : ""}`}
-        aria-hidden={!isSidebarOpen || isDesktopLayout}
-        aria-label="Fermer la barre latérale"
-        onPointerDown={handleScrimPointerDown}
-        onClick={() => {
-          if (!isDesktopLayout) {
-            closeSidebar();
-          }
-        }}
-        tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}
-      />
-      <div className="chatkit-layout__main" {...mainInteractionHandlers}>
-        <div className="chatkit-layout__widget">
-          <ChatKit
-            control={control}
-            className="chatkit-host"
-            style={{ width: "100%", height: "100%" }}
-          />
-        </div>
-        {statusMessage && (
-          <div className={statusClassName} role="status" aria-live="polite">
-            {statusMessage}
-          </div>
-        )}
+    <>
+      <div className="chatkit-layout__widget">
+        <ChatKit
+          control={control}
+          className="chatkit-host"
+          style={{ width: "100%", height: "100%" }}
+        />
       </div>
-      <SettingsModal
-        isOpen={isSettingsModalOpen}
-        sections={SETTINGS_SECTIONS}
-        activeSectionId={activeSettingsSection}
-        onSelectSection={setActiveSettingsSection}
-        onClose={closeProfileSettings}
-        currentUser={user}
-        onGoHome={handleHomeFromModal}
-        onLogout={handleLogout}
-        onOpenWorkflows={handleOpenWorkflows}
-        adminUsers={adminUsers}
-      />
-    </div>
+      {statusMessage && (
+        <div className={statusClassName} role="status" aria-live="polite">
+          {statusMessage}
+        </div>
+      )}
+    </>
   );
 }

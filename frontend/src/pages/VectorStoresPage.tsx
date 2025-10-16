@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "../auth";
-import { AdminLayout } from "../components/AdminLayout";
-import { AdminTabs } from "../components/AdminTabs";
 import { Modal } from "../components/Modal";
 import { VectorStoreDocumentsTable } from "../components/VectorStoreDocumentsTable";
 import { VectorStoreForm } from "../components/VectorStoreForm";
@@ -286,18 +284,24 @@ export const VectorStoresPage = () => {
   };
 
   return (
-    <AdminLayout
-      title="Vector stores JSON"
-      subtitle="Indexez vos fichiers JSON dans PostgreSQL + pgvector puis testez vos requêtes de recherche hybride."
-      badge={storeBadge}
-      onLogout={logout}
-      tabs={<AdminTabs activeTab="vector-stores" />}
-      toolbar={
-        <button className="button" type="button" onClick={() => setShowCreateModal(true)}>
-          Nouveau vector store
-        </button>
-      }
-    >
+    <div className="app-content">
+      <header className="app-content__header">
+        <div className="app-content__heading">
+          <h1 className="app-content__title">Vector stores JSON</h1>
+          <p className="app-content__subtitle">
+            Indexez vos fichiers JSON dans PostgreSQL + pgvector puis testez vos requêtes de recherche hybride.
+          </p>
+        </div>
+        <div className="app-content__toolbar">
+          <span className="app-content__badge">{storeBadge}</span>
+          <div className="app-content__actions">
+            <button className="button" type="button" onClick={() => setShowCreateModal(true)}>
+              Nouveau vector store
+            </button>
+          </div>
+        </div>
+      </header>
+
       {success ? <div className="alert alert--success">{success}</div> : null}
       {error ? <div className="alert alert--danger">{error}</div> : null}
 
@@ -322,8 +326,7 @@ export const VectorStoresPage = () => {
           <div>
             <h2 className="admin-card__title">Comment ça marche ?</h2>
             <p className="admin-card__subtitle">
-              Chargez un fichier JSON structuré puis lancez une recherche hybride pour visualiser les chunks retournés (scores
-              denses + BM25).
+              Chargez un fichier JSON structuré puis lancez une recherche hybride pour visualiser les chunks retournés (scores denses + BM25).
             </p>
             <ul className="vector-store__steps">
               <li>Créez un store puis déposez vos documents JSON.</li>
@@ -341,11 +344,7 @@ export const VectorStoresPage = () => {
       ) : null}
 
       {showIngestionModal && selectedStore ? (
-        <Modal
-          title={`Ingestion dans « ${selectedStore.slug} »`}
-          onClose={() => setShowIngestionModal(false)}
-          size="lg"
-        >
+        <Modal title={`Ingestion dans « ${selectedStore.slug} »`} onClose={() => setShowIngestionModal(false)} size="lg">
           <VectorStoreIngestionForm
             onSubmit={handleIngestion}
             onCancel={() => setShowIngestionModal(false)}
@@ -355,11 +354,7 @@ export const VectorStoresPage = () => {
       ) : null}
 
       {showSearchModal && selectedStore ? (
-        <Modal
-          title={`Tester une requête — ${selectedStore.slug}`}
-          onClose={() => setShowSearchModal(false)}
-          size="lg"
-        >
+        <Modal title={`Tester une requête — ${selectedStore.slug}`} onClose={() => setShowSearchModal(false)} size="lg">
           <VectorStoreSearchForm onSubmit={handleSearch} />
           {isSearching ? (
             <p className="admin-card__subtitle">Recherche en cours…</p>
@@ -384,17 +379,9 @@ export const VectorStoresPage = () => {
       ) : null}
 
       {showDocumentsModal && selectedStore ? (
-        <Modal
-          title={`Documents — ${selectedStore.slug}`}
-          onClose={() => setShowDocumentsModal(false)}
-          size="lg"
-        >
+        <Modal title={`Documents — ${selectedStore.slug}`} onClose={() => setShowDocumentsModal(false)} size="lg">
           <div className="admin-table__actions" style={{ justifyContent: "flex-end", marginBottom: "1rem" }}>
-            <button
-              className="button button--ghost button--sm"
-              type="button"
-              onClick={() => void loadDocuments(selectedStore.slug)}
-            >
+            <button className="button button--ghost button--sm" type="button" onClick={() => void loadDocuments(selectedStore.slug)}>
               Actualiser
             </button>
           </div>
@@ -417,6 +404,8 @@ export const VectorStoresPage = () => {
           ) : null}
         </Modal>
       ) : null}
-    </AdminLayout>
+    </div>
   );
-};
+}
+
+export default VectorStoresPage;
