@@ -15,7 +15,7 @@ type ManagementPageLayoutProps = {
   toolbar?: ReactNode;
   children: ReactNode;
   maxWidth?: ContentWidth;
-  hideHeader?: boolean;
+  headerVariant?: "default" | "compact";
 };
 
 const contentWidthClassName: Record<ContentWidth, string> = {
@@ -33,15 +33,17 @@ export const ManagementPageLayout = ({
   toolbar,
   children,
   maxWidth = "lg",
-  hideHeader = false,
+  headerVariant = "default",
 }: ManagementPageLayoutProps) => {
   const { openSidebar, isDesktopLayout, isSidebarOpen } = useAppLayout();
   const showSidebarButton = !isDesktopLayout || !isSidebarOpen;
+  const shouldRenderHeader = headerVariant === "default" || showSidebarButton;
+  const isCompactHeader = headerVariant === "compact";
 
   return (
     <div className={styles.page}>
-      {hideHeader ? null : (
-        <header className={styles.header}>
+      {shouldRenderHeader ? (
+        <header className={`${styles.header} ${isCompactHeader ? styles.headerCompact : ""}`}>
           {showSidebarButton ? (
             <button
               type="button"
@@ -55,19 +57,23 @@ export const ManagementPageLayout = ({
             </button>
           ) : null}
 
-          <div className={styles.headerMain}>
-            <h1 className={styles.title}>{title}</h1>
-            {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
-          </div>
+          {!isCompactHeader ? (
+            <>
+              <div className={styles.headerMain}>
+                <h1 className={styles.title}>{title}</h1>
+                {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
+              </div>
 
-          {badge || actions ? (
-            <div className={styles.headerAside}>
-              {badge ? <span className={styles.badge}>{badge}</span> : null}
-              {actions ? <div className={styles.headerActions}>{actions}</div> : null}
-            </div>
+              {badge || actions ? (
+                <div className={styles.headerAside}>
+                  {badge ? <span className={styles.badge}>{badge}</span> : null}
+                  {actions ? <div className={styles.headerActions}>{actions}</div> : null}
+                </div>
+              ) : null}
+            </>
           ) : null}
         </header>
-      )}
+      ) : null}
 
       <div className={styles.inner}>
         <div className={`${styles.content} ${contentWidthClassName[maxWidth]}`}>

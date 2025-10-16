@@ -38,7 +38,7 @@ export const VoicePage = () => {
   return (
     <ManagementPageLayout
       title="Assistant vocal"
-      hideHeader
+      headerVariant="compact"
       maxWidth="lg"
     >
       <VoiceChat />

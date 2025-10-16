@@ -66,12 +66,7 @@ export const VoiceChat = () => {
   return (
     <section className="voice-chat">
       <header className="voice-chat__header">
-        <div>
-          <h2>Assistant vocal</h2>
-          <p className="voice-chat__subtitle">
-            Lancez une session Realtime pour discuter à la voix avec votre agent ChatKit.
-          </p>
-        </div>
+        <h2 className="visually-hidden">Assistant vocal</h2>
         <div className="voice-chat__actions">
           <button
             className="button"

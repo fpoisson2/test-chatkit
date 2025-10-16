@@ -2149,12 +2149,6 @@ button {
   font-size: clamp(1.4rem, 3vw, 1.75rem);
 }
 
-.voice-chat__subtitle {
-  margin: 8px 0 0;
-  color: var(--text-muted);
-  max-width: 520px;
-}
-
 .voice-chat__actions {
   display: flex;
   gap: 12px;
