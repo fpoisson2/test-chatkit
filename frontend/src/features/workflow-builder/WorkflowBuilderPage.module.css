@@ -79,17 +79,19 @@
   position: fixed;
   inset: 0;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
-  padding: 1rem 1rem 1.5rem;
+  padding: 2.5rem 1rem 1.5rem;
   background: rgba(15, 23, 42, 0.45);
   backdrop-filter: blur(4px);
+  overflow-y: auto;
   z-index: 50;
 }
 
 .mobileHeaderModal {
   width: min(620px, 100%);
-  border-radius: 1.25rem 1.25rem 0 0;
+  max-height: min(90vh, 640px);
+  border-radius: 1.25rem;
   border: 1px solid rgba(15, 23, 42, 0.12);
   background: #fff;
   box-shadow: 0 -16px 36px rgba(15, 23, 42, 0.25);
@@ -97,6 +99,7 @@
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
+  overflow-y: auto;
 }
 
 .mobileHeaderModalHeader {
