@@ -2343,7 +2343,7 @@ const WorkflowBuilderPage = () => {
       const draftVersion =
         selectedVersionSummary && !selectedVersionSummary.is_active
           ? selectedVersionSummary
-          : null;
+          : latestDraftVersion ?? null;
 
       const endpoint = draftVersion
         ? `/api/workflows/${selectedWorkflowId}/versions/${draftVersion.id}`
@@ -2461,6 +2461,7 @@ const WorkflowBuilderPage = () => {
   }, [
     authHeader,
     buildGraphPayload,
+    latestDraftVersion,
     loadVersions,
     selectedVersionSummary,
     selectedWorkflowId,

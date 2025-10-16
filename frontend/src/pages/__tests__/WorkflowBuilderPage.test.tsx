@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { MemoryRouter } from "react-router-dom";
 
 import WorkflowBuilderPage from "../WorkflowBuilderPage";
+import { AUTO_SAVE_DELAY_MS } from "../../features/workflow-builder/utils";
 
 const logoutMock = vi.hoisted(() => vi.fn());
 const openSidebarMock = vi.hoisted(() => vi.fn());
@@ -397,6 +398,43 @@ describe("WorkflowBuilderPage", () => {
     expect(postCalls).toHaveLength(0);
 
     await screen.findByText(/modifications enregistrées automatiquement/i);
+  });
+
+  test("bascule sur le brouillon existant lorsqu'on modifie une version active", async () => {
+    const user = userEvent.setup();
+    const fetchMock = setupWorkflowApi();
+
+    const { container } = renderWorkflowBuilder();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const versionSelect = await screen.findByLabelText(/révision/i);
+    await user.selectOptions(versionSelect, String(productionVersionSummary.id));
+
+    await waitFor(() => {
+      expect(versionSelect).toHaveValue(String(productionVersionSummary.id));
+    });
+
+    const triageNode = container.querySelector('[data-id="agent-triage"]');
+    expect(triageNode).not.toBeNull();
+    fireEvent.click(triageNode!);
+
+    const displayNameInput = await screen.findByLabelText(/nom affiché/i);
+    fireEvent.change(displayNameInput, { target: { value: "Analyse production" } });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, AUTO_SAVE_DELAY_MS + 200));
+    });
+
+    const postCalls = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        typeof input === "string" &&
+        input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions`) &&
+        ((init as RequestInit | undefined)?.method ?? "GET").toUpperCase() === "POST",
+    );
+    expect(postCalls).toHaveLength(0);
   });
 
   test("permet d'activer le function tool météo Python", async () => {
