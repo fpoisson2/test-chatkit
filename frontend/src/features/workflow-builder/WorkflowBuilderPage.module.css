@@ -36,6 +36,7 @@
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
+  touch-action: pan-y;
 }
 
 .blockLibraryScroller::-webkit-scrollbar {
@@ -68,10 +69,10 @@
   max-height: min(75vh, 540px);
   border-radius: 1.25rem 1.25rem 0 0;
   padding: 1.75rem 1.35rem 2rem;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.94) 0%, rgba(15, 23, 42, 0.88) 100%);
+  background: transparent;
   box-shadow: none;
   border: none;
-  overflow-y: hidden;
+  overflow-y: auto;
   gap: 1rem;
 }
 
@@ -116,8 +117,8 @@
   display: flex;
   justify-content: center;
   align-items: flex-end;
-  background: rgba(15, 23, 42, 0.35);
-  backdrop-filter: blur(4px);
+  background: transparent;
+  backdrop-filter: none;
   padding: 0 1rem;
   z-index: 35;
 }

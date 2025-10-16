@@ -2511,6 +2511,19 @@ const WorkflowBuilderPage = () => {
   }, [isBlockLibraryOpen, isMobileLayout, scheduleBlockLibraryTransformUpdate]);
 
   useEffect(() => {
+    if (!isMobileLayout || !isBlockLibraryOpen || typeof document === "undefined") {
+      return;
+    }
+    const { style } = document.body;
+    const previousOverflow = style.overflow;
+    style.overflow = "hidden";
+
+    return () => {
+      style.overflow = previousOverflow;
+    };
+  }, [isBlockLibraryOpen, isMobileLayout]);
+
+  useEffect(() => {
     if (!isMobileLayout || !isBlockLibraryOpen) {
       return () => {
         if (blockLibraryAnimationFrameRef.current !== null) {
