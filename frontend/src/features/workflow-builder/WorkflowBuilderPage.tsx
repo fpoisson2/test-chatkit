@@ -124,6 +124,41 @@ const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 const AUTO_SAVE_SUCCESS_MESSAGE = "Modifications enregistrées automatiquement.";
 const DRAFT_VERSION_NAME = "Brouillon";
 
+const parseTimestamp = (value: string): number => {
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+
+const findDraftVersionSummary = (
+  summaries: WorkflowVersionSummary[],
+): WorkflowVersionSummary | null => {
+  const draftByName = summaries.find(
+    (version) => !version.is_active && version.name === DRAFT_VERSION_NAME,
+  );
+  if (draftByName) {
+    return draftByName;
+  }
+  const [latestDraft] = [...summaries]
+    .filter((version) => !version.is_active)
+    .sort((left, right) => parseTimestamp(right.updated_at) - parseTimestamp(left.updated_at));
+  return latestDraft ?? null;
+};
+
+const normalizeVersionSummaries = (
+  summaries: WorkflowVersionSummary[],
+): WorkflowVersionSummary[] => {
+  if (summaries.length === 0) {
+    return [];
+  }
+  const draft = findDraftVersionSummary(summaries);
+  if (!draft) {
+    return [...summaries];
+  }
+  const normalizedDraft: WorkflowVersionSummary = { ...draft, name: DRAFT_VERSION_NAME };
+  const others = summaries.filter((version) => version.id !== draft.id);
+  return [normalizedDraft, ...others];
+};
+
 const useMediaQuery = (query: string) => {
   const [matches, setMatches] = useState<boolean>(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -318,8 +353,9 @@ const WorkflowBuilderPage = () => {
               <option value="">Aucune version disponible</option>
             ) : (
               versions.map((version) => {
-                const labelParts = [`v${version.version}`];
-                if (version.name) {
+                const isDraft = !version.is_active && version.name === DRAFT_VERSION_NAME;
+                const labelParts = isDraft ? [DRAFT_VERSION_NAME] : [`v${version.version}`];
+                if (!isDraft && version.name) {
                   labelParts.push(version.name);
                 }
                 if (version.is_active) {
@@ -644,7 +680,7 @@ const WorkflowBuilderPage = () => {
             throw new Error(`Échec du chargement des versions (${response.status})`);
           }
           const data: WorkflowVersionSummary[] = await response.json();
-          const normalizedVersions = [...data];
+          const normalizedVersions = normalizeVersionSummaries(data);
           setVersions(normalizedVersions);
           if (normalizedVersions.length === 0) {
             setSelectedVersionId(null);
@@ -666,9 +702,7 @@ const WorkflowBuilderPage = () => {
           } else if (selectedVersionId && availableIds.has(selectedVersionId)) {
             nextVersionId = selectedVersionId;
           } else {
-            const draft = normalizedVersions.find(
-              (version) => !version.is_active && version.name === DRAFT_VERSION_NAME,
-            );
+            const draft = findDraftVersionSummary(normalizedVersions);
             if (draft) {
               nextVersionId = draft.id;
             } else {
@@ -1965,40 +1999,37 @@ const WorkflowBuilderPage = () => {
     }
 
     try {
-    const graphPayload = buildGraphPayload();
-    const graphSnapshot = JSON.stringify(graphPayload);
-    const currentWorkflow = workflows.find((workflow) => workflow.id === selectedWorkflowId);
-    const draftVersionSummary =
-      versions.find(
-        (version) => !version.is_active && version.name === DRAFT_VERSION_NAME,
-      ) ?? null;
-    const isEditingDraft =
-      selectedVersionSummary?.id != null &&
-      draftVersionSummary?.id === selectedVersionSummary.id;
-    const targetDraftId = isEditingDraft
-      ? selectedVersionSummary!.id
-      : draftVersionSummary?.id ?? null;
-    const shouldCreateDraft = targetDraftId === null;
+      const graphPayload = buildGraphPayload();
+      const graphSnapshot = JSON.stringify(graphPayload);
+      const currentWorkflow = workflows.find((workflow) => workflow.id === selectedWorkflowId);
+      const draftVersionSummary = findDraftVersionSummary(versions);
+      const isEditingDraft =
+        selectedVersionSummary?.id != null &&
+        draftVersionSummary?.id === selectedVersionSummary.id;
+      const targetDraftId = isEditingDraft
+        ? selectedVersionSummary!.id
+        : draftVersionSummary?.id ?? null;
+      const shouldCreateDraft = targetDraftId === null;
 
-    const endpoint = shouldCreateDraft
-      ? `/api/workflows/${selectedWorkflowId}/versions`
-      : `/api/workflows/${selectedWorkflowId}/versions/${targetDraftId}`;
-    const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
-    const requestPayload = shouldCreateDraft
-      ? { graph: graphPayload, mark_as_active: false, name: DRAFT_VERSION_NAME }
-      : { graph: graphPayload };
-    setSaveState("saving");
-    for (const url of candidates) {
-      const response = await fetch(url, {
-        method: shouldCreateDraft ? "POST" : "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeader,
-        },
-        body: JSON.stringify(requestPayload),
-      });
-      if (!response.ok) {
-        throw new Error(`Échec de l'enregistrement (${response.status})`);
+      const endpoint = shouldCreateDraft
+        ? `/api/workflows/${selectedWorkflowId}/versions`
+        : `/api/workflows/${selectedWorkflowId}/versions/${targetDraftId}`;
+      const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
+      const requestPayload = shouldCreateDraft
+        ? { graph: graphPayload, mark_as_active: false, name: DRAFT_VERSION_NAME }
+        : { graph: graphPayload };
+      setSaveState("saving");
+      for (const url of candidates) {
+        const response = await fetch(url, {
+          method: shouldCreateDraft ? "POST" : "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify(requestPayload),
+        });
+        if (!response.ok) {
+          throw new Error(`Échec de l'enregistrement (${response.status})`);
       }
 
       let savedVersionId = targetDraftId;

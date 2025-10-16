@@ -367,6 +367,62 @@ describe("WorkflowBuilderPage", () => {
     await screen.findByText(/modifications enregistrées automatiquement/i);
   });
 
+  test("garde le brouillon en tête et réutilise la même révision", async () => {
+    const fetchMock = setupWorkflowApi({
+      versions: [
+        productionVersionSummary,
+        { ...draftVersionSummary, name: null, version: 4, updated_at: "2024-01-04T00:00:00Z" },
+      ],
+      workflowDetail: {
+        ...defaultResponse,
+        name: null,
+        version: 4,
+        is_active: false,
+        updated_at: "2024-01-04T00:00:00Z",
+      },
+    });
+
+    const { container } = renderWorkflowBuilder();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const versionSelect = await screen.findByLabelText(/révision/i);
+    const options = within(versionSelect).getAllByRole("option");
+    expect(options[0]).toHaveTextContent(/^Brouillon$/);
+
+    const triageNode = container.querySelector('[data-id="agent-triage"]');
+    expect(triageNode).not.toBeNull();
+    fireEvent.click(triageNode!);
+
+    const modelInput = await screen.findByPlaceholderText(/ex\. gpt-4\.1-mini/i);
+    fireEvent.change(modelInput, { target: { value: "gpt-4.1-mini" } });
+
+    await waitFor(
+      () => {
+        expect(
+          fetchMock.mock.calls.some(
+            ([input, init]) =>
+              typeof input === "string" &&
+              input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${draftVersionSummary.id}`) &&
+              (init as RequestInit | undefined)?.method === "PUT",
+          ),
+        ).toBe(true);
+      },
+      { timeout: 4000 },
+    );
+
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          typeof input === "string" &&
+          input.endsWith(`/api/workflows/${defaultResponse.workflow_id}/versions`) &&
+          (init as RequestInit | undefined)?.method === "POST",
+      ),
+    ).toBe(false);
+  });
+
 
 
   test("permet d'activer le function tool météo Python", async () => {
