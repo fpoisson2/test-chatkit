@@ -185,19 +185,41 @@ const WorkflowBuilderPage = () => {
   const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
   const [isBlockLibraryOpen, setBlockLibraryOpen] = useState<boolean>(() => !isMobileLayout);
+  const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
   const blockLibraryId = "workflow-builder-block-library";
+  const blockLibraryTitleId = `${blockLibraryId}-title`;
   const toggleBlockLibrary = useCallback(() => {
     setBlockLibraryOpen((prev) => !prev);
   }, []);
-  const closeBlockLibrary = useCallback(() => {
-    setBlockLibraryOpen(false);
-  }, []);
+  const closeBlockLibrary = useCallback(
+    (options: { focusToggle?: boolean } = {}) => {
+      setBlockLibraryOpen(false);
+      if (options.focusToggle && blockLibraryToggleRef.current) {
+        blockLibraryToggleRef.current.focus();
+      }
+    },
+    [blockLibraryToggleRef],
+  );
 
   useEffect(() => {
     setBlockLibraryOpen(!isMobileLayout);
   }, [isMobileLayout]);
+
+  useEffect(() => {
+    if (!isMobileLayout || !isBlockLibraryOpen) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeBlockLibrary({ focusToggle: true });
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeBlockLibrary, isBlockLibraryOpen, isMobileLayout]);
   const closeNavigation = useCallback(() => setNavigationOpen(false), []);
   const toggleNavigation = useCallback(() => setNavigationOpen((prev) => !prev), []);
 
@@ -2478,104 +2500,191 @@ const WorkflowBuilderPage = () => {
               )}
             </div>
           </div>
-          <aside
-            id={blockLibraryId}
-            aria-label="Bibliothèque de blocs"
-            className={`${styles.blockLibrary} ${isMobileLayout ? styles.blockLibraryMobile : ""}`.trim()}
-            hidden={isMobileLayout && !isBlockLibraryOpen}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                gap: "0.75rem",
-              }}
-            >
-              <div>
-                <h2 style={{ margin: 0, fontSize: "1.25rem", color: "#0f172a" }}>Bibliothèque de blocs</h2>
-                <p style={{ margin: "0.25rem 0 0", color: "#475569" }}>
-                  Ajoutez des blocs pour construire votre workflow.
-                </p>
-              </div>
-              {isMobileLayout ? (
-                <button
-                  type="button"
-                  onClick={closeBlockLibrary}
-                  aria-controls={blockLibraryId}
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    color: "#0f172a",
-                    fontWeight: 600,
-                    fontSize: "0.95rem",
-                    cursor: "pointer",
+          {isMobileLayout ? (
+            <>
+              {isBlockLibraryOpen ? (
+                <div
+                  className={styles.mobileOverlay}
+                  role="presentation"
+                  onClick={(event) => {
+                    if (event.target === event.currentTarget) {
+                      closeBlockLibrary({ focusToggle: true });
+                    }
                   }}
                 >
-                  Fermer
-                </button>
-              ) : null}
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {blockLibraryItems.map((item) => {
-                const disabled = loading || !selectedWorkflowId;
-                return (
-                  <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => item.onClick()}
-                    disabled={disabled}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.75rem",
-                      padding: "0.75rem",
-                      borderRadius: "0.9rem",
-                      border: "1px solid rgba(15, 23, 42, 0.12)",
-                      background: "#fff",
-                      boxShadow: "0 8px 18px rgba(15, 23, 42, 0.08)",
-                      cursor: disabled ? "not-allowed" : "pointer",
-                      opacity: disabled ? 0.5 : 1,
-                    }}
+                  <aside
+                    id={blockLibraryId}
+                    aria-labelledby={blockLibraryTitleId}
+                    className={`${styles.blockLibrary} ${styles.blockLibraryMobile}`}
+                    role="dialog"
+                    aria-modal="true"
                   >
-                    <span
-                      aria-hidden="true"
+                    <div
                       style={{
-                        width: "2.35rem",
-                        height: "2.35rem",
-                        borderRadius: "0.75rem",
-                        background: item.color,
-                        color: "#fff",
-                        display: "grid",
-                        placeItems: "center",
-                        fontWeight: 700,
-                        fontSize: "1.05rem",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                        gap: "0.75rem",
                       }}
                     >
-                      {item.shortLabel}
-                    </span>
-                    <div style={{ textAlign: "left" }}>
-                      <strong style={{ fontSize: "1rem", color: "#0f172a" }}>{item.label}</strong>
-                      <p style={{ margin: 0, color: "#475569", fontSize: "0.85rem" }}>
-                        Ajoute un bloc « {item.label.toLowerCase()} » au workflow.
-                      </p>
+                      <div>
+                        <h2
+                          id={blockLibraryTitleId}
+                          style={{ margin: 0, fontSize: "1.25rem", color: "#0f172a" }}
+                        >
+                          Bibliothèque de blocs
+                        </h2>
+                        <p style={{ margin: "0.25rem 0 0", color: "#475569" }}>
+                          Ajoutez des blocs pour construire votre workflow.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => closeBlockLibrary({ focusToggle: true })}
+                        aria-controls={blockLibraryId}
+                        className={styles.closeLinkButton}
+                      >
+                        Fermer
+                      </button>
                     </div>
-                  </button>
-                );
-              })}
-            </div>
-          </aside>
-          {isMobileLayout ? (
-            <button
-              type="button"
-              className={styles.mobileToggleButton}
-              onClick={toggleBlockLibrary}
-              aria-controls={blockLibraryId}
-              aria-expanded={isBlockLibraryOpen}
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                      {blockLibraryItems.map((item) => {
+                        const disabled = loading || !selectedWorkflowId;
+                        return (
+                          <button
+                            key={item.key}
+                            type="button"
+                            onClick={() => item.onClick()}
+                            disabled={disabled}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "0.75rem",
+                              padding: "0.75rem",
+                              borderRadius: "0.9rem",
+                              border: "1px solid rgba(15, 23, 42, 0.12)",
+                              background: "#fff",
+                              boxShadow: "0 8px 18px rgba(15, 23, 42, 0.08)",
+                              cursor: disabled ? "not-allowed" : "pointer",
+                              opacity: disabled ? 0.5 : 1,
+                            }}
+                          >
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                width: "2.35rem",
+                                height: "2.35rem",
+                                borderRadius: "0.75rem",
+                                background: item.color,
+                                color: "#fff",
+                                display: "grid",
+                                placeItems: "center",
+                                fontWeight: 700,
+                                fontSize: "1.05rem",
+                              }}
+                            >
+                              {item.shortLabel}
+                            </span>
+                            <div style={{ textAlign: "left" }}>
+                              <strong style={{ fontSize: "1rem", color: "#0f172a" }}>{item.label}</strong>
+                              <p style={{ margin: 0, color: "#475569", fontSize: "0.85rem" }}>
+                                Ajoute un bloc « {item.label.toLowerCase()} » au workflow.
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </aside>
+                </div>
+              ) : null}
+              <button
+                type="button"
+                ref={blockLibraryToggleRef}
+                className={styles.mobileToggleButton}
+                onClick={toggleBlockLibrary}
+                aria-controls={blockLibraryId}
+                aria-expanded={isBlockLibraryOpen}
+              >
+                <span aria-hidden="true">{isBlockLibraryOpen ? "×" : "+"}</span>
+                <span className={styles.srOnly}>
+                  {isBlockLibraryOpen ? "Fermer la bibliothèque de blocs" : "Ouvrir la bibliothèque de blocs"}
+                </span>
+              </button>
+            </>
+          ) : (
+            <aside
+              id={blockLibraryId}
+              aria-labelledby={blockLibraryTitleId}
+              className={styles.blockLibrary}
             >
-              {isBlockLibraryOpen ? "Fermer la bibliothèque" : "Ouvrir la bibliothèque"}
-            </button>
-          ) : null}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  gap: "0.75rem",
+                }}
+              >
+                <div>
+                  <h2 id={blockLibraryTitleId} style={{ margin: 0, fontSize: "1.25rem", color: "#0f172a" }}>
+                    Bibliothèque de blocs
+                  </h2>
+                  <p style={{ margin: "0.25rem 0 0", color: "#475569" }}>
+                    Ajoutez des blocs pour construire votre workflow.
+                  </p>
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                {blockLibraryItems.map((item) => {
+                  const disabled = loading || !selectedWorkflowId;
+                  return (
+                    <button
+                      key={item.key}
+                      type="button"
+                      onClick={() => item.onClick()}
+                      disabled={disabled}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.75rem",
+                        padding: "0.75rem",
+                        borderRadius: "0.9rem",
+                        border: "1px solid rgba(15, 23, 42, 0.12)",
+                        background: "#fff",
+                        boxShadow: "0 8px 18px rgba(15, 23, 42, 0.08)",
+                        cursor: disabled ? "not-allowed" : "pointer",
+                        opacity: disabled ? 0.5 : 1,
+                      }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: "2.35rem",
+                          height: "2.35rem",
+                          borderRadius: "0.75rem",
+                          background: item.color,
+                          color: "#fff",
+                          display: "grid",
+                          placeItems: "center",
+                          fontWeight: 700,
+                          fontSize: "1.05rem",
+                        }}
+                      >
+                        {item.shortLabel}
+                      </span>
+                      <div style={{ textAlign: "left" }}>
+                        <strong style={{ fontSize: "1rem", color: "#0f172a" }}>{item.label}</strong>
+                        <p style={{ margin: 0, color: "#475569", fontSize: "0.85rem" }}>
+                          Ajoute un bloc « {item.label.toLowerCase()} » au workflow.
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </aside>
+          )}
           {showPropertiesPanel ? (
             <aside
               aria-label="Propriétés du bloc sélectionné"
