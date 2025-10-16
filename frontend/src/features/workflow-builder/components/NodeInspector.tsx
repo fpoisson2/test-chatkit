@@ -715,23 +715,10 @@ const NodeInspector = ({
           )}
 
       {kind === "widget" && (
-        <section
-          aria-label="Configuration du bloc widget"
-          style={{
-            marginTop: "1rem",
-            border: "1px solid rgba(15, 23, 42, 0.12)",
-            borderRadius: "0.75rem",
-            padding: "0.75rem",
-            display: "grid",
-            gap: "0.75rem",
-          }}
-        >
-          <header>
-            <h3 style={{ margin: 0, fontSize: "1rem" }}>Widget à diffuser</h3>
-            <p style={{ color: "#475569", margin: "0.25rem 0 0", fontSize: "0.95rem" }}>
-              Choisissez un widget de la bibliothèque ou renseignez son slug pour l'afficher dans ChatKit.
-            </p>
-          </header>
+        <>
+          <p style={{ color: "#475569", margin: "0.5rem 0 0" }}>
+            Choisissez un widget de la bibliothèque ou renseignez son slug pour l'afficher dans ChatKit.
+          </p>
 
           <label style={fieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-input`}>
             <span>Slug du widget</span>
@@ -768,7 +755,7 @@ const NodeInspector = ({
             </small>
           </label>
 
-          <div style={{ display: "flex", gap: "0.5rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginTop: "0.5rem" }}>
             <button
               type="button"
               className="btn secondary"
@@ -778,7 +765,7 @@ const NodeInspector = ({
             >
               Parcourir la bibliothèque
             </button>
-            <small style={{ alignSelf: "center", color: "#64748b" }}>
+            <small style={{ color: "#64748b" }}>
               Ouvre la bibliothèque complète pour prévisualiser chaque widget.
             </small>
           </div>
@@ -815,11 +802,13 @@ const NodeInspector = ({
             </datalist>
           )}
 
-          <WidgetVariablesPanel
-            assignments={widgetNodeVariables}
-            onChange={(next) => onWidgetNodeVariablesChange(node.id, next)}
-          />
-        </section>
+          <div style={{ marginTop: "0.75rem" }}>
+            <WidgetVariablesPanel
+              assignments={widgetNodeVariables}
+              onChange={(next) => onWidgetNodeVariablesChange(node.id, next)}
+            />
+          </div>
+        </>
       )}
 
       <div
