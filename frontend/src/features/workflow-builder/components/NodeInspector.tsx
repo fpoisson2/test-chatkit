@@ -72,7 +72,6 @@ const WEB_SEARCH_LOCATION_LABELS = {
 
 export type NodeInspectorProps = {
   node: FlowNode;
-  onToggle: (nodeId: string) => void;
   onDisplayNameChange: (nodeId: string, value: string) => void;
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onAgentModelChange: (nodeId: string, value: string) => void;
@@ -124,7 +123,6 @@ export type NodeInspectorProps = {
 
 const NodeInspector = ({
   node,
-  onToggle,
   onDisplayNameChange,
   onAgentMessageChange,
   onAgentModelChange,
@@ -163,7 +161,7 @@ const NodeInspector = ({
   onEndMessageChange,
   onRemove,
 }: NodeInspectorProps) => {
-  const { kind, displayName, isEnabled, parameters } = node.data;
+  const { kind, displayName, parameters } = node.data;
   const isFixed = kind === "start";
   const endMessage = kind === "end" ? getEndMessage(parameters) : "";
   const agentMessage = getAgentMessage(parameters);
@@ -225,7 +223,7 @@ const NodeInspector = ({
   }, [trimmedWidgetNodeSlug, widgets]);
   const [widgetPickerTarget, setWidgetPickerTarget] = useState<"agent" | "widget" | null>(null);
   const canBrowseWidgets = !widgetsLoading && !widgetsError && widgets.length > 0;
-  const widgetSlugSuggestionsId = useId();
+  const widgetSelectId = useId();
   const widgetNodeSlugSuggestionsId = useId();
 
   const handleOpenWidgetPicker = (target: "agent" | "widget") => {
@@ -267,9 +265,11 @@ const NodeInspector = ({
     }
   }
   let widgetValidationMessage: string | null = null;
-  if (responseFormat.kind === "widget" && !widgetsLoading && !widgetsError && widgets.length > 0) {
-    if (!trimmedWidgetSlug) {
-      widgetValidationMessage = "Sélectionnez un widget de sortie ou renseignez un slug valide.";
+  if (responseFormat.kind === "widget" && !widgetsLoading && !widgetsError) {
+    if (widgets.length === 0) {
+      widgetValidationMessage = "Aucun widget n'est disponible dans la bibliothèque.";
+    } else if (!trimmedWidgetSlug) {
+      widgetValidationMessage = "Sélectionnez un widget de sortie.";
     } else if (!selectedWidgetExists) {
       widgetValidationMessage = "Le widget sélectionné n'est plus disponible. Choisissez-en un autre.";
     }
@@ -283,6 +283,7 @@ const NodeInspector = ({
     }
   }
   const widgetNodeSelectValue = widgetNodeSelectedWidget ? trimmedWidgetNodeSlug : "";
+  const widgetSelectValue = selectedWidgetExists ? trimmedWidgetSlug : "";
   const vectorStoreNodeExists =
     vectorStoreNodeSlug.length > 0 && vectorStores.some((store) => store.slug === vectorStoreNodeSlug);
   const vectorStoreNodeValidationMessages: string[] = [];
@@ -493,33 +494,30 @@ const NodeInspector = ({
           <label style={inlineFieldStyle}>
             <span style={labelContentStyle}>
               Modèle OpenAI
-              <HelpTooltip label="Sélectionnez un modèle autorisé ou saisissez une valeur personnalisée dans le champ texte." />
+              <HelpTooltip label="Sélectionnez un modèle autorisé pour exécuter ce bloc." />
             </span>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", flex: 1 }}>
-              <select
-                value={selectedModelOption}
-                onChange={(event) => onAgentModelChange(node.id, event.target.value)}
-                disabled={availableModelsLoading}
-              >
-                <option value="">Modèle personnalisé ou non listé</option>
-                {availableModels.map((model) => (
-                  <option key={model.id} value={model.name}>
-                    {model.display_name?.trim()
-                      ? `${model.display_name} (${model.name})`
-                      : model.name}
-                    {model.supports_reasoning ? " – raisonnement" : ""}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="text"
-                value={agentModel}
-                placeholder="Ex. gpt-4.1-mini"
-                onChange={(event) => onAgentModelChange(node.id, event.target.value)}
-                aria-label="Modèle OpenAI personnalisé"
-              />
-            </div>
+            <select
+              value={selectedModelOption}
+              onChange={(event) => onAgentModelChange(node.id, event.target.value)}
+              disabled={availableModelsLoading}
+            >
+              <option value="">Sélectionnez un modèle</option>
+              {availableModels.map((model) => (
+                <option key={model.id} value={model.name}>
+                  {model.display_name?.trim()
+                    ? `${model.display_name} (${model.name})`
+                    : model.name}
+                  {model.supports_reasoning ? " – raisonnement" : ""}
+                </option>
+              ))}
+            </select>
           </label>
+          {agentModel.trim() && !matchedModel && !availableModelsLoading ? (
+            <p style={{ color: "#b91c1c", margin: "0.5rem 0 0" }}>
+              Ce bloc utilise actuellement un modèle non listé ({agentModel}). Sélectionnez un modèle dans la
+              liste ci-dessus.
+            </p>
+          ) : null}
           {availableModelsLoading ? (
             <p style={{ color: "#475569", margin: "0.5rem 0 0" }}>Chargement des modèles autorisés…</p>
           ) : availableModelsError ? (
@@ -720,32 +718,32 @@ const NodeInspector = ({
 
           {responseFormat.kind === "widget" && (
             <>
-              <label style={fieldStyle} htmlFor={`${widgetSlugSuggestionsId}-input`}>
+              <label style={inlineFieldStyle} htmlFor={`${widgetSelectId}-select`}>
                 <span style={labelContentStyle}>
                   Widget de sortie
-                  <HelpTooltip label="Sélectionnez un widget existant ou saisissez son slug pour afficher la réponse dans ChatKit." />
+                  <HelpTooltip label="Sélectionnez un widget existant pour afficher la réponse dans ChatKit." />
                 </span>
-                <input
-                  id={`${widgetSlugSuggestionsId}-input`}
-                  type="text"
-                  value={responseWidgetSlug}
+                <select
+                  id={`${widgetSelectId}-select`}
+                  value={widgetSelectValue}
                   onChange={(event) => onAgentResponseWidgetSlugChange(node.id, event.target.value)}
-                  placeholder="Ex. resume"
-                  list={widgets.length > 0 ? `${widgetSlugSuggestionsId}-list` : undefined}
+                  disabled={widgetsLoading || !!widgetsError || widgets.length === 0}
                   aria-describedby={
-                    widgetValidationMessage ? `${widgetSlugSuggestionsId}-message` : undefined
+                    widgetValidationMessage ? `${widgetSelectId}-message` : undefined
                   }
-                />
-              </label>
-              {widgets.length > 0 && (
-                <datalist id={`${widgetSlugSuggestionsId}-list`}>
+                >
+                  <option value="">
+                    {widgets.length === 0
+                      ? "Aucun widget disponible"
+                      : "Sélectionnez un widget"}
+                  </option>
                   {widgets.map((widget) => (
                     <option key={widget.slug} value={widget.slug}>
                       {widget.title?.trim() ? `${widget.title} (${widget.slug})` : widget.slug}
                     </option>
                   ))}
-                </datalist>
-              )}
+                </select>
+              </label>
               <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
                 <button
                   type="button"
@@ -760,24 +758,26 @@ const NodeInspector = ({
               {widgetsLoading ? (
                 <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
               ) : widgetsError ? (
-                <p style={{ color: "#b91c1c", margin: 0 }}>
-                  {widgetsError}
-                  <br />
-                  Vous pouvez saisir le slug du widget manuellement ci-dessus.
-                </p>
+                <p style={{ color: "#b91c1c", margin: 0 }}>{widgetsError}</p>
               ) : widgets.length === 0 ? (
                 <p style={{ color: "#475569", margin: 0 }}>
-                  Créez un widget dans la bibliothèque dédiée ou saisissez son slug manuellement ci-dessus.
+                  Créez un widget dans la bibliothèque dédiée pour l'utiliser ici.
                 </p>
               ) : null}
               {widgetValidationMessage ? (
                 <p
-                  id={`${widgetSlugSuggestionsId}-message`}
+                  id={`${widgetSelectId}-message`}
                   style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}
                 >
                   {widgetValidationMessage}
                 </p>
               ) : null}
+              {responseWidgetSlug && !widgetsLoading && widgetsError && (
+                <p style={{ color: "#475569", margin: "0.25rem 0 0" }}>
+                  Le widget sélectionné ({responseWidgetSlug}) sera conservé tant que la bibliothèque n'est
+                  pas disponible.
+                </p>
+              )}
             </>
           )}
 
@@ -1066,19 +1066,6 @@ const NodeInspector = ({
         </>
       )}
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginTop: "1rem",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <span style={labelContentStyle}>Activer ce nœud</span>
-          <ToggleSwitch checked={isEnabled} onChange={() => onToggle(node.id)} disabled={isFixed} />
-        </div>
-      </div>
       </section>
       {widgetPickerTarget && canBrowseWidgets ? (
         <WidgetLibraryModal

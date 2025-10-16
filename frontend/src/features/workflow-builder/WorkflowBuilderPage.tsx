@@ -1131,17 +1131,6 @@ const WorkflowBuilderPage = () => {
     [updateNodeData]
   );
 
-  const handleToggleNode = useCallback(
-    (nodeId: string) => {
-      updateNodeData(nodeId, (data) => ({
-        ...data,
-        isEnabled: !data.isEnabled,
-      }));
-    },
-    [updateNodeData]
-  );
-
-
   const handleAgentMessageChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
@@ -2667,7 +2656,6 @@ const WorkflowBuilderPage = () => {
         {selectedNode ? (
           <NodeInspector
             node={selectedNode}
-            onToggle={handleToggleNode}
             onDisplayNameChange={handleDisplayNameChange}
             onAgentMessageChange={handleAgentMessageChange}
             onAgentModelChange={handleAgentModelChange}
