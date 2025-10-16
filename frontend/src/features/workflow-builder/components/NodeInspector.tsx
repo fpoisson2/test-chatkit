@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import type {
   AvailableModel,
@@ -269,7 +269,7 @@ const NodeInspector = ({
   let widgetValidationMessage: string | null = null;
   if (responseFormat.kind === "widget" && !widgetsLoading && !widgetsError && widgets.length > 0) {
     if (!trimmedWidgetSlug) {
-      widgetValidationMessage = "Sélectionnez un widget de sortie.";
+      widgetValidationMessage = "Sélectionnez un widget de sortie ou renseignez un slug valide.";
     } else if (!selectedWidgetExists) {
       widgetValidationMessage = "Le widget sélectionné n'est plus disponible. Choisissez-en un autre.";
     }
@@ -282,7 +282,6 @@ const NodeInspector = ({
       widgetNodeValidationMessage = "Le widget sélectionné n'est plus disponible. Choisissez-en un autre.";
     }
   }
-  const widgetSelectValue = selectedWidgetExists ? trimmedWidgetSlug : "";
   const widgetNodeSelectValue = widgetNodeSelectedWidget ? trimmedWidgetNodeSlug : "";
   const vectorStoreNodeExists =
     vectorStoreNodeSlug.length > 0 && vectorStores.some((store) => store.slug === vectorStoreNodeSlug);
@@ -343,21 +342,40 @@ const NodeInspector = ({
   return (
     <>
       <section aria-label={`Propriétés du nœud ${node.data.slug}`}>
-      <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 0.75rem" }}>
-        <dt>Identifiant</dt>
-        <dd>{node.data.slug}</dd>
-        <dt>Type</dt>
-        <dd>{labelForKind(kind)}</dd>
-      </dl>
+        <div style={inspectorHeaderStyle}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+            <span style={inspectorTitleStyle}>
+              {displayName.trim() ? displayName : `Bloc ${labelForKind(kind)}`}
+            </span>
+            <span style={inspectorSubtitleStyle}>Identifiant : {node.data.slug}</span>
+          </div>
+          {!isFixed && (
+            <button
+              type="button"
+              onClick={() => onRemove(node.id)}
+              style={deleteButtonStyle}
+              aria-label={`Supprimer le bloc ${displayName.trim() ? displayName : node.data.slug}`}
+              title="Supprimer ce bloc"
+            >
+              <TrashIcon />
+            </button>
+          )}
+        </div>
+        <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 0.75rem" }}>
+          <dt>Identifiant</dt>
+          <dd>{node.data.slug}</dd>
+          <dt>Type</dt>
+          <dd>{labelForKind(kind)}</dd>
+        </dl>
 
-      <label style={fieldStyle}>
-        <span>Nom affiché</span>
-        <input
-          type="text"
-          value={displayName}
-          onChange={(event) => onDisplayNameChange(node.id, event.target.value)}
-        />
-      </label>
+        <label style={fieldStyle}>
+          <span>Nom affiché</span>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(event) => onDisplayNameChange(node.id, event.target.value)}
+          />
+        </label>
 
       {kind === "widget" && (
         <>
@@ -702,14 +720,11 @@ const NodeInspector = ({
 
           {responseFormat.kind === "widget" && (
             <>
-              <div style={fieldStyle}>
-                <label
-                  htmlFor={`${widgetSlugSuggestionsId}-input`}
-                  style={labelContentStyle}
-                >
-                  Slug du widget de sortie
-                  <HelpTooltip label="Correspond au slug du widget tel qu'il apparaît dans la bibliothèque." />
-                </label>
+              <label style={fieldStyle} htmlFor={`${widgetSlugSuggestionsId}-input`}>
+                <span style={labelContentStyle}>
+                  Widget de sortie
+                  <HelpTooltip label="Sélectionnez un widget existant ou saisissez son slug pour afficher la réponse dans ChatKit." />
+                </span>
                 <input
                   id={`${widgetSlugSuggestionsId}-input`}
                   type="text"
@@ -717,66 +732,52 @@ const NodeInspector = ({
                   onChange={(event) => onAgentResponseWidgetSlugChange(node.id, event.target.value)}
                   placeholder="Ex. resume"
                   list={widgets.length > 0 ? `${widgetSlugSuggestionsId}-list` : undefined}
+                  aria-describedby={
+                    widgetValidationMessage ? `${widgetSlugSuggestionsId}-message` : undefined
+                  }
                 />
-                <label
-                  htmlFor={`${widgetSlugSuggestionsId}-select`}
-                  style={labelContentStyle}
-                >
-                  Widget de sortie
-                  <HelpTooltip label="Le widget sélectionné sera affiché dans ChatKit lorsque l'agent répondra." />
-                </label>
-                <select
-                  id={`${widgetSlugSuggestionsId}-select`}
-                  value={widgetSelectValue}
-                  onChange={(event) => onAgentResponseWidgetSlugChange(node.id, event.target.value)}
-                  disabled={widgetsLoading || !!widgetsError || widgets.length === 0}
-                >
-                  <option value="">Sélectionnez un widget</option>
-                  {widgets.map((widget) => (
-                    <option key={widget.slug} value={widget.slug}>
-                      {widget.title?.trim()
-                        ? `${widget.title} (${widget.slug})`
-                        : widget.slug}
-                    </option>
-                  ))}
-                </select>
-                <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-                  <button
-                    type="button"
-                    className="btn secondary"
-                    onClick={() => handleOpenWidgetPicker("agent")}
-                    disabled={!canBrowseWidgets}
-                    aria-label="Parcourir la bibliothèque de widgets pour la réponse de l'agent"
-                  >
-                    Parcourir la bibliothèque
-                  </button>
-                </div>
-                {widgetsLoading ? (
-                  <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
-                ) : widgetsError ? (
-                  <p style={{ color: "#b91c1c", margin: 0 }}>
-                    {widgetsError}
-                    <br />
-                    Vous pouvez saisir le slug du widget manuellement ci-dessus.
-                  </p>
-                ) : widgets.length === 0 ? (
-                  <p style={{ color: "#475569", margin: 0 }}>
-                    Créez un widget dans la bibliothèque dédiée ou saisissez son slug manuellement ci-dessus.
-                  </p>
-                ) : null}
-              </div>
-              {widgetValidationMessage ? (
-                <p style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}>{widgetValidationMessage}</p>
-              ) : null}
+              </label>
               {widgets.length > 0 && (
                 <datalist id={`${widgetSlugSuggestionsId}-list`}>
                   {widgets.map((widget) => (
                     <option key={widget.slug} value={widget.slug}>
-                      {widget.title?.trim() ? widget.title : widget.slug}
+                      {widget.title?.trim() ? `${widget.title} (${widget.slug})` : widget.slug}
                     </option>
                   ))}
                 </datalist>
               )}
+              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => handleOpenWidgetPicker("agent")}
+                  disabled={!canBrowseWidgets}
+                  aria-label="Parcourir la bibliothèque de widgets pour la réponse de l'agent"
+                >
+                  Parcourir la bibliothèque
+                </button>
+              </div>
+              {widgetsLoading ? (
+                <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
+              ) : widgetsError ? (
+                <p style={{ color: "#b91c1c", margin: 0 }}>
+                  {widgetsError}
+                  <br />
+                  Vous pouvez saisir le slug du widget manuellement ci-dessus.
+                </p>
+              ) : widgets.length === 0 ? (
+                <p style={{ color: "#475569", margin: 0 }}>
+                  Créez un widget dans la bibliothèque dédiée ou saisissez son slug manuellement ci-dessus.
+                </p>
+              ) : null}
+              {widgetValidationMessage ? (
+                <p
+                  id={`${widgetSlugSuggestionsId}-message`}
+                  style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}
+                >
+                  {widgetValidationMessage}
+                </p>
+              ) : null}
             </>
           )}
 
@@ -1077,12 +1078,7 @@ const NodeInspector = ({
           <span style={labelContentStyle}>Activer ce nœud</span>
           <ToggleSwitch checked={isEnabled} onChange={() => onToggle(node.id)} disabled={isFixed} />
         </div>
-        {!isFixed && (
-          <button type="button" className="btn danger" onClick={() => onRemove(node.id)}>
-            Supprimer
-          </button>
-        )}
-        </div>
+      </div>
       </section>
       {widgetPickerTarget && canBrowseWidgets ? (
         <WidgetLibraryModal
@@ -1335,6 +1331,44 @@ const labelContentStyle: CSSProperties = {
   color: "#0f172a",
 };
 
+const inspectorHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+  marginBottom: "1rem",
+};
+
+const inspectorTitleStyle: CSSProperties = {
+  fontSize: "1rem",
+  fontWeight: 700,
+  color: "#0f172a",
+};
+
+const inspectorSubtitleStyle: CSSProperties = {
+  fontSize: "0.85rem",
+  color: "#475569",
+};
+
+const deleteButtonStyle: CSSProperties = {
+  border: "1px solid rgba(220, 38, 38, 0.25)",
+  backgroundColor: "rgba(220, 38, 38, 0.12)",
+  color: "#b91c1c",
+  borderRadius: "9999px",
+  padding: "0.35rem",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+  boxShadow: "0 6px 14px rgba(220, 38, 38, 0.2)",
+  transition: "background-color 150ms ease, transform 150ms ease",
+};
+
+const deleteButtonIconStyle: CSSProperties = {
+  width: "1.1rem",
+  height: "1.1rem",
+};
+
 const fieldStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -1357,19 +1391,58 @@ const toggleRowStyle: CSSProperties = {
   gap: "0.75rem",
 };
 
-const helpTooltipStyle: CSSProperties = {
+const helpTooltipContainerStyle: CSSProperties = {
+  position: "relative",
+  display: "inline-flex",
+  alignItems: "center",
+};
+
+const helpTooltipButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  width: "1.25rem",
-  height: "1.25rem",
+  width: "1.35rem",
+  height: "1.35rem",
   borderRadius: "9999px",
-  backgroundColor: "rgba(148, 163, 184, 0.25)",
+  border: "1px solid rgba(148, 163, 184, 0.45)",
+  backgroundColor: "rgba(148, 163, 184, 0.2)",
   color: "#0f172a",
-  fontSize: "0.75rem",
+  fontSize: "0.8rem",
   fontWeight: 700,
-  cursor: "help",
-  border: "1px solid rgba(148, 163, 184, 0.5)",
+  cursor: "pointer",
+  transition: "background-color 150ms ease, transform 150ms ease",
+};
+
+const helpTooltipButtonActiveStyle: CSSProperties = {
+  backgroundColor: "#2563eb",
+  borderColor: "rgba(37, 99, 235, 0.7)",
+  color: "#ffffff",
+};
+
+const helpTooltipBubbleStyle: CSSProperties = {
+  position: "absolute",
+  top: "calc(100% + 0.5rem)",
+  right: 0,
+  zIndex: 10,
+  maxWidth: "18rem",
+  padding: "0.65rem 0.75rem",
+  borderRadius: "0.75rem",
+  backgroundColor: "#0f172a",
+  color: "#f8fafc",
+  fontSize: "0.8rem",
+  lineHeight: 1.4,
+  boxShadow: "0 10px 25px rgba(15, 23, 42, 0.25)",
+};
+
+const helpTooltipBubbleHiddenStyle: CSSProperties = {
+  opacity: 0,
+  transform: "translateY(-4px)",
+  pointerEvents: "none",
+};
+
+const helpTooltipBubbleVisibleStyle: CSSProperties = {
+  opacity: 1,
+  transform: "translateY(0)",
 };
 
 const switchBaseStyle: CSSProperties = {
@@ -1406,11 +1479,100 @@ const getSwitchThumbStyle = (checked: boolean): CSSProperties => ({
   transition: "transform 150ms ease",
 });
 
-const HelpTooltip = ({ label }: { label: string }) => (
-  <span style={helpTooltipStyle} title={label} aria-label={label} role="img">
-    ?
-  </span>
+const TrashIcon = () => (
+  <svg
+    style={deleteButtonIconStyle}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path
+      d="M9 3h6a1 1 0 0 1 1 1v1h4"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M5 5h14l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 5Z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path d="M10 10v7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <path d="M14 10v7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
 );
+
+const HelpTooltip = ({ label }: { label: string }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const tooltipId = useId();
+  const containerRef = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      if (containerRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      setIsOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const handleBlur = () => {
+    requestAnimationFrame(() => {
+      if (containerRef.current && !containerRef.current.contains(document.activeElement)) {
+        setIsOpen(false);
+      }
+    });
+  };
+
+  return (
+    <span ref={containerRef} style={helpTooltipContainerStyle}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={isOpen}
+        aria-controls={tooltipId}
+        onClick={() => setIsOpen((value) => !value)}
+        onBlur={handleBlur}
+        style={{
+          ...helpTooltipButtonStyle,
+          ...(isOpen ? helpTooltipButtonActiveStyle : {}),
+        }}
+      >
+        ?
+      </button>
+      <span
+        role="tooltip"
+        id={tooltipId}
+        aria-hidden={!isOpen}
+        style={{
+          ...helpTooltipBubbleStyle,
+          ...(isOpen ? helpTooltipBubbleVisibleStyle : helpTooltipBubbleHiddenStyle),
+        }}
+      >
+        {label}
+      </span>
+    </span>
+  );
+};
 
 type ToggleSwitchProps = {
   checked: boolean;
