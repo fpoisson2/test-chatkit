@@ -149,6 +149,8 @@ button {
   min-width: 0;
   height: 100%;
   width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
   transform: translate3d(0, 0, 0);
   transition: transform 0.95s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: transform;
