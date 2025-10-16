@@ -142,8 +142,8 @@ export const getDeployButtonStyle = (
 ): CSSProperties => ({
   padding: "0.55rem 1.1rem",
   borderRadius: "0.75rem",
-  border: "1px solid rgba(15, 23, 42, 0.15)",
-  background: "#fff",
+  border: "none",
+  background: "transparent",
   color: "#0f172a",
   fontWeight: 600,
   whiteSpace: "nowrap",
@@ -158,8 +158,8 @@ export const getActionMenuWrapperStyle = (isMobile: boolean): CSSProperties => (
 
 export const getActionMenuTriggerStyle = (isMobile: boolean): CSSProperties => ({
   borderRadius: "0.75rem",
-  border: "1px solid rgba(15, 23, 42, 0.15)",
-  background: "#fff",
+  border: "none",
+  background: "transparent",
   color: "#0f172a",
   fontWeight: 600,
   cursor: "pointer",
