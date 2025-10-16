@@ -138,7 +138,7 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
     if (!user) {
       return (
         <section className="chatkit-sidebar__section" aria-live="polite">
-          <h2 className="chatkit-sidebar__section-title">Workflow actif</h2>
+          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
           <p className="chatkit-sidebar__section-text">
             Connectez-vous pour choisir le workflow utilisé par ChatKit.
           </p>
@@ -149,7 +149,7 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
     if (!isAdmin) {
       return (
         <section className="chatkit-sidebar__section" aria-live="polite">
-          <h2 className="chatkit-sidebar__section-title">Workflow actif</h2>
+          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
           <p className="chatkit-sidebar__section-text">
             Votre rôle ne permet pas de modifier le workflow ChatKit.
           </p>
@@ -160,7 +160,7 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
     if (error) {
       return (
         <section className="chatkit-sidebar__section" aria-live="polite">
-          <h2 className="chatkit-sidebar__section-title">Workflow actif</h2>
+          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
           <p className="chatkit-sidebar__section-error">{error}</p>
           <button
             type="button"
@@ -177,7 +177,7 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
     if (loading) {
       return (
         <section className="chatkit-sidebar__section" aria-live="polite">
-          <h2 className="chatkit-sidebar__section-title">Workflow actif</h2>
+          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
           <p className="chatkit-sidebar__section-text">Chargement des workflows…</p>
         </section>
       );
@@ -186,7 +186,7 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
     if (workflows.length === 0) {
       return (
         <section className="chatkit-sidebar__section" aria-live="polite">
-          <h2 className="chatkit-sidebar__section-title">Workflow actif</h2>
+          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
           <p className="chatkit-sidebar__section-text">
             Publiez un workflow pour qu'il soit disponible dans le chat.
           </p>
@@ -201,7 +201,7 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
       <section className="chatkit-sidebar__section" aria-labelledby={`${sectionId}-title`}>
         <div className="chatkit-sidebar__section-header">
           <h2 id={`${sectionId}-title`} className="chatkit-sidebar__section-title">
-            Workflow actif
+            Workflow
           </h2>
         </div>
         <ul className="chatkit-sidebar__workflow-list">
