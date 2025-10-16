@@ -11,8 +11,8 @@ import {
   resetUserPassword,
   voiceSettingsApi,
 } from "../utils/backend";
-import { AdminLayout } from "../components/AdminLayout";
 import { AdminTabs } from "../components/AdminTabs";
+import { ManagementPageLayout } from "../components/ManagementPageLayout";
 
 type PromptVariableField = {
   id: string;
@@ -305,17 +305,21 @@ export const AdminPage = () => {
     : "";
 
   return (
-    <AdminLayout
+    <ManagementPageLayout
       title="Administration des utilisateurs"
       subtitle="Gérez les accès autorisés au widget ChatKit et pilotez les rôles en un clin d'œil."
       badge={`${currentUser?.email ?? "Administrateur"}${userCountLabel}`}
-      onLogout={logout}
-      tabs={<AdminTabs activeTab="users" />}
-      toolbar={
-        <Link className="button button--ghost" to="/admin/workflows">
-          Configurer le workflow ChatKit
-        </Link>
+      actions={
+        <>
+          <Link className="button button--subtle" to="/admin/workflows">
+            Configurer le workflow ChatKit
+          </Link>
+          <button className="button button--subtle" type="button" onClick={logout}>
+            Déconnexion
+          </button>
+        </>
       }
+      tabs={<AdminTabs activeTab="users" />}
     >
       {error && <div className="alert alert--danger">{error}</div>}
 
@@ -597,6 +601,6 @@ export const AdminPage = () => {
             )}
           </section>
       </div>
-    </AdminLayout>
+    </ManagementPageLayout>
   );
 };

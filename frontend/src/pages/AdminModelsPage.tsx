@@ -1,8 +1,8 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "../auth";
-import { AdminLayout } from "../components/AdminLayout";
 import { AdminTabs } from "../components/AdminTabs";
+import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import {
   AvailableModel,
   AvailableModelPayload,
@@ -120,11 +120,15 @@ export const AdminModelsPage = () => {
   }, [models.length, user?.email]);
 
   return (
-    <AdminLayout
+    <ManagementPageLayout
       title="Gestion des modèles"
       subtitle="Contrôlez les modèles OpenAI que vos équipes peuvent sélectionner dans le workflow builder."
       badge={badge}
-      onLogout={logout}
+      actions={
+        <button className="button button--subtle" type="button" onClick={logout}>
+          Déconnexion
+        </button>
+      }
       tabs={<AdminTabs activeTab="models" />}
     >
       {error && <div className="alert alert--danger">{error}</div>}
@@ -243,6 +247,6 @@ export const AdminModelsPage = () => {
           )}
         </section>
       </div>
-    </AdminLayout>
+    </ManagementPageLayout>
   );
 };
