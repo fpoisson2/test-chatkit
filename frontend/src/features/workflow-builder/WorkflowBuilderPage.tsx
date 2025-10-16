@@ -126,6 +126,7 @@ import {
 import styles from "./WorkflowBuilderPage.module.css";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
+const AUTO_SAVE_SUCCESS_MESSAGE = "Modifications enregistrées automatiquement.";
 
 const useMediaQuery = (query: string) => {
   const [matches, setMatches] = useState<boolean>(() => {
@@ -2187,8 +2188,13 @@ const WorkflowBuilderPage = () => {
         setSaveState("saved");
         lastSavedSnapshotRef.current = graphSnapshot;
         setHasPendingChanges(false);
-        setSaveMessage("Modifications enregistrées automatiquement.");
-        setTimeout(() => setSaveState("idle"), 1500);
+        setSaveMessage(AUTO_SAVE_SUCCESS_MESSAGE);
+        setTimeout(() => {
+          setSaveState("idle");
+          setSaveMessage((previous) =>
+            previous === AUTO_SAVE_SUCCESS_MESSAGE ? null : previous,
+          );
+        }, 1500);
         return;
       }
       throw new Error("Impossible de contacter le serveur pour enregistrer la version.");
