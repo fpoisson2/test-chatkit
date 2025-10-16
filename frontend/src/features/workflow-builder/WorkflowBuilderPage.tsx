@@ -188,10 +188,16 @@ const WorkflowBuilderPage = () => {
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
   const [isBlockLibraryOpen, setBlockLibraryOpen] = useState<boolean>(() => !isMobileLayout);
   const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
+  const propertiesPanelToggleRef = useRef<HTMLButtonElement | null>(null);
+  const propertiesPanelCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [isPropertiesPanelOpen, setPropertiesPanelOpen] = useState(false);
+  const previousSelectedElementRef = useRef<string | null>(null);
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
   const blockLibraryId = "workflow-builder-block-library";
   const blockLibraryTitleId = `${blockLibraryId}-title`;
+  const propertiesPanelId = "workflow-builder-properties-panel";
+  const propertiesPanelTitleId = `${propertiesPanelId}-title`;
   const toggleBlockLibrary = useCallback(() => {
     setBlockLibraryOpen((prev) => !prev);
   }, []);
@@ -833,6 +839,73 @@ const WorkflowBuilderPage = () => {
     setSelectedNodeId(null);
     setSelectedEdgeId(null);
   }, []);
+
+  const handleClosePropertiesPanel = useCallback(() => {
+    if (isMobileLayout) {
+      setPropertiesPanelOpen(false);
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => {
+          propertiesPanelToggleRef.current?.focus();
+        }, 0);
+      } else {
+        propertiesPanelToggleRef.current?.focus();
+      }
+      return;
+    }
+    handleClearSelection();
+  }, [handleClearSelection, isMobileLayout]);
+
+  const handleOpenPropertiesPanel = useCallback(() => {
+    if (!selectedNode && !selectedEdge) {
+      return;
+    }
+    setPropertiesPanelOpen(true);
+  }, [selectedEdge, selectedNode]);
+
+  const selectedElementKey = selectedNodeId ?? selectedEdgeId ?? null;
+
+  useEffect(() => {
+    if (selectedElementKey) {
+      if (previousSelectedElementRef.current !== selectedElementKey) {
+        setPropertiesPanelOpen(true);
+      }
+    } else {
+      setPropertiesPanelOpen(false);
+    }
+    previousSelectedElementRef.current = selectedElementKey;
+  }, [selectedElementKey]);
+
+  useEffect(() => {
+    if (!isMobileLayout) {
+      if (selectedElementKey) {
+        setPropertiesPanelOpen(true);
+      }
+    }
+  }, [isMobileLayout, selectedElementKey]);
+
+  useEffect(() => {
+    if (!isMobileLayout || !isPropertiesPanelOpen) {
+      return;
+    }
+    propertiesPanelCloseButtonRef.current?.focus();
+  }, [isMobileLayout, isPropertiesPanelOpen]);
+
+  useEffect(() => {
+    if (!isMobileLayout || !isPropertiesPanelOpen) {
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        handleClosePropertiesPanel();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleClosePropertiesPanel, isMobileLayout, isPropertiesPanelOpen]);
 
   const updateNodeData = useCallback(
     (nodeId: string, updater: (data: FlowNodeData) => FlowNodeData) => {
@@ -2258,12 +2331,93 @@ const WorkflowBuilderPage = () => {
     ],
   );
 
-  const showPropertiesPanel = Boolean(selectedNode || selectedEdge);
+  const hasSelectedElement = Boolean(selectedNode || selectedEdge);
+  const showPropertiesPanel = hasSelectedElement && (!isMobileLayout || isPropertiesPanelOpen);
   const selectedElementLabel = selectedNode
     ? selectedNode.data.displayName.trim() || labelForKind(selectedNode.data.kind)
     : selectedEdge
       ? `${selectedEdge.source} → ${selectedEdge.target}`
       : "";
+  const propertiesPanelElement = (
+    <aside
+      id={propertiesPanelId}
+      aria-label="Propriétés du bloc sélectionné"
+      aria-labelledby={propertiesPanelTitleId}
+      className={isMobileLayout ? styles.propertiesPanelMobile : styles.propertiesPanel}
+      role={isMobileLayout ? "dialog" : undefined}
+      aria-modal={isMobileLayout ? true : undefined}
+      onClick={isMobileLayout ? (event) => event.stopPropagation() : undefined}
+    >
+      <header className={styles.propertiesPanelHeader}>
+        <div className={styles.propertiesPanelHeaderMeta}>
+          <p className={styles.propertiesPanelOverline}>Propriétés du bloc</p>
+          <h2 id={propertiesPanelTitleId} className={styles.propertiesPanelTitle}>
+            {selectedElementLabel || "Bloc"}
+          </h2>
+        </div>
+        <button
+          type="button"
+          ref={propertiesPanelCloseButtonRef}
+          onClick={handleClosePropertiesPanel}
+          aria-label="Fermer le panneau de propriétés"
+          className={styles.propertiesPanelCloseButton}
+        >
+          ×
+        </button>
+      </header>
+      <div className={styles.propertiesPanelBody}>
+        {selectedNode ? (
+          <NodeInspector
+            node={selectedNode}
+            onToggle={handleToggleNode}
+            onDisplayNameChange={handleDisplayNameChange}
+            onAgentMessageChange={handleAgentMessageChange}
+            onAgentModelChange={handleAgentModelChange}
+            onAgentReasoningChange={handleAgentReasoningChange}
+            onAgentReasoningVerbosityChange={handleAgentReasoningVerbosityChange}
+            onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}
+            onAgentTemperatureChange={handleAgentTemperatureChange}
+            onAgentTopPChange={handleAgentTopPChange}
+            onAgentMaxOutputTokensChange={handleAgentMaxOutputTokensChange}
+            onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
+            onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
+            onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
+            onAgentResponseWidgetSlugChange={handleAgentResponseWidgetSlugChange}
+            onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}
+            onAgentDisplayResponseInChatChange={handleAgentDisplayResponseInChatChange}
+            onAgentShowSearchSourcesChange={handleAgentShowSearchSourcesChange}
+            onAgentContinueOnErrorChange={handleAgentContinueOnErrorChange}
+            onAgentStorePreferenceChange={handleAgentStorePreferenceChange}
+            onAgentWebSearchChange={handleAgentWebSearchChange}
+            onAgentFileSearchChange={handleAgentFileSearchChange}
+            onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
+            availableModels={availableModels}
+            availableModelsLoading={availableModelsLoading}
+            availableModelsError={availableModelsError}
+            isReasoningModel={isReasoningModel}
+            onAgentWeatherToolChange={handleAgentWeatherToolChange}
+            vectorStores={vectorStores}
+            vectorStoresLoading={vectorStoresLoading}
+            vectorStoresError={vectorStoresError}
+            widgets={widgets}
+            widgetsLoading={widgetsLoading}
+            widgetsError={widgetsError}
+            onStateAssignmentsChange={handleStateAssignmentsChange}
+            onParametersChange={handleParametersChange}
+            onEndMessageChange={handleEndMessageChange}
+            onRemove={handleRemoveNode}
+          />
+        ) : selectedEdge ? (
+          <EdgeInspector
+            edge={selectedEdge}
+            onConditionChange={handleConditionChange}
+            onLabelChange={handleEdgeLabelChange}
+            onRemove={handleRemoveEdge}
+          />
+        ) : null}
+      </div>
+    </aside>
+  );
   const toastStyles = useMemo(() => {
     switch (saveState) {
       case "error":
@@ -2744,114 +2898,30 @@ const WorkflowBuilderPage = () => {
               </div>
             </aside>
           )}
-          {showPropertiesPanel ? (
-            <aside
-              aria-label="Propriétés du bloc sélectionné"
-              style={{
-                position: "absolute",
-                top: "1.5rem",
-                right: "1.5rem",
-                width: "360px",
-                maxWidth: "calc(100% - 3rem)",
-                maxHeight: "calc(100% - 3rem)",
-                borderRadius: "1rem",
-                border: "1px solid rgba(15, 23, 42, 0.1)",
-                background: "#fff",
-                boxShadow: "0 16px 32px rgba(15, 23, 42, 0.1)",
-                display: "flex",
-                flexDirection: "column",
-                zIndex: 25,
-              }}
+          {isMobileLayout && hasSelectedElement ? (
+            <button
+              type="button"
+              ref={propertiesPanelToggleRef}
+              className={styles.propertiesToggleButton}
+              onClick={isPropertiesPanelOpen ? handleClosePropertiesPanel : handleOpenPropertiesPanel}
+              aria-controls={propertiesPanelId}
+              aria-expanded={isPropertiesPanelOpen}
             >
-              <header
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "1rem 1.25rem",
-                  borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
-                  gap: "0.75rem",
-                }}
+              {isPropertiesPanelOpen ? "Masquer les propriétés" : "Propriétés du bloc"}
+            </button>
+          ) : null}
+          {showPropertiesPanel ? (
+            isMobileLayout ? (
+              <div
+                className={styles.propertiesPanelOverlay}
+                role="presentation"
+                onClick={handleClosePropertiesPanel}
               >
-                <div>
-                  <p style={{ margin: 0, fontSize: "0.75rem", letterSpacing: "0.08em", color: "#64748b" }}>
-                    Propriétés du bloc
-                  </p>
-                  <h2 style={{ margin: "0.25rem 0 0", fontSize: "1.25rem", color: "#0f172a" }}>
-                    {selectedElementLabel || "Bloc"}
-                  </h2>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleClearSelection}
-                  aria-label="Fermer le panneau de propriétés"
-                  style={{
-                    width: "2.25rem",
-                    height: "2.25rem",
-                    borderRadius: "0.6rem",
-                    border: "1px solid rgba(15, 23, 42, 0.12)",
-                    background: "#f8fafc",
-                    color: "#0f172a",
-                    fontSize: "1.25rem",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
-                  ×
-                </button>
-              </header>
-              <div style={{ flex: 1, overflowY: "auto", padding: "1rem 1.25rem" }}>
-                {selectedNode ? (
-                  <NodeInspector
-                    node={selectedNode}
-                    onToggle={handleToggleNode}
-                    onDisplayNameChange={handleDisplayNameChange}
-                    onAgentMessageChange={handleAgentMessageChange}
-                    onAgentModelChange={handleAgentModelChange}
-                    onAgentReasoningChange={handleAgentReasoningChange}
-                    onAgentReasoningVerbosityChange={handleAgentReasoningVerbosityChange}
-                    onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}
-                    onAgentTemperatureChange={handleAgentTemperatureChange}
-                    onAgentTopPChange={handleAgentTopPChange}
-                    onAgentMaxOutputTokensChange={handleAgentMaxOutputTokensChange}
-                    onAgentResponseFormatKindChange={handleAgentResponseFormatKindChange}
-                    onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
-                    onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
-                    onAgentResponseWidgetSlugChange={handleAgentResponseWidgetSlugChange}
-                    onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}
-                    onAgentDisplayResponseInChatChange={handleAgentDisplayResponseInChatChange}
-                    onAgentShowSearchSourcesChange={handleAgentShowSearchSourcesChange}
-                    onAgentContinueOnErrorChange={handleAgentContinueOnErrorChange}
-                    onAgentStorePreferenceChange={handleAgentStorePreferenceChange}
-                    onAgentWebSearchChange={handleAgentWebSearchChange}
-                    onAgentFileSearchChange={handleAgentFileSearchChange}
-                    onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
-                    availableModels={availableModels}
-                    availableModelsLoading={availableModelsLoading}
-                    availableModelsError={availableModelsError}
-                    isReasoningModel={isReasoningModel}
-                    onAgentWeatherToolChange={handleAgentWeatherToolChange}
-                    vectorStores={vectorStores}
-                    vectorStoresLoading={vectorStoresLoading}
-                    vectorStoresError={vectorStoresError}
-                    widgets={widgets}
-                    widgetsLoading={widgetsLoading}
-                    widgetsError={widgetsError}
-                    onStateAssignmentsChange={handleStateAssignmentsChange}
-                    onParametersChange={handleParametersChange}
-                    onEndMessageChange={handleEndMessageChange}
-                    onRemove={handleRemoveNode}
-                  />
-                ) : selectedEdge ? (
-                  <EdgeInspector
-                    edge={selectedEdge}
-                    onConditionChange={handleConditionChange}
-                    onLabelChange={handleEdgeLabelChange}
-                    onRemove={handleRemoveEdge}
-                  />
-                ) : null}
+                {propertiesPanelElement}
               </div>
-            </aside>
+            ) : (
+              propertiesPanelElement
+            )
           ) : null}
           {saveMessage ? (
             <div
