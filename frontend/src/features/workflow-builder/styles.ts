@@ -6,10 +6,10 @@ type DisabledOptions = {
 
 export const getHeaderContainerStyle = (isMobile: boolean): CSSProperties => ({
   display: "flex",
-  alignItems: isMobile ? "stretch" : "center",
-  flexDirection: isMobile ? "column" : "row",
-  gap: isMobile ? "1rem" : "1.5rem",
-  padding: "0.75rem 1.5rem",
+  alignItems: "center",
+  justifyContent: isMobile ? "space-between" : "flex-start",
+  gap: isMobile ? "0.75rem" : "1.5rem",
+  padding: isMobile ? "0.75rem 1rem" : "0.75rem 1.5rem",
   background: "#f8fafc",
   borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
   zIndex: 10,
@@ -114,6 +114,27 @@ export const getHeaderActionAreaStyle = (isMobile: boolean): CSSProperties => ({
   width: isMobile ? "100%" : "auto",
   flexDirection: isMobile ? "column" : "row",
 });
+
+export const getMobileHeaderMenuButtonStyle = (
+  options?: DisabledOptions & { active?: boolean },
+): CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "0.5rem",
+  padding: "0.6rem 1rem",
+  borderRadius: "0.75rem",
+  border: "1px solid rgba(15, 23, 42, 0.15)",
+  background: options?.active ? "#0f172a" : "#fff",
+  color: options?.active ? "#fff" : "#0f172a",
+  fontWeight: 600,
+  ...pointerState(options),
+});
+
+export const mobileHeaderMenuIconStyle: CSSProperties = {
+  fontSize: "1.35rem",
+  lineHeight: 1,
+};
 
 export const getDeployButtonStyle = (
   isMobile: boolean,
