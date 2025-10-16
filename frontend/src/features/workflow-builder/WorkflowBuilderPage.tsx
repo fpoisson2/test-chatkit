@@ -187,6 +187,9 @@ const WorkflowBuilderPage = () => {
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
   const viewportRef = useRef<Viewport | null>(null);
   const pendingViewportRestoreRef = useRef(false);
+  const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
+  const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const blockLibraryAnimationFrameRef = useRef<number | null>(null);
 
   const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
@@ -2373,18 +2376,146 @@ const WorkflowBuilderPage = () => {
     ],
   );
 
-  const getBlockLibraryButtonStyle = (disabled: boolean): CSSProperties => ({
-    display: "flex",
-    alignItems: "center",
-    gap: "0.75rem",
-    padding: "0.5rem 0",
-    border: "none",
-    background: "transparent",
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.5 : 1,
-    width: "100%",
-    textAlign: "left",
-  });
+  const updateBlockLibraryTransforms = useCallback(() => {
+    if (!isMobileLayout || typeof window === "undefined") {
+      return;
+    }
+    const container = blockLibraryScrollRef.current;
+    if (!container) {
+      return;
+    }
+    const containerRect = container.getBoundingClientRect();
+    if (containerRect.height === 0) {
+      return;
+    }
+    const containerCenter = containerRect.top + containerRect.height / 2;
+    const maxDistance = Math.max(containerRect.height / 2, 1);
+
+    blockLibraryItems.forEach((item) => {
+      const element = blockLibraryItemRefs.current[item.key];
+      if (!element) {
+        return;
+      }
+      const rect = element.getBoundingClientRect();
+      const elementCenter = rect.top + rect.height / 2;
+      const distance = Math.abs(elementCenter - containerCenter);
+      const normalized = Math.min(distance / maxDistance, 1);
+      const eased = 1 - Math.pow(normalized, 1.6);
+      const scale = 0.82 + eased * 0.38;
+      const arcOffset = Math.pow(normalized, 1.5) * 32;
+      const opacity = 0.55 + eased * 0.45;
+
+      element.style.transform = `translateX(${arcOffset}px) scale(${scale})`;
+      element.style.opacity = opacity.toFixed(3);
+      element.style.zIndex = String(100 + Math.round(eased * 100));
+    });
+  }, [blockLibraryItems, isMobileLayout]);
+
+  const scheduleBlockLibraryTransformUpdate = useCallback(() => {
+    if (!isMobileLayout || typeof window === "undefined") {
+      return;
+    }
+    if (blockLibraryAnimationFrameRef.current !== null) {
+      cancelAnimationFrame(blockLibraryAnimationFrameRef.current);
+    }
+    blockLibraryAnimationFrameRef.current = requestAnimationFrame(updateBlockLibraryTransforms);
+  }, [isMobileLayout, updateBlockLibraryTransforms]);
+
+  useEffect(() => {
+    if (!isMobileLayout || !isBlockLibraryOpen) {
+      return () => {};
+    }
+    const container = blockLibraryScrollRef.current;
+    if (!container) {
+      return () => {};
+    }
+
+    const handleScroll = () => {
+      scheduleBlockLibraryTransformUpdate();
+    };
+
+    scheduleBlockLibraryTransformUpdate();
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleScroll);
+
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, [isBlockLibraryOpen, isMobileLayout, scheduleBlockLibraryTransformUpdate]);
+
+  useEffect(() => {
+    if (!isMobileLayout || !isBlockLibraryOpen || typeof document === "undefined") {
+      return;
+    }
+    const { style } = document.body;
+    const previousOverflow = style.overflow;
+    style.overflow = "hidden";
+
+    return () => {
+      style.overflow = previousOverflow;
+    };
+  }, [isBlockLibraryOpen, isMobileLayout]);
+
+  useEffect(() => {
+    if (!isMobileLayout || !isBlockLibraryOpen) {
+      return () => {
+        if (blockLibraryAnimationFrameRef.current !== null) {
+          cancelAnimationFrame(blockLibraryAnimationFrameRef.current);
+          blockLibraryAnimationFrameRef.current = null;
+        }
+      };
+    }
+
+    scheduleBlockLibraryTransformUpdate();
+    return () => {
+      if (blockLibraryAnimationFrameRef.current !== null) {
+        cancelAnimationFrame(blockLibraryAnimationFrameRef.current);
+        blockLibraryAnimationFrameRef.current = null;
+      }
+    };
+  }, [
+    blockLibraryItems,
+    isBlockLibraryOpen,
+    isMobileLayout,
+    scheduleBlockLibraryTransformUpdate,
+  ]);
+
+  const getBlockLibraryButtonStyle = useCallback(
+    (disabled: boolean): CSSProperties => {
+      if (isMobileLayout) {
+        return {
+          display: "flex",
+          alignItems: "center",
+          gap: "1rem",
+          padding: "1.15rem 1.1rem",
+          border: "none",
+          background: "rgba(15, 23, 42, 0.28)",
+          borderRadius: "1.1rem",
+          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: disabled ? 0.45 : 1,
+          width: "100%",
+          textAlign: "left",
+          transition: "background 0.3s ease, transform 0.3s ease",
+          color: "#f8fafc",
+        };
+      }
+      return {
+        display: "flex",
+        alignItems: "center",
+        gap: "0.75rem",
+        padding: "0.5rem 0",
+        border: "none",
+        background: "transparent",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        width: "100%",
+        textAlign: "left",
+      };
+    },
+    [isMobileLayout],
+  );
 
   const workflowSidebarContent = useMemo(() => {
     const sectionId = "workflow-builder-sidebar";
@@ -2606,9 +2737,79 @@ const WorkflowBuilderPage = () => {
     return () => clearSidebarContent();
   }, [clearSidebarContent, setSidebarContent, workflowSidebarContent]);
 
-  const renderBlockLibraryButtons = () => {
-    const primaryTextColor = isMobileLayout ? "#f8fafc" : "#0f172a";
-    const secondaryTextColor = isMobileLayout ? "rgba(248, 250, 252, 0.8)" : "#475569";
+  const renderBlockLibraryContent = () => {
+    if (isMobileLayout) {
+      return (
+        <div className={styles.blockLibraryContent}>
+          <div
+            ref={(element) => {
+              blockLibraryScrollRef.current = element;
+              if (element && isBlockLibraryOpen) {
+                scheduleBlockLibraryTransformUpdate();
+              }
+            }}
+            className={styles.blockLibraryScroller}
+            role="list"
+            aria-label="Blocs disponibles"
+          >
+            {blockLibraryItems.map((item) => {
+              const disabled = loading || !selectedWorkflowId;
+              return (
+                <div
+                  key={item.key}
+                  role="listitem"
+                  className={styles.blockLibraryItemWrapper}
+                  ref={(node) => {
+                    if (node) {
+                      blockLibraryItemRefs.current[item.key] = node;
+                      scheduleBlockLibraryTransformUpdate();
+                    } else {
+                      delete blockLibraryItemRefs.current[item.key];
+                    }
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => item.onClick()}
+                    disabled={disabled}
+                    style={getBlockLibraryButtonStyle(disabled)}
+                  >
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: "2.85rem",
+                        height: "2.85rem",
+                        borderRadius: "0.95rem",
+                        background: item.color,
+                        color: "#fff",
+                        display: "grid",
+                        placeItems: "center",
+                        fontWeight: 700,
+                        fontSize: "1.25rem",
+                      }}
+                    >
+                      {item.shortLabel}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "1.05rem",
+                        fontWeight: 600,
+                        lineHeight: 1.1,
+                      }}
+                    >
+                      {item.label}
+                    </span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    const primaryTextColor = "#0f172a";
+    const secondaryTextColor = "#475569";
     return (
       <div>
         <div
@@ -2889,7 +3090,7 @@ const WorkflowBuilderPage = () => {
                     role="dialog"
                     aria-modal="true"
                   >
-                    {renderBlockLibraryButtons()}
+                    {renderBlockLibraryContent()}
                   </aside>
                 </div>
               ) : null}
@@ -2913,7 +3114,7 @@ const WorkflowBuilderPage = () => {
               aria-label="Bibliothèque de blocs"
               className={styles.blockLibrary}
             >
-              {renderBlockLibraryButtons()}
+              {renderBlockLibraryContent()}
             </aside>
           )}
           {isMobileLayout && hasSelectedElement ? (
