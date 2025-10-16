@@ -984,8 +984,7 @@ button {
   }
 
   .modal__container {
-    margin-top: 1.5rem;
-    margin-inline: auto;
+    margin: 1.5rem auto;
     max-height: calc(100vh - 3rem);
   }
 }
