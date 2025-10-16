@@ -2485,17 +2485,12 @@ const WorkflowBuilderPage = () => {
 
   const workflowSidebarContent = useMemo(() => {
     const sectionId = "workflow-builder-sidebar";
-    const overlayVariant = isMobileLayout ? "overlay" : undefined;
-    const titleStyle = isMobileLayout ? { color: "#f8fafc" } : undefined;
-    const textStyle = isMobileLayout ? { color: "rgba(248, 250, 252, 0.8)" } : undefined;
-    const warningStyle = isMobileLayout
-      ? { color: "#fde68a", fontWeight: 600 }
-      : { color: "#b45309", fontWeight: 600 };
+    const warningStyle: CSSProperties = { color: "#b45309", fontWeight: 600 };
 
     const renderWorkflowList = () => {
       if (loading) {
         return (
-          <p className="chatkit-sidebar__section-text" style={textStyle} aria-live="polite">
+          <p className="chatkit-sidebar__section-text" aria-live="polite">
             Chargement des workflows…
           </p>
         );
@@ -2512,7 +2507,7 @@ const WorkflowBuilderPage = () => {
       if (workflows.length === 0) {
         return (
           <>
-            <p className="chatkit-sidebar__section-text" style={textStyle} aria-live="polite">
+            <p className="chatkit-sidebar__section-text" aria-live="polite">
               Aucun workflow disponible pour le moment.
             </p>
             <button
@@ -2534,20 +2529,13 @@ const WorkflowBuilderPage = () => {
             const isMenuOpen = openWorkflowMenuId === workflow.id;
             const menuId = `workflow-actions-${workflow.id}`;
             const menuStyle = getActionMenuStyle(isMobileLayout);
+            menuStyle.right = "var(--chatkit-sidebar-padding-x)";
             if (isMobileLayout) {
-              menuStyle.background = "rgba(15, 23, 42, 0.96)";
-              menuStyle.border = "1px solid rgba(248, 250, 252, 0.2)";
-              menuStyle.boxShadow = "0 24px 48px rgba(15, 23, 42, 0.65)";
+              menuStyle.left = "calc(-1 * var(--chatkit-sidebar-padding-x))";
+              menuStyle.right = undefined;
+              menuStyle.width = "calc(100% + (var(--chatkit-sidebar-padding-x) * 2))";
+              menuStyle.minWidth = "0";
             }
-            const getMenuItemStyle = (
-              options?: Parameters<typeof getActionMenuItemStyle>[1],
-            ) => {
-              const base = getActionMenuItemStyle(isMobileLayout, options);
-              if (isMobileLayout) {
-                base.color = options?.danger ? "#fca5a5" : "#f8fafc";
-              }
-              return base;
-            };
             return (
               <li key={workflow.id} className="chatkit-sidebar__workflow-list-item">
                 <button
@@ -2558,11 +2546,7 @@ const WorkflowBuilderPage = () => {
                 >
                   {workflow.display_name}
                 </button>
-                <div
-                  className="chatkit-sidebar__workflow-actions"
-                  data-workflow-menu-container=""
-                  data-variant={overlayVariant}
-                >
+                <div className="chatkit-sidebar__workflow-actions" data-workflow-menu-container="">
                   <button
                     type="button"
                     className="chatkit-sidebar__workflow-action-button"
@@ -2586,72 +2570,72 @@ const WorkflowBuilderPage = () => {
                       Actions pour {workflow.display_name}
                     </span>
                   </button>
-                  {isMenuOpen ? (
-                    <div
-                      id={menuId}
-                      role="menu"
-                      data-workflow-menu=""
-                      className="chatkit-sidebar__workflow-menu"
-                      style={menuStyle}
+                </div>
+                {isMenuOpen ? (
+                  <div
+                    id={menuId}
+                    role="menu"
+                    data-workflow-menu=""
+                    className="chatkit-sidebar__workflow-menu"
+                    style={menuStyle}
+                  >
+                    <button
+                      type="button"
+                      onClick={handleRenameWorkflow}
+                      disabled={!selectedWorkflowId}
+                      style={getActionMenuItemStyle(isMobileLayout, {
+                        disabled: !selectedWorkflowId,
+                      })}
                     >
-                      <button
-                        type="button"
-                        onClick={handleRenameWorkflow}
-                        disabled={!selectedWorkflowId}
-                        style={getMenuItemStyle({ disabled: !selectedWorkflowId })}
-                      >
-                        Renommer
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSelectChatkitWorkflow}
-                        disabled={
+                      Renommer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSelectChatkitWorkflow}
+                      disabled={
+                        loading ||
+                        !selectedWorkflowId ||
+                        selectedWorkflow?.is_chatkit_default ||
+                        !selectedWorkflow?.active_version_id
+                      }
+                      style={getActionMenuItemStyle(isMobileLayout, {
+                        disabled:
                           loading ||
                           !selectedWorkflowId ||
                           selectedWorkflow?.is_chatkit_default ||
-                          !selectedWorkflow?.active_version_id
-                        }
-                        style={
-                          getMenuItemStyle({
-                            disabled:
-                              loading ||
-                              !selectedWorkflowId ||
-                              selectedWorkflow?.is_chatkit_default ||
-                              !selectedWorkflow?.active_version_id,
-                          })
-                        }
-                      >
-                        Définir pour ChatKit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleDuplicateWorkflow}
-                        disabled={loading || !selectedWorkflowId}
-                        style={getMenuItemStyle({ disabled: loading || !selectedWorkflowId })}
-                      >
-                        Dupliquer
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleDeleteWorkflow}
-                        disabled={
-                          loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default
-                        }
-                        style={
-                          getMenuItemStyle({
-                            disabled:
-                              loading ||
-                              !selectedWorkflowId ||
-                              selectedWorkflow?.is_chatkit_default,
-                            danger: true,
-                          })
-                        }
-                      >
-                        Supprimer
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
+                          !selectedWorkflow?.active_version_id,
+                      })}
+                    >
+                      Définir pour ChatKit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDuplicateWorkflow}
+                      disabled={loading || !selectedWorkflowId}
+                      style={getActionMenuItemStyle(isMobileLayout, {
+                        disabled: loading || !selectedWorkflowId,
+                      })}
+                    >
+                      Dupliquer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteWorkflow}
+                      disabled={
+                        loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default
+                      }
+                      style={getActionMenuItemStyle(isMobileLayout, {
+                        disabled:
+                          loading ||
+                          !selectedWorkflowId ||
+                          selectedWorkflow?.is_chatkit_default,
+                        danger: true,
+                      })}
+                    >
+                      Supprimer
+                    </button>
+                  </div>
+                ) : null}
               </li>
             );
           })}
@@ -2660,13 +2644,9 @@ const WorkflowBuilderPage = () => {
     };
 
     return (
-      <section
-        className="chatkit-sidebar__section"
-        aria-labelledby={`${sectionId}-title`}
-        data-variant={overlayVariant}
-      >
+      <section className="chatkit-sidebar__section" aria-labelledby={`${sectionId}-title`}>
         <div className="chatkit-sidebar__section-header">
-          <h2 id={`${sectionId}-title`} className="chatkit-sidebar__section-title" style={titleStyle}>
+          <h2 id={`${sectionId}-title`} className="chatkit-sidebar__section-title">
             Workflow
           </h2>
         </div>
@@ -2691,7 +2671,7 @@ const WorkflowBuilderPage = () => {
           </div>
         ) : null}
         {selectedWorkflow?.description ? (
-          <p className="chatkit-sidebar__section-text" style={textStyle}>
+          <p className="chatkit-sidebar__section-text">
             {selectedWorkflow.description}
           </p>
         ) : null}

@@ -165,8 +165,6 @@ export const actionMenuTriggerLabelStyle: CSSProperties = {
 export const getActionMenuStyle = (isMobile: boolean): CSSProperties => ({
   position: "absolute",
   top: "calc(100% + 0.5rem)",
-  right: isMobile ? undefined : 0,
-  left: isMobile ? 0 : undefined,
   background: "#fff",
   borderRadius: "0.75rem",
   border: "1px solid rgba(15, 23, 42, 0.1)",
@@ -174,7 +172,10 @@ export const getActionMenuStyle = (isMobile: boolean): CSSProperties => ({
   padding: "0.5rem",
   minWidth: isMobile ? "100%" : "220px",
   width: isMobile ? "100%" : "auto",
-  zIndex: 30,
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.25rem",
+  zIndex: 20,
 });
 
 export const getActionMenuItemStyle = (

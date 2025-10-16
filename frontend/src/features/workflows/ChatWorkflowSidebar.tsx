@@ -68,7 +68,7 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
 
   const handleWorkflowClick = useCallback(
     async (workflowId: number) => {
-      if (!token || !isAdmin || workflowId === selectedWorkflowId) {
+      if (!token || !isAdmin || workflowId === selectedWorkflowId || isUpdating) {
         return;
       }
 
@@ -118,6 +118,7 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
       closeSidebar,
       isAdmin,
       isDesktopLayout,
+      isUpdating,
       onWorkflowActivated,
       selectedWorkflowId,
       token,
@@ -214,7 +215,7 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
                   type="button"
                   className="chatkit-sidebar__workflow-button"
                   onClick={() => void handleWorkflowClick(workflow.id)}
-                  disabled={!hasProduction || isUpdating}
+                  disabled={!hasProduction}
                   aria-current={isActive ? "true" : undefined}
                 >
                   {workflow.display_name}
@@ -230,7 +231,6 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
     handleOpenBuilder,
     handleWorkflowClick,
     isAdmin,
-    isUpdating,
     loadWorkflows,
     loading,
     selectedWorkflowId,
