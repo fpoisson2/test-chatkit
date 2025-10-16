@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import type {
   AvailableModel,
@@ -38,7 +38,6 @@ import type {
   WidgetVariableAssignment,
 } from "../types";
 import { labelForKind } from "../utils";
-import WidgetLibraryModal from "./WidgetLibraryModal";
 
 const reasoningEffortOptions = [
   { value: "", label: "Comportement par défaut" },
@@ -72,7 +71,6 @@ const WEB_SEARCH_LOCATION_LABELS = {
 
 export type NodeInspectorProps = {
   node: FlowNode;
-  onToggle: (nodeId: string) => void;
   onDisplayNameChange: (nodeId: string, value: string) => void;
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onAgentModelChange: (nodeId: string, value: string) => void;
@@ -118,14 +116,12 @@ export type NodeInspectorProps = {
     scope: StateAssignmentScope,
     assignments: StateAssignment[],
   ) => void;
-  onParametersChange: (nodeId: string, value: string) => void;
   onEndMessageChange: (nodeId: string, value: string) => void;
   onRemove: (nodeId: string) => void;
 };
 
 const NodeInspector = ({
   node,
-  onToggle,
   onDisplayNameChange,
   onAgentMessageChange,
   onAgentModelChange,
@@ -161,12 +157,10 @@ const NodeInspector = ({
   widgetsLoading,
   widgetsError,
   onStateAssignmentsChange,
-  onParametersChange,
   onEndMessageChange,
   onRemove,
 }: NodeInspectorProps) => {
-  const { kind, displayName, isEnabled, parameters, parametersText, parametersError } =
-    node.data;
+  const { kind, displayName, parameters } = node.data;
   const isFixed = kind === "start";
   const endMessage = kind === "end" ? getEndMessage(parameters) : "";
   const agentMessage = getAgentMessage(parameters);
@@ -226,36 +220,8 @@ const NodeInspector = ({
     }
     return widgets.find((widget) => widget.slug === trimmedWidgetNodeSlug) ?? null;
   }, [trimmedWidgetNodeSlug, widgets]);
-  const [widgetPickerTarget, setWidgetPickerTarget] = useState<"agent" | "widget" | null>(null);
-  const canBrowseWidgets = !widgetsLoading && !widgetsError && widgets.length > 0;
-  const widgetSlugSuggestionsId = useId();
+  const widgetSelectId = useId();
   const widgetNodeSlugSuggestionsId = useId();
-
-  const handleOpenWidgetPicker = (target: "agent" | "widget") => {
-    if (!canBrowseWidgets) {
-      return;
-    }
-    setWidgetPickerTarget(target);
-  };
-
-  const handleCloseWidgetPicker = () => {
-    setWidgetPickerTarget(null);
-  };
-
-  const handleWidgetPickerSelect = (slug: string) => {
-    const trimmedSlug = slug.trim();
-    if (!trimmedSlug) {
-      return;
-    }
-    if (widgetPickerTarget === "agent") {
-      if (responseFormat.kind !== "widget") {
-        onAgentResponseFormatKindChange(node.id, "widget");
-      }
-      onAgentResponseWidgetSlugChange(node.id, trimmedSlug);
-    } else if (widgetPickerTarget === "widget") {
-      onWidgetNodeSlugChange(node.id, trimmedSlug);
-    }
-  };
   let fileSearchValidationMessage: string | null = null;
   if (fileSearchMissingVectorStore && !vectorStoresLoading) {
     if (!vectorStoresError && vectorStores.length === 0) {
@@ -270,8 +236,10 @@ const NodeInspector = ({
     }
   }
   let widgetValidationMessage: string | null = null;
-  if (responseFormat.kind === "widget" && !widgetsLoading && !widgetsError && widgets.length > 0) {
-    if (!trimmedWidgetSlug) {
+  if (responseFormat.kind === "widget" && !widgetsLoading && !widgetsError) {
+    if (widgets.length === 0) {
+      widgetValidationMessage = "Aucun widget n'est disponible dans la bibliothèque.";
+    } else if (!trimmedWidgetSlug) {
       widgetValidationMessage = "Sélectionnez un widget de sortie.";
     } else if (!selectedWidgetExists) {
       widgetValidationMessage = "Le widget sélectionné n'est plus disponible. Choisissez-en un autre.";
@@ -285,8 +253,8 @@ const NodeInspector = ({
       widgetNodeValidationMessage = "Le widget sélectionné n'est plus disponible. Choisissez-en un autre.";
     }
   }
-  const widgetSelectValue = selectedWidgetExists ? trimmedWidgetSlug : "";
   const widgetNodeSelectValue = widgetNodeSelectedWidget ? trimmedWidgetNodeSlug : "";
+  const widgetSelectValue = selectedWidgetExists ? trimmedWidgetSlug : "";
   const vectorStoreNodeExists =
     vectorStoreNodeSlug.length > 0 && vectorStores.some((store) => store.slug === vectorStoreNodeSlug);
   const vectorStoreNodeValidationMessages: string[] = [];
@@ -336,32 +304,44 @@ const NodeInspector = ({
     }
     setSchemaError(null);
   }, [node.id, responseFormat.kind, schemaSignature]);
-  const widgetModalSelectedSlug =
-    widgetPickerTarget === "agent"
-      ? responseWidgetSlug
-      : widgetPickerTarget === "widget"
-        ? widgetNodeSlug
-        : "";
 
   return (
     <>
       <section aria-label={`Propriétés du nœud ${node.data.slug}`}>
-      <h2 style={{ fontSize: "1.25rem", marginBottom: "0.75rem" }}>Nœud sélectionné</h2>
-      <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 0.75rem" }}>
-        <dt>Identifiant</dt>
-        <dd>{node.data.slug}</dd>
-        <dt>Type</dt>
-        <dd>{labelForKind(kind)}</dd>
-      </dl>
+        <div style={inspectorHeaderStyle}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+            <span style={inspectorTitleStyle}>
+              {displayName.trim() ? displayName : `Bloc ${labelForKind(kind)}`}
+            </span>
+            <span style={inspectorSubtitleStyle}>Identifiant : {node.data.slug}</span>
+          </div>
+          {!isFixed && (
+            <button
+              type="button"
+              onClick={() => onRemove(node.id)}
+              style={deleteButtonStyle}
+              aria-label={`Supprimer le bloc ${displayName.trim() ? displayName : node.data.slug}`}
+              title="Supprimer ce bloc"
+            >
+              <TrashIcon />
+            </button>
+          )}
+        </div>
+        <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 0.75rem" }}>
+          <dt>Identifiant</dt>
+          <dd>{node.data.slug}</dd>
+          <dt>Type</dt>
+          <dd>{labelForKind(kind)}</dd>
+        </dl>
 
-      <label style={fieldStyle}>
-        <span>Nom affiché</span>
-        <input
-          type="text"
-          value={displayName}
-          onChange={(event) => onDisplayNameChange(node.id, event.target.value)}
-        />
-      </label>
+        <label style={fieldStyle}>
+          <span>Nom affiché</span>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(event) => onDisplayNameChange(node.id, event.target.value)}
+          />
+        </label>
 
       {kind === "widget" && (
         <>
@@ -369,7 +349,10 @@ const NodeInspector = ({
             Choisissez un widget de la bibliothèque ou renseignez son slug pour l'afficher dans ChatKit.
           </p>
           <label style={fieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-input`}>
-            <span>Slug du widget</span>
+            <span style={labelContentStyle}>
+              Slug du widget
+              <HelpTooltip label="Correspond au slug défini lors de l'enregistrement du widget dans la bibliothèque." />
+            </span>
             <input
               id={`${widgetNodeSlugSuggestionsId}-input`}
               type="text"
@@ -378,12 +361,12 @@ const NodeInspector = ({
               placeholder="Ex. mon-widget-personnalise"
               list={widgets.length > 0 ? `${widgetNodeSlugSuggestionsId}-list` : undefined}
             />
-            <small style={{ color: "#475569" }}>
-              Correspond au slug défini lors de l'enregistrement du widget dans la bibliothèque.
-            </small>
           </label>
-          <label style={fieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-select`}>
-            <span>Widget enregistré</span>
+          <label style={inlineFieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-select`}>
+            <span style={labelContentStyle}>
+              Widget enregistré
+              <HelpTooltip label="La liste provient automatiquement de la bibliothèque des widgets partageables. Le widget sélectionné est diffusé immédiatement dans ChatKit lorsqu'on atteint ce bloc." />
+            </span>
             <select
               id={`${widgetNodeSlugSuggestionsId}-select`}
               value={widgetNodeSelectValue}
@@ -397,21 +380,7 @@ const NodeInspector = ({
                 </option>
               ))}
             </select>
-            <small style={{ color: "#475569" }}>
-              La liste provient automatiquement de la bibliothèque des widgets partageables.
-            </small>
           </label>
-          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-            <button
-              type="button"
-              className="btn secondary"
-              onClick={() => handleOpenWidgetPicker("widget")}
-              disabled={!canBrowseWidgets}
-              aria-label="Parcourir la bibliothèque de widgets pour le bloc widget"
-            >
-              Parcourir la bibliothèque
-            </button>
-          </div>
           {widgetsLoading ? (
             <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
           ) : widgetsError ? (
@@ -428,11 +397,7 @@ const NodeInspector = ({
 
           {widgetNodeValidationMessage ? (
             <p style={{ color: "#b91c1c", margin: 0 }}>{widgetNodeValidationMessage}</p>
-          ) : (
-            <small style={{ color: "#475569" }}>
-              Le widget sélectionné est diffusé immédiatement dans ChatKit lorsqu'on atteint ce bloc.
-            </small>
-          )}
+          ) : null}
 
           {widgets.length > 0 && (
             <datalist id={`${widgetNodeSlugSuggestionsId}-list`}>
@@ -455,16 +420,16 @@ const NodeInspector = ({
 
       {kind === "end" && (
         <label style={fieldStyle}>
-          <span>Message de fin</span>
+          <span style={labelContentStyle}>
+            Message de fin
+            <HelpTooltip label="Ce message est utilisé comme raison de clôture lorsque ce bloc termine le fil." />
+          </span>
           <textarea
             value={endMessage}
             rows={4}
             placeholder="Texte affiché lorsque le workflow se termine sur ce bloc"
             onChange={(event) => onEndMessageChange(node.id, event.target.value)}
           />
-          <small style={{ color: "#475569" }}>
-            Ce message est utilisé comme raison de clôture lorsque ce bloc termine le fil.
-          </small>
         </label>
       )}
 
@@ -480,14 +445,17 @@ const NodeInspector = ({
             />
           </label>
 
-          <label style={fieldStyle}>
-            <span>Modèle OpenAI</span>
+          <label style={inlineFieldStyle}>
+            <span style={labelContentStyle}>
+              Modèle OpenAI
+              <HelpTooltip label="Sélectionnez un modèle autorisé pour exécuter ce bloc." />
+            </span>
             <select
               value={selectedModelOption}
               onChange={(event) => onAgentModelChange(node.id, event.target.value)}
               disabled={availableModelsLoading}
             >
-              <option value="">Modèle personnalisé ou non listé</option>
+              <option value="">Sélectionnez un modèle</option>
               {availableModels.map((model) => (
                 <option key={model.id} value={model.name}>
                   {model.display_name?.trim()
@@ -497,28 +465,28 @@ const NodeInspector = ({
                 </option>
               ))}
             </select>
-            <input
-              type="text"
-              value={agentModel}
-              placeholder="Ex. gpt-4.1-mini"
-              onChange={(event) => onAgentModelChange(node.id, event.target.value)}
-            />
-            {availableModelsLoading ? (
-              <small style={{ color: "#475569" }}>Chargement des modèles autorisés…</small>
-            ) : availableModelsError ? (
-              <span style={{ color: "#b91c1c", fontSize: "0.85rem" }}>{availableModelsError}</span>
-            ) : matchedModel?.description ? (
-              <small style={{ color: "#475569" }}>{matchedModel.description}</small>
-            ) : null}
-            <small style={{ color: "#475569" }}>
-              Sélectionnez un modèle autorisé ou saisissez une valeur personnalisée dans le champ texte.
-            </small>
           </label>
+          {agentModel.trim() && !matchedModel && !availableModelsLoading ? (
+            <p style={{ color: "#b91c1c", margin: "0.5rem 0 0" }}>
+              Ce bloc utilise actuellement un modèle non listé ({agentModel}). Sélectionnez un modèle dans la
+              liste ci-dessus.
+            </p>
+          ) : null}
+          {availableModelsLoading ? (
+            <p style={{ color: "#475569", margin: "0.5rem 0 0" }}>Chargement des modèles autorisés…</p>
+          ) : availableModelsError ? (
+            <p style={{ color: "#b91c1c", margin: "0.5rem 0 0" }}>{availableModelsError}</p>
+          ) : matchedModel?.description ? (
+            <p style={{ color: "#475569", margin: "0.5rem 0 0" }}>{matchedModel.description}</p>
+          ) : null}
 
           {supportsReasoning ? (
             <>
-              <label style={fieldStyle}>
-                <span>Niveau de raisonnement</span>
+              <label style={inlineFieldStyle}>
+                <span style={labelContentStyle}>
+                  Niveau de raisonnement
+                  <HelpTooltip label="Ajuste la profondeur d'analyse du modèle (laisser vide pour utiliser la valeur par défaut)." />
+                </span>
                 <select
                   value={reasoningEffort}
                   onChange={(event) => onAgentReasoningChange(node.id, event.target.value)}
@@ -529,14 +497,13 @@ const NodeInspector = ({
                     </option>
                   ))}
                 </select>
-                <small style={{ color: "#475569" }}>
-                  Ajuste la profondeur d'analyse du modèle (laisser vide pour utiliser la valeur par
-                  défaut).
-                </small>
               </label>
 
-              <label style={fieldStyle}>
-                <span>Verbosité du raisonnement</span>
+              <label style={inlineFieldStyle}>
+                <span style={labelContentStyle}>
+                  Verbosité du raisonnement
+                  <HelpTooltip label="Contrôle la quantité de texte générée pendant les étapes de raisonnement." />
+                </span>
                 <select
                   value={reasoningVerbosity}
                   onChange={(event) => onAgentReasoningVerbosityChange(node.id, event.target.value)}
@@ -547,13 +514,13 @@ const NodeInspector = ({
                     </option>
                   ))}
                 </select>
-                <small style={{ color: "#475569" }}>
-                  Contrôle la quantité de texte générée pendant les étapes de raisonnement.
-                </small>
               </label>
 
-              <label style={fieldStyle}>
-                <span>Résumé des étapes</span>
+              <label style={inlineFieldStyle}>
+                <span style={labelContentStyle}>
+                  Résumé des étapes
+                  <HelpTooltip label="Détermine si l'agent doit générer un résumé automatique de son raisonnement." />
+                </span>
                 <select
                   value={reasoningSummaryValue}
                   onChange={(event) => onAgentReasoningSummaryChange(node.id, event.target.value)}
@@ -564,15 +531,15 @@ const NodeInspector = ({
                     </option>
                   ))}
                 </select>
-                <small style={{ color: "#475569" }}>
-                  Détermine si l'agent doit générer un résumé automatique de son raisonnement.
-                </small>
               </label>
             </>
           ) : (
             <>
               <label style={fieldStyle}>
-                <span>Température</span>
+                <span style={labelContentStyle}>
+                  Température
+                  <HelpTooltip label="Ajuste la créativité des réponses pour les modèles sans raisonnement." />
+                </span>
                 <input
                   type="number"
                   min="0"
@@ -582,12 +549,12 @@ const NodeInspector = ({
                   placeholder="Ex. 0.7"
                   onChange={(event) => onAgentTemperatureChange(node.id, event.target.value)}
                 />
-                <small style={{ color: "#475569" }}>
-                  Ajuste la créativité des réponses pour les modèles sans raisonnement.
-                </small>
               </label>
               <label style={fieldStyle}>
-                <span>Top-p</span>
+                <span style={labelContentStyle}>
+                  Top-p
+                  <HelpTooltip label="Détermine la diversité lexicale en limitant la probabilité cumulée." />
+                </span>
                 <input
                   type="number"
                   min="0"
@@ -597,15 +564,15 @@ const NodeInspector = ({
                   placeholder="Ex. 0.9"
                   onChange={(event) => onAgentTopPChange(node.id, event.target.value)}
                 />
-                <small style={{ color: "#475569" }}>
-                  Détermine la diversité lexicale en limitant la probabilité cumulée.
-                </small>
               </label>
             </>
           )}
 
           <label style={fieldStyle}>
-            <span>Nombre maximal de tokens générés</span>
+            <span style={labelContentStyle}>
+              Nombre maximal de tokens générés
+              <HelpTooltip label="Limite la longueur maximale des réponses produites par cet agent." />
+            </span>
             <input
               type="number"
               min="1"
@@ -614,66 +581,41 @@ const NodeInspector = ({
               placeholder="Laisser vide pour la valeur par défaut"
               onChange={(event) => onAgentMaxOutputTokensChange(node.id, event.target.value)}
             />
-            <small style={{ color: "#475569" }}>
-              Limite la longueur maximale des réponses produites par cet agent.
-            </small>
           </label>
 
-          <div style={{ display: "grid", gap: "0.5rem" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <input
-                type="checkbox"
-                checked={includeChatHistory}
-                onChange={(event) =>
-                  onAgentIncludeChatHistoryChange(node.id, event.target.checked)
-                }
-              />
-              Inclure l'historique du chat
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <input
-                type="checkbox"
-                checked={displayResponseInChat}
-                onChange={(event) =>
-                  onAgentDisplayResponseInChatChange(node.id, event.target.checked)
-                }
-              />
-              Afficher la réponse dans le chat
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <input
-                type="checkbox"
-                checked={showSearchSources}
-                onChange={(event) =>
-                  onAgentShowSearchSourcesChange(node.id, event.target.checked)
-                }
-              />
-              Afficher les sources de recherche
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <input
-                type="checkbox"
-                checked={continueOnError}
-                onChange={(event) =>
-                  onAgentContinueOnErrorChange(node.id, event.target.checked)
-                }
-              />
-              Continuer l'exécution en cas d'erreur
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <input
-                type="checkbox"
-                checked={storeResponses}
-                onChange={(event) =>
-                  onAgentStorePreferenceChange(node.id, event.target.checked)
-                }
-              />
-              Enregistrer la réponse dans l'historique de conversation
-            </label>
+          <div style={{ display: "grid", gap: "0.75rem", marginTop: "0.75rem" }}>
+            <ToggleRow
+              label="Inclure l'historique du chat"
+              checked={includeChatHistory}
+              onChange={(next) => onAgentIncludeChatHistoryChange(node.id, next)}
+            />
+            <ToggleRow
+              label="Afficher la réponse dans le chat"
+              checked={displayResponseInChat}
+              onChange={(next) => onAgentDisplayResponseInChatChange(node.id, next)}
+            />
+            <ToggleRow
+              label="Afficher les sources de recherche"
+              checked={showSearchSources}
+              onChange={(next) => onAgentShowSearchSourcesChange(node.id, next)}
+            />
+            <ToggleRow
+              label="Continuer l'exécution en cas d'erreur"
+              checked={continueOnError}
+              onChange={(next) => onAgentContinueOnErrorChange(node.id, next)}
+            />
+            <ToggleRow
+              label="Enregistrer la réponse dans l'historique de conversation"
+              checked={storeResponses}
+              onChange={(next) => onAgentStorePreferenceChange(node.id, next)}
+            />
           </div>
 
-          <label style={fieldStyle}>
-            <span>Type de sortie</span>
+          <label style={inlineFieldStyle}>
+            <span style={labelContentStyle}>
+              Type de sortie
+              <HelpTooltip label="Choisissez le format attendu pour la réponse de l'agent." />
+            </span>
             <select
               value={responseFormat.kind}
               onChange={(event) => {
@@ -685,9 +627,6 @@ const NodeInspector = ({
               <option value="json_schema">Schéma JSON</option>
               <option value="widget">Widget de la bibliothèque</option>
             </select>
-            <small style={{ color: "#475569" }}>
-              Choisissez le format attendu pour la réponse de l'agent.
-            </small>
           </label>
 
           {responseFormat.kind === "json_schema" && (
@@ -702,7 +641,10 @@ const NodeInspector = ({
               </label>
 
               <label style={fieldStyle}>
-                <span>Définition du schéma JSON</span>
+                <span style={labelContentStyle}>
+                  Définition du schéma JSON
+                  <HelpTooltip label="Fournissez un schéma JSON valide (Draft 2020-12) pour contraindre la sortie." />
+                </span>
                 <textarea
                   value={schemaText}
                   rows={8}
@@ -723,83 +665,61 @@ const NodeInspector = ({
                 />
                 {schemaError ? (
                   <span style={{ color: "#b91c1c", fontSize: "0.85rem" }}>{schemaError}</span>
-                ) : (
-                  <small style={{ color: "#475569" }}>
-                    Fournissez un schéma JSON valide (Draft 2020-12) pour contraindre la sortie.
-                  </small>
-                )}
+                ) : null}
               </label>
             </>
           )}
 
           {responseFormat.kind === "widget" && (
             <>
-              <div style={fieldStyle}>
-                <label htmlFor={`${widgetSlugSuggestionsId}-input`}>Slug du widget de sortie</label>
-                <input
-                  id={`${widgetSlugSuggestionsId}-input`}
-                  type="text"
-                  value={responseWidgetSlug}
-                  onChange={(event) => onAgentResponseWidgetSlugChange(node.id, event.target.value)}
-                  placeholder="Ex. resume"
-                  list={widgets.length > 0 ? `${widgetSlugSuggestionsId}-list` : undefined}
-                />
-                <label htmlFor={`${widgetSlugSuggestionsId}-select`}>Widget de sortie</label>
+              <label style={inlineFieldStyle} htmlFor={`${widgetSelectId}-select`}>
+                <span style={labelContentStyle}>
+                  Widget de sortie
+                  <HelpTooltip label="Sélectionnez un widget existant pour afficher la réponse dans ChatKit." />
+                </span>
                 <select
-                  id={`${widgetSlugSuggestionsId}-select`}
+                  id={`${widgetSelectId}-select`}
                   value={widgetSelectValue}
                   onChange={(event) => onAgentResponseWidgetSlugChange(node.id, event.target.value)}
                   disabled={widgetsLoading || !!widgetsError || widgets.length === 0}
+                  aria-describedby={
+                    widgetValidationMessage ? `${widgetSelectId}-message` : undefined
+                  }
                 >
-                  <option value="">Sélectionnez un widget</option>
+                  <option value="">
+                    {widgets.length === 0
+                      ? "Aucun widget disponible"
+                      : "Sélectionnez un widget"}
+                  </option>
                   {widgets.map((widget) => (
                     <option key={widget.slug} value={widget.slug}>
-                      {widget.title?.trim()
-                        ? `${widget.title} (${widget.slug})`
-                        : widget.slug}
+                      {widget.title?.trim() ? `${widget.title} (${widget.slug})` : widget.slug}
                     </option>
                   ))}
                 </select>
-                <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-                  <button
-                    type="button"
-                    className="btn secondary"
-                    onClick={() => handleOpenWidgetPicker("agent")}
-                    disabled={!canBrowseWidgets}
-                    aria-label="Parcourir la bibliothèque de widgets pour la réponse de l'agent"
-                  >
-                    Parcourir la bibliothèque
-                  </button>
-                </div>
-                {widgetsLoading ? (
-                  <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
-                ) : widgetsError ? (
-                  <p style={{ color: "#b91c1c", margin: 0 }}>
-                    {widgetsError}
-                    <br />
-                    Vous pouvez saisir le slug du widget manuellement ci-dessus.
-                  </p>
-                ) : widgets.length === 0 ? (
-                  <p style={{ color: "#475569", margin: 0 }}>
-                    Créez un widget dans la bibliothèque dédiée ou saisissez son slug manuellement ci-dessus.
-                  </p>
-                ) : null}
-              </div>
+              </label>
+              {widgetsLoading ? (
+                <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
+              ) : widgetsError ? (
+                <p style={{ color: "#b91c1c", margin: 0 }}>{widgetsError}</p>
+              ) : widgets.length === 0 ? (
+                <p style={{ color: "#475569", margin: 0 }}>
+                  Créez un widget dans la bibliothèque dédiée pour l'utiliser ici.
+                </p>
+              ) : null}
               {widgetValidationMessage ? (
-                <p style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}>{widgetValidationMessage}</p>
-              ) : (
-                <small style={{ color: "#475569" }}>
-                  Le widget sélectionné sera affiché dans ChatKit lorsque l'agent répondra.
-                </small>
-              )}
-              {widgets.length > 0 && (
-                <datalist id={`${widgetSlugSuggestionsId}-list`}>
-                  {widgets.map((widget) => (
-                    <option key={widget.slug} value={widget.slug}>
-                      {widget.title?.trim() ? widget.title : widget.slug}
-                    </option>
-                  ))}
-                </datalist>
+                <p
+                  id={`${widgetSelectId}-message`}
+                  style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}
+                >
+                  {widgetValidationMessage}
+                </p>
+              ) : null}
+              {responseWidgetSlug && !widgetsLoading && widgetsError && (
+                <p style={{ color: "#475569", margin: "0.25rem 0 0" }}>
+                  Le widget sélectionné ({responseWidgetSlug}) sera conservé tant que la bibliothèque n'est
+                  pas disponible.
+                </p>
               )}
             </>
           )}
@@ -815,25 +735,23 @@ const NodeInspector = ({
             }}
           >
             <strong style={{ fontSize: "0.95rem" }}>Outils</strong>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <input
-                type="checkbox"
-                checked={webSearchEnabled}
-                onChange={(event) =>
-                  onAgentWebSearchChange(
-                    node.id,
-                    event.target.checked
-                      ? webSearchConfig ?? { ...DEFAULT_WEB_SEARCH_CONFIG }
-                      : null,
-                  )
-                }
-              />
-              Activer la recherche web
-            </label>
+            <ToggleRow
+              label="Activer la recherche web"
+              checked={webSearchEnabled}
+              onChange={(next) =>
+                onAgentWebSearchChange(
+                  node.id,
+                  next ? webSearchConfig ?? { ...DEFAULT_WEB_SEARCH_CONFIG } : null,
+                )
+              }
+            />
             {webSearchEnabled && (
               <>
-                <label style={fieldStyle}>
-                  <span>Portée de la recherche</span>
+                <label style={inlineFieldStyle}>
+                  <span style={labelContentStyle}>
+                    Portée de la recherche
+                    <HelpTooltip label="Définit la quantité de contexte web récupérée pour l'agent." />
+                  </span>
                   <select
                     value={webSearchConfig?.search_context_size ?? ""}
                     onChange={(event) => {
@@ -891,26 +809,23 @@ const NodeInspector = ({
                 </div>
               </>
             )}
-            <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-              <input
-                type="checkbox"
-                checked={fileSearchEnabled}
-                onChange={(event) => {
-                  if (event.target.checked) {
-                    const preferredSlug =
-                      (fileSearchConfig?.vector_store_slug?.trim() ?? "") ||
-                      vectorStores[0]?.slug ||
-                      "";
-                    onAgentFileSearchChange(node.id, {
-                      vector_store_slug: preferredSlug,
-                    });
-                  } else {
-                    onAgentFileSearchChange(node.id, null);
-                  }
-                }}
-              />
-              Activer la recherche documentaire
-            </label>
+            <ToggleRow
+              label="Activer la recherche documentaire"
+              checked={fileSearchEnabled}
+              onChange={(next) => {
+                if (next) {
+                  const preferredSlug =
+                    (fileSearchConfig?.vector_store_slug?.trim() ?? "") ||
+                    vectorStores[0]?.slug ||
+                    "";
+                  onAgentFileSearchChange(node.id, {
+                    vector_store_slug: preferredSlug,
+                  });
+                } else {
+                  onAgentFileSearchChange(node.id, null);
+                }
+              }}
+            />
             {vectorStoresError ? (
               <p style={{ color: "#b91c1c", margin: 0 }}>{vectorStoresError}</p>
             ) : null}
@@ -924,8 +839,11 @@ const NodeInspector = ({
                     ».
                   </p>
                 ) : (
-                  <label style={fieldStyle}>
-                    <span>Vector store à interroger</span>
+                  <label style={inlineFieldStyle}>
+                    <span style={labelContentStyle}>
+                      Vector store à interroger
+                      <HelpTooltip label="Le document complet du résultat sera transmis à l'agent." />
+                    </span>
                     <select
                       value={selectedVectorStoreSlug}
                       onChange={(event) =>
@@ -943,9 +861,6 @@ const NodeInspector = ({
                         </option>
                       ))}
                     </select>
-                    <small style={{ color: "#475569" }}>
-                      Le document complet du résultat sera transmis à l'agent.
-                    </small>
                     {fileSearchValidationMessage && (
                       <p style={{ color: "#b91c1c", margin: 0 }}>{fileSearchValidationMessage}</p>
                     )}
@@ -964,20 +879,12 @@ const NodeInspector = ({
               }}
             >
               <strong style={{ fontSize: "0.9rem" }}>Function tool</strong>
-              <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <input
-                  type="checkbox"
-                  checked={weatherFunctionEnabled}
-                  onChange={(event) =>
-                    onAgentWeatherToolChange(node.id, event.target.checked)
-                  }
-                />
-                Autoriser la fonction météo Python
-              </label>
-              <small style={{ color: "#475569" }}>
-                Ajoute l'outil <code>fetch_weather</code> pour récupérer la météo via le
-                backend.
-              </small>
+              <ToggleRow
+                label="Autoriser la fonction météo Python"
+                checked={weatherFunctionEnabled}
+                onChange={(next) => onAgentWeatherToolChange(node.id, next)}
+                help="Ajoute l'outil fetch_weather pour récupérer la météo via le backend."
+              />
             </div>
           </div>
         </>
@@ -999,8 +906,11 @@ const NodeInspector = ({
               Aucun vector store disponible. Créez-en un depuis l'onglet « Vector stores JSON ».
             </p>
           ) : (
-            <label style={fieldStyle}>
-              <span>Vector store cible</span>
+            <label style={inlineFieldStyle}>
+              <span style={labelContentStyle}>
+                Vector store cible
+                <HelpTooltip label="Choisissez le magasin JSON dans lequel indexer la réponse structurée." />
+              </span>
               <select
                 value={vectorStoreNodeSlug}
                 onChange={(event) =>
@@ -1016,13 +926,13 @@ const NodeInspector = ({
                   </option>
                 ))}
               </select>
-              <small style={{ color: "#475569" }}>
-                Choisissez le magasin JSON dans lequel indexer la réponse structurée.
-              </small>
             </label>
           )}
           <label style={fieldStyle}>
-            <span>Expression de l'identifiant du document (facultatif)</span>
+            <span style={labelContentStyle}>
+              Expression de l'identifiant du document (facultatif)
+              <HelpTooltip label="Laissez vide pour réutiliser la clé doc_id du JSON structuré ou générer un identifiant automatique." />
+            </span>
             <input
               type="text"
               value={vectorStoreNodeDocIdExpression}
@@ -1033,13 +943,12 @@ const NodeInspector = ({
               }
               placeholder="Ex. input.output_parsed.doc_id"
             />
-            <small style={{ color: "#475569" }}>
-              Laissez vide pour réutiliser la clé <code>doc_id</code> du JSON structuré ou générer un
-              identifiant automatique.
-            </small>
           </label>
           <label style={fieldStyle}>
-            <span>Expression JSON à indexer (facultatif)</span>
+            <span style={labelContentStyle}>
+              Expression JSON à indexer (facultatif)
+              <HelpTooltip label="Laissez vide pour indexer automatiquement la sortie structurée du bloc précédent." />
+            </span>
             <input
               type="text"
               value={vectorStoreNodeDocumentExpression}
@@ -1050,12 +959,12 @@ const NodeInspector = ({
               }
               placeholder="Ex. input.output_parsed"
             />
-            <small style={{ color: "#475569" }}>
-              Laissez vide pour indexer automatiquement la sortie structurée du bloc précédent.
-            </small>
           </label>
           <label style={fieldStyle}>
-            <span>Expression des métadonnées (facultatif)</span>
+            <span style={labelContentStyle}>
+              Expression des métadonnées (facultatif)
+              <HelpTooltip label="Retourne un objet JSON fusionné avec les métadonnées automatiques du workflow." />
+            </span>
             <input
               type="text"
               value={vectorStoreNodeMetadataExpression}
@@ -1066,9 +975,6 @@ const NodeInspector = ({
               }
               placeholder='Ex. {"source": "workflow"}'
             />
-            <small style={{ color: "#475569" }}>
-              Retourne un objet JSON fusionné avec les métadonnées automatiques du workflow.
-            </small>
           </label>
           {vectorStoreNodeValidationMessages.map((message, index) => (
             <p key={`vector-store-node-${index}`} style={{ color: "#b91c1c", margin: 0 }}>
@@ -1103,52 +1009,7 @@ const NodeInspector = ({
         </>
       )}
 
-      <label style={fieldStyle}>
-        <span>Paramètres JSON avancés</span>
-        <textarea
-          value={parametersText}
-          rows={8}
-          onChange={(event) => onParametersChange(node.id, event.target.value)}
-          style={parametersError ? { borderColor: "#b91c1c" } : undefined}
-        />
-        {parametersError && (
-          <span style={{ color: "#b91c1c", fontSize: "0.875rem" }}>{parametersError}</span>
-        )}
-        {kind === "agent" && !parametersError && (
-          <span style={{ color: "#475569", fontSize: "0.85rem" }}>
-            Utilisez ce champ pour ajouter des paramètres avancés (JSON) comme les réglages du modèle
-            ou des options d'inférence supplémentaires.
-          </span>
-        )}
-      </label>
-
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <input
-              type="checkbox"
-              checked={isEnabled}
-              onChange={() => onToggle(node.id)}
-              disabled={isFixed}
-            />
-            Activer ce nœud
-          </label>
-          {!isFixed && (
-            <button type="button" className="btn danger" onClick={() => onRemove(node.id)}>
-              Supprimer
-            </button>
-          )}
-        </div>
       </section>
-      {widgetPickerTarget && canBrowseWidgets ? (
-        <WidgetLibraryModal
-          widgets={widgets}
-          selectedSlug={widgetModalSelectedSlug}
-          onClose={handleCloseWidgetPicker}
-          onSelect={handleWidgetPickerSelect}
-          title="Bibliothèque de widgets"
-          description="Choisissez un widget enregistré pour l'utiliser dans ce workflow."
-        />
-      ) : null}
     </>
   );
 };
@@ -1226,7 +1087,10 @@ const StateAssignmentsPanel = ({
             }}
           >
             <label style={fieldStyle}>
-              <span>Affecter la valeur</span>
+              <span style={labelContentStyle}>
+                Affecter la valeur
+                <HelpTooltip label="Utilisez le langage Common Expression Language pour créer une expression personnalisée." />
+              </span>
               <input
                 type="text"
                 value={assignment.expression}
@@ -1235,18 +1099,10 @@ const StateAssignmentsPanel = ({
                   handleAssignmentChange(index, "expression", event.target.value)
                 }
               />
-              <small style={{ color: "#64748b" }}>
-                Utilisez le langage Common Expression Language pour créer une expression
-                personnalisée.{" "}
-                <a href="https://opensource.google/projects/cel" target="_blank" rel="noreferrer">
-                  En savoir plus
-                </a>
-                .
-              </small>
             </label>
 
             <label style={fieldStyle}>
-              <span>Vers la variable</span>
+              <span style={labelContentStyle}>Vers la variable</span>
               <input
                 type="text"
                 value={assignment.target}
@@ -1338,7 +1194,10 @@ const WidgetVariablesPanel = ({ assignments, onChange }: WidgetVariablesPanelPro
             }}
           >
             <label style={fieldStyle}>
-              <span>Identifiant du widget</span>
+              <span style={labelContentStyle}>
+                Identifiant du widget
+                <HelpTooltip label="Correspond aux attributs id, name ou aux zones éditables du widget." />
+              </span>
               <input
                 type="text"
                 value={assignment.identifier}
@@ -1347,12 +1206,12 @@ const WidgetVariablesPanel = ({ assignments, onChange }: WidgetVariablesPanelPro
                   handleAssignmentChange(index, "identifier", event.target.value)
                 }
               />
-              <small style={{ color: "#64748b" }}>
-                Correspond aux attributs <code>id</code>, <code>name</code> ou aux zones éditables du widget.
-              </small>
             </label>
             <label style={fieldStyle}>
-              <span>Expression associée</span>
+              <span style={labelContentStyle}>
+                Expression associée
+                <HelpTooltip label="Utilisez state. ou input. pour référencer les données du workflow." />
+              </span>
               <input
                 type="text"
                 value={assignment.expression}
@@ -1361,9 +1220,6 @@ const WidgetVariablesPanel = ({ assignments, onChange }: WidgetVariablesPanelPro
                   handleAssignmentChange(index, "expression", event.target.value)
                 }
               />
-              <small style={{ color: "#64748b" }}>
-                Utilisez <code>state.</code> ou <code>input.</code> pour référencer les données du workflow.
-              </small>
             </label>
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <button
@@ -1387,11 +1243,313 @@ const WidgetVariablesPanel = ({ assignments, onChange }: WidgetVariablesPanelPro
   );
 };
 
+const labelContentStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.35rem",
+  fontWeight: 600,
+  color: "#0f172a",
+};
+
+const inspectorHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+  marginBottom: "1rem",
+};
+
+const inspectorTitleStyle: CSSProperties = {
+  fontSize: "1rem",
+  fontWeight: 700,
+  color: "#0f172a",
+};
+
+const inspectorSubtitleStyle: CSSProperties = {
+  fontSize: "0.85rem",
+  color: "#475569",
+};
+
+const deleteButtonStyle: CSSProperties = {
+  border: "1px solid rgba(220, 38, 38, 0.25)",
+  backgroundColor: "rgba(220, 38, 38, 0.12)",
+  color: "#b91c1c",
+  borderRadius: "9999px",
+  padding: "0.35rem",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+  boxShadow: "0 6px 14px rgba(220, 38, 38, 0.2)",
+  transition: "background-color 150ms ease, transform 150ms ease",
+};
+
+const deleteButtonIconStyle: CSSProperties = {
+  width: "1.1rem",
+  height: "1.1rem",
+};
+
 const fieldStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: "0.4rem",
+  gap: "0.5rem",
   marginTop: "0.75rem",
+};
+
+const inlineFieldStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "auto minmax(0, 1fr)",
+  alignItems: "center",
+  gap: "0.75rem",
+  marginTop: "0.75rem",
+};
+
+const toggleRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+};
+
+const helpTooltipContainerStyle: CSSProperties = {
+  position: "relative",
+  display: "inline-flex",
+  alignItems: "center",
+};
+
+const helpTooltipButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: "1.35rem",
+  height: "1.35rem",
+  borderRadius: "9999px",
+  border: "1px solid rgba(148, 163, 184, 0.45)",
+  backgroundColor: "rgba(148, 163, 184, 0.2)",
+  color: "#0f172a",
+  fontSize: "0.8rem",
+  fontWeight: 700,
+  cursor: "pointer",
+  transition: "background-color 150ms ease, transform 150ms ease",
+};
+
+const helpTooltipButtonActiveStyle: CSSProperties = {
+  backgroundColor: "#2563eb",
+  borderColor: "rgba(37, 99, 235, 0.7)",
+  color: "#ffffff",
+};
+
+const helpTooltipBubbleStyle: CSSProperties = {
+  position: "absolute",
+  top: "calc(100% + 0.5rem)",
+  right: 0,
+  zIndex: 10,
+  maxWidth: "18rem",
+  padding: "0.65rem 0.75rem",
+  borderRadius: "0.75rem",
+  backgroundColor: "#0f172a",
+  color: "#f8fafc",
+  fontSize: "0.8rem",
+  lineHeight: 1.4,
+  boxShadow: "0 10px 25px rgba(15, 23, 42, 0.25)",
+};
+
+const helpTooltipBubbleHiddenStyle: CSSProperties = {
+  opacity: 0,
+  transform: "translateY(-4px)",
+  pointerEvents: "none",
+};
+
+const helpTooltipBubbleVisibleStyle: CSSProperties = {
+  opacity: 1,
+  transform: "translateY(0)",
+};
+
+const switchBaseStyle: CSSProperties = {
+  position: "relative",
+  width: "2.75rem",
+  height: "1.5rem",
+  borderRadius: "9999px",
+  border: "none",
+  padding: 0,
+  backgroundColor: "rgba(148, 163, 184, 0.45)",
+  cursor: "pointer",
+  transition: "background-color 150ms ease",
+};
+
+const switchCheckedStyle: CSSProperties = {
+  backgroundColor: "#2563eb",
+};
+
+const switchDisabledStyle: CSSProperties = {
+  cursor: "not-allowed",
+  opacity: 0.6,
+};
+
+const getSwitchThumbStyle = (checked: boolean): CSSProperties => ({
+  position: "absolute",
+  top: "50%",
+  left: "0.25rem",
+  width: "1.15rem",
+  height: "1.15rem",
+  borderRadius: "9999px",
+  backgroundColor: "#fff",
+  boxShadow: "0 2px 6px rgba(15, 23, 42, 0.25)",
+  transform: `translate(${checked ? "1.2rem" : "0"}, -50%)`,
+  transition: "transform 150ms ease",
+});
+
+const TrashIcon = () => (
+  <svg
+    style={deleteButtonIconStyle}
+    viewBox="0 0 24 24"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path
+      d="M9 3h6a1 1 0 0 1 1 1v1h4"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M5 5h14l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 5Z"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path d="M10 10v7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <path d="M14 10v7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+const HelpTooltip = ({ label }: { label: string }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const tooltipId = useId();
+  const containerRef = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      if (containerRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      setIsOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsOpen(false);
+      }
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const handleBlur = () => {
+    requestAnimationFrame(() => {
+      if (containerRef.current && !containerRef.current.contains(document.activeElement)) {
+        setIsOpen(false);
+      }
+    });
+  };
+
+  return (
+    <span ref={containerRef} style={helpTooltipContainerStyle}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={isOpen}
+        aria-controls={tooltipId}
+        onClick={() => setIsOpen((value) => !value)}
+        onBlur={handleBlur}
+        style={{
+          ...helpTooltipButtonStyle,
+          ...(isOpen ? helpTooltipButtonActiveStyle : {}),
+        }}
+      >
+        ?
+      </button>
+      <span
+        role="tooltip"
+        id={tooltipId}
+        aria-hidden={!isOpen}
+        style={{
+          ...helpTooltipBubbleStyle,
+          ...(isOpen ? helpTooltipBubbleVisibleStyle : helpTooltipBubbleHiddenStyle),
+        }}
+      >
+        {label}
+      </span>
+    </span>
+  );
+};
+
+type ToggleSwitchProps = {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  ariaLabel?: string;
+  ariaDescribedBy?: string;
+};
+
+const ToggleSwitch = ({ checked, onChange, disabled, ariaLabel, ariaDescribedBy }: ToggleSwitchProps) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    aria-label={ariaLabel}
+    aria-describedby={ariaDescribedBy}
+    onClick={() => {
+      if (!disabled) {
+        onChange(!checked);
+      }
+    }}
+    disabled={disabled}
+    style={{
+      ...switchBaseStyle,
+      ...(checked ? switchCheckedStyle : {}),
+      ...(disabled ? switchDisabledStyle : {}),
+    }}
+  >
+    <span style={getSwitchThumbStyle(checked)} />
+  </button>
+);
+
+type ToggleRowProps = {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  help?: string;
+};
+
+const ToggleRow = ({ label, checked, onChange, disabled, help }: ToggleRowProps) => {
+  const describedById = help ? `${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-help` : undefined;
+  return (
+    <div style={toggleRowStyle}>
+      <span style={labelContentStyle} id={describedById}>
+        {label}
+        {help ? <HelpTooltip label={help} /> : null}
+      </span>
+      <ToggleSwitch
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        ariaLabel={label}
+        ariaDescribedBy={describedById}
+      />
+    </div>
+  );
 };
 
 export default NodeInspector;

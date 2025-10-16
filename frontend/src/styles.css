@@ -1095,6 +1095,28 @@ button {
   gap: 18px;
 }
 
+@media (max-width: 640px) {
+  .modal {
+    align-items: flex-start;
+    padding: 1.5rem 1rem 2rem;
+  }
+
+  .modal__container {
+    margin: 0 auto;
+    max-height: calc(100vh - 3.5rem);
+  }
+
+  @supports (padding-bottom: calc(2rem + env(safe-area-inset-bottom))) {
+    .modal {
+      padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+    }
+
+    .modal__container {
+      max-height: calc(100vh - 3.5rem - env(safe-area-inset-bottom));
+    }
+  }
+}
+
 .modal__footer {
   padding: 18px 24px;
   border-top: 1px solid rgba(148, 163, 184, 0.2);
