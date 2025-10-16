@@ -38,6 +38,7 @@ import type {
   WidgetVariableAssignment,
 } from "../types";
 import { labelForKind } from "../utils";
+import WidgetLibraryModal from "./WidgetLibraryModal";
 
 const reasoningEffortOptions = [
   { value: "", label: "Comportement par défaut" },
@@ -225,6 +226,34 @@ const NodeInspector = ({
     }
     return widgets.find((widget) => widget.slug === trimmedWidgetNodeSlug) ?? null;
   }, [trimmedWidgetNodeSlug, widgets]);
+  const [widgetPickerTarget, setWidgetPickerTarget] = useState<"agent" | "widget" | null>(null);
+  const canBrowseWidgets = !widgetsLoading && !widgetsError && widgets.length > 0;
+
+  const handleOpenWidgetPicker = (target: "agent" | "widget") => {
+    if (!canBrowseWidgets) {
+      return;
+    }
+    setWidgetPickerTarget(target);
+  };
+
+  const handleCloseWidgetPicker = () => {
+    setWidgetPickerTarget(null);
+  };
+
+  const handleWidgetPickerSelect = (slug: string) => {
+    const trimmedSlug = slug.trim();
+    if (!trimmedSlug) {
+      return;
+    }
+    if (widgetPickerTarget === "agent") {
+      if (responseFormat.kind !== "widget") {
+        onAgentResponseFormatKindChange(node.id, "widget");
+      }
+      onAgentResponseWidgetSlugChange(node.id, trimmedSlug);
+    } else if (widgetPickerTarget === "widget") {
+      onWidgetNodeSlugChange(node.id, trimmedSlug);
+    }
+  };
   let fileSearchValidationMessage: string | null = null;
   if (fileSearchMissingVectorStore && !vectorStoresLoading) {
     if (!vectorStoresError && vectorStores.length === 0) {
@@ -303,8 +332,16 @@ const NodeInspector = ({
     }
     setSchemaError(null);
   }, [node.id, responseFormat.kind, schemaSignature]);
+  const widgetModalSelectedSlug =
+    widgetPickerTarget === "agent"
+      ? responseWidgetSlug
+      : widgetPickerTarget === "widget"
+        ? widgetNodeSlug
+        : "";
+
   return (
-    <section aria-label={`Propriétés du nœud ${node.data.slug}`}>
+    <>
+      <section aria-label={`Propriétés du nœud ${node.data.slug}`}>
       <h2 style={{ fontSize: "1.25rem", marginBottom: "0.75rem" }}>Nœud sélectionné</h2>
       <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 0.75rem" }}>
         <dt>Identifiant</dt>
@@ -632,6 +669,17 @@ const NodeInspector = ({
                       </option>
                     ))}
                   </select>
+                  <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      onClick={() => handleOpenWidgetPicker("agent")}
+                      disabled={!canBrowseWidgets}
+                      aria-label="Parcourir la bibliothèque de widgets pour la réponse de l'agent"
+                    >
+                      Parcourir la bibliothèque
+                    </button>
+                  </div>
                   {widgetValidationMessage ? (
                     <p style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}>{widgetValidationMessage}</p>
                   ) : (
@@ -678,6 +726,17 @@ const NodeInspector = ({
                     </option>
                   ))}
                 </select>
+                <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    onClick={() => handleOpenWidgetPicker("widget")}
+                    disabled={!canBrowseWidgets}
+                    aria-label="Parcourir la bibliothèque de widgets pour le bloc widget"
+                  >
+                    Parcourir la bibliothèque
+                  </button>
+                </div>
                 {widgetNodeValidationMessage ? (
                   <p style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}>
                     {widgetNodeValidationMessage}
@@ -1016,23 +1075,34 @@ const NodeInspector = ({
         )}
       </label>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <input
-            type="checkbox"
-            checked={isEnabled}
-            onChange={() => onToggle(node.id)}
-            disabled={isFixed}
-          />
-          Activer ce nœud
-        </label>
-        {!isFixed && (
-          <button type="button" className="btn danger" onClick={() => onRemove(node.id)}>
-            Supprimer
-          </button>
-        )}
-      </div>
-    </section>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <input
+              type="checkbox"
+              checked={isEnabled}
+              onChange={() => onToggle(node.id)}
+              disabled={isFixed}
+            />
+            Activer ce nœud
+          </label>
+          {!isFixed && (
+            <button type="button" className="btn danger" onClick={() => onRemove(node.id)}>
+              Supprimer
+            </button>
+          )}
+        </div>
+      </section>
+      {widgetPickerTarget && canBrowseWidgets ? (
+        <WidgetLibraryModal
+          widgets={widgets}
+          selectedSlug={widgetModalSelectedSlug}
+          onClose={handleCloseWidgetPicker}
+          onSelect={handleWidgetPickerSelect}
+          title="Bibliothèque de widgets"
+          description="Choisissez un widget enregistré pour l'utiliser dans ce workflow."
+        />
+      ) : null}
+    </>
   );
 };
 

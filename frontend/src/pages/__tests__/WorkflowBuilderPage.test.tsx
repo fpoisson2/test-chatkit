@@ -571,6 +571,81 @@ describe("WorkflowBuilderPage", () => {
     expect(agentNode.parameters.response_widget).toEqual({ slug: "email-card" });
   });
 
+  test("permet de sélectionner un widget depuis la bibliothèque modale", async () => {
+    listWidgetsMock.mockResolvedValue([
+      {
+        slug: "resume",
+        title: "Résumé automatique",
+        description: "Affiche une carte de synthèse",
+        definition: {},
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      },
+      {
+        slug: "insights",
+        title: "Points clés",
+        description: "Liste les éléments importants",
+        definition: {},
+        created_at: "2024-01-02T00:00:00Z",
+        updated_at: "2024-01-02T00:00:00Z",
+      },
+    ]);
+    const fetchMock = setupWorkflowApi();
+
+    const { container } = renderWorkflowBuilder();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const triageNode = container.querySelector('[data-id="agent-triage"]');
+    expect(triageNode).not.toBeNull();
+    fireEvent.click(triageNode!);
+
+    const outputTypeSelect = await screen.findByLabelText(/type de sortie/i);
+    await user.selectOptions(outputTypeSelect, "widget");
+
+    const browseButton = await screen.findByRole("button", {
+      name: /Parcourir la bibliothèque de widgets pour la réponse de l'agent/i,
+    });
+    await user.click(browseButton);
+
+    await screen.findByRole("dialog", { name: /bibliothèque de widgets/i });
+
+    const resumeButton = await screen.findByRole("button", {
+      name: /Résumé automatique/i,
+    });
+    await user.click(resumeButton);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: /bibliothèque de widgets/i })).not.toBeInTheDocument();
+    });
+
+    const widgetSelect = await screen.findByRole("combobox", { name: /widget de sortie/i });
+    expect(widgetSelect).toHaveValue("resume");
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            typeof input === "string" &&
+            input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`) &&
+            (init as RequestInit | undefined)?.method === "PUT",
+        ),
+      ).toBe(true);
+    });
+
+    const putCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        typeof input === "string" &&
+        input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`) &&
+        (init as RequestInit | undefined)?.method === "PUT",
+    );
+    const payload = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const agentNode = payload.graph.nodes.find((node: any) => node.slug === "agent-triage");
+    expect(agentNode.parameters.response_widget).toEqual({ slug: "resume" });
+  });
+
   test("pré-remplit un agent hérité avec les valeurs par défaut", async () => {
     setupWorkflowApi({ workflowDetail: JSON.parse(JSON.stringify(defaultResponse)) });
 
@@ -825,8 +900,22 @@ describe("WorkflowBuilderPage", () => {
 
   test("permet d'ajouter un bloc widget et de le configurer", async () => {
     listWidgetsMock.mockResolvedValue([
-      { slug: "resume", title: "Résumé automatique" },
-      { slug: "graphique", title: "Graphique" },
+      {
+        slug: "resume",
+        title: "Résumé automatique",
+        description: null,
+        definition: {},
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      },
+      {
+        slug: "graphique",
+        title: "Graphique",
+        description: null,
+        definition: {},
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      },
     ]);
     const fetchMock = setupWorkflowApi();
 
