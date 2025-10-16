@@ -449,30 +449,146 @@ button {
   border-top: 1px solid rgba(15, 23, 42, 0.08);
 }
 
-.chatkit-sidebar__footer-link {
+.chatkit-sidebar__profile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.chatkit-sidebar__profile-trigger {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 4px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 16px;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chatkit-sidebar__profile-trigger:hover,
+.chatkit-sidebar__profile-trigger:focus-visible {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.chatkit-sidebar__profile-trigger:focus-visible {
+  outline: 2px solid rgba(15, 23, 42, 0.3);
+  outline-offset: 2px;
+}
+
+.chatkit-sidebar__profile-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(37, 99, 235, 0.55));
+  color: var(--primary-hover);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+.chatkit-sidebar__profile-details {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.chatkit-sidebar__profile-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.chatkit-sidebar__profile-role {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.chatkit-sidebar__profile-caret {
+  width: 14px;
+  height: 14px;
+  border-right: 2px solid rgba(15, 23, 42, 0.45);
+  border-bottom: 2px solid rgba(15, 23, 42, 0.45);
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+  flex: 0 0 auto;
+}
+
+.chatkit-sidebar__profile--open .chatkit-sidebar__profile-caret {
+  transform: rotate(-135deg);
+}
+
+.chatkit-sidebar__profile-menu {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--surface-strong);
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: var(--shadow-soft);
+  padding: 12px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(12px);
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.chatkit-sidebar__profile--open .chatkit-sidebar__profile-menu {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.chatkit-sidebar__profile-action {
   width: 100%;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
-  gap: 12px;
+  gap: 10px;
   background: transparent;
   border: none;
   color: var(--text-color);
   font-weight: 600;
-  padding: 10px 4px;
+  padding: 8px 6px;
   border-radius: 12px;
   cursor: pointer;
   transition: background-color 0.2s ease;
+  text-align: left;
 }
 
-.chatkit-sidebar__footer-link:hover,
-.chatkit-sidebar__footer-link:focus-visible {
-  background: rgba(15, 23, 42, 0.08);
+.chatkit-sidebar__profile-action:hover,
+.chatkit-sidebar__profile-action:focus-visible {
+  background: rgba(15, 23, 42, 0.06);
 }
 
-.chatkit-sidebar__footer-link:focus-visible {
+.chatkit-sidebar__profile-action:focus-visible {
   outline: 2px solid rgba(15, 23, 42, 0.3);
   outline-offset: 2px;
+}
+
+.chatkit-sidebar__profile-action--logout {
+  color: var(--danger-color);
 }
 
 .chatkit-sidebar--collapsed {
@@ -489,11 +605,6 @@ button {
   display: none;
 }
 
-.chatkit-sidebar--collapsed .chatkit-sidebar__footer-link {
-  justify-content: center;
-  padding: 10px 0;
-}
-
 .chatkit-sidebar--collapsed .chatkit-sidebar__list {
   width: 100%;
   align-items: center;
@@ -502,6 +613,27 @@ button {
 .chatkit-sidebar--collapsed .chatkit-sidebar__item button {
   justify-content: center;
   padding: 12px 0;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__profile-trigger {
+  justify-content: center;
+  padding: 12px 0;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__profile-details,
+.chatkit-sidebar--collapsed .chatkit-sidebar__profile-caret {
+  display: none;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__profile-menu {
+  left: 50%;
+  right: auto;
+  min-width: 220px;
+  transform: translate(-50%, 12px);
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__profile--open .chatkit-sidebar__profile-menu {
+  transform: translate(-50%, 0);
 }
 
 .login-layout,
