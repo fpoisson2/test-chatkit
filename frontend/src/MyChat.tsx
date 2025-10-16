@@ -36,7 +36,7 @@ type ClientToolCall = WeatherToolCall;
 
 export function MyChat() {
   const { token, user } = useAuth();
-  const { openSidebar, openSettings } = useAppLayout();
+  const { openSidebar } = useAppLayout();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [deviceId] = useState(() => getOrCreateDeviceId());
@@ -324,10 +324,6 @@ export function MyChat() {
             icon: "menu",
             onClick: openSidebar,
           },
-          rightAction: {
-            icon: "settings-cog",
-            onClick: openSettings,
-          },
         },
         theme: {
           colorScheme: "light" as const,
@@ -407,7 +403,6 @@ export function MyChat() {
       apiConfig,
       attachmentsConfig,
       initialThreadId,
-      openSettings,
       openSidebar,
       sessionOwner,
     ],
