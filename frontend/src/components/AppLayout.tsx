@@ -46,23 +46,15 @@ const APPLICATIONS: ApplicationDescriptor[] = [
 
 const buildNavigationItems = ({
   isAuthenticated,
-  handleSidebarVoice,
   handleSidebarLogin,
   handleSidebarLogout,
 }: {
   isAuthenticated: boolean;
-  handleSidebarVoice: () => void;
   handleSidebarLogin: () => void;
   handleSidebarLogout: () => void;
 }): NavigationItem[] => {
   if (isAuthenticated) {
     return [
-      {
-        key: "voice",
-        label: "Mode voix",
-        icon: "voice",
-        onClick: handleSidebarVoice,
-      },
       {
         key: "logout",
         label: "Déconnexion",
@@ -216,14 +208,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     setIsSettingsModalOpen(true);
   }, [navigate, user]);
 
-  const handleSidebarVoice = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-
-    navigate("/voice");
-  }, [closeSidebar, isDesktopLayout, navigate]);
-
   const handleSidebarLogin = useCallback(() => {
     if (!isDesktopLayout) {
       closeSidebar();
@@ -252,14 +236,12 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     () =>
       buildNavigationItems({
         isAuthenticated,
-        handleSidebarVoice,
         handleSidebarLogin,
         handleSidebarLogout,
       }),
     [
       handleSidebarLogin,
       handleSidebarLogout,
-      handleSidebarVoice,
       isAuthenticated,
     ],
   );
@@ -354,7 +336,24 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             <div className="chatkit-sidebar__topline">
               <div className="chatkit-sidebar__brand">
                 <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
-                <span className="chatkit-sidebar__brand-text">ChatKit Demo</span>
+                <div className="chatkit-sidebar__brand-switcher">
+                  <label htmlFor="chatkit-app-switcher" className="visually-hidden">
+                    Applications
+                  </label>
+                  <select
+                    id="chatkit-app-switcher"
+                    className="chatkit-sidebar__brand-select"
+                    value={activeApplication}
+                    onChange={handleApplicationChange}
+                    tabIndex={sidebarTabIndex}
+                  >
+                    {availableApplications.map((application) => (
+                      <option key={application.key} value={application.key}>
+                        {application.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               {isSidebarOpen && (
                 <button
@@ -367,24 +366,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                   ×
                 </button>
               )}
-            </div>
-            <div className="chatkit-sidebar__app-switcher">
-              <label htmlFor="chatkit-app-switcher" className="chatkit-sidebar__app-label">
-                Applications
-              </label>
-              <select
-                id="chatkit-app-switcher"
-                className="chatkit-sidebar__app-select"
-                value={activeApplication}
-                onChange={handleApplicationChange}
-                tabIndex={sidebarTabIndex}
-              >
-                {availableApplications.map((application) => (
-                  <option key={application.key} value={application.key}>
-                    {application.label}
-                  </option>
-                ))}
-              </select>
             </div>
           </header>
           <nav className="chatkit-sidebar__nav" aria-label="Menu principal">
