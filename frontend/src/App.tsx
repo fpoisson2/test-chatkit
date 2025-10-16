@@ -97,7 +97,9 @@ export const App = () => (
       path="/admin"
       element={
         <RequireAdmin>
-          <AdminPage />
+          <AppLayout>
+            <AdminPage />
+          </AppLayout>
         </RequireAdmin>
       }
     />
@@ -105,7 +107,9 @@ export const App = () => (
       path="/admin/models"
       element={
         <RequireAdmin>
-          <AdminModelsPage />
+          <AppLayout>
+            <AdminModelsPage />
+          </AppLayout>
         </RequireAdmin>
       }
     />
