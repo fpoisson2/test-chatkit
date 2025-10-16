@@ -442,6 +442,54 @@ describe("WorkflowBuilderPage", () => {
 
   });
 
+  test("réutilise le brouillon existant lors d'auto-sauvegardes successives", async () => {
+    const user = userEvent.setup();
+    const fetchMock = setupWorkflowApi();
+
+    const { container } = renderWorkflowBuilder();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const versionSelect = await screen.findByLabelText(/révision/i);
+    await user.selectOptions(versionSelect, String(productionVersionSummary.id));
+
+    await waitFor(() => {
+      expect(versionSelect).toHaveValue(String(productionVersionSummary.id));
+    });
+
+    const triageNode = container.querySelector('[data-id="agent-triage"]');
+    expect(triageNode).not.toBeNull();
+    fireEvent.click(triageNode!);
+
+    const displayNameInput = await screen.findByLabelText(/nom affiché/i);
+    fireEvent.change(displayNameInput, { target: { value: "Analyse production 1" } });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, AUTO_SAVE_DELAY_MS + 200));
+    });
+
+    fireEvent.change(displayNameInput, { target: { value: "Analyse production 2" } });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, AUTO_SAVE_DELAY_MS + 200));
+    });
+
+    await waitFor(() => {
+      expect(versionSelect).toHaveValue(String(draftVersionSummary.id));
+    });
+
+    const postCalls = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        typeof input === "string" &&
+        input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions`) &&
+        ((init as RequestInit | undefined)?.method ?? "GET").toUpperCase() === "POST",
+    );
+    expect(postCalls).toHaveLength(0);
+
+  });
+
   test("permet d'activer le function tool météo Python", async () => {
     const fetchMock = setupWorkflowApi();
 
@@ -532,7 +580,9 @@ describe("WorkflowBuilderPage", () => {
       expect(listWorkflowWidgetsMock).toHaveBeenCalled();
     });
 
-    const widgetSelect = await screen.findByRole("combobox", { name: /widget de sortie/i });
+    const widgetComboboxes = await screen.findAllByRole("combobox", { name: /widget de sortie/i });
+    const widgetSelect =
+      widgetComboboxes.find((element) => element.tagName === "SELECT") ?? widgetComboboxes[0];
     await user.selectOptions(widgetSelect, "email-card");
 
     await waitFor(() => {
@@ -553,6 +603,7 @@ describe("WorkflowBuilderPage", () => {
   });
 
   test("permet de sélectionner un widget depuis la bibliothèque modale", async () => {
+    const user = userEvent.setup();
     listWorkflowWidgetsMock.mockResolvedValue([
       {
         slug: "resume",
@@ -587,16 +638,20 @@ describe("WorkflowBuilderPage", () => {
 
     await screen.findByRole("dialog", { name: /bibliothèque de widgets/i });
 
-    const resumeButton = await screen.findByRole("button", {
+    const resumeOptions = await screen.findAllByRole("option", {
       name: /Résumé automatique/i,
     });
-    await user.click(resumeButton);
+    const resumeOption =
+      resumeOptions.find((element) => element.tagName === "BUTTON") ?? resumeOptions[0];
+    await user.click(resumeOption);
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: /bibliothèque de widgets/i })).not.toBeInTheDocument();
     });
 
-    const widgetSelect = await screen.findByRole("combobox", { name: /widget de sortie/i });
+    const widgetComboboxes = await screen.findAllByRole("combobox", { name: /widget de sortie/i });
+    const widgetSelect =
+      widgetComboboxes.find((element) => element.tagName === "SELECT") ?? widgetComboboxes[0];
     expect(widgetSelect).toHaveValue("resume");
 
     await waitFor(() => {
@@ -874,6 +929,7 @@ describe("WorkflowBuilderPage", () => {
   });
 
   test("permet d'ajouter un bloc widget et de le configurer", async () => {
+    const user = userEvent.setup();
     listWorkflowWidgetsMock.mockResolvedValue([
       {
         slug: "resume",
@@ -895,37 +951,55 @@ describe("WorkflowBuilderPage", () => {
     });
 
     const widgetButton = await screen.findByRole("button", { name: /bloc widget/i });
-    fireEvent.click(widgetButton);
+    await user.click(widgetButton);
 
     const widgetNode = await waitFor(() => container.querySelector('[data-id^="widget-"]'));
     expect(widgetNode).not.toBeNull();
     fireEvent.click(widgetNode!);
 
-    const widgetSelect = await screen.findByLabelText(/widget à afficher/i);
-    fireEvent.change(widgetSelect, { target: { value: "resume" } });
+    const widgetSelect = await screen.findByLabelText(/widget enregistré/i);
+    await user.selectOptions(widgetSelect, "resume");
 
     const addVariableButton = await screen.findByRole("button", { name: /ajouter une variable/i });
-    fireEvent.click(addVariableButton);
+    await user.click(addVariableButton);
 
-    const identifierInput = await screen.findByPlaceholderText(/ex\. title/i);
+    const variablesPanel = await screen.findByRole("region", { name: /variables de widget/i });
+    const identifierInput = await within(variablesPanel).findByLabelText(/identifiant du widget/i);
     fireEvent.change(identifierInput, { target: { value: "title" } });
 
-    const expressionInput = await screen.findByPlaceholderText(/ex\. input\.output_parsed\.titre/i);
+    const expressionInput = await within(variablesPanel).findByLabelText(/expression associée/i);
     fireEvent.change(expressionInput, { target: { value: "state.resume" } });
 
     await waitFor(
       () => {
-        expect(
-          fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
-        ).toBe(true);
+        const match = fetchMock.mock.calls
+          .filter(([, init]) => (init as RequestInit | undefined)?.method === "PUT")
+          .map(([, init]) => JSON.parse((init as RequestInit).body as string))
+          .find((payload) => {
+            const widgetPayload = payload.graph.nodes.find((node: any) => node.kind === "widget");
+            return (
+              widgetPayload?.parameters?.widget?.variables?.title &&
+              widgetPayload.parameters.widget.variables.title === "state.resume"
+            );
+          });
+        expect(match).toBeTruthy();
       },
       { timeout: 4000 },
     );
 
-    const putCall = fetchMock.mock.calls.find(
+    const putCalls = fetchMock.mock.calls.filter(
       ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
     );
-    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    expect(putCalls.length).toBeGreaterThan(0);
+    const matchingPayload = [...putCalls]
+      .reverse()
+      .map(([, init]) => JSON.parse((init as RequestInit).body as string))
+      .find((payload) => {
+        const widgetPayload = payload.graph.nodes.find((node: any) => node.kind === "widget");
+        return widgetPayload?.parameters?.widget?.variables?.title === "state.resume";
+      });
+    expect(matchingPayload).toBeTruthy();
+    const body = matchingPayload!;
     const widgetPayload = body.graph.nodes.find((node: any) => node.kind === "widget");
     expect(widgetPayload).toBeTruthy();
     expect(widgetPayload.parameters).toEqual({
@@ -950,7 +1024,7 @@ describe("WorkflowBuilderPage", () => {
     expect(widgetNode).not.toBeNull();
     fireEvent.click(widgetNode!);
 
-    const widgetSlugInput = await screen.findByLabelText(/^slug du widget$/i);
+    const widgetSlugInput = await screen.findByLabelText(/slug du widget/i);
     fireEvent.change(widgetSlugInput, { target: { value: "resume" } });
 
     await waitFor(

@@ -1299,7 +1299,14 @@ const WidgetVariablesPanel = ({ assignments, onChange }: WidgetVariablesPanelPro
   };
 
   const handleAddAssignment = () => {
-    onChange([...assignments, { identifier: "", expression: "" }]);
+    const nextIndex = assignments.length + 1;
+    onChange([
+      ...assignments,
+      {
+        identifier: `widget_variable_${nextIndex}`,
+        expression: "input.",
+      },
+    ]);
   };
 
   return (

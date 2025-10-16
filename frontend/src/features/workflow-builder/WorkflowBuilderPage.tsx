@@ -261,7 +261,9 @@ const WorkflowBuilderPage = () => {
   const [isDeploying, setIsDeploying] = useState(false);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const autoSaveTimeoutRef = useRef<number | null>(null);
+  const pendingAutoSaveRef = useRef(false);
   const lastSavedSnapshotRef = useRef<string | null>(null);
+  const draftTargetRef = useRef<WorkflowVersionSummary | null>(null);
   const isHydratingRef = useRef(false);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
   const viewportRef = useRef<Viewport | null>(null);
@@ -642,6 +644,21 @@ const WorkflowBuilderPage = () => {
     [selectedVersionId, versions],
   );
 
+  useEffect(() => {
+    if (!selectedWorkflowId) {
+      return;
+    }
+
+    if (latestDraftVersion) {
+      draftTargetRef.current = latestDraftVersion;
+      return;
+    }
+
+    if (!selectedVersionSummary || selectedVersionSummary.is_active) {
+      draftTargetRef.current = null;
+    }
+  }, [latestDraftVersion, selectedVersionSummary, selectedWorkflowId]);
+
   const isReasoningModel = useCallback(
     (model: string): boolean => {
       const trimmed = model.trim();
@@ -904,8 +921,10 @@ const WorkflowBuilderPage = () => {
           }
           const data: WorkflowVersionSummary[] = await response.json();
           const normalizedVersions = sortVersionsWithDraftFirst(data);
+          draftTargetRef.current = findLatestDraftVersion(normalizedVersions);
           setVersions(normalizedVersions);
           if (normalizedVersions.length === 0) {
+            draftTargetRef.current = null;
             setSelectedVersionId(null);
             setNodes([]);
             setEdges([]);
@@ -999,6 +1018,7 @@ const WorkflowBuilderPage = () => {
             setVersions([]);
             setNodes([]);
             setEdges([]);
+            draftTargetRef.current = null;
             isHydratingRef.current = true;
             lastSavedSnapshotRef.current = JSON.stringify(buildGraphPayloadFrom([], []));
             setHasPendingChanges(false);
@@ -1936,6 +1956,7 @@ const WorkflowBuilderPage = () => {
         setVersions([]);
         setNodes([]);
         setEdges([]);
+        draftTargetRef.current = null;
         lastSavedSnapshotRef.current = null;
         setHasPendingChanges(false);
       }
@@ -2166,15 +2187,20 @@ const WorkflowBuilderPage = () => {
   const graphSnapshot = useMemo(() => JSON.stringify(buildGraphPayload()), [buildGraphPayload]);
 
   useEffect(() => {
-    if (!selectedVersionSummary || !selectedVersionSummary.is_active) {
+    if (!selectedWorkflowId) {
       return;
     }
 
-    if (!latestDraftVersion) {
+    const draftCandidate = latestDraftVersion ?? draftTargetRef.current;
+    if (!draftCandidate) {
       return;
     }
 
-    if (latestDraftVersion.id === selectedVersionId) {
+    if (draftCandidate.id === selectedVersionId) {
+      return;
+    }
+
+    if (!lastSavedSnapshotRef.current) {
       return;
     }
 
@@ -2182,25 +2208,34 @@ const WorkflowBuilderPage = () => {
       return;
     }
 
-    setSelectedVersionId(latestDraftVersion.id);
+    let normalizedDraft: WorkflowVersionSummary | null = null;
     setVersions((current) => {
-      if (current.some((version) => version.id === latestDraftVersion.id)) {
-        return sortVersionsWithDraftFirst(current);
+      const existingDraft = current.find((version) => version.id === draftCandidate.id);
+      if (!existingDraft) {
+        return current;
       }
-      return current;
+      normalizedDraft = normalizeDraftVersionName(existingDraft);
+      return sortVersionsWithDraftFirst(
+        current.map((version) => (version.id === existingDraft.id ? normalizedDraft! : version)),
+      );
     });
+    if (normalizedDraft) {
+      draftTargetRef.current = normalizedDraft;
+      setSelectedVersionId(normalizedDraft.id);
+    }
     setHasPendingChanges(true);
   }, [
     graphSnapshot,
     latestDraftVersion,
     selectedVersionId,
-    selectedVersionSummary,
+    selectedWorkflowId,
     setHasPendingChanges,
   ]);
 
   useEffect(() => {
     if (!selectedWorkflowId) {
       lastSavedSnapshotRef.current = null;
+      draftTargetRef.current = null;
       setHasPendingChanges(false);
       return;
     }
@@ -2356,6 +2391,11 @@ const WorkflowBuilderPage = () => {
   }, [handleCloseDeployModal, isDeployModalOpen]);
 
   const handleSave = useCallback(async () => {
+    if (saveState === "saving") {
+      pendingAutoSaveRef.current = true;
+      return;
+    }
+
     setSaveMessage(null);
     if (!selectedWorkflowId) {
       setSaveState("error");
@@ -2377,7 +2417,7 @@ const WorkflowBuilderPage = () => {
       const draftVersion =
         selectedVersionSummary && !selectedVersionSummary.is_active
           ? selectedVersionSummary
-          : latestDraftVersion ?? null;
+          : draftTargetRef.current ?? latestDraftVersion ?? null;
 
       const endpoint = draftVersion
         ? `/api/workflows/${selectedWorkflowId}/versions/${draftVersion.id}`
@@ -2463,6 +2503,7 @@ const WorkflowBuilderPage = () => {
         }
 
         if (savedVersionSummary) {
+          draftTargetRef.current = savedVersionSummary;
           setVersions((current) => {
             const withoutSaved = current.filter(
               (version) => version.id !== savedVersionSummary.id,
@@ -2482,6 +2523,10 @@ const WorkflowBuilderPage = () => {
         setHasPendingChanges(false);
         setSaveMessage("Modifications enregistrées automatiquement.");
         setTimeout(() => setSaveState("idle"), 1500);
+        if (pendingAutoSaveRef.current) {
+          pendingAutoSaveRef.current = false;
+          void handleSave();
+        }
         return;
       }
       throw new Error("Impossible de contacter le serveur pour enregistrer la version.");
@@ -2491,12 +2536,18 @@ const WorkflowBuilderPage = () => {
       setSaveMessage(
         error instanceof Error ? error.message : "Impossible d'enregistrer le workflow."
       );
+      if (pendingAutoSaveRef.current) {
+        pendingAutoSaveRef.current = false;
+        void handleSave();
+      }
     }
   }, [
     authHeader,
     buildGraphPayload,
     latestDraftVersion,
+    pendingAutoSaveRef,
     loadVersions,
+    saveState,
     selectedVersionSummary,
     selectedWorkflowId,
     workflows,
