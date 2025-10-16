@@ -336,19 +336,6 @@ export const VectorStoresPage = () => {
             onDelete={handleDeleteStore}
           />
         </section>
-        <section className="admin-card">
-          <div>
-            <h2 className="admin-card__title">Comment ça marche ?</h2>
-            <p className="admin-card__subtitle">
-              Chargez un fichier JSON structuré puis lancez une recherche hybride pour visualiser les chunks retournés (scores denses + BM25).
-            </p>
-            <ul className="vector-store__steps">
-              <li>Créez un store puis déposez vos documents JSON.</li>
-              <li>Déclenchez l'ingestion pour générer les embeddings et les index.</li>
-              <li>Testez une requête et inspectez le JSON source renvoyé par l'API.</li>
-            </ul>
-          </div>
-        </section>
       </div>
 
       {showCreateModal ? (
