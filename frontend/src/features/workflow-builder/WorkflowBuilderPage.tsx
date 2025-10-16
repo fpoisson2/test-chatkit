@@ -1698,51 +1698,57 @@ const WorkflowBuilderPage = () => {
     setSaveMessage(lastError?.message ?? "Impossible de créer le workflow.");
   }, [authHeader, loadWorkflows]);
 
-  const handleDeleteWorkflow = useCallback(async () => {
-    if (!selectedWorkflowId) {
-      return;
-    }
-    const current = workflows.find((workflow) => workflow.id === selectedWorkflowId);
-    if (!current) {
-      return;
-    }
-    if (current.is_chatkit_default) {
-      setSaveState("error");
-      setSaveMessage(
-        "Sélectionnez un autre workflow pour ChatKit avant de supprimer celui-ci.",
+  const handleDeleteWorkflow = useCallback(
+    async (workflowId?: number) => {
+      const targetId = workflowId ?? selectedWorkflowId;
+      if (!targetId) {
+        return;
+      }
+      const current = workflows.find((workflow) => workflow.id === targetId);
+      if (!current) {
+        return;
+      }
+      if (current.is_chatkit_default) {
+        setSaveState("error");
+        setSaveMessage(
+          "Sélectionnez un autre workflow pour ChatKit avant de supprimer celui-ci.",
+        );
+        return;
+      }
+      const confirmed = window.confirm(
+        `Supprimer le workflow "${current.display_name}" ? Cette action est irréversible.`,
       );
-      return;
-    }
-    const confirmed = window.confirm(
-      `Supprimer le workflow "${current.display_name}" ? Cette action est irréversible.`,
-    );
-    if (!confirmed) {
-      return;
-    }
-    setOpenWorkflowMenuId(null);
-    const endpoint = `/api/workflows/${selectedWorkflowId}`;
-    const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
-    let lastError: Error | null = null;
-    setSaveState("saving");
-    setSaveMessage("Suppression en cours…");
-    for (const url of candidates) {
-      try {
-        const response = await fetch(url, {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-            ...authHeader,
-          },
-        });
-        if (response.status === 204) {
-          setSelectedNodeId(null);
-          setSelectedEdgeId(null);
-          await loadWorkflows({ excludeWorkflowId: current.id });
-          setSaveState("saved");
-          setSaveMessage(`Workflow "${current.display_name}" supprimé.`);
-          setTimeout(() => setSaveState("idle"), 1500);
-          return;
-        }
+      if (!confirmed) {
+        return;
+      }
+      setOpenWorkflowMenuId(null);
+      const endpoint = `/api/workflows/${targetId}`;
+      const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
+      let lastError: Error | null = null;
+      setSaveState("saving");
+      setSaveMessage("Suppression en cours…");
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url, {
+            method: "DELETE",
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeader,
+            },
+          });
+          if (response.status === 204) {
+            setSelectedNodeId(null);
+            setSelectedEdgeId(null);
+            const nextSelection = targetId === selectedWorkflowId ? null : selectedWorkflowId;
+            await loadWorkflows({
+              excludeWorkflowId: current.id,
+              selectWorkflowId: nextSelection ?? undefined,
+            });
+            setSaveState("saved");
+            setSaveMessage(`Workflow "${current.display_name}" supprimé.`);
+            setTimeout(() => setSaveState("idle"), 1500);
+            return;
+          }
         if (response.status === 400) {
           let message = "Impossible de supprimer le workflow.";
           try {
@@ -1765,17 +1771,20 @@ const WorkflowBuilderPage = () => {
         }
         lastError = error instanceof Error ? error : new Error("Impossible de supprimer le workflow.");
       }
-    }
-    setSaveState("error");
-    setSaveMessage(lastError?.message ?? "Impossible de supprimer le workflow.");
-  }, [
-    authHeader,
-    loadWorkflows,
-    selectedWorkflowId,
-    setSelectedEdgeId,
-    setSelectedNodeId,
-    workflows,
-  ]);
+      }
+      setSaveState("error");
+      setSaveMessage(lastError?.message ?? "Impossible de supprimer le workflow.");
+    },
+    [
+      authHeader,
+      backendUrl,
+      loadWorkflows,
+      selectedWorkflowId,
+      setSelectedEdgeId,
+      setSelectedNodeId,
+      workflows,
+    ],
+  );
 
   const buildGraphPayload = useCallback(
     () => buildGraphPayloadFrom(nodes, edges),
@@ -2067,70 +2076,94 @@ const WorkflowBuilderPage = () => {
     workflows,
   ]);
 
-  const handleDuplicateWorkflow = useCallback(async () => {
-    if (!selectedWorkflow) {
-      return;
-    }
-
-    const baseName = selectedWorkflow.display_name?.trim() || "Workflow sans nom";
-    const proposed = window.prompt("Nom du duplicata ?", `${baseName} (copie)`);
-    if (!proposed) {
-      return;
-    }
-
-    const displayName = proposed.trim();
-    if (!displayName) {
-      return;
-    }
-
-    const payload = {
-      slug: slugifyWorkflowName(displayName),
-      display_name: displayName,
-      description: selectedWorkflow.description,
-      graph: buildGraphPayload(),
-    };
-
-    const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows");
-    let lastError: Error | null = null;
-    setSaveState("saving");
-    setSaveMessage("Duplication en cours…");
-    for (const url of candidates) {
-      try {
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...authHeader,
-          },
-          body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-          throw new Error(`Échec de la duplication (${response.status})`);
-        }
-
-        const data: WorkflowVersionResponse = await response.json();
+  const handleDuplicateWorkflow = useCallback(
+    async (workflowId?: number) => {
+      const targetId = workflowId ?? selectedWorkflowId;
+      if (!targetId || !selectedWorkflow || targetId !== selectedWorkflowId) {
         setOpenWorkflowMenuId(null);
-        await loadWorkflows({ selectWorkflowId: data.workflow_id, selectVersionId: data.id });
-        setSaveState("saved");
-        setSaveMessage(`Workflow dupliqué sous "${displayName}".`);
-        setTimeout(() => setSaveState("idle"), 1500);
+        if (targetId && targetId !== selectedWorkflowId) {
+          setSaveState("error");
+          setSaveMessage("Sélectionnez le workflow avant de le dupliquer.");
+          setTimeout(() => setSaveState("idle"), 1500);
+        }
         return;
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error("Impossible de dupliquer le workflow.");
       }
-    }
 
-    setSaveState("error");
-    setSaveMessage(lastError?.message ?? "Impossible de dupliquer le workflow.");
-  }, [authHeader, buildGraphPayload, loadWorkflows, selectedWorkflow]);
+      const baseName = selectedWorkflow.display_name?.trim() || "Workflow sans nom";
+      const proposed = window.prompt("Nom du duplicata ?", `${baseName} (copie)`);
+      if (!proposed) {
+        return;
+      }
 
-  const handleRenameWorkflow = useCallback(() => {
-    setOpenWorkflowMenuId(null);
-    setSaveState("error");
-    setSaveMessage("Le renommage de workflow sera bientôt disponible.");
-    setTimeout(() => setSaveState("idle"), 1500);
-  }, []);
+      const displayName = proposed.trim();
+      if (!displayName) {
+        return;
+      }
+
+      const payload = {
+        slug: slugifyWorkflowName(displayName),
+        display_name: displayName,
+        description: selectedWorkflow.description,
+        graph: buildGraphPayload(),
+      };
+
+      const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows");
+      let lastError: Error | null = null;
+      setSaveState("saving");
+      setSaveMessage("Duplication en cours…");
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeader,
+            },
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Échec de la duplication (${response.status})`);
+          }
+
+          const data: WorkflowVersionResponse = await response.json();
+          setOpenWorkflowMenuId(null);
+          await loadWorkflows({ selectWorkflowId: data.workflow_id, selectVersionId: data.id });
+          setSaveState("saved");
+          setSaveMessage(`Workflow dupliqué sous "${displayName}".`);
+          setTimeout(() => setSaveState("idle"), 1500);
+          return;
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error("Impossible de dupliquer le workflow.");
+        }
+      }
+
+      setSaveState("error");
+      setSaveMessage(lastError?.message ?? "Impossible de dupliquer le workflow.");
+    },
+    [
+      authHeader,
+      buildGraphPayload,
+      loadWorkflows,
+      selectedWorkflow,
+      selectedWorkflowId,
+    ],
+  );
+
+  const handleRenameWorkflow = useCallback(
+    (workflowId?: number) => {
+      const targetId = workflowId ?? selectedWorkflowId;
+      if (!targetId) {
+        return;
+      }
+
+      setOpenWorkflowMenuId(null);
+      setSaveState("error");
+      setSaveMessage("Le renommage de workflow sera bientôt disponible.");
+      setTimeout(() => setSaveState("idle"), 1500);
+    },
+    [selectedWorkflowId],
+  );
 
   const disableSave = useMemo(() => {
     if (!selectedWorkflowId) {
@@ -2482,6 +2515,8 @@ const WorkflowBuilderPage = () => {
           {workflows.map((workflow) => {
             const isActive = workflow.id === selectedWorkflowId;
             const isMenuOpen = openWorkflowMenuId === workflow.id;
+            const canDuplicate = !loading && workflow.id === selectedWorkflowId;
+            const canDelete = !loading && !workflow.is_chatkit_default;
             const menuId = `workflow-actions-${workflow.id}`;
             const menuStyle = getActionMenuStyle(isMobileLayout);
             menuStyle.right = "var(--chatkit-sidebar-padding-x)";
@@ -2512,9 +2547,6 @@ const WorkflowBuilderPage = () => {
                     disabled={loading}
                     onClick={(event) => {
                       event.stopPropagation();
-                      if (selectedWorkflowId !== workflow.id) {
-                        handleSelectWorkflow(workflow.id);
-                      }
                       setOpenWorkflowMenuId((current) =>
                         current === workflow.id ? null : workflow.id,
                       );
@@ -2536,35 +2568,30 @@ const WorkflowBuilderPage = () => {
                   >
                     <button
                       type="button"
-                      onClick={handleRenameWorkflow}
-                      disabled={!selectedWorkflowId}
+                      onClick={() => handleRenameWorkflow(workflow.id)}
+                      disabled={loading}
                       style={getActionMenuItemStyle(isMobileLayout, {
-                        disabled: !selectedWorkflowId,
+                        disabled: loading,
                       })}
                     >
                       Renommer
                     </button>
                     <button
                       type="button"
-                      onClick={handleDuplicateWorkflow}
-                      disabled={loading || !selectedWorkflowId}
+                      onClick={() => void handleDuplicateWorkflow(workflow.id)}
+                      disabled={!canDuplicate}
                       style={getActionMenuItemStyle(isMobileLayout, {
-                        disabled: loading || !selectedWorkflowId,
+                        disabled: !canDuplicate,
                       })}
                     >
                       Dupliquer
                     </button>
                     <button
                       type="button"
-                      onClick={handleDeleteWorkflow}
-                      disabled={
-                        loading || !selectedWorkflowId || selectedWorkflow?.is_chatkit_default
-                      }
+                      onClick={() => void handleDeleteWorkflow(workflow.id)}
+                      disabled={!canDelete}
                       style={getActionMenuItemStyle(isMobileLayout, {
-                        disabled:
-                          loading ||
-                          !selectedWorkflowId ||
-                          selectedWorkflow?.is_chatkit_default,
+                        disabled: !canDelete,
                         danger: true,
                       })}
                     >
