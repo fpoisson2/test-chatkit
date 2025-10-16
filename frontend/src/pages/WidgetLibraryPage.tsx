@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useAuth } from "../auth";
 import { Modal } from "../components/Modal";
@@ -24,7 +24,7 @@ const sortWidgets = (widgets: WidgetTemplate[]): WidgetTemplate[] =>
   [...widgets].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
 
 export const WidgetLibraryPage = () => {
-  const { token, user, logout } = useAuth();
+  const { token, logout } = useAuth();
   const [widgets, setWidgets] = useState<WidgetTemplate[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,13 +36,6 @@ export const WidgetLibraryPage = () => {
     subtitle?: string | null;
     definition: Record<string, unknown>;
   } | null>(null);
-
-  const badge = useMemo(() => {
-    const widgetCountLabel = widgets.length
-      ? ` · ${widgets.length} widget${widgets.length > 1 ? "s" : ""}`
-      : "";
-    return `${user?.email ?? "Administrateur"}${widgetCountLabel}`;
-  }, [user?.email, widgets.length]);
 
   const refreshWidgets = useCallback(async () => {
     if (!token) {
@@ -176,9 +169,6 @@ export const WidgetLibraryPage = () => {
 
   return (
     <ManagementPageLayout
-      title="Bibliothèque de widgets"
-      subtitle="Centralisez les widgets ChatKit prêts à être utilisés dans vos workflows agents."
-      badge={badge}
       actions={
         <button className="button" type="button" onClick={() => setShowCreateModal(true)}>
           Nouveau widget
@@ -188,14 +178,8 @@ export const WidgetLibraryPage = () => {
       {success ? <div className="alert alert--success">{success}</div> : null}
       {error ? <div className="alert alert--danger">{error}</div> : null}
 
-      <div className="admin-grid">
-        <section className="admin-card">
-          <div>
-            <h2 className="admin-card__title">Widgets disponibles</h2>
-            <p className="admin-card__subtitle">
-              Chaque entrée correspond à une définition JSON validée par le SDK ChatKit. Utilisez ces widgets comme sorties de vos agents dans le workflow builder.
-            </p>
-          </div>
+      <div className="widget-library">
+        <div className="widget-library__gallery">
           <WidgetTemplateGallery
             widgets={widgets}
             isLoading={isLoading}
@@ -209,8 +193,8 @@ export const WidgetLibraryPage = () => {
             onEdit={(widget) => setEditingWidget(widget)}
             onDelete={handleDelete}
           />
-        </section>
-        <section className="admin-card">
+        </div>
+        <section className="admin-card widget-library__info">
           <div>
             <h2 className="admin-card__title">Pourquoi des widgets ?</h2>
             <p className="admin-card__subtitle">
