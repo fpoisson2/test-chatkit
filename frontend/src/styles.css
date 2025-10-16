@@ -340,10 +340,36 @@ button {
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chatkit-sidebar__brand--active {
+  background: rgba(15, 23, 42, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
+.chatkit-sidebar__brand:hover,
+.chatkit-sidebar__brand:focus-within {
+  background: rgba(15, 23, 42, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12);
 }
 
 .chatkit-sidebar__brand-switcher {
   position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+}
+
+.chatkit-sidebar__brand-switcher::after {
+  content: "▾";
+  font-size: 0.75rem;
+  color: rgba(15, 23, 42, 0.6);
+  margin-left: 8px;
+  pointer-events: none;
 }
 
 .chatkit-sidebar__logo {
@@ -353,19 +379,22 @@ button {
 }
 
 .chatkit-sidebar__brand-select {
+  flex: 1 1 auto;
+  width: 100%;
   font-weight: 700;
   font-size: 1.05rem;
   color: var(--text-color);
   background: transparent;
   border: none;
-  padding: 4px 8px 4px 0;
-  border-radius: 8px;
+  padding: 0;
+  text-align: left;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .chatkit-sidebar__brand-select:hover,
 .chatkit-sidebar__brand-select:focus-visible {
-  background: rgba(15, 23, 42, 0.08);
   outline: none;
 }
 

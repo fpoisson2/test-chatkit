@@ -39,7 +39,7 @@ type ApplicationDescriptor = {
 const APPLICATIONS: ApplicationDescriptor[] = [
   { key: "chat", label: "Chat", path: "/" },
   { key: "voice", label: "Voix", path: "/voice" },
-  { key: "workflows", label: "Workflow Builder", path: "/workflows", requiresAdmin: true },
+  { key: "workflows", label: "Workflow", path: "/workflows", requiresAdmin: true },
   { key: "vector-stores", label: "Vector Store", path: "/vector-stores", requiresAdmin: true },
   { key: "widgets", label: "Widget Library", path: "/widgets", requiresAdmin: true },
 ];
@@ -368,6 +368,11 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     [isSidebarCollapsed, isSidebarOpen],
   );
 
+  const brandClassName = useMemo(
+    () => ["chatkit-sidebar__brand", "chatkit-sidebar__brand--active"].join(" "),
+    [],
+  );
+
   const contextValue = useMemo(
     () => ({
       openSidebar,
@@ -389,7 +394,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
         >
           <header className="chatkit-sidebar__header">
             <div className="chatkit-sidebar__topline">
-              <div className="chatkit-sidebar__brand">
+            <div className={brandClassName}>
                 <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
                 <div className="chatkit-sidebar__brand-switcher">
                   <label htmlFor="chatkit-app-switcher" className="visually-hidden">

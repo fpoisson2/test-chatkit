@@ -95,6 +95,91 @@ import type {
   WorkflowVersionSummary,
   WidgetVariableAssignment,
 } from "./types";
+
+export const findLatestDraftVersion = (
+  versions: WorkflowVersionSummary[],
+): WorkflowVersionSummary | null => {
+  return versions
+    .filter((version) => !version.is_active)
+    .reduce<WorkflowVersionSummary | null>((latest, current) => {
+      if (!latest) {
+        return current;
+      }
+      if (current.version > latest.version) {
+        return current;
+      }
+      if (current.version < latest.version) {
+        return latest;
+      }
+      const currentUpdatedAt = new Date(current.updated_at).getTime();
+      const latestUpdatedAt = new Date(latest.updated_at).getTime();
+      if (Number.isNaN(currentUpdatedAt) && Number.isNaN(latestUpdatedAt)) {
+        return latest;
+      }
+      if (Number.isNaN(currentUpdatedAt)) {
+        return latest;
+      }
+      if (Number.isNaN(latestUpdatedAt)) {
+        return current;
+      }
+      return currentUpdatedAt >= latestUpdatedAt ? current : latest;
+    }, null);
+};
+
+const normalizeDraftVersionName = (version: WorkflowVersionSummary): WorkflowVersionSummary => {
+  if (version.is_active) {
+    return version;
+  }
+
+  const rawName = version.name?.trim().toLowerCase() ?? "";
+  if (!rawName || rawName === "nouvelle version") {
+    return { ...version, name: "Brouillon" };
+  }
+
+  return version;
+};
+
+export const sortVersionsWithDraftFirst = (
+  versions: WorkflowVersionSummary[],
+): WorkflowVersionSummary[] => {
+  const draft = findLatestDraftVersion(versions);
+  if (!draft) {
+    return versions;
+  }
+
+  const normalizedDraft = normalizeDraftVersionName(draft);
+  const remaining = versions.filter((version) => version.id !== draft.id);
+  return [normalizedDraft, ...remaining];
+};
+
+export const resolveDraftTarget = (
+  selectedVersion: WorkflowVersionSummary | null,
+  latestDraft: WorkflowVersionSummary | null,
+  draftTarget: WorkflowVersionSummary | null,
+): WorkflowVersionSummary | null => {
+  const candidate = draftTarget ?? latestDraft ?? null;
+  if (!candidate) {
+    return null;
+  }
+
+  if (selectedVersion && selectedVersion.id === candidate.id) {
+    return selectedVersion;
+  }
+
+  return candidate;
+};
+
+const toVersionSummary = (
+  version: WorkflowVersionResponse,
+): WorkflowVersionSummary => ({
+  id: version.id,
+  workflow_id: version.workflow_id,
+  name: version.name,
+  version: version.version,
+  is_active: version.is_active,
+  created_at: version.created_at,
+  updated_at: version.updated_at,
+});
 import {
   AUTO_SAVE_DELAY_MS,
   buildGraphPayloadFrom,
@@ -193,7 +278,9 @@ const WorkflowBuilderPage = () => {
   const [isDeploying, setIsDeploying] = useState(false);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const autoSaveTimeoutRef = useRef<number | null>(null);
+  const pendingAutoSaveRef = useRef(false);
   const lastSavedSnapshotRef = useRef<string | null>(null);
+  const draftTargetRef = useRef<WorkflowVersionSummary | null>(null);
   const isHydratingRef = useRef(false);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
   const viewportRef = useRef<Viewport | null>(null);
@@ -425,16 +512,17 @@ const WorkflowBuilderPage = () => {
               <option value="">Aucune version disponible</option>
             ) : (
               versions.map((version) => {
-                const labelParts = [`v${version.version}`];
-                if (version.name) {
-                  labelParts.push(version.name);
-                }
-                if (version.is_active) {
-                  labelParts.push("Production");
-                }
+                const isDraft = latestDraftVersion?.id === version.id;
+                const label = isDraft
+                  ? `Brouillon (v${version.version})`
+                  : [
+                      `v${version.version}`,
+                      ...(version.name ? [version.name] : []),
+                      ...(version.is_active ? ["Production"] : []),
+                    ].join(" · ");
                 return (
                   <option key={version.id} value={version.id}>
-                    {labelParts.join(" · ")}
+                    {label}
                   </option>
                 );
               })
@@ -563,10 +651,30 @@ const WorkflowBuilderPage = () => {
     [selectedWorkflowId, workflows],
   );
 
+  const latestDraftVersion = useMemo(
+    () => findLatestDraftVersion(versions),
+    [versions],
+  );
+
   const selectedVersionSummary = useMemo(
     () => versions.find((version) => version.id === selectedVersionId) ?? null,
     [selectedVersionId, versions],
   );
+
+  useEffect(() => {
+    if (!selectedWorkflowId) {
+      return;
+    }
+
+    if (latestDraftVersion) {
+      draftTargetRef.current = latestDraftVersion;
+      return;
+    }
+
+    if (!selectedVersionSummary || selectedVersionSummary.is_active) {
+      draftTargetRef.current = null;
+    }
+  }, [latestDraftVersion, selectedVersionSummary, selectedWorkflowId]);
 
   const isReasoningModel = useCallback(
     (model: string): boolean => {
@@ -809,6 +917,10 @@ const WorkflowBuilderPage = () => {
     async (
       workflowId: number,
       preferredVersionId: number | null = null,
+      options: {
+        skipGraphReload?: boolean;
+        optimisticVersion?: WorkflowVersionSummary | null;
+      } = {},
     ): Promise<boolean> => {
       setLoadError(null);
       const candidates = makeApiEndpointCandidates(
@@ -828,8 +940,17 @@ const WorkflowBuilderPage = () => {
             throw new Error(`Échec du chargement des versions (${response.status})`);
           }
           const data: WorkflowVersionSummary[] = await response.json();
-          setVersions(data);
-          if (data.length === 0) {
+          const normalizedVersions = sortVersionsWithDraftFirst(data);
+          const optimistic = options.optimisticVersion ?? null;
+          const mergedVersions = optimistic
+            ? normalizedVersions.some((version) => version.id === optimistic.id)
+              ? normalizedVersions
+              : sortVersionsWithDraftFirst([...normalizedVersions, optimistic])
+            : normalizedVersions;
+          draftTargetRef.current = findLatestDraftVersion(mergedVersions);
+          setVersions(mergedVersions);
+          if (mergedVersions.length === 0) {
+            draftTargetRef.current = null;
             setSelectedVersionId(null);
             setNodes([]);
             setEdges([]);
@@ -842,24 +963,28 @@ const WorkflowBuilderPage = () => {
             restoreViewport();
             return true;
           }
-          const availableIds = new Set(data.map((version) => version.id));
+          const availableIds = new Set(mergedVersions.map((version) => version.id));
           let nextVersionId: number | null = null;
           if (preferredVersionId && availableIds.has(preferredVersionId)) {
             nextVersionId = preferredVersionId;
           } else if (selectedVersionId && availableIds.has(selectedVersionId)) {
             nextVersionId = selectedVersionId;
           } else {
-            const draft = data.find((version) => !version.is_active);
+            const draft = findLatestDraftVersion(mergedVersions);
             if (draft) {
               nextVersionId = draft.id;
             } else {
-              const active = data.find((version) => version.is_active);
-              nextVersionId = active?.id ?? data[0]?.id ?? null;
+              const active = mergedVersions.find((version) => version.is_active);
+              nextVersionId = active?.id ?? mergedVersions[0]?.id ?? null;
             }
           }
           setSelectedVersionId(nextVersionId);
           if (nextVersionId != null) {
-            await loadVersionDetail(workflowId, nextVersionId);
+            if (!options.skipGraphReload) {
+              await loadVersionDetail(workflowId, nextVersionId);
+            } else {
+              setLoading(false);
+            }
           } else {
             setLoading(false);
           }
@@ -919,6 +1044,7 @@ const WorkflowBuilderPage = () => {
             setVersions([]);
             setNodes([]);
             setEdges([]);
+            draftTargetRef.current = null;
             isHydratingRef.current = true;
             lastSavedSnapshotRef.current = JSON.stringify(buildGraphPayloadFrom([], []));
             setHasPendingChanges(false);
@@ -1856,6 +1982,7 @@ const WorkflowBuilderPage = () => {
         setVersions([]);
         setNodes([]);
         setEdges([]);
+        draftTargetRef.current = null;
         lastSavedSnapshotRef.current = null;
         setHasPendingChanges(false);
       }
@@ -2087,7 +2214,54 @@ const WorkflowBuilderPage = () => {
 
   useEffect(() => {
     if (!selectedWorkflowId) {
+      return;
+    }
+
+    const draftCandidate = latestDraftVersion ?? draftTargetRef.current;
+    if (!draftCandidate) {
+      return;
+    }
+
+    if (draftCandidate.id === selectedVersionId) {
+      return;
+    }
+
+    if (!lastSavedSnapshotRef.current) {
+      return;
+    }
+
+    if (lastSavedSnapshotRef.current === graphSnapshot) {
+      return;
+    }
+
+    let normalizedDraft: WorkflowVersionSummary | null = null;
+    setVersions((current) => {
+      const existingDraft = current.find((version) => version.id === draftCandidate.id);
+      if (!existingDraft) {
+        return current;
+      }
+      normalizedDraft = normalizeDraftVersionName(existingDraft);
+      return sortVersionsWithDraftFirst(
+        current.map((version) => (version.id === existingDraft.id ? normalizedDraft! : version)),
+      );
+    });
+    if (normalizedDraft) {
+      draftTargetRef.current = normalizedDraft;
+      setSelectedVersionId(normalizedDraft.id);
+    }
+    setHasPendingChanges(true);
+  }, [
+    graphSnapshot,
+    latestDraftVersion,
+    selectedVersionId,
+    selectedWorkflowId,
+    setHasPendingChanges,
+  ]);
+
+  useEffect(() => {
+    if (!selectedWorkflowId) {
       lastSavedSnapshotRef.current = null;
+      draftTargetRef.current = null;
       setHasPendingChanges(false);
       return;
     }
@@ -2103,7 +2277,8 @@ const WorkflowBuilderPage = () => {
       return;
     }
 
-    setHasPendingChanges(graphSnapshot !== lastSavedSnapshotRef.current);
+    const pending = graphSnapshot !== lastSavedSnapshotRef.current;
+    setHasPendingChanges(pending);
   }, [graphSnapshot, selectedWorkflowId]);
 
   const handleOpenDeployModal = useCallback(() => {
@@ -2242,6 +2417,11 @@ const WorkflowBuilderPage = () => {
   }, [handleCloseDeployModal, isDeployModalOpen]);
 
   const handleSave = useCallback(async () => {
+    if (saveState === "saving") {
+      pendingAutoSaveRef.current = true;
+      return;
+    }
+
     setSaveMessage(null);
     if (!selectedWorkflowId) {
       setSaveState("error");
@@ -2260,10 +2440,11 @@ const WorkflowBuilderPage = () => {
       const graphPayload = buildGraphPayload();
       const graphSnapshot = JSON.stringify(graphPayload);
       const currentWorkflow = workflows.find((workflow) => workflow.id === selectedWorkflowId);
-      const draftVersion =
-        selectedVersionSummary && !selectedVersionSummary.is_active
-          ? selectedVersionSummary
-          : null;
+      const draftVersion = resolveDraftTarget(
+        selectedVersionSummary,
+        latestDraftVersion ?? null,
+        draftTargetRef.current,
+      );
 
       const endpoint = draftVersion
         ? `/api/workflows/${selectedWorkflowId}/versions/${draftVersion.id}`
@@ -2338,12 +2519,48 @@ const WorkflowBuilderPage = () => {
           }
         }
 
-        await loadVersions(selectedWorkflowId, savedVersionId);
+        let savedVersionSummary: WorkflowVersionSummary | null = null;
+        if (responseData) {
+          savedVersionSummary = toVersionSummary(responseData);
+        } else if (draftVersion) {
+          savedVersionSummary = {
+            ...draftVersion,
+            updated_at: new Date().toISOString(),
+          };
+        }
+
+        if (savedVersionSummary) {
+          draftTargetRef.current = savedVersionSummary;
+          setVersions((current) => {
+            const withoutSaved = current.filter(
+              (version) => version.id !== savedVersionSummary.id,
+            );
+            return sortVersionsWithDraftFirst([...withoutSaved, savedVersionSummary]);
+          });
+          setSelectedVersionId(savedVersionSummary.id);
+        }
+
+        const optimisticVersion = savedVersionSummary ?? null;
+        if (savedVersionId != null) {
+          await loadVersions(selectedWorkflowId, savedVersionId, {
+            skipGraphReload: true,
+            optimisticVersion,
+          });
+        } else {
+          await loadVersions(selectedWorkflowId, null, {
+            skipGraphReload: true,
+            optimisticVersion,
+          });
+        }
         setSaveState("saved");
         lastSavedSnapshotRef.current = graphSnapshot;
         setHasPendingChanges(false);
         setSaveMessage("Modifications enregistrées automatiquement.");
         setTimeout(() => setSaveState("idle"), 1500);
+        if (pendingAutoSaveRef.current) {
+          pendingAutoSaveRef.current = false;
+          void handleSave();
+        }
         return;
       }
       throw new Error("Impossible de contacter le serveur pour enregistrer la version.");
@@ -2353,11 +2570,18 @@ const WorkflowBuilderPage = () => {
       setSaveMessage(
         error instanceof Error ? error.message : "Impossible d'enregistrer le workflow."
       );
+      if (pendingAutoSaveRef.current) {
+        pendingAutoSaveRef.current = false;
+        void handleSave();
+      }
     }
   }, [
     authHeader,
     buildGraphPayload,
+    latestDraftVersion,
+    pendingAutoSaveRef,
     loadVersions,
+    saveState,
     selectedVersionSummary,
     selectedWorkflowId,
     workflows,
