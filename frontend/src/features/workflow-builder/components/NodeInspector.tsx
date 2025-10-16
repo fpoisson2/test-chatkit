@@ -3,7 +3,7 @@ import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
 import type {
   AvailableModel,
   VectorStoreSummary,
-  WidgetTemplate,
+  WidgetTemplateSummary,
 } from "../../../utils/backend";
 import {
   getAgentContinueOnError,
@@ -110,7 +110,7 @@ export type NodeInspectorProps = {
   vectorStores: VectorStoreSummary[];
   vectorStoresLoading: boolean;
   vectorStoresError: string | null;
-  widgets: WidgetTemplate[];
+  widgets: WidgetTemplateSummary[];
   widgetsLoading: boolean;
   widgetsError: string | null;
   onStateAssignmentsChange: (

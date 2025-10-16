@@ -25,7 +25,7 @@ import {
   widgetLibraryApi,
   vectorStoreApi,
   type AvailableModel,
-  type WidgetTemplate,
+  type WidgetTemplateSummary,
   type VectorStoreSummary,
 } from "../../utils/backend";
 import { resolveAgentParameters, resolveStateParameters } from "../../utils/agentPresets";
@@ -173,7 +173,7 @@ const WorkflowBuilderPage = () => {
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [availableModelsLoading, setAvailableModelsLoading] = useState(false);
   const [availableModelsError, setAvailableModelsError] = useState<string | null>(null);
-  const [widgets, setWidgets] = useState<WidgetTemplate[]>([]);
+  const [widgets, setWidgets] = useState<WidgetTemplateSummary[]>([]);
   const [widgetsLoading, setWidgetsLoading] = useState(false);
   const [widgetsError, setWidgetsError] = useState<string | null>(null);
   const [isNavigationOpen, setNavigationOpen] = useState(false);
@@ -495,7 +495,7 @@ const WorkflowBuilderPage = () => {
     setWidgetsLoading(true);
     setWidgetsError(null);
     widgetLibraryApi
-      .listWidgets(token)
+      .listWorkflowWidgets(token)
       .then((items) => {
         if (!isMounted) {
           return;

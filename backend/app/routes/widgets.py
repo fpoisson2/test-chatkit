@@ -4,13 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from ..database import get_session
-from ..dependencies import require_admin
+from ..dependencies import get_current_user, require_admin
 from ..models import User, WidgetTemplate
 from ..schemas import (
     WidgetPreviewRequest,
     WidgetPreviewResponse,
     WidgetTemplateCreateRequest,
     WidgetTemplateResponse,
+    WidgetTemplateSummaryResponse,
     WidgetTemplateUpdateRequest,
 )
 from ..widgets import WidgetLibraryService, WidgetValidationError
@@ -45,6 +46,16 @@ async def list_widgets(
     service = WidgetLibraryService(session)
     widgets = service.list_widgets()
     return [_serialize_widget(widget) for widget in widgets]
+
+
+@router.get("/api/workflow-widgets", response_model=list[WidgetTemplateSummaryResponse])
+async def list_workflow_widgets(
+    session: Session = Depends(get_session),
+    _: User = Depends(get_current_user),
+) -> list[WidgetTemplateSummaryResponse]:
+    service = WidgetLibraryService(session)
+    widgets = service.list_widgets()
+    return [WidgetTemplateSummaryResponse.model_validate(widget) for widget in widgets]
 
 
 @router.post(

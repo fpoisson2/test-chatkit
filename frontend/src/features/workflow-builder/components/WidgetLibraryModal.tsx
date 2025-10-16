@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 
 import { Modal } from "../../../components/Modal";
-import type { WidgetTemplate } from "../../../utils/backend";
+import type { WidgetTemplateSummary } from "../../../utils/backend";
 
 type WidgetLibraryModalProps = {
-  widgets: WidgetTemplate[];
+  widgets: WidgetTemplateSummary[];
   selectedSlug: string;
   onSelect: (slug: string) => void;
   onClose: () => void;
@@ -12,7 +12,10 @@ type WidgetLibraryModalProps = {
   description?: string;
 };
 
-const filterWidgets = (widgets: WidgetTemplate[], query: string): WidgetTemplate[] => {
+const filterWidgets = (
+  widgets: WidgetTemplateSummary[],
+  query: string,
+): WidgetTemplateSummary[] => {
   const normalized = query.trim().toLowerCase();
   if (!normalized) {
     return widgets;

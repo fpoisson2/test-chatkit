@@ -293,6 +293,15 @@ class WidgetTemplateBase(BaseModel):
     definition: dict[str, Any]
 
 
+class WidgetTemplateSummaryResponse(BaseModel):
+    slug: str
+    title: str | None = None
+    description: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
 class WidgetTemplateResponse(WidgetTemplateBase):
     created_at: datetime.datetime
     updated_at: datetime.datetime
