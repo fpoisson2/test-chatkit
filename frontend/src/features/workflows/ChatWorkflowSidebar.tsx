@@ -10,6 +10,8 @@ const buildWorkflowOptionLabel = (workflow: WorkflowSummary): string => {
   const parts = [workflow.display_name];
   if (workflow.active_version_number) {
     parts.push(`prod v${workflow.active_version_number}`);
+  } else {
+    parts.push("aucune version en production");
   }
   return parts.join(" · ");
 };
@@ -35,14 +37,14 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const availableWorkflows = useMemo(
-    () => workflows.filter((workflow) => workflow.active_version_id !== null),
-    [workflows],
+  const selectedWorkflow = useMemo(
+    () => workflows.find((workflow) => workflow.id === selectedWorkflowId) ?? null,
+    [workflows, selectedWorkflowId],
   );
 
-  const selectedWorkflow = useMemo(
-    () => availableWorkflows.find((workflow) => workflow.id === selectedWorkflowId) ?? null,
-    [availableWorkflows, selectedWorkflowId],
+  const publishedWorkflows = useMemo(
+    () => workflows.filter((workflow) => workflow.active_version_id !== null),
+    [workflows],
   );
 
   const loadWorkflows = useCallback(async () => {
@@ -86,8 +88,19 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
 
   const handleSelectWorkflow = useCallback(
     async (event: ChangeEvent<HTMLSelectElement>) => {
-      const nextId = Number(event.target.value);
-      if (!Number.isFinite(nextId) || nextId === selectedWorkflowId || !token || !isAdmin) {
+      const { value } = event.target;
+      if (value === "" || !token || !isAdmin) {
+        return;
+      }
+
+      const nextId = Number.parseInt(value, 10);
+      if (!Number.isFinite(nextId) || nextId === selectedWorkflowId) {
+        return;
+      }
+
+      const workflowToActivate = workflows.find((workflow) => workflow.id === nextId);
+      if (!workflowToActivate || workflowToActivate.active_version_id === null) {
+        setError("Publiez une version de production avant d'activer ce workflow.");
         return;
       }
 
@@ -128,7 +141,15 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
         setIsUpdating(false);
       }
     },
-    [closeSidebar, isAdmin, isDesktopLayout, onWorkflowActivated, selectedWorkflowId, token],
+    [
+      closeSidebar,
+      isAdmin,
+      isDesktopLayout,
+      onWorkflowActivated,
+      selectedWorkflowId,
+      token,
+      workflows,
+    ],
   );
 
   const handleOpenBuilder = useCallback(() => {
@@ -189,7 +210,7 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
       );
     }
 
-    if (availableWorkflows.length === 0) {
+    if (workflows.length === 0) {
       return (
         <section className="chatkit-sidebar__section" aria-live="polite">
           <h2 className="chatkit-sidebar__section-title">Workflow actif</h2>
@@ -203,15 +224,14 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
       );
     }
 
+    const hasPublishedWorkflow = publishedWorkflows.length > 0;
+
     return (
       <section className="chatkit-sidebar__section" aria-labelledby={`${sectionId}-title`}>
         <div className="chatkit-sidebar__section-header">
           <h2 id={`${sectionId}-title`} className="chatkit-sidebar__section-title">
             Workflow actif
           </h2>
-          {selectedWorkflow?.is_chatkit_default ? (
-            <span className="chatkit-sidebar__badge">Actif</span>
-          ) : null}
         </div>
         <label htmlFor={`${sectionId}-select`} className="chatkit-sidebar__section-label">
           Workflow de production
@@ -223,8 +243,17 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
           onChange={handleSelectWorkflow}
           disabled={isUpdating}
         >
-          {availableWorkflows.map((workflow) => (
-            <option key={workflow.id} value={workflow.id}>
+          <option value="" disabled={hasPublishedWorkflow}>
+            {hasPublishedWorkflow
+              ? "Choisissez un workflow de production"
+              : "Aucune version de production disponible"}
+          </option>
+          {workflows.map((workflow) => (
+            <option
+              key={workflow.id}
+              value={workflow.id}
+              disabled={workflow.active_version_id === null}
+            >
               {buildWorkflowOptionLabel(workflow)}
             </option>
           ))}
@@ -242,13 +271,17 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
             Production : v{selectedWorkflow.active_version_number}
           </p>
         ) : null}
+        {!hasPublishedWorkflow ? (
+          <p className="chatkit-sidebar__section-text">
+            Publiez une version de production pour activer un workflow.
+          </p>
+        ) : null}
         <button type="button" className="chatkit-sidebar__section-button" onClick={handleOpenBuilder}>
           Gérer dans le workflow builder
         </button>
       </section>
     );
   }, [
-    availableWorkflows,
     error,
     handleOpenBuilder,
     handleSelectWorkflow,
@@ -256,9 +289,11 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
     isUpdating,
     loadWorkflows,
     loading,
+    publishedWorkflows,
     selectedWorkflow,
     selectedWorkflowId,
     user,
+    workflows,
   ]);
 
   useEffect(() => {
