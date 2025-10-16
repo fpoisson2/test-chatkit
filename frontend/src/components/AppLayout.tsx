@@ -168,9 +168,16 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   );
 
   const activeApplication = useMemo<ApplicationKey>(() => {
-    const matchingApplication = availableApplications.find((application) =>
-      location.pathname === "/" ? application.path === "/" : location.pathname.startsWith(application.path),
-    );
+    const matchingApplication = availableApplications.find((application) => {
+      if (application.path === "/") {
+        return location.pathname === "/";
+      }
+
+      return (
+        location.pathname === application.path ||
+        location.pathname.startsWith(`${application.path}/`)
+      );
+    });
 
     return matchingApplication?.key ?? "chat";
   }, [availableApplications, location.pathname]);
