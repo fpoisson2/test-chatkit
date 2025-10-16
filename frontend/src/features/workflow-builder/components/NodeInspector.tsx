@@ -715,13 +715,26 @@ const NodeInspector = ({
           )}
 
       {kind === "widget" && (
-        <>
-          <p style={{ color: "#475569", margin: "0 0 0.75rem" }}>
-            Ce bloc diffuse un widget ChatKit en utilisant les données produites par le bloc
-            précédent ou les variables d'état du workflow.
-          </p>
-          <div style={fieldStyle}>
-            <label htmlFor={`${widgetNodeSlugSuggestionsId}-input`}>Slug du widget</label>
+        <section
+          aria-label="Configuration du bloc widget"
+          style={{
+            marginTop: "1rem",
+            border: "1px solid rgba(15, 23, 42, 0.12)",
+            borderRadius: "0.75rem",
+            padding: "0.75rem",
+            display: "grid",
+            gap: "0.75rem",
+          }}
+        >
+          <header>
+            <h3 style={{ margin: 0, fontSize: "1rem" }}>Widget à diffuser</h3>
+            <p style={{ color: "#475569", margin: "0.25rem 0 0", fontSize: "0.95rem" }}>
+              Choisissez un widget de la bibliothèque ou renseignez son slug pour l'afficher dans ChatKit.
+            </p>
+          </header>
+
+          <label style={fieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-input`}>
+            <span>Slug du widget</span>
             <input
               id={`${widgetNodeSlugSuggestionsId}-input`}
               type="text"
@@ -730,7 +743,13 @@ const NodeInspector = ({
               placeholder="Ex. resume"
               list={widgets.length > 0 ? `${widgetNodeSlugSuggestionsId}-list` : undefined}
             />
-            <label htmlFor={`${widgetNodeSlugSuggestionsId}-select`}>Widget à afficher</label>
+            <small style={{ color: "#64748b" }}>
+              Correspond au slug défini lors de l'enregistrement du widget dans la bibliothèque.
+            </small>
+          </label>
+
+          <label style={fieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-select`}>
+            <span>Widget à afficher</span>
             <select
               id={`${widgetNodeSlugSuggestionsId}-select`}
               value={widgetNodeSelectValue}
@@ -744,40 +763,48 @@ const NodeInspector = ({
                 </option>
               ))}
             </select>
-            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-              <button
-                type="button"
-                className="btn secondary"
-                onClick={() => handleOpenWidgetPicker("widget")}
-                disabled={!canBrowseWidgets}
-                aria-label="Parcourir la bibliothèque de widgets pour le bloc widget"
-              >
-                Parcourir la bibliothèque
-              </button>
-            </div>
-            {widgetsLoading ? (
-              <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
-            ) : widgetsError ? (
-              <p style={{ color: "#b91c1c", margin: 0 }}>
-                {widgetsError}
-                <br />
-                Vous pouvez saisir le slug du widget manuellement ci-dessus.
-              </p>
-            ) : widgets.length === 0 ? (
-              <p style={{ color: "#475569", margin: 0 }}>
-                Créez un widget dans la bibliothèque dédiée ou saisissez son slug manuellement ci-dessus.
-              </p>
-            ) : null}
+            <small style={{ color: "#64748b" }}>
+              La liste provient automatiquement de la bibliothèque des widgets partageables.
+            </small>
+          </label>
+
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => handleOpenWidgetPicker("widget")}
+              disabled={!canBrowseWidgets}
+              aria-label="Parcourir la bibliothèque de widgets pour le bloc widget"
+            >
+              Parcourir la bibliothèque
+            </button>
+            <small style={{ alignSelf: "center", color: "#64748b" }}>
+              Ouvre la bibliothèque complète pour prévisualiser chaque widget.
+            </small>
           </div>
-          {widgetNodeValidationMessage ? (
-            <p style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}>
-              {widgetNodeValidationMessage}
+
+          {widgetsLoading ? (
+            <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
+          ) : widgetsError ? (
+            <p style={{ color: "#b91c1c", margin: 0 }}>
+              {widgetsError}
+              <br />
+              Vous pouvez saisir le slug du widget manuellement ci-dessus.
             </p>
+          ) : widgets.length === 0 ? (
+            <p style={{ color: "#475569", margin: 0 }}>
+              Créez un widget dans la bibliothèque dédiée ou saisissez son slug manuellement ci-dessus.
+            </p>
+          ) : null}
+
+          {widgetNodeValidationMessage ? (
+            <p style={{ color: "#b91c1c", margin: 0 }}>{widgetNodeValidationMessage}</p>
           ) : (
             <small style={{ color: "#475569" }}>
               Le widget sélectionné est diffusé immédiatement dans ChatKit lorsqu'on atteint ce bloc.
             </small>
           )}
+
           {widgets.length > 0 && (
             <datalist id={`${widgetNodeSlugSuggestionsId}-list`}>
               {widgets.map((widget) => (
@@ -792,7 +819,7 @@ const NodeInspector = ({
             assignments={widgetNodeVariables}
             onChange={(next) => onWidgetNodeVariablesChange(node.id, next)}
           />
-        </>
+        </section>
       )}
 
       <div
