@@ -218,6 +218,7 @@ const WorkflowBuilderPage = () => {
   const [deployToProduction, setDeployToProduction] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const autoSaveTimeoutRef = useRef<number | null>(null);
+  const draftVersionIdRef = useRef<number | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const isHydratingRef = useRef(false);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
@@ -419,6 +420,10 @@ const WorkflowBuilderPage = () => {
     () => versions.find((version) => version.id === selectedVersionId) ?? null,
     [selectedVersionId, versions],
   );
+
+  useEffect(() => {
+    draftVersionIdRef.current = findDraftVersionSummary(versions)?.id ?? null;
+  }, [versions]);
 
   const isReasoningModel = useCallback(
     (model: string): boolean => {
@@ -2003,12 +2008,14 @@ const WorkflowBuilderPage = () => {
       const graphSnapshot = JSON.stringify(graphPayload);
       const currentWorkflow = workflows.find((workflow) => workflow.id === selectedWorkflowId);
       const draftVersionSummary = findDraftVersionSummary(versions);
+      const knownDraftId = draftVersionIdRef.current;
       const isEditingDraft =
         selectedVersionSummary?.id != null &&
-        draftVersionSummary?.id === selectedVersionSummary.id;
+        (selectedVersionSummary.id === knownDraftId ||
+          draftVersionSummary?.id === selectedVersionSummary.id);
       const targetDraftId = isEditingDraft
         ? selectedVersionSummary!.id
-        : draftVersionSummary?.id ?? null;
+        : knownDraftId ?? draftVersionSummary?.id ?? null;
       const shouldCreateDraft = targetDraftId === null;
 
       const endpoint = shouldCreateDraft
@@ -2030,32 +2037,34 @@ const WorkflowBuilderPage = () => {
         });
         if (!response.ok) {
           throw new Error(`Échec de l'enregistrement (${response.status})`);
-      }
+        }
 
-      let savedVersionId = targetDraftId;
-      let responseData: WorkflowVersionResponse | null = null;
-      try {
-        responseData = (await response.json()) as WorkflowVersionResponse;
-      } catch (error) {
-        responseData = null;
-      }
-      if (responseData?.id) {
-        savedVersionId = responseData.id;
-      } else if (savedVersionId == null) {
-        throw new Error("Réponse invalide du serveur lors de l'enregistrement.");
-      }
+        let savedVersionId = targetDraftId;
+        let responseData: WorkflowVersionResponse | null = null;
+        try {
+          responseData = (await response.json()) as WorkflowVersionResponse;
+        } catch (error) {
+          responseData = null;
+        }
+        if (responseData?.id) {
+          savedVersionId = responseData.id;
+        } else if (savedVersionId == null) {
+          throw new Error("Réponse invalide du serveur lors de l'enregistrement.");
+        }
 
-      const ensuredVersionId = savedVersionId!;
-      if (!isEditingDraft || shouldCreateDraft) {
-        setSelectedVersionId(ensuredVersionId);
-      }
+        const ensuredVersionId = savedVersionId!;
+        if (!isEditingDraft || shouldCreateDraft) {
+          setSelectedVersionId(ensuredVersionId);
+        }
 
-      if (currentWorkflow?.is_chatkit_default) {
-        const updateCandidates = makeApiEndpointCandidates(
-          backendUrl,
-          "/api/workflows/current",
-        );
-        let updateError: Error | null = null;
+        draftVersionIdRef.current = ensuredVersionId;
+
+        if (currentWorkflow?.is_chatkit_default) {
+          const updateCandidates = makeApiEndpointCandidates(
+            backendUrl,
+            "/api/workflows/current",
+          );
+          let updateError: Error | null = null;
           for (const updateUrl of updateCandidates) {
             try {
               const updateResponse = await fetch(updateUrl, {
@@ -2081,16 +2090,16 @@ const WorkflowBuilderPage = () => {
                 error instanceof Error
                   ? error
                   : new Error("Impossible de mettre à jour le workflow ChatKit.");
+            }
+          }
+          if (updateError) {
+            throw updateError;
           }
         }
-        if (updateError) {
-          throw updateError;
-        }
-      }
 
-      await loadVersions(selectedWorkflowId, ensuredVersionId);
-      setSaveState("saved");
-      lastSavedSnapshotRef.current = graphSnapshot;
+        await loadVersions(selectedWorkflowId, ensuredVersionId);
+        setSaveState("saved");
+        lastSavedSnapshotRef.current = graphSnapshot;
         setHasPendingChanges(false);
         setSaveMessage(AUTO_SAVE_SUCCESS_MESSAGE);
         setTimeout(() => {
