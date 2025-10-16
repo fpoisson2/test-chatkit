@@ -763,6 +763,18 @@ button {
   gap: 12px;
 }
 
+.admin-shell__header-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-shell__menu-button {
+  white-space: nowrap;
+}
+
 .admin-shell__toolbar {
   display: flex;
   flex-wrap: wrap;
