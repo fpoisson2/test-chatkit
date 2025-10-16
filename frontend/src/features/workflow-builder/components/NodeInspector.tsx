@@ -38,7 +38,6 @@ import type {
   WidgetVariableAssignment,
 } from "../types";
 import { labelForKind } from "../utils";
-import WidgetLibraryModal from "./WidgetLibraryModal";
 
 const reasoningEffortOptions = [
   { value: "", label: "Comportement par défaut" },
@@ -221,36 +220,8 @@ const NodeInspector = ({
     }
     return widgets.find((widget) => widget.slug === trimmedWidgetNodeSlug) ?? null;
   }, [trimmedWidgetNodeSlug, widgets]);
-  const [widgetPickerTarget, setWidgetPickerTarget] = useState<"agent" | "widget" | null>(null);
-  const canBrowseWidgets = !widgetsLoading && !widgetsError && widgets.length > 0;
   const widgetSelectId = useId();
   const widgetNodeSlugSuggestionsId = useId();
-
-  const handleOpenWidgetPicker = (target: "agent" | "widget") => {
-    if (!canBrowseWidgets) {
-      return;
-    }
-    setWidgetPickerTarget(target);
-  };
-
-  const handleCloseWidgetPicker = () => {
-    setWidgetPickerTarget(null);
-  };
-
-  const handleWidgetPickerSelect = (slug: string) => {
-    const trimmedSlug = slug.trim();
-    if (!trimmedSlug) {
-      return;
-    }
-    if (widgetPickerTarget === "agent") {
-      if (responseFormat.kind !== "widget") {
-        onAgentResponseFormatKindChange(node.id, "widget");
-      }
-      onAgentResponseWidgetSlugChange(node.id, trimmedSlug);
-    } else if (widgetPickerTarget === "widget") {
-      onWidgetNodeSlugChange(node.id, trimmedSlug);
-    }
-  };
   let fileSearchValidationMessage: string | null = null;
   if (fileSearchMissingVectorStore && !vectorStoresLoading) {
     if (!vectorStoresError && vectorStores.length === 0) {
@@ -333,12 +304,6 @@ const NodeInspector = ({
     }
     setSchemaError(null);
   }, [node.id, responseFormat.kind, schemaSignature]);
-  const widgetModalSelectedSlug =
-    widgetPickerTarget === "agent"
-      ? responseWidgetSlug
-      : widgetPickerTarget === "widget"
-        ? widgetNodeSlug
-        : "";
 
   return (
     <>
@@ -416,17 +381,6 @@ const NodeInspector = ({
               ))}
             </select>
           </label>
-          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-            <button
-              type="button"
-              className="btn secondary"
-              onClick={() => handleOpenWidgetPicker("widget")}
-              disabled={!canBrowseWidgets}
-              aria-label="Parcourir la bibliothèque de widgets pour le bloc widget"
-            >
-              Parcourir la bibliothèque
-            </button>
-          </div>
           {widgetsLoading ? (
             <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
           ) : widgetsError ? (
@@ -744,17 +698,6 @@ const NodeInspector = ({
                   ))}
                 </select>
               </label>
-              <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-                <button
-                  type="button"
-                  className="btn secondary"
-                  onClick={() => handleOpenWidgetPicker("agent")}
-                  disabled={!canBrowseWidgets}
-                  aria-label="Parcourir la bibliothèque de widgets pour la réponse de l'agent"
-                >
-                  Parcourir la bibliothèque
-                </button>
-              </div>
               {widgetsLoading ? (
                 <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
               ) : widgetsError ? (
@@ -1067,16 +1010,6 @@ const NodeInspector = ({
       )}
 
       </section>
-      {widgetPickerTarget && canBrowseWidgets ? (
-        <WidgetLibraryModal
-          widgets={widgets}
-          selectedSlug={widgetModalSelectedSlug}
-          onClose={handleCloseWidgetPicker}
-          onSelect={handleWidgetPickerSelect}
-          title="Bibliothèque de widgets"
-          description="Choisissez un widget enregistré pour l'utiliser dans ce workflow."
-        />
-      ) : null}
     </>
   );
 };

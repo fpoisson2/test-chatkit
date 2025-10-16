@@ -978,6 +978,18 @@ button {
   gap: 18px;
 }
 
+@media (max-width: 640px) {
+  .modal {
+    align-items: flex-start;
+  }
+
+  .modal__container {
+    margin-top: 1.5rem;
+    margin-inline: auto;
+    max-height: calc(100vh - 3rem);
+  }
+}
+
 .modal__footer {
   padding: 18px 24px;
   border-top: 1px solid rgba(148, 163, 184, 0.2);
