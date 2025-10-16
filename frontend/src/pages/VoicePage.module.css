@@ -1,0 +1,65 @@
+.emptyState {
+  background: #ffffff;
+  border-radius: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.08);
+  padding: clamp(1.5rem, 4vw, 2.5rem);
+  color: #475569;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.emptyState p {
+  margin: 0;
+}
+
+.modeSwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 0.9rem;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.08);
+}
+
+.mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.95rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.modeActive {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.modeLink {
+  color: #1d4ed8;
+}
+
+.modeLink:hover,
+.modeLink:focus-visible {
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .modeSwitch {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .mode {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+}

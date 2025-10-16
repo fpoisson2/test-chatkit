@@ -1,60 +1,62 @@
 import { Link } from "react-router-dom";
 
 import { useAuth } from "../auth";
-import { useAppLayout } from "../components/AppLayout";
+import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { VoiceChat } from "../voice/VoiceChat";
+import styles from "./VoicePage.module.css";
 
 export const VoicePage = () => {
   const { user } = useAuth();
-  const { openSidebar, isDesktopLayout, isSidebarOpen } = useAppLayout();
-  const showSidebarButton = !isDesktopLayout || !isSidebarOpen;
 
   if (!user) {
     return (
-      <section className="voice-page voice-page--unauthenticated">
-        <h1>Assistant vocal</h1>
-        <p>Vous devez être connecté pour accéder à l'interface vocale.</p>
-        <Link className="button" to="/login">
-          Se connecter
-        </Link>
-        <Link className="voice-page__mode voice-page__mode--link" to="/">
-          ← Revenir au chat texte
-        </Link>
-      </section>
+      <ManagementPageLayout
+        title="Assistant vocal"
+        subtitle="Vous devez être connecté pour accéder à l'interface vocale."
+        actions={
+          <>
+            <Link className="button" to="/login">
+              Se connecter
+            </Link>
+            <Link className="button button--subtle" to="/">
+              ← Chat texte
+            </Link>
+          </>
+        }
+        maxWidth="md"
+      >
+        <div className={styles.emptyState}>
+          <p>
+            Connectez-vous pour lancer des sessions Realtime, autoriser votre microphone et consulter les transcriptions en
+            direct.
+          </p>
+        </div>
+      </ManagementPageLayout>
     );
   }
 
   return (
-    <section className="voice-page">
-      <header className="voice-page__header">
-        <div className="voice-page__header-main">
-          {showSidebarButton ? (
-            <button
-              className="button button--ghost voice-page__menu-button"
-              type="button"
-              onClick={openSidebar}
-            >
-              Ouvrir le menu
-            </button>
-          ) : null}
-          <h1>Assistant vocal Realtime</h1>
-          <p className="voice-page__intro">
-            Retrouvez ici une expérience conversationnelle en voix avec l'agent ChatKit. Autorisez votre microphone puis
-            démarrez la session pour échanger à l'oral.
-          </p>
-        </div>
-        <Link className="button button--subtle voice-page__back" to="/">
+    <ManagementPageLayout
+      title="Assistant vocal Realtime"
+      subtitle="Retrouvez ici une expérience conversationnelle en voix avec l'agent ChatKit."
+      badge={user.email ?? "Utilisateur connecté"}
+      actions={
+        <Link className="button button--subtle" to="/">
           ← Chat texte
         </Link>
-      </header>
-      <nav className="voice-page__mode-switch" aria-label="Changer de mode de conversation">
-        <span className="voice-page__mode voice-page__mode--active">Mode voix</span>
-        <Link className="voice-page__mode voice-page__mode--link" to="/">
-          Chat texte
-        </Link>
-      </nav>
+      }
+      toolbar={
+        <nav className={styles.modeSwitch} aria-label="Changer de mode de conversation">
+          <span className={`${styles.mode} ${styles.modeActive}`}>Mode voix</span>
+          <Link className={`${styles.mode} ${styles.modeLink}`} to="/">
+            Chat texte
+          </Link>
+        </nav>
+      }
+      maxWidth="lg"
+    >
       <VoiceChat />
-    </section>
+    </ManagementPageLayout>
   );
 };
 
