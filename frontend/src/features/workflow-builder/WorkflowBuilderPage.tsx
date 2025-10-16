@@ -360,7 +360,7 @@ const WorkflowBuilderPage = () => {
   const renderWorkflowPublicationReminder = (className?: string) =>
     selectedWorkflow && !selectedWorkflow.active_version_id ? (
       <div className={className} style={{ color: "#b45309", fontSize: "0.85rem", fontWeight: 600 }}>
-        Publiez une version pour l'utiliser avec ChatKit.
+        Publiez une version pour l'utiliser.
       </div>
     ) : null;
 
@@ -1844,85 +1844,6 @@ const WorkflowBuilderPage = () => {
     workflows,
   ]);
 
-  const handleSelectChatkitWorkflow = useCallback(async () => {
-    if (!selectedWorkflowId) {
-      return;
-    }
-    const current = workflows.find((workflow) => workflow.id === selectedWorkflowId);
-    if (!current || current.is_chatkit_default) {
-      return;
-    }
-    if (!current.active_version_id) {
-      setSaveState("error");
-      setSaveMessage(
-        "Publiez une version de production avant d'utiliser ce workflow avec ChatKit.",
-      );
-      return;
-    }
-
-    setOpenWorkflowMenuId(null);
-    const endpoint = "/api/workflows/chatkit";
-    const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
-    let lastError: Error | null = null;
-    setSaveState("saving");
-    setSaveMessage("Mise à jour du workflow ChatKit…");
-    for (const url of candidates) {
-      try {
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...authHeader,
-          },
-          body: JSON.stringify({ workflow_id: current.id }),
-        });
-        if (!response.ok) {
-          if (response.status === 400 || response.status === 404) {
-            try {
-              const detail = (await response.json()) as { detail?: unknown };
-              const message =
-                detail && typeof detail.detail === "string"
-                  ? detail.detail
-                  : "Impossible de sélectionner le workflow pour ChatKit.";
-              throw new Error(message);
-            } catch (error) {
-              if (error instanceof Error && error.name === "SyntaxError") {
-                throw new Error("Impossible de sélectionner le workflow pour ChatKit.");
-              }
-              throw error;
-            }
-          }
-          throw new Error(
-            `Impossible de sélectionner le workflow pour ChatKit (${response.status}).`,
-          );
-        }
-        await loadWorkflows({
-          selectWorkflowId: current.id,
-          selectVersionId: selectedVersionId ?? null,
-        });
-        setSaveState("saved");
-        setSaveMessage(`Workflow "${current.display_name}" sélectionné pour ChatKit.`);
-        setTimeout(() => setSaveState("idle"), 1500);
-        return;
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          continue;
-        }
-        lastError = error instanceof Error ? error : new Error("Impossible de sélectionner le workflow pour ChatKit.");
-      }
-    }
-    setSaveState("error");
-    setSaveMessage(
-      lastError?.message ?? "Impossible de sélectionner le workflow pour ChatKit.",
-    );
-  }, [
-    authHeader,
-    loadWorkflows,
-    selectedVersionId,
-    selectedWorkflowId,
-    workflows,
-  ]);
-
   const buildGraphPayload = useCallback(
     () => buildGraphPayloadFrom(nodes, edges),
     [edges, nodes],
@@ -2559,25 +2480,6 @@ const WorkflowBuilderPage = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={handleSelectChatkitWorkflow}
-                      disabled={
-                        loading ||
-                        !selectedWorkflowId ||
-                        selectedWorkflow?.is_chatkit_default ||
-                        !selectedWorkflow?.active_version_id
-                      }
-                      style={getActionMenuItemStyle(isMobileLayout, {
-                        disabled:
-                          loading ||
-                          !selectedWorkflowId ||
-                          selectedWorkflow?.is_chatkit_default ||
-                          !selectedWorkflow?.active_version_id,
-                      })}
-                    >
-                      Définir pour ChatKit
-                    </button>
-                    <button
-                      type="button"
                       onClick={handleDuplicateWorkflow}
                       disabled={loading || !selectedWorkflowId}
                       style={getActionMenuItemStyle(isMobileLayout, {
@@ -2645,7 +2547,7 @@ const WorkflowBuilderPage = () => {
         ) : null}
         {selectedWorkflow && !selectedWorkflow.active_version_id ? (
           <p className="chatkit-sidebar__section-text" style={warningStyle}>
-            Publiez une version pour l'utiliser avec ChatKit.
+            Publiez une version pour l'utiliser.
           </p>
         ) : null}
       </section>
@@ -2655,7 +2557,6 @@ const WorkflowBuilderPage = () => {
     handleDeleteWorkflow,
     handleDuplicateWorkflow,
     handleRenameWorkflow,
-    handleSelectChatkitWorkflow,
     handleSelectWorkflow,
     isMobileLayout,
     loadError,
