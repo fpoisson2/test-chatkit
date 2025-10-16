@@ -235,6 +235,12 @@ export type WidgetTemplate = {
   updated_at: string;
 };
 
+export type WidgetTemplateSummary = {
+  slug: string;
+  title: string | null;
+  description: string | null;
+};
+
 export type AvailableModel = {
   id: number;
   name: string;
@@ -301,6 +307,13 @@ export const modelRegistryApi = {
 export const widgetLibraryApi = {
   async listWidgets(token: string | null): Promise<WidgetTemplate[]> {
     const response = await requestWithFallback("/api/widgets", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async listWorkflowWidgets(token: string | null): Promise<WidgetTemplateSummary[]> {
+    const response = await requestWithFallback("/api/workflow-widgets", {
       headers: withAuthHeaders(token),
     });
     return response.json();

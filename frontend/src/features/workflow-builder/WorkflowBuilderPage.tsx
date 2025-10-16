@@ -34,7 +34,7 @@ import {
   widgetLibraryApi,
   vectorStoreApi,
   type AvailableModel,
-  type WidgetTemplate,
+  type WidgetTemplateSummary,
   type VectorStoreSummary,
 } from "../../utils/backend";
 import { resolveAgentParameters, resolveStateParameters } from "../../utils/agentPresets";
@@ -70,6 +70,10 @@ import {
   setVectorStoreNodeConfig,
   setEndMessage,
   DEFAULT_END_MESSAGE,
+  createWidgetNodeParameters,
+  resolveWidgetNodeParameters,
+  setWidgetNodeSlug,
+  setWidgetNodeVariables,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
@@ -89,6 +93,7 @@ import type {
   WorkflowSummary,
   WorkflowVersionResponse,
   WorkflowVersionSummary,
+  WidgetVariableAssignment,
 } from "./types";
 import {
   AUTO_SAVE_DELAY_MS,
@@ -179,7 +184,7 @@ const WorkflowBuilderPage = () => {
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [availableModelsLoading, setAvailableModelsLoading] = useState(false);
   const [availableModelsError, setAvailableModelsError] = useState<string | null>(null);
-  const [widgets, setWidgets] = useState<WidgetTemplate[]>([]);
+  const [widgets, setWidgets] = useState<WidgetTemplateSummary[]>([]);
   const [widgetsLoading, setWidgetsLoading] = useState(false);
   const [widgetsError, setWidgetsError] = useState<string | null>(null);
   const [isActionMenuOpen, setActionMenuOpen] = useState(false);
@@ -675,7 +680,7 @@ const WorkflowBuilderPage = () => {
     setWidgetsLoading(true);
     setWidgetsError(null);
     widgetLibraryApi
-      .listWidgets(token)
+      .listWorkflowWidgets(token)
       .then((items) => {
         if (!isMounted) {
           return;
@@ -737,7 +742,9 @@ const WorkflowBuilderPage = () => {
                         {},
                         getVectorStoreNodeConfig(node.parameters),
                       )
-                    : resolveAgentParameters(null, node.parameters);
+                    : node.kind === "widget"
+                      ? resolveWidgetNodeParameters(node.parameters)
+                      : resolveAgentParameters(null, node.parameters);
             return {
               id: node.slug,
               position: positionFromMetadata ?? { x: 150 * index, y: 120 * index },
@@ -1467,6 +1474,42 @@ const WorkflowBuilderPage = () => {
     [updateNodeData]
   );
 
+  const handleWidgetNodeSlugChange = useCallback(
+    (nodeId: string, slug: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "widget") {
+          return data;
+        }
+        const nextParameters = setWidgetNodeSlug(data.parameters, slug);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleWidgetNodeVariablesChange = useCallback(
+    (nodeId: string, assignments: WidgetVariableAssignment[]) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "widget") {
+          return data;
+        }
+        const nextParameters = setWidgetNodeVariables(data.parameters, assignments);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
   const handleAgentWebSearchChange = useCallback(
     (nodeId: string, config: WebSearchConfig | null) => {
       updateNodeData(nodeId, (data) => {
@@ -1748,6 +1791,32 @@ const WorkflowBuilderPage = () => {
     setSelectedNodeId(slug);
     setSelectedEdgeId(null);
   }, [setNodes, vectorStores]);
+
+  const handleAddWidgetNode = useCallback(() => {
+    const slug = `widget-${Date.now()}`;
+    const parameters = createWidgetNodeParameters();
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 520, y: 200 },
+      data: {
+        slug,
+        kind: "widget",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("widget"),
+    } satisfies FlowNode;
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes]);
 
   const handleAddEndNode = useCallback(() => {
     const slug = `end-${Date.now()}`;
@@ -2500,6 +2569,13 @@ const WorkflowBuilderPage = () => {
         onClick: handleAddVectorStoreNode,
       },
       {
+        key: "widget",
+        label: "Bloc widget",
+        shortLabel: "W",
+        color: NODE_COLORS.widget,
+        onClick: handleAddWidgetNode,
+      },
+      {
         key: "end",
         label: "Fin",
         shortLabel: "F",
@@ -2512,6 +2588,7 @@ const WorkflowBuilderPage = () => {
       handleAddConditionNode,
       handleAddStateNode,
       handleAddVectorStoreNode,
+      handleAddWidgetNode,
       handleAddEndNode,
     ],
   );
@@ -2625,6 +2702,8 @@ const WorkflowBuilderPage = () => {
             onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
             onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
             onAgentResponseWidgetSlugChange={handleAgentResponseWidgetSlugChange}
+            onWidgetNodeSlugChange={handleWidgetNodeSlugChange}
+            onWidgetNodeVariablesChange={handleWidgetNodeVariablesChange}
             onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}
             onAgentDisplayResponseInChatChange={handleAgentDisplayResponseInChatChange}
             onAgentShowSearchSourcesChange={handleAgentShowSearchSourcesChange}

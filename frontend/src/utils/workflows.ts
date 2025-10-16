@@ -656,6 +656,110 @@ export const setAgentResponseWidgetVariables = (
   return setAgentResponseWidget(parameters, current.slug, variables);
 };
 
+export type WidgetVariableAssignment = {
+  identifier: string;
+  expression: string;
+};
+
+const sanitizeWidgetAssignments = (
+  assignments: WidgetVariableAssignment[],
+): Record<string, string> => {
+  const normalized: Record<string, string> = {};
+  for (const assignment of assignments) {
+    const key = assignment.identifier.trim();
+    const value = assignment.expression.trim();
+    if (key && value) {
+      normalized[key] = value;
+    }
+  }
+  return normalized;
+};
+
+export const getWidgetNodeConfig = (
+  parameters: AgentParameters | null | undefined,
+): { slug: string; variables: WidgetVariableAssignment[] } => {
+  if (!parameters) {
+    return { slug: "", variables: [] };
+  }
+  const rawWidget = (parameters as Record<string, unknown>).widget;
+  if (typeof rawWidget === "string") {
+    return { slug: rawWidget.trim(), variables: [] };
+  }
+  if (!isPlainRecord(rawWidget)) {
+    return { slug: "", variables: [] };
+  }
+  const slugValue = rawWidget.slug;
+  const slug = typeof slugValue === "string" ? slugValue.trim() : "";
+  const variablesRaw = rawWidget.variables;
+  const variables: WidgetVariableAssignment[] = [];
+  if (isPlainRecord(variablesRaw)) {
+    for (const [identifier, expression] of Object.entries(variablesRaw)) {
+      if (typeof identifier === "string" && typeof expression === "string") {
+        variables.push({ identifier, expression });
+      }
+    }
+  }
+  return { slug, variables };
+};
+
+const mergeWidgetParameters = (
+  parameters: AgentParameters,
+  slug: string,
+  assignments: WidgetVariableAssignment[],
+): AgentParameters => {
+  const trimmedSlug = slug.trim();
+  const normalizedAssignments = sanitizeWidgetAssignments(assignments);
+  const next = { ...(parameters as Record<string, unknown>) };
+  if (!trimmedSlug && Object.keys(normalizedAssignments).length === 0) {
+    delete next.widget;
+    return stripEmpty(next);
+  }
+
+  const widgetConfig: Record<string, unknown> = { slug: trimmedSlug };
+  if (Object.keys(normalizedAssignments).length > 0) {
+    widgetConfig.variables = normalizedAssignments;
+  }
+  next.widget = widgetConfig;
+  return next as AgentParameters;
+};
+
+export const createWidgetNodeParameters = (
+  options: {
+    slug?: string;
+    variables?: WidgetVariableAssignment[];
+  } = {},
+): AgentParameters => {
+  const slug = options.slug ?? "";
+  const assignments = options.variables ?? [];
+  return mergeWidgetParameters({}, slug, assignments);
+};
+
+export const setWidgetNodeSlug = (
+  parameters: AgentParameters,
+  slug: string,
+): AgentParameters => {
+  const current = getWidgetNodeConfig(parameters);
+  if (current.slug === slug) {
+    return parameters;
+  }
+  return mergeWidgetParameters(parameters, slug, current.variables);
+};
+
+export const setWidgetNodeVariables = (
+  parameters: AgentParameters,
+  assignments: WidgetVariableAssignment[],
+): AgentParameters => {
+  const current = getWidgetNodeConfig(parameters);
+  return mergeWidgetParameters(parameters, current.slug, assignments);
+};
+
+export const resolveWidgetNodeParameters = (
+  parameters: AgentParameters | null | undefined,
+): AgentParameters => {
+  const current = getWidgetNodeConfig(parameters ?? {});
+  return mergeWidgetParameters(parameters ?? {}, current.slug, current.variables);
+};
+
 export type StateAssignment = {
   target: string;
   expression: string;

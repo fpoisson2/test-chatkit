@@ -23,6 +23,7 @@ const makeApiEndpointCandidatesMock = vi.hoisted(() =>
 const listVectorStoresMock = vi.hoisted(() => vi.fn(async () => []));
 const listModelsMock = vi.hoisted(() => vi.fn(async () => []));
 const listWidgetsMock = vi.hoisted(() => vi.fn(async () => []));
+const listWorkflowWidgetsMock = vi.hoisted(() => vi.fn(async () => []));
 
 vi.mock("../../utils/backend", () => ({
   makeApiEndpointCandidates: makeApiEndpointCandidatesMock,
@@ -34,6 +35,7 @@ vi.mock("../../utils/backend", () => ({
   },
   widgetLibraryApi: {
     listWidgets: listWidgetsMock,
+    listWorkflowWidgets: listWorkflowWidgetsMock,
   },
 }));
 
@@ -244,7 +246,7 @@ describe("WorkflowBuilderPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    listWidgetsMock.mockResolvedValue([]);
+    listWorkflowWidgetsMock.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -412,120 +414,11 @@ describe("WorkflowBuilderPage", () => {
 
   test("détecte les variables du widget et permet de les ingérer", async () => {
     const user = userEvent.setup();
-    listWidgetsMock.mockResolvedValue([
+    listWorkflowWidgetsMock.mockResolvedValue([
       {
         slug: "email-card",
         title: "Email",
-        description: null,
-        definition: {
-          size: "lg",
-          type: "Card",
-          cancel: {
-            label: "Discard",
-            action: {
-              type: "email.discard",
-              handler: "server",
-              loadingBehavior: "auto",
-            },
-          },
-          confirm: {
-            label: "Send email",
-            action: {
-              type: "email.send",
-              handler: "server",
-              loadingBehavior: "auto",
-            },
-          },
-          children: [
-            {
-              type: "Row",
-              children: [
-                {
-                  size: "xs",
-                  type: "Text",
-                  color: "tertiary",
-                  value: "FROM",
-                  width: 80,
-                  weight: "semibold",
-                },
-                {
-                  type: "Text",
-                  color: "tertiary",
-                  value: "zj@openai.com",
-                },
-              ],
-            },
-            {
-              type: "Divider",
-              flush: true,
-            },
-            {
-              type: "Row",
-              children: [
-                {
-                  size: "xs",
-                  type: "Text",
-                  color: "tertiary",
-                  value: "TO",
-                  width: 80,
-                  weight: "semibold",
-                },
-                {
-                  type: "Text",
-                  value: "weedon@openai.com",
-                  editable: {
-                    name: "email.to",
-                    required: true,
-                    placeholder: "name@example.com",
-                  },
-                },
-              ],
-            },
-            {
-              type: "Divider",
-              flush: true,
-            },
-            {
-              type: "Row",
-              children: [
-                {
-                  size: "xs",
-                  type: "Text",
-                  color: "tertiary",
-                  value: "SUBJECT",
-                  width: 80,
-                  weight: "semibold",
-                },
-                {
-                  type: "Text",
-                  value: "ChatKit Roadmap",
-                  editable: {
-                    name: "email.subject",
-                    required: true,
-                    placeholder: "Email subject",
-                  },
-                },
-              ],
-            },
-            {
-              type: "Divider",
-              flush: true,
-            },
-            {
-              type: "Text",
-              value:
-                "Hey David, \n\nHope you're doing well! Just wanted to check in and see if there are any updates on the ChatKit roadmap. We're excited to see what's coming next and how we can make the most of the upcoming features.\n\nEspecially curious to see how you support widgets!\n\nBest, Zach",
-              editable: {
-                name: "email.body",
-                required: true,
-                placeholder: "Write your message…",
-              },
-              minLines: 9,
-            },
-          ],
-        },
-        created_at: "2024-01-01T00:00:00Z",
-        updated_at: "2024-01-01T00:00:00Z",
+        description: "Carte de rédaction d'email",
       },
     ]);
     const fetchMock = setupWorkflowApi();
@@ -548,7 +441,7 @@ describe("WorkflowBuilderPage", () => {
     });
 
     await waitFor(() => {
-      expect(listWidgetsMock).toHaveBeenCalled();
+      expect(listWorkflowWidgetsMock).toHaveBeenCalled();
     });
 
     const widgetSelect = await screen.findByRole("combobox", { name: /widget de sortie/i });
@@ -569,6 +462,75 @@ describe("WorkflowBuilderPage", () => {
     const payload = JSON.parse((putCall?.[1] as RequestInit).body as string);
     const agentNode = payload.graph.nodes.find((node: any) => node.slug === "agent-triage");
     expect(agentNode.parameters.response_widget).toEqual({ slug: "email-card" });
+  });
+
+  test("permet de sélectionner un widget depuis la bibliothèque modale", async () => {
+    listWorkflowWidgetsMock.mockResolvedValue([
+      {
+        slug: "resume",
+        title: "Résumé automatique",
+        description: "Affiche une carte de synthèse",
+      },
+      {
+        slug: "insights",
+        title: "Points clés",
+        description: "Liste les éléments importants",
+      },
+    ]);
+    const fetchMock = setupWorkflowApi();
+
+    const { container } = renderWorkflowBuilder();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const triageNode = container.querySelector('[data-id="agent-triage"]');
+    expect(triageNode).not.toBeNull();
+    fireEvent.click(triageNode!);
+
+    const outputTypeSelect = await screen.findByLabelText(/type de sortie/i);
+    await user.selectOptions(outputTypeSelect, "widget");
+
+    const browseButton = await screen.findByRole("button", {
+      name: /Parcourir la bibliothèque de widgets pour la réponse de l'agent/i,
+    });
+    await user.click(browseButton);
+
+    await screen.findByRole("dialog", { name: /bibliothèque de widgets/i });
+
+    const resumeButton = await screen.findByRole("button", {
+      name: /Résumé automatique/i,
+    });
+    await user.click(resumeButton);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: /bibliothèque de widgets/i })).not.toBeInTheDocument();
+    });
+
+    const widgetSelect = await screen.findByRole("combobox", { name: /widget de sortie/i });
+    expect(widgetSelect).toHaveValue("resume");
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            typeof input === "string" &&
+            input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`) &&
+            (init as RequestInit | undefined)?.method === "PUT",
+        ),
+      ).toBe(true);
+    });
+
+    const putCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        typeof input === "string" &&
+        input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`) &&
+        (init as RequestInit | undefined)?.method === "PUT",
+    );
+    const payload = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const agentNode = payload.graph.nodes.find((node: any) => node.slug === "agent-triage");
+    expect(agentNode.parameters.response_widget).toEqual({ slug: "resume" });
   });
 
   test("pré-remplit un agent hérité avec les valeurs par défaut", async () => {
@@ -821,5 +783,101 @@ describe("WorkflowBuilderPage", () => {
         },
       },
     ]);
+  });
+
+  test("permet d'ajouter un bloc widget et de le configurer", async () => {
+    listWorkflowWidgetsMock.mockResolvedValue([
+      {
+        slug: "resume",
+        title: "Résumé automatique",
+        description: null,
+      },
+      {
+        slug: "graphique",
+        title: "Graphique",
+        description: null,
+      },
+    ]);
+    const fetchMock = setupWorkflowApi();
+
+    const { container } = renderWorkflowBuilder();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const widgetButton = await screen.findByRole("button", { name: /bloc widget/i });
+    fireEvent.click(widgetButton);
+
+    const widgetNode = await waitFor(() => container.querySelector('[data-id^="widget-"]'));
+    expect(widgetNode).not.toBeNull();
+    fireEvent.click(widgetNode!);
+
+    const widgetSelect = await screen.findByLabelText(/widget à afficher/i);
+    fireEvent.change(widgetSelect, { target: { value: "resume" } });
+
+    const addVariableButton = await screen.findByRole("button", { name: /ajouter une variable/i });
+    fireEvent.click(addVariableButton);
+
+    const identifierInput = await screen.findByPlaceholderText(/ex\. title/i);
+    fireEvent.change(identifierInput, { target: { value: "title" } });
+
+    const expressionInput = await screen.findByPlaceholderText(/ex\. input\.output_parsed\.titre/i);
+    fireEvent.change(expressionInput, { target: { value: "state.resume" } });
+
+    await waitFor(
+      () => {
+        expect(
+          fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
+        ).toBe(true);
+      },
+      { timeout: 4000 },
+    );
+
+    const putCall = fetchMock.mock.calls.find(
+      ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+    );
+    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const widgetPayload = body.graph.nodes.find((node: any) => node.kind === "widget");
+    expect(widgetPayload).toBeTruthy();
+    expect(widgetPayload.parameters).toEqual({
+      widget: { slug: "resume", variables: { title: "state.resume" } },
+    });
+  });
+
+  test("permet de saisir un widget manuellement lorsque la bibliothèque est indisponible", async () => {
+    listWorkflowWidgetsMock.mockRejectedValueOnce(new Error("Bibliothèque inaccessible"));
+    const fetchMock = setupWorkflowApi();
+
+    const { container } = renderWorkflowBuilder();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const widgetButton = await screen.findByRole("button", { name: /bloc widget/i });
+    fireEvent.click(widgetButton);
+
+    const widgetNode = await waitFor(() => container.querySelector('[data-id^="widget-"]'));
+    expect(widgetNode).not.toBeNull();
+    fireEvent.click(widgetNode!);
+
+    const widgetSlugInput = await screen.findByLabelText(/^slug du widget$/i);
+    fireEvent.change(widgetSlugInput, { target: { value: "resume" } });
+
+    await waitFor(
+      () => {
+        expect(
+          fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
+        ).toBe(true);
+      },
+      { timeout: 4000 },
+    );
+
+    const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
+    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const widgetPayload = body.graph.nodes.find((node: any) => node.kind === "widget");
+    expect(widgetPayload).toBeTruthy();
+    expect(widgetPayload.parameters).toEqual({ widget: { slug: "resume" } });
   });
 });

@@ -145,6 +145,7 @@ class WorkflowNodeBase(BaseModel):
         "condition",
         "state",
         "json_vector_store",
+        "widget",
         "end",
     ]
     display_name: str | None = None
@@ -290,6 +291,15 @@ class WidgetTemplateBase(BaseModel):
     title: str | None = None
     description: str | None = None
     definition: dict[str, Any]
+
+
+class WidgetTemplateSummaryResponse(BaseModel):
+    slug: str
+    title: str | None = None
+    description: str | None = None
+
+    class Config:
+        from_attributes = True
 
 
 class WidgetTemplateResponse(WidgetTemplateBase):

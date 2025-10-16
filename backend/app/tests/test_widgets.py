@@ -165,6 +165,15 @@ def test_non_admin_cannot_access_widget_library() -> None:
     response = client.get("/api/widgets", headers=_auth_headers(user_token))
     assert response.status_code == 403
 
+    workflow_widgets = client.get(
+        "/api/workflow-widgets", headers=_auth_headers(user_token)
+    )
+    assert workflow_widgets.status_code == 200
+    widgets = workflow_widgets.json()
+    assert widgets == [
+        {"slug": "resume", "title": None, "description": None}
+    ]
+
     create_attempt = client.post(
         "/api/widgets",
         headers=_auth_headers(user_token),

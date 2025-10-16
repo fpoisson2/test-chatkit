@@ -12,6 +12,7 @@ export type NodeKind =
   | "condition"
   | "state"
   | "json_vector_store"
+  | "widget"
   | "end";
 
 export type ApiWorkflowNode = {
@@ -113,4 +114,5 @@ export type {
   StateAssignment,
   StateAssignmentScope,
   WebSearchConfig,
+  WidgetVariableAssignment,
 } from "../../utils/workflows";

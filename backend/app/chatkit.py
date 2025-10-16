@@ -1565,6 +1565,8 @@ def _parse_response_widget_config(
         return None
 
     candidate = parameters.get("response_widget")
+    if candidate is None:
+        candidate = parameters.get("widget")
     if isinstance(candidate, str):
         slug = candidate.strip()
         if not slug:
@@ -2988,6 +2990,39 @@ async def run_workflow(
                 step_title=title,
                 step_context=last_step_context,
             )
+            transition = _next_edge(current_slug)
+            if transition is None:
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError(
+                        f"Aucune transition disponible après le nœud {current_node.slug}"
+                    ),
+                    list(steps),
+                )
+            current_slug = transition.target_step.slug
+            continue
+
+        if current_node.kind == "widget":
+            title = _node_title(current_node)
+            widget_config = widget_configs_by_step.get(current_node.slug)
+            if widget_config is None:
+                logger.warning(
+                    "Widget non configuré pour le nœud %s : aucune diffusion réalisée",
+                    current_node.slug,
+                )
+            else:
+                await _stream_response_widget(
+                    widget_config,
+                    step_slug=current_node.slug,
+                    step_title=title,
+                    step_context=last_step_context,
+                )
+                await record_step(
+                    current_node.slug,
+                    title,
+                    {"widget": widget_config.slug},
+                )
             transition = _next_edge(current_slug)
             if transition is None:
                 raise WorkflowExecutionError(
