@@ -55,22 +55,6 @@ const pointerState = (options?: DisabledOptions) => ({
   opacity: options?.disabled ? 0.5 : 1,
 });
 
-export const getWorkflowSelectStyle = (
-  isMobile: boolean,
-  options?: DisabledOptions,
-): CSSProperties => ({
-  minWidth: isMobile ? undefined : "220px",
-  maxWidth: isMobile ? "100%" : "340px",
-  width: isMobile ? "100%" : undefined,
-  padding: "0.5rem 0.75rem",
-  borderRadius: "0.75rem",
-  border: "1px solid rgba(15, 23, 42, 0.15)",
-  background: "#fff",
-  color: "#0f172a",
-  fontWeight: 600,
-  ...pointerState(options),
-});
-
 export const getCreateWorkflowButtonStyle = (
   isMobile: boolean,
   options?: DisabledOptions,
@@ -99,13 +83,6 @@ export const getVersionSelectStyle = (
   color: "#0f172a",
   ...pointerState(options),
 });
-
-export const activeWorkflowBadgeStyle: CSSProperties = {
-  color: "#047857",
-  fontWeight: 600,
-  fontSize: "0.85rem",
-  whiteSpace: "nowrap",
-};
 
 export const getHeaderActionAreaStyle = (isMobile: boolean): CSSProperties => ({
   display: "flex",
@@ -188,8 +165,6 @@ export const actionMenuTriggerLabelStyle: CSSProperties = {
 export const getActionMenuStyle = (isMobile: boolean): CSSProperties => ({
   position: "absolute",
   top: "calc(100% + 0.5rem)",
-  right: isMobile ? undefined : 0,
-  left: isMobile ? 0 : undefined,
   background: "#fff",
   borderRadius: "0.75rem",
   border: "1px solid rgba(15, 23, 42, 0.1)",
@@ -197,7 +172,10 @@ export const getActionMenuStyle = (isMobile: boolean): CSSProperties => ({
   padding: "0.5rem",
   minWidth: isMobile ? "100%" : "220px",
   width: isMobile ? "100%" : "auto",
-  zIndex: 30,
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.25rem",
+  zIndex: 20,
 });
 
 export const getActionMenuItemStyle = (

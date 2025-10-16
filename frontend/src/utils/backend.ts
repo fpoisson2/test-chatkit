@@ -1,3 +1,5 @@
+import type { WorkflowSummary } from "../types/workflows";
+
 const sanitizeBackendUrl = (value: string): string => value.trim();
 
 const ensureTrailingSlash = (value: string): string =>
@@ -362,6 +364,24 @@ export const widgetLibraryApi = {
     });
     const payload = (await response.json()) as { definition: Record<string, unknown> };
     return payload.definition;
+  },
+};
+
+export const workflowsApi = {
+  async list(token: string | null): Promise<WorkflowSummary[]> {
+    const response = await requestWithFallback("/api/workflows", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async setChatkitWorkflow(token: string | null, workflowId: number): Promise<WorkflowSummary> {
+    const response = await requestWithFallback("/api/workflows/chatkit", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ workflow_id: workflowId }),
+    });
+    return response.json();
   },
 };
 
