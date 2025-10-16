@@ -122,6 +122,7 @@ import styles from "./WorkflowBuilderPage.module.css";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 const AUTO_SAVE_SUCCESS_MESSAGE = "Modifications enregistrées automatiquement.";
+const DRAFT_VERSION_NAME = "Brouillon";
 
 const useMediaQuery = (query: string) => {
   const [matches, setMatches] = useState<boolean>(() => {
@@ -643,8 +644,9 @@ const WorkflowBuilderPage = () => {
             throw new Error(`Échec du chargement des versions (${response.status})`);
           }
           const data: WorkflowVersionSummary[] = await response.json();
-          setVersions(data);
-          if (data.length === 0) {
+          const normalizedVersions = [...data];
+          setVersions(normalizedVersions);
+          if (normalizedVersions.length === 0) {
             setSelectedVersionId(null);
             setNodes([]);
             setEdges([]);
@@ -657,19 +659,26 @@ const WorkflowBuilderPage = () => {
             restoreViewport();
             return true;
           }
-          const availableIds = new Set(data.map((version) => version.id));
+          const availableIds = new Set(normalizedVersions.map((version) => version.id));
           let nextVersionId: number | null = null;
           if (preferredVersionId && availableIds.has(preferredVersionId)) {
             nextVersionId = preferredVersionId;
           } else if (selectedVersionId && availableIds.has(selectedVersionId)) {
             nextVersionId = selectedVersionId;
           } else {
-            const draft = data.find((version) => !version.is_active);
+            const draft = normalizedVersions.find(
+              (version) => !version.is_active && version.name === DRAFT_VERSION_NAME,
+            );
             if (draft) {
               nextVersionId = draft.id;
             } else {
-              const active = data.find((version) => version.is_active);
-              nextVersionId = active?.id ?? data[0]?.id ?? null;
+              const fallbackDraft = normalizedVersions.find((version) => !version.is_active);
+              if (fallbackDraft) {
+                nextVersionId = fallbackDraft.id;
+              } else {
+                const active = normalizedVersions.find((version) => version.is_active);
+                nextVersionId = active?.id ?? normalizedVersions[0]?.id ?? null;
+              }
             }
           }
           setSelectedVersionId(nextVersionId);
@@ -1956,55 +1965,66 @@ const WorkflowBuilderPage = () => {
     }
 
     try {
-      const graphPayload = buildGraphPayload();
-      const graphSnapshot = JSON.stringify(graphPayload);
-      const currentWorkflow = workflows.find((workflow) => workflow.id === selectedWorkflowId);
-      const draftVersion =
-        selectedVersionSummary && !selectedVersionSummary.is_active
-          ? selectedVersionSummary
-          : null;
+    const graphPayload = buildGraphPayload();
+    const graphSnapshot = JSON.stringify(graphPayload);
+    const currentWorkflow = workflows.find((workflow) => workflow.id === selectedWorkflowId);
+    const draftVersionSummary =
+      versions.find(
+        (version) => !version.is_active && version.name === DRAFT_VERSION_NAME,
+      ) ?? null;
+    const isEditingDraft =
+      selectedVersionSummary?.id != null &&
+      draftVersionSummary?.id === selectedVersionSummary.id;
+    const targetDraftId = isEditingDraft
+      ? selectedVersionSummary!.id
+      : draftVersionSummary?.id ?? null;
+    const shouldCreateDraft = targetDraftId === null;
 
-      const endpoint = draftVersion
-        ? `/api/workflows/${selectedWorkflowId}/versions/${draftVersion.id}`
-        : `/api/workflows/${selectedWorkflowId}/versions`;
-      const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
-      setSaveState("saving");
-      for (const url of candidates) {
-        const response = await fetch(url, {
-          method: draftVersion ? "PUT" : "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...authHeader,
-          },
-          body: JSON.stringify(
-            draftVersion
-              ? { graph: graphPayload }
-              : { graph: graphPayload, mark_as_active: false },
-          ),
-        });
-        if (!response.ok) {
-          throw new Error(`Échec de l'enregistrement (${response.status})`);
-        }
+    const endpoint = shouldCreateDraft
+      ? `/api/workflows/${selectedWorkflowId}/versions`
+      : `/api/workflows/${selectedWorkflowId}/versions/${targetDraftId}`;
+    const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
+    const requestPayload = shouldCreateDraft
+      ? { graph: graphPayload, mark_as_active: false, name: DRAFT_VERSION_NAME }
+      : { graph: graphPayload };
+    setSaveState("saving");
+    for (const url of candidates) {
+      const response = await fetch(url, {
+        method: shouldCreateDraft ? "POST" : "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeader,
+        },
+        body: JSON.stringify(requestPayload),
+      });
+      if (!response.ok) {
+        throw new Error(`Échec de l'enregistrement (${response.status})`);
+      }
 
-        let savedVersionId = draftVersion?.id ?? null;
-        let responseData: WorkflowVersionResponse | null = null;
-        try {
-          responseData = (await response.json()) as WorkflowVersionResponse;
-        } catch (error) {
-          responseData = null;
-        }
-        if (responseData?.id) {
-          savedVersionId = responseData.id;
-        } else if (!savedVersionId) {
-          throw new Error("Réponse invalide du serveur lors de l'enregistrement.");
-        }
+      let savedVersionId = targetDraftId;
+      let responseData: WorkflowVersionResponse | null = null;
+      try {
+        responseData = (await response.json()) as WorkflowVersionResponse;
+      } catch (error) {
+        responseData = null;
+      }
+      if (responseData?.id) {
+        savedVersionId = responseData.id;
+      } else if (savedVersionId == null) {
+        throw new Error("Réponse invalide du serveur lors de l'enregistrement.");
+      }
 
-        if (currentWorkflow?.is_chatkit_default) {
-          const updateCandidates = makeApiEndpointCandidates(
-            backendUrl,
-            "/api/workflows/current",
-          );
-          let updateError: Error | null = null;
+      const ensuredVersionId = savedVersionId!;
+      if (!isEditingDraft || shouldCreateDraft) {
+        setSelectedVersionId(ensuredVersionId);
+      }
+
+      if (currentWorkflow?.is_chatkit_default) {
+        const updateCandidates = makeApiEndpointCandidates(
+          backendUrl,
+          "/api/workflows/current",
+        );
+        let updateError: Error | null = null;
           for (const updateUrl of updateCandidates) {
             try {
               const updateResponse = await fetch(updateUrl, {
@@ -2030,16 +2050,16 @@ const WorkflowBuilderPage = () => {
                 error instanceof Error
                   ? error
                   : new Error("Impossible de mettre à jour le workflow ChatKit.");
-            }
-          }
-          if (updateError) {
-            throw updateError;
           }
         }
+        if (updateError) {
+          throw updateError;
+        }
+      }
 
-        await loadVersions(selectedWorkflowId, savedVersionId);
-        setSaveState("saved");
-        lastSavedSnapshotRef.current = graphSnapshot;
+      await loadVersions(selectedWorkflowId, ensuredVersionId);
+      setSaveState("saved");
+      lastSavedSnapshotRef.current = graphSnapshot;
         setHasPendingChanges(false);
         setSaveMessage(AUTO_SAVE_SUCCESS_MESSAGE);
         setTimeout(() => {
@@ -2064,6 +2084,7 @@ const WorkflowBuilderPage = () => {
     loadVersions,
     selectedVersionSummary,
     selectedWorkflowId,
+    versions,
     workflows,
   ]);
 
