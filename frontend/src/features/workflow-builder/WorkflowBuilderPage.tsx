@@ -95,6 +95,62 @@ import type {
   WorkflowVersionSummary,
   WidgetVariableAssignment,
 } from "./types";
+
+export const findLatestDraftVersion = (
+  versions: WorkflowVersionSummary[],
+): WorkflowVersionSummary | null => {
+  return versions
+    .filter((version) => !version.is_active)
+    .reduce<WorkflowVersionSummary | null>((latest, current) => {
+      if (!latest) {
+        return current;
+      }
+      if (current.version > latest.version) {
+        return current;
+      }
+      if (current.version < latest.version) {
+        return latest;
+      }
+      const currentUpdatedAt = new Date(current.updated_at).getTime();
+      const latestUpdatedAt = new Date(latest.updated_at).getTime();
+      if (Number.isNaN(currentUpdatedAt) && Number.isNaN(latestUpdatedAt)) {
+        return latest;
+      }
+      if (Number.isNaN(currentUpdatedAt)) {
+        return latest;
+      }
+      if (Number.isNaN(latestUpdatedAt)) {
+        return current;
+      }
+      return currentUpdatedAt >= latestUpdatedAt ? current : latest;
+    }, null);
+};
+
+const normalizeDraftVersionName = (version: WorkflowVersionSummary): WorkflowVersionSummary => {
+  if (version.is_active) {
+    return version;
+  }
+
+  const rawName = version.name?.trim().toLowerCase() ?? "";
+  if (!rawName || rawName === "nouvelle version") {
+    return { ...version, name: "Brouillon" };
+  }
+
+  return version;
+};
+
+export const sortVersionsWithDraftFirst = (
+  versions: WorkflowVersionSummary[],
+): WorkflowVersionSummary[] => {
+  const draft = findLatestDraftVersion(versions);
+  if (!draft) {
+    return versions;
+  }
+
+  const normalizedDraft = normalizeDraftVersionName(draft);
+  const remaining = versions.filter((version) => version.id !== draft.id);
+  return [normalizedDraft, ...remaining];
+};
 import {
   AUTO_SAVE_DELAY_MS,
   buildGraphPayloadFrom,
@@ -425,16 +481,17 @@ const WorkflowBuilderPage = () => {
               <option value="">Aucune version disponible</option>
             ) : (
               versions.map((version) => {
-                const labelParts = [`v${version.version}`];
-                if (version.name) {
-                  labelParts.push(version.name);
-                }
-                if (version.is_active) {
-                  labelParts.push("Production");
-                }
+                const isDraft = latestDraftVersion?.id === version.id;
+                const label = isDraft
+                  ? `Brouillon (v${version.version})`
+                  : [
+                      `v${version.version}`,
+                      ...(version.name ? [version.name] : []),
+                      ...(version.is_active ? ["Production"] : []),
+                    ].join(" · ");
                 return (
                   <option key={version.id} value={version.id}>
-                    {labelParts.join(" · ")}
+                    {label}
                   </option>
                 );
               })
@@ -561,6 +618,11 @@ const WorkflowBuilderPage = () => {
   const selectedWorkflow = useMemo(
     () => workflows.find((workflow) => workflow.id === selectedWorkflowId) ?? null,
     [selectedWorkflowId, workflows],
+  );
+
+  const latestDraftVersion = useMemo(
+    () => findLatestDraftVersion(versions),
+    [versions],
   );
 
   const selectedVersionSummary = useMemo(
@@ -828,8 +890,9 @@ const WorkflowBuilderPage = () => {
             throw new Error(`Échec du chargement des versions (${response.status})`);
           }
           const data: WorkflowVersionSummary[] = await response.json();
-          setVersions(data);
-          if (data.length === 0) {
+          const normalizedVersions = sortVersionsWithDraftFirst(data);
+          setVersions(normalizedVersions);
+          if (normalizedVersions.length === 0) {
             setSelectedVersionId(null);
             setNodes([]);
             setEdges([]);
@@ -842,19 +905,19 @@ const WorkflowBuilderPage = () => {
             restoreViewport();
             return true;
           }
-          const availableIds = new Set(data.map((version) => version.id));
+          const availableIds = new Set(normalizedVersions.map((version) => version.id));
           let nextVersionId: number | null = null;
           if (preferredVersionId && availableIds.has(preferredVersionId)) {
             nextVersionId = preferredVersionId;
           } else if (selectedVersionId && availableIds.has(selectedVersionId)) {
             nextVersionId = selectedVersionId;
           } else {
-            const draft = data.find((version) => !version.is_active);
+            const draft = findLatestDraftVersion(normalizedVersions);
             if (draft) {
               nextVersionId = draft.id;
             } else {
-              const active = data.find((version) => version.is_active);
-              nextVersionId = active?.id ?? data[0]?.id ?? null;
+              const active = normalizedVersions.find((version) => version.is_active);
+              nextVersionId = active?.id ?? normalizedVersions[0]?.id ?? null;
             }
           }
           setSelectedVersionId(nextVersionId);

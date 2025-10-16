@@ -7,6 +7,16 @@ import { MemoryRouter } from "react-router-dom";
 import WorkflowBuilderPage from "../WorkflowBuilderPage";
 
 const logoutMock = vi.hoisted(() => vi.fn());
+const openSidebarMock = vi.hoisted(() => vi.fn());
+const useAppLayoutMock = vi.hoisted(() =>
+  vi.fn(() => ({
+    openSidebar: openSidebarMock,
+    closeSidebar: vi.fn(),
+    openSettings: vi.fn(),
+    isDesktopLayout: true,
+    isSidebarOpen: true,
+  })),
+);
 
 vi.mock("../../auth", () => ({
   useAuth: () => ({
@@ -14,6 +24,10 @@ vi.mock("../../auth", () => ({
     user: { is_admin: true },
     logout: logoutMock,
   }),
+}));
+
+vi.mock("../../components/AppLayout", () => ({
+  useAppLayout: useAppLayoutMock,
 }));
 
 const makeApiEndpointCandidatesMock = vi.hoisted(() =>
@@ -163,7 +177,9 @@ describe("WorkflowBuilderPage", () => {
   ) => {
     const workflowDetail = overrides.workflowDetail ?? defaultResponse;
     const workflowList = overrides.workflowList ?? [defaultWorkflowSummary];
-    const versions = overrides.versions ?? [draftVersionSummary, productionVersionSummary];
+    const versionSummaries = (overrides.versions ?? [draftVersionSummary, productionVersionSummary]).map(
+      (summary) => ({ ...summary }),
+    );
     const putResponse = overrides.putResponse ?? { success: true };
     const versionDetails = new Map<number, typeof defaultResponse | typeof productionResponse>([
       [workflowDetail.id, workflowDetail],
@@ -186,15 +202,36 @@ describe("WorkflowBuilderPage", () => {
         return {
           ok: true,
           status: 200,
-          json: async () => versions,
+          json: async () => versionSummaries.map((summary) => ({ ...summary })),
         } as Response;
       }
       if (
         url.endsWith(`/api/workflows/${workflowDetail.workflow_id}/versions`) &&
         init?.method === "POST"
       ) {
-        const created = { ...defaultResponse, id: 3, version: 3, name: "Nouvelle version" };
+        const nextId = Math.max(...Array.from(versionDetails.keys())) + 1;
+        const nextVersion =
+          versionSummaries.reduce((max, summary) => Math.max(max, summary.version), 0) + 1;
+        const createdAt = `2024-01-${String(2 + versionSummaries.length).padStart(2, "0")}T00:00:00Z`;
+        const created = {
+          ...workflowDetail,
+          id: nextId,
+          version: nextVersion,
+          name: "Nouvelle version",
+          is_active: false,
+          created_at: createdAt,
+          updated_at: createdAt,
+        };
         versionDetails.set(created.id, created);
+        versionSummaries.push({
+          id: created.id,
+          workflow_id: created.workflow_id,
+          name: created.name,
+          version: created.version,
+          is_active: created.is_active,
+          created_at: created.created_at,
+          updated_at: created.updated_at,
+        });
         return {
           ok: true,
           status: 200,
