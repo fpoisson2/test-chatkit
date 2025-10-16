@@ -5,7 +5,7 @@ import { useAppLayout } from "../components/AppLayout";
 import { Modal } from "../components/Modal";
 import { WidgetPreviewModal } from "../components/WidgetPreviewModal";
 import { WidgetTemplateForm } from "../components/WidgetTemplateForm";
-import { WidgetTemplateTable } from "../components/WidgetTemplateTable";
+import { WidgetTemplateGallery } from "../components/WidgetTemplateGallery";
 import {
   ApiError,
   isUnauthorizedError,
@@ -217,7 +217,7 @@ export const WidgetLibraryPage = () => {
               Chaque entrée correspond à une définition JSON validée par le SDK ChatKit. Utilisez ces widgets comme sorties de vos agents dans le workflow builder.
             </p>
           </div>
-          <WidgetTemplateTable
+          <WidgetTemplateGallery
             widgets={widgets}
             isLoading={isLoading}
             onPreview={(widget) =>
