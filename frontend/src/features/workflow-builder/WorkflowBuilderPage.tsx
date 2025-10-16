@@ -6,6 +6,9 @@ import {
   useState,
   type ChangeEvent,
   type CSSProperties,
+  type MouseEvent,
+  type PointerEvent,
+  type TouchEvent,
 } from "react";
 import ReactFlow, {
   Background,
@@ -257,6 +260,28 @@ const WorkflowBuilderPage = () => {
       return !prev;
     });
   }, []);
+
+  const handleMobileHeaderMenuButtonPointerDown = useCallback(
+    (event: PointerEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+    },
+    [],
+  );
+
+  const handleMobileHeaderMenuButtonTouchStart = useCallback(
+    (event: TouchEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+    },
+    [],
+  );
+
+  const handleMobileHeaderMenuButtonClick = useCallback(
+    (event: MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      handleToggleMobileHeaderMenu();
+    },
+    [handleToggleMobileHeaderMenu],
+  );
 
   useEffect(() => {
     if (!isActionMenuOpen) {
@@ -2695,7 +2720,9 @@ const WorkflowBuilderPage = () => {
             <button
               type="button"
               ref={mobileHeaderMenuButtonRef}
-              onClick={handleToggleMobileHeaderMenu}
+              onPointerDown={handleMobileHeaderMenuButtonPointerDown}
+              onTouchStart={handleMobileHeaderMenuButtonTouchStart}
+              onClick={handleMobileHeaderMenuButtonClick}
               aria-haspopup="dialog"
               aria-controls={headerMenuId}
               aria-expanded={isMobileHeaderMenuOpen}
