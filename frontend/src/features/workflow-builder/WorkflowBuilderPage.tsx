@@ -2593,16 +2593,19 @@ const WorkflowBuilderPage = () => {
     textAlign: "left",
   });
 
-  const renderBlockLibraryButtons = () => (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-      {blockLibraryItems.map((item) => {
-        const disabled = loading || !selectedWorkflowId;
-        return (
-          <button
-            key={item.key}
-            type="button"
-            onClick={() => item.onClick()}
-            disabled={disabled}
+  const renderBlockLibraryButtons = () => {
+    const primaryTextColor = isMobileLayout ? "#f8fafc" : "#0f172a";
+    const secondaryTextColor = isMobileLayout ? "rgba(248, 250, 252, 0.8)" : "#475569";
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+        {blockLibraryItems.map((item) => {
+          const disabled = loading || !selectedWorkflowId;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => item.onClick()}
+              disabled={disabled}
             style={getBlockLibraryButtonStyle(disabled)}
           >
             <span
@@ -2621,17 +2624,18 @@ const WorkflowBuilderPage = () => {
             >
               {item.shortLabel}
             </span>
-            <div style={{ textAlign: "left", color: "#0f172a" }}>
+            <div style={{ textAlign: "left", color: primaryTextColor }}>
               <strong style={{ fontSize: "1rem" }}>{item.label}</strong>
-              <p style={{ margin: 0, color: "#475569", fontSize: "0.85rem" }}>
+              <p style={{ margin: 0, color: secondaryTextColor, fontSize: "0.85rem" }}>
                 Ajoute un bloc « {item.label.toLowerCase()} » au workflow.
               </p>
             </div>
-          </button>
-        );
-      })}
-    </div>
-  );
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
 
   const hasSelectedElement = Boolean(selectedNode || selectedEdge);
   const showPropertiesPanel = hasSelectedElement && (!isMobileLayout || isPropertiesPanelOpen);
@@ -2761,7 +2765,7 @@ const WorkflowBuilderPage = () => {
           display: "flex",
           flexDirection: "column",
           height: "100vh",
-          background: "#f1f5f9",
+          background: isMobileLayout ? "transparent" : "#f1f5f9",
           overflow: "hidden",
         }}
       >
@@ -2878,7 +2882,7 @@ const WorkflowBuilderPage = () => {
                   onConnect={onConnect}
                   defaultEdgeOptions={defaultEdgeOptions}
                   connectionLineStyle={connectionLineStyle}
-                  style={{ background: "#f8fafc", height: "100%" }}
+                  style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
                   onInit={(instance) => {
                     reactFlowInstanceRef.current = instance;
                     if (pendingViewportRestoreRef.current) {
@@ -2920,21 +2924,6 @@ const WorkflowBuilderPage = () => {
                     role="dialog"
                     aria-modal="true"
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "flex-end",
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => closeBlockLibrary({ focusToggle: true })}
-                        aria-controls={blockLibraryId}
-                        className={styles.closeLinkButton}
-                      >
-                        Fermer
-                      </button>
-                    </div>
                     {renderBlockLibraryButtons()}
                   </aside>
                 </div>

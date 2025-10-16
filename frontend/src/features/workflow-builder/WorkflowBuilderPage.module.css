@@ -5,11 +5,11 @@
   width: 280px;
   max-width: calc(100% - 3rem);
   max-height: calc(100% - 3rem);
-  padding: 1.25rem;
+  padding: 0;
   border-radius: 1rem;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  background: #fff;
-  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.08);
+  border: none;
+  background: transparent;
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -22,8 +22,9 @@
   max-height: min(75vh, 540px);
   border-radius: 1.25rem 1.25rem 0 0;
   padding: 1.5rem 1.25rem 1.75rem;
-  box-shadow: 0 -16px 32px rgba(15, 23, 42, 0.18);
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: transparent;
+  box-shadow: none;
+  border: none;
   overflow-y: auto;
   gap: 1rem;
 }
@@ -282,20 +283,6 @@
   .propertiesToggleButton {
     display: none;
   }
-}
-
-.closeLinkButton {
-  border: none;
-  background: transparent;
-  color: #0f172a;
-  font-weight: 600;
-  font-size: 0.95rem;
-  cursor: pointer;
-}
-
-.closeLinkButton:focus-visible {
-  outline: 2px solid #38bdf8;
-  outline-offset: 2px;
 }
 
 .srOnly {
