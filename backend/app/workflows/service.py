@@ -13,6 +13,8 @@ from ..models import Workflow, WorkflowDefinition, WorkflowStep, WorkflowTransit
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_END_MESSAGE = "Workflow terminé"
+
 SUPPORTED_AGENT_KEYS: set[str] = {
     "triage",
     "get_data_from_web",
@@ -162,7 +164,10 @@ DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
             "kind": "end",
             "display_name": "Fin",
             "is_enabled": True,
-            "parameters": {},
+            "parameters": {
+                "message": DEFAULT_END_MESSAGE,
+                "status": {"type": "closed", "reason": DEFAULT_END_MESSAGE},
+            },
             "metadata": {"position": {"x": 1550, "y": 0}},
         },
     ],
@@ -233,7 +238,10 @@ MINIMAL_WORKFLOW_GRAPH: dict[str, Any] = {
             "kind": "end",
             "display_name": "Fin",
             "is_enabled": True,
-            "parameters": {},
+            "parameters": {
+                "message": DEFAULT_END_MESSAGE,
+                "status": {"type": "closed", "reason": DEFAULT_END_MESSAGE},
+            },
             "metadata": {"position": {"x": 320, "y": 0}},
         },
     ],
@@ -783,9 +791,8 @@ class WorkflowService:
 
     def _needs_graph_backfill(self, definition: WorkflowDefinition) -> bool:
         has_start = any(step.kind == "start" for step in definition.steps)
-        has_end = any(step.kind == "end" for step in definition.steps)
         has_edges = bool(definition.transitions)
-        if not (has_start and has_end and has_edges):
+        if not (has_start and has_edges):
             return True
 
         existing_slugs = {step.slug for step in definition.steps}
@@ -946,8 +953,6 @@ class WorkflowService:
 
         if not any(node.kind == "start" and node.is_enabled for node in normalized_nodes):
             raise WorkflowValidationError("Le workflow doit contenir un nœud de début actif.")
-        if not any(node.kind == "end" and node.is_enabled for node in normalized_nodes):
-            raise WorkflowValidationError("Le workflow doit contenir un nœud de fin actif.")
         normalized_edges: list[NormalizedEdge] = []
         for entry in raw_edges:
             if not isinstance(entry, dict):
@@ -1022,7 +1027,7 @@ class WorkflowService:
 
         start_nodes = [node for node in enabled_nodes if node.kind == "start"]
         end_nodes = [node for node in enabled_nodes if node.kind == "end"]
-        if len(start_nodes) != 1 or len(end_nodes) != 1:
+        if len(start_nodes) != 1:
             return False
 
         # Autorise uniquement le couple Début / Fin comme nœuds actifs.
@@ -1030,6 +1035,9 @@ class WorkflowService:
             return False
 
         start_slug = start_nodes[0].slug
+        if not end_nodes:
+            return all(edge.source_slug != start_slug for edge in edges)
+
         end_slug = end_nodes[0].slug
 
         for edge in edges:
@@ -1069,8 +1077,6 @@ class WorkflowService:
             )
 
         end_nodes = [slug for slug, node in nodes_by_slug.items() if node.kind == "end"]
-        if len(end_nodes) != 1:
-            raise WorkflowValidationError("Le workflow doit contenir exactement un nœud de fin actif.")
 
         for slug, node in nodes_by_slug.items():
             outgoing = adjacency.get(slug, [])
@@ -1104,10 +1110,16 @@ class WorkflowService:
 
         dfs(start_nodes[0])
 
-        end_slug = end_nodes[0]
-        if end_slug not in visited:
+        for end_slug in end_nodes:
+            if end_slug not in visited:
+                raise WorkflowValidationError(
+                    f"Le nœud de fin {end_slug} n'est pas accessible depuis le début du workflow."
+                )
+
+        reachable_terminals = [slug for slug in visited if not adjacency.get(slug)]
+        if not reachable_terminals:
             raise WorkflowValidationError(
-                "Le nœud de fin n'est pas accessible depuis le début du workflow."
+                "Le workflow doit comporter au moins une sortie accessible sans transition."
             )
 
 

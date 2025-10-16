@@ -1,6 +1,7 @@
 """Services liés aux workflows ChatKit."""
 
 from .service import (
+    DEFAULT_END_MESSAGE,
     DEFAULT_WORKFLOW_GRAPH,
     DEFAULT_WORKFLOW_DISPLAY_NAME,
     DEFAULT_WORKFLOW_SLUG,
@@ -15,6 +16,7 @@ from .service import (
 )
 
 __all__ = [
+    "DEFAULT_END_MESSAGE",
     "DEFAULT_WORKFLOW_GRAPH",
     "DEFAULT_WORKFLOW_DISPLAY_NAME",
     "DEFAULT_WORKFLOW_SLUG",

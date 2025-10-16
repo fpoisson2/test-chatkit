@@ -601,6 +601,197 @@ def test_can_save_minimal_graph_version() -> None:
     assert body["steps"] == []
 
 
+def test_end_node_custom_message_is_preserved() -> None:
+    admin = _make_user(email="custom-end@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    creation = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-custom-end",
+            "display_name": "Workflow custom end",
+            "description": None,
+            "graph": None,
+        },
+    )
+    assert creation.status_code == 201
+    workflow_id = creation.json()["workflow_id"]
+
+    response = client.post(
+        f"/api/workflows/{workflow_id}/versions",
+        headers=_auth_headers(token),
+        json={
+            "graph": {
+                "nodes": [
+                    {"slug": "start", "kind": "start", "is_enabled": True},
+                    {
+                        "slug": "analyse",
+                        "kind": "agent",
+                        "agent_key": "triage",
+                        "parameters": {},
+                        "is_enabled": True,
+                    },
+                    {
+                        "slug": "fin-personnalisee",
+                        "kind": "end",
+                        "is_enabled": True,
+                        "parameters": {
+                            "message": "Dossier archivé",
+                            "status": {
+                                "type": "closed",
+                                "reason": "Dossier archivé",
+                            },
+                        },
+                    },
+                ],
+                "edges": [
+                    {"source": "start", "target": "analyse"},
+                    {"source": "analyse", "target": "fin-personnalisee"},
+                ],
+            },
+            "mark_as_active": False,
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    nodes = {node["slug"]: node for node in body["graph"]["nodes"]}
+    end_node = nodes["fin-personnalisee"]
+    parameters = end_node.get("parameters", {})
+    assert parameters.get("message") == "Dossier archivé"
+    status = parameters.get("status")
+    assert isinstance(status, dict)
+    assert status.get("reason") == "Dossier archivé"
+    assert status.get("type") == "closed"
+
+
+def test_workflow_accepts_multiple_end_nodes() -> None:
+    admin = _make_user(email="multi-end@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    creation = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-multi-end",
+            "display_name": "Workflow multi end",
+            "description": None,
+            "graph": None,
+        },
+    )
+    assert creation.status_code == 201
+    workflow_id = creation.json()["workflow_id"]
+
+    response = client.post(
+        f"/api/workflows/{workflow_id}/versions",
+        headers=_auth_headers(token),
+        json={
+            "graph": {
+                "nodes": [
+                    {"slug": "start", "kind": "start", "is_enabled": True},
+                    {
+                        "slug": "triage",
+                        "kind": "agent",
+                        "agent_key": "triage",
+                        "parameters": {},
+                        "is_enabled": True,
+                    },
+                    {
+                        "slug": "finalisation",
+                        "kind": "agent",
+                        "agent_key": "r_dacteur",
+                        "parameters": {},
+                        "is_enabled": True,
+                    },
+                    {
+                        "slug": "fin-succes",
+                        "kind": "end",
+                        "is_enabled": True,
+                        "parameters": {
+                            "message": "Traitement terminé",
+                            "status": {
+                                "type": "closed",
+                                "reason": "Traitement terminé",
+                            },
+                        },
+                    },
+                    {
+                        "slug": "fin-attente",
+                        "kind": "end",
+                        "is_enabled": True,
+                        "parameters": {
+                            "message": "Revenez plus tard",
+                            "status": {
+                                "type": "locked",
+                                "reason": "Revenez plus tard",
+                            },
+                        },
+                    },
+                ],
+                "edges": [
+                    {"source": "start", "target": "triage"},
+                    {"source": "triage", "target": "finalisation"},
+                    {"source": "finalisation", "target": "fin-succes"},
+                    {"source": "triage", "target": "fin-attente"},
+                ],
+            },
+            "mark_as_active": False,
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    slugs = {node["slug"] for node in body["graph"]["nodes"]}
+    assert {"fin-succes", "fin-attente"}.issubset(slugs)
+
+
+def test_workflow_allows_no_end_nodes() -> None:
+    admin = _make_user(email="no-end@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    creation = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-no-end",
+            "display_name": "Workflow sans fin",
+            "description": None,
+            "graph": None,
+        },
+    )
+    assert creation.status_code == 201
+    workflow_id = creation.json()["workflow_id"]
+
+    response = client.post(
+        f"/api/workflows/{workflow_id}/versions",
+        headers=_auth_headers(token),
+        json={
+            "graph": {
+                "nodes": [
+                    {"slug": "start", "kind": "start", "is_enabled": True},
+                    {
+                        "slug": "analyse",
+                        "kind": "agent",
+                        "agent_key": "triage",
+                        "parameters": {},
+                        "is_enabled": True,
+                    },
+                ],
+                "edges": [
+                    {"source": "start", "target": "analyse"},
+                ],
+            },
+            "mark_as_active": False,
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    kinds = {node["kind"] for node in body["graph"]["nodes"]}
+    assert "end" not in kinds
+
+
 def test_can_update_existing_draft_version() -> None:
     admin = _make_user(email="draft-update@example.com", is_admin=True)
     token = create_access_token(admin)

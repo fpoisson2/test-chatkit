@@ -62,9 +62,10 @@ class MyChatKitServer(ChatKitServer):
 
 ### Gestion des fils clos
 
-Lorsqu'un client tente d'ajouter un message utilisateur à l'aide de `threads.add_user_message` sur un fil marqué comme `closed`,
-le serveur émet un `ErrorEvent` sans possibilité de réessayer (`allow_retry=False`) et invite l'utilisateur à créer un nouveau fil.
-Ce comportement évite de rouvrir involontairement des conversations considérées comme terminées. Une fois le workflow achevé avec succès, le serveur positionne le statut du fil sur `ClosedStatus` avec la raison « Workflow terminé », ce qui permet d'afficher un message convivial côté client.
+Lorsqu'un client tente d'ajouter un message utilisateur à l'aide de `threads.add_user_message` sur un fil marqué comme `closed` ou `locked`,
+le serveur émet un `ErrorEvent` sans possibilité de réessayer (`allow_retry=False`). Le message retourné correspond à la raison associée au statut du fil : par défaut « Workflow terminé » pour un fil clos, ou un texte personnalisé si vous l'avez défini.
+
+Pour ajuster cette raison de clôture, éditez la configuration du bloc `end` qui termine votre workflow. Le champ `message` (ou `status.reason`) du bloc est repris côté serveur pour renseigner le statut (`ClosedStatus` par défaut) et sera affiché lorsqu'un utilisateur tente de poster un nouveau message. Vous pouvez créer plusieurs blocs `end` – chacun avec son propre message – ou même n'en définir aucun ; dans ce cas le fil conserve son statut actif à l'issue du workflow.
 
 ## Setting up the endpoint
 

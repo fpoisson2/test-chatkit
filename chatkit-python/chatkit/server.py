@@ -33,6 +33,7 @@ from .types import (
     ChatKitReq,
     ClientToolCallItem,
     ClosedStatus,
+    LockedStatus,
     ErrorCode,
     ErrorEvent,
     FeedbackKind,
@@ -443,11 +444,21 @@ class ChatKitServer(ABC, Generic[TContext]):
                 thread = await self.store.load_thread(
                     request.params.thread_id, context=context
                 )
-                if isinstance(thread.status, ClosedStatus):
-                    yield ErrorEvent(
-                        message=(
+                if isinstance(thread.status, (ClosedStatus, LockedStatus)):
+                    status = thread.status
+                    reason = (status.reason or "").strip()
+                    if reason:
+                        message = reason
+                    elif isinstance(status, LockedStatus):
+                        message = (
+                            "Ce fil est verrouillé. Veuillez patienter avant de poursuivre la conversation."
+                        )
+                    else:
+                        message = (
                             "Ce fil est clos. Veuillez créer un nouveau fil pour poursuivre la conversation."
-                        ),
+                        )
+                    yield ErrorEvent(
+                        message=message,
                         allow_retry=False,
                     )
                     return
