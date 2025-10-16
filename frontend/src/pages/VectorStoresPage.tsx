@@ -280,44 +280,35 @@ export const VectorStoresPage = () => {
   return (
     <ManagementPageLayout
       actions={
-        <div className="vector-store-actions">
-          <button
-            className="button button--icon"
-            type="button"
-            aria-label="Créer un vector store"
-            onClick={() => setShowCreateModal(true)}
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path
-                d="M10 4v12M4 10h12"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </button>
-        </div>
+        <button
+          className="header-icon-button"
+          type="button"
+          aria-label="Créer un vector store"
+          onClick={() => setShowCreateModal(true)}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M10 4v12M4 10h12"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
       }
     >
       {success ? <div className="alert alert--success">{success}</div> : null}
       {error ? <div className="alert alert--danger">{error}</div> : null}
 
-      <div className="admin-grid">
-        <section className="admin-card">
-          <div>
-            <h2 className="admin-card__title">Vector stores disponibles</h2>
-          </div>
-          <VectorStoreTable
-            stores={stores}
-            isLoading={isLoading}
-            onIngest={openIngestionModal}
-            onSearch={openSearchModal}
-            onDocuments={openDocumentsModal}
-            onDelete={handleDeleteStore}
-          />
-        </section>
-      </div>
+      <VectorStoreTable
+        stores={stores}
+        isLoading={isLoading}
+        onIngest={openIngestionModal}
+        onSearch={openSearchModal}
+        onDocuments={openDocumentsModal}
+        onDelete={handleDeleteStore}
+      />
 
       {showCreateModal ? (
         <Modal title="Créer un vector store" onClose={() => setShowCreateModal(false)}>
