@@ -27,7 +27,7 @@ type NavigationItem = {
   onClick: () => void;
 };
 
-type ApplicationKey = "chat" | "workflows" | "vector-stores" | "widgets";
+type ApplicationKey = "chat" | "voice" | "workflows" | "vector-stores" | "widgets";
 
 type ApplicationDescriptor = {
   key: ApplicationKey;
@@ -38,6 +38,7 @@ type ApplicationDescriptor = {
 
 const APPLICATIONS: ApplicationDescriptor[] = [
   { key: "chat", label: "Chat", path: "/" },
+  { key: "voice", label: "Voix", path: "/voice" },
   { key: "workflows", label: "Workflow Builder", path: "/workflows", requiresAdmin: true },
   { key: "vector-stores", label: "Vector Store", path: "/vector-stores", requiresAdmin: true },
   { key: "widgets", label: "Widget Library", path: "/widgets", requiresAdmin: true },
@@ -46,13 +47,11 @@ const APPLICATIONS: ApplicationDescriptor[] = [
 const buildNavigationItems = ({
   isAuthenticated,
   handleSidebarVoice,
-  handleSidebarSettings,
   handleSidebarLogin,
   handleSidebarLogout,
 }: {
   isAuthenticated: boolean;
   handleSidebarVoice: () => void;
-  handleSidebarSettings: () => void;
   handleSidebarLogin: () => void;
   handleSidebarLogout: () => void;
 }): NavigationItem[] => {
@@ -63,12 +62,6 @@ const buildNavigationItems = ({
         label: "Mode voix",
         icon: "voice",
         onClick: handleSidebarVoice,
-      },
-      {
-        key: "settings",
-        label: "Paramètres rapides",
-        icon: "settings",
-        onClick: handleSidebarSettings,
       },
       {
         key: "logout",
@@ -223,14 +216,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     setIsSettingsModalOpen(true);
   }, [navigate, user]);
 
-  const handleSidebarSettings = useCallback(() => {
-    if (!isDesktopLayout) {
-      closeSidebar();
-    }
-
-    handleOpenSettings();
-  }, [closeSidebar, handleOpenSettings, isDesktopLayout]);
-
   const handleSidebarVoice = useCallback(() => {
     if (!isDesktopLayout) {
       closeSidebar();
@@ -268,14 +253,12 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
       buildNavigationItems({
         isAuthenticated,
         handleSidebarVoice,
-        handleSidebarSettings,
         handleSidebarLogin,
         handleSidebarLogout,
       }),
     [
       handleSidebarLogin,
       handleSidebarLogout,
-      handleSidebarSettings,
       handleSidebarVoice,
       isAuthenticated,
     ],
