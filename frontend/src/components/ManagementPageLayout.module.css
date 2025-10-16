@@ -15,6 +15,14 @@
   flex-wrap: wrap;
 }
 
+.headerWithoutMain {
+  flex-wrap: nowrap;
+}
+
+.headerWithMain {
+  flex-wrap: wrap;
+}
+
 .menuButton {
   width: 2.75rem;
   height: 2.75rem;
@@ -124,17 +132,27 @@
 }
 
 @media (max-width: 768px) {
-  .header {
+  .headerWithMain {
     align-items: flex-start;
   }
 
-  .headerAside {
+  .headerWithMain .headerAside {
     width: 100%;
     justify-content: flex-start;
   }
 
-  .headerActions {
+  .headerWithMain .headerActions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .headerWithoutMain {
+    flex-wrap: nowrap;
+  }
+
+  .headerWithoutMain .headerAside,
+  .headerWithoutMain .headerActions {
+    width: auto;
+    justify-content: flex-end;
   }
 }

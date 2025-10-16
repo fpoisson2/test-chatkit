@@ -37,9 +37,11 @@ export const ManagementPageLayout = ({
   const showSidebarButton = !isDesktopLayout || !isSidebarOpen;
   const hasHeaderMain = Boolean(title) || Boolean(subtitle);
 
+  const headerClassName = `${styles.header} ${hasHeaderMain ? styles.headerWithMain : styles.headerWithoutMain}`;
+
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
+      <header className={headerClassName}>
         {showSidebarButton ? (
           <button
             type="button"
