@@ -238,6 +238,8 @@ const WorkflowBuilderPage = () => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [closeBlockLibrary, isBlockLibraryOpen, isMobileLayout]);
+
+  const closeMobileHeaderMenu = useCallback(
     (options: { focusToggle?: boolean } = {}) => {
       setMobileHeaderMenuOpen(false);
       setActionMenuOpen(false);
@@ -2881,10 +2883,11 @@ const WorkflowBuilderPage = () => {
               propertiesPanelElement
             )
           ) : null}
-          {saveMessage ? (
-            <div
-              style={{
-                position: "absolute",
+        </div>
+        {saveMessage ? (
+          <div
+            style={{
+              position: "absolute",
                 bottom: "1.5rem",
                 left: "50%",
                 transform: "translateX(-50%)",
@@ -2897,6 +2900,53 @@ const WorkflowBuilderPage = () => {
               role={saveState === "error" ? "alert" : "status"}
             >
               {saveMessage}
+            </div>
+          ) : null}
+          {isDeployModalOpen ? (
+            <div
+              role="presentation"
+              onClick={handleCloseDeployModal}
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(15, 23, 42, 0.45)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "1.5rem",
+                zIndex: 30,
+              }}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="deploy-dialog-title"
+                onClick={(event) => event.stopPropagation()}
+                style={{
+                  width: "100%",
+                  maxWidth: "460px",
+                  background: "#fff",
+                  borderRadius: "1rem",
+                  boxShadow: "0 30px 70px rgba(15, 23, 42, 0.25)",
+                  padding: "1.75rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "1.25rem",
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                  <h2
+                    id="deploy-dialog-title"
+                    style={{ fontSize: "1.35rem", fontWeight: 700, color: "#0f172a", margin: 0 }}
+                  >
+                    Publish changes?
+                  </h2>
+                  <p style={{ margin: 0, color: "#475569", lineHeight: 1.45 }}>
+                    Create a new version of the workflow with your latest changes.
+                  </p>
+                  <div
+                    style={{
+                      display: "inline-flex",
                       alignItems: "center",
                       gap: "0.5rem",
                       fontWeight: 600,
@@ -2969,7 +3019,8 @@ const WorkflowBuilderPage = () => {
               </div>
             </div>
           ) : null}
-        </ReactFlowProvider>
+        </div>
+      </ReactFlowProvider>
   );
 };
 
