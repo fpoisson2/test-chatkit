@@ -963,4 +963,40 @@ describe("WorkflowBuilderPage", () => {
       widget: { slug: "resume", variables: { title: "state.resume" } },
     });
   });
+
+  test("permet de saisir un widget manuellement lorsque la bibliothèque est indisponible", async () => {
+    listWidgetsMock.mockRejectedValueOnce(new Error("Bibliothèque inaccessible"));
+    const fetchMock = setupWorkflowApi();
+
+    const { container } = renderWorkflowBuilder();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const widgetButton = await screen.findByRole("button", { name: /bloc widget/i });
+    fireEvent.click(widgetButton);
+
+    const widgetNode = await waitFor(() => container.querySelector('[data-id^="widget-"]'));
+    expect(widgetNode).not.toBeNull();
+    fireEvent.click(widgetNode!);
+
+    const widgetSlugInput = await screen.findByLabelText(/^slug du widget$/i);
+    fireEvent.change(widgetSlugInput, { target: { value: "resume" } });
+
+    await waitFor(
+      () => {
+        expect(
+          fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
+        ).toBe(true);
+      },
+      { timeout: 4000 },
+    );
+
+    const putCall = fetchMock.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === "PUT");
+    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const widgetPayload = body.graph.nodes.find((node: any) => node.kind === "widget");
+    expect(widgetPayload).toBeTruthy();
+    expect(widgetPayload.parameters).toEqual({ widget: { slug: "resume" } });
+  });
 });

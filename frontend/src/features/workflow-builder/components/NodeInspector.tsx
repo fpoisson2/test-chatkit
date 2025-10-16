@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
 
 import type {
   AvailableModel,
@@ -228,6 +228,8 @@ const NodeInspector = ({
   }, [trimmedWidgetNodeSlug, widgets]);
   const [widgetPickerTarget, setWidgetPickerTarget] = useState<"agent" | "widget" | null>(null);
   const canBrowseWidgets = !widgetsLoading && !widgetsError && widgets.length > 0;
+  const widgetSlugSuggestionsId = useId();
+  const widgetNodeSlugSuggestionsId = useId();
 
   const handleOpenWidgetPicker = (target: "agent" | "widget") => {
     if (!canBrowseWidgets) {
@@ -283,6 +285,8 @@ const NodeInspector = ({
       widgetNodeValidationMessage = "Le widget sélectionné n'est plus disponible. Choisissez-en un autre.";
     }
   }
+  const widgetSelectValue = selectedWidgetExists ? trimmedWidgetSlug : "";
+  const widgetNodeSelectValue = widgetNodeSelectedWidget ? trimmedWidgetNodeSlug : "";
   const vectorStoreNodeExists =
     vectorStoreNodeSlug.length > 0 && vectorStores.some((store) => store.slug === vectorStoreNodeSlug);
   const vectorStoreNodeValidationMessages: string[] = [];
@@ -639,58 +643,79 @@ const NodeInspector = ({
           )}
 
           {responseFormat.kind === "widget" && (
-            <label style={fieldStyle}>
-              <span>Widget de sortie</span>
-              {widgetsLoading ? (
-                <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
-              ) : widgetsError ? (
-                <p style={{ color: "#b91c1c", margin: 0 }}>{widgetsError}</p>
-              ) : widgets.length === 0 ? (
-                <>
-                  <select value="" disabled>
-                    <option value="">Aucun widget disponible</option>
-                  </select>
-                  <p style={{ color: "#b45309", margin: "0.25rem 0 0" }}>
-                    Créez un widget dans la bibliothèque dédiée pour l'afficher dans le chat.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <select
-                    value={responseWidgetSlug}
-                    onChange={(event) => onAgentResponseWidgetSlugChange(node.id, event.target.value)}
-                  >
-                    <option value="">Sélectionnez un widget</option>
-                    {widgets.map((widget) => (
-                      <option key={widget.slug} value={widget.slug}>
-                        {widget.title?.trim()
-                          ? `${widget.title} (${widget.slug})`
-                          : widget.slug}
-                      </option>
-                    ))}
-                  </select>
-                  <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
-                    <button
-                      type="button"
-                      className="btn secondary"
-                      onClick={() => handleOpenWidgetPicker("agent")}
-                      disabled={!canBrowseWidgets}
-                      aria-label="Parcourir la bibliothèque de widgets pour la réponse de l'agent"
+            <>
+              <div style={fieldStyle}>
+                <label htmlFor={`${widgetSlugSuggestionsId}-input`}>Slug du widget de sortie</label>
+                <input
+                  id={`${widgetSlugSuggestionsId}-input`}
+                  type="text"
+                  value={responseWidgetSlug}
+                  onChange={(event) => onAgentResponseWidgetSlugChange(node.id, event.target.value)}
+                  placeholder="Ex. resume"
+                  list={widgets.length > 0 ? `${widgetSlugSuggestionsId}-list` : undefined}
+                />
+                {widgets.length > 0 && (
+                  <>
+                    <label htmlFor={`${widgetSlugSuggestionsId}-select`}>Widget de sortie</label>
+                    <select
+                      id={`${widgetSlugSuggestionsId}-select`}
+                      value={widgetSelectValue}
+                      onChange={(event) => onAgentResponseWidgetSlugChange(node.id, event.target.value)}
                     >
-                      Parcourir la bibliothèque
-                    </button>
-                  </div>
-                  {widgetValidationMessage ? (
-                    <p style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}>{widgetValidationMessage}</p>
-                  ) : (
-                    <small style={{ color: "#475569" }}>
-                      Le widget sélectionné sera affiché dans ChatKit lorsque l'agent répondra.
-                    </small>
-                  )}
-                </>
+                      <option value="">Sélectionnez un widget</option>
+                      {widgets.map((widget) => (
+                        <option key={widget.slug} value={widget.slug}>
+                          {widget.title?.trim()
+                            ? `${widget.title} (${widget.slug})`
+                            : widget.slug}
+                        </option>
+                      ))}
+                    </select>
+                    <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
+                      <button
+                        type="button"
+                        className="btn secondary"
+                        onClick={() => handleOpenWidgetPicker("agent")}
+                        disabled={!canBrowseWidgets}
+                        aria-label="Parcourir la bibliothèque de widgets pour la réponse de l'agent"
+                      >
+                        Parcourir la bibliothèque
+                      </button>
+                    </div>
+                  </>
+                )}
+                {widgetsLoading ? (
+                  <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
+                ) : widgetsError ? (
+                  <p style={{ color: "#b91c1c", margin: 0 }}>
+                    {widgetsError}
+                    <br />
+                    Vous pouvez saisir le slug du widget manuellement ci-dessus.
+                  </p>
+                ) : widgets.length === 0 ? (
+                  <p style={{ color: "#475569", margin: 0 }}>
+                    Créez un widget dans la bibliothèque dédiée ou saisissez son slug manuellement ci-dessus.
+                  </p>
+                ) : null}
+              </div>
+              {widgetValidationMessage ? (
+                <p style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}>{widgetValidationMessage}</p>
+              ) : (
+                <small style={{ color: "#475569" }}>
+                  Le widget sélectionné sera affiché dans ChatKit lorsque l'agent répondra.
+                </small>
+              )}
+              {widgets.length > 0 && (
+                <datalist id={`${widgetSlugSuggestionsId}-list`}>
+                  {widgets.map((widget) => (
+                    <option key={widget.slug} value={widget.slug}>
+                      {widget.title?.trim() ? widget.title : widget.slug}
+                    </option>
+                  ))}
+                </datalist>
+              )}
+            </>
           )}
-        </label>
-      )}
 
       {kind === "widget" && (
         <>
@@ -698,25 +723,22 @@ const NodeInspector = ({
             Ce bloc diffuse un widget ChatKit en utilisant les données produites par le bloc
             précédent ou les variables d'état du workflow.
           </p>
-          <label style={fieldStyle}>
-            <span>Widget à afficher</span>
-            {widgetsLoading ? (
-              <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
-            ) : widgetsError ? (
-              <p style={{ color: "#b91c1c", margin: 0 }}>{widgetsError}</p>
-            ) : widgets.length === 0 ? (
+          <div style={fieldStyle}>
+            <label htmlFor={`${widgetNodeSlugSuggestionsId}-input`}>Slug du widget</label>
+            <input
+              id={`${widgetNodeSlugSuggestionsId}-input`}
+              type="text"
+              value={widgetNodeSlug}
+              onChange={(event) => onWidgetNodeSlugChange(node.id, event.target.value)}
+              placeholder="Ex. resume"
+              list={widgets.length > 0 ? `${widgetNodeSlugSuggestionsId}-list` : undefined}
+            />
+            {widgets.length > 0 && (
               <>
-                <select value="" disabled>
-                  <option value="">Aucun widget disponible</option>
-                </select>
-                <p style={{ color: "#b45309", margin: "0.25rem 0 0" }}>
-                  Créez un widget dans la bibliothèque dédiée pour l'afficher dans le chat.
-                </p>
-              </>
-            ) : (
-              <>
+                <label htmlFor={`${widgetNodeSlugSuggestionsId}-select`}>Widget à afficher</label>
                 <select
-                  value={widgetNodeSlug}
+                  id={`${widgetNodeSlugSuggestionsId}-select`}
+                  value={widgetNodeSelectValue}
                   onChange={(event) => onWidgetNodeSlugChange(node.id, event.target.value)}
                 >
                   <option value="">Sélectionnez un widget</option>
@@ -737,18 +759,40 @@ const NodeInspector = ({
                     Parcourir la bibliothèque
                   </button>
                 </div>
-                {widgetNodeValidationMessage ? (
-                  <p style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}>
-                    {widgetNodeValidationMessage}
-                  </p>
-                ) : (
-                  <small style={{ color: "#475569" }}>
-                    Le widget sélectionné est diffusé immédiatement dans ChatKit lorsqu'on atteint ce bloc.
-                  </small>
-                )}
               </>
             )}
-          </label>
+            {widgetsLoading ? (
+              <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
+            ) : widgetsError ? (
+              <p style={{ color: "#b91c1c", margin: 0 }}>
+                {widgetsError}
+                <br />
+                Vous pouvez saisir le slug du widget manuellement ci-dessus.
+              </p>
+            ) : widgets.length === 0 ? (
+              <p style={{ color: "#475569", margin: 0 }}>
+                Créez un widget dans la bibliothèque dédiée ou saisissez son slug manuellement ci-dessus.
+              </p>
+            ) : null}
+          </div>
+          {widgetNodeValidationMessage ? (
+            <p style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}>
+              {widgetNodeValidationMessage}
+            </p>
+          ) : (
+            <small style={{ color: "#475569" }}>
+              Le widget sélectionné est diffusé immédiatement dans ChatKit lorsqu'on atteint ce bloc.
+            </small>
+          )}
+          {widgets.length > 0 && (
+            <datalist id={`${widgetNodeSlugSuggestionsId}-list`}>
+              {widgets.map((widget) => (
+                <option key={widget.slug} value={widget.slug}>
+                  {widget.title?.trim() ? widget.title : widget.slug}
+                </option>
+              ))}
+            </datalist>
+          )}
 
           <WidgetVariablesPanel
             assignments={widgetNodeVariables}
