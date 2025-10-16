@@ -12,17 +12,6 @@ type WidgetTemplateGalleryProps = {
   onDelete: (widget: WidgetTemplate) => void;
 };
 
-const formatUpdatedAt = (value: string): string => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-  return new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-};
-
 export const WidgetTemplateGallery = ({
   widgets,
   isLoading,
@@ -32,12 +21,12 @@ export const WidgetTemplateGallery = ({
 }: WidgetTemplateGalleryProps) => {
   const content = useMemo(() => {
     if (isLoading) {
-      return <p className="admin-card__subtitle">Chargement des widgets…</p>;
+      return <p className="widget-gallery__empty">Chargement des widgets…</p>;
     }
 
     if (widgets.length === 0) {
       return (
-        <p className="admin-card__subtitle">
+        <p className="widget-gallery__empty">
           Aucun widget enregistré pour le moment. Créez une carte ou un tableau de bord pour vos agents.
         </p>
       );
@@ -51,7 +40,7 @@ export const WidgetTemplateGallery = ({
             className="widget-gallery__item"
             role="listitem"
             tabIndex={0}
-            aria-label={`Modifier le widget ${widget.title ?? widget.slug}`}
+            aria-label={`Modifier le widget ${widget.slug}`}
             onClick={() => onEdit(widget)}
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
@@ -60,55 +49,43 @@ export const WidgetTemplateGallery = ({
               }
             }}
           >
-            <header className="widget-gallery__header">
-              <div className="widget-gallery__identity">
-                <p className="widget-gallery__slug">{widget.slug}</p>
-                <h3 className="widget-gallery__title">{widget.title ?? widget.slug}</h3>
+            <div className="widget-gallery__preview">
+              <div className="widget-gallery__preview-canvas" aria-hidden={true}>
+                <WidgetPreview definition={widget.definition} />
               </div>
-              <time className="widget-gallery__meta" dateTime={widget.updated_at}>
-                Mis à jour le {formatUpdatedAt(widget.updated_at)}
-              </time>
-            </header>
 
-            {widget.description ? (
-              <p className="widget-gallery__description">{widget.description}</p>
-            ) : null}
-
-            <div className="widget-gallery__preview" aria-hidden>
-              <WidgetPreview definition={widget.definition} />
-            </div>
-
-            <div className="widget-gallery__actions">
-              <button
-                className="button button--ghost button--sm"
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onPreview(widget);
-                }}
-              >
-                Voir en plein écran
-              </button>
-              <button
-                className="button button--subtle button--sm"
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onEdit(widget);
-                }}
-              >
-                Modifier
-              </button>
-              <button
-                className="button button--danger button--sm"
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onDelete(widget);
-                }}
-              >
-                Supprimer
-              </button>
+              <div className="widget-gallery__actions">
+                <button
+                  className="button button--ghost button--sm"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onPreview(widget);
+                  }}
+                >
+                  Voir en plein écran
+                </button>
+                <button
+                  className="button button--subtle button--sm"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onEdit(widget);
+                  }}
+                >
+                  Modifier
+                </button>
+                <button
+                  className="button button--danger button--sm"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDelete(widget);
+                  }}
+                >
+                  Supprimer
+                </button>
+              </div>
             </div>
           </article>
         ))}
