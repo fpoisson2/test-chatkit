@@ -124,6 +124,11 @@ const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 const AUTO_SAVE_SUCCESS_MESSAGE = "Modifications enregistrées automatiquement.";
 const DRAFT_DISPLAY_NAME = "Brouillon";
 
+const DESKTOP_MIN_VIEWPORT_ZOOM = 0.1;
+const MOBILE_MIN_VIEWPORT_ZOOM = 0.05;
+const DESKTOP_FIT_VIEW_PADDING = 0.2;
+const MOBILE_FIT_VIEW_PADDING = 0.08;
+
 const viewportKeyFor = (workflowId: number | null, versionId: number | null) =>
   workflowId != null ? `${workflowId}:${versionId ?? "latest"}` : null;
 
@@ -449,7 +454,11 @@ const WorkflowBuilderPage = () => {
       if (savedViewport) {
         flow.setViewport(savedViewport, { duration: 0 });
       } else {
-        flow.fitView({ padding: 0.2, duration: 0 });
+        flow.fitView({
+          padding: isMobileLayout ? MOBILE_FIT_VIEW_PADDING : DESKTOP_FIT_VIEW_PADDING,
+          minZoom: isMobileLayout ? MOBILE_MIN_VIEWPORT_ZOOM : DESKTOP_MIN_VIEWPORT_ZOOM,
+          duration: 0,
+        });
       }
       const appliedViewport = flow.getViewport();
       viewportRef.current = appliedViewport;
@@ -458,7 +467,7 @@ const WorkflowBuilderPage = () => {
         viewportMemoryRef.current.set(key, appliedViewport);
       }
     });
-  }, []);
+  }, [isMobileLayout]);
 
 
 
@@ -3198,6 +3207,9 @@ const WorkflowBuilderPage = () => {
                   defaultEdgeOptions={defaultEdgeOptions}
                   connectionLineStyle={connectionLineStyle}
                   style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
+                  minZoom={
+                    isMobileLayout ? MOBILE_MIN_VIEWPORT_ZOOM : DESKTOP_MIN_VIEWPORT_ZOOM
+                  }
                   onInit={(instance) => {
                     reactFlowInstanceRef.current = instance;
                     if (pendingViewportRestoreRef.current) {
