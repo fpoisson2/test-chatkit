@@ -527,6 +527,7 @@ const WorkflowBuilderPage = () => {
       }
       pendingViewportRestoreRef.current = false;
       const effectiveMinZoom = refreshViewportConstraints(flow);
+      const padding = isMobileLayout ? MOBILE_FIT_VIEW_PADDING : DESKTOP_FIT_VIEW_PADDING;
       const savedViewport = viewportRef.current;
       if (savedViewport) {
         flow.setViewport(
@@ -535,12 +536,60 @@ const WorkflowBuilderPage = () => {
         );
       } else {
         flow.fitView({
-          padding: isMobileLayout ? MOBILE_FIT_VIEW_PADDING : DESKTOP_FIT_VIEW_PADDING,
+          padding,
           minZoom: effectiveMinZoom,
           duration: 0,
         });
       }
-      const appliedViewport = flow.getViewport();
+
+      const container = reactFlowWrapperRef.current;
+      const nodes = flow.getNodes();
+      let appliedViewport = flow.getViewport();
+
+      if (
+        container &&
+        nodes.length > 0 &&
+        container.clientWidth > 0 &&
+        container.clientHeight > 0
+      ) {
+        const bounds = getNodesBounds(nodes);
+        if (
+          Number.isFinite(bounds.width) &&
+          Number.isFinite(bounds.height) &&
+          bounds.width > 0 &&
+          bounds.height > 0 &&
+          appliedViewport.zoom > 0
+        ) {
+          const visibleLeft = -appliedViewport.x / appliedViewport.zoom;
+          const visibleTop = -appliedViewport.y / appliedViewport.zoom;
+          const visibleRight =
+            visibleLeft + container.clientWidth / appliedViewport.zoom;
+          const visibleBottom =
+            visibleTop + container.clientHeight / appliedViewport.zoom;
+
+          const nodesLeft = bounds.x;
+          const nodesTop = bounds.y;
+          const nodesRight = bounds.x + bounds.width;
+          const nodesBottom = bounds.y + bounds.height;
+          const tolerance = 48 / appliedViewport.zoom;
+
+          const nodesOverflow =
+            nodesLeft < visibleLeft - tolerance ||
+            nodesTop < visibleTop - tolerance ||
+            nodesRight > visibleRight + tolerance ||
+            nodesBottom > visibleBottom + tolerance;
+
+          if (nodesOverflow) {
+            flow.fitView({
+              padding,
+              minZoom: effectiveMinZoom,
+              duration: 0,
+            });
+            appliedViewport = flow.getViewport();
+          }
+        }
+      }
+
       viewportRef.current = appliedViewport;
       const key = viewportKeyRef.current;
       if (key) {
