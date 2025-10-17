@@ -81,6 +81,44 @@ button {
   background: var(--primary-color);
 }
 
+
+.button--icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border-radius: 0.9rem;
+}
+
+.button--icon svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.header-icon-button {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.75rem;
+  border: none;
+  background: #f8fafc;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  color: #0f172a;
+}
+
+.header-icon-button:hover,
+.header-icon-button:focus-visible {
+  background: #f1f5f9;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.12);
+  transform: translateY(-1px);
+}
+
+.header-icon-button:focus-visible {
+  outline: none;
+}
+
 .button:hover,
 .button:focus-visible {
   background: var(--primary-hover);
@@ -128,7 +166,6 @@ button {
   transform: none;
   box-shadow: none;
 }
-
 
 .chatkit-layout {
   position: relative;
@@ -1188,6 +1225,87 @@ button {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.vector-store-list {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(16px, 4vw, 28px);
+}
+
+.vector-store-list__cards {
+  display: none;
+}
+
+.vector-store-card {
+  background: #ffffff;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: clamp(18px, 4vw, 24px);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.vector-store-card__header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.vector-store-card__title {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.vector-store-card__slug {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 0;
+  word-break: break-all;
+}
+
+.vector-store-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  margin: 0;
+}
+
+.vector-store-card__meta div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.vector-store-card__meta dt {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.vector-store-card__meta dd {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.vector-store-card__actions {
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .vector-store-list__table {
+    display: none;
+  }
+
+  .vector-store-list__cards {
+    display: grid;
+    gap: clamp(16px, 4vw, 24px);
+  }
 }
 
 .widget-gallery {

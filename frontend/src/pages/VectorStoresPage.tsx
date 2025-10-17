@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useAuth } from "../auth";
 import { Modal } from "../components/Modal";
@@ -23,7 +23,7 @@ const sortStores = (stores: VectorStoreSummary[]): VectorStoreSummary[] =>
   [...stores].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
 
 export const VectorStoresPage = () => {
-  const { token, user, logout } = useAuth();
+  const { token, logout } = useAuth();
   const [stores, setStores] = useState<VectorStoreSummary[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,13 +41,6 @@ export const VectorStoresPage = () => {
   const [documents, setDocuments] = useState<VectorStoreDocument[]>([]);
   const [documentsError, setDocumentsError] = useState<string | null>(null);
   const [documentsLoading, setDocumentsLoading] = useState(false);
-
-  const storeBadge = useMemo(() => {
-    const storeCountLabel = stores.length
-      ? ` · ${stores.length} store${stores.length > 1 ? "s" : ""}`
-      : "";
-    return `${user?.email ?? "Administrateur"}${storeCountLabel}`;
-  }, [stores.length, user?.email]);
 
   const refreshStores = useCallback(async () => {
     if (!token) {
@@ -286,36 +279,36 @@ export const VectorStoresPage = () => {
 
   return (
     <ManagementPageLayout
-      title="Vector stores JSON"
-      subtitle="Indexez vos fichiers JSON dans PostgreSQL + pgvector puis testez vos requêtes de recherche hybride."
-      badge={storeBadge}
       actions={
-        <button className="button" type="button" onClick={() => setShowCreateModal(true)}>
-          Nouveau vector store
+        <button
+          className="header-icon-button"
+          type="button"
+          aria-label="Créer un vector store"
+          onClick={() => setShowCreateModal(true)}
+        >
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path
+              d="M10 4v12M4 10h12"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </button>
       }
     >
       {success ? <div className="alert alert--success">{success}</div> : null}
       {error ? <div className="alert alert--danger">{error}</div> : null}
 
-      <div className="admin-grid">
-        <section className="admin-card">
-          <div>
-            <h2 className="admin-card__title">Vector stores disponibles</h2>
-            <p className="admin-card__subtitle">
-              Chaque store regroupe des documents JSON linéarisés, indexés en texte intégral et en vectoriel.
-            </p>
-          </div>
-          <VectorStoreTable
-            stores={stores}
-            isLoading={isLoading}
-            onIngest={openIngestionModal}
-            onSearch={openSearchModal}
-            onDocuments={openDocumentsModal}
-            onDelete={handleDeleteStore}
-          />
-        </section>
-      </div>
+      <VectorStoreTable
+        stores={stores}
+        isLoading={isLoading}
+        onIngest={openIngestionModal}
+        onSearch={openSearchModal}
+        onDocuments={openDocumentsModal}
+        onDelete={handleDeleteStore}
+      />
 
       {showCreateModal ? (
         <Modal title="Créer un vector store" onClose={() => setShowCreateModal(false)}>
