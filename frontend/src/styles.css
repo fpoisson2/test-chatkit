@@ -474,6 +474,41 @@ button {
   flex-direction: column;
 }
 
+.chatkit-sidebar__nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chatkit-sidebar__nav-item {
+  margin: 0;
+}
+
+.chatkit-sidebar__nav-link {
+  display: block;
+  margin-inline: calc(-1 * var(--chatkit-sidebar-padding-x));
+  padding: 12px var(--chatkit-sidebar-padding-x);
+  font-weight: 600;
+  color: #0f172a;
+  text-decoration: none;
+  border-radius: 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.chatkit-sidebar__nav-link:hover,
+.chatkit-sidebar__nav-link:focus-visible {
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  outline: none;
+}
+
+.chatkit-sidebar__nav-link--active {
+  background: rgba(37, 99, 235, 0.18);
+  color: #1d4ed8;
+}
+
 .chatkit-sidebar__workflow-list-item {
   margin: 0;
   position: relative;
@@ -1089,39 +1124,6 @@ button {
 
 .admin-shell__toolbar--secondary {
   justify-content: flex-start;
-}
-
-.admin-tabs {
-  display: inline-flex;
-  gap: 8px;
-  padding: 6px;
-  border-radius: 999px;
-  background: rgba(15, 23, 42, 0.05);
-  align-self: flex-start;
-}
-
-.admin-tabs__link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 18px;
-  border-radius: 999px;
-  font-weight: 600;
-  color: var(--text-muted);
-  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.admin-tabs__link:hover,
-.admin-tabs__link:focus-visible {
-  background: rgba(37, 99, 235, 0.12);
-  color: var(--primary-hover);
-  text-decoration: none;
-}
-
-.admin-tabs__link--active {
-  background: var(--primary-color);
-  color: #fff;
-  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.25);
 }
 
 .admin-shell__chips {
