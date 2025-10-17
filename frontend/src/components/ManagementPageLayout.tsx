@@ -63,7 +63,7 @@ export const ManagementPageLayout = ({
     <div className={styles.page}>
       {shouldRenderStandaloneMenuButton ? (
         <div className={styles.menuButtonStandaloneWrapper}>
-          {renderMenuButton(styles.menuButtonStandalone)}
+          {renderMenuButton()}
         </div>
       ) : null}
       {shouldRenderHeader ? (
