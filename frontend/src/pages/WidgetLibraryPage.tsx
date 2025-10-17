@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useAuth } from "../auth";
 import { Modal } from "../components/Modal";
@@ -24,7 +24,7 @@ const sortWidgets = (widgets: WidgetTemplate[]): WidgetTemplate[] =>
   [...widgets].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
 
 export const WidgetLibraryPage = () => {
-  const { token, user, logout } = useAuth();
+  const { token, logout } = useAuth();
   const [widgets, setWidgets] = useState<WidgetTemplate[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,13 +36,6 @@ export const WidgetLibraryPage = () => {
     subtitle?: string | null;
     definition: Record<string, unknown>;
   } | null>(null);
-
-  const badge = useMemo(() => {
-    const widgetCountLabel = widgets.length
-      ? ` · ${widgets.length} widget${widgets.length > 1 ? "s" : ""}`
-      : "";
-    return `${user?.email ?? "Administrateur"}${widgetCountLabel}`;
-  }, [user?.email, widgets.length]);
 
   const refreshWidgets = useCallback(async () => {
     if (!token) {
@@ -176,51 +169,37 @@ export const WidgetLibraryPage = () => {
 
   return (
     <ManagementPageLayout
-      title="Bibliothèque de widgets"
-      subtitle="Centralisez les widgets ChatKit prêts à être utilisés dans vos workflows agents."
-      badge={badge}
       actions={
-        <button className="button" type="button" onClick={() => setShowCreateModal(true)}>
-          Nouveau widget
+        <button
+          type="button"
+          className="widget-library__add-button"
+          aria-label="Créer un nouveau widget"
+          title="Nouveau widget"
+          onClick={() => setShowCreateModal(true)}
+        >
+          <svg aria-hidden={true} width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
         </button>
       }
     >
       {success ? <div className="alert alert--success">{success}</div> : null}
       {error ? <div className="alert alert--danger">{error}</div> : null}
 
-      <div className="admin-grid">
-        <section className="admin-card">
-          <div>
-            <h2 className="admin-card__title">Widgets disponibles</h2>
-            <p className="admin-card__subtitle">
-              Chaque entrée correspond à une définition JSON validée par le SDK ChatKit. Utilisez ces widgets comme sorties de vos agents dans le workflow builder.
-            </p>
-          </div>
-          <WidgetTemplateGallery
-            widgets={widgets}
-            isLoading={isLoading}
-            onPreview={(widget) =>
-              setPreviewData({
-                title: `Widget « ${widget.title ?? widget.slug} »`,
-                subtitle: widget.slug,
-                definition: widget.definition,
-              })
-            }
-            onEdit={(widget) => setEditingWidget(widget)}
-            onDelete={handleDelete}
-          />
-        </section>
-        <section className="admin-card">
-          <div>
-            <h2 className="admin-card__title">Pourquoi des widgets ?</h2>
-            <p className="admin-card__subtitle">
-              Les widgets permettent d'afficher des réponses riches (cartes, tableaux, texte éditable) directement dans le chat. Les agents du workflow builder peuvent référencer un widget par son slug et diffuser cette mise en forme à l'utilisateur final.
-            </p>
-            <p className="admin-card__subtitle">
-              Validez vos définitions JSON ici avant de les intégrer dans les modules ou outils de vos workflows agents.
-            </p>
-          </div>
-        </section>
+      <div className="widget-library">
+        <WidgetTemplateGallery
+          widgets={widgets}
+          isLoading={isLoading}
+          onPreview={(widget) =>
+            setPreviewData({
+              title: `Widget « ${widget.title ?? widget.slug} »`,
+              subtitle: widget.slug,
+              definition: widget.definition,
+            })
+          }
+          onEdit={(widget) => setEditingWidget(widget)}
+          onDelete={handleDelete}
+        />
       </div>
 
       {showCreateModal ? (

@@ -350,9 +350,11 @@ const renderListView = (listView: Widgets.ListView) => {
 };
 
 const renderCard = (card: Widgets.Card) => {
-  const styles: React.CSSProperties = {
-    backgroundColor: card.background ? toThemeColor(card.background) ?? "var(--widget-preview-card-bg)" : undefined,
-  };
+  const styles: React.CSSProperties = {};
+  const background = card.background ? toThemeColor(card.background) : undefined;
+  if (background) {
+    styles.background = background;
+  }
   if (card.padding !== undefined) {
     applySpacing(styles, "padding", card.padding);
   }
