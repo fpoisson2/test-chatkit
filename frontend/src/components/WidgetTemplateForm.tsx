@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { ApiError, type WidgetTemplate } from "../utils/backend";
-import { WidgetPreview } from "./WidgetPreview";
+import { WidgetPreviewPlayground } from "./WidgetPreviewPlayground";
 
 type WidgetTemplateFormProps = {
   mode: "create" | "edit";
@@ -263,7 +263,7 @@ export const WidgetTemplateForm = ({
       {previewDefinition ? (
         <section className="widget-preview-section">
           <h4 className="widget-preview-section__title">Prévisualisation du widget</h4>
-          <WidgetPreview definition={previewDefinition} />
+          <WidgetPreviewPlayground definition={previewDefinition} />
           <details className="accordion">
             <summary>Définition normalisée</summary>
             <pre className="code-block" aria-label="Prévisualisation du widget">
