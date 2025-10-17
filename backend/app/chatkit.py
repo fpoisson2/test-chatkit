@@ -53,7 +53,6 @@ from chatkit.types import (
     ErrorEvent,
     InferenceOptions,
     LockedStatus,
-    NoticeEvent,
     ProgressUpdateEvent,
     ThreadItem,
     ThreadItemDoneEvent,
@@ -3893,13 +3892,6 @@ async def run_workflow(
                     if stripped.startswith("{") or stripped.startswith("["):
                         formatted_payload = f"```json\n{formatted_payload}\n```"
                 notice_title = f"Bloc watch « {title or current_node.slug} »"
-                notice = NoticeEvent(
-                    level="info",
-                    message=formatted_payload,
-                    title=notice_title,
-                )
-                await on_stream_event(notice)
-
                 assistant_message = AssistantMessageItem(
                     id=agent_context.generate_id("message"),
                     thread_id=agent_context.thread.id,
