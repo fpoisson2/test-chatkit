@@ -1061,6 +1061,7 @@ class WorkflowService:
                 "agent",
                 "condition",
                 "state",
+                "watch",
                 "json_vector_store",
                 "widget",
                 "end",
@@ -1280,6 +1281,11 @@ class WorkflowService:
                             f"Le nœud conditionnel {slug} contient des branches conditionnelles en double."
                         )
                     seen_branches.add(normalized)
+            if node.kind == "watch":
+                if len(incoming) != 1:
+                    raise WorkflowValidationError(
+                        f"Le bloc watch {slug} doit comporter exactement une entrée."
+                    )
 
         visited: set[str] = set()
         stack: set[str] = set()

@@ -53,6 +53,7 @@ from chatkit.types import (
     ErrorEvent,
     InferenceOptions,
     LockedStatus,
+    NoticeEvent,
     ProgressUpdateEvent,
     ThreadItem,
     ThreadItemDoneEvent,
@@ -2710,6 +2711,21 @@ def _format_step_output(payload: Any) -> str:
     return str(payload)
 
 
+def _resolve_watch_payload(
+    context: Any, steps: Sequence["WorkflowStepSummary"]
+) -> Any:
+    if isinstance(context, Mapping):
+        for key in ("output_parsed", "output_text", "output"):
+            candidate = context.get(key)
+            if candidate not in (None, "", {}):
+                return candidate
+    if context is not None:
+        return context
+    if steps:
+        return steps[-1].output
+    return None
+
+
 async def run_workflow(
     workflow_input: WorkflowInput,
     *,
@@ -3851,6 +3867,47 @@ async def run_workflow(
                     "Configuration du workflow invalide",
                     RuntimeError(
                         f"Aucune transition disponible après le nœud d'état {current_node.slug}"
+                    ),
+                    list(steps),
+                )
+            current_slug = transition.target_step.slug
+            continue
+
+        if current_node.kind == "watch":
+            title = _node_title(current_node)
+            payload_to_display = _resolve_watch_payload(last_step_context, steps)
+            step_payload: Any = (
+                payload_to_display
+                if payload_to_display is not None
+                else "Aucun payload disponible pour ce bloc."
+            )
+
+            await record_step(current_node.slug, title, step_payload)
+
+            if on_stream_event is not None:
+                if payload_to_display is None:
+                    formatted_payload = "Aucune donnée issue du bloc précédent."
+                else:
+                    formatted_payload = _format_step_output(payload_to_display)
+                    stripped = formatted_payload.strip()
+                    if stripped.startswith("{") or stripped.startswith("["):
+                        formatted_payload = f"```json\n{formatted_payload}\n```"
+                notice = NoticeEvent(
+                    level="info",
+                    message=formatted_payload,
+                    title=f"Bloc watch « {title or current_node.slug} »",
+                )
+                await on_stream_event(notice)
+
+            transition = _next_edge(current_slug)
+            if transition is None:
+                if not agent_steps_ordered:
+                    break
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError(
+                        f"Aucune transition disponible après le nœud watch {current_node.slug}"
                     ),
                     list(steps),
                 )
