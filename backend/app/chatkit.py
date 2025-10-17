@@ -2007,6 +2007,7 @@ class _WidgetBinding:
     path: tuple[str | int, ...]
     component_type: str | None = None
     sample: str | list[str] | None = None
+    value_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -2327,6 +2328,7 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
             return
         component_type = node.get("type") if isinstance(node.get("type"), str) else None
         sample: str | list[str] | None = None
+        matched_key: str | None = None
         candidate_keys: tuple[str, ...]
         if value_key:
             candidate_keys = (
@@ -2358,15 +2360,28 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
                 continue
             raw_value = node.get(candidate_key)
             if isinstance(raw_value, list):
-                sample = [str(item) for item in raw_value]
+                simple_values = [
+                    item if isinstance(item, str) else str(item)
+                    for item in raw_value
+                    if isinstance(item, (str, int, float, bool))
+                ]
+                if simple_values:
+                    sample = simple_values
+                    matched_key = candidate_key
+                    break
+            elif isinstance(raw_value, str):
+                sample = raw_value
+                matched_key = candidate_key
                 break
-            if isinstance(raw_value, (str, int, float, bool)):
+            elif isinstance(raw_value, (int, float, bool)):
                 sample = str(raw_value)
+                matched_key = candidate_key
                 break
         bindings[identifier] = _WidgetBinding(
             path=path,
             component_type=component_type,
             sample=sample,
+            value_key=matched_key,
         )
         if is_manual:
             manual_paths.add(path)
@@ -2562,10 +2577,16 @@ def _extract_widget_bindings_from_payload(
             sample = None
         else:
             sample = str(sample_value)
+        value_key = binding_mapping.get("value_key")
+        if not isinstance(value_key, str):
+            value_key = binding_mapping.get("valueKey")
+        if not isinstance(value_key, str):
+            value_key = None
         bindings[trimmed] = _WidgetBinding(
             path=tuple(normalized_path),
             component_type=component_type,
             sample=sample,
+            value_key=value_key,
         )
     return bindings
 
@@ -3463,17 +3484,46 @@ async def run_workflow(
     def _update_widget_node_value(
         node: dict[str, Any],
         value: str | list[str],
+        *,
+        preferred_key: str | None = None,
     ) -> None:
+        def _assign(key: str, payload: str | list[str]) -> None:
+            node[key] = payload
+
         if isinstance(value, list):
-            node["value"] = value
+            if preferred_key and preferred_key in node:
+                _assign(preferred_key, value)
+                return
+            _assign("value", value)
             return
+
         text = value
-        if "value" in node:
-            node["value"] = text
-        elif "text" in node:
-            node["text"] = text
-        else:
-            node["value"] = text
+        if preferred_key and preferred_key in node:
+            _assign(preferred_key, text)
+            return
+
+        candidate_keys = (
+            "value",
+            "text",
+            "label",
+            "title",
+            "body",
+            "content",
+            "heading",
+            "subtitle",
+            "description",
+            "caption",
+            "icon",
+            "iconStart",
+            "iconEnd",
+        )
+
+        for candidate in candidate_keys:
+            if candidate in node:
+                _assign(candidate, text)
+                return
+
+        _assign("value", text)
 
     def _apply_widget_variable_values(
         definition: Any,
@@ -3556,7 +3606,11 @@ async def run_workflow(
                 if not valid_path or not isinstance(target, dict):
                     continue
 
-                _update_widget_node_value(target, values[identifier])
+                _update_widget_node_value(
+                    target,
+                    values[identifier],
+                    preferred_key=binding.value_key,
+                )
                 matched.add(identifier)
 
         return matched
