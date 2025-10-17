@@ -1,6 +1,9 @@
 import atexit
 import os
+from types import SimpleNamespace
+from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app import app
@@ -9,6 +12,61 @@ from backend.app.models import Base, User
 from backend.app.security import create_access_token, hash_password
 
 _db_path = engine.url.database or ""
+
+
+_vector_store_events: list[dict[str, Any]] = []
+
+
+@pytest.fixture(autouse=True)
+def _stub_vector_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.widgets import service as widgets_service
+
+    _vector_store_events.clear()
+
+    class _StubVectorStoreService:
+        def __init__(self, session: Any) -> None:
+            self.session = session
+
+        def ingest(
+            self,
+            store_slug: str,
+            doc_id: str,
+            payload: dict[str, Any],
+            *,
+            store_title: str | None = None,
+            store_metadata: dict[str, Any] | None = None,
+            document_metadata: dict[str, Any] | None = None,
+        ) -> SimpleNamespace:
+            _vector_store_events.append(
+                {
+                    "action": "ingest",
+                    "store": store_slug,
+                    "doc_id": doc_id,
+                    "payload": payload,
+                    "store_title": store_title,
+                    "store_metadata": store_metadata,
+                    "document_metadata": document_metadata,
+                }
+            )
+            return SimpleNamespace(doc_id=doc_id)
+
+        def delete_document(self, store_slug: str, doc_id: str) -> None:
+            _vector_store_events.append(
+                {"action": "delete", "store": store_slug, "doc_id": doc_id}
+            )
+
+    monkeypatch.setattr(
+        widgets_service,
+        "JsonVectorStoreService",
+        _StubVectorStoreService,
+    )
+    yield
+    _vector_store_events.clear()
+
+
+@pytest.fixture
+def vector_store_events() -> list[dict[str, Any]]:
+    return _vector_store_events
 
 
 def _reset_db() -> None:
@@ -79,7 +137,9 @@ def _sample_widget_definition() -> dict[str, object]:
 atexit.register(_cleanup)
 
 
-def test_admin_can_manage_widget_library() -> None:
+def test_admin_can_manage_widget_library(
+    vector_store_events: list[dict[str, Any]]
+) -> None:
     _reset_db()
     admin = _make_user(email="admin@example.com", is_admin=True)
     token = create_access_token(admin)
@@ -140,13 +200,28 @@ def test_admin_can_manage_widget_library() -> None:
     )
     assert delete_response.status_code == 204
 
+    assert len(vector_store_events) == 3
+    create_event, update_event, delete_event = vector_store_events
+    assert create_event["action"] == "ingest"
+    assert create_event["doc_id"] == "resume"
+    assert create_event["payload"]["definition"]["type"] == "Card"
+    assert update_event["action"] == "ingest"
+    assert update_event["payload"]["definition"]["type"] == "Text"
+    assert delete_event == {
+        "action": "delete",
+        "store": "chatkit-widgets",
+        "doc_id": "resume",
+    }
+
     missing_response = client.get(
         "/api/widgets/resume", headers=_auth_headers(token)
     )
     assert missing_response.status_code == 404
 
 
-def test_non_admin_cannot_access_widget_library() -> None:
+def test_non_admin_cannot_access_widget_library(
+    vector_store_events: list[dict[str, Any]]
+) -> None:
     _reset_db()
     admin = _make_user(email="owner@example.com", is_admin=True)
     user = _make_user(email="member@example.com", is_admin=False)
@@ -183,6 +258,23 @@ def test_non_admin_cannot_access_widget_library() -> None:
         },
     )
     assert create_attempt.status_code == 403
+
+    assert vector_store_events == [
+        {
+            "action": "ingest",
+            "store": "chatkit-widgets",
+            "doc_id": "resume",
+            "payload": {
+                "slug": "resume",
+                "title": None,
+                "description": None,
+                "definition": _sample_widget_definition(),
+            },
+            "store_title": "Bibliothèque de widgets",
+            "store_metadata": {"scope": "widget_library"},
+            "document_metadata": {"slug": "resume"},
+        }
+    ]
 
 
 def test_invalid_widget_definition_returns_error() -> None:

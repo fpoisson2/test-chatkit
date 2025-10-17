@@ -24,8 +24,18 @@ except ModuleNotFoundError:  # pragma: no cover - lorsque le SDK n'est pas dispo
     WidgetRoot = None  # type: ignore[assignment]
 
 from ..models import WidgetTemplate
+from ..vector_store import JsonVectorStoreService
 
 logger = logging.getLogger("chatkit.widgets")
+
+WIDGET_VECTOR_STORE_SLUG = "chatkit-widgets"
+"""Identifiant du vector store dédié à l'indexation des widgets."""
+
+WIDGET_VECTOR_STORE_TITLE = "Bibliothèque de widgets"
+"""Titre appliqué lors de la création automatique du vector store."""
+
+WIDGET_VECTOR_STORE_METADATA = {"scope": "widget_library"}
+"""Métadonnées associées au vector store des widgets."""
 
 
 class WidgetValidationError(ValueError):
@@ -39,8 +49,15 @@ class WidgetValidationError(ValueError):
 class WidgetLibraryService:
     """Encapsule la gestion des widgets stockés dans la base."""
 
-    def __init__(self, session: Session) -> None:
+    def __init__(
+        self,
+        session: Session,
+        *,
+        vector_store_slug: str | None = WIDGET_VECTOR_STORE_SLUG,
+    ) -> None:
         self.session = session
+        self._vector_store_slug = (vector_store_slug or "").strip()
+        self._vector_store_disabled = False
 
     # -- Opérations CRUD -----------------------------------------------------
 
@@ -81,6 +98,7 @@ class WidgetLibraryService:
         )
         self.session.add(widget)
         self.session.flush()
+        self._sync_vector_store(widget)
         return widget
 
     def update_widget(
@@ -104,12 +122,14 @@ class WidgetLibraryService:
 
         self.session.add(widget)
         self.session.flush()
+        self._sync_vector_store(widget)
         return widget
 
     def delete_widget(self, slug: str) -> None:
         widget = self.get_widget(slug)
         if widget is None:
             raise LookupError("Widget introuvable")
+        self._remove_from_vector_store(widget.slug)
         self.session.delete(widget)
         self.session.flush()
 
@@ -198,6 +218,65 @@ class WidgetLibraryService:
                 errors=messages,
             ) from exc
         return widget
+
+    # -- Intégration vector store -------------------------------------------
+
+    def _vector_store_enabled(self) -> bool:
+        return bool(self._vector_store_slug) and not self._vector_store_disabled
+
+    def _sync_vector_store(self, widget: WidgetTemplate) -> None:
+        if not self._vector_store_enabled():
+            return
+        payload = {
+            "slug": widget.slug,
+            "title": widget.title,
+            "description": widget.description,
+            "definition": widget.definition,
+        }
+        metadata = {
+            "slug": widget.slug,
+            "title": widget.title,
+            "description": widget.description,
+        }
+        try:
+            service = JsonVectorStoreService(self.session)
+            service.ingest(
+                self._vector_store_slug,
+                widget.slug,
+                payload,
+                store_title=WIDGET_VECTOR_STORE_TITLE,
+                store_metadata=WIDGET_VECTOR_STORE_METADATA,
+                document_metadata={
+                    key: value for key, value in metadata.items() if value is not None
+                },
+            )
+        except RuntimeError as exc:
+            logger.debug(
+                "Vector store indisponible pour la bibliothèque de widgets (%s)",
+                exc,
+            )
+            self._vector_store_disabled = True
+        except Exception as exc:  # pragma: no cover - dépend du runtime
+            logger.warning(
+                "Impossible d'indexer le widget %s dans le vector store", widget.slug,
+                exc_info=exc,
+            )
+
+    def _remove_from_vector_store(self, slug: str) -> None:
+        if not self._vector_store_enabled():
+            return
+        try:
+            service = JsonVectorStoreService(self.session)
+            service.delete_document(self._vector_store_slug, slug)
+        except LookupError:
+            logger.debug(
+                "Document vector store introuvable pour le widget %s", slug
+            )
+        except Exception as exc:  # pragma: no cover - dépend du runtime
+            logger.warning(
+                "Impossible de supprimer le widget %s du vector store", slug,
+                exc_info=exc,
+            )
 
     @staticmethod
     def _normalize_text(value: str | None) -> str | None:
