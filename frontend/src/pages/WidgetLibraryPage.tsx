@@ -198,32 +198,19 @@ export const WidgetLibraryPage = () => {
       {error ? <div className="alert alert--danger">{error}</div> : null}
 
       <div className="widget-library">
-        <div className="widget-library__gallery">
-          <WidgetTemplateGallery
-            widgets={widgets}
-            isLoading={isLoading}
-            onPreview={(widget) =>
-              setPreviewData({
-                title: `Widget « ${widget.title ?? widget.slug} »`,
-                subtitle: widget.slug,
-                definition: widget.definition,
-              })
-            }
-            onEdit={(widget) => setEditingWidget(widget)}
-            onDelete={handleDelete}
-          />
-        </div>
-        <section className="admin-card widget-library__info">
-          <div>
-            <h2 className="admin-card__title">Pourquoi des widgets ?</h2>
-            <p className="admin-card__subtitle">
-              Les widgets permettent d'afficher des réponses riches (cartes, tableaux, texte éditable) directement dans le chat. Les agents du workflow builder peuvent référencer un widget par son slug et diffuser cette mise en forme à l'utilisateur final.
-            </p>
-            <p className="admin-card__subtitle">
-              Validez vos définitions JSON ici avant de les intégrer dans les modules ou outils de vos workflows agents.
-            </p>
-          </div>
-        </section>
+        <WidgetTemplateGallery
+          widgets={widgets}
+          isLoading={isLoading}
+          onPreview={(widget) =>
+            setPreviewData({
+              title: `Widget « ${widget.title ?? widget.slug} »`,
+              subtitle: widget.slug,
+              definition: widget.definition,
+            })
+          }
+          onEdit={(widget) => setEditingWidget(widget)}
+          onDelete={handleDelete}
+        />
       </div>
 
       {showCreateModal ? (

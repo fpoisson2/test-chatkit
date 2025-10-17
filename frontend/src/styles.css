@@ -29,7 +29,7 @@ body {
   margin: 0;
   min-height: 100dvh;
   height: 100dvh;
-  background: #f1f5f9;
+  background: #ffffff;
   color: var(--text-color);
   display: flex;
   flex-direction: column;
@@ -1191,24 +1191,9 @@ button {
 }
 
 .widget-library {
-  display: grid;
-  gap: clamp(24px, 4vw, 48px);
-}
-
-@media (min-width: 1024px) {
-  .widget-library {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
-    align-items: start;
-  }
-}
-
-.widget-library__gallery {
-  min-width: 0;
-}
-
-.widget-library__info {
-  position: sticky;
-  top: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(18px, 4vw, 28px);
 }
 
 .widget-library__add-button {
@@ -1216,7 +1201,7 @@ button {
   height: 2.75rem;
   border-radius: 0.75rem;
   border: none;
-  background: #f8fafc;
+  background: #ffffff;
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -1252,17 +1237,18 @@ button {
 .widget-gallery__item {
   position: relative;
   display: flex;
-  border-radius: 22px;
-  overflow: hidden;
-  cursor: pointer;
-  background: transparent;
-  box-shadow: none;
+  padding: clamp(18px, 3vw, 26px);
+  border-radius: 30px;
+  cursor: default;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.16) 0%, rgba(14, 165, 233, 0.12) 100%);
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.16);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .widget-gallery__item:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.18);
+  transform: translateY(-6px);
+  box-shadow: 0 32px 64px rgba(15, 23, 42, 0.18);
 }
 
 .widget-gallery__item:focus-visible {
@@ -1274,15 +1260,18 @@ button {
   position: relative;
   flex: 1 1 auto;
   display: flex;
-  border-radius: inherit;
-  overflow: hidden;
-  background: transparent;
+  border-radius: clamp(20px, 4vw, 26px);
+  padding: clamp(14px, 3vw, 20px);
+  background: linear-gradient(140deg, rgba(15, 23, 42, 0.08) 0%, rgba(37, 99, 235, 0.06) 100%);
+  overflow: visible;
   --widget-preview-card-bg: #ffffff;
 }
 
 .widget-gallery__preview-canvas {
   flex: 1 1 auto;
   display: flex;
+  border-radius: clamp(16px, 3.5vw, 22px);
+  overflow: hidden;
 }
 
 .widget-gallery__preview-canvas .widget-preview {
@@ -1332,7 +1321,7 @@ button {
 @media (hover: none) {
   .widget-gallery__item {
     transform: none;
-    box-shadow: none;
+    box-shadow: 0 22px 48px rgba(15, 23, 42, 0.16);
   }
 
   .widget-gallery__actions {
