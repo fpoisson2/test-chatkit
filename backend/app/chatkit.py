@@ -2011,8 +2011,10 @@ class _WidgetBinding:
 
 @dataclass(frozen=True)
 class _ResponseWidgetConfig:
-    slug: str
+    source: Literal["library", "variable"]
+    slug: str | None
     variables: dict[str, str]
+    definition_expression: str | None = None
     await_action: bool | None = None
     output_model: type[BaseModel] | None = None
     bindings: dict[str, _WidgetBinding] = field(default_factory=dict)
@@ -2047,15 +2049,21 @@ def _parse_response_widget_config(
         slug = candidate.strip()
         if not slug:
             return None
-        return _ResponseWidgetConfig(slug=slug, variables={})
+        return _ResponseWidgetConfig(source="library", slug=slug, variables={})
 
     if not isinstance(candidate, dict):
         return None
 
+    raw_source = candidate.get("source")
+    source = raw_source.strip().lower() if isinstance(raw_source, str) else ""
+    definition_expression_raw = candidate.get("definition_expression")
+    if not isinstance(definition_expression_raw, str):
+        definition_expression_raw = candidate.get("definitionExpression")
+    definition_expression = (
+        definition_expression_raw.strip() if isinstance(definition_expression_raw, str) else ""
+    )
     slug_raw = candidate.get("slug")
     slug = slug_raw.strip() if isinstance(slug_raw, str) else ""
-    if not slug:
-        return None
 
     variables: dict[str, str] = {}
     raw_variables = candidate.get("variables")
@@ -2074,7 +2082,22 @@ def _parse_response_widget_config(
         else _coerce_bool(candidate.get("wait_for_action"))
     )
 
+    if source == "variable" or (not slug and definition_expression):
+        if not definition_expression:
+            return None
+        return _ResponseWidgetConfig(
+            source="variable",
+            slug=None,
+            variables={},
+            definition_expression=definition_expression,
+            await_action=await_action_value,
+        )
+
+    if not slug:
+        return None
+
     return _ResponseWidgetConfig(
+        source="library",
         slug=slug,
         variables=variables,
         await_action=await_action_value,
@@ -2620,6 +2643,9 @@ def _resolve_widget_action_payload(
 def _ensure_widget_output_model(
     config: _ResponseWidgetConfig,
 ) -> _ResponseWidgetConfig:
+    if config.source != "library" or not config.slug:
+        return config
+
     if config.output_model is not None:
         return config
 
@@ -3567,17 +3593,74 @@ async def run_workflow(
         step_slug: str,
         step_title: str,
         step_context: dict[str, Any] | None,
-    ) -> None:
-        definition = _load_widget_definition(
-            config.slug, context=f"étape {step_slug}"
-        )
-        if definition is None:
-            logger.warning(
-                "Widget %s introuvable pour l'étape %s",
-                config.slug,
-                step_slug,
+    ) -> dict[str, Any] | None:
+        widget_label = config.slug or config.definition_expression or step_slug
+
+        definition: Any
+        bindings = config.bindings
+
+        if config.source == "variable":
+            expression = config.definition_expression or ""
+            if not expression:
+                logger.warning(
+                    "Expression de widget manquante pour l'étape %s", step_slug
+                )
+                return None
+            try:
+                definition_candidate = _evaluate_state_expression(
+                    expression, input_context=step_context
+                )
+            except Exception as exc:  # pragma: no cover - dépend du contenu utilisateur
+                logger.warning(
+                    "Impossible d'évaluer l'expression %s pour l'étape %s : %s",
+                    expression,
+                    step_slug,
+                    exc,
+                )
+                return None
+
+            definition = definition_candidate
+            if isinstance(definition, BaseModel):
+                try:
+                    definition = definition.model_dump(by_alias=True)
+                except TypeError:
+                    definition = definition.model_dump()
+            if isinstance(definition, str):
+                try:
+                    definition = json.loads(definition)
+                except json.JSONDecodeError as exc:  # pragma: no cover - dépend du contenu
+                    logger.warning(
+                        "Le JSON renvoyé par %s est invalide pour l'étape %s : %s",
+                        expression,
+                        step_slug,
+                        exc,
+                    )
+                    return None
+            if not isinstance(definition, (dict, list)):
+                logger.warning(
+                    "L'expression %s doit renvoyer un objet JSON utilisable pour le widget de l'étape %s",
+                    expression,
+                    step_slug,
+                )
+                return None
+            if not bindings:
+                bindings = _collect_widget_bindings(definition)
+        else:
+            if not config.slug:
+                logger.warning(
+                    "Slug de widget manquant pour l'étape %s", step_slug
+                )
+                return None
+            definition = _load_widget_definition(
+                config.slug, context=f"étape {step_slug}"
             )
-            return
+            if definition is None:
+                logger.warning(
+                    "Widget %s introuvable pour l'étape %s",
+                    config.slug,
+                    step_slug,
+                )
+                return None
 
         resolved: dict[str, str | list[str]] = {}
         for variable_id, expression in config.variables.items():
@@ -3593,44 +3676,44 @@ async def run_workflow(
                 if key not in step_context:
                     continue
                 auto_values = _collect_widget_values_from_output(
-                    step_context[key], bindings=config.bindings
+                    step_context[key], bindings=bindings
                 )
                 for identifier, value in auto_values.items():
                     resolved.setdefault(identifier, value)
 
         if resolved:
             matched = _apply_widget_variable_values(
-                definition, resolved, bindings=config.bindings
+                definition, resolved, bindings=bindings
             )
             missing = set(resolved) - matched
             if missing:
                 logger.warning(
                     "Variables de widget non appliquées (%s) pour %s",
                     ", ".join(sorted(missing)),
-                    config.slug,
+                    widget_label,
                 )
 
         try:
             widget = WidgetLibraryService._validate_widget(definition)
         except Exception as exc:  # pragma: no cover - dépend du SDK installé
             logger.exception(
-                "Le widget %s est invalide après interpolation", config.slug, exc_info=exc
+                "Le widget %s est invalide après interpolation", widget_label, exc_info=exc
             )
-            return
+            return None
 
         if _sdk_stream_widget is None:
             logger.warning(
                 "Le SDK Agents installé ne supporte pas stream_widget : impossible de diffuser %s",
-                config.slug,
+                widget_label,
             )
-            return
+            return None
 
         store = getattr(agent_context, "store", None)
         thread_metadata = getattr(agent_context, "thread", None)
         if store is None or thread_metadata is None:
             logger.warning(
                 "Contexte Agent incomplet : impossible de diffuser le widget %s",
-                config.slug,
+                widget_label,
             )
             return
 
@@ -3646,7 +3729,7 @@ async def run_workflow(
             except Exception as exc:  # pragma: no cover - dépend du stockage sous-jacent
                 logger.exception(
                     "Impossible de générer un identifiant pour le widget %s",
-                    config.slug,
+                    widget_label,
                     exc_info=exc,
                 )
                 raise
@@ -3661,11 +3744,13 @@ async def run_workflow(
         except Exception as exc:  # pragma: no cover - dépend du SDK Agents
             logger.exception(
                 "Impossible de diffuser le widget %s pour %s",
-                config.slug,
+                widget_label,
                 step_title,
                 exc_info=exc,
             )
+            return None
 
+        return widget
     def _should_forward_agent_event(
         event: ThreadStreamEvent, *, suppress: bool
     ) -> bool:
@@ -3951,7 +4036,7 @@ async def run_workflow(
                     current_node.slug,
                 )
             else:
-                await _stream_response_widget(
+                rendered_widget = await _stream_response_widget(
                     widget_config,
                     step_slug=current_node.slug,
                     step_title=title,
@@ -3966,7 +4051,24 @@ async def run_workflow(
                     if result is not None:
                         action_payload = dict(result)
 
-                step_payload: dict[str, Any] = {"widget": widget_config.slug}
+                widget_identifier = (
+                    widget_config.slug
+                    if widget_config.source == "library"
+                    else widget_config.definition_expression
+                ) or current_node.slug
+                step_payload: dict[str, Any] = {"widget": widget_identifier}
+                if widget_config.source == "library" and widget_config.slug:
+                    step_payload["widget_slug"] = widget_config.slug
+                elif (
+                    widget_config.source == "variable"
+                    and widget_config.definition_expression
+                ):
+                    step_payload["widget_expression"] = widget_config.definition_expression
+                if (
+                    widget_config.source == "variable"
+                    and rendered_widget is not None
+                ):
+                    step_payload["widget_definition"] = rendered_widget
                 if action_payload is not None:
                     step_payload["action"] = action_payload
 
@@ -3976,17 +4078,21 @@ async def run_workflow(
                     step_payload,
                 )
 
+                context_payload: dict[str, Any] = {"widget": widget_identifier}
+                if widget_config.source == "library" and widget_config.slug:
+                    context_payload["widget_slug"] = widget_config.slug
+                elif (
+                    widget_config.source == "variable"
+                    and widget_config.definition_expression
+                ):
+                    context_payload["widget_expression"] = (
+                        widget_config.definition_expression
+                    )
+                if rendered_widget is not None:
+                    context_payload["widget_definition"] = rendered_widget
                 if action_payload is not None:
-                    last_step_context = {
-                        "widget": widget_config.slug,
-                        "widget_slug": widget_config.slug,
-                        "action": action_payload,
-                    }
-                else:
-                    last_step_context = {
-                        "widget": widget_config.slug,
-                        "widget_slug": widget_config.slug,
-                    }
+                    context_payload["action"] = action_payload
+                last_step_context = context_payload
             transition = _next_edge(current_slug)
             if transition is None:
                 if not agent_steps_ordered:
@@ -4136,23 +4242,40 @@ async def run_workflow(
         )
 
         if widget_config is not None:
-            await _stream_response_widget(
+            rendered_widget = await _stream_response_widget(
                 widget_config,
                 step_slug=current_node.slug,
                 step_title=title,
                 step_context=last_step_context,
             )
+            widget_identifier = (
+                widget_config.slug
+                if widget_config.source == "library"
+                else widget_config.definition_expression
+            ) or current_node.slug
+            augmented_context = dict(last_step_context or {})
+            augmented_context.setdefault("widget", widget_identifier)
+            if widget_config.source == "library" and widget_config.slug:
+                augmented_context.setdefault("widget_slug", widget_config.slug)
+            elif (
+                widget_config.source == "variable"
+                and widget_config.definition_expression
+            ):
+                augmented_context.setdefault(
+                    "widget_expression", widget_config.definition_expression
+                )
+            if rendered_widget is not None:
+                augmented_context["widget_definition"] = rendered_widget
+
             if (
                 on_widget_step is not None
                 and _should_wait_for_widget_action(current_node.kind, widget_config)
             ):
                 result = await on_widget_step(current_node, widget_config)
                 if result is not None:
-                    augmented_context = dict(last_step_context or {})
-                    augmented_context.setdefault("widget", widget_config.slug)
-                    augmented_context.setdefault("widget_slug", widget_config.slug)
                     augmented_context["action"] = dict(result)
-                    last_step_context = augmented_context
+
+            last_step_context = augmented_context
 
         transition = _next_edge(current_slug)
         if agent_key == "r_dacteur":
