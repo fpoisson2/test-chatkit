@@ -856,10 +856,11 @@ const WorkflowBuilderPage = () => {
           setEdges(flowEdges);
           const viewportKey = viewportKeyFor(workflowId, versionId);
           viewportKeyRef.current = viewportKey;
-          viewportRef.current = viewportKey
+          const restoredViewport = viewportKey
             ? viewportMemoryRef.current.get(viewportKey) ?? null
             : null;
-          hasUserViewportChangeRef.current = false;
+          viewportRef.current = restoredViewport;
+          hasUserViewportChangeRef.current = restoredViewport != null;
           pendingViewportRestoreRef.current = true;
           restoreViewport();
           setSelectedNodeId(null);
@@ -3254,8 +3255,9 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     const key = viewportKeyFor(selectedWorkflowId, selectedVersionId);
     viewportKeyRef.current = key;
-    viewportRef.current = key ? viewportMemoryRef.current.get(key) ?? null : null;
-    hasUserViewportChangeRef.current = false;
+    const savedViewport = key ? viewportMemoryRef.current.get(key) ?? null : null;
+    viewportRef.current = savedViewport;
+    hasUserViewportChangeRef.current = savedViewport != null;
     pendingViewportRestoreRef.current = true;
   }, [selectedVersionId, selectedWorkflowId]);
 
