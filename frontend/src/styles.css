@@ -1237,18 +1237,14 @@ button {
 .widget-gallery__item {
   position: relative;
   display: flex;
-  padding: clamp(18px, 3vw, 26px);
-  border-radius: 30px;
+  justify-content: center;
+  align-items: stretch;
+  padding: 0;
+  border: none;
+  border-radius: clamp(18px, 3.5vw, 24px);
   cursor: default;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.16) 0%, rgba(14, 165, 233, 0.12) 100%);
-  border: 1px solid rgba(37, 99, 235, 0.2);
-  box-shadow: 0 22px 48px rgba(15, 23, 42, 0.16);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.widget-gallery__item:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 32px 64px rgba(15, 23, 42, 0.18);
+  background: transparent;
+  box-shadow: none;
 }
 
 .widget-gallery__item:focus-visible {
@@ -1256,36 +1252,36 @@ button {
   outline-offset: 6px;
 }
 
-.widget-gallery__preview {
-  position: relative;
-  flex: 1 1 auto;
-  display: flex;
-  border-radius: clamp(20px, 4vw, 26px);
-  padding: clamp(14px, 3vw, 20px);
-  background: linear-gradient(140deg, rgba(15, 23, 42, 0.08) 0%, rgba(37, 99, 235, 0.06) 100%);
-  overflow: visible;
-  --widget-preview-card-bg: #ffffff;
-}
-
-.widget-gallery__preview-canvas {
-  flex: 1 1 auto;
-  display: flex;
-  border-radius: clamp(16px, 3.5vw, 22px);
-  overflow: hidden;
-}
-
-.widget-gallery__preview-canvas .widget-preview {
+.widget-gallery__item .widget-preview {
   width: 100%;
   background: transparent;
   border: none;
   padding: 0;
 }
 
-.widget-gallery__preview-canvas .widget-preview__card,
-.widget-gallery__preview-canvas .widget-preview__basic {
+.widget-gallery__item .widget-preview__card,
+.widget-gallery__item .widget-preview__basic {
   width: 100%;
+  border-radius: clamp(18px, 3.5vw, 24px);
   box-shadow: 0 18px 36px rgba(15, 23, 42, 0.12);
   border: 1px solid rgba(15, 23, 42, 0.05);
+}
+
+.widget-gallery__item:hover .widget-preview__card,
+.widget-gallery__item:hover .widget-preview__basic,
+.widget-gallery__item:focus-within .widget-preview__card,
+.widget-gallery__item:focus-within .widget-preview__basic {
+  transform: translateY(-4px);
+  box-shadow: 0 32px 64px rgba(15, 23, 42, 0.18);
+}
+
+.widget-gallery__item:hover .widget-preview__card,
+.widget-gallery__item:hover .widget-preview__basic,
+.widget-gallery__item:focus-within .widget-preview__card,
+.widget-gallery__item:focus-within .widget-preview__basic,
+.widget-gallery__item .widget-preview__card,
+.widget-gallery__item .widget-preview__basic {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .widget-gallery__actions {
@@ -1319,11 +1315,6 @@ button {
 }
 
 @media (hover: none) {
-  .widget-gallery__item {
-    transform: none;
-    box-shadow: 0 22px 48px rgba(15, 23, 42, 0.16);
-  }
-
   .widget-gallery__actions {
     opacity: 1;
     pointer-events: auto;

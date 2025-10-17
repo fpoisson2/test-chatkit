@@ -36,43 +36,39 @@ export const WidgetTemplateGallery = ({
       <div className="widget-gallery" role="list">
         {widgets.map((widget) => (
           <article key={widget.slug} className="widget-gallery__item" role="listitem">
-            <div className="widget-gallery__preview">
-              <div className="widget-gallery__preview-canvas" aria-hidden={true}>
-                <WidgetPreview definition={widget.definition} />
-              </div>
+            <WidgetPreview definition={widget.definition} />
 
-              <div className="widget-gallery__actions">
-                <button
-                  className="button button--ghost button--sm"
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onPreview(widget);
-                  }}
-                >
-                  Voir en plein écran
-                </button>
-                <button
-                  className="button button--subtle button--sm"
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onEdit(widget);
-                  }}
-                >
-                  Modifier
-                </button>
-                <button
-                  className="button button--danger button--sm"
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onDelete(widget);
-                  }}
-                >
-                  Supprimer
-                </button>
-              </div>
+            <div className="widget-gallery__actions">
+              <button
+                className="button button--ghost button--sm"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onPreview(widget);
+                }}
+              >
+                Voir en plein écran
+              </button>
+              <button
+                className="button button--subtle button--sm"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onEdit(widget);
+                }}
+              >
+                Modifier
+              </button>
+              <button
+                className="button button--danger button--sm"
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDelete(widget);
+                }}
+              >
+                Supprimer
+              </button>
             </div>
           </article>
         ))}
