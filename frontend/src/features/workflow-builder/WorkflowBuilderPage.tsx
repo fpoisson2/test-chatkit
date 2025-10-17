@@ -1828,13 +1828,18 @@ const WorkflowBuilderPage = () => {
 
   const handleConditionChange = useCallback(
     (edgeId: string, value: string) => {
+      const normalizedLabel = value.trim();
+      const normalizedCondition = normalizedLabel.toLowerCase();
       setEdges((current) =>
         current.map((edge) =>
           edge.id === edgeId
             ? {
                 ...edge,
-                label: value,
-                data: { ...edge.data, condition: value || null },
+                label: normalizedLabel,
+                data: {
+                  ...edge.data,
+                  condition: normalizedLabel ? normalizedCondition : null,
+                },
               }
             : edge
         )

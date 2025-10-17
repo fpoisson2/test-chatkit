@@ -1196,11 +1196,68 @@ class WorkflowService:
             if node.kind == "end" and outgoing:
                 raise WorkflowValidationError("Le nœud de fin ne doit pas avoir de sortie.")
             if node.kind == "condition":
-                conditions = {edge.condition or "default" for edge in outgoing}
-                if "true" not in conditions or "false" not in conditions:
+                if len(outgoing) < 2:
                     raise WorkflowValidationError(
-                        f"Le nœud conditionnel {slug} doit exposer des branches true et false."
+                        f"Le nœud conditionnel {slug} doit posséder au moins deux sorties."
                     )
+
+                normalized_conditions: list[str] = []
+                for edge in outgoing:
+                    raw_condition = edge.condition or "default"
+                    normalized_conditions.append(str(raw_condition).strip().lower() or "default")
+
+                seen: dict[str, int] = {}
+                duplicate_branches: set[str] = set()
+                for condition_name in normalized_conditions:
+                    count = seen.get(condition_name, 0) + 1
+                    seen[condition_name] = count
+                    if count > 1:
+                        duplicate_branches.add(condition_name or "default")
+                if duplicate_branches:
+                    formatted = ", ".join(
+                        "par défaut" if branch == "default" else branch for branch in sorted(duplicate_branches)
+                    )
+                    raise WorkflowValidationError(
+                        f"Le nœud conditionnel {slug} ne peut pas définir plusieurs sorties pour la branche {formatted}."
+                    )
+
+                unique_conditions = set(normalized_conditions)
+                parameters = node.parameters or {}
+                branches_param = parameters.get("branches")
+                declared_branches: set[str] = set()
+                if isinstance(branches_param, list):
+                    for entry in branches_param:
+                        if not isinstance(entry, dict):
+                            continue
+                        raw_branch = entry.get("branch") or entry.get("name") or entry.get("value")
+                        if isinstance(raw_branch, str):
+                            branch_name = raw_branch.strip().lower()
+                            if branch_name:
+                                declared_branches.add(branch_name)
+
+                default_branch = parameters.get("default_branch")
+                normalized_default = (
+                    default_branch.strip().lower()
+                    if isinstance(default_branch, str) and default_branch.strip()
+                    else None
+                )
+
+                if declared_branches:
+                    missing = sorted(branch for branch in declared_branches if branch not in unique_conditions)
+                    if missing:
+                        formatted = ", ".join(missing)
+                        raise WorkflowValidationError(
+                            f"Le nœud conditionnel {slug} doit définir une sortie pour les branches suivantes : {formatted}."
+                        )
+                    if normalized_default and normalized_default not in unique_conditions:
+                        raise WorkflowValidationError(
+                            f"Le nœud conditionnel {slug} doit définir une sortie pour la branche {normalized_default}."
+                        )
+                else:
+                    if "true" not in unique_conditions or "false" not in unique_conditions:
+                        raise WorkflowValidationError(
+                            f"Le nœud conditionnel {slug} doit exposer des branches true et false."
+                        )
 
         visited: set[str] = set()
         stack: set[str] = set()
