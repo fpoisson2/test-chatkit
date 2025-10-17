@@ -1,10 +1,18 @@
 import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 
-import type {
-  AvailableModel,
-  VectorStoreSummary,
-  WidgetTemplateSummary,
+import { useAuth } from "../../../auth";
+import {
+  widgetLibraryApi,
+  type AvailableModel,
+  type VectorStoreSummary,
+  type WidgetTemplateSummary,
 } from "../../../utils/backend";
+import { WidgetPreview } from "../../../components/WidgetPreview";
+import {
+  applyWidgetInputValues,
+  buildWidgetInputSample,
+  collectWidgetBindings,
+} from "../../../utils/widgetPreview";
 import {
   getAgentContinueOnError,
   getAgentDisplayResponseInChat,
@@ -68,6 +76,9 @@ const WEB_SEARCH_LOCATION_LABELS = {
   country: "Pays",
   type: "Type de précision",
 } as const;
+
+const isTestEnvironment =
+  typeof process !== "undefined" && process.env && process.env.NODE_ENV === "test";
 
 export type NodeInspectorProps = {
   node: FlowNode;
@@ -160,6 +171,7 @@ const NodeInspector = ({
   onEndMessageChange,
   onRemove,
 }: NodeInspectorProps) => {
+  const { token } = useAuth();
   const { kind, displayName, parameters } = node.data;
   const isFixed = kind === "start";
   const endMessage = kind === "end" ? getEndMessage(parameters) : "";
@@ -214,12 +226,59 @@ const NodeInspector = ({
   const widgetNodeSlug = widgetNodeConfig.slug;
   const widgetNodeVariables = widgetNodeConfig.variables;
   const trimmedWidgetNodeSlug = widgetNodeSlug.trim();
+  const [widgetDefinition, setWidgetDefinition] = useState<Record<string, unknown> | null>(null);
+  const [widgetDefinitionLoading, setWidgetDefinitionLoading] = useState(false);
+  const [widgetDefinitionError, setWidgetDefinitionError] = useState<string | null>(null);
   const widgetNodeSelectedWidget = useMemo(() => {
     if (!trimmedWidgetNodeSlug) {
       return null;
     }
     return widgets.find((widget) => widget.slug === trimmedWidgetNodeSlug) ?? null;
   }, [trimmedWidgetNodeSlug, widgets]);
+  useEffect(() => {
+    if (kind !== "widget") {
+      setWidgetDefinition(null);
+      setWidgetDefinitionError(null);
+      setWidgetDefinitionLoading(false);
+      return;
+    }
+    if (!trimmedWidgetNodeSlug || isTestEnvironment) {
+      setWidgetDefinition(null);
+      setWidgetDefinitionError(null);
+      setWidgetDefinitionLoading(false);
+      return;
+    }
+    let isCancelled = false;
+    setWidgetDefinitionLoading(true);
+    setWidgetDefinitionError(null);
+    widgetLibraryApi
+      .getWidget(token, trimmedWidgetNodeSlug)
+      .then((widget) => {
+        if (isCancelled) {
+          return;
+        }
+        setWidgetDefinition(widget.definition);
+      })
+      .catch((error) => {
+        if (isCancelled) {
+          return;
+        }
+        setWidgetDefinition(null);
+        setWidgetDefinitionError(
+          error instanceof Error
+            ? error.message
+            : "Impossible de charger le widget sélectionné.",
+        );
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setWidgetDefinitionLoading(false);
+        }
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [kind, token, trimmedWidgetNodeSlug]);
   const widgetSelectId = useId();
   const widgetNodeSlugSuggestionsId = useId();
   let fileSearchValidationMessage: string | null = null;
@@ -407,6 +466,17 @@ const NodeInspector = ({
                 </option>
               ))}
             </datalist>
+          )}
+
+          {!isTestEnvironment && (
+            <WidgetNodeContentEditor
+              slug={trimmedWidgetNodeSlug}
+              definition={widgetDefinition}
+              loading={widgetDefinitionLoading}
+              error={widgetDefinitionError}
+              assignments={widgetNodeVariables}
+              onChange={(next) => onWidgetNodeVariablesChange(node.id, next)}
+            />
           )}
 
           <div style={{ marginTop: "0.75rem" }}>
@@ -1136,6 +1206,198 @@ const StateAssignmentsPanel = ({
 type WidgetVariablesPanelProps = {
   assignments: WidgetVariableAssignment[];
   onChange: (assignments: WidgetVariableAssignment[]) => void;
+};
+
+type WidgetNodeContentEditorProps = {
+  slug: string;
+  definition: Record<string, unknown> | null;
+  loading: boolean;
+  error: string | null;
+  assignments: WidgetVariableAssignment[];
+  onChange: (assignments: WidgetVariableAssignment[]) => void;
+};
+
+const formatSampleValue = (sample: string | string[] | null): string => {
+  if (Array.isArray(sample)) {
+    return sample.join(", ");
+  }
+  if (typeof sample === "string") {
+    return sample;
+  }
+  return "";
+};
+
+const parsePreviewValue = (expression: string): string | string[] | null => {
+  const trimmed = expression.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed === "string") {
+      return parsed;
+    }
+    if (typeof parsed === "number" || typeof parsed === "boolean") {
+      return String(parsed);
+    }
+    if (Array.isArray(parsed)) {
+      const sanitized = parsed
+        .map((entry) => {
+          if (typeof entry === "string") {
+            return entry;
+          }
+          if (typeof entry === "number" || typeof entry === "boolean") {
+            return String(entry);
+          }
+          return null;
+        })
+        .filter((entry): entry is string => entry !== null);
+      return sanitized;
+    }
+    return null;
+  } catch (error) {
+    return trimmed;
+  }
+};
+
+const WidgetNodeContentEditor = ({
+  slug,
+  definition,
+  loading,
+  error,
+  assignments,
+  onChange,
+}: WidgetNodeContentEditorProps) => {
+  const trimmedSlug = slug.trim();
+  const bindings = useMemo(() => (definition ? collectWidgetBindings(definition) : {}), [definition]);
+  const bindingEntries = useMemo(
+    () => Object.entries(bindings).sort(([a], [b]) => a.localeCompare(b)),
+    [bindings],
+  );
+  const assignmentMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const assignment of assignments) {
+      map.set(assignment.identifier, assignment.expression);
+    }
+    return map;
+  }, [assignments]);
+  const sampleValues = useMemo(() => {
+    if (!definition) {
+      return {} as Record<string, string | string[]>;
+    }
+    return buildWidgetInputSample(definition, bindings);
+  }, [bindings, definition]);
+  const previewValues = useMemo(() => {
+    const values: Record<string, string | string[]> = { ...sampleValues };
+    assignmentMap.forEach((expression, identifier) => {
+      const parsed = parsePreviewValue(expression);
+      if (parsed === null) {
+        delete values[identifier];
+      } else {
+        values[identifier] = parsed;
+      }
+    });
+    return values;
+  }, [assignmentMap, sampleValues]);
+  const previewDefinition = useMemo(() => {
+    if (!definition) {
+      return null;
+    }
+    return applyWidgetInputValues(definition, previewValues, bindings);
+  }, [bindings, definition, previewValues]);
+
+  const handleBindingChange = (identifier: string, value: string) => {
+    const existingIndex = assignments.findIndex((assignment) => assignment.identifier === identifier);
+    const normalizedValue = value.trim();
+    if (!normalizedValue) {
+      if (existingIndex === -1) {
+        return;
+      }
+      const next = assignments.filter((_, index) => index !== existingIndex);
+      onChange(next);
+      return;
+    }
+    if (existingIndex === -1) {
+      onChange([...assignments, { identifier, expression: normalizedValue }]);
+      return;
+    }
+    const next = assignments.map((assignment, index) =>
+      index === existingIndex ? { ...assignment, expression: normalizedValue } : assignment,
+    );
+    onChange(next);
+  };
+
+  if (!trimmedSlug) {
+    return null;
+  }
+
+  return (
+    <section
+      aria-label="Contenu du widget"
+      style={{
+        marginTop: "0.75rem",
+        border: "1px solid rgba(15, 23, 42, 0.12)",
+        borderRadius: "0.75rem",
+        padding: "0.75rem",
+        display: "grid",
+        gap: "0.75rem",
+      }}
+    >
+      <header>
+        <h3 style={{ margin: 0, fontSize: "1rem" }}>Contenu du widget</h3>
+        <p style={{ margin: "0.25rem 0 0", color: "#475569", fontSize: "0.95rem" }}>
+          Modifiez les textes diffusés par ce bloc. Les valeurs sont enregistrées dans les propriétés du workflow.
+        </p>
+      </header>
+      {loading ? (
+        <p style={{ margin: 0, color: "#475569" }}>Chargement de la prévisualisation…</p>
+      ) : error ? (
+        <p style={{ margin: 0, color: "#b91c1c" }}>
+          Impossible de récupérer le widget « {trimmedSlug} ». {error}
+        </p>
+      ) : !definition ? (
+        <p style={{ margin: 0, color: "#475569" }}>
+          Sélectionnez un widget dans la bibliothèque pour personnaliser son contenu.
+        </p>
+      ) : (
+        <>
+          <div
+            style={{
+              border: "1px solid rgba(15, 23, 42, 0.12)",
+              borderRadius: "0.65rem",
+              padding: "0.75rem",
+              background: "#f8fafc",
+            }}
+          >
+            <WidgetPreview definition={previewDefinition ?? definition} />
+          </div>
+          {bindingEntries.length > 0 ? (
+            bindingEntries.map(([identifier, binding]) => {
+              const label = binding.componentType
+                ? `${identifier} (${binding.componentType})`
+                : identifier;
+              const placeholder = formatSampleValue(binding.sample);
+              return (
+                <label key={identifier} style={fieldStyle}>
+                  <span style={labelContentStyle}>{label}</span>
+                  <input
+                    type="text"
+                    value={assignmentMap.get(identifier) ?? ""}
+                    onChange={(event) => handleBindingChange(identifier, event.target.value)}
+                    placeholder={placeholder ? `Ex. ${placeholder}` : undefined}
+                  />
+                </label>
+              );
+            })
+          ) : (
+            <p style={{ margin: 0, color: "#475569" }}>
+              Ce widget n'expose aucun texte modifiable. Il sera diffusé tel que défini dans la bibliothèque.
+            </p>
+          )}
+        </>
+      )}
+    </section>
+  );
 };
 
 const WidgetVariablesPanel = ({ assignments, onChange }: WidgetVariablesPanelProps) => {
