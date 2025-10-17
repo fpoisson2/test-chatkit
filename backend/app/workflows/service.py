@@ -741,12 +741,22 @@ class WorkflowService:
             )
             if definition is None:
                 raise WorkflowVersionNotFoundError(workflow_id, version_id)
-            if definition.is_active:
-                raise WorkflowValidationError(
-                    "Impossible de modifier une version active."
-                )
-
             nodes, edges = self._normalize_graph(graph_payload)
+            if definition.is_active:
+                # Lorsqu'une version active est modifiée, on crée une nouvelle version
+                # brouillon pour conserver l'historique de la version de production.
+                draft = self._create_definition_from_graph(
+                    workflow=definition.workflow,
+                    nodes=nodes,
+                    edges=edges,
+                    session=db,
+                    name=definition.name,
+                    mark_active=False,
+                )
+                db.commit()
+                db.refresh(draft)
+                return self._fully_load_definition(draft)
+
             self._replace_definition_graph(
                 definition,
                 nodes=nodes,
