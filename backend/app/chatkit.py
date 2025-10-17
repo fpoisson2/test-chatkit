@@ -3215,18 +3215,55 @@ async def run_workflow(
                 return None
         return value
 
-    def _evaluate_condition_node(step: WorkflowStep) -> bool:
+    def _evaluate_condition_node(step: WorkflowStep) -> str:
         params = step.parameters or {}
-        mode = str(params.get("mode", "truthy")).lower()
-        path = str(params.get("path", "")).strip()
-        value = _resolve_state_path(path) if path else None
-        if mode == "equals":
-            return value == params.get("value")
-        if mode == "not_equals":
-            return value != params.get("value")
-        if mode == "falsy":
-            return not bool(value)
-        return bool(value)
+
+        def _resolve_value(path: str) -> Any:
+            trimmed_path = path.strip()
+            return _resolve_state_path(trimmed_path) if trimmed_path else None
+
+        def _evaluate_rule(*, mode: str, path: str, expected: Any) -> bool:
+            resolved = _resolve_value(path)
+            normalized_mode = mode.strip().lower() or "truthy"
+            if normalized_mode == "equals":
+                return resolved == expected
+            if normalized_mode == "not_equals":
+                return resolved != expected
+            if normalized_mode == "falsy":
+                return not bool(resolved)
+            return bool(resolved)
+
+        branches_param = params.get("branches")
+        if isinstance(branches_param, list):
+            fallback_mode = str(params.get("mode", "truthy"))
+            fallback_path = str(params.get("path", ""))
+            fallback_value = params.get("value")
+
+            for entry in branches_param:
+                if not isinstance(entry, dict):
+                    continue
+                raw_branch = entry.get("branch") or entry.get("name") or entry.get("value")
+                if not isinstance(raw_branch, str):
+                    continue
+                branch_name = raw_branch.strip().lower()
+                if not branch_name:
+                    continue
+                branch_mode = str(entry.get("mode", fallback_mode))
+                branch_path = str(entry.get("path", fallback_path))
+                branch_value = entry.get("value", fallback_value)
+                if _evaluate_rule(mode=branch_mode, path=branch_path, expected=branch_value):
+                    return branch_name
+
+            default_branch = params.get("default_branch")
+            if isinstance(default_branch, str) and default_branch.strip():
+                return default_branch.strip().lower()
+            return "default"
+
+        mode = str(params.get("mode", "truthy"))
+        path = str(params.get("path", ""))
+        value = params.get("value")
+        result = _evaluate_rule(mode=mode, path=path, expected=value)
+        return "true" if result else "false"
 
     def _next_edge(source_slug: str, branch: str | None = None) -> WorkflowTransition | None:
         candidates = edges_by_source.get(source_slug, [])
@@ -3282,7 +3319,7 @@ async def run_workflow(
             continue
 
         if current_node.kind == "condition":
-            branch = "true" if _evaluate_condition_node(current_node) else "false"
+            branch = _evaluate_condition_node(current_node)
             transition = _next_edge(current_slug, branch)
             if transition is None:
                 raise WorkflowExecutionError(

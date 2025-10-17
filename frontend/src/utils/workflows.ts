@@ -1348,3 +1348,173 @@ export const setAgentWeatherToolEnabled = (
   const toolEntry = buildWeatherFunctionToolEntry();
   return { ...next, tools: [...tools, toolEntry] };
 };
+
+const stringifyConditionValue = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value === null || typeof value === "undefined") {
+    return "";
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const parseConditionValue = (raw: string): unknown => {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  const lowered = trimmed.toLowerCase();
+  if (lowered === "true") {
+    return true;
+  }
+  if (lowered === "false") {
+    return false;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return trimmed;
+  }
+};
+
+export type ConditionBranchRule = {
+  branch: string;
+  mode: string;
+  path: string;
+  value: string;
+};
+
+export type ConditionConfiguration =
+  | {
+      kind: "binary";
+      mode: string;
+      path: string;
+      value: string;
+    }
+  | {
+      kind: "multi";
+      mode: string;
+      path: string;
+      value: string;
+      branches: ConditionBranchRule[];
+      defaultBranch: string;
+    };
+
+export const getConditionConfiguration = (
+  parameters: AgentParameters | null | undefined,
+): ConditionConfiguration => {
+  const raw = (parameters as Record<string, unknown>) ?? {};
+  const baseMode = typeof raw.mode === "string" ? raw.mode : "truthy";
+  const basePath = typeof raw.path === "string" ? raw.path : "";
+  const baseValue = stringifyConditionValue(raw.value);
+  const rawBranches = raw.branches;
+
+  if (Array.isArray(rawBranches)) {
+    const branches: ConditionBranchRule[] = rawBranches.map((entry) => {
+      const record = isPlainRecord(entry) ? (entry as Record<string, unknown>) : {};
+      const branchName = typeof record.branch === "string"
+        ? record.branch
+        : typeof record.name === "string"
+          ? record.name
+          : typeof record.value === "string"
+            ? record.value
+            : "";
+      const branchMode = typeof record.mode === "string" ? record.mode : "";
+      const branchPath = typeof record.path === "string" ? record.path : "";
+      const branchValue = stringifyConditionValue(record.value);
+      return {
+        branch: branchName,
+        mode: branchMode,
+        path: branchPath,
+        value: branchValue,
+      } satisfies ConditionBranchRule;
+    });
+    const defaultBranch =
+      typeof raw.default_branch === "string" ? raw.default_branch : "";
+    return {
+      kind: "multi",
+      mode: baseMode,
+      path: basePath,
+      value: baseValue,
+      branches,
+      defaultBranch,
+    } satisfies ConditionConfiguration;
+  }
+
+  return {
+    kind: "binary",
+    mode: baseMode,
+    path: basePath,
+    value: baseValue,
+  } satisfies ConditionConfiguration;
+};
+
+const sanitizeConditionBranch = (branch: ConditionBranchRule): Record<string, unknown> => {
+  const payload: Record<string, unknown> = {
+    branch: branch.branch.trim(),
+  };
+  const normalizedMode = branch.mode.trim();
+  if (normalizedMode) {
+    payload.mode = normalizedMode;
+  }
+  const normalizedPath = branch.path.trim();
+  if (normalizedPath) {
+    payload.path = normalizedPath;
+  }
+  const normalizedValue = branch.value.trim();
+  if (normalizedValue) {
+    payload.value = parseConditionValue(branch.value);
+  }
+  return payload;
+};
+
+export const setConditionConfiguration = (
+  parameters: AgentParameters,
+  configuration: ConditionConfiguration,
+): AgentParameters => {
+  const next = { ...(parameters as Record<string, unknown>) };
+
+  if (configuration.kind === "multi") {
+    next.branches = configuration.branches.map(sanitizeConditionBranch);
+    const normalizedDefault = configuration.defaultBranch.trim();
+    if (normalizedDefault) {
+      next.default_branch = normalizedDefault;
+    } else {
+      delete next.default_branch;
+    }
+  } else {
+    delete next.branches;
+    delete next.default_branch;
+  }
+
+  const normalizedMode = configuration.mode.trim();
+  if (normalizedMode) {
+    next.mode = normalizedMode;
+  } else {
+    delete next.mode;
+  }
+
+  const normalizedPath = configuration.path.trim();
+  if (normalizedPath) {
+    next.path = normalizedPath;
+  } else {
+    delete next.path;
+  }
+
+  const normalizedValue = configuration.value.trim();
+  if (normalizedValue) {
+    next.value = parseConditionValue(configuration.value);
+  } else {
+    delete next.value;
+  }
+
+  return stripEmpty(next);
+};

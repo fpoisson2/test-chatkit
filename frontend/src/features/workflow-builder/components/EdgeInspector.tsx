@@ -2,11 +2,7 @@ import type { CSSProperties } from "react";
 
 import type { FlowEdge } from "../types";
 
-const conditionOptions = [
-  { value: "", label: "(par défaut)" },
-  { value: "true", label: "Branche true" },
-  { value: "false", label: "Branche false" },
-];
+const CONDITION_SUGGESTIONS = ["", "true", "false", "default"] as const;
 
 export type EdgeInspectorProps = {
   edge: FlowEdge;
@@ -42,16 +38,20 @@ const EdgeInspector = ({ edge, onConditionChange, onLabelChange, onRemove }: Edg
     </dl>
     <label style={fieldStyle}>
       <span>Branche conditionnelle</span>
-      <select
+      <input
+        type="text"
+        list={`edge-condition-${edge.id}`}
         value={edge.data?.condition ?? ""}
         onChange={(event) => onConditionChange(edge.id, event.target.value)}
-      >
-        {conditionOptions.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
+        placeholder="Ex. true, false, priorite-elevee"
+      />
+      <datalist id={`edge-condition-${edge.id}`}>
+        {CONDITION_SUGGESTIONS.map((value) => (
+          <option key={value} value={value}>
+            {value === "" ? "(par défaut)" : value}
           </option>
         ))}
-      </select>
+      </datalist>
     </label>
     <label style={fieldStyle}>
       <span>Libellé affiché</span>
