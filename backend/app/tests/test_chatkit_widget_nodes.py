@@ -17,6 +17,7 @@ from backend.app.config import Settings
 from backend.app.workflows.service import WorkflowService
 from chatkit.types import (
     ActiveStatus,
+    AssistantMessageContent,
     AssistantMessageItem,
     Page,
     ThreadItemDoneEvent,
@@ -418,7 +419,7 @@ async def test_auto_start_server_streams_only_user_message_when_configured(
 
 
 @pytest.mark.asyncio
-async def test_auto_start_server_streams_assistant_message_without_workflow(
+async def test_auto_start_server_streams_assistant_message_and_runs_workflow(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = Settings(
@@ -475,6 +476,18 @@ async def test_auto_start_server_streams_assistant_message_without_workflow(
     async def _fake_execute_workflow(**kwargs):  # type: ignore[no-untyped-def]
         nonlocal workflow_called
         workflow_called = True
+        await kwargs["event_queue"].put(
+            ThreadItemDoneEvent(
+                item=AssistantMessageItem(
+                    id="assistant-widget",
+                    thread_id=thread.id,
+                    created_at=datetime.now(),
+                    content=[
+                        AssistantMessageContent(text="Widget auto-start"),
+                    ],
+                )
+            )
+        )
         await kwargs["event_queue"].put(_STREAM_DONE)
 
     monkeypatch.setattr(server, "_execute_workflow", _fake_execute_workflow)
@@ -507,7 +520,10 @@ async def test_auto_start_server_streams_assistant_message_without_workflow(
     assert not user_events, "Aucun message utilisateur ne doit être injecté"
     assert assistant_events, "Le message assistant doit être diffusé"
     assert assistant_events[0].item.content[0].text == "Bienvenue dans cet espace."
-    assert not workflow_called, "Le workflow ne doit pas être exécuté sans message utilisateur"
+    assert any(
+        event.item.id == "assistant-widget" for event in assistant_events
+    ), "Le workflow doit diffuser les événements supplémentaires (widget, etc.)"
+    assert workflow_called, "Le workflow doit être exécuté pour diffuser les étapes suivantes"
 
 
 @pytest.mark.asyncio

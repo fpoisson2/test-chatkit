@@ -239,6 +239,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     auto_start_was_triggered=True,
                     auto_start_assistant_message=assistant_stream_text,
                 )
+            elif assistant_stream_text:
+                workflow_input = WorkflowInput(
+                    input_as_text="",
+                    auto_start_was_triggered=True,
+                    auto_start_assistant_message=assistant_stream_text,
+                )
 
             pre_stream_events = await self._prepare_auto_start_thread_items(
                 thread=thread,
