@@ -220,6 +220,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 request_context=context,
             )
 
+            await thread_state.ensure_loaded()
+
             step_slug = _extract_action_step_slug(payload) if isinstance(payload, Mapping) else None
             if not step_slug and sender is not None:
                 step_slug = thread_state.resolve_widget_step(sender.id)
@@ -263,6 +265,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 store=self.store,
                 request_context=context,
             )
+
+            await thread_state.ensure_loaded()
 
             step_slug = _extract_action_step_slug(payload) if isinstance(payload, Mapping) else None
             if not step_slug and sender is not None:
@@ -1774,6 +1778,44 @@ class _ThreadWorkflowStateManager:
     store: Any | None
     request_context: Any
     modified: bool = False
+
+    async def ensure_loaded(self) -> None:
+        """Recharge les métadonnées du fil depuis le store si elles sont absentes."""
+
+        if self.thread is None:
+            return
+        metadata = getattr(self.thread, "metadata", None)
+        if isinstance(metadata, dict):
+            return
+        store = self.store
+        if store is None:
+            return
+        load_thread = getattr(store, "load_thread", None)
+        if load_thread is None:
+            return
+        thread_id = getattr(self.thread, "id", None)
+        if not isinstance(thread_id, str) or not thread_id.strip():
+            return
+        try:
+            result = load_thread(thread_id, context=self.request_context)
+            if inspect.isawaitable(result):
+                result = await result
+        except Exception as exc:  # pragma: no cover - dépend du stockage sous-jacent
+            logger.warning(
+                "Impossible de recharger les métadonnées du fil %s", thread_id, exc_info=exc
+            )
+            return
+        loaded_metadata = getattr(result, "metadata", None)
+        if isinstance(loaded_metadata, dict):
+            setattr(self.thread, "metadata", dict(loaded_metadata))
+            return
+        if hasattr(loaded_metadata, "model_dump"):
+            try:
+                dumped = loaded_metadata.model_dump()
+            except Exception:  # pragma: no cover - conversion défensive
+                dumped = None
+            if isinstance(dumped, dict):
+                setattr(self.thread, "metadata", dumped)
 
     def _get_metadata(self, *, create: bool) -> dict[str, Any] | None:
         if self.thread is None:

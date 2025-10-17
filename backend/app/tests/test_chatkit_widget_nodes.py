@@ -502,3 +502,67 @@ def test_widget_menu_select_action_uses_widget_queue_when_missing_sender() -> No
     assert not workflow_state.get("widget_queue"), "La file des widgets devrait être vidée"
     assert saved_threads, "La persistance doit être déclenchée après l'utilisation de la file"
 
+
+def test_widget_menu_select_action_reloads_metadata_when_missing() -> None:
+    server = chatkit_module.DemoChatKitServer.__new__(chatkit_module.DemoChatKitServer)
+    saved_threads: list[dict[str, Any]] = []
+    respond_calls: list[tuple[Any, Any, Any]] = []
+
+    async def _fake_respond(self, thread, user_message, context):  # type: ignore[no-untyped-def]
+        respond_calls.append((thread, user_message, context))
+        if False:
+            yield None
+        return
+
+    async def _save_thread(thread, context=None):  # type: ignore[no-untyped-def]
+        metadata = getattr(thread, "metadata", None)
+        if isinstance(metadata, dict):
+            saved_threads.append(dict(metadata))
+        else:
+            saved_threads.append({})
+
+    stored_thread = SimpleNamespace(
+        id="thread_widget_reload",
+        metadata={
+            "workflow_state": {
+                "widgets": {
+                    "widget_item": {
+                        "step": "widget-node",
+                        "conditions": ["decision"],
+                    }
+                },
+                "widget_queue": ["decision"],
+            }
+        },
+    )
+
+    async def _load_thread(thread_id, context=None):  # type: ignore[no-untyped-def]
+        assert thread_id == stored_thread.id
+        return stored_thread
+
+    server.store = SimpleNamespace(
+        load_thread=_load_thread,
+        save_thread=_save_thread,
+    )
+    server.respond = MethodType(_fake_respond, server)
+
+    thread = SimpleNamespace(id=stored_thread.id, metadata=None)
+    action = SimpleNamespace(type="menu.select", payload={"id": "approve"})
+    context = SimpleNamespace(user_id="user-1")
+
+    async def _exercise() -> list[Any]:
+        events: list[Any] = []
+        async for event in server.action(thread, action, None, context):
+            events.append(event)
+        return events
+
+    events = asyncio.run(_exercise())
+
+    assert events == []
+    assert respond_calls, "Le workflow devrait être relancé après rechargement des métadonnées"
+    assert saved_threads, "La sélection doit être persistée après rechargement"
+    metadata = thread.metadata
+    assert isinstance(metadata, dict) and metadata.get("workflow_state"), (
+        "Les métadonnées rechargées doivent être accessibles depuis le fil"
+    )
+
