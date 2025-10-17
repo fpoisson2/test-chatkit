@@ -213,6 +213,47 @@ def test_watch_node_emits_notice_event(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "details" in message
 
 
+def test_resolve_watch_payload_prefers_structured_output() -> None:
+    steps = [
+        chatkit_module.WorkflowStepSummary(
+            key="agent_1",
+            title="Analyse",
+            output="{\"status\": \"ok\"}",
+        )
+    ]
+    context = {
+        "output_parsed": {"status": "ok", "details": {"count": 3}},
+        "output_text": "status: ok",
+        "output": {"status": "ok"},
+    }
+
+    resolved = chatkit_module._resolve_watch_payload(context, steps)
+
+    assert resolved == {"status": "ok", "details": {"count": 3}}
+
+
+def test_resolve_watch_payload_falls_back_to_last_step_output() -> None:
+    steps = [
+        chatkit_module.WorkflowStepSummary(
+            key="agent_1",
+            title="Analyse",
+            output="{\"status\": \"ok\"}",
+        )
+    ]
+
+    resolved = chatkit_module._resolve_watch_payload(None, steps)
+
+    assert resolved == "{\"status\": \"ok\"}"
+
+
+def test_resolve_watch_payload_preserves_context_when_unknown() -> None:
+    context = {"widget": "form", "action": {"value": "yes"}}
+
+    resolved = chatkit_module._resolve_watch_payload(context, [])
+
+    assert resolved is context
+
+
 def _execute_widget_workflow(
     monkeypatch: pytest.MonkeyPatch,
     *,

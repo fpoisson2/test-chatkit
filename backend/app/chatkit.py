@@ -2711,6 +2711,21 @@ def _format_step_output(payload: Any) -> str:
     return str(payload)
 
 
+def _resolve_watch_payload(
+    context: Any, steps: Sequence["WorkflowStepSummary"]
+) -> Any:
+    if isinstance(context, Mapping):
+        for key in ("output_parsed", "output_text", "output"):
+            candidate = context.get(key)
+            if candidate not in (None, "", {}):
+                return candidate
+    if context is not None:
+        return context
+    if steps:
+        return steps[-1].output
+    return None
+
+
 async def run_workflow(
     workflow_input: WorkflowInput,
     *,
@@ -3860,7 +3875,7 @@ async def run_workflow(
 
         if current_node.kind == "watch":
             title = _node_title(current_node)
-            payload_to_display = last_step_context
+            payload_to_display = _resolve_watch_payload(last_step_context, steps)
             step_payload: Any = (
                 payload_to_display
                 if payload_to_display is not None
