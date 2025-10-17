@@ -861,7 +861,7 @@ def test_can_update_existing_draft_version() -> None:
     assert edge_pairs == {("start", "decision"), ("decision", "approve"), ("approve", "reject")}
 
 
-def test_updating_active_version_is_rejected() -> None:
+def test_updating_active_version_creates_draft() -> None:
     admin = _make_user(email="active-update@example.com", is_admin=True)
     token = create_access_token(admin)
 
@@ -887,6 +887,7 @@ def test_updating_active_version_is_rejected() -> None:
     created = creation.json()
     workflow_id = created["workflow_id"]
     active_version_id = created["id"]
+    active_version_number = created["version"]
 
     update = client.put(
         f"/api/workflows/{workflow_id}/versions/{active_version_id}",
@@ -906,8 +907,83 @@ def test_updating_active_version_is_rejected() -> None:
         },
     )
 
-    assert update.status_code == 400
-    assert "version active" in update.json()["detail"].lower()
+    assert update.status_code == 200
+    draft = update.json()
+    assert draft["id"] != active_version_id
+    assert draft["workflow_id"] == workflow_id
+    assert draft["is_active"] is False
+    assert draft["version"] == active_version_number + 1
+
+    versions = client.get(
+        f"/api/workflows/{workflow_id}/versions",
+        headers=_auth_headers(token),
+    )
+    assert versions.status_code == 200
+    summaries = versions.json()
+    assert any(item["id"] == active_version_id and item["is_active"] for item in summaries)
+    assert any(item["id"] == draft["id"] and not item["is_active"] for item in summaries)
+
+
+def test_updating_active_version_with_widget_only_creates_draft() -> None:
+    admin = _make_user(email="widget-only@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    creation = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-widget-only",
+            "display_name": "Workflow widget only",
+            "description": None,
+            "graph": {
+                "nodes": [
+                    {"slug": "start", "kind": "start", "is_enabled": True},
+                    {"slug": "end", "kind": "end", "is_enabled": True},
+                ],
+                "edges": [
+                    {"source": "start", "target": "end"},
+                ],
+            },
+        },
+    )
+    assert creation.status_code == 201
+    created = creation.json()
+    workflow_id = created["workflow_id"]
+    active_version_id = created["id"]
+    active_version_number = created["version"]
+
+    update = client.put(
+        f"/api/workflows/{workflow_id}/versions/{active_version_id}",
+        headers=_auth_headers(token),
+        json={
+            "graph": {
+                "nodes": [
+                    {"slug": "start", "kind": "start", "is_enabled": True},
+                    {
+                        "slug": "collect-feedback",
+                        "kind": "widget",
+                        "is_enabled": True,
+                        "parameters": {"widget": {"slug": "resume"}},
+                    },
+                    {"slug": "end", "kind": "end", "is_enabled": True},
+                ],
+                "edges": [
+                    {"source": "start", "target": "collect-feedback"},
+                    {"source": "collect-feedback", "target": "end"},
+                ],
+            }
+        },
+    )
+
+    assert update.status_code == 200
+    draft = update.json()
+    assert draft["id"] != active_version_id
+    assert draft["workflow_id"] == workflow_id
+    assert draft["is_active"] is False
+    assert draft["version"] == active_version_number + 1
+
+    node_kinds = {node["kind"] for node in draft["graph"]["nodes"] if node["is_enabled"]}
+    assert node_kinds == {"start", "widget", "end"}
 
 
 def test_create_two_workflows_with_same_initial_name() -> None:

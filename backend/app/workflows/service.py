@@ -741,12 +741,22 @@ class WorkflowService:
             )
             if definition is None:
                 raise WorkflowVersionNotFoundError(workflow_id, version_id)
-            if definition.is_active:
-                raise WorkflowValidationError(
-                    "Impossible de modifier une version active."
-                )
-
             nodes, edges = self._normalize_graph(graph_payload)
+            if definition.is_active:
+                # Lorsqu'une version active est modifiée, on crée une nouvelle version
+                # brouillon pour conserver l'historique de la version de production.
+                draft = self._create_definition_from_graph(
+                    workflow=definition.workflow,
+                    nodes=nodes,
+                    edges=edges,
+                    session=db,
+                    name=definition.name,
+                    mark_active=False,
+                )
+                db.commit()
+                db.refresh(draft)
+                return self._fully_load_definition(draft)
+
             self._replace_definition_graph(
                 definition,
                 nodes=nodes,
@@ -991,8 +1001,18 @@ class WorkflowService:
             )
 
         minimal_skeleton = self._is_minimal_skeleton(normalized_nodes, normalized_edges)
-        if not enabled_agent_slugs and not (allow_empty or minimal_skeleton):
-            raise WorkflowValidationError("Au moins un agent doit être actif dans le workflow.")
+        has_enabled_widget = any(
+            node.kind == "widget" and node.is_enabled for node in normalized_nodes
+        )
+        if not (
+            enabled_agent_slugs
+            or has_enabled_widget
+            or allow_empty
+            or minimal_skeleton
+        ):
+            raise WorkflowValidationError(
+                "Le workflow doit activer au moins un agent ou un widget."
+            )
         # Les anciens workflows imposaient la présence d'un rédacteur final, mais la
         # bibliothèque permet désormais de créer des workflows plus simples.
         # Nous conservons uniquement la vérification d'au moins un agent actif.
