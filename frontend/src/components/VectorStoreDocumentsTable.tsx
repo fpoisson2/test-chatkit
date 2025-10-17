@@ -46,7 +46,7 @@ export const VectorStoreDocumentsTable = ({
 
   return (
     <div className="admin-table-wrapper">
-      <table className="admin-table">
+      <table className="admin-table admin-table--stack">
         <thead>
           <tr>
             <th>Identifiant</th>
@@ -61,15 +61,17 @@ export const VectorStoreDocumentsTable = ({
             const metadataInfo = serializeMetadata(document.metadata ?? {});
             return (
               <tr key={document.doc_id}>
-                <td>{document.doc_id}</td>
-                <td>
+                <td data-label="Identifiant">{document.doc_id}</td>
+                <td data-label="Métadonnées">
                   <code className="code-inline" title={metadataInfo.full}>
                     {metadataInfo.preview}
                   </code>
                 </td>
-                <td>{document.chunk_count}</td>
-                <td>{new Date(document.updated_at).toLocaleString()}</td>
-                <td>
+                <td data-label="Segments">{document.chunk_count}</td>
+                <td data-label="Dernière mise à jour">
+                  {new Date(document.updated_at).toLocaleString()}
+                </td>
+                <td data-label="Actions">
                   <div className="admin-table__actions">
                     <button
                       className="button button--ghost button--sm"

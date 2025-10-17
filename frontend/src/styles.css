@@ -1225,7 +1225,8 @@ button {
 }
 
 .admin-table-wrapper {
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   border-radius: 18px;
   border: 1px solid rgba(148, 163, 184, 0.3);
 }
@@ -1234,6 +1235,10 @@ button {
   width: 100%;
   border-collapse: collapse;
   background: rgba(255, 255, 255, 0.96);
+}
+
+.admin-table--stack {
+  min-width: min(680px, 100%);
 }
 
 .admin-table thead {
@@ -1257,6 +1262,67 @@ button {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .admin-table--stack {
+    background: transparent;
+    border-collapse: separate;
+  }
+
+  .admin-table--stack thead {
+    display: none;
+  }
+
+  .admin-table--stack tbody {
+    display: grid;
+    gap: 16px;
+    padding: 0;
+  }
+
+  .admin-table--stack tr {
+    display: grid;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 16px;
+    padding: clamp(12px, 4vw, 20px);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  }
+
+  .admin-table--stack tbody tr:hover {
+    background: rgba(37, 99, 235, 0.05);
+  }
+
+  .admin-table--stack td {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 0;
+    border: 0;
+    font-size: 0.95rem;
+    word-break: break-word;
+  }
+
+  .admin-table--stack td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    letter-spacing: 0.01em;
+  }
+
+  .admin-table--stack td[data-label="Actions"] {
+    gap: 10px;
+  }
+
+  .admin-table--stack td[data-label="Actions"]::before {
+    margin-bottom: 2px;
+  }
+
+  .admin-table--stack td[data-label="Métadonnées"] code {
+    white-space: normal;
+  }
 }
 
 .vector-store-list {
