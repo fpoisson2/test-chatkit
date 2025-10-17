@@ -36,6 +36,8 @@ import {
   getEndMessage,
   getWidgetNodeConfig,
   getStartAutoRun,
+  getConditionConfig,
+  type ConditionMode,
 } from "../../../utils/workflows";
 import type {
   FileSearchConfig,
@@ -66,6 +68,13 @@ const reasoningSummaryOptions = [
   { value: "none", label: "Pas de résumé" },
   { value: "auto", label: "Résumé automatique" },
   { value: "detailed", label: "Résumé détaillé" },
+];
+
+const conditionModeOptions: Array<{ value: ConditionMode; label: string }> = [
+  { value: "truthy", label: "Vrai si la valeur est vraie" },
+  { value: "falsy", label: "Vrai si la valeur est fausse" },
+  { value: "equals", label: "Vrai si la valeur correspond" },
+  { value: "not_equals", label: "Vrai si la valeur diffère" },
 ];
 
 const DEFAULT_JSON_SCHEMA_OBJECT = { type: "object", properties: {} } as const;
@@ -130,6 +139,11 @@ export type NodeInspectorProps = {
     assignments: StateAssignment[],
   ) => void;
   onEndMessageChange: (nodeId: string, value: string) => void;
+  onConditionModeChange: (nodeId: string, mode: ConditionMode) => void;
+  onConditionPathChange: (nodeId: string, value: string) => void;
+  onConditionValueChange: (nodeId: string, value: string) => void;
+  onConditionUseWidgetAction: (nodeId: string, suggestedPath: string) => void;
+  conditionWidgetActionSuggestion: string | null;
   onRemove: (nodeId: string) => void;
 };
 
@@ -172,6 +186,11 @@ const NodeInspector = ({
   widgetsError,
   onStateAssignmentsChange,
   onEndMessageChange,
+  onConditionModeChange,
+  onConditionPathChange,
+  onConditionValueChange,
+  onConditionUseWidgetAction,
+  conditionWidgetActionSuggestion,
   onRemove,
 }: NodeInspectorProps) => {
   const { token } = useAuth();
@@ -196,6 +215,10 @@ const NodeInspector = ({
   const continueOnError = getAgentContinueOnError(parameters);
   const storeResponses = getAgentStorePreference(parameters);
   const startAutoRun = kind === "start" ? getStartAutoRun(parameters) : false;
+  const conditionConfig = useMemo(() => getConditionConfig(parameters), [parameters]);
+  const conditionMode = conditionConfig.mode;
+  const conditionPath = conditionConfig.path;
+  const conditionValue = conditionConfig.value;
   const webSearchConfig = getAgentWebSearchConfig(parameters);
   const webSearchEnabled = Boolean(webSearchConfig);
   const fileSearchConfig = getAgentFileSearchConfig(parameters);
@@ -413,6 +436,67 @@ const NodeInspector = ({
           onChange={(next) => onStartAutoRunChange(node.id, next)}
           help="Exécute immédiatement le workflow lors de l'ouverture d'un fil, même sans message utilisateur."
         />
+      )}
+
+      {kind === "condition" && (
+        <>
+          <label style={fieldStyle}>
+            <span style={labelContentStyle}>Mode d'évaluation</span>
+            <select
+              value={conditionMode}
+              onChange={(event) =>
+                onConditionModeChange(node.id, event.target.value as ConditionMode)
+              }
+            >
+              {conditionModeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={fieldStyle}>
+            <span style={labelContentStyle}>
+              Chemin de la variable
+              <HelpTooltip label="Pointez vers la variable d'état à évaluer (ex. conditions.decision)." />
+            </span>
+            <input
+              type="text"
+              value={conditionPath}
+              onChange={(event) => onConditionPathChange(node.id, event.target.value)}
+              placeholder="Ex. conditions.decision"
+            />
+          </label>
+          <label style={fieldStyle}>
+            <span style={labelContentStyle}>
+              Valeur à comparer (optionnel)
+              <HelpTooltip label="Renseignez la valeur envoyée par le widget pour déclencher la branche associée." />
+            </span>
+            <input
+              type="text"
+              value={conditionValue}
+              onChange={(event) => onConditionValueChange(node.id, event.target.value)}
+              placeholder="Ex. approuve"
+            />
+          </label>
+          {conditionWidgetActionSuggestion ? (
+            <div style={{ marginTop: "0.75rem", display: "grid", gap: "0.5rem" }}>
+              <p style={{ color: "#475569", margin: 0 }}>
+                Détectez l'action du widget précédent avec la variable «
+                {conditionWidgetActionSuggestion} ».
+              </p>
+              <button
+                type="button"
+                className="btn"
+                onClick={() =>
+                  onConditionUseWidgetAction(node.id, conditionWidgetActionSuggestion)
+                }
+              >
+                Utiliser la variable d'action du widget
+              </button>
+            </div>
+          ) : null}
+        </>
       )}
 
       {kind === "widget" && (

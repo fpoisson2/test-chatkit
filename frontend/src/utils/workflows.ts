@@ -111,6 +111,93 @@ export const setStartAutoRun = (
   return stripEmpty(next as Record<string, unknown>);
 };
 
+export type ConditionMode = "truthy" | "falsy" | "equals" | "not_equals";
+
+export type ConditionConfig = {
+  mode: ConditionMode;
+  path: string;
+  value: string;
+};
+
+const CONDITION_MODES: ConditionMode[] = ["truthy", "falsy", "equals", "not_equals"];
+
+const sanitizeConditionMode = (candidate: unknown): ConditionMode => {
+  if (typeof candidate === "string") {
+    const normalized = candidate.trim().toLowerCase();
+    if ((CONDITION_MODES as string[]).includes(normalized)) {
+      return normalized as ConditionMode;
+    }
+  }
+  return "truthy";
+};
+
+const ensureConditionParameters = (
+  parameters: AgentParameters | null | undefined,
+): { parameters: AgentParameters; current: ConditionConfig } => {
+  const base = parameters ? { ...(parameters as Record<string, unknown>) } : {};
+  const current = getConditionConfig(base as AgentParameters);
+  return { parameters: base as AgentParameters, current };
+};
+
+const mergeConditionConfig = (
+  parameters: AgentParameters | null | undefined,
+  updates: Partial<ConditionConfig>,
+): AgentParameters => {
+  const { parameters: base, current } = ensureConditionParameters(parameters);
+  const next: Record<string, unknown> = { ...base };
+
+  const mode = updates.mode ?? current.mode;
+  next.mode = sanitizeConditionMode(mode);
+
+  const path = updates.path ?? current.path;
+  const trimmedPath = typeof path === "string" ? path.trim() : "";
+  if (trimmedPath) {
+    next.path = trimmedPath;
+  } else {
+    delete next.path;
+  }
+
+  const value = updates.value ?? current.value;
+  const trimmedValue = typeof value === "string" ? value.trim() : "";
+  if (trimmedValue) {
+    next.value = trimmedValue;
+  } else {
+    delete next.value;
+  }
+
+  return stripEmpty(next);
+};
+
+export const getConditionConfig = (
+  parameters: AgentParameters | null | undefined,
+): ConditionConfig => {
+  if (!parameters || !isPlainRecord(parameters)) {
+    return { mode: "truthy", path: "", value: "" };
+  }
+  const rawMode = (parameters as Record<string, unknown>).mode;
+  const mode = sanitizeConditionMode(rawMode);
+  const rawPath = (parameters as Record<string, unknown>).path;
+  const path = typeof rawPath === "string" ? rawPath.trim() : "";
+  const rawValue = (parameters as Record<string, unknown>).value;
+  const value = typeof rawValue === "string" ? rawValue : "";
+  return { mode, path, value };
+};
+
+export const setConditionMode = (
+  parameters: AgentParameters,
+  mode: ConditionMode,
+): AgentParameters => mergeConditionConfig(parameters, { mode });
+
+export const setConditionPath = (
+  parameters: AgentParameters,
+  path: string,
+): AgentParameters => mergeConditionConfig(parameters, { path });
+
+export const setConditionValue = (
+  parameters: AgentParameters,
+  value: string,
+): AgentParameters => mergeConditionConfig(parameters, { value });
+
 export const setEndMessage = (
   parameters: AgentParameters,
   message: string,

@@ -935,4 +935,89 @@ describe("WorkflowBuilderPage", () => {
     expect(widgetPayload).toBeTruthy();
     expect(widgetPayload.parameters).toEqual({ widget: { slug: "resume" } });
   });
+
+  test("propose une variable pour suivre l'action d'un widget dans un bloc conditionnel", async () => {
+    const responseWithWidgetCondition = JSON.parse(JSON.stringify(defaultResponse));
+    responseWithWidgetCondition.graph = {
+      nodes: [
+        {
+          id: 1,
+          slug: "start",
+          kind: "start",
+          display_name: "Début",
+          agent_key: null,
+          is_enabled: true,
+          parameters: {},
+          metadata: { position: { x: 0, y: 0 } },
+        },
+        {
+          id: 2,
+          slug: "widget-etape",
+          kind: "widget",
+          display_name: "Widget",
+          agent_key: null,
+          is_enabled: true,
+          parameters: {},
+          metadata: { position: { x: 240, y: 0 } },
+        },
+        {
+          id: 3,
+          slug: "decision",
+          kind: "condition",
+          display_name: "Décision",
+          agent_key: null,
+          is_enabled: true,
+          parameters: {},
+          metadata: { position: { x: 480, y: 0 } },
+        },
+        {
+          id: 4,
+          slug: "end",
+          kind: "end",
+          display_name: "Fin",
+          agent_key: null,
+          is_enabled: true,
+          parameters: {},
+          metadata: { position: { x: 720, y: 0 } },
+        },
+      ],
+      edges: [
+        { id: 1, source: "start", target: "widget-etape", condition: null, metadata: {} },
+        { id: 2, source: "widget-etape", target: "decision", condition: null, metadata: {} },
+        { id: 3, source: "decision", target: "end", condition: "true", metadata: {} },
+        { id: 4, source: "decision", target: "end", condition: "false", metadata: {} },
+      ],
+    };
+
+    const fetchMock = setupWorkflowApi({ workflowDetail: responseWithWidgetCondition });
+
+    const { container } = renderWorkflowBuilder();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="decision"]')).not.toBeNull();
+    });
+
+    const conditionNode = container.querySelector('[data-id="decision"]');
+    expect(conditionNode).not.toBeNull();
+    fireEvent.click(conditionNode!);
+
+    const suggestionButton = await screen.findByRole("button", {
+      name: /utiliser la variable d'action du widget/i,
+    });
+    expect(suggestionButton).toBeInTheDocument();
+
+    fireEvent.click(suggestionButton);
+
+    const pathInput = await screen.findByLabelText(/chemin de la variable/i);
+    expect(pathInput).toHaveValue("conditions.decision");
+
+    await waitFor(
+      () => {
+        expect(
+          fetchMock.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === "PUT"),
+        ).toBe(true);
+      },
+      { timeout: 4000 },
+    );
+  });
 });

@@ -61,6 +61,9 @@ import {
   setAgentWeatherToolEnabled,
   setAgentWebSearchConfig,
   setStateAssignments,
+  setConditionMode,
+  setConditionPath,
+  setConditionValue,
   setStartAutoRun,
   stringifyAgentParameters,
   createVectorStoreNodeParameters,
@@ -72,6 +75,8 @@ import {
   resolveWidgetNodeParameters,
   setWidgetNodeSlug,
   setWidgetNodeVariables,
+  getConditionConfig,
+  type ConditionMode,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
@@ -1767,6 +1772,87 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleConditionModeChange = useCallback(
+    (nodeId: string, mode: ConditionMode) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "condition") {
+          return data;
+        }
+        const nextParameters = setConditionMode(data.parameters, mode);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleConditionPathChange = useCallback(
+    (nodeId: string, path: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "condition") {
+          return data;
+        }
+        const nextParameters = setConditionPath(data.parameters, path);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleConditionValueChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "condition") {
+          return data;
+        }
+        const nextParameters = setConditionValue(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleConditionUseWidgetAction = useCallback(
+    (nodeId: string, suggestedPath: string) => {
+      const trimmed = suggestedPath.trim();
+      if (!trimmed) {
+        return;
+      }
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "condition") {
+          return data;
+        }
+        const current = getConditionConfig(data.parameters);
+        let nextParameters = setConditionPath(data.parameters, trimmed);
+        nextParameters = setConditionMode(nextParameters, "equals");
+        if (!current.value.trim()) {
+          nextParameters = setConditionValue(nextParameters, "true");
+        }
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleEndMessageChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
@@ -3217,6 +3303,24 @@ const WorkflowBuilderPage = () => {
     };
   }, [headerOverlayOffset, isMobileLayout]);
 
+  const conditionWidgetActionSuggestion = useMemo(() => {
+    if (!selectedNode || selectedNode.data.kind !== "condition") {
+      return null;
+    }
+    const incoming = edges.filter((edge) => edge.target === selectedNode.id);
+    if (incoming.length === 0) {
+      return null;
+    }
+    const hasWidgetSource = incoming.some((edge) => {
+      const sourceNode = nodes.find((node) => node.id === edge.source);
+      return sourceNode?.data.kind === "widget";
+    });
+    if (!hasWidgetSource) {
+      return null;
+    }
+    return `conditions.${selectedNode.data.slug}`;
+  }, [edges, nodes, selectedNode]);
+
   const propertiesPanelElement = (
     <aside
       id={propertiesPanelId}
@@ -3286,6 +3390,11 @@ const WorkflowBuilderPage = () => {
             widgetsError={widgetsError}
             onStateAssignmentsChange={handleStateAssignmentsChange}
             onEndMessageChange={handleEndMessageChange}
+            onConditionModeChange={handleConditionModeChange}
+            onConditionPathChange={handleConditionPathChange}
+            onConditionValueChange={handleConditionValueChange}
+            onConditionUseWidgetAction={handleConditionUseWidgetAction}
+            conditionWidgetActionSuggestion={conditionWidgetActionSuggestion}
             onRemove={handleRemoveNode}
           />
         ) : selectedEdge ? (
