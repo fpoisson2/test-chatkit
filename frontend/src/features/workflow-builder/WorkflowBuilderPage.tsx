@@ -122,6 +122,66 @@ import styles from "./WorkflowBuilderPage.module.css";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 const AUTO_SAVE_SUCCESS_MESSAGE = "Modifications enregistrées automatiquement.";
+const DRAFT_DISPLAY_NAME = "Brouillon";
+
+const versionSummaryFromResponse = (
+  definition: WorkflowVersionResponse,
+): WorkflowVersionSummary => ({
+  id: definition.id,
+  workflow_id: definition.workflow_id,
+  name: definition.name,
+  version: definition.version,
+  is_active: definition.is_active,
+  created_at: definition.created_at,
+  updated_at: definition.updated_at,
+});
+
+const resolveDraftCandidate = (
+  versions: WorkflowVersionSummary[],
+): WorkflowVersionSummary | null => {
+  if (versions.length === 0) {
+    return null;
+  }
+  const activeVersionNumber =
+    versions.find((version) => version.is_active)?.version ?? 0;
+  const draftCandidates = versions.filter(
+    (version) => !version.is_active && version.version > activeVersionNumber,
+  );
+  if (draftCandidates.length === 0) {
+    return null;
+  }
+  return draftCandidates.reduce((latest, current) =>
+    current.version > latest.version ? current : latest,
+  );
+};
+
+const sortVersionsWithDraftFirst = (
+  versions: WorkflowVersionSummary[],
+  draftId: number | null,
+): WorkflowVersionSummary[] => {
+  const items = [...versions];
+  items.sort((a, b) => {
+    if (draftId != null) {
+      if (a.id === draftId && b.id !== draftId) {
+        return -1;
+      }
+      if (b.id === draftId && a.id !== draftId) {
+        return 1;
+      }
+    }
+    if (a.is_active && !b.is_active) {
+      return -1;
+    }
+    if (b.is_active && !a.is_active) {
+      return 1;
+    }
+    if (a.version !== b.version) {
+      return b.version - a.version;
+    }
+    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+  });
+  return items;
+};
 
 const useMediaQuery = (query: string) => {
   const [matches, setMatches] = useState<boolean>(() => {
@@ -183,6 +243,9 @@ const WorkflowBuilderPage = () => {
   const [isDeploying, setIsDeploying] = useState(false);
   const autoSaveTimeoutRef = useRef<number | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
+  const draftVersionIdRef = useRef<number | null>(null);
+  const draftVersionSummaryRef = useRef<WorkflowVersionSummary | null>(null);
+  const isCreatingDraftRef = useRef(false);
   const isHydratingRef = useRef(false);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
   const viewportRef = useRef<Viewport | null>(null);
@@ -220,6 +283,11 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     setBlockLibraryOpen(!isMobileLayout);
   }, [isMobileLayout]);
+
+  useEffect(() => {
+    draftVersionIdRef.current = null;
+    draftVersionSummaryRef.current = null;
+  }, [selectedWorkflowId]);
 
   useEffect(() => {
     if (!isMobileLayout || !isBlockLibraryOpen) {
@@ -643,8 +711,58 @@ const WorkflowBuilderPage = () => {
             throw new Error(`Échec du chargement des versions (${response.status})`);
           }
           const data: WorkflowVersionSummary[] = await response.json();
-          setVersions(data);
-          if (data.length === 0) {
+          let versionsForState: WorkflowVersionSummary[] = [...data];
+
+          let draftSummary = resolveDraftCandidate(versionsForState);
+
+          if (draftSummary) {
+            const normalizedDraft: WorkflowVersionSummary = {
+              ...draftSummary,
+              name: draftSummary.name ?? DRAFT_DISPLAY_NAME,
+            };
+            versionsForState = versionsForState.map((version) =>
+              version.id === normalizedDraft.id ? normalizedDraft : version,
+            );
+            draftVersionIdRef.current = normalizedDraft.id;
+            draftVersionSummaryRef.current = normalizedDraft;
+            draftSummary = normalizedDraft;
+          } else if (
+            draftVersionIdRef.current &&
+            selectedWorkflowId === workflowId &&
+            !versionsForState.some((version) => version.id === draftVersionIdRef.current)
+          ) {
+            const highestVersion = versionsForState.reduce(
+              (max, version) => Math.max(max, version.version),
+              0,
+            );
+            const syntheticDraft =
+              draftVersionSummaryRef.current &&
+              draftVersionSummaryRef.current.id === draftVersionIdRef.current
+                ? draftVersionSummaryRef.current
+                : {
+                    id: draftVersionIdRef.current,
+                    workflow_id: workflowId,
+                    name: DRAFT_DISPLAY_NAME,
+                    version: highestVersion + 1,
+                    is_active: false,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                  };
+            draftVersionSummaryRef.current = syntheticDraft;
+            versionsForState = [...versionsForState, syntheticDraft];
+            draftSummary = syntheticDraft;
+          } else {
+            draftVersionIdRef.current = null;
+            draftVersionSummaryRef.current = null;
+          }
+
+          const orderedVersions = sortVersionsWithDraftFirst(
+            versionsForState,
+            draftVersionIdRef.current,
+          );
+          setVersions(orderedVersions);
+
+          if (orderedVersions.length === 0) {
             setSelectedVersionId(null);
             setNodes([]);
             setEdges([]);
@@ -657,19 +775,21 @@ const WorkflowBuilderPage = () => {
             restoreViewport();
             return true;
           }
-          const availableIds = new Set(data.map((version) => version.id));
+          const availableIds = new Set(orderedVersions.map((version) => version.id));
           let nextVersionId: number | null = null;
           if (preferredVersionId && availableIds.has(preferredVersionId)) {
             nextVersionId = preferredVersionId;
           } else if (selectedVersionId && availableIds.has(selectedVersionId)) {
             nextVersionId = selectedVersionId;
           } else {
-            const draft = data.find((version) => !version.is_active);
+            const draft = draftVersionIdRef.current
+              ? orderedVersions.find((version) => version.id === draftVersionIdRef.current)
+              : null;
             if (draft) {
               nextVersionId = draft.id;
             } else {
-              const active = data.find((version) => version.is_active);
-              nextVersionId = active?.id ?? data[0]?.id ?? null;
+              const active = orderedVersions.find((version) => version.is_active);
+              nextVersionId = active?.id ?? orderedVersions[0]?.id ?? null;
             }
           }
           setSelectedVersionId(nextVersionId);
@@ -696,6 +816,7 @@ const WorkflowBuilderPage = () => {
       authHeader,
       loadVersionDetail,
       restoreViewport,
+      selectedWorkflowId,
       selectedVersionId,
       setEdges,
       setHasPendingChanges,
@@ -1816,7 +1937,7 @@ const WorkflowBuilderPage = () => {
 
   const handleOpenDeployModal = useCallback(() => {
     setSaveMessage(null);
-    setDeployToProduction(false);
+    setDeployToProduction(true);
     setDeployModalOpen(true);
   }, []);
 
@@ -1832,15 +1953,39 @@ const WorkflowBuilderPage = () => {
       return;
     }
 
+    const currentWorkflow =
+      workflows.find((workflow) => workflow.id === selectedWorkflowId) ?? null;
+    const draftId = draftVersionIdRef.current;
+    if (!draftId) {
+      setSaveState("error");
+      setSaveMessage("Aucun brouillon à promouvoir.");
+      return;
+    }
+
+    setIsDeploying(true);
+
+    if (hasPendingChanges) {
+      await handleSave();
+      if (hasPendingChanges) {
+        setIsDeploying(false);
+        setSaveState("error");
+        setSaveMessage("Enregistrement du brouillon requis avant le déploiement.");
+        return;
+      }
+    }
+
     const graphPayload = buildGraphPayload();
     const graphSnapshot = JSON.stringify(graphPayload);
-    const endpoint = `/api/workflows/${selectedWorkflowId}/versions`;
-    const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
-    let lastError: Error | null = null;
-    setIsDeploying(true);
     setSaveState("saving");
-    setSaveMessage("Création de la nouvelle version…");
-    for (const url of candidates) {
+    setSaveMessage("Promotion du brouillon…");
+
+    const promoteCandidates = makeApiEndpointCandidates(
+      backendUrl,
+      `/api/workflows/${selectedWorkflowId}/production`,
+    );
+    let lastError: Error | null = null;
+
+    for (const url of promoteCandidates) {
       try {
         const response = await fetch(url, {
           method: "POST",
@@ -1848,165 +1993,12 @@ const WorkflowBuilderPage = () => {
             "Content-Type": "application/json",
             ...authHeader,
           },
-          body: JSON.stringify({
-            graph: graphPayload,
-            mark_as_active: deployToProduction,
-          }),
+          body: JSON.stringify({ version_id: draftId }),
         });
         if (!response.ok) {
-          throw new Error(`Échec de la publication (${response.status})`);
+          throw new Error(`Échec de la promotion (${response.status})`);
         }
-        const data: WorkflowVersionResponse = await response.json();
-
-        if (selectedWorkflow?.is_chatkit_default) {
-          const updateCandidates = makeApiEndpointCandidates(
-            backendUrl,
-            "/api/workflows/current",
-          );
-          let updateError: Error | null = null;
-          for (const updateUrl of updateCandidates) {
-            try {
-              const updateResponse = await fetch(updateUrl, {
-                method: "PUT",
-                headers: {
-                  "Content-Type": "application/json",
-                  ...authHeader,
-                },
-                body: JSON.stringify({ graph: graphPayload }),
-              });
-              if (!updateResponse.ok) {
-                throw new Error(
-                  `Échec de la mise à jour du workflow ChatKit (${updateResponse.status})`,
-                );
-              }
-              updateError = null;
-              break;
-            } catch (error) {
-              if (error instanceof Error && error.name === "AbortError") {
-                continue;
-              }
-              updateError =
-                error instanceof Error
-                  ? error
-                  : new Error("Impossible de mettre à jour le workflow ChatKit.");
-            }
-          }
-          if (updateError) {
-            throw updateError;
-          }
-        }
-
-        await loadVersions(selectedWorkflowId, data.id);
-        await loadWorkflows({ selectWorkflowId: selectedWorkflowId, selectVersionId: data.id });
-        lastSavedSnapshotRef.current = graphSnapshot;
-        setHasPendingChanges(false);
-        setSaveState("saved");
-        setSaveMessage(
-          deployToProduction
-            ? "Version déployée en production."
-            : "Nouvelle version publiée."
-        );
-        setTimeout(() => setSaveState("idle"), 1500);
-        setDeployModalOpen(false);
-        setIsDeploying(false);
-        return;
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          continue;
-        }
-        lastError =
-          error instanceof Error ? error : new Error("Impossible de publier le workflow.");
-      }
-    }
-
-    setIsDeploying(false);
-    setSaveState("error");
-    setSaveMessage(lastError?.message ?? "Impossible de publier le workflow.");
-  }, [
-    authHeader,
-    buildGraphPayload,
-    deployToProduction,
-    loadVersions,
-    loadWorkflows,
-    selectedWorkflow,
-    selectedWorkflowId,
-  ]);
-
-  useEffect(() => {
-    if (!isDeployModalOpen) {
-      return;
-    }
-
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        handleCloseDeployModal();
-      }
-    };
-
-    window.addEventListener("keydown", handleKey);
-    return () => {
-      window.removeEventListener("keydown", handleKey);
-    };
-  }, [handleCloseDeployModal, isDeployModalOpen]);
-
-  const handleSave = useCallback(async () => {
-    setSaveMessage(null);
-    if (!selectedWorkflowId) {
-      setSaveState("error");
-      setSaveMessage("Sélectionnez un workflow avant d'enregistrer une version.");
-      return;
-    }
-
-    const nodesWithErrors = nodes.filter((node) => node.data.parametersError);
-    if (nodesWithErrors.length > 0) {
-      setSaveState("error");
-      setSaveMessage("Corrigez les paramètres JSON invalides avant d'enregistrer.");
-      return;
-    }
-
-    try {
-      const graphPayload = buildGraphPayload();
-      const graphSnapshot = JSON.stringify(graphPayload);
-      const currentWorkflow = workflows.find((workflow) => workflow.id === selectedWorkflowId);
-      const draftVersion =
-        selectedVersionSummary && !selectedVersionSummary.is_active
-          ? selectedVersionSummary
-          : null;
-
-      const endpoint = draftVersion
-        ? `/api/workflows/${selectedWorkflowId}/versions/${draftVersion.id}`
-        : `/api/workflows/${selectedWorkflowId}/versions`;
-      const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
-      setSaveState("saving");
-      for (const url of candidates) {
-        const response = await fetch(url, {
-          method: draftVersion ? "PUT" : "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...authHeader,
-          },
-          body: JSON.stringify(
-            draftVersion
-              ? { graph: graphPayload }
-              : { graph: graphPayload, mark_as_active: false },
-          ),
-        });
-        if (!response.ok) {
-          throw new Error(`Échec de l'enregistrement (${response.status})`);
-        }
-
-        let savedVersionId = draftVersion?.id ?? null;
-        let responseData: WorkflowVersionResponse | null = null;
-        try {
-          responseData = (await response.json()) as WorkflowVersionResponse;
-        } catch (error) {
-          responseData = null;
-        }
-        if (responseData?.id) {
-          savedVersionId = responseData.id;
-        } else if (!savedVersionId) {
-          throw new Error("Réponse invalide du serveur lors de l'enregistrement.");
-        }
+        const promoted: WorkflowVersionResponse = await response.json();
 
         if (currentWorkflow?.is_chatkit_default) {
           const updateCandidates = makeApiEndpointCandidates(
@@ -2046,10 +2038,241 @@ const WorkflowBuilderPage = () => {
           }
         }
 
-        await loadVersions(selectedWorkflowId, savedVersionId);
-        setSaveState("saved");
+        draftVersionIdRef.current = null;
+        draftVersionSummaryRef.current = null;
+        setSelectedVersionId(promoted.id);
+        await loadVersions(selectedWorkflowId, promoted.id);
+        await loadWorkflows({ selectWorkflowId: selectedWorkflowId, selectVersionId: promoted.id });
         lastSavedSnapshotRef.current = graphSnapshot;
         setHasPendingChanges(false);
+        setSaveState("saved");
+        setSaveMessage(
+          deployToProduction ? "Version déployée en production." : "Version publiée."
+        );
+        setTimeout(() => setSaveState("idle"), 1500);
+        setDeployModalOpen(false);
+        setIsDeploying(false);
+        return;
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          continue;
+        }
+        lastError =
+          error instanceof Error
+            ? error
+            : new Error("Impossible de promouvoir le brouillon.");
+      }
+    }
+
+    setIsDeploying(false);
+    setSaveState("error");
+    setSaveMessage(lastError?.message ?? "Impossible de publier le workflow.");
+  }, [
+    authHeader,
+    backendUrl,
+    buildGraphPayload,
+    deployToProduction,
+    handleSave,
+    hasPendingChanges,
+    loadVersions,
+    loadWorkflows,
+    selectedWorkflowId,
+    workflows,
+  ]);
+
+  useEffect(() => {
+    if (!isDeployModalOpen) {
+      return;
+    }
+
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        handleCloseDeployModal();
+      }
+    };
+
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+    };
+  }, [handleCloseDeployModal, isDeployModalOpen]);
+
+  const handleSave = useCallback(async () => {
+    setSaveMessage(null);
+    if (!selectedWorkflowId) {
+      setSaveState("error");
+      setSaveMessage("Sélectionnez un workflow avant d'enregistrer une version.");
+      return;
+    }
+
+    const nodesWithErrors = nodes.filter((node) => node.data.parametersError);
+    if (nodesWithErrors.length > 0) {
+      setSaveState("error");
+      setSaveMessage("Corrigez les paramètres JSON invalides avant d'enregistrer.");
+      return;
+    }
+
+    const graphPayload = buildGraphPayload();
+    const graphSnapshot = JSON.stringify(graphPayload);
+    const currentWorkflow =
+      workflows.find((workflow) => workflow.id === selectedWorkflowId) ?? null;
+
+    if (!draftVersionIdRef.current) {
+      const draftFromState = resolveDraftCandidate(versions);
+      if (draftFromState) {
+        draftVersionIdRef.current = draftFromState.id;
+        draftVersionSummaryRef.current = draftFromState;
+      }
+    }
+
+    const updateChatKit = async () => {
+      if (!currentWorkflow?.is_chatkit_default) {
+        return;
+      }
+      const updateCandidates = makeApiEndpointCandidates(
+        backendUrl,
+        "/api/workflows/current",
+      );
+      let updateError: Error | null = null;
+      for (const updateUrl of updateCandidates) {
+        try {
+          const updateResponse = await fetch(updateUrl, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeader,
+            },
+            body: JSON.stringify({ graph: graphPayload }),
+          });
+          if (!updateResponse.ok) {
+            throw new Error(
+              `Échec de la mise à jour du workflow ChatKit (${updateResponse.status})`,
+            );
+          }
+          updateError = null;
+          break;
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            continue;
+          }
+          updateError =
+            error instanceof Error
+              ? error
+              : new Error("Impossible de mettre à jour le workflow ChatKit.");
+        }
+      }
+      if (updateError) {
+        throw updateError;
+      }
+    };
+
+    const draftId = draftVersionIdRef.current;
+
+    if (!draftId) {
+      if (!selectedVersionSummary || !selectedVersionSummary.is_active) {
+        setSaveState("error");
+        setSaveMessage("Créez un brouillon à partir de la version publiée avant d'enregistrer.");
+        return;
+      }
+
+      if (isCreatingDraftRef.current) {
+        return;
+      }
+
+      const endpoint = `/api/workflows/${selectedWorkflowId}/versions`;
+      const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
+      let lastError: Error | null = null;
+      isCreatingDraftRef.current = true;
+      setSaveState("saving");
+      try {
+        for (const url of candidates) {
+          if (draftVersionIdRef.current) {
+            console.warn("DraftExistsError", {
+              workflowId: selectedWorkflowId,
+              draftId: draftVersionIdRef.current,
+            });
+            return;
+          }
+          try {
+            const response = await fetch(url, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...authHeader,
+              },
+              body: JSON.stringify({ graph: graphPayload, mark_as_active: false }),
+            });
+            if (!response.ok) {
+              throw new Error(`Échec de l'enregistrement (${response.status})`);
+            }
+            const created: WorkflowVersionResponse = await response.json();
+            const summary: WorkflowVersionSummary = {
+              ...versionSummaryFromResponse(created),
+              name: created.name ?? DRAFT_DISPLAY_NAME,
+            };
+            draftVersionIdRef.current = summary.id;
+            draftVersionSummaryRef.current = summary;
+            setSelectedVersionId(summary.id);
+            await updateChatKit();
+            await loadVersions(selectedWorkflowId, summary.id);
+            lastSavedSnapshotRef.current = graphSnapshot;
+            setHasPendingChanges(false);
+            setSaveState("saved");
+            setSaveMessage(AUTO_SAVE_SUCCESS_MESSAGE);
+            setTimeout(() => {
+              setSaveState("idle");
+              setSaveMessage((previous) =>
+                previous === AUTO_SAVE_SUCCESS_MESSAGE ? null : previous,
+              );
+            }, 1500);
+            return;
+          } catch (error) {
+            if (error instanceof Error && error.name === "AbortError") {
+              continue;
+            }
+            lastError =
+              error instanceof Error
+                ? error
+                : new Error("Impossible d'enregistrer le workflow.");
+          }
+        }
+      } finally {
+        isCreatingDraftRef.current = false;
+      }
+      setSaveState("error");
+      setHasPendingChanges(true);
+      setSaveMessage(lastError?.message ?? "Impossible d'enregistrer le workflow.");
+      return;
+    }
+
+    const endpoint = `/api/workflows/${selectedWorkflowId}/versions/${draftId}`;
+    const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
+    let lastError: Error | null = null;
+    setSaveState("saving");
+    for (const url of candidates) {
+      try {
+        const response = await fetch(url, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeader,
+          },
+          body: JSON.stringify({ graph: graphPayload }),
+        });
+        if (!response.ok) {
+          throw new Error(`Échec de l'enregistrement (${response.status})`);
+        }
+        const updated: WorkflowVersionResponse = await response.json();
+        const summary: WorkflowVersionSummary = {
+          ...versionSummaryFromResponse(updated),
+          name: updated.name ?? DRAFT_DISPLAY_NAME,
+        };
+        draftVersionSummaryRef.current = summary;
+        await updateChatKit();
+        await loadVersions(selectedWorkflowId, summary.id);
+        lastSavedSnapshotRef.current = graphSnapshot;
+        setHasPendingChanges(false);
+        setSaveState("saved");
         setSaveMessage(AUTO_SAVE_SUCCESS_MESSAGE);
         setTimeout(() => {
           setSaveState("idle");
@@ -2058,21 +2281,29 @@ const WorkflowBuilderPage = () => {
           );
         }, 1500);
         return;
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          continue;
+        }
+        lastError =
+          error instanceof Error
+            ? error
+            : new Error("Impossible d'enregistrer le workflow.");
       }
-      throw new Error("Impossible de contacter le serveur pour enregistrer la version.");
-    } catch (error) {
-      setSaveState("error");
-      setHasPendingChanges(true);
-      setSaveMessage(
-        error instanceof Error ? error.message : "Impossible d'enregistrer le workflow."
-      );
     }
+
+    setSaveState("error");
+    setHasPendingChanges(true);
+    setSaveMessage(lastError?.message ?? "Impossible d'enregistrer le workflow.");
   }, [
     authHeader,
+    backendUrl,
     buildGraphPayload,
     loadVersions,
+    nodes,
     selectedVersionSummary,
     selectedWorkflowId,
+    versions,
     workflows,
   ]);
 
