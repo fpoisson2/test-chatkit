@@ -39,12 +39,16 @@ export const ManagementPageLayout = ({
   const showSidebarButton = !isDesktopLayout || !isSidebarOpen;
   const hasHeaderMain = Boolean(title || subtitle);
   const hasHeaderAside = Boolean(badge || actions);
-  const shouldRenderHeader = showSidebarButton || hasHeaderMain || hasHeaderAside;
+  const shouldRenderHeader =
+    !hideHeader && (showSidebarButton || hasHeaderMain || hasHeaderAside);
+  const headerClassName = `${styles.header} ${
+    hasHeaderMain ? styles.headerWithMain : styles.headerWithoutMain
+  }`;
 
   return (
     <div className={styles.page}>
       {shouldRenderHeader ? (
-        <header className={styles.header}>
+        <header className={headerClassName}>
           {showSidebarButton ? (
             <button
               type="button"
@@ -58,6 +62,20 @@ export const ManagementPageLayout = ({
             </button>
           ) : null}
 
+          {hasHeaderMain ? (
+            <div className={styles.headerMain}>
+              {title ? <h1 className={styles.title}>{title}</h1> : null}
+              {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
+            </div>
+          ) : null}
+
+          {hasHeaderAside ? (
+            <div className={styles.headerAside}>
+              {badge ? <div className={styles.badge}>{badge}</div> : null}
+              {actions ? <div className={styles.headerActions}>{actions}</div> : null}
+            </div>
+          ) : null}
+        </header>
       ) : null}
 
       <div className={styles.inner}>
