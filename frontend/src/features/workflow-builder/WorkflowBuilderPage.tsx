@@ -2277,6 +2277,51 @@ const WorkflowBuilderPage = () => {
 
   const graphSnapshot = useMemo(() => JSON.stringify(buildGraphPayload()), [buildGraphPayload]);
 
+  const conditionGraphError = useMemo(() => {
+    const enabledNodes = new Map(
+      nodes.filter((node) => node.data.isEnabled).map((node) => [node.id, node]),
+    );
+
+    for (const node of nodes) {
+      if (!node.data.isEnabled || node.data.kind !== "condition") {
+        continue;
+      }
+
+      const label = node.data.displayName.trim() || node.data.slug;
+      const outgoing = edges.filter(
+        (edge) => edge.source === node.id && enabledNodes.has(edge.target),
+      );
+
+      if (outgoing.length < 2) {
+        return `Le bloc conditionnel « ${label} » doit comporter au moins deux sorties actives.`;
+      }
+
+      const seenBranches = new Set<string>();
+      let defaultCount = 0;
+
+      for (const edge of outgoing) {
+        const rawCondition = edge.data?.condition ?? "";
+        const trimmed = rawCondition.trim();
+        const normalized = trimmed ? trimmed.toLowerCase() : "default";
+
+        if (normalized === "default") {
+          defaultCount += 1;
+          if (defaultCount > 1) {
+            return `Le bloc conditionnel « ${label} » ne peut contenir qu'une seule branche par défaut.`;
+          }
+        }
+
+        if (seenBranches.has(normalized)) {
+          return `Le bloc conditionnel « ${label} » contient des branches conditionnelles en double.`;
+        }
+
+        seenBranches.add(normalized);
+      }
+    }
+
+    return null;
+  }, [edges, nodes]);
+
   useEffect(() => {
     if (!selectedWorkflowId) {
       lastSavedSnapshotRef.current = null;
@@ -2310,6 +2355,12 @@ const WorkflowBuilderPage = () => {
     if (nodesWithErrors.length > 0) {
       setSaveState("error");
       setSaveMessage("Corrigez les paramètres JSON invalides avant d'enregistrer.");
+      return;
+    }
+
+    if (conditionGraphError) {
+      setSaveState("error");
+      setSaveMessage(conditionGraphError);
       return;
     }
 
@@ -2459,6 +2510,7 @@ const WorkflowBuilderPage = () => {
     authHeader,
     backendUrl,
     buildGraphPayload,
+    conditionGraphError,
     loadVersions,
     nodes,
     selectedWorkflowId,
@@ -2684,6 +2736,10 @@ const WorkflowBuilderPage = () => {
       return true;
     }
 
+    if (conditionGraphError) {
+      return true;
+    }
+
     const availableVectorStoreSlugs = new Set(vectorStores.map((store) => store.slug));
     const availableWidgetSlugs = new Set(widgets.map((widget) => widget.slug));
 
@@ -2738,6 +2794,7 @@ const WorkflowBuilderPage = () => {
       return false;
     });
   }, [
+    conditionGraphError,
     nodes,
     selectedWorkflowId,
     vectorStores,
@@ -2745,6 +2802,13 @@ const WorkflowBuilderPage = () => {
     widgets,
     widgetsError,
   ]);
+
+  useEffect(() => {
+    if (conditionGraphError) {
+      setSaveState((previous) => (previous === "saving" ? previous : "error"));
+      setSaveMessage(conditionGraphError);
+    }
+  }, [conditionGraphError]);
 
   useEffect(() => {
     if (
