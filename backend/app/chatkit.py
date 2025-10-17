@@ -3892,12 +3892,25 @@ async def run_workflow(
                     stripped = formatted_payload.strip()
                     if stripped.startswith("{") or stripped.startswith("["):
                         formatted_payload = f"```json\n{formatted_payload}\n```"
+                notice_title = f"Bloc watch « {title or current_node.slug} »"
                 notice = NoticeEvent(
                     level="info",
                     message=formatted_payload,
-                    title=f"Bloc watch « {title or current_node.slug} »",
+                    title=notice_title,
                 )
                 await on_stream_event(notice)
+
+                assistant_message = AssistantMessageItem(
+                    id=agent_context.generate_id("message"),
+                    thread_id=agent_context.thread.id,
+                    created_at=datetime.now(),
+                    content=[
+                        AssistantMessageContent(
+                            text=f"{notice_title}\n\n{formatted_payload}"
+                        )
+                    ],
+                )
+                await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
 
             transition = _next_edge(current_slug)
             if transition is None:
