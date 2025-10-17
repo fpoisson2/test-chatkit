@@ -110,6 +110,10 @@ import {
   supportsReasoningModel,
   defaultEdgeOptions,
 } from "./utils";
+import ConditionNode, {
+  createConditionHandleId,
+  parseConditionHandleId,
+} from "./components/nodes/ConditionNode";
 import {
   controlLabelStyle,
   getActionMenuItemStyle,
@@ -137,6 +141,21 @@ const DESKTOP_FIT_VIEW_PADDING = 0.2;
 const MOBILE_FIT_VIEW_PADDING = 0.08;
 const DESKTOP_MAX_INITIAL_VIEWPORT_ZOOM = 1;
 const MOBILE_MAX_INITIAL_VIEWPORT_ZOOM = 1.1;
+
+const normalizeConditionName = (value: string | null | undefined): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized ? normalized : null;
+};
+
+const displayConditionLabel = (condition: string | null): string => {
+  if (condition == null) {
+    return "Par défaut";
+  }
+  return condition;
+};
 
 const viewportKeyFor = (workflowId: number | null, versionId: number | null) =>
   workflowId != null ? `${workflowId}:${versionId ?? "latest"}` : null;
@@ -288,6 +307,7 @@ const WorkflowBuilderPage = () => {
   const propertiesPanelCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isPropertiesPanelOpen, setPropertiesPanelOpen] = useState(false);
   const previousSelectedElementRef = useRef<string | null>(null);
+  const nodeTypes = useMemo(() => ({ condition: ConditionNode }), []);
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
   const blockLibraryId = "workflow-builder-block-library";
@@ -847,19 +867,35 @@ const WorkflowBuilderPage = () => {
               },
               draggable: true,
               style: buildNodeStyle(node.kind),
+              ...(node.kind === "condition" ? { type: "condition" as const } : {}),
             } satisfies FlowNode;
           });
-          const flowEdges = data.graph.edges.map<FlowEdge>((edge) => ({
-            id: String(edge.id ?? `${edge.source}-${edge.target}-${Math.random()}`),
-            source: edge.source,
-            target: edge.target,
-            label: edge.metadata?.label ? String(edge.metadata.label) : edge.condition ?? "",
-            data: {
-              condition: edge.condition,
-              metadata: edge.metadata ?? {},
-            },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "#1e293b" },
-          }));
+          const conditionNodeIds = new Set(
+            flowNodes.filter((node) => node.data.kind === "condition").map((node) => node.id),
+          );
+          const flowEdges = data.graph.edges.map<FlowEdge>((edge) => {
+            const normalizedCondition = normalizeConditionName(edge.condition);
+            const metadataLabel = edge.metadata?.label;
+            const trimmedCondition = typeof edge.condition === "string" ? edge.condition.trim() : "";
+            const label =
+              typeof metadataLabel === "string" && metadataLabel.trim().length > 0
+                ? String(metadataLabel)
+                : trimmedCondition || displayConditionLabel(normalizedCondition);
+            return {
+              id: String(edge.id ?? `${edge.source}-${edge.target}-${Math.random()}`),
+              source: edge.source,
+              target: edge.target,
+              label,
+              data: {
+                condition: normalizedCondition,
+                metadata: edge.metadata ?? {},
+              },
+              markerEnd: { type: MarkerType.ArrowClosed, color: "#1e293b" },
+              ...(conditionNodeIds.has(edge.source)
+                ? { sourceHandle: createConditionHandleId(normalizedCondition) }
+                : {}),
+            } satisfies FlowEdge;
+          });
           const nextSnapshot = JSON.stringify(buildGraphPayloadFrom(flowNodes, flowEdges));
           isHydratingRef.current = true;
           lastSavedSnapshotRef.current = nextSnapshot;
@@ -1175,14 +1211,25 @@ const WorkflowBuilderPage = () => {
 
   const onConnect = useCallback(
     (connection: Connection) => {
+      const parsedHandle = parseConditionHandleId(connection.sourceHandle);
+      const normalizedCondition =
+        parsedHandle === undefined ? null : normalizeConditionName(parsedHandle);
+      const label =
+        parsedHandle === undefined ? "" : displayConditionLabel(normalizedCondition);
       setEdges((current) =>
         addEdge<FlowEdgeData>(
           {
             ...connection,
             id: `edge-${Date.now()}`,
-            label: "",
-            data: { condition: "", metadata: {} },
+            label,
+            data: { condition: normalizedCondition, metadata: {} },
             markerEnd: { type: MarkerType.ArrowClosed, color: "#1e293b" },
+            ...(parsedHandle !== undefined
+              ? {
+                  sourceHandle:
+                    connection.sourceHandle ?? createConditionHandleId(normalizedCondition),
+                }
+              : {}),
           },
           current
         )
@@ -1848,24 +1895,34 @@ const WorkflowBuilderPage = () => {
 
   const handleConditionChange = useCallback(
     (edgeId: string, value: string) => {
-      const normalizedLabel = value.trim();
-      const normalizedCondition = normalizedLabel.toLowerCase();
+      const trimmedLabel = value.trim();
+      const normalizedCondition = normalizeConditionName(value);
+      const label = trimmedLabel || displayConditionLabel(normalizedCondition);
       setEdges((current) =>
-        current.map((edge) =>
-          edge.id === edgeId
-            ? {
-                ...edge,
-                label: normalizedLabel,
-                data: {
-                  ...edge.data,
-                  condition: normalizedLabel ? normalizedCondition : null,
-                },
-              }
-            : edge
-        )
+        current.map((edge) => {
+          if (edge.id !== edgeId) {
+            return edge;
+          }
+
+          const isConditionSource = nodes.some(
+            (node) => node.id === edge.source && node.data.kind === "condition",
+          );
+
+          return {
+            ...edge,
+            label,
+            sourceHandle: isConditionSource
+              ? createConditionHandleId(normalizedCondition)
+              : edge.sourceHandle,
+            data: {
+              ...edge.data,
+              condition: normalizedCondition,
+            },
+          } satisfies FlowEdge;
+        })
       );
     },
-    [setEdges]
+    [nodes, setEdges]
   );
 
   const handleEdgeLabelChange = useCallback(
@@ -1961,6 +2018,7 @@ const WorkflowBuilderPage = () => {
       },
       draggable: true,
       style: buildNodeStyle("condition"),
+      type: "condition",
     };
     setNodes((current) => [...current, newNode]);
     setSelectedNodeId(slug);
@@ -3511,6 +3569,7 @@ const WorkflowBuilderPage = () => {
                   edges={edges}
                   onNodesChange={onNodesChange}
                   onEdgesChange={onEdgesChange}
+                  nodeTypes={nodeTypes}
                   onNodeClick={handleNodeClick}
                   onEdgeClick={handleEdgeClick}
                   onPaneClick={handleClearSelection}

@@ -1196,6 +1196,11 @@ class WorkflowService:
             if node.kind == "end" and outgoing:
                 raise WorkflowValidationError("Le nœud de fin ne doit pas avoir de sortie.")
             if node.kind == "condition":
+                if not outgoing:
+                    # Autorise l'enregistrement intermédiaire d'un nœud conditionnel
+                    # tant qu'aucune connexion n'est configurée.
+                    continue
+
                 if len(outgoing) < 2:
                     raise WorkflowValidationError(
                         f"Le nœud conditionnel {slug} doit posséder au moins deux sorties."

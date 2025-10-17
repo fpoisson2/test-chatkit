@@ -527,6 +527,33 @@ def test_update_condition_requires_branches() -> None:
     assert "au moins deux sorties" in detail
 
 
+def test_update_condition_allows_unconnected_node() -> None:
+    admin = _make_user(email="condition-draft@example.com", is_admin=True)
+    token = create_access_token(admin)
+    payload = {
+        "graph": {
+            "nodes": [
+                {"slug": "start", "kind": "start"},
+                {
+                    "slug": "decision",
+                    "kind": "condition",
+                    "parameters": {"path": "state.is_ready", "mode": "truthy"},
+                },
+                {"slug": "end", "kind": "end"},
+            ],
+            "edges": [
+                {"source": "start", "target": "decision"},
+            ],
+        }
+    }
+    response = client.put(
+        "/api/workflows/current",
+        headers=_auth_headers(token),
+        json=payload,
+    )
+    assert response.status_code == 200
+
+
 def test_update_condition_accepts_custom_branches() -> None:
     admin = _make_user(email="condition-branches@example.com", is_admin=True)
     token = create_access_token(admin)
