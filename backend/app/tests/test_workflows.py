@@ -657,6 +657,78 @@ def test_create_workflow_without_graph_creates_empty_version() -> None:
     assert created["active_version_id"] is None
 
 
+def test_admin_can_rename_workflow() -> None:
+    admin = _make_user(email="rename@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    creation = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-initial",
+            "display_name": "Workflow initial",
+            "description": None,
+            "graph": None,
+        },
+    )
+    assert creation.status_code == 201
+    workflow_id = creation.json()["workflow_id"]
+
+    response = client.patch(
+        f"/api/workflows/{workflow_id}",
+        headers=_auth_headers(token),
+        json={"display_name": "Workflow renommé", "slug": "workflow-renomme"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["display_name"] == "Workflow renommé"
+    assert payload["slug"] == "workflow-renomme"
+
+    library = client.get("/api/workflows", headers=_auth_headers(token))
+    assert library.status_code == 200
+    updated = next(item for item in library.json() if item["id"] == workflow_id)
+    assert updated["display_name"] == "Workflow renommé"
+    assert updated["slug"] == "workflow-renomme"
+
+
+def test_rename_rejects_duplicate_slug() -> None:
+    admin = _make_user(email="rename-conflict@example.com", is_admin=True)
+    token = create_access_token(admin)
+
+    first = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-source",
+            "display_name": "Workflow source",
+            "description": None,
+            "graph": None,
+        },
+    )
+    assert first.status_code == 201
+
+    second = client.post(
+        "/api/workflows",
+        headers=_auth_headers(token),
+        json={
+            "slug": "workflow-cible",
+            "display_name": "Workflow cible",
+            "description": None,
+            "graph": None,
+        },
+    )
+    assert second.status_code == 201
+    second_id = second.json()["workflow_id"]
+
+    conflict = client.patch(
+        f"/api/workflows/{second_id}",
+        headers=_auth_headers(token),
+        json={"display_name": "Workflow cible", "slug": "workflow-source"},
+    )
+    assert conflict.status_code == 400
+    assert "slug" in conflict.json()["detail"].lower()
+
+
 def test_can_save_minimal_graph_version() -> None:
     admin = _make_user(email="minimal@example.com", is_admin=True)
     token = create_access_token(admin)

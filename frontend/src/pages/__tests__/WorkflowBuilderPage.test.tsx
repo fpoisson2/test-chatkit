@@ -190,7 +190,9 @@ describe("WorkflowBuilderPage", () => {
     } = {},
   ) => {
     const workflowDetail = overrides.workflowDetail ?? defaultResponse;
-    const workflowList = overrides.workflowList ?? [defaultWorkflowSummary];
+    const workflowList = (overrides.workflowList ?? [defaultWorkflowSummary]).map(
+      (workflow) => ({ ...workflow }),
+    );
     const versions = overrides.versions ?? [draftVersionSummary, productionVersionSummary];
     const putResponse = overrides.putResponse ?? { success: true };
     const versionDetails = new Map<number, typeof defaultResponse | typeof productionResponse>([
@@ -264,6 +266,37 @@ describe("WorkflowBuilderPage", () => {
           json: async () => workflowDetail,
         } as Response;
       }
+      const workflowUpdateMatch = url.match(/\/api\/workflows\/(\d+)$/);
+      if (workflowUpdateMatch && init?.method === "PATCH") {
+        const workflowId = Number(workflowUpdateMatch[1]);
+        const body = init.body ? JSON.parse(init.body as string) : {};
+        const index = workflowList.findIndex((item) => item.id === workflowId);
+        if (index === -1) {
+          return {
+            ok: false,
+            status: 404,
+            json: async () => ({ message: "Not found" }),
+          } as Response;
+        }
+        const current = workflowList[index];
+        const updated = {
+          ...current,
+          ...(typeof body.display_name === "string"
+            ? { display_name: body.display_name }
+            : {}),
+          ...(typeof body.slug === "string" ? { slug: body.slug } : {}),
+          ...(Object.prototype.hasOwnProperty.call(body, "description")
+            ? { description: body.description ?? null }
+            : {}),
+          updated_at: "2024-01-04T00:00:00Z",
+        } satisfies typeof current;
+        workflowList[index] = updated;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => updated,
+        } as Response;
+      }
       return {
         ok: true,
         status: 200,
@@ -303,6 +336,58 @@ describe("WorkflowBuilderPage", () => {
     );
     expect(productionOption).toBeDefined();
     expect(productionOption).toHaveTextContent(`v${productionVersionSummary.version}`);
+  });
+
+  test("permet de renommer un workflow depuis le panneau latéral", async () => {
+    const fetchMock = setupWorkflowApi();
+    const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("Workflow renommé");
+
+    renderWorkflowBuilder();
+
+    const menuButton = await screen.findByRole("button", {
+      name: /actions pour workflow de test/i,
+    });
+    fireEvent.click(menuButton);
+
+    const renameButton = await screen.findByRole("button", { name: /renommer/i });
+    fireEvent.click(renameButton);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            typeof input === "string" &&
+            input.endsWith(`/api/workflows/${defaultWorkflowSummary.id}`) &&
+            (init as RequestInit | undefined)?.method === "PATCH",
+        ),
+      ).toBe(true);
+    });
+
+    const renameCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        typeof input === "string" &&
+        input.endsWith(`/api/workflows/${defaultWorkflowSummary.id}`) &&
+        (init as RequestInit | undefined)?.method === "PATCH",
+    );
+    const body = JSON.parse(((renameCall?.[1] as RequestInit)?.body ?? "{}") as string);
+    expect(body).toMatchObject({
+      display_name: "Workflow renommé",
+      slug: "workflow-renomme",
+    });
+
+    expect(
+      await screen.findByText('Workflow renommé en "Workflow renommé".'),
+    ).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", {
+          name: /actions pour workflow renommé/i,
+        }),
+      ).toBeInTheDocument();
+    });
+
+    promptSpy.mockRestore();
   });
 
   test("permet de modifier un nœud et d'enregistrer le graphe", async () => {
