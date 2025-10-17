@@ -15,6 +15,7 @@ type ManagementPageLayoutProps = {
   toolbar?: ReactNode;
   children: ReactNode;
   maxWidth?: ContentWidth;
+  hideHeader?: boolean;
 };
 
 const contentWidthClassName: Record<ContentWidth, string> = {
@@ -32,6 +33,7 @@ export const ManagementPageLayout = ({
   toolbar,
   children,
   maxWidth = "lg",
+  hideHeader = false,
 }: ManagementPageLayoutProps) => {
   const { openSidebar, isDesktopLayout, isSidebarOpen } = useAppLayout();
   const showSidebarButton = !isDesktopLayout || !isSidebarOpen;
@@ -56,20 +58,6 @@ export const ManagementPageLayout = ({
             </button>
           ) : null}
 
-          {hasHeaderMain ? (
-            <div className={styles.headerMain}>
-              {title ? <h1 className={styles.title}>{title}</h1> : null}
-              {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
-            </div>
-          ) : null}
-
-          {hasHeaderAside ? (
-            <div className={styles.headerAside}>
-              {badge ? <span className={styles.badge}>{badge}</span> : null}
-              {actions ? <div className={styles.headerActions}>{actions}</div> : null}
-            </div>
-          ) : null}
-        </header>
       ) : null}
 
       <div className={styles.inner}>
