@@ -8,10 +8,7 @@ export type SidebarIconName =
   | "settings"
   | "login"
   | "logout"
-  | "voice"
-  | "chat"
-  | "vectorStore"
-  | "widgets";
+  | "voice";
 
 const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
   logo: (
@@ -70,95 +67,6 @@ const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
       <circle cx="12" cy="18" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
       <path
         d="M8.3 8.2 11 12m3.2 1.6L16 7.4M12 16V14"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </>
-  ),
-  chat: (
-    <>
-      <path
-        d="M5.25 6.75h13.5a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5H9.75L6 18.75v-3H5.25a1.5 1.5 0 0 1-1.5-1.5v-6a1.5 1.5 0 0 1 1.5-1.5Z"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M8.25 10.5h7.5M8.25 13.5h4.5"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </>
-  ),
-  vectorStore: (
-    <>
-      <ellipse cx="12" cy="6.5" rx="6.5" ry="2.75" fill="none" stroke="currentColor" strokeWidth="1.8" />
-      <path
-        d="M5.5 6.75V15c0 1.5 2.91 2.75 6.5 2.75s6.5-1.25 6.5-2.75V6.75"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M5.5 11c0 1.53 2.91 2.75 6.5 2.75S18.5 12.53 18.5 11"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </>
-  ),
-  widgets: (
-    <>
-      <rect
-        x="4.75"
-        y="4.75"
-        width="6.5"
-        height="6.5"
-        rx="1.4"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <rect
-        x="12.75"
-        y="4.75"
-        width="6.5"
-        height="6.5"
-        rx="1.4"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <rect
-        x="4.75"
-        y="12.75"
-        width="6.5"
-        height="6.5"
-        rx="1.4"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M16 16.5h3.25V19.5H16Zm0-3.75h3.25"
         fill="none"
         stroke="currentColor"
         strokeLinecap="round"
