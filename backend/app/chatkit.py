@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import uuid
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import (
@@ -14,7 +15,6 @@ from typing import (
     Awaitable,
     Callable,
     Coroutine,
-    Mapping,
     Sequence,
     Literal,
 )
@@ -1745,9 +1745,85 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
         "content",
         "heading",
         "subtitle",
+        "icon",
+        "iconStart",
+        "iconEnd",
     }
 
     manual_paths: set[tuple[str | int, ...]] = set()
+
+    def _format_component_identifier(
+        node: Mapping[str, Any],
+        value_key: str,
+        *,
+        existing: Collection[str],
+    ) -> str | None:
+        component_type = node.get("type")
+        if isinstance(component_type, str):
+            component_type = component_type.strip()
+        else:
+            component_type = None
+
+        def _ensure_unique(base: str) -> str:
+            if base not in existing:
+                return base
+            index = 2
+            candidate = f"{base}_{index}"
+            while candidate in existing:
+                index += 1
+                candidate = f"{base}_{index}"
+            return candidate
+
+        def _from_button() -> str | None:
+            if component_type is None or component_type.lower() != "button":
+                return None
+            key_attr = node.get("key")
+            if isinstance(key_attr, str) and key_attr.strip():
+                base = key_attr.strip()
+            else:
+                action = node.get("onClickAction")
+                action_id: str | None = None
+                if isinstance(action, Mapping):
+                    payload = action.get("payload")
+                    if isinstance(payload, Mapping):
+                        candidate = payload.get("id")
+                        if isinstance(candidate, str) and candidate.strip():
+                            action_id = candidate.strip()
+                base = action_id
+            if not base:
+                return None
+            normalized_base = base
+            if value_key in {"label", "text", "title", "value"}:
+                return _ensure_unique(normalized_base)
+            if value_key in {"icon", "iconStart", "iconEnd"}:
+                suffix = "icon" if value_key != "iconEnd" else "icon_end"
+                return _ensure_unique(f"{normalized_base}.{suffix}")
+            return _ensure_unique(f"{normalized_base}.{value_key}")
+
+        button_identifier = _from_button()
+        if button_identifier:
+            return button_identifier
+
+        if component_type:
+            normalized_type = component_type.lower()
+            alias_map = {
+                "title": "title",
+                "subtitle": "subtitle",
+                "heading": "heading",
+                "text": "text",
+                "caption": "caption",
+                "markdown": "markdown",
+                "badge": "badge",
+            }
+            alias = alias_map.get(normalized_type)
+            if alias and value_key in {"value", "text", "title", "label", "content", "body"}:
+                return _ensure_unique(alias)
+
+        name_attr = node.get("name")
+        if isinstance(name_attr, str) and name_attr.strip():
+            return _ensure_unique(name_attr.strip())
+
+        return None
 
     def _register(
         identifier: str | None,
@@ -1755,6 +1831,7 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
         node: dict[str, Any],
         *,
         is_manual: bool,
+        value_key: str | None = None,
     ) -> None:
         if not identifier:
             return
@@ -1764,7 +1841,33 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
             return
         component_type = node.get("type") if isinstance(node.get("type"), str) else None
         sample: str | list[str] | None = None
-        for candidate_key in ("value", "text", "src", "url", "href"):
+        candidate_keys: tuple[str, ...]
+        if value_key:
+            candidate_keys = (
+                value_key,
+                "value",
+                "text",
+                "label",
+                "src",
+                "url",
+                "href",
+                "icon",
+                "iconStart",
+                "iconEnd",
+            )
+        else:
+            candidate_keys = (
+                "value",
+                "text",
+                "label",
+                "src",
+                "url",
+                "href",
+                "icon",
+                "iconStart",
+                "iconEnd",
+            )
+        for candidate_key in candidate_keys:
             if candidate_key not in node:
                 continue
             raw_value = node.get(candidate_key)
@@ -1807,14 +1910,18 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
                 if key not in node:
                     continue
                 raw_value = node[key]
-                identifier_parts = [
-                    str(part) for part in (*path, key) if str(part)
-                ]
-                if not identifier_parts:
-                    continue
-                identifier = ".".join(identifier_parts)
+                identifier = _format_component_identifier(
+                    node, key, existing=bindings.keys()
+                )
+                if not identifier:
+                    identifier_parts = [
+                        str(part) for part in (*path, key) if str(part)
+                    ]
+                    if not identifier_parts:
+                        continue
+                    identifier = ".".join(identifier_parts)
                 if isinstance(raw_value, (str, int, float, bool)):
-                    _register(identifier, path, node, is_manual=False)
+                    _register(identifier, path, node, is_manual=False, value_key=key)
                 elif isinstance(raw_value, list):
                     simple_values = [
                         str(item)
@@ -1822,7 +1929,13 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
                         if isinstance(item, (str, int, float, bool))
                     ]
                     if simple_values:
-                        _register(identifier, path, node, is_manual=False)
+                        _register(
+                            identifier,
+                            path,
+                            node,
+                            is_manual=False,
+                            value_key=key,
+                        )
 
             for key, child in node.items():
                 if isinstance(child, (dict, list)):
