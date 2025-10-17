@@ -2052,6 +2052,32 @@ const WorkflowBuilderPage = () => {
     setSelectedEdgeId(null);
   }, [setNodes]);
 
+  const handleAddWatchNode = useCallback(() => {
+    const slug = `watch-${Date.now()}`;
+    const parameters: AgentParameters = {};
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 380, y: 240 },
+      data: {
+        slug,
+        kind: "watch",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("watch"),
+    } satisfies FlowNode;
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes]);
+
   const handleAddVectorStoreNode = useCallback(() => {
     const slug = `json-vector-store-${Date.now()}`;
     const fallbackSlug = vectorStores[0]?.slug?.trim() ?? "";
@@ -2892,6 +2918,13 @@ const WorkflowBuilderPage = () => {
         onClick: handleAddStateNode,
       },
       {
+        key: "watch",
+        label: "Bloc watch",
+        shortLabel: "W",
+        color: NODE_COLORS.watch,
+        onClick: handleAddWatchNode,
+      },
+      {
         key: "json-vector-store",
         label: "Stockage JSON",
         shortLabel: "VS",
@@ -2917,6 +2950,7 @@ const WorkflowBuilderPage = () => {
       handleAddAgentNode,
       handleAddConditionNode,
       handleAddStateNode,
+      handleAddWatchNode,
       handleAddVectorStoreNode,
       handleAddWidgetNode,
       handleAddEndNode,

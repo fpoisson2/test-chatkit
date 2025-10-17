@@ -1,3 +1,10 @@
+import sys
+from pathlib import Path
+
+sys.path.append(str(Path(__file__).resolve().parents[3]))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
 import asyncio
 import json
 from datetime import datetime
@@ -15,11 +22,12 @@ from backend.app.chatkit import (
     run_workflow,
 )
 from backend.app.config import Settings
-from backend.app.workflows.service import WorkflowService
+from backend.app.workflows.service import WorkflowService, WorkflowValidationError
 from chatkit.types import (
     ActiveStatus,
     AssistantMessageContent,
     AssistantMessageItem,
+    NoticeEvent,
     Page,
     ThreadItemDoneEvent,
     ThreadMetadata,
@@ -63,6 +71,146 @@ def test_normalize_graph_accepts_widget_node() -> None:
 
     assert any(node.kind == "widget" for node in nodes)
     assert any(edge.target_slug == "widget-view" for edge in edges)
+
+
+def test_normalize_graph_accepts_watch_node() -> None:
+    service = WorkflowService(session_factory=lambda: None)
+    payload = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {
+                "slug": "analysis",
+                "kind": "agent",
+                "agent_key": "triage",
+                "is_enabled": True,
+            },
+            {"slug": "watch-payload", "kind": "watch", "is_enabled": True},
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [
+            {"source": "start", "target": "analysis"},
+            {"source": "analysis", "target": "watch-payload"},
+            {"source": "watch-payload", "target": "end"},
+        ],
+    }
+
+    nodes, edges = service._normalize_graph(payload)
+
+    assert any(node.kind == "watch" for node in nodes)
+    assert any(edge.target_slug == "watch-payload" for edge in edges)
+
+
+def test_watch_node_requires_single_incoming_edge() -> None:
+    service = WorkflowService(session_factory=lambda: None)
+    payload = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {"slug": "collecte-a", "kind": "agent", "agent_key": "triage", "is_enabled": True},
+            {"slug": "collecte-b", "kind": "agent", "agent_key": "triage", "is_enabled": True},
+            {"slug": "watch-multiple", "kind": "watch", "is_enabled": True},
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [
+            {"source": "start", "target": "collecte-a"},
+            {"source": "start", "target": "collecte-b"},
+            {"source": "collecte-a", "target": "watch-multiple"},
+            {"source": "collecte-b", "target": "watch-multiple"},
+            {"source": "watch-multiple", "target": "end"},
+        ],
+    }
+
+    with pytest.raises(WorkflowValidationError, match="bloc watch watch-multiple"):
+        service._normalize_graph(payload)
+
+
+def test_watch_node_emits_notice_event(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[Any] = []
+
+    def _run_agent(*args, **kwargs) -> _DummyRunnerResult:  # type: ignore[no-untyped-def]
+        return _DummyRunnerResult({"status": "ok", "details": {"count": 3}})
+
+    async def _noop_stream(*args, **kwargs):  # type: ignore[no-untyped-def]
+        if False:
+            yield None
+        return
+
+    monkeypatch.setattr(chatkit_module.Runner, "run_streamed", _run_agent)
+    monkeypatch.setattr(chatkit_module, "stream_agent_response", _noop_stream)
+
+    async def _collect(event):  # type: ignore[no-untyped-def]
+        events.append(event)
+
+    agent_context = SimpleNamespace(store=None, thread=None, request_context=None)
+
+    start_step = SimpleNamespace(
+        slug="start",
+        kind="start",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=0,
+        id=1,
+        display_name="Début",
+    )
+    agent_step = SimpleNamespace(
+        slug="analyse",
+        kind="agent",
+        is_enabled=True,
+        parameters={},
+        agent_key="triage",
+        position=1,
+        id=2,
+        display_name="Analyse",
+    )
+    watch_step = SimpleNamespace(
+        slug="watch-result",
+        kind="watch",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=2,
+        id=3,
+        display_name="Watch",
+    )
+    end_step = SimpleNamespace(
+        slug="end",
+        kind="end",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=3,
+        id=4,
+        display_name="Fin",
+    )
+
+    transitions = [
+        SimpleNamespace(id=1, source_step=start_step, target_step=agent_step, condition=None),
+        SimpleNamespace(id=2, source_step=agent_step, target_step=watch_step, condition=None),
+        SimpleNamespace(id=3, source_step=watch_step, target_step=end_step, condition=None),
+    ]
+
+    definition = SimpleNamespace(
+        steps=[start_step, agent_step, watch_step, end_step],
+        transitions=transitions,
+        workflow_id=1,
+        workflow=SimpleNamespace(slug="demo", display_name="Démo"),
+    )
+
+    async def _run() -> None:
+        await run_workflow(
+            WorkflowInput(input_as_text="Bonjour"),
+            agent_context=agent_context,
+            workflow_service=_DummyWorkflowService(definition),
+            on_stream_event=_collect,
+        )
+
+    asyncio.run(_run())
+
+    notice_events = [event for event in events if isinstance(event, NoticeEvent)]
+    assert notice_events, "Le bloc watch devrait produire une notice dans le flux."
+    message = notice_events[0].message or ""
+    assert "status" in message
+    assert "details" in message
 
 
 def _execute_widget_workflow(

@@ -170,6 +170,7 @@ class WorkflowNodeBase(BaseModel):
         "agent",
         "condition",
         "state",
+        "watch",
         "json_vector_store",
         "widget",
         "end",

@@ -392,6 +392,13 @@ class _ProgressUpdateEvent:
         self.text = text
 
 
+class _NoticeEvent:
+    def __init__(self, level: str, message: str, title: str | None = None) -> None:
+        self.level = level
+        self.message = message
+        self.title = title
+
+
 class _Attachment(SimpleNamespace):
     def model_dump(self, **_kwargs):  # type: ignore[no-untyped-def]
         return self.__dict__.copy()
@@ -435,6 +442,7 @@ chatkit_types_stub.EndOfTurnItem = _EndOfTurnItem
 chatkit_types_stub.ErrorCode = _ErrorCode
 chatkit_types_stub.ErrorEvent = _ErrorEvent
 chatkit_types_stub.ProgressUpdateEvent = _ProgressUpdateEvent
+chatkit_types_stub.NoticeEvent = _NoticeEvent
 chatkit_types_stub.Attachment = _Attachment
 chatkit_types_stub.Page = _Page
 chatkit_types_stub.ThreadItem = _ThreadItem
