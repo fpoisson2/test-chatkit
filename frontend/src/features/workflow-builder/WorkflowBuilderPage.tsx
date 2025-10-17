@@ -111,6 +111,7 @@ import {
   slugifyWorkflowName,
   supportsReasoningModel,
   defaultEdgeOptions,
+  resolveSelectionAfterLoad,
 } from "./utils";
 import {
   controlLabelStyle,
@@ -290,6 +291,8 @@ const WorkflowBuilderPage = () => {
   const propertiesPanelCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const [isPropertiesPanelOpen, setPropertiesPanelOpen] = useState(false);
   const previousSelectedElementRef = useRef<string | null>(null);
+  const selectedNodeIdRef = useRef<string | null>(null);
+  const selectedEdgeIdRef = useRef<string | null>(null);
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
   const blockLibraryId = "workflow-builder-block-library";
@@ -794,6 +797,8 @@ const WorkflowBuilderPage = () => {
       options: { preserveViewport?: boolean; background?: boolean } = {},
     ): Promise<boolean> => {
       const { preserveViewport = false, background = false } = options;
+      const previousSelectedNodeId = selectedNodeIdRef.current;
+      const previousSelectedEdgeId = selectedEdgeIdRef.current;
       if (!background) {
         setLoading(true);
       }
@@ -890,8 +895,16 @@ const WorkflowBuilderPage = () => {
             pendingViewportRestoreRef.current = true;
             restoreViewport();
           }
-          setSelectedNodeId(null);
-          setSelectedEdgeId(null);
+          const { nodeId: nextSelectedNodeId, edgeId: nextSelectedEdgeId } =
+            resolveSelectionAfterLoad({
+              background,
+              previousNodeId: previousSelectedNodeId,
+              previousEdgeId: previousSelectedEdgeId,
+              nodes: flowNodes,
+              edges: flowEdges,
+            });
+          setSelectedNodeId(nextSelectedNodeId);
+          setSelectedEdgeId(nextSelectedEdgeId);
           setSaveState("idle");
           setSaveMessage(null);
           if (!background) {
@@ -1241,6 +1254,14 @@ const WorkflowBuilderPage = () => {
   }, [selectedEdge, selectedNode]);
 
   const selectedElementKey = selectedNodeId ?? selectedEdgeId ?? null;
+
+  useEffect(() => {
+    selectedNodeIdRef.current = selectedNodeId;
+  }, [selectedNodeId]);
+
+  useEffect(() => {
+    selectedEdgeIdRef.current = selectedEdgeId;
+  }, [selectedEdgeId]);
 
   useEffect(() => {
     if (selectedElementKey) {
