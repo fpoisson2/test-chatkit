@@ -130,6 +130,8 @@ const MOBILE_MIN_VIEWPORT_ZOOM = 0.05;
 const MIN_ABSOLUTE_VIEWPORT_ZOOM = 0.01;
 const DESKTOP_FIT_VIEW_PADDING = 0.2;
 const MOBILE_FIT_VIEW_PADDING = 0.08;
+const DESKTOP_MAX_INITIAL_VIEWPORT_ZOOM = 1;
+const MOBILE_MAX_INITIAL_VIEWPORT_ZOOM = 1.1;
 
 const viewportKeyFor = (workflowId: number | null, versionId: number | null) =>
   workflowId != null ? `${workflowId}:${versionId ?? "latest"}` : null;
@@ -529,6 +531,8 @@ const WorkflowBuilderPage = () => {
       const effectiveMinZoom = refreshViewportConstraints(flow);
       const padding = isMobileLayout ? MOBILE_FIT_VIEW_PADDING : DESKTOP_FIT_VIEW_PADDING;
       const savedViewport = viewportRef.current;
+      let shouldAdjustAfterFitView = !savedViewport;
+
       if (savedViewport) {
         flow.setViewport(
           { ...savedViewport, zoom: Math.max(savedViewport.zoom, effectiveMinZoom) },
@@ -585,6 +589,48 @@ const WorkflowBuilderPage = () => {
               minZoom: effectiveMinZoom,
               duration: 0,
             });
+            appliedViewport = flow.getViewport();
+            shouldAdjustAfterFitView = true;
+          }
+        }
+      }
+
+      if (
+        shouldAdjustAfterFitView &&
+        container &&
+        nodes.length > 0 &&
+        container.clientWidth > 0 &&
+        container.clientHeight > 0 &&
+        appliedViewport.zoom > 0
+      ) {
+        const bounds = getNodesBounds(nodes);
+        if (
+          Number.isFinite(bounds.width) &&
+          Number.isFinite(bounds.height) &&
+          Number.isFinite(bounds.x) &&
+          Number.isFinite(bounds.y)
+        ) {
+          const maxInitialZoom = isMobileLayout
+            ? MOBILE_MAX_INITIAL_VIEWPORT_ZOOM
+            : DESKTOP_MAX_INITIAL_VIEWPORT_ZOOM;
+          const limitedZoom = Math.min(
+            Math.max(appliedViewport.zoom, Math.max(effectiveMinZoom, MIN_ABSOLUTE_VIEWPORT_ZOOM)),
+            maxInitialZoom,
+          );
+          const nodesCenterX = bounds.x + bounds.width / 2;
+          const nodesCenterY = bounds.y + bounds.height / 2;
+          const centeredViewport: Viewport = {
+            zoom: limitedZoom,
+            x: -(nodesCenterX * limitedZoom) + container.clientWidth / 2,
+            y: -(nodesCenterY * limitedZoom) + container.clientHeight / 2,
+          };
+
+          const deltaX = Math.abs(centeredViewport.x - appliedViewport.x);
+          const deltaY = Math.abs(centeredViewport.y - appliedViewport.y);
+          const deltaZoom = Math.abs(centeredViewport.zoom - appliedViewport.zoom);
+
+          if (deltaX > 0.5 || deltaY > 0.5 || deltaZoom > 0.0001) {
+            flow.setViewport(centeredViewport, { duration: 0 });
             appliedViewport = flow.getViewport();
           }
         }
