@@ -327,6 +327,19 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 slug, context=f"action {action.type}"
             )
 
+        if definition is None and sender is not None:
+            try:
+                sender_widget_payload = WidgetLibraryService._dump_widget(sender.widget)
+            except Exception as exc:  # pragma: no cover - protection supplémentaire
+                logger.debug(
+                    "Impossible d'utiliser le widget émetteur %s pour l'action %s : %s",
+                    sender.id,
+                    action.type,
+                    exc,
+                )
+            else:
+                definition = _clone_widget_definition(sender_widget_payload)
+
         if definition is None:
             logger.warning(
                 "Impossible de traiter l'action %s : aucun widget spécifié.",
