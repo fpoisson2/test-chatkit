@@ -10,8 +10,8 @@ export const getHeaderContainerStyle = (isMobile: boolean): CSSProperties => ({
   justifyContent: "flex-start",
   gap: isMobile ? "0.75rem" : "1.5rem",
   padding: isMobile ? "0.75rem 1rem" : "0.75rem 1.5rem",
-  background: isMobile ? "transparent" : "#f8fafc",
-  borderBottom: isMobile ? "none" : "1px solid rgba(15, 23, 42, 0.08)",
+  background: "transparent",
+  borderBottom: "none",
   zIndex: 10,
   width: "100%",
 });

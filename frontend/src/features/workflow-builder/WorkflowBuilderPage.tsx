@@ -2895,18 +2895,77 @@ const WorkflowBuilderPage = () => {
 
   const headerStyle = useMemo(() => {
     const baseStyle = getHeaderContainerStyle(isMobileLayout);
-    if (isMobileLayout) {
-      return { ...baseStyle, position: "absolute", top: 0, left: 0, right: 0 };
-    }
-    return baseStyle;
+    return { ...baseStyle, position: "absolute", top: 0, left: 0, right: 0 };
   }, [isMobileLayout]);
 
   const workspaceWrapperStyle = useMemo<CSSProperties>(() => {
     if (isMobileLayout) {
       return { position: "absolute", inset: 0, overflow: "hidden" };
     }
-    return { position: "relative", flex: 1, overflow: "hidden" };
+    return { position: "relative", flex: 1, overflow: "hidden", minHeight: 0 };
   }, [isMobileLayout]);
+
+  const shouldShowWorkflowDescription = !isMobileLayout && Boolean(selectedWorkflow?.description);
+  const shouldShowPublicationReminder =
+    !isMobileLayout && Boolean(selectedWorkflow) && !selectedWorkflow?.active_version_id;
+
+  const headerOverlayOffset = useMemo(() => (isMobileLayout ? "4rem" : "4.25rem"), [isMobileLayout]);
+
+  const workspaceContentStyle = useMemo<CSSProperties>(() => {
+    if (isMobileLayout) {
+      return {
+        position: "absolute",
+        inset: 0,
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0",
+      };
+    }
+
+    const hasWorkflowMeta = shouldShowWorkflowDescription || shouldShowPublicationReminder;
+
+    return {
+      position: "absolute",
+      inset: 0,
+      overflow: "hidden",
+      display: "flex",
+      flexDirection: "column",
+      gap: hasWorkflowMeta ? "1rem" : "0",
+      paddingTop: `calc(${headerOverlayOffset}${hasWorkflowMeta ? " + 1.5rem" : ""})`,
+      paddingBottom: 0,
+      paddingLeft: "1.5rem",
+      paddingRight: "1.5rem",
+    };
+  }, [
+    headerOverlayOffset,
+    isMobileLayout,
+    shouldShowPublicationReminder,
+    shouldShowWorkflowDescription,
+  ]);
+
+  const editorContainerStyle = useMemo<CSSProperties>(() => {
+    const baseStyle: CSSProperties = {
+      flex: 1,
+      minHeight: 0,
+      borderRadius: isMobileLayout ? 0 : "1.25rem",
+      border: isMobileLayout ? "none" : "1px solid rgba(15, 23, 42, 0.08)",
+      background: "#fff",
+      overflow: "hidden",
+      boxShadow: isMobileLayout ? "none" : "0 20px 40px rgba(15, 23, 42, 0.06)",
+    };
+
+    if (!isMobileLayout && !(shouldShowWorkflowDescription || shouldShowPublicationReminder)) {
+      baseStyle.marginTop = `calc(-1 * ${headerOverlayOffset})`;
+    }
+
+    return baseStyle;
+  }, [
+    headerOverlayOffset,
+    isMobileLayout,
+    shouldShowPublicationReminder,
+    shouldShowWorkflowDescription,
+  ]);
 
   return (
     <ReactFlowProvider>
@@ -2935,27 +2994,11 @@ const WorkflowBuilderPage = () => {
         </header>
 
         <div style={workspaceWrapperStyle}>
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              padding: isMobileLayout ? "0" : "1.5rem",
-              display: "flex",
-              flexDirection: "column",
-              gap: isMobileLayout ? "0" : "1rem",
-            }}
-          >
-            {!isMobileLayout ? renderWorkflowDescription() : null}
-            {!isMobileLayout ? renderWorkflowPublicationReminder() : null}
+          <div style={workspaceContentStyle}>
+            {shouldShowWorkflowDescription ? renderWorkflowDescription() : null}
+            {shouldShowPublicationReminder ? renderWorkflowPublicationReminder() : null}
             <div
-              style={{
-                flex: 1,
-                borderRadius: isMobileLayout ? 0 : "1.25rem",
-                border: isMobileLayout ? "none" : "1px solid rgba(15, 23, 42, 0.08)",
-                background: "#fff",
-                overflow: "hidden",
-                boxShadow: isMobileLayout ? "none" : "0 20px 40px rgba(15, 23, 42, 0.06)",
-              }}
+              style={editorContainerStyle}
               aria-label="Éditeur visuel du workflow"
             >
               {loading ? (
