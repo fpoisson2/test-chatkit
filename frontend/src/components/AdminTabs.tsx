@@ -1,11 +1,12 @@
 import { NavLink } from "react-router-dom";
 
 type AdminTabsProps = {
-  activeTab: "users" | "models";
+  activeTab: "users" | "voice" | "models";
 };
 
 const tabs = [
   { key: "users" as const, to: "/admin", label: "Gestion des utilisateurs" },
+  { key: "voice" as const, to: "/admin/voice", label: "Paramètres du mode voix" },
   { key: "models" as const, to: "/admin/models", label: "Modèles disponibles" },
 ];
 

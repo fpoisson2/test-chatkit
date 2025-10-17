@@ -15,6 +15,7 @@ type ManagementPageLayoutProps = {
   toolbar?: ReactNode;
   children: ReactNode;
   maxWidth?: ContentWidth;
+  hideHeader?: boolean;
 };
 
 const contentWidthClassName: Record<ContentWidth, string> = {
@@ -32,46 +33,50 @@ export const ManagementPageLayout = ({
   toolbar,
   children,
   maxWidth = "lg",
+  hideHeader = false,
 }: ManagementPageLayoutProps) => {
   const { openSidebar, isDesktopLayout, isSidebarOpen } = useAppLayout();
   const showSidebarButton = !isDesktopLayout || !isSidebarOpen;
-  const showHeaderMain = Boolean(title) || Boolean(subtitle);
+  const hasHeaderMain = Boolean(title || subtitle);
+  const hasHeaderAside = Boolean(badge || actions);
+  const shouldRenderHeader =
+    !hideHeader && (showSidebarButton || hasHeaderMain || hasHeaderAside);
+  const headerClassName = `${styles.header} ${
+    hasHeaderMain ? styles.headerWithMain : styles.headerWithoutMain
+  }`;
 
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        {showSidebarButton ? (
-          <button
-            type="button"
-            onClick={openSidebar}
-            className={styles.menuButton}
-            aria-label="Ouvrir la navigation générale"
-          >
-            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path
-                d="M3 5h14M3 10h14M3 15h14"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-        ) : null}
+      {shouldRenderHeader ? (
+        <header className={headerClassName}>
+          {showSidebarButton ? (
+            <button
+              type="button"
+              onClick={openSidebar}
+              className={styles.menuButton}
+              aria-label="Ouvrir la navigation générale"
+            >
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path d="M3 5h14M3 10h14M3 15h14" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </button>
+          ) : null}
 
-        {showHeaderMain ? (
-          <div className={styles.headerMain}>
-            {title ? <h1 className={styles.title}>{title}</h1> : null}
-            {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
-          </div>
-        ) : null}
+          {hasHeaderMain ? (
+            <div className={styles.headerMain}>
+              {title ? <h1 className={styles.title}>{title}</h1> : null}
+              {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
+            </div>
+          ) : null}
 
-        {badge || actions ? (
-          <div className={styles.headerAside}>
-            {badge ? <span className={styles.badge}>{badge}</span> : null}
-            {actions ? <div className={styles.headerActions}>{actions}</div> : null}
-          </div>
-        ) : null}
-      </header>
+          {hasHeaderAside ? (
+            <div className={styles.headerAside}>
+              {badge ? <div className={styles.badge}>{badge}</div> : null}
+              {actions ? <div className={styles.headerActions}>{actions}</div> : null}
+            </div>
+          ) : null}
+        </header>
+      ) : null}
 
       <div className={styles.inner}>
         <div className={`${styles.content} ${contentWidthClassName[maxWidth]}`}>

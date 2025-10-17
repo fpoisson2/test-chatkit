@@ -14,12 +14,19 @@
   flex-wrap: wrap;
 }
 
+.headerWithoutMain {
+  flex-wrap: nowrap;
+}
+
+.headerWithMain {
+  flex-wrap: wrap;
+}
+
 .menuButton {
   border: none;
-  background: transparent;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  background: #ffffff;
+  display: grid;
+  place-items: center;
   cursor: pointer;
   flex-shrink: 0;
   padding: 0.35rem;
@@ -122,23 +129,27 @@
 }
 
 @media (max-width: 768px) {
-  .header {
-    align-items: center;
+  .headerWithMain {
+    align-items: flex-start;
+  }
+
+  .headerWithMain .headerAside {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .headerWithMain .headerActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .headerWithoutMain {
     flex-wrap: nowrap;
   }
 
-  .headerAside {
-    width: auto;
-    margin-left: auto;
-    justify-content: flex-end;
-    flex-wrap: nowrap;
-    gap: 0.5rem;
-  }
-
-  .headerActions {
+  .headerWithoutMain .headerAside,
+  .headerWithoutMain .headerActions {
     width: auto;
     justify-content: flex-end;
-    flex-wrap: nowrap;
-    gap: 0.5rem;
   }
 }
