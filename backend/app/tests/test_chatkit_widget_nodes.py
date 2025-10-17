@@ -415,7 +415,12 @@ def test_widget_menu_select_action_records_condition(monkeypatch: pytest.MonkeyP
         id="thread_widget_action",
         metadata={
             "workflow_state": {
-                "widgets": {"widget_item": {"step": "decision"}},
+                "widgets": {
+                    "widget_item": {
+                        "step": "widget-node",
+                        "conditions": ["decision"],
+                    }
+                },
                 "widget_queue": ["decision"],
             }
         },
@@ -467,6 +472,12 @@ def test_widget_menu_select_action_uses_widget_queue_when_missing_sender() -> No
         id="thread_widget_queue_action",
         metadata={
             "workflow_state": {
+                "widgets": {
+                    "widget_item": {
+                        "step": "widget-node",
+                        "conditions": ["decision"],
+                    }
+                },
                 "widget_queue": ["decision"],
             }
         },

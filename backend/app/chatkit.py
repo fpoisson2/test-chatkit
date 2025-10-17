@@ -298,8 +298,22 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 )
                 return
 
-            thread_state.record_condition_branch(step_slug, branch_value)
-            thread_state.consume_widget_step(step_slug)
+            condition_slug = thread_state.resolve_condition_slug_for_step(step_slug)
+            if not condition_slug:
+                logger.warning(
+                    "Action widget impossible à associer à une condition (type=%s, payload=%s)",
+                    action.type,
+                    action.payload,
+                )
+                yield ErrorEvent(
+                    code=ErrorCode.STREAM_ERROR,
+                    message="Action widget invalide : condition introuvable.",
+                    allow_retry=True,
+                )
+                return
+
+            thread_state.record_condition_branch(condition_slug, branch_value)
+            thread_state.consume_widget_step(condition_slug)
             await thread_state.persist()
 
             async for event in self.respond(thread, None, context):
@@ -1859,7 +1873,14 @@ class _ThreadWorkflowStateManager:
                 state.pop(_WORKFLOW_WIDGET_QUEUE_KEY, None)
         return consumed
 
-    def register_widget(self, item_id: str, *, step_slug: str, widget_slug: str | None) -> None:
+    def register_widget(
+        self,
+        item_id: str,
+        *,
+        step_slug: str,
+        widget_slug: str | None,
+        condition_slugs: Sequence[str] | None = None,
+    ) -> None:
         if not item_id or not step_slug:
             return
         state = self._get_state(create=True)
@@ -1867,13 +1888,25 @@ class _ThreadWorkflowStateManager:
         if not isinstance(widgets, dict):
             widgets = {}
             state[_WORKFLOW_WIDGETS_KEY] = widgets
-        payload: dict[str, str] = {"step": step_slug}
+        normalized_conditions = [
+            normalized
+            for slug in condition_slugs or ()
+            for normalized in (self._normalize_step_slug(slug),)
+            if normalized
+        ]
+        payload: dict[str, Any] = {"step": step_slug}
         if widget_slug:
             payload["widget"] = widget_slug
+        if normalized_conditions:
+            payload["conditions"] = normalized_conditions
         if widgets.get(item_id) != payload:
             widgets[item_id] = payload
             self.modified = True
-        self.append_widget_step(step_slug)
+        if normalized_conditions:
+            for condition_slug in normalized_conditions:
+                self.append_widget_step(condition_slug)
+        else:
+            self.append_widget_step(step_slug)
 
     def resolve_widget_step(self, item_id: str) -> str | None:
         if not item_id:
@@ -1883,14 +1916,53 @@ class _ThreadWorkflowStateManager:
         if not isinstance(widgets, dict):
             return None
         entry = widgets.get(item_id)
+        candidate: str | None = None
         if isinstance(entry, dict):
-            candidate = entry.get("step")
-        else:
+            conditions = entry.get("conditions")
+            if isinstance(conditions, list):
+                for slug in reversed(conditions):
+                    normalized = self._normalize_step_slug(slug)
+                    if normalized:
+                        candidate = normalized
+                        break
+            if candidate is None:
+                raw_step = entry.get("step")
+                candidate = raw_step if isinstance(raw_step, str) else None
+        elif isinstance(entry, str):
             candidate = entry
         if isinstance(candidate, str):
             cleaned = candidate.strip()
             return cleaned or None
         return None
+
+    def resolve_condition_slug_for_step(self, step_slug: str | None) -> str | None:
+        normalized = self._normalize_step_slug(step_slug)
+        if not normalized:
+            return None
+        state = self._get_state(create=False)
+        widgets = state.get(_WORKFLOW_WIDGETS_KEY)
+        if isinstance(widgets, dict):
+            for entry in widgets.values():
+                if isinstance(entry, dict):
+                    conditions = entry.get("conditions")
+                    if isinstance(conditions, list):
+                        for slug in conditions:
+                            normalized_condition = self._normalize_step_slug(slug)
+                            if normalized_condition == normalized:
+                                return normalized
+                    stored_step = self._normalize_step_slug(entry.get("step"))
+                    if stored_step == normalized:
+                        if isinstance(conditions, list):
+                            for slug in reversed(conditions):
+                                normalized_condition = self._normalize_step_slug(slug)
+                                if normalized_condition:
+                                    return normalized_condition
+                        break
+                elif isinstance(entry, str):
+                    stored_step = self._normalize_step_slug(entry)
+                    if stored_step == normalized:
+                        return normalized
+        return normalized
 
     def record_condition_branch(self, step_slug: str, branch: str) -> None:
         if not step_slug:
@@ -2557,6 +2629,22 @@ async def run_workflow(
     total_runtime_steps = len(agent_steps_ordered)
 
     widget_configs_by_step: dict[str, _ResponseWidgetConfig] = {}
+    widget_condition_targets: dict[str, list[str]] = {}
+
+    for transition in transitions:
+        source_slug = getattr(transition.source_step, "slug", None)
+        target_slug = getattr(transition.target_step, "slug", None)
+        source_node = nodes_by_slug.get(source_slug) if source_slug else None
+        target_node = nodes_by_slug.get(target_slug) if target_slug else None
+        if (
+            source_node is not None
+            and source_node.kind == "widget"
+            and target_node is not None
+            and target_node.kind == "condition"
+            and isinstance(source_slug, str)
+            and isinstance(target_slug, str)
+        ):
+            widget_condition_targets.setdefault(source_slug, []).append(target_slug)
 
     def _register_widget_config(step: WorkflowStep) -> _ResponseWidgetConfig | None:
         widget_config = _parse_response_widget_config(step.parameters)
@@ -3271,6 +3359,7 @@ async def run_workflow(
         step_slug: str,
         step_title: str,
         step_context: dict[str, Any] | None,
+        condition_slugs: Sequence[str] | None = None,
     ) -> None:
         definition = _load_widget_definition(
             config.slug, context=f"étape {step_slug}"
@@ -3369,6 +3458,7 @@ async def run_workflow(
                         event.item.id,
                         step_slug=step_slug,
                         widget_slug=config.slug,
+                        condition_slugs=condition_slugs,
                     )
                     await thread_state.persist()
                 await on_stream_event(event)
@@ -3615,6 +3705,7 @@ async def run_workflow(
                     step_slug=current_node.slug,
                     step_title=title,
                     step_context=last_step_context,
+                    condition_slugs=widget_condition_targets.get(current_node.slug),
                 )
                 await record_step(
                     current_node.slug,
@@ -3775,6 +3866,7 @@ async def run_workflow(
                 step_slug=current_node.slug,
                 step_title=title,
                 step_context=last_step_context,
+                condition_slugs=widget_condition_targets.get(current_node.slug),
             )
 
         transition = _next_edge(current_slug)
