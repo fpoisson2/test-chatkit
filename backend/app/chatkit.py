@@ -33,6 +33,7 @@ from agents import (
 from openai.types.shared.reasoning import Reasoning
 from pydantic import BaseModel, Field, create_model
 
+from chatkit.actions import Action
 from chatkit.agents import AgentContext, stream_agent_response
 
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
@@ -59,6 +60,8 @@ from chatkit.types import (
     ThreadItemUpdated,
     ThreadMetadata,
     ThreadStreamEvent,
+    WidgetItem,
+    WidgetRootUpdated,
     UserMessageInput,
     UserMessageItem,
     UserMessageTextContent,
@@ -289,6 +292,133 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 thread.id,
             )
             return
+
+    async def action(
+        self,
+        thread: ThreadMetadata,
+        action: Action[str, Any],
+        sender: WidgetItem | None,
+        context: ChatKitRequestContext,
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        payload = action.payload if isinstance(action.payload, Mapping) else None
+        if not payload:
+            logger.warning(
+                "Action %s ignorée pour le fil %s : charge utile invalide.",
+                action.type,
+                thread.id,
+            )
+            if False:  # pragma: no cover - satisfait l'interface AsyncIterator
+                yield None
+            return
+
+        def _build_widget_item(data: Mapping[str, Any]) -> WidgetItem:
+            validator = getattr(WidgetItem, "model_validate", None)
+            if callable(validator):
+                return validator(data)
+            return WidgetItem.parse_obj(data)  # type: ignore[attr-defined]
+
+        slug, definition_override, values, manual_bindings, copy_text_update = (
+            _resolve_widget_action_payload(payload)
+        )
+
+        definition = definition_override
+        if definition is None and slug:
+            definition = _load_widget_definition(
+                slug, context=f"action {action.type}"
+            )
+
+        if definition is None:
+            logger.warning(
+                "Impossible de traiter l'action %s : aucun widget spécifié.",
+                action.type,
+            )
+            if False:  # pragma: no cover - satisfait l'interface AsyncIterator
+                yield None
+            return
+
+        bindings = _collect_widget_bindings(definition)
+        if manual_bindings:
+            bindings.update(manual_bindings)
+
+        if values:
+            matched = _apply_widget_variable_values(
+                definition, values, bindings=bindings
+            )
+            missing = set(values) - matched
+            if missing:
+                logger.warning(
+                    "Variables de widget non appliquées après l'action %s : %s",
+                    action.type,
+                    ", ".join(sorted(missing)),
+                )
+
+        try:
+            widget_root = WidgetLibraryService._validate_widget(definition)
+        except Exception as exc:  # pragma: no cover - dépend du SDK installé
+            logger.exception(
+                "Widget invalide après traitement de l'action %s", action.type, exc_info=exc
+            )
+            if False:  # pragma: no cover - satisfait l'interface AsyncIterator
+                yield None
+            return
+
+        copy_text_value = copy_text_update
+
+        if sender is not None:
+            if hasattr(sender, "model_dump"):
+                sender_payload = sender.model_dump()
+            else:  # pragma: no cover - compatibilité Pydantic v1
+                sender_payload = sender.dict()  # type: ignore[attr-defined]
+            sender_payload["widget"] = widget_root
+            if copy_text_value is not _UNSET:
+                sender_payload["copy_text"] = copy_text_value
+            else:
+                sender_payload.setdefault("copy_text", sender_payload.get("copy_text"))
+
+            updated_item = _build_widget_item(sender_payload)
+            try:
+                await self.store.save_item(thread.id, updated_item, context=context)
+            except Exception as exc:  # pragma: no cover - dépend du stockage
+                logger.exception(
+                    "Impossible d'enregistrer le widget %s après l'action %s",
+                    sender.id,
+                    action.type,
+                    exc_info=exc,
+                )
+                if False:  # pragma: no cover - satisfait l'interface AsyncIterator
+                    yield None
+                return
+
+            yield ThreadItemUpdated(
+                item_id=updated_item.id,
+                update=WidgetRootUpdated(widget=widget_root),
+            )
+            return
+
+        item_id = self.store.generate_item_id("widget", thread, context)
+        created_at = datetime.now()
+        widget_kwargs: dict[str, Any] = {
+            "id": item_id,
+            "thread_id": thread.id,
+            "created_at": created_at,
+            "widget": widget_root,
+        }
+        if copy_text_value is not _UNSET:
+            widget_kwargs["copy_text"] = copy_text_value
+
+        new_item = _build_widget_item(widget_kwargs)
+
+        try:
+            await self.store.add_thread_item(thread.id, new_item, context=context)
+        except Exception as exc:  # pragma: no cover - dépend du stockage
+            logger.exception(
+                "Impossible d'ajouter un widget suite à l'action %s", action.type, exc_info=exc
+            )
+            if False:  # pragma: no cover - satisfait l'interface AsyncIterator
+                yield None
+            return
+
+        yield ThreadItemDoneEvent(item=new_item)
 
     async def _execute_workflow(
         self,
@@ -2118,6 +2248,178 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
 
     _walk(definition, ())
     return bindings
+
+
+_UNSET = object()
+"""Sentinelle interne pour différencier absence et mise à jour explicite."""
+
+
+def _as_mapping(value: Any) -> Mapping[str, Any] | None:
+    if isinstance(value, Mapping):
+        return value
+    return None
+
+
+def _clone_widget_definition(definition: Any) -> Any | None:
+    if definition is None:
+        return None
+    try:
+        return json.loads(json.dumps(definition, ensure_ascii=False))
+    except Exception:
+        return None
+
+
+def _extract_widget_slug(data: Mapping[str, Any]) -> str | None:
+    for key in ("slug", "widget_slug", "widgetSlug"):
+        raw = data.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+    raw_widget = data.get("widget")
+    if isinstance(raw_widget, str) and raw_widget.strip():
+        return raw_widget.strip()
+    return None
+
+
+def _extract_widget_values(data: Mapping[str, Any]) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+
+    def _merge(candidate: Mapping[str, Any]) -> None:
+        for key, value in candidate.items():
+            if isinstance(key, str):
+                trimmed = key.strip()
+                if trimmed:
+                    values[trimmed] = value
+
+    for value_key in ("values", "variables"):
+        candidate = _as_mapping(data.get(value_key))
+        if candidate:
+            _merge(candidate)
+
+    updates = data.get("updates")
+    if isinstance(updates, Sequence):
+        for entry in updates:
+            candidate = _as_mapping(entry)
+            if not candidate:
+                continue
+            identifier = candidate.get("id")
+            if not isinstance(identifier, str) or not identifier.strip():
+                identifier = candidate.get("identifier")
+            if not isinstance(identifier, str) or not identifier.strip():
+                identifier = candidate.get("binding")
+            if not isinstance(identifier, str) or not identifier.strip():
+                identifier = candidate.get("target")
+            if not isinstance(identifier, str) or not identifier.strip():
+                identifier = candidate.get("name")
+            if isinstance(identifier, str) and identifier.strip():
+                values[identifier.strip()] = candidate.get("value")
+
+    return values
+
+
+def _extract_widget_bindings_from_payload(
+    data: Mapping[str, Any]
+) -> dict[str, _WidgetBinding]:
+    bindings: dict[str, _WidgetBinding] = {}
+    raw_bindings = _as_mapping(data.get("bindings"))
+    if not raw_bindings:
+        return bindings
+
+    for identifier, raw_binding in raw_bindings.items():
+        if not isinstance(identifier, str):
+            continue
+        trimmed = identifier.strip()
+        if not trimmed:
+            continue
+        binding_mapping = _as_mapping(raw_binding)
+        if not binding_mapping:
+            continue
+        path_value = binding_mapping.get("path")
+        if not isinstance(path_value, Sequence):
+            continue
+        normalized_path: list[str | int] = []
+        valid_path = True
+        for step in path_value:
+            if isinstance(step, str):
+                normalized_path.append(step)
+            elif isinstance(step, int):
+                normalized_path.append(step)
+            else:
+                valid_path = False
+                break
+        if not valid_path:
+            continue
+        component_type = binding_mapping.get("component_type")
+        if not isinstance(component_type, str):
+            component_type = binding_mapping.get("componentType")
+            if not isinstance(component_type, str):
+                component_type = None
+        sample_value = binding_mapping.get("sample")
+        sample: str | list[str] | None
+        if isinstance(sample_value, Sequence) and not isinstance(
+            sample_value, (str, bytes, bytearray)
+        ):
+            sample = [
+                str(entry)
+                for entry in sample_value
+                if isinstance(entry, (str, int, float, bool))
+            ]
+        elif sample_value is None:
+            sample = None
+        else:
+            sample = str(sample_value)
+        bindings[trimmed] = _WidgetBinding(
+            path=tuple(normalized_path),
+            component_type=component_type,
+            sample=sample,
+        )
+    return bindings
+
+
+def _extract_copy_text_update(data: Mapping[str, Any]) -> object:
+    for key in ("copy_text", "copyText"):
+        if key in data:
+            value = data[key]
+            if value is None:
+                return None
+            if isinstance(value, (str, int, float)):
+                return str(value)
+            return _UNSET
+    return _UNSET
+
+
+def _resolve_widget_action_payload(
+    payload: Mapping[str, Any]
+) -> tuple[str | None, Any | None, dict[str, Any], dict[str, _WidgetBinding], object]:
+    container = _as_mapping(payload.get("widget")) or payload
+
+    slug = _extract_widget_slug(container) or _extract_widget_slug(payload)
+
+    definition = (
+        _clone_widget_definition(
+            container.get("definition")
+            or container.get("widget_definition")
+            or container.get("widgetDefinition")
+        )
+        or _clone_widget_definition(
+            payload.get("definition")
+            or payload.get("widget_definition")
+            or payload.get("widgetDefinition")
+        )
+    )
+
+    values = _extract_widget_values(payload)
+    if container is not payload:
+        values.update(_extract_widget_values(container))
+
+    bindings = _extract_widget_bindings_from_payload(payload)
+    if container is not payload:
+        bindings.update(_extract_widget_bindings_from_payload(container))
+
+    copy_text = _extract_copy_text_update(container)
+    if copy_text is _UNSET:
+        copy_text = _extract_copy_text_update(payload)
+
+    return slug, definition, values, bindings, copy_text
 
 
 def _ensure_widget_output_model(
