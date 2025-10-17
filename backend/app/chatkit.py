@@ -2966,6 +2966,8 @@ async def run_workflow(
 
             transition = _next_edge(current_slug)
             if transition is None:
+                if not agent_steps_ordered:
+                    break
                 raise WorkflowExecutionError(
                     "configuration",
                     "Configuration du workflow invalide",
@@ -2987,6 +2989,8 @@ async def run_workflow(
             )
             transition = _next_edge(current_slug)
             if transition is None:
+                if not agent_steps_ordered:
+                    break
                 raise WorkflowExecutionError(
                     "configuration",
                     "Configuration du workflow invalide",
@@ -3020,6 +3024,8 @@ async def run_workflow(
                 )
             transition = _next_edge(current_slug)
             if transition is None:
+                if not agent_steps_ordered:
+                    break
                 raise WorkflowExecutionError(
                     "configuration",
                     "Configuration du workflow invalide",
