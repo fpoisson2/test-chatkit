@@ -263,6 +263,7 @@ const WorkflowBuilderPage = () => {
   const viewportRef = useRef<Viewport | null>(null);
   const viewportMemoryRef = useRef(new Map<string, Viewport>());
   const viewportKeyRef = useRef<string | null>(null);
+  const hasUserViewportChangeRef = useRef(false);
   const pendingViewportRestoreRef = useRef(false);
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
@@ -531,6 +532,7 @@ const WorkflowBuilderPage = () => {
       const effectiveMinZoom = refreshViewportConstraints(flow);
       const padding = isMobileLayout ? MOBILE_FIT_VIEW_PADDING : DESKTOP_FIT_VIEW_PADDING;
       const savedViewport = viewportRef.current;
+      const hasUserViewportChange = hasUserViewportChangeRef.current;
       const container = reactFlowWrapperRef.current;
       const nodes = flow.getNodes();
       const hasValidContainer =
@@ -556,7 +558,7 @@ const WorkflowBuilderPage = () => {
           bounds.width > 0 &&
           bounds.height > 0
         ) {
-          if (!shouldComputeInitialViewport) {
+          if (!shouldComputeInitialViewport && !hasUserViewportChange) {
             const visibleLeft = -appliedViewport.x / appliedViewport.zoom;
             const visibleTop = -appliedViewport.y / appliedViewport.zoom;
             const visibleRight =
@@ -857,6 +859,7 @@ const WorkflowBuilderPage = () => {
           viewportRef.current = viewportKey
             ? viewportMemoryRef.current.get(viewportKey) ?? null
             : null;
+          hasUserViewportChangeRef.current = false;
           pendingViewportRestoreRef.current = true;
           restoreViewport();
           setSelectedNodeId(null);
@@ -969,6 +972,7 @@ const WorkflowBuilderPage = () => {
               viewportMemoryRef.current.delete(emptyViewportKey);
             }
             viewportRef.current = null;
+            hasUserViewportChangeRef.current = false;
             pendingViewportRestoreRef.current = true;
             restoreViewport();
             return true;
@@ -1060,6 +1064,7 @@ const WorkflowBuilderPage = () => {
             viewportKeyRef.current = null;
             viewportRef.current = null;
             viewportMemoryRef.current.clear();
+            hasUserViewportChangeRef.current = false;
             pendingViewportRestoreRef.current = true;
             restoreViewport();
             return;
@@ -3250,6 +3255,7 @@ const WorkflowBuilderPage = () => {
     const key = viewportKeyFor(selectedWorkflowId, selectedVersionId);
     viewportKeyRef.current = key;
     viewportRef.current = key ? viewportMemoryRef.current.get(key) ?? null : null;
+    hasUserViewportChangeRef.current = false;
     pendingViewportRestoreRef.current = true;
   }, [selectedVersionId, selectedWorkflowId]);
 
@@ -3389,6 +3395,7 @@ const WorkflowBuilderPage = () => {
                   }}
                   onMoveEnd={(_, viewport) => {
                     viewportRef.current = viewport;
+                    hasUserViewportChangeRef.current = true;
                     const key = viewportKeyRef.current;
                     if (key) {
                       viewportMemoryRef.current.set(key, viewport);
