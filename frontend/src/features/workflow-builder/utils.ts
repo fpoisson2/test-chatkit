@@ -13,6 +13,9 @@ export const NODE_COLORS: Record<NodeKind, string> = {
   watch: "#facc15",
   json_vector_store: "#0891b2",
   widget: "#ec4899",
+  message_assistant: "#ef4444",
+  message_user: "#0ea5e9",
+  wait_for_user_input: "#6366f1",
   end: "#7c3aed",
 };
 
@@ -24,6 +27,9 @@ export const NODE_BACKGROUNDS: Record<NodeKind, string> = {
   watch: "rgba(250, 204, 21, 0.18)",
   json_vector_store: "rgba(8, 145, 178, 0.18)",
   widget: "rgba(236, 72, 153, 0.15)",
+  message_assistant: "rgba(239, 68, 68, 0.16)",
+  message_user: "rgba(14, 165, 233, 0.16)",
+  wait_for_user_input: "rgba(99, 102, 241, 0.16)",
   end: "rgba(124, 58, 237, 0.12)",
 };
 
@@ -135,6 +141,12 @@ export const labelForKind = (kind: NodeKind) => {
       return "Stockage JSON";
     case "widget":
       return "Widget";
+    case "message_assistant":
+      return "Message assistant";
+    case "message_user":
+      return "Message utilisateur";
+    case "wait_for_user_input":
+      return "Attendre un message";
     case "end":
       return "Fin";
     default:

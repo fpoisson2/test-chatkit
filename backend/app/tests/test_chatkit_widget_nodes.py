@@ -30,6 +30,7 @@ from chatkit.types import (
     NoticeEvent,
     Page,
     ThreadItemDoneEvent,
+    ThreadStreamEvent,
     ThreadMetadata,
     UserMessageItem,
 )
@@ -1011,3 +1012,270 @@ async def test_auto_start_assistant_message_is_persisted_once(
         and isinstance(event.item, AssistantMessageItem)
     }
     assert len(assistant_ids) == 1, "Le message assistant auto-start doit posséder un identifiant unique"
+
+def test_normalize_graph_accepts_message_nodes() -> None:
+    service = WorkflowService(session_factory=lambda: None)
+    payload = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {
+                "slug": "assistant-message",
+                "kind": "message_assistant",
+                "is_enabled": True,
+                "parameters": {"message": "Bonjour"},
+            },
+            {
+                "slug": "user-message",
+                "kind": "message_user",
+                "is_enabled": True,
+                "parameters": {"message": "Bonjour"},
+            },
+            {
+                "slug": "wait-input",
+                "kind": "wait_for_user_input",
+                "is_enabled": True,
+            },
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [
+            {"source": "start", "target": "assistant-message"},
+            {"source": "assistant-message", "target": "user-message"},
+            {"source": "user-message", "target": "wait-input"},
+            {"source": "wait-input", "target": "end"},
+        ],
+    }
+
+    nodes, _ = service._normalize_graph(payload)
+
+    kinds = {node.kind for node in nodes}
+    assert {"message_assistant", "message_user", "wait_for_user_input"}.issubset(kinds)
+
+
+def test_message_assistant_node_streams_event() -> None:
+    events: list[ThreadStreamEvent] = []
+
+    async def _collect(event: ThreadStreamEvent) -> None:
+        events.append(event)
+
+    agent_context = SimpleNamespace(
+        generate_id=lambda item_type: f"{item_type}_1",
+        store=SimpleNamespace(
+            generate_item_id=lambda item_type, thread, request_context: f"{item_type}_1"
+        ),
+        thread=SimpleNamespace(id="thread_1"),
+        request_context=None,
+    )
+
+    start_step = SimpleNamespace(
+        slug="start",
+        kind="start",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=0,
+        id=1,
+        display_name="Début",
+    )
+    message_step = SimpleNamespace(
+        slug="assistant-message",
+        kind="message_assistant",
+        is_enabled=True,
+        parameters={"message": "Bonjour"},
+        agent_key=None,
+        position=1,
+        id=2,
+        display_name="Message assistant",
+    )
+    end_step = SimpleNamespace(
+        slug="end",
+        kind="end",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=2,
+        id=3,
+        display_name="Fin",
+    )
+
+    transitions = [
+        SimpleNamespace(id=1, source_step=start_step, target_step=message_step, condition=None),
+        SimpleNamespace(id=2, source_step=message_step, target_step=end_step, condition=None),
+    ]
+
+    definition = SimpleNamespace(
+        steps=[start_step, message_step, end_step],
+        transitions=transitions,
+        workflow_id=1,
+        workflow=SimpleNamespace(slug="demo", display_name="Démo"),
+    )
+
+    async def _run() -> None:
+        await run_workflow(
+            WorkflowInput(input_as_text=""),
+            agent_context=agent_context,
+            workflow_service=_DummyWorkflowService(definition),
+            on_stream_event=_collect,
+        )
+
+    asyncio.run(_run())
+
+    assistant_events = [
+        event
+        for event in events
+        if isinstance(event, ThreadItemDoneEvent)
+        and isinstance(event.item, AssistantMessageItem)
+    ]
+    assert assistant_events, "Le bloc message assistant doit diffuser un message."
+    assert "Bonjour" in assistant_events[0].item.content[0].text
+
+
+def test_message_user_node_streams_event() -> None:
+    events: list[ThreadStreamEvent] = []
+
+    async def _collect(event: ThreadStreamEvent) -> None:
+        events.append(event)
+
+    agent_context = SimpleNamespace(
+        generate_id=lambda item_type: f"{item_type}_1",
+        store=SimpleNamespace(
+            generate_item_id=lambda item_type, thread, request_context: f"{item_type}_1"
+        ),
+        thread=SimpleNamespace(id="thread_1"),
+        request_context=None,
+    )
+
+    start_step = SimpleNamespace(
+        slug="start",
+        kind="start",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=0,
+        id=1,
+        display_name="Début",
+    )
+    message_step = SimpleNamespace(
+        slug="user-message",
+        kind="message_user",
+        is_enabled=True,
+        parameters={"message": "J'ai besoin d'aide"},
+        agent_key=None,
+        position=1,
+        id=2,
+        display_name="Message utilisateur",
+    )
+    end_step = SimpleNamespace(
+        slug="end",
+        kind="end",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=2,
+        id=3,
+        display_name="Fin",
+    )
+
+    transitions = [
+        SimpleNamespace(id=1, source_step=start_step, target_step=message_step, condition=None),
+        SimpleNamespace(id=2, source_step=message_step, target_step=end_step, condition=None),
+    ]
+
+    definition = SimpleNamespace(
+        steps=[start_step, message_step, end_step],
+        transitions=transitions,
+        workflow_id=1,
+        workflow=SimpleNamespace(slug="demo", display_name="Démo"),
+    )
+
+    async def _run() -> None:
+        await run_workflow(
+            WorkflowInput(input_as_text=""),
+            agent_context=agent_context,
+            workflow_service=_DummyWorkflowService(definition),
+            on_stream_event=_collect,
+        )
+
+    asyncio.run(_run())
+
+    user_events = [
+        event
+        for event in events
+        if isinstance(event, ThreadItemDoneEvent)
+        and isinstance(event.item, UserMessageItem)
+    ]
+    assert user_events, "Le bloc message utilisateur doit diffuser un message."
+    assert "besoin d'aide" in user_events[0].item.content[0].text
+
+
+def test_wait_node_interrupts_workflow(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[Any] = []
+
+    def _run_agent(*args, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append((args, kwargs))
+        return _DummyRunnerResult({"status": "ok"})
+
+    monkeypatch.setattr(chatkit_module.Runner, "run_streamed", _run_agent)
+
+    agent_context = SimpleNamespace(
+        generate_id=lambda item_type: f"{item_type}_1",
+        store=SimpleNamespace(
+            generate_item_id=lambda item_type, thread, request_context: f"{item_type}_1"
+        ),
+        thread=SimpleNamespace(id="thread_1"),
+        request_context=None,
+    )
+
+    start_step = SimpleNamespace(
+        slug="start",
+        kind="start",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=0,
+        id=1,
+        display_name="Début",
+    )
+    wait_step = SimpleNamespace(
+        slug="wait",
+        kind="wait_for_user_input",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=1,
+        id=2,
+        display_name="Attente",
+    )
+    agent_step = SimpleNamespace(
+        slug="analyse",
+        kind="agent",
+        is_enabled=True,
+        parameters={},
+        agent_key="triage",
+        position=2,
+        id=3,
+        display_name="Analyse",
+    )
+
+    transitions = [
+        SimpleNamespace(id=1, source_step=start_step, target_step=wait_step, condition=None),
+        SimpleNamespace(id=2, source_step=wait_step, target_step=agent_step, condition=None),
+    ]
+
+    definition = SimpleNamespace(
+        steps=[start_step, wait_step, agent_step],
+        transitions=transitions,
+        workflow_id=1,
+        workflow=SimpleNamespace(slug="demo", display_name="Démo"),
+    )
+
+    async def _run() -> chatkit_module.WorkflowRunSummary:
+        return await run_workflow(
+            WorkflowInput(input_as_text="Bonjour"),
+            agent_context=agent_context,
+            workflow_service=_DummyWorkflowService(definition),
+        )
+
+    summary = asyncio.run(_run())
+
+    assert summary.final_node_slug == "wait"
+    assert not calls, "Les agents ne doivent pas s'exécuter tant qu'un message utilisateur est attendu."

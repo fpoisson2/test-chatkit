@@ -173,6 +173,9 @@ class WorkflowNodeBase(BaseModel):
         "watch",
         "json_vector_store",
         "widget",
+        "message_assistant",
+        "message_user",
+        "wait_for_user_input",
         "end",
     ]
     display_name: str | None = None

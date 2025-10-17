@@ -1064,6 +1064,9 @@ class WorkflowService:
                 "watch",
                 "json_vector_store",
                 "widget",
+                "message_assistant",
+                "message_user",
+                "wait_for_user_input",
                 "end",
             }:
                 raise WorkflowValidationError(f"Type de nœud invalide : {kind or 'inconnu'}")
@@ -1152,14 +1155,20 @@ class WorkflowService:
         has_enabled_widget = any(
             node.kind == "widget" and node.is_enabled for node in normalized_nodes
         )
+        has_enabled_message_block = any(
+            node.kind in {"message_assistant", "message_user", "wait_for_user_input"}
+            and node.is_enabled
+            for node in normalized_nodes
+        )
         if not (
             enabled_agent_slugs
             or has_enabled_widget
+            or has_enabled_message_block
             or allow_empty
             or minimal_skeleton
         ):
             raise WorkflowValidationError(
-                "Le workflow doit activer au moins un agent ou un widget."
+                "Le workflow doit activer au moins un agent, un widget ou un bloc de message."
             )
         # Les anciens workflows imposaient la présence d'un rédacteur final, mais la
         # bibliothèque permet désormais de créer des workflows plus simples.
