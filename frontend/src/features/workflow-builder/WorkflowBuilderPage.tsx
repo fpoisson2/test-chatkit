@@ -124,6 +124,9 @@ const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 const AUTO_SAVE_SUCCESS_MESSAGE = "Modifications enregistrées automatiquement.";
 const DRAFT_DISPLAY_NAME = "Brouillon";
 
+const viewportKeyFor = (workflowId: number | null, versionId: number | null) =>
+  workflowId != null ? `${workflowId}:${versionId ?? "latest"}` : null;
+
 const versionSummaryFromResponse = (
   definition: WorkflowVersionResponse,
 ): WorkflowVersionSummary => ({
@@ -249,6 +252,8 @@ const WorkflowBuilderPage = () => {
   const isHydratingRef = useRef(false);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
   const viewportRef = useRef<Viewport | null>(null);
+  const viewportMemoryRef = useRef(new Map<string, Viewport>());
+  const viewportKeyRef = useRef<string | null>(null);
   const pendingViewportRestoreRef = useRef(false);
   const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -445,6 +450,12 @@ const WorkflowBuilderPage = () => {
         flow.setViewport(savedViewport, { duration: 0 });
       } else {
         flow.fitView({ padding: 0.2, duration: 0 });
+      }
+      const appliedViewport = flow.getViewport();
+      viewportRef.current = appliedViewport;
+      const key = viewportKeyRef.current;
+      if (key) {
+        viewportMemoryRef.current.set(key, appliedViewport);
       }
     });
   }, []);
@@ -669,7 +680,11 @@ const WorkflowBuilderPage = () => {
           setHasPendingChanges(false);
           setNodes(flowNodes);
           setEdges(flowEdges);
-          viewportRef.current = null;
+          const viewportKey = viewportKeyFor(workflowId, versionId);
+          viewportKeyRef.current = viewportKey;
+          viewportRef.current = viewportKey
+            ? viewportMemoryRef.current.get(viewportKey) ?? null
+            : null;
           pendingViewportRestoreRef.current = true;
           restoreViewport();
           setSelectedNodeId(null);
@@ -776,6 +791,11 @@ const WorkflowBuilderPage = () => {
             lastSavedSnapshotRef.current = JSON.stringify(buildGraphPayloadFrom([], []));
             setHasPendingChanges(false);
             setLoading(false);
+            const emptyViewportKey = viewportKeyFor(workflowId, null);
+            viewportKeyRef.current = emptyViewportKey;
+            if (emptyViewportKey) {
+              viewportMemoryRef.current.delete(emptyViewportKey);
+            }
             viewportRef.current = null;
             pendingViewportRestoreRef.current = true;
             restoreViewport();
@@ -865,7 +885,9 @@ const WorkflowBuilderPage = () => {
             lastSavedSnapshotRef.current = JSON.stringify(buildGraphPayloadFrom([], []));
             setHasPendingChanges(false);
             setLoading(false);
+            viewportKeyRef.current = null;
             viewportRef.current = null;
+            viewportMemoryRef.current.clear();
             pendingViewportRestoreRef.current = true;
             restoreViewport();
             return;
@@ -3045,9 +3067,11 @@ const WorkflowBuilderPage = () => {
   }, [saveState]);
 
   useEffect(() => {
-    viewportRef.current = null;
+    const key = viewportKeyFor(selectedWorkflowId, selectedVersionId);
+    viewportKeyRef.current = key;
+    viewportRef.current = key ? viewportMemoryRef.current.get(key) ?? null : null;
     pendingViewportRestoreRef.current = true;
-  }, [selectedWorkflowId]);
+  }, [selectedVersionId, selectedWorkflowId]);
 
   const headerStyle = useMemo(() => {
     const baseStyle = getHeaderContainerStyle(isMobileLayout);
@@ -3182,6 +3206,10 @@ const WorkflowBuilderPage = () => {
                   }}
                   onMoveEnd={(_, viewport) => {
                     viewportRef.current = viewport;
+                    const key = viewportKeyRef.current;
+                    if (key) {
+                      viewportMemoryRef.current.set(key, viewport);
+                    }
                   }}
                 >
                   <Background gap={18} size={1} />
