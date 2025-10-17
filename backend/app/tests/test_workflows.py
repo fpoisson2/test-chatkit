@@ -522,7 +522,155 @@ def test_update_condition_requires_branches() -> None:
         json=payload,
     )
     assert response.status_code == 400
-    assert "conditionnel" in response.json()["detail"].lower()
+    detail = response.json()["detail"].lower()
+    assert "conditionnel" in detail
+    assert "au moins deux sorties" in detail
+
+
+def test_update_condition_allows_unconnected_node() -> None:
+    admin = _make_user(email="condition-draft@example.com", is_admin=True)
+    token = create_access_token(admin)
+    payload = {
+        "graph": {
+            "nodes": [
+                {"slug": "start", "kind": "start"},
+                {
+                    "slug": "decision",
+                    "kind": "condition",
+                    "parameters": {"path": "state.is_ready", "mode": "truthy"},
+                },
+                {"slug": "end", "kind": "end"},
+            ],
+            "edges": [
+                {"source": "start", "target": "decision"},
+            ],
+        }
+    }
+    response = client.put(
+        "/api/workflows/current",
+        headers=_auth_headers(token),
+        json=payload,
+    )
+    assert response.status_code == 200
+
+
+def test_update_condition_accepts_custom_branches() -> None:
+    admin = _make_user(email="condition-branches@example.com", is_admin=True)
+    token = create_access_token(admin)
+    payload = {
+        "graph": {
+            "nodes": [
+                {"slug": "start", "kind": "start"},
+                {
+                    "slug": "decision",
+                    "kind": "condition",
+                    "parameters": {
+                        "path": "state.priority",
+                        "mode": "equals",
+                        "branches": [
+                            {"branch": "faible", "value": "low"},
+                            {"branch": "elevee", "value": "high"},
+                        ],
+                        "default_branch": "standard",
+                    },
+                },
+                {"slug": "faible", "kind": "agent", "agent_key": "triage"},
+                {"slug": "elevee", "kind": "agent", "agent_key": "triage"},
+                {"slug": "standard", "kind": "agent", "agent_key": "triage"},
+                {"slug": "end", "kind": "end"},
+            ],
+            "edges": [
+                {"source": "start", "target": "decision"},
+                {"source": "decision", "target": "faible", "condition": "faible"},
+                {"source": "decision", "target": "elevee", "condition": "elevee"},
+                {"source": "decision", "target": "standard", "condition": "standard"},
+                {"source": "faible", "target": "end"},
+                {"source": "elevee", "target": "end"},
+                {"source": "standard", "target": "end"},
+            ],
+        }
+    }
+    response = client.put(
+        "/api/workflows/current",
+        headers=_auth_headers(token),
+        json=payload,
+    )
+    assert response.status_code == 200
+
+
+def test_update_condition_custom_branches_require_matching_edges() -> None:
+    admin = _make_user(email="condition-mismatch@example.com", is_admin=True)
+    token = create_access_token(admin)
+    payload = {
+        "graph": {
+            "nodes": [
+                {"slug": "start", "kind": "start"},
+                {
+                    "slug": "decision",
+                    "kind": "condition",
+                    "parameters": {
+                        "path": "state.priority",
+                        "mode": "equals",
+                        "branches": [
+                            {"branch": "faible", "value": "low"},
+                            {"branch": "elevee", "value": "high"},
+                        ],
+                        "default_branch": "standard",
+                    },
+                },
+                {"slug": "faible", "kind": "agent", "agent_key": "triage"},
+                {"slug": "standard", "kind": "agent", "agent_key": "triage"},
+                {"slug": "end", "kind": "end"},
+            ],
+            "edges": [
+                {"source": "start", "target": "decision"},
+                {"source": "decision", "target": "faible", "condition": "faible"},
+                {"source": "decision", "target": "standard", "condition": "standard"},
+                {"source": "faible", "target": "end"},
+                {"source": "standard", "target": "end"},
+            ],
+        }
+    }
+    response = client.put(
+        "/api/workflows/current",
+        headers=_auth_headers(token),
+        json=payload,
+    )
+    assert response.status_code == 400
+    detail = response.json()["detail"].lower()
+    assert "elevee" in detail
+
+
+def test_update_condition_rejects_duplicate_branches() -> None:
+    admin = _make_user(email="condition-duplicate@example.com", is_admin=True)
+    token = create_access_token(admin)
+    payload = {
+        "graph": {
+            "nodes": [
+                {"slug": "start", "kind": "start"},
+                {"slug": "decision", "kind": "condition"},
+                {"slug": "writer-a", "kind": "agent", "agent_key": "r_dacteur"},
+                {"slug": "writer-b", "kind": "agent", "agent_key": "r_dacteur"},
+                {"slug": "end", "kind": "end"},
+            ],
+            "edges": [
+                {"source": "start", "target": "decision"},
+                {"source": "decision", "target": "writer-a", "condition": "true"},
+                {"source": "decision", "target": "writer-b", "condition": "true"},
+                {"source": "writer-a", "target": "end"},
+                {"source": "writer-b", "target": "end"},
+            ],
+        }
+    }
+    response = client.put(
+        "/api/workflows/current",
+        headers=_auth_headers(token),
+        json=payload,
+    )
+    assert response.status_code == 400
+    detail = response.json()["detail"].lower()
+    assert "branche" in detail
+    assert "true" in detail
 
 
 def test_create_workflow_without_graph_creates_empty_version() -> None:
