@@ -385,7 +385,7 @@ const WorkflowBuilderPage = () => {
 
   const renderWorkflowDescription = (className?: string) =>
     selectedWorkflow?.description ? (
-      <div className={className} style={{ color: "#475569", fontSize: "0.95rem" }}>
+      <div className={className} style={{ color: "var(--text-muted)", fontSize: "0.95rem" }}>
         {selectedWorkflow.description}
       </div>
     ) : null;
@@ -3461,8 +3461,8 @@ const WorkflowBuilderPage = () => {
       );
     }
 
-    const primaryTextColor = "#0f172a";
-    const secondaryTextColor = "#475569";
+    const primaryTextColor = "var(--text-color)";
+    const secondaryTextColor = "var(--text-muted)";
     return (
       <div>
         <div
@@ -3626,13 +3626,29 @@ const WorkflowBuilderPage = () => {
   const toastStyles = useMemo(() => {
     switch (saveState) {
       case "error":
-        return { background: "#fee2e2", color: "#b91c1c", border: "1px solid #fecaca" } as const;
+        return {
+          background: "rgba(239, 68, 68, 0.18)",
+          color: "#b91c1c",
+          border: "1px solid rgba(248, 113, 113, 0.35)",
+        } as const;
       case "saving":
-        return { background: "#e0f2fe", color: "#0369a1", border: "1px solid #bae6fd" } as const;
+        return {
+          background: "rgba(14, 165, 233, 0.18)",
+          color: "#0284c7",
+          border: "1px solid rgba(56, 189, 248, 0.35)",
+        } as const;
       case "saved":
-        return { background: "#dcfce7", color: "#166534", border: "1px solid #bbf7d0" } as const;
+        return {
+          background: "rgba(34, 197, 94, 0.18)",
+          color: "#15803d",
+          border: "1px solid rgba(74, 222, 128, 0.35)",
+        } as const;
       default:
-        return { background: "#f1f5f9", color: "#0f172a", border: "1px solid #cbd5f5" } as const;
+        return {
+          background: "var(--color-surface-subtle)",
+          color: "var(--text-color)",
+          border: "1px solid var(--surface-border)",
+        } as const;
     }
   }, [saveState]);
 
@@ -3699,10 +3715,10 @@ const WorkflowBuilderPage = () => {
       flex: 1,
       minHeight: 0,
       borderRadius: isMobileLayout ? 0 : "1.25rem",
-      border: isMobileLayout ? "none" : "1px solid rgba(15, 23, 42, 0.08)",
-      background: "#fff",
+      border: isMobileLayout ? "none" : "1px solid var(--surface-border)",
+      background: "var(--surface-strong)",
       overflow: "hidden",
-      boxShadow: isMobileLayout ? "none" : "0 20px 40px rgba(15, 23, 42, 0.06)",
+      boxShadow: isMobileLayout ? "none" : "var(--shadow-card)",
     };
 
     if (!isMobileLayout && !(shouldShowWorkflowDescription || shouldShowPublicationReminder)) {
@@ -3725,7 +3741,7 @@ const WorkflowBuilderPage = () => {
           display: "flex",
           flexDirection: "column",
           height: "100vh",
-          background: isMobileLayout ? "transparent" : "#f1f5f9",
+          background: isMobileLayout ? "transparent" : "var(--color-surface-subtle)",
           overflow: "hidden",
         }}
       >
@@ -3737,7 +3753,7 @@ const WorkflowBuilderPage = () => {
             style={getHeaderNavigationButtonStyle(isMobileLayout)}
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <path d="M3 5h14M3 10h14M3 15h14" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
+              <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
             </svg>
           </button>
           {renderHeaderControls()}
@@ -3914,9 +3930,9 @@ const WorkflowBuilderPage = () => {
                 style={{
                   width: "100%",
                   maxWidth: "460px",
-                  background: "#fff",
+                  background: "var(--surface-strong)",
                   borderRadius: "1rem",
-                  boxShadow: "0 30px 70px rgba(15, 23, 42, 0.25)",
+                  boxShadow: "var(--shadow-card)",
                   padding: "1.75rem",
                   display: "flex",
                   flexDirection: "column",
@@ -3926,11 +3942,16 @@ const WorkflowBuilderPage = () => {
                 <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                   <h2
                     id="deploy-dialog-title"
-                    style={{ fontSize: "1.35rem", fontWeight: 700, color: "#0f172a", margin: 0 }}
+                    style={{
+                      fontSize: "1.35rem",
+                      fontWeight: 700,
+                      color: "var(--color-text-strong)",
+                      margin: 0,
+                    }}
                   >
                     Publish changes?
                   </h2>
-                  <p style={{ margin: 0, color: "#475569", lineHeight: 1.45 }}>
+                  <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.45 }}>
                     Create a new version of the workflow with your latest changes.
                   </p>
                   <div
@@ -3939,7 +3960,7 @@ const WorkflowBuilderPage = () => {
                       alignItems: "center",
                       gap: "0.5rem",
                       fontWeight: 600,
-                      color: "#0f172a",
+                      color: "var(--text-color)",
                     }}
                   >
                     <span style={{ padding: "0.25rem 0.5rem", background: "#e2e8f0", borderRadius: "999px" }}>
@@ -3957,7 +3978,7 @@ const WorkflowBuilderPage = () => {
                     alignItems: "center",
                     gap: "0.6rem",
                     fontWeight: 600,
-                    color: "#0f172a",
+                    color: "var(--text-color)",
                   }}
                 >
                   <input
@@ -3973,18 +3994,18 @@ const WorkflowBuilderPage = () => {
                   <button
                     type="button"
                     onClick={handleCloseDeployModal}
-                    disabled={isDeploying}
-                    style={{
-                      padding: "0.6rem 1.2rem",
-                      borderRadius: "0.75rem",
-                      border: "1px solid rgba(15, 23, 42, 0.15)",
-                      background: "#fff",
-                      color: "#0f172a",
-                      fontWeight: 600,
-                      cursor: isDeploying ? "not-allowed" : "pointer",
-                      opacity: isDeploying ? 0.5 : 1,
-                    }}
-                  >
+                  disabled={isDeploying}
+                  style={{
+                    padding: "0.6rem 1.2rem",
+                    borderRadius: "0.75rem",
+                    border: "1px solid var(--surface-border)",
+                    background: "var(--surface-strong)",
+                    color: "var(--text-color)",
+                    fontWeight: 600,
+                    cursor: isDeploying ? "not-allowed" : "pointer",
+                    opacity: isDeploying ? 0.5 : 1,
+                  }}
+                >
                     Cancel
                   </button>
                   <button

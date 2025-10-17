@@ -1,28 +1,57 @@
 :root {
   color-scheme: light;
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
-  --app-gradient: linear-gradient(160deg, #0f172a 0%, #1d4ed8 45%, #38bdf8 100%);
-  --surface-color: rgba(255, 255, 255, 0.92);
-  --surface-strong: #ffffff;
-  --surface-border: rgba(148, 163, 184, 0.35);
-  --text-color: #0f172a;
-  --text-muted: #475569;
-  --sidebar-background: #e2e8f0;
-  --main-background: #ffffff;
-  --sidebar-border: #cbd5f5;
+  --app-gradient: linear-gradient(160deg, #111827 0%, #1f2937 45%, #334155 100%);
+  --color-text: #18181b;
+  --color-text-strong: #09090b;
+  --color-text-muted: #52525b;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f4f4f5;
+  --color-border-subtle: rgba(24, 24, 27, 0.12);
+  --surface-color: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  --surface-strong: var(--color-surface);
+  --surface-border: var(--color-border-subtle);
+  --text-color: var(--color-text);
+  --text-muted: var(--color-text-muted);
+  --sidebar-background: var(--color-surface);
+  --sidebar-border: var(--color-border-subtle);
+  --main-background: var(--color-surface-subtle);
   --primary-color: #2563eb;
   --primary-hover: #1d4ed8;
+  --form-field-background: var(--color-surface-subtle);
   --danger-color: #dc2626;
   --danger-hover: #b91c1c;
-  --shadow-soft: 0 20px 45px rgba(15, 23, 42, 0.18);
-  --shadow-card: 0 30px 60px rgba(15, 23, 42, 0.15);
+  --shadow-soft: 0 20px 45px rgba(15, 23, 42, 0.12);
+  --shadow-card: 0 30px 60px rgba(15, 23, 42, 0.1);
   --header-height: clamp(64px, 8vh, 80px);
-  --color-surface: #ffffff;
-  --color-surface-subtle: #f1f5f9;
-  --color-border-subtle: rgba(148, 163, 184, 0.28);
-  --color-text: #1e293b;
-  --color-text-strong: #0f172a;
-  --color-text-muted: #64748b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --app-gradient: linear-gradient(160deg, #030712 0%, #111827 45%, #1f2937 100%);
+    --color-text: #e4e4e7;
+    --color-text-strong: #fafafa;
+    --color-text-muted: #a1a1aa;
+    --color-surface: #18181b;
+    --color-surface-subtle: #111114;
+    --color-border-subtle: rgba(228, 228, 231, 0.16);
+    --surface-color: color-mix(in srgb, var(--color-surface) 82%, transparent);
+    --surface-strong: var(--color-surface);
+    --surface-border: var(--color-border-subtle);
+    --text-color: var(--color-text);
+    --text-muted: var(--color-text-muted);
+    --sidebar-background: #09090b;
+    --sidebar-border: rgba(228, 228, 231, 0.08);
+    --main-background: #09090b;
+    --primary-color: #38bdf8;
+    --primary-hover: #0ea5e9;
+    --form-field-background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+    --danger-color: #ef4444;
+    --danger-hover: #dc2626;
+    --shadow-soft: 0 20px 45px rgba(3, 7, 18, 0.6);
+    --shadow-card: 0 30px 60px rgba(3, 7, 18, 0.5);
+  }
 }
 
 *,
@@ -35,7 +64,7 @@ body {
   margin: 0;
   min-height: 100dvh;
   height: 100dvh;
-  background: #ffffff;
+  background: var(--main-background);
   color: var(--text-color);
   display: flex;
   flex-direction: column;
@@ -337,8 +366,8 @@ button {
   width: var(--handle-size);
   height: var(--handle-size);
   border-radius: 9999px;
-  background: #ffffff;
-  border: 2px solid rgba(15, 23, 42, 0.35);
+  background: var(--surface-strong);
+  border: 2px solid var(--surface-border);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
   box-sizing: border-box;
 }
@@ -411,11 +440,11 @@ button {
   margin: 0;
   font-size: 0.95rem;
   line-height: 1.45;
-  color: #475569;
+  color: var(--text-muted);
 }
 
 .chatkit-sidebar__section-text--muted {
-  color: #64748b;
+  color: var(--color-text-muted);
 }
 
 .chatkit-sidebar__section-error {
@@ -428,29 +457,29 @@ button {
   margin: 0;
   font-size: 0.85rem;
   font-weight: 600;
-  color: #334155;
+  color: var(--text-color);
 }
 
 .chatkit-sidebar__section-label {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #475569;
+  color: var(--text-muted);
 }
 
 .chatkit-sidebar__section-select {
   width: 100%;
   border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.18);
+  border: 1px solid var(--surface-border);
   padding: 10px 12px;
   font-weight: 600;
   color: var(--text-color);
-  background: #fff;
+  background: var(--surface-strong);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .chatkit-sidebar__section-select:focus-visible {
   outline: none;
-  border-color: #2563eb;
+  border-color: var(--primary-color);
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
 }
 
@@ -462,7 +491,7 @@ button {
 .chatkit-sidebar__section-button {
   border: 1px solid rgba(37, 99, 235, 0.35);
   background: transparent;
-  color: #1d4ed8;
+  color: var(--primary-hover);
   font-weight: 600;
   padding: 10px 12px;
   border-radius: 12px;
@@ -474,7 +503,7 @@ button {
 .chatkit-sidebar__section-button:hover,
 .chatkit-sidebar__section-button:focus-visible {
   background: rgba(37, 99, 235, 0.08);
-  color: #1d4ed8;
+  color: var(--primary-hover);
   outline: none;
 }
 
@@ -508,7 +537,7 @@ button {
   margin-inline: calc(-1 * var(--chatkit-sidebar-padding-x));
   padding: 12px var(--chatkit-sidebar-padding-x);
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-color);
   text-decoration: none;
   border-radius: 0;
   position: relative;
@@ -531,13 +560,13 @@ button {
 .chatkit-sidebar__nav-link:hover,
 .chatkit-sidebar__nav-link:focus-visible {
   background: rgba(37, 99, 235, 0.08);
-  color: #1d4ed8;
+  color: var(--primary-hover);
   outline: none;
 }
 
 .chatkit-sidebar__nav-link--active {
   background: rgba(37, 99, 235, 0.08);
-  color: #1d4ed8;
+  color: var(--primary-hover);
 }
 
 .chatkit-sidebar__nav-link--active::before {
@@ -563,7 +592,7 @@ button {
   border-radius: 0;
   font: inherit;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-color);
   cursor: pointer;
   transition: background-color 0.2s ease, color 0.2s ease;
   text-align: left;
@@ -580,13 +609,13 @@ button {
 .chatkit-sidebar__workflow-button:hover,
 .chatkit-sidebar__workflow-button:focus-visible {
   background: rgba(37, 99, 235, 0.08);
-  color: #1d4ed8;
+  color: var(--primary-hover);
   outline: none;
 }
 
 .chatkit-sidebar__workflow-button[aria-current="true"] {
   background: rgba(37, 99, 235, 0.18);
-  color: #1d4ed8;
+  color: var(--primary-hover);
 }
 
 .chatkit-sidebar__workflow-actions {
@@ -621,7 +650,7 @@ button {
 .chatkit-sidebar__workflow-action-button:hover,
 .chatkit-sidebar__workflow-action-button:focus-visible {
   background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
+  color: var(--primary-hover);
   outline: none;
 }
 
@@ -1014,8 +1043,17 @@ button {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(120% 120% at 15% 15%, rgba(56, 189, 248, 0.55), transparent),
-    radial-gradient(120% 120% at 85% 30%, rgba(37, 99, 235, 0.35), transparent);
+  background:
+    radial-gradient(
+      120% 120% at 15% 15%,
+      color-mix(in srgb, var(--color-text) 10%, transparent),
+      transparent
+    ),
+    radial-gradient(
+      120% 120% at 85% 30%,
+      color-mix(in srgb, var(--primary-color) 6%, transparent),
+      transparent
+    );
   z-index: 0;
 }
 
@@ -1024,11 +1062,11 @@ button {
   position: relative;
   z-index: 1;
   width: min(480px, 100%);
-  background: var(--surface-strong);
+  background: var(--color-surface);
   border-radius: 28px;
   padding: clamp(28px, 5vw, 40px);
   box-shadow: var(--shadow-soft);
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  border: 1px solid var(--color-border-subtle);
   display: flex;
   flex-direction: column;
   gap: clamp(18px, 4vh, 28px);
@@ -1049,7 +1087,7 @@ button {
 
 .admin-shell__subtitle {
   margin: 0;
-  color: rgba(15, 23, 42, 0.75);
+  color: var(--text-muted);
   font-size: clamp(1rem, 2.8vw, 1.1rem);
 }
 
@@ -1069,34 +1107,34 @@ button {
   width: 100%;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.5);
+  border: 1px solid var(--color-border-subtle);
   font-size: 1rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  background-color: rgba(255, 255, 255, 0.95);
+  background-color: var(--form-field-background);
 }
 
 .input:focus {
   outline: none;
-  border-color: rgba(37, 99, 235, 0.6);
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+  border-color: color-mix(in srgb, var(--primary-color) 60%, var(--color-border-subtle));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-color) 18%, transparent);
 }
 
 .textarea {
   width: 100%;
   padding: 12px 14px;
   border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.45);
+  border: 1px solid var(--color-border-subtle);
   font-size: 0.95rem;
   font-family: "JetBrains Mono", "Fira Code", "SFMono-Regular", ui-monospace, monospace;
   resize: vertical;
   min-height: 120px;
-  background-color: rgba(255, 255, 255, 0.95);
+  background-color: var(--form-field-background);
 }
 
 .textarea:focus {
   outline: none;
-  border-color: rgba(37, 99, 235, 0.6);
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
+  border-color: color-mix(in srgb, var(--primary-color) 60%, var(--color-border-subtle));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-color) 18%, transparent);
 }
 
 .alert {
@@ -1234,13 +1272,13 @@ button {
   overflow-x: auto;
   overflow-y: hidden;
   border-radius: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.3);
+  border: 1px solid var(--color-border-subtle);
 }
 
 .admin-table {
   width: 100%;
   border-collapse: collapse;
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--color-surface);
 }
 
 .admin-table--stack {
@@ -1248,7 +1286,7 @@ button {
 }
 
 .admin-table thead {
-  background: rgba(37, 99, 235, 0.08);
+  background: color-mix(in srgb, var(--primary-color) 6%, var(--color-surface-subtle));
   color: var(--text-muted);
 }
 
@@ -1256,12 +1294,12 @@ button {
 .admin-table td {
   padding: clamp(12px, 2vw, 18px);
   text-align: left;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  border-bottom: 1px solid var(--color-border-subtle);
   font-size: 0.95rem;
 }
 
 .admin-table tbody tr:hover {
-  background: rgba(37, 99, 235, 0.05);
+  background: color-mix(in srgb, var(--primary-color) 4%, var(--color-surface-subtle));
 }
 
 .admin-table__actions {
@@ -1289,15 +1327,15 @@ button {
   .admin-table--stack tr {
     display: grid;
     gap: 12px;
-    background: rgba(255, 255, 255, 0.96);
-    border: 1px solid rgba(148, 163, 184, 0.25);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border-subtle);
     border-radius: 16px;
     padding: clamp(12px, 4vw, 20px);
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
   }
 
   .admin-table--stack tbody tr:hover {
-    background: rgba(37, 99, 235, 0.05);
+    background: color-mix(in srgb, var(--primary-color) 4%, var(--color-surface-subtle));
   }
 
   .admin-table--stack td {
@@ -1352,8 +1390,8 @@ button {
 }
 
 .vector-store-card {
-  background: #ffffff;
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: var(--surface-strong);
+  border: 1px solid var(--surface-border);
   border-radius: 20px;
   display: flex;
   flex-direction: column;
@@ -1444,12 +1482,12 @@ button {
   padding: 0.35rem;
   cursor: pointer;
   transition: color 0.2s ease;
-  color: #0f172a;
+  color: var(--text-color);
 }
 
 .management-header__icon-button:hover,
 .management-header__icon-button:focus-visible {
-  color: #1d4ed8;
+  color: var(--primary-hover);
 }
 
 .management-header__icon-button:focus-visible {
@@ -1581,10 +1619,10 @@ button {
   max-height: 92vh;
   display: flex;
   flex-direction: column;
-  background: var(--surface-strong);
+  background: var(--color-surface);
   border-radius: 24px;
   box-shadow: var(--shadow-card);
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  border: 1px solid var(--color-border-subtle);
   overflow: hidden;
 }
 
@@ -1601,7 +1639,7 @@ button {
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px 12px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  border-bottom: 1px solid var(--color-border-subtle);
 }
 
 .modal__title {
@@ -1649,7 +1687,7 @@ button {
 
 .modal__footer {
   padding: 18px 24px;
-  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  border-top: 1px solid var(--color-border-subtle);
   display: flex;
   justify-content: flex-end;
   gap: 12px;
@@ -1690,9 +1728,9 @@ button {
 
 .accordion {
   border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.3);
+  border: 1px solid var(--color-border-subtle);
   padding: 10px 14px;
-  background: rgba(15, 23, 42, 0.03);
+  background: var(--color-surface-subtle);
 }
 
 .accordion > summary {
@@ -1702,8 +1740,8 @@ button {
 }
 
 .accordion[open] {
-  background: rgba(37, 99, 235, 0.08);
-  border-color: rgba(37, 99, 235, 0.25);
+  background: color-mix(in srgb, var(--primary-color) 12%, var(--color-surface-subtle));
+  border-color: color-mix(in srgb, var(--primary-color) 24%, var(--color-border-subtle));
 }
 
 .settings-modal {
@@ -1727,9 +1765,9 @@ button {
   position: relative;
   z-index: 1;
   width: min(820px, 100%);
-  background: var(--surface-strong);
+  background: var(--color-surface);
   border-radius: 24px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  border: 1px solid var(--color-border-subtle);
   box-shadow: var(--shadow-card);
   padding: clamp(24px, 5vw, 32px);
   display: flex;
@@ -1758,7 +1796,7 @@ button {
 
 .settings-modal__close {
   border: none;
-  background: rgba(15, 23, 42, 0.08);
+  background: color-mix(in srgb, var(--color-text) 10%, transparent);
   color: var(--text-color);
   border-radius: 999px;
   width: 36px;
@@ -1774,7 +1812,7 @@ button {
 
 .settings-modal__close:hover,
 .settings-modal__close:focus-visible {
-  background: rgba(15, 23, 42, 0.15);
+  background: color-mix(in srgb, var(--color-text) 18%, transparent);
   transform: translateY(-1px);
 }
 
@@ -1801,7 +1839,7 @@ button {
   border: 1px solid transparent;
   border-radius: 16px;
   padding: 14px 18px;
-  background: rgba(37, 99, 235, 0.08);
+  background: color-mix(in srgb, var(--primary-color) 8%, var(--color-surface-subtle));
   color: var(--text-color);
   font-size: 0.95rem;
   font-weight: 600;
@@ -1812,15 +1850,15 @@ button {
 
 .settings-modal__nav-button:hover,
 .settings-modal__nav-button:focus-visible {
-  background: rgba(37, 99, 235, 0.16);
-  border-color: rgba(37, 99, 235, 0.35);
+  background: color-mix(in srgb, var(--primary-color) 16%, var(--color-surface-subtle));
+  border-color: color-mix(in srgb, var(--primary-color) 32%, var(--color-border-subtle));
   transform: translateY(-1px);
 }
 
 .settings-modal__nav-button--active {
-  background: rgba(37, 99, 235, 0.18);
-  border-color: rgba(37, 99, 235, 0.5);
-  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.25);
+  background: color-mix(in srgb, var(--primary-color) 28%, var(--color-surface-subtle));
+  border-color: color-mix(in srgb, var(--primary-color) 45%, var(--color-border-subtle));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 38%, transparent);
 }
 
 .settings-modal__main {
@@ -1902,17 +1940,17 @@ button {
 }
 
 .settings-modal__card {
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  border: 1px solid var(--color-border-subtle);
   border-radius: 20px;
   padding: 20px;
-  background: rgba(15, 23, 42, 0.04);
+  background: var(--color-surface-subtle);
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
 .settings-modal__card--muted {
-  background: rgba(15, 23, 42, 0.02);
+  background: color-mix(in srgb, var(--color-text) 6%, var(--color-surface-subtle));
 }
 
 .settings-modal__card-title {
@@ -1938,7 +1976,7 @@ button {
   border: 1px solid transparent;
   border-radius: 14px;
   padding: 12px 16px;
-  background: rgba(37, 99, 235, 0.1);
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--color-surface-subtle));
   color: var(--text-color);
   font-weight: 600;
   cursor: pointer;
@@ -1947,8 +1985,8 @@ button {
 
 .settings-modal__action-button:hover,
 .settings-modal__action-button:focus-visible {
-  background: rgba(37, 99, 235, 0.2);
-  border-color: rgba(37, 99, 235, 0.35);
+  background: color-mix(in srgb, var(--primary-color) 20%, var(--color-surface-subtle));
+  border-color: color-mix(in srgb, var(--primary-color) 35%, var(--color-border-subtle));
   transform: translateY(-1px);
 }
 
@@ -2069,8 +2107,8 @@ button {
   padding: 1.5rem;
   color: var(--color-text);
   position: relative;
-  --widget-preview-status-bg: rgba(15, 23, 42, 0.08);
-  --widget-preview-status-color: #0f172a;
+  --widget-preview-status-bg: color-mix(in srgb, var(--color-text) 12%, transparent);
+  --widget-preview-status-color: var(--text-color);
 }
 
 .widget-preview__card--sm {
@@ -2092,17 +2130,13 @@ button {
 .widget-preview__card[data-theme="dark"],
 .widget-preview__basic[data-theme="dark"],
 .widget-preview__collection[data-theme="dark"] {
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(15, 23, 42, 0.88));
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.5);
-  color: rgba(226, 232, 240, 0.94);
-  --widget-preview-card-bg: rgba(15, 23, 42, 0.92);
-  --widget-preview-status-bg: rgba(148, 163, 184, 0.22);
-  --widget-preview-status-color: rgba(226, 232, 240, 0.96);
-  --widget-preview-item-bg: rgba(15, 23, 42, 0.45);
-  --color-text: rgba(226, 232, 240, 0.92);
-  --color-text-strong: rgba(226, 232, 240, 0.98);
-  --color-text-muted: rgba(148, 163, 184, 0.82);
-  --color-border-subtle: rgba(148, 163, 184, 0.32);
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  box-shadow: 0 12px 32px rgba(3, 7, 18, 0.45);
+  color: var(--color-text);
+  --widget-preview-card-bg: color-mix(in srgb, var(--color-surface) 94%, transparent);
+  --widget-preview-status-bg: color-mix(in srgb, var(--color-text) 22%, transparent);
+  --widget-preview-status-color: var(--color-text);
+  --widget-preview-item-bg: color-mix(in srgb, var(--color-text) 12%, transparent);
 }
 
 .widget-preview__card[data-theme="dark"] .widget-preview__text,
@@ -2122,8 +2156,8 @@ button {
 
 .widget-preview__card[data-theme="dark"] .widget-preview__list-item,
 .widget-preview__collection[data-theme="dark"] .widget-preview__list-item {
-  border-color: rgba(148, 163, 184, 0.35);
-  background: var(--widget-preview-item-bg, rgba(15, 23, 42, 0.45));
+  border-color: color-mix(in srgb, var(--color-text) 26%, transparent);
+  background: var(--widget-preview-item-bg, color-mix(in srgb, var(--color-text) 12%, transparent));
 }
 
 .widget-preview__card-actions {
@@ -2150,7 +2184,7 @@ button {
   gap: 0.45rem;
   font-size: 0.78rem;
   font-weight: 600;
-  color: var(--widget-preview-status-color, #0f172a);
+  color: var(--widget-preview-status-color, var(--text-color));
   background: var(--widget-preview-status-bg, rgba(15, 23, 42, 0.08));
   border-radius: 0.75rem;
   padding: 0.35rem 0.65rem;
@@ -2158,8 +2192,8 @@ button {
 }
 
 .widget-preview__status--framed {
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
 }
 
@@ -2170,7 +2204,7 @@ button {
   width: 1.25rem;
   height: 1.25rem;
   border-radius: 0.5rem;
-  background: rgba(15, 23, 42, 0.12);
+  background: color-mix(in srgb, var(--color-text) 16%, transparent);
   line-height: 1;
 }
 
@@ -2262,7 +2296,7 @@ button {
   font-size: 0.75rem;
   font-weight: 600;
   background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
+  color: var(--primary-hover);
   border: none;
 }
 
@@ -2282,12 +2316,12 @@ button {
 
 .widget-preview__badge--secondary {
   background: rgba(148, 163, 184, 0.18);
-  color: #475569;
+  color: var(--text-muted);
 }
 
 .widget-preview__badge--primary {
   background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
+  color: var(--primary-hover);
 }
 
 .widget-preview__badge--success {
@@ -2449,7 +2483,7 @@ button {
 
 .widget-preview__button--soft {
   background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
+  color: var(--primary-hover);
   box-shadow: none;
 }
 
@@ -2574,7 +2608,7 @@ button {
   border: 1px solid var(--color-border-subtle);
   padding: 0.55rem 0.75rem;
   font-size: 0.9rem;
-  background: rgba(15, 23, 42, 0.03);
+  background: var(--form-field-background);
 }
 
 .widget-preview__control input[disabled],
@@ -2641,8 +2675,8 @@ button {
   gap: clamp(18px, 4vh, 28px);
   padding: clamp(24px, 4vw, 32px);
   border-radius: 28px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-subtle);
   box-shadow: var(--shadow-card);
 }
 
@@ -2712,7 +2746,7 @@ button {
 }
 
 .voice-chat__badge--secondary {
-  background: rgba(15, 23, 42, 0.08);
+  background: color-mix(in srgb, var(--color-text) 12%, transparent);
   color: var(--text-color);
 }
 
@@ -2770,13 +2804,13 @@ button {
 .voice-chat__item {
   padding: 14px 16px;
   border-radius: 16px;
-  background: rgba(15, 23, 42, 0.04);
+  background: var(--color-surface-subtle);
   display: grid;
   gap: 6px;
 }
 
 .voice-chat__item--assistant {
-  background: rgba(37, 99, 235, 0.08);
+  background: color-mix(in srgb, var(--primary-color) 10%, var(--color-surface-subtle));
 }
 
 .voice-chat__item-meta {
@@ -2796,7 +2830,7 @@ button {
 .voice-chat__status {
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.08);
+  background: color-mix(in srgb, var(--color-text) 12%, transparent);
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;

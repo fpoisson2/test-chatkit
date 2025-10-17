@@ -479,7 +479,7 @@ const NodeInspector = ({
             style={{ resize: "vertical", minHeight: "4.5rem" }}
             disabled={hasStartAutoRunAssistantMessage}
           />
-          <p style={{ color: "#475569", margin: "0.35rem 0 0" }}>
+          <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
             Ce message est transmis à l'agent lorsqu'un fil démarre sans saisie
             utilisateur. Saisir un message assistant ci-dessous effacera
             automatiquement ce contenu.
@@ -500,7 +500,7 @@ const NodeInspector = ({
             style={{ resize: "vertical", minHeight: "4.5rem" }}
             disabled={hasStartAutoRunUserMessage}
           />
-          <p style={{ color: "#475569", margin: "0.35rem 0 0" }}>
+          <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
             Ce message est diffusé en tant que première réponse de l'assistant
             lorsque le démarrage automatique est déclenché. Ajoutez un message
             utilisateur ci-dessus pour désactiver cette réponse.
@@ -555,7 +555,7 @@ const NodeInspector = ({
             </label>
           )}
 
-          <p style={{ color: "#475569", margin: "0.35rem 0 0" }}>
+          <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
             Définissez les différentes branches dans les propriétés des connexions. Laissez le champ vide pour créer une branche
             par défaut.
           </p>
@@ -564,7 +564,7 @@ const NodeInspector = ({
 
       {kind === "widget" && (
         <>
-          <p style={{ color: "#475569", margin: "0.5rem 0 0" }}>
+          <p style={{ color: "var(--text-muted)", margin: "0.5rem 0 0" }}>
             Choisissez un widget de la bibliothèque ou renseignez son slug pour l'afficher dans ChatKit.
           </p>
           <label style={fieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-input`}>
@@ -601,7 +601,7 @@ const NodeInspector = ({
             </select>
           </label>
           {widgetsLoading ? (
-            <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
+            <p style={{ color: "var(--text-muted)", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
           ) : widgetsError ? (
             <p style={{ color: "#b91c1c", margin: 0 }}>
               {widgetsError}
@@ -609,7 +609,7 @@ const NodeInspector = ({
               Vous pouvez saisir le slug du widget manuellement ci-dessus.
             </p>
           ) : widgets.length === 0 ? (
-            <p style={{ color: "#475569", margin: 0 }}>
+            <p style={{ color: "var(--text-muted)", margin: 0 }}>
               Créez un widget dans la bibliothèque dédiée ou saisissez son slug manuellement ci-dessus.
             </p>
           ) : null}
@@ -658,7 +658,7 @@ const NodeInspector = ({
               />
               <div style={{ lineHeight: 1.4 }}>
                 <strong>Attendre une action utilisateur avant de continuer</strong>
-                <p style={{ color: "#475569", margin: "0.35rem 0 0" }}>
+                <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
                   Lorsque cette option est activée, le workflow reste sur ce bloc tant que
                   l'utilisateur n'a pas interagi avec le widget. Désactivez-la pour enchaîner
                   automatiquement avec l'étape suivante.
@@ -724,11 +724,11 @@ const NodeInspector = ({
             </p>
           ) : null}
           {availableModelsLoading ? (
-            <p style={{ color: "#475569", margin: "0.5rem 0 0" }}>Chargement des modèles autorisés…</p>
+            <p style={{ color: "var(--text-muted)", margin: "0.5rem 0 0" }}>Chargement des modèles autorisés…</p>
           ) : availableModelsError ? (
             <p style={{ color: "#b91c1c", margin: "0.5rem 0 0" }}>{availableModelsError}</p>
           ) : matchedModel?.description ? (
-            <p style={{ color: "#475569", margin: "0.5rem 0 0" }}>{matchedModel.description}</p>
+            <p style={{ color: "var(--text-muted)", margin: "0.5rem 0 0" }}>{matchedModel.description}</p>
           ) : null}
 
           {supportsReasoning ? (
@@ -950,11 +950,11 @@ const NodeInspector = ({
                 </select>
               </label>
               {widgetsLoading ? (
-                <p style={{ color: "#475569", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
+                <p style={{ color: "var(--text-muted)", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
               ) : widgetsError ? (
                 <p style={{ color: "#b91c1c", margin: 0 }}>{widgetsError}</p>
               ) : widgets.length === 0 ? (
-                <p style={{ color: "#475569", margin: 0 }}>
+                <p style={{ color: "var(--text-muted)", margin: 0 }}>
                   Créez un widget dans la bibliothèque dédiée pour l'utiliser ici.
                 </p>
               ) : null}
@@ -967,7 +967,7 @@ const NodeInspector = ({
                 </p>
               ) : null}
               {responseWidgetSlug && !widgetsLoading && widgetsError && (
-                <p style={{ color: "#475569", margin: "0.25rem 0 0" }}>
+                <p style={{ color: "var(--text-muted)", margin: "0.25rem 0 0" }}>
                   Le widget sélectionné ({responseWidgetSlug}) sera conservé tant que la bibliothèque n'est
                   pas disponible.
                 </p>
@@ -1083,9 +1083,9 @@ const NodeInspector = ({
             {fileSearchEnabled && (
               <>
                 {vectorStoresLoading ? (
-                  <p style={{ color: "#475569", margin: 0 }}>Chargement des vector stores…</p>
+                  <p style={{ color: "var(--text-muted)", margin: 0 }}>Chargement des vector stores…</p>
                 ) : vectorStores.length === 0 ? (
-                  <p style={{ color: "#475569", margin: 0 }}>
+                  <p style={{ color: "var(--text-muted)", margin: 0 }}>
                     Aucun vector store disponible. Créez-en un depuis l'onglet « Vector stores JSON
                     ».
                   </p>
@@ -1143,7 +1143,7 @@ const NodeInspector = ({
 
       {kind === "json_vector_store" && (
         <>
-          <p style={{ color: "#475569", margin: "0 0 0.75rem" }}>
+          <p style={{ color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
             Ce bloc enregistre le JSON produit par le bloc précédent dans le vector store
             sélectionné.
           </p>
@@ -1151,9 +1151,9 @@ const NodeInspector = ({
             <p style={{ color: "#b91c1c", margin: "0 0 0.75rem" }}>{vectorStoresError}</p>
           ) : null}
           {vectorStoresLoading ? (
-            <p style={{ color: "#475569", margin: "0 0 0.75rem" }}>Chargement des vector stores…</p>
+            <p style={{ color: "var(--text-muted)", margin: "0 0 0.75rem" }}>Chargement des vector stores…</p>
           ) : vectorStores.length === 0 ? (
-            <p style={{ color: "#475569", margin: "0 0 0.75rem" }}>
+            <p style={{ color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
               Aucun vector store disponible. Créez-en un depuis l'onglet « Vector stores JSON ».
             </p>
           ) : (
@@ -1346,7 +1346,7 @@ const StateAssignmentsPanel = ({
     >
       <header>
         <h3 style={{ margin: 0, fontSize: "1rem" }}>{title}</h3>
-        <p style={{ margin: "0.25rem 0 0", color: "#475569", fontSize: "0.95rem" }}>{description}</p>
+        <p style={{ margin: "0.25rem 0 0", color: "var(--text-muted)", fontSize: "0.95rem" }}>{description}</p>
       </header>
 
       {assignments.length === 0 ? (
@@ -1552,18 +1552,18 @@ const WidgetNodeContentEditor = ({
     >
       <header>
         <h3 style={{ margin: 0, fontSize: "1rem" }}>Contenu du widget</h3>
-        <p style={{ margin: "0.25rem 0 0", color: "#475569", fontSize: "0.95rem" }}>
+        <p style={{ margin: "0.25rem 0 0", color: "var(--text-muted)", fontSize: "0.95rem" }}>
           Modifiez les textes diffusés par ce bloc. Les valeurs sont enregistrées dans les propriétés du workflow.
         </p>
       </header>
       {loading ? (
-        <p style={{ margin: 0, color: "#475569" }}>Chargement de la prévisualisation…</p>
+        <p style={{ margin: 0, color: "var(--text-muted)" }}>Chargement de la prévisualisation…</p>
       ) : error ? (
         <p style={{ margin: 0, color: "#b91c1c" }}>
           Impossible de récupérer le widget « {trimmedSlug} ». {error}
         </p>
       ) : !definition ? (
-        <p style={{ margin: 0, color: "#475569" }}>
+        <p style={{ margin: 0, color: "var(--text-muted)" }}>
           Sélectionnez un widget dans la bibliothèque pour personnaliser son contenu.
         </p>
       ) : (
@@ -1597,7 +1597,7 @@ const WidgetNodeContentEditor = ({
               );
             })
           ) : (
-            <p style={{ margin: 0, color: "#475569" }}>
+            <p style={{ margin: 0, color: "var(--text-muted)" }}>
               Ce widget n'expose aucun texte modifiable. Il sera diffusé tel que défini dans la bibliothèque.
             </p>
           )}
@@ -1641,7 +1641,7 @@ const WidgetVariablesPanel = ({ assignments, onChange }: WidgetVariablesPanelPro
     >
       <header>
         <h3 style={{ margin: 0, fontSize: "1rem" }}>Variables de widget</h3>
-        <p style={{ margin: "0.25rem 0 0", color: "#475569", fontSize: "0.95rem" }}>
+        <p style={{ margin: "0.25rem 0 0", color: "var(--text-muted)", fontSize: "0.95rem" }}>
           Associez les identifiants du widget aux expressions évaluées lors de l'exécution.
         </p>
       </header>
@@ -1717,7 +1717,7 @@ const labelContentStyle: CSSProperties = {
   alignItems: "center",
   gap: "0.35rem",
   fontWeight: 600,
-  color: "#0f172a",
+  color: "var(--color-text-strong)",
 };
 
 const inspectorHeaderStyle: CSSProperties = {
@@ -1731,12 +1731,12 @@ const inspectorHeaderStyle: CSSProperties = {
 const inspectorTitleStyle: CSSProperties = {
   fontSize: "1rem",
   fontWeight: 700,
-  color: "#0f172a",
+  color: "var(--color-text-strong)",
 };
 
 const inspectorSubtitleStyle: CSSProperties = {
   fontSize: "0.85rem",
-  color: "#475569",
+  color: "var(--text-muted)",
 };
 
 const deleteButtonStyle: CSSProperties = {
@@ -1793,9 +1793,9 @@ const helpTooltipButtonStyle: CSSProperties = {
   width: "1.35rem",
   height: "1.35rem",
   borderRadius: "9999px",
-  border: "1px solid rgba(148, 163, 184, 0.45)",
-  backgroundColor: "rgba(148, 163, 184, 0.2)",
-  color: "#0f172a",
+  border: "1px solid var(--surface-border)",
+  backgroundColor: "var(--surface-color)",
+  color: "var(--text-color)",
   fontSize: "0.8rem",
   fontWeight: 700,
   cursor: "pointer",
@@ -1816,11 +1816,11 @@ const helpTooltipBubbleStyle: CSSProperties = {
   maxWidth: "18rem",
   padding: "0.65rem 0.75rem",
   borderRadius: "0.75rem",
-  backgroundColor: "#0f172a",
-  color: "#f8fafc",
+  backgroundColor: "var(--text-color)",
+  color: "var(--main-background)",
   fontSize: "0.8rem",
   lineHeight: 1.4,
-  boxShadow: "0 10px 25px rgba(15, 23, 42, 0.25)",
+  boxShadow: "var(--shadow-card)",
 };
 
 const helpTooltipBubbleHiddenStyle: CSSProperties = {

@@ -28,16 +28,16 @@ export const NODE_BACKGROUNDS: Record<NodeKind, string> = {
 };
 
 export const defaultEdgeOptions: EdgeOptions = {
-  markerEnd: { type: MarkerType.ArrowClosed, color: "#1e293b" },
-  style: { stroke: "#1e293b", strokeWidth: 2 },
-  labelStyle: { fill: "#0f172a", fontWeight: 600 },
+  markerEnd: { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
+  style: { stroke: "var(--text-color)", strokeWidth: 2 },
+  labelStyle: { fill: "var(--text-color)", fontWeight: 600 },
   labelShowBg: true,
   labelBgPadding: [8, 4],
   labelBgBorderRadius: 6,
-  labelBgStyle: { fill: "#f1f5f9", stroke: "#cbd5f5" },
+  labelBgStyle: { fill: "var(--color-surface-subtle)", stroke: "var(--surface-border)" },
 };
 
-export const connectionLineStyle = { stroke: "#1e293b", strokeWidth: 2 };
+export const connectionLineStyle = { stroke: "var(--text-color)", strokeWidth: 2 };
 
 const NON_REASONING_MODEL_PATTERN = /^gpt-4\.1/i;
 
@@ -111,12 +111,12 @@ export const buildNodeStyle = (kind: NodeKind): CSSProperties => ({
   padding: "0.75rem 1rem",
   borderRadius: "0.75rem",
   border: `2px solid ${NODE_COLORS[kind]}`,
-  color: "#0f172a",
+  color: "var(--text-color)",
   background: NODE_BACKGROUNDS[kind],
   fontWeight: 600,
   minWidth: 160,
   textAlign: "center",
-  boxShadow: "0 1px 3px rgba(15, 23, 42, 0.18)",
+  boxShadow: "var(--shadow-soft)",
 });
 
 export const labelForKind = (kind: NodeKind) => {
