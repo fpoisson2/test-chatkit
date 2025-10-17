@@ -281,7 +281,7 @@ export const VectorStoresPage = () => {
     <ManagementPageLayout
       actions={
         <button
-          className="header-icon-button"
+          className="management-header__icon-button"
           type="button"
           aria-label="Créer un vector store"
           onClick={() => setShowCreateModal(true)}
