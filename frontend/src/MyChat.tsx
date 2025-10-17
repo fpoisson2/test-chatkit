@@ -24,6 +24,7 @@ import {
 } from "./utils/chatkitThread";
 import type { WorkflowSummary } from "./types/workflows";
 import { ChatWorkflowSidebar } from "./features/workflows/ChatWorkflowSidebar";
+import { chatkitApi, type ChatKitWorkflowInfo } from "./utils/backend";
 
 type WeatherToolCall = {
   name: "get_weather";
@@ -47,10 +48,13 @@ export function MyChat() {
     loadStoredThreadId(sessionOwner),
   );
   const [activeWorkflow, setActiveWorkflow] = useState<WorkflowSummary | null>(null);
+  const [chatkitWorkflowInfo, setChatkitWorkflowInfo] =
+    useState<ChatKitWorkflowInfo | null>(null);
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const lastVisibilityRefreshRef = useRef(0);
   const previousSessionOwnerRef = useRef<string | null>(null);
+  const autoStartAttemptRef = useRef(false);
 
   const handleWorkflowActivated = useCallback(
     (workflow: WorkflowSummary | null, { reason }: { reason: "initial" | "user" }) => {
@@ -83,6 +87,40 @@ export function MyChat() {
     const storedThreadId = loadStoredThreadId(sessionOwner);
     setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
   }, [sessionOwner]);
+
+  useEffect(() => {
+    if (!token) {
+      setChatkitWorkflowInfo(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadWorkflowInfo = async () => {
+      try {
+        const info = await chatkitApi.getWorkflow(token);
+        if (!cancelled) {
+          setChatkitWorkflowInfo(info);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          if (import.meta.env.DEV) {
+            console.warn(
+              "[ChatKit] Impossible de charger le workflow actif pour déterminer le démarrage automatique.",
+              err,
+            );
+          }
+          setChatkitWorkflowInfo(null);
+        }
+      }
+    };
+
+    void loadWorkflowInfo();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, activeWorkflow?.id, activeWorkflow?.active_version_id, activeWorkflow?.updated_at]);
 
   const getClientSecret = useCallback(async (currentSecret: string | null) => {
     const { session: storedSession, shouldRefresh } = readStoredChatKitSession(sessionOwner);
@@ -406,6 +444,9 @@ export function MyChat() {
           console.debug("[ChatKit] thread change", { threadId });
           persistStoredThreadId(sessionOwner, threadId);
           setInitialThreadId((current) => (current === threadId ? current : threadId));
+          if (threadId === null) {
+            autoStartAttemptRef.current = false;
+          }
         },
         onThreadLoadStart: ({ threadId }: { threadId: string }) => {
           console.debug("[ChatKit] thread load start", { threadId });
@@ -434,7 +475,36 @@ export function MyChat() {
     ],
   );
 
-  const { control, fetchUpdates } = useChatKit(chatkitOptions);
+  const { control, fetchUpdates, sendUserMessage } = useChatKit(chatkitOptions);
+
+  useEffect(() => {
+    if (!chatkitWorkflowInfo || !chatkitWorkflowInfo.auto_start) {
+      autoStartAttemptRef.current = false;
+      return;
+    }
+
+    if (initialThreadId) {
+      return;
+    }
+
+    if (autoStartAttemptRef.current) {
+      return;
+    }
+
+    autoStartAttemptRef.current = true;
+
+    sendUserMessage({ text: "", newThread: true }).catch((err: unknown) => {
+      autoStartAttemptRef.current = false;
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Impossible de démarrer automatiquement le workflow.";
+      if (import.meta.env.DEV) {
+        console.warn("[ChatKit] Échec du démarrage automatique", err);
+      }
+      setError(message);
+    });
+  }, [chatkitWorkflowInfo?.auto_start, sendUserMessage, initialThreadId]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") {

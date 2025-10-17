@@ -62,7 +62,7 @@ from .chatkit_store import PostgresChatKitStore
 from .database import SessionLocal
 from .models import WorkflowStep, WorkflowTransition
 from .token_sanitizer import sanitize_model_like
-from .workflows import DEFAULT_END_MESSAGE, WorkflowService
+from .workflows import DEFAULT_END_MESSAGE, WorkflowService, resolve_start_auto_start
 from .vector_store import JsonVectorStoreService, SearchResult
 from .weather import fetch_weather
 from .widgets import WidgetLibraryService
@@ -106,18 +106,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
             return False
 
-        for step in definition.steps:
-            if getattr(step, "kind", None) != "start":
-                continue
-            if not getattr(step, "is_enabled", True):
-                continue
-            params = step.parameters if isinstance(step.parameters, Mapping) else {}
-            raw_value = params.get("auto_start")
-            if raw_value is None:
-                raw_value = params.get("start_automatically")
-            return _coerce_auto_start(raw_value)
-
-        return False
+        return resolve_start_auto_start(definition)
 
     async def respond(
         self,
@@ -351,27 +340,6 @@ def _resolve_user_input_text(
                 return candidate
 
     return ""
-
-
-_TRUTHY_STRINGS = {"true", "1", "yes", "on"}
-_FALSY_STRINGS = {"false", "0", "no", "off"}
-
-
-def _coerce_auto_start(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if not normalized:
-            return False
-        if normalized in _TRUTHY_STRINGS:
-            return True
-        if normalized in _FALSY_STRINGS:
-            return False
-        return False
-    if isinstance(value, (int, float)):
-        return value != 0
-    return False
 
 
 def _log_background_exceptions(task: asyncio.Task[None]) -> None:

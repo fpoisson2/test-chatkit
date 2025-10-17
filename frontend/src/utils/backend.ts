@@ -156,6 +156,16 @@ export type VoiceSettingsUpdatePayload = {
   prompt_variables?: Record<string, string>;
 };
 
+export type ChatKitWorkflowInfo = {
+  workflow_id: number;
+  workflow_slug: string | null;
+  workflow_display_name: string | null;
+  definition_id: number;
+  definition_version: number;
+  auto_start: boolean;
+  updated_at: string;
+};
+
 export const adminApi = {
   async listUsers(token: string | null): Promise<EditableUser[]> {
     const response = await requestWithFallback("/api/admin/users", {
@@ -190,6 +200,15 @@ export const adminApi = {
     if (!response.ok && response.status !== 204) {
       throw new ApiError("Échec de la suppression", { status: response.status });
     }
+  },
+};
+
+export const chatkitApi = {
+  async getWorkflow(token: string | null): Promise<ChatKitWorkflowInfo> {
+    const response = await requestWithFallback("/api/chatkit/workflow", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
   },
 };
 

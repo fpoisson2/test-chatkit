@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 import logging
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Mapping
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
@@ -14,6 +14,47 @@ from ..models import Workflow, WorkflowDefinition, WorkflowStep, WorkflowTransit
 logger = logging.getLogger(__name__)
 
 DEFAULT_END_MESSAGE = "Workflow terminé"
+
+_TRUTHY_AUTO_START_VALUES = {"true", "1", "yes", "on"}
+_FALSY_AUTO_START_VALUES = {"false", "0", "no", "off"}
+
+
+def _coerce_auto_start(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if not normalized:
+            return False
+        if normalized in _TRUTHY_AUTO_START_VALUES:
+            return True
+        if normalized in _FALSY_AUTO_START_VALUES:
+            return False
+        return False
+    if isinstance(value, (int, float)):
+        return value != 0
+    return False
+
+
+def resolve_start_auto_start(
+    definition: "WorkflowDefinition",
+) -> bool:
+    """Retourne l'option de démarrage automatique du bloc début."""
+
+    for step in definition.steps:
+        if getattr(step, "kind", None) != "start":
+            continue
+        if not getattr(step, "is_enabled", True):
+            continue
+        parameters = step.parameters
+        if isinstance(parameters, Mapping):
+            raw_value = parameters.get("auto_start")
+            if raw_value is None:
+                raw_value = parameters.get("start_automatically")
+            return _coerce_auto_start(raw_value)
+        break
+
+    return False
 
 SUPPORTED_AGENT_KEYS: set[str] = {
     "triage",
