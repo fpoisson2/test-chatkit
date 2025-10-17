@@ -107,6 +107,16 @@ export const getStartAutoRunMessage = (
   return typeof message === "string" ? message : "";
 };
 
+export const getStartAutoRunAssistantMessage = (
+  parameters: AgentParameters | null | undefined,
+): string => {
+  if (!parameters) {
+    return "";
+  }
+  const message = (parameters as Record<string, unknown>).auto_start_assistant_message;
+  return typeof message === "string" ? message : "";
+};
+
 export const setStartAutoRun = (
   parameters: AgentParameters,
   autoRun: boolean,
@@ -133,7 +143,25 @@ export const setStartAutoRunMessage = (
     return stripEmpty(next as Record<string, unknown>);
   }
 
+  delete (next as Record<string, unknown>).auto_start_assistant_message;
   (next as Record<string, unknown>).auto_start_user_message = trimmed;
+  return stripEmpty(next as Record<string, unknown>);
+};
+
+export const setStartAutoRunAssistantMessage = (
+  parameters: AgentParameters,
+  message: string,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const trimmed = message.trim();
+
+  if (!trimmed) {
+    delete (next as Record<string, unknown>).auto_start_assistant_message;
+    return stripEmpty(next as Record<string, unknown>);
+  }
+
+  delete (next as Record<string, unknown>).auto_start_user_message;
+  (next as Record<string, unknown>).auto_start_assistant_message = trimmed;
   return stripEmpty(next as Record<string, unknown>);
 };
 

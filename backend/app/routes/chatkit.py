@@ -36,6 +36,7 @@ from ..workflows import (
     WorkflowService,
     resolve_start_auto_start,
     resolve_start_auto_start_message,
+    resolve_start_auto_start_assistant_message,
 )
 
 router = APIRouter()
@@ -52,6 +53,11 @@ async def get_chatkit_workflow(
     service = WorkflowService()
     definition = service.get_current(session)
     workflow = definition.workflow
+    user_message = resolve_start_auto_start_message(definition)
+    assistant_message = resolve_start_auto_start_assistant_message(definition)
+    if user_message:
+        assistant_message = ""
+
     return ChatKitWorkflowResponse(
         workflow_id=workflow.id if workflow else definition.workflow_id,
         workflow_slug=workflow.slug if workflow else None,
@@ -59,9 +65,10 @@ async def get_chatkit_workflow(
         definition_id=definition.id,
         definition_version=definition.version,
         auto_start=resolve_start_auto_start(definition),
-        auto_start_user_message=(
-            message if (message := resolve_start_auto_start_message(definition)) else None
-        ),
+        auto_start_user_message=user_message or None,
+        auto_start_assistant_message=(assistant_message or None)
+        if not user_message
+        else None,
         updated_at=definition.updated_at,
     )
 
