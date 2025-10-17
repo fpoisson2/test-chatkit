@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import datetime
 from types import SimpleNamespace
 from typing import Any, Callable
@@ -206,6 +207,105 @@ def test_widget_node_streams_widget_with_input(monkeypatch: pytest.MonkeyPatch) 
     assert isinstance(widget, dict)
     values = widget.get("children", [])
     assert any(child.get("value") == "Synthèse" for child in values if isinstance(child, dict))
+
+
+def test_widget_step_records_action_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _fake_stream_widget(thread_metadata, widget, *, generate_id):  # type: ignore[no-untyped-def]
+        _ = generate_id("assistant_message")
+        if False:
+            yield None
+        return
+
+    monkeypatch.setattr(chatkit_module, "_sdk_stream_widget", _fake_stream_widget)
+    monkeypatch.setattr(
+        chatkit_module,
+        "_load_widget_definition",
+        lambda slug, *, context: {
+            "type": "Card",
+            "children": [
+                {"type": "Button", "id": "action", "label": "Choisir"},
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        chatkit_module.WidgetLibraryService,
+        "_validate_widget",
+        staticmethod(lambda definition: definition),
+    )
+
+    agent_context = SimpleNamespace(
+        store=SimpleNamespace(
+            generate_item_id=lambda prefix, thread, request_context: f"{prefix}_1"
+        ),
+        thread=SimpleNamespace(id="thread-1"),
+        request_context=None,
+    )
+
+    start_step = SimpleNamespace(
+        slug="start",
+        kind="start",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=0,
+        id=1,
+        display_name="Début",
+    )
+    widget_step = SimpleNamespace(
+        slug="widget-choice",
+        kind="widget",
+        is_enabled=True,
+        parameters={"widget": {"slug": "selection", "await_action": True}},
+        agent_key=None,
+        position=1,
+        id=2,
+        display_name="Widget",
+    )
+    end_step = SimpleNamespace(
+        slug="end",
+        kind="end",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=2,
+        id=3,
+        display_name="Fin",
+    )
+
+    transitions = [
+        SimpleNamespace(id=1, source_step=start_step, target_step=widget_step, condition=None),
+        SimpleNamespace(id=2, source_step=widget_step, target_step=end_step, condition=None),
+    ]
+
+    definition = SimpleNamespace(
+        steps=[start_step, widget_step, end_step],
+        transitions=transitions,
+        workflow_id=1,
+        workflow=SimpleNamespace(slug="demo", display_name="Démo"),
+    )
+
+    async def _run_workflow() -> "WorkflowRunSummary":
+        async def _capture_action(step, config):  # type: ignore[no-untyped-def]
+            return {
+                "type": "menu.select",
+                "widget": config.slug,
+                "values": {"button": "meteo-actuelle"},
+            }
+
+        return await run_workflow(
+            WorkflowInput(input_as_text="Bonjour"),
+            agent_context=agent_context,
+            workflow_service=_DummyWorkflowService(definition),
+            on_widget_step=_capture_action,
+        )
+
+    summary = asyncio.run(_run_workflow())
+    widget_summary = next(step for step in summary.steps if step.key == "widget-choice")
+    payload = json.loads(widget_summary.output)
+
+    assert payload["widget"] == "selection"
+    assert payload["action"]["type"] == "menu.select"
+    assert payload["action"]["values"]["button"] == "meteo-actuelle"
 
 
 def test_auto_start_workflow_runs_without_user_message(

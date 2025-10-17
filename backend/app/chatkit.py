@@ -33,6 +33,7 @@ from agents import (
 from openai.types.shared.reasoning import Reasoning
 from pydantic import BaseModel, Field, create_model
 
+from chatkit.actions import Action
 from chatkit.agents import AgentContext, stream_agent_response
 
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
@@ -59,6 +60,8 @@ from chatkit.types import (
     ThreadItemUpdated,
     ThreadMetadata,
     ThreadStreamEvent,
+    WidgetItem,
+    WidgetRootUpdated,
     UserMessageInput,
     UserMessageItem,
     UserMessageTextContent,
@@ -126,6 +129,14 @@ class AutoStartConfiguration:
         return cls(False, "", "")
 
 
+@dataclass
+class _WidgetActionWaiter:
+    slug: str | None
+    widget_item_id: str | None
+    event: asyncio.Event
+    payload: Mapping[str, Any] | None = None
+
+
 class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     """Serveur ChatKit piloté par un workflow local."""
 
@@ -133,6 +144,84 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         super().__init__(PostgresChatKitStore(SessionLocal))
         self._settings = settings
         self._workflow_service = WorkflowService()
+        self._widget_action_waiters: dict[str, _WidgetActionWaiter] = {}
+        self._widget_waiters_lock = asyncio.Lock()
+
+    async def _wait_for_widget_action(
+        self,
+        *,
+        thread: ThreadMetadata,
+        step_slug: str,
+        widget_item_id: str | None,
+    ) -> Mapping[str, Any] | None:
+        waiter = _WidgetActionWaiter(
+            slug=step_slug,
+            widget_item_id=widget_item_id,
+            event=asyncio.Event(),
+        )
+        async with self._widget_waiters_lock:
+            self._widget_action_waiters[thread.id] = waiter
+
+        logger.info(
+            "En attente d'une action utilisateur pour le widget %s (item=%s)",
+            step_slug,
+            widget_item_id,
+        )
+
+        try:
+            await waiter.event.wait()
+            payload = waiter.payload
+        finally:
+            async with self._widget_waiters_lock:
+                existing = self._widget_action_waiters.get(thread.id)
+                if existing is waiter:
+                    self._widget_action_waiters.pop(thread.id, None)
+
+        logger.info(
+            "Action utilisateur détectée pour le widget %s, poursuite du workflow.",
+            step_slug,
+        )
+
+        return payload
+
+    async def _signal_widget_action(
+        self,
+        thread_id: str,
+        *,
+        widget_item_id: str | None,
+        widget_slug: str | None,
+        payload: Mapping[str, Any] | None = None,
+    ) -> bool:
+        async with self._widget_waiters_lock:
+            waiter = self._widget_action_waiters.get(thread_id)
+            if waiter is None:
+                return False
+
+            id_matches = (
+                waiter.widget_item_id is None
+                or widget_item_id is None
+                or waiter.widget_item_id == widget_item_id
+            )
+            slug_matches = (
+                waiter.slug is None
+                or widget_slug is None
+                or waiter.slug == widget_slug
+            )
+
+            if not id_matches and not slug_matches:
+                logger.debug(
+                    "Action reçue pour le widget %s (item=%s) alors que %s est attendu (item=%s).",
+                    widget_slug,
+                    widget_item_id,
+                    waiter.slug,
+                    waiter.widget_item_id,
+                )
+                return False
+
+            if payload is not None:
+                waiter.payload = _json_safe_copy(payload)
+            waiter.event.set()
+            return True
 
     def _resolve_auto_start_configuration(self) -> AutoStartConfiguration:
         try:
@@ -290,6 +379,186 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
             return
 
+    async def action(
+        self,
+        thread: ThreadMetadata,
+        action: Action[str, Any],
+        sender: WidgetItem | None,
+        context: ChatKitRequestContext,
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        payload = action.payload if isinstance(action.payload, Mapping) else None
+        if not payload:
+            logger.warning(
+                "Action %s ignorée pour le fil %s : charge utile invalide.",
+                action.type,
+                thread.id,
+            )
+            if False:  # pragma: no cover - satisfait l'interface AsyncIterator
+                yield None
+            return
+
+        def _build_widget_item(data: Mapping[str, Any]) -> WidgetItem:
+            validator = getattr(WidgetItem, "model_validate", None)
+            if callable(validator):
+                return validator(data)
+            return WidgetItem.parse_obj(data)  # type: ignore[attr-defined]
+
+        slug, definition_override, values, manual_bindings, copy_text_update = (
+            _resolve_widget_action_payload(payload)
+        )
+
+        definition = definition_override
+        if definition is None and slug:
+            definition = _load_widget_definition(
+                slug, context=f"action {action.type}"
+            )
+
+        if definition is None and sender is not None:
+            try:
+                sender_widget_payload = WidgetLibraryService._dump_widget(sender.widget)
+            except Exception as exc:  # pragma: no cover - protection supplémentaire
+                logger.debug(
+                    "Impossible d'utiliser le widget émetteur %s pour l'action %s : %s",
+                    sender.id,
+                    action.type,
+                    exc,
+                )
+            else:
+                definition = _clone_widget_definition(sender_widget_payload)
+
+        if definition is None:
+            logger.warning(
+                "Impossible de traiter l'action %s : aucun widget spécifié.",
+                action.type,
+            )
+            if False:  # pragma: no cover - satisfait l'interface AsyncIterator
+                yield None
+            return
+
+        bindings = _collect_widget_bindings(definition)
+        if manual_bindings:
+            bindings.update(manual_bindings)
+
+        matched_identifiers: set[str] = set()
+
+        if values:
+            matched = _apply_widget_variable_values(
+                definition, values, bindings=bindings
+            )
+            missing = set(values) - matched
+            if missing:
+                logger.warning(
+                    "Variables de widget non appliquées après l'action %s : %s",
+                    action.type,
+                    ", ".join(sorted(missing)),
+                )
+            matched_identifiers = matched
+
+        try:
+            widget_root = WidgetLibraryService._validate_widget(definition)
+        except Exception as exc:  # pragma: no cover - dépend du SDK installé
+            logger.exception(
+                "Widget invalide après traitement de l'action %s", action.type, exc_info=exc
+            )
+            if False:  # pragma: no cover - satisfait l'interface AsyncIterator
+                yield None
+            return
+
+        copy_text_value = copy_text_update
+
+        action_context: dict[str, Any] = {"type": action.type}
+        if slug:
+            action_context["widget"] = slug
+        if payload is not None:
+            action_context["raw_payload"] = _json_safe_copy(payload)
+        if values:
+            action_context["values"] = _json_safe_copy(values)
+        if matched_identifiers:
+            action_context["applied_variables"] = sorted(matched_identifiers)
+        if manual_bindings:
+            action_context["bindings"] = {
+                identifier: {
+                    "path": list(binding.path),
+                    "component_type": binding.component_type,
+                    "sample": binding.sample,
+                }
+                for identifier, binding in manual_bindings.items()
+            }
+        if copy_text_value is not _UNSET:
+            action_context["copy_text"] = copy_text_value
+
+        if sender is not None:
+            if hasattr(sender, "model_dump"):
+                sender_payload = sender.model_dump()
+            else:  # pragma: no cover - compatibilité Pydantic v1
+                sender_payload = sender.dict()  # type: ignore[attr-defined]
+            sender_payload["widget"] = widget_root
+            if copy_text_value is not _UNSET:
+                sender_payload["copy_text"] = copy_text_value
+            else:
+                sender_payload.setdefault("copy_text", sender_payload.get("copy_text"))
+
+            updated_item = _build_widget_item(sender_payload)
+            action_context["widget_item_id"] = updated_item.id
+            try:
+                await self.store.save_item(thread.id, updated_item, context=context)
+            except Exception as exc:  # pragma: no cover - dépend du stockage
+                logger.exception(
+                    "Impossible d'enregistrer le widget %s après l'action %s",
+                    sender.id,
+                    action.type,
+                    exc_info=exc,
+                )
+                if False:  # pragma: no cover - satisfait l'interface AsyncIterator
+                    yield None
+                return
+
+            await self._signal_widget_action(
+                thread.id,
+                widget_item_id=updated_item.id,
+                widget_slug=slug,
+                payload=action_context,
+            )
+
+            yield ThreadItemUpdated(
+                item_id=updated_item.id,
+                update=WidgetRootUpdated(widget=widget_root),
+            )
+            return
+
+        item_id = self.store.generate_item_id("widget", thread, context)
+        created_at = datetime.now()
+        widget_kwargs: dict[str, Any] = {
+            "id": item_id,
+            "thread_id": thread.id,
+            "created_at": created_at,
+            "widget": widget_root,
+        }
+        if copy_text_value is not _UNSET:
+            widget_kwargs["copy_text"] = copy_text_value
+
+        new_item = _build_widget_item(widget_kwargs)
+        action_context["widget_item_id"] = new_item.id
+
+        try:
+            await self.store.add_thread_item(thread.id, new_item, context=context)
+        except Exception as exc:  # pragma: no cover - dépend du stockage
+            logger.exception(
+                "Impossible d'ajouter un widget suite à l'action %s", action.type, exc_info=exc
+            )
+            if False:  # pragma: no cover - satisfait l'interface AsyncIterator
+                yield None
+            return
+
+        await self._signal_widget_action(
+            thread.id,
+            widget_item_id=new_item.id,
+            widget_slug=slug,
+            payload=action_context,
+        )
+
+        yield ThreadItemDoneEvent(item=new_item)
+
     async def _execute_workflow(
         self,
         *,
@@ -301,6 +570,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         streamed_step_keys: set[str] = set()
         step_progress_text: dict[str, str] = {}
         step_progress_headers: dict[str, str] = {}
+        most_recent_widget_item_id: str | None = None
 
         try:
             logger.info("Démarrage du workflow pour le fil %s", thread.id)
@@ -318,6 +588,15 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     await on_stream_event(ProgressUpdateEvent(text=""))
 
             async def on_stream_event(event: ThreadStreamEvent) -> None:
+                nonlocal most_recent_widget_item_id
+                if isinstance(event, ThreadItemDoneEvent) and isinstance(
+                    getattr(event, "item", None), WidgetItem
+                ):
+                    most_recent_widget_item_id = event.item.id
+                elif isinstance(event, ThreadItemUpdated) and isinstance(
+                    event.update, WidgetRootUpdated
+                ):
+                    most_recent_widget_item_id = event.item_id
                 await event_queue.put(event)
 
             async def on_step_stream(
@@ -335,12 +614,23 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 if not update.text.strip():
                     return
 
+            async def on_widget_step(
+                step: WorkflowStep,
+                config: "_ResponseWidgetConfig",
+            ) -> Mapping[str, Any] | None:
+                return await self._wait_for_widget_action(
+                    thread=thread,
+                    step_slug=step.slug,
+                    widget_item_id=most_recent_widget_item_id,
+                )
+
             summary = await run_workflow(
                 workflow_input,
                 agent_context=agent_context,
                 on_step=on_step,
                 on_step_stream=on_step_stream,
                 on_stream_event=on_stream_event,
+                on_widget_step=on_widget_step,
                 workflow_service=self._workflow_service,
             )
 
@@ -1723,8 +2013,23 @@ class _WidgetBinding:
 class _ResponseWidgetConfig:
     slug: str
     variables: dict[str, str]
+    await_action: bool | None = None
     output_model: type[BaseModel] | None = None
     bindings: dict[str, _WidgetBinding] = field(default_factory=dict)
+
+
+def _coerce_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on", "oui"}:
+            return True
+        if normalized in {"false", "0", "no", "off", "non"}:
+            return False
+    return None
 
 
 def _parse_response_widget_config(
@@ -1763,7 +2068,17 @@ def _parse_response_widget_config(
             if trimmed_key and trimmed_expression:
                 variables[trimmed_key] = trimmed_expression
 
-    return _ResponseWidgetConfig(slug=slug, variables=variables)
+    await_action_value = (
+        _coerce_bool(candidate.get("await_action"))
+        if "await_action" in candidate
+        else _coerce_bool(candidate.get("wait_for_action"))
+    )
+
+    return _ResponseWidgetConfig(
+        slug=slug,
+        variables=variables,
+        await_action=await_action_value,
+    )
 
 
 def _sanitize_widget_field_name(candidate: str, *, fallback: str = "value") -> str:
@@ -2120,6 +2435,188 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
     return bindings
 
 
+_UNSET = object()
+"""Sentinelle interne pour différencier absence et mise à jour explicite."""
+
+
+def _as_mapping(value: Any) -> Mapping[str, Any] | None:
+    if isinstance(value, Mapping):
+        return value
+    return None
+
+
+def _clone_widget_definition(definition: Any) -> Any | None:
+    if definition is None:
+        return None
+    try:
+        return json.loads(json.dumps(definition, ensure_ascii=False))
+    except Exception:
+        return None
+
+
+def _json_safe_copy(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe_copy(item) for key, item in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_json_safe_copy(entry) for entry in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def _extract_widget_slug(data: Mapping[str, Any]) -> str | None:
+    for key in ("slug", "widget_slug", "widgetSlug"):
+        raw = data.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+    raw_widget = data.get("widget")
+    if isinstance(raw_widget, str) and raw_widget.strip():
+        return raw_widget.strip()
+    return None
+
+
+def _extract_widget_values(data: Mapping[str, Any]) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+
+    def _merge(candidate: Mapping[str, Any]) -> None:
+        for key, value in candidate.items():
+            if isinstance(key, str):
+                trimmed = key.strip()
+                if trimmed:
+                    values[trimmed] = value
+
+    for value_key in ("values", "variables"):
+        candidate = _as_mapping(data.get(value_key))
+        if candidate:
+            _merge(candidate)
+
+    updates = data.get("updates")
+    if isinstance(updates, Sequence):
+        for entry in updates:
+            candidate = _as_mapping(entry)
+            if not candidate:
+                continue
+            identifier = candidate.get("id")
+            if not isinstance(identifier, str) or not identifier.strip():
+                identifier = candidate.get("identifier")
+            if not isinstance(identifier, str) or not identifier.strip():
+                identifier = candidate.get("binding")
+            if not isinstance(identifier, str) or not identifier.strip():
+                identifier = candidate.get("target")
+            if not isinstance(identifier, str) or not identifier.strip():
+                identifier = candidate.get("name")
+            if isinstance(identifier, str) and identifier.strip():
+                values[identifier.strip()] = candidate.get("value")
+
+    return values
+
+
+def _extract_widget_bindings_from_payload(
+    data: Mapping[str, Any]
+) -> dict[str, _WidgetBinding]:
+    bindings: dict[str, _WidgetBinding] = {}
+    raw_bindings = _as_mapping(data.get("bindings"))
+    if not raw_bindings:
+        return bindings
+
+    for identifier, raw_binding in raw_bindings.items():
+        if not isinstance(identifier, str):
+            continue
+        trimmed = identifier.strip()
+        if not trimmed:
+            continue
+        binding_mapping = _as_mapping(raw_binding)
+        if not binding_mapping:
+            continue
+        path_value = binding_mapping.get("path")
+        if not isinstance(path_value, Sequence):
+            continue
+        normalized_path: list[str | int] = []
+        valid_path = True
+        for step in path_value:
+            if isinstance(step, str):
+                normalized_path.append(step)
+            elif isinstance(step, int):
+                normalized_path.append(step)
+            else:
+                valid_path = False
+                break
+        if not valid_path:
+            continue
+        component_type = binding_mapping.get("component_type")
+        if not isinstance(component_type, str):
+            component_type = binding_mapping.get("componentType")
+            if not isinstance(component_type, str):
+                component_type = None
+        sample_value = binding_mapping.get("sample")
+        sample: str | list[str] | None
+        if isinstance(sample_value, Sequence) and not isinstance(
+            sample_value, (str, bytes, bytearray)
+        ):
+            sample = [
+                str(entry)
+                for entry in sample_value
+                if isinstance(entry, (str, int, float, bool))
+            ]
+        elif sample_value is None:
+            sample = None
+        else:
+            sample = str(sample_value)
+        bindings[trimmed] = _WidgetBinding(
+            path=tuple(normalized_path),
+            component_type=component_type,
+            sample=sample,
+        )
+    return bindings
+
+
+def _extract_copy_text_update(data: Mapping[str, Any]) -> object:
+    for key in ("copy_text", "copyText"):
+        if key in data:
+            value = data[key]
+            if value is None:
+                return None
+            if isinstance(value, (str, int, float)):
+                return str(value)
+            return _UNSET
+    return _UNSET
+
+
+def _resolve_widget_action_payload(
+    payload: Mapping[str, Any]
+) -> tuple[str | None, Any | None, dict[str, Any], dict[str, _WidgetBinding], object]:
+    container = _as_mapping(payload.get("widget")) or payload
+
+    slug = _extract_widget_slug(container) or _extract_widget_slug(payload)
+
+    definition = (
+        _clone_widget_definition(
+            container.get("definition")
+            or container.get("widget_definition")
+            or container.get("widgetDefinition")
+        )
+        or _clone_widget_definition(
+            payload.get("definition")
+            or payload.get("widget_definition")
+            or payload.get("widgetDefinition")
+        )
+    )
+
+    values = _extract_widget_values(payload)
+    if container is not payload:
+        values.update(_extract_widget_values(container))
+
+    bindings = _extract_widget_bindings_from_payload(payload)
+    if container is not payload:
+        bindings.update(_extract_widget_bindings_from_payload(container))
+
+    copy_text = _extract_copy_text_update(container)
+    if copy_text is _UNSET:
+        copy_text = _extract_copy_text_update(payload)
+
+    return slug, definition, values, bindings, copy_text
+
+
 def _ensure_widget_output_model(
     config: _ResponseWidgetConfig,
 ) -> _ResponseWidgetConfig:
@@ -2149,6 +2646,17 @@ def _ensure_widget_output_model(
     if model is None:
         return config
     return replace(config, output_model=model)
+
+
+def _should_wait_for_widget_action(
+    step_kind: str,
+    config: _ResponseWidgetConfig | None,
+) -> bool:
+    if config is None:
+        return False
+    if config.await_action is not None:
+        return config.await_action
+    return step_kind == "widget"
 
 
 class WorkflowExecutionError(RuntimeError):
@@ -2209,6 +2717,10 @@ async def run_workflow(
     on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None = None,
     on_step_stream: Callable[[WorkflowStepStreamUpdate], Awaitable[None]] | None = None,
     on_stream_event: Callable[[ThreadStreamEvent], Awaitable[None]] | None = None,
+    on_widget_step: Callable[
+        [WorkflowStep, _ResponseWidgetConfig], Awaitable[Mapping[str, Any] | None]
+    ]
+    | None = None,
     workflow_service: WorkflowService | None = None,
 ) -> WorkflowRunSummary:
     workflow_payload = workflow_input.model_dump()
@@ -2415,10 +2927,14 @@ async def run_workflow(
         return RunConfig(trace_metadata=metadata)
 
     async def record_step(step_key: str, title: str, payload: Any) -> None:
+        formatted_output = _format_step_output(payload)
+        print(
+            f"[Workflow] Payload envoyé pour l'étape {step_key} ({title}) :\n{formatted_output}"
+        )
         summary = WorkflowStepSummary(
             key=step_key,
             title=title,
-            output=_format_step_output(payload),
+            output=formatted_output,
         )
         steps.append(summary)
         if on_step is not None:
@@ -3355,11 +3871,36 @@ async def run_workflow(
                     step_title=title,
                     step_context=last_step_context,
                 )
+                action_payload: dict[str, Any] | None = None
+                if (
+                    on_widget_step is not None
+                    and _should_wait_for_widget_action(current_node.kind, widget_config)
+                ):
+                    result = await on_widget_step(current_node, widget_config)
+                    if result is not None:
+                        action_payload = dict(result)
+
+                step_payload: dict[str, Any] = {"widget": widget_config.slug}
+                if action_payload is not None:
+                    step_payload["action"] = action_payload
+
                 await record_step(
                     current_node.slug,
                     title,
-                    {"widget": widget_config.slug},
+                    step_payload,
                 )
+
+                if action_payload is not None:
+                    last_step_context = {
+                        "widget": widget_config.slug,
+                        "widget_slug": widget_config.slug,
+                        "action": action_payload,
+                    }
+                else:
+                    last_step_context = {
+                        "widget": widget_config.slug,
+                        "widget_slug": widget_config.slug,
+                    }
             transition = _next_edge(current_slug)
             if transition is None:
                 if not agent_steps_ordered:
@@ -3515,6 +4056,17 @@ async def run_workflow(
                 step_title=title,
                 step_context=last_step_context,
             )
+            if (
+                on_widget_step is not None
+                and _should_wait_for_widget_action(current_node.kind, widget_config)
+            ):
+                result = await on_widget_step(current_node, widget_config)
+                if result is not None:
+                    augmented_context = dict(last_step_context or {})
+                    augmented_context.setdefault("widget", widget_config.slug)
+                    augmented_context.setdefault("widget_slug", widget_config.slug)
+                    augmented_context["action"] = dict(result)
+                    last_step_context = augmented_context
 
         transition = _next_edge(current_slug)
         if agent_key == "r_dacteur":

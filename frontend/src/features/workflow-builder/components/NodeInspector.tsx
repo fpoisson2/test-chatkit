@@ -103,6 +103,7 @@ export type NodeInspectorProps = {
     nodeId: string,
     assignments: WidgetVariableAssignment[],
   ) => void;
+  onWidgetNodeAwaitActionChange: (nodeId: string, value: boolean) => void;
   onAgentIncludeChatHistoryChange: (nodeId: string, value: boolean) => void;
   onAgentDisplayResponseInChatChange: (nodeId: string, value: boolean) => void;
   onAgentShowSearchSourcesChange: (nodeId: string, value: boolean) => void;
@@ -154,6 +155,7 @@ const NodeInspector = ({
   onAgentResponseWidgetSlugChange,
   onWidgetNodeSlugChange,
   onWidgetNodeVariablesChange,
+  onWidgetNodeAwaitActionChange,
   onAgentIncludeChatHistoryChange,
   onAgentDisplayResponseInChatChange,
   onAgentShowSearchSourcesChange,
@@ -242,6 +244,7 @@ const NodeInspector = ({
   const widgetNodeConfig = useMemo(() => getWidgetNodeConfig(parameters), [parameters]);
   const widgetNodeSlug = widgetNodeConfig.slug;
   const widgetNodeVariables = widgetNodeConfig.variables;
+  const widgetNodeAwaitAction = widgetNodeConfig.awaitAction;
   const trimmedWidgetNodeSlug = widgetNodeSlug.trim();
   const [widgetDefinition, setWidgetDefinition] = useState<Record<string, unknown> | null>(null);
   const [widgetDefinitionLoading, setWidgetDefinitionLoading] = useState(false);
@@ -553,6 +556,27 @@ const NodeInspector = ({
               onChange={(next) => onWidgetNodeVariablesChange(node.id, next)}
             />
           </div>
+
+          <label style={{ ...fieldStyle, marginTop: "0.75rem" }}>
+            <span style={labelContentStyle}>Progression du workflow</span>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
+              <input
+                type="checkbox"
+                checked={widgetNodeAwaitAction}
+                onChange={(event) =>
+                  onWidgetNodeAwaitActionChange(node.id, event.target.checked)
+                }
+              />
+              <div style={{ lineHeight: 1.4 }}>
+                <strong>Attendre une action utilisateur avant de continuer</strong>
+                <p style={{ color: "#475569", margin: "0.35rem 0 0" }}>
+                  Lorsque cette option est activée, le workflow reste sur ce bloc tant que
+                  l'utilisateur n'a pas interagi avec le widget. Désactivez-la pour enchaîner
+                  automatiquement avec l'étape suivante.
+                </p>
+              </div>
+            </div>
+          </label>
         </>
       )}
 

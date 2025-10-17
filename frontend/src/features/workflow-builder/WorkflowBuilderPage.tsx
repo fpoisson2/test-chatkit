@@ -72,6 +72,7 @@ import {
   DEFAULT_END_MESSAGE,
   createWidgetNodeParameters,
   resolveWidgetNodeParameters,
+  setWidgetNodeAwaitAction,
   setWidgetNodeSlug,
   setWidgetNodeVariables,
 } from "../../utils/workflows";
@@ -1718,6 +1719,24 @@ const WorkflowBuilderPage = () => {
     [updateNodeData]
   );
 
+  const handleWidgetNodeAwaitActionChange = useCallback(
+    (nodeId: string, value: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "widget") {
+          return data;
+        }
+        const nextParameters = setWidgetNodeAwaitAction(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
   const handleAgentWebSearchChange = useCallback(
     (nodeId: string, config: WebSearchConfig | null) => {
       updateNodeData(nodeId, (data) => {
@@ -3305,6 +3324,7 @@ const WorkflowBuilderPage = () => {
             onAgentResponseWidgetSlugChange={handleAgentResponseWidgetSlugChange}
             onWidgetNodeSlugChange={handleWidgetNodeSlugChange}
             onWidgetNodeVariablesChange={handleWidgetNodeVariablesChange}
+            onWidgetNodeAwaitActionChange={handleWidgetNodeAwaitActionChange}
             onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}
             onAgentDisplayResponseInChatChange={handleAgentDisplayResponseInChatChange}
             onAgentShowSearchSourcesChange={handleAgentShowSearchSourcesChange}
