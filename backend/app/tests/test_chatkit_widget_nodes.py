@@ -234,3 +234,36 @@ def test_auto_start_workflow_strips_zero_width_input(
 
     assert recorded_inputs, "L'agent devrait être exécuté"
     assert recorded_inputs[0] == [], "Les caractères invisibles doivent être ignorés lors du démarrage automatique"
+
+
+def test_auto_start_workflow_injects_configured_user_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded_inputs: list[Any] = []
+    runner_payload = {"title": "Synthèse"}
+
+    def _capture_runner(*args, **kwargs):  # type: ignore[no-untyped-def]
+        recorded_inputs.append(kwargs.get("input"))
+        return _DummyRunnerResult(dict(runner_payload))
+
+    _execute_widget_workflow(
+        monkeypatch,
+        widget_parameters={"widget": {"slug": "resume"}},
+        runner_payload=runner_payload,
+        start_parameters={"auto_start": True, "auto_start_user_message": "Bonjour"},
+        workflow_input_text="",
+        runner_callable=_capture_runner,
+    )
+
+    assert recorded_inputs, "L'agent devrait être exécuté"
+    assert recorded_inputs[0] == [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": "Bonjour",
+                }
+            ],
+        }
+    ], "Le message défini sur le bloc début doit être injecté pour l'auto-start"

@@ -36,6 +36,7 @@ import {
   getEndMessage,
   getWidgetNodeConfig,
   getStartAutoRun,
+  getStartAutoRunMessage,
 } from "../../../utils/workflows";
 import type {
   FileSearchConfig,
@@ -113,6 +114,7 @@ export type NodeInspectorProps = {
     updates: Partial<VectorStoreNodeConfig>,
   ) => void;
   onStartAutoRunChange: (nodeId: string, value: boolean) => void;
+  onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
   availableModels: AvailableModel[];
   availableModelsLoading: boolean;
   availableModelsError: string | null;
@@ -159,6 +161,7 @@ const NodeInspector = ({
   onAgentFileSearchChange,
   onVectorStoreNodeConfigChange,
   onStartAutoRunChange,
+  onStartAutoRunMessageChange,
   availableModels,
   availableModelsLoading,
   availableModelsError,
@@ -196,6 +199,8 @@ const NodeInspector = ({
   const continueOnError = getAgentContinueOnError(parameters);
   const storeResponses = getAgentStorePreference(parameters);
   const startAutoRun = kind === "start" ? getStartAutoRun(parameters) : false;
+  const startAutoRunMessage =
+    kind === "start" ? getStartAutoRunMessage(parameters) : "";
   const webSearchConfig = getAgentWebSearchConfig(parameters);
   const webSearchEnabled = Boolean(webSearchConfig);
   const fileSearchConfig = getAgentFileSearchConfig(parameters);
@@ -413,6 +418,25 @@ const NodeInspector = ({
           onChange={(next) => onStartAutoRunChange(node.id, next)}
           help="Exécute immédiatement le workflow lors de l'ouverture d'un fil, même sans message utilisateur."
         />
+      )}
+
+      {kind === "start" && startAutoRun && (
+        <label style={fieldStyle}>
+          <span style={labelContentStyle}>Message utilisateur initial</span>
+          <textarea
+            value={startAutoRunMessage}
+            onChange={(event) =>
+              onStartAutoRunMessageChange(node.id, event.target.value)
+            }
+            rows={3}
+            placeholder="Ex. Bonjour, voici les informations de départ… (facultatif)"
+            style={{ resize: "vertical", minHeight: "4.5rem" }}
+          />
+          <p style={{ color: "#475569", margin: "0.35rem 0 0" }}>
+            Ce message est transmis à l'agent lorsqu'un fil démarre sans saisie
+            utilisateur.
+          </p>
+        </label>
       )}
 
       {kind === "widget" && (

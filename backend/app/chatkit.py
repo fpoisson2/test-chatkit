@@ -63,7 +63,12 @@ from .chatkit_store import PostgresChatKitStore
 from .database import SessionLocal
 from .models import WorkflowStep, WorkflowTransition
 from .token_sanitizer import sanitize_model_like
-from .workflows import DEFAULT_END_MESSAGE, WorkflowService, resolve_start_auto_start
+from .workflows import (
+    DEFAULT_END_MESSAGE,
+    WorkflowService,
+    resolve_start_auto_start,
+    resolve_start_auto_start_message,
+)
 from .vector_store import JsonVectorStoreService, SearchResult
 from .weather import fetch_weather
 from .widgets import WidgetLibraryService
@@ -109,7 +114,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         self._settings = settings
         self._workflow_service = WorkflowService()
 
-    def _should_auto_start_workflow(self) -> bool:
+    def _resolve_auto_start_configuration(self) -> tuple[bool, str]:
         try:
             definition = self._workflow_service.get_current()
         except Exception as exc:  # pragma: no cover - devrait rester exceptionnel
@@ -117,9 +122,17 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 "Impossible de vérifier l'option de démarrage automatique du workflow.",
                 exc_info=exc,
             )
-            return False
+            return False, ""
 
-        return resolve_start_auto_start(definition)
+        should_auto_start = resolve_start_auto_start(definition)
+        if not should_auto_start:
+            return False, ""
+
+        message = resolve_start_auto_start_message(definition)
+        if not isinstance(message, str):
+            return True, ""
+
+        return True, message
 
     async def respond(
         self,
@@ -146,7 +159,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         user_text = _resolve_user_input_text(input_user_message, history.data)
         if not user_text:
-            should_auto_start = self._should_auto_start_workflow()
+            should_auto_start, auto_start_message = self._resolve_auto_start_configuration()
             if not should_auto_start:
                 yield ErrorEvent(
                     code=ErrorCode.STREAM_ERROR,
@@ -171,7 +184,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             logger.info(
                 "Démarrage automatique du workflow pour le fil %s", thread.id
             )
-            user_text = ""
+            user_text = _normalize_user_text(auto_start_message)
 
         agent_context = AgentContext(
             thread=thread,

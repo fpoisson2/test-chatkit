@@ -32,7 +32,11 @@ from ..schemas import (
     VoiceSessionResponse,
 )
 from ..voice_settings import get_or_create_voice_settings
-from ..workflows import WorkflowService, resolve_start_auto_start
+from ..workflows import (
+    WorkflowService,
+    resolve_start_auto_start,
+    resolve_start_auto_start_message,
+)
 
 router = APIRouter()
 
@@ -55,6 +59,9 @@ async def get_chatkit_workflow(
         definition_id=definition.id,
         definition_version=definition.version,
         auto_start=resolve_start_auto_start(definition),
+        auto_start_user_message=(
+            message if (message := resolve_start_auto_start_message(definition)) else None
+        ),
         updated_at=definition.updated_at,
     )
 
