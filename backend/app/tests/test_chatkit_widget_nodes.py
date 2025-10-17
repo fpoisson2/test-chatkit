@@ -123,7 +123,7 @@ def test_watch_node_requires_single_incoming_edge() -> None:
         service._normalize_graph(payload)
 
 
-def test_watch_node_emits_notice_event(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_watch_node_emits_assistant_message(monkeypatch: pytest.MonkeyPatch) -> None:
     events: list[Any] = []
 
     def _run_agent(*args, **kwargs) -> _DummyRunnerResult:  # type: ignore[no-untyped-def]
@@ -206,11 +206,21 @@ def test_watch_node_emits_notice_event(monkeypatch: pytest.MonkeyPatch) -> None:
 
     asyncio.run(_run())
 
-    notice_events = [event for event in events if isinstance(event, NoticeEvent)]
-    assert notice_events, "Le bloc watch devrait produire une notice dans le flux."
-    message = notice_events[0].message or ""
-    assert "status" in message
-    assert "details" in message
+    assistant_messages = [
+        event
+        for event in events
+        if isinstance(event, ThreadItemDoneEvent)
+        and isinstance(event.item, AssistantMessageItem)
+        and any("Bloc watch" in part.text for part in event.item.content)
+    ]
+    assert assistant_messages, "Le bloc watch devrait diffuser un message assistant."
+    watch_message_text = assistant_messages[0].item.content[0].text
+    assert "Bloc watch" in watch_message_text
+    assert "status" in watch_message_text
+
+    assert not [event for event in events if isinstance(event, NoticeEvent)], (
+        "Le bloc watch ne doit plus diffuser de notice d'information."
+    )
 
 
 def test_resolve_watch_payload_prefers_structured_output() -> None:
