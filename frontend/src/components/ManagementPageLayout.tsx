@@ -41,26 +41,34 @@ export const ManagementPageLayout = ({
   const hasHeaderAside = Boolean(badge || actions);
   const shouldRenderHeader =
     !hideHeader && (showSidebarButton || hasHeaderMain || hasHeaderAside);
+  const shouldRenderStandaloneMenuButton = hideHeader && showSidebarButton;
   const headerClassName = `${styles.header} ${
     hasHeaderMain ? styles.headerWithMain : styles.headerWithoutMain
   }`;
 
+  const renderMenuButton = (extraClassName?: string) => (
+    <button
+      type="button"
+      onClick={openSidebar}
+      className={`${styles.menuButton}${extraClassName ? ` ${extraClassName}` : ""}`}
+      aria-label="Ouvrir la navigation générale"
+    >
+      <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <path d="M3 5h14M3 10h14M3 15h14" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    </button>
+  );
+
   return (
     <div className={styles.page}>
+      {shouldRenderStandaloneMenuButton ? (
+        <div className={styles.menuButtonStandaloneWrapper}>
+          {renderMenuButton(styles.menuButtonStandalone)}
+        </div>
+      ) : null}
       {shouldRenderHeader ? (
         <header className={headerClassName}>
-          {showSidebarButton ? (
-            <button
-              type="button"
-              onClick={openSidebar}
-              className={styles.menuButton}
-              aria-label="Ouvrir la navigation générale"
-            >
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                <path d="M3 5h14M3 10h14M3 15h14" stroke="#0f172a" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-            </button>
-          ) : null}
+          {showSidebarButton ? renderMenuButton() : null}
 
           {hasHeaderMain ? (
             <div className={styles.headerMain}>
