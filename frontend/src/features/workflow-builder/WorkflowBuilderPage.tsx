@@ -20,6 +20,7 @@ import ReactFlow, {
   useEdgesState,
   useNodesState,
 } from "reactflow";
+import { getNodesBounds, getViewportForBounds } from "@reactflow/core";
 
 import "reactflow/dist/style.css";
 
@@ -123,6 +124,15 @@ import styles from "./WorkflowBuilderPage.module.css";
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 const AUTO_SAVE_SUCCESS_MESSAGE = "Modifications enregistrées automatiquement.";
 const DRAFT_DISPLAY_NAME = "Brouillon";
+
+const DESKTOP_MIN_VIEWPORT_ZOOM = 0.1;
+const MOBILE_MIN_VIEWPORT_ZOOM = 0.05;
+const MIN_ABSOLUTE_VIEWPORT_ZOOM = 0.01;
+const DESKTOP_FIT_VIEW_PADDING = 0.2;
+const MOBILE_FIT_VIEW_PADDING = 0.08;
+
+const viewportKeyFor = (workflowId: number | null, versionId: number | null) =>
+  workflowId != null ? `${workflowId}:${versionId ?? "latest"}` : null;
 
 const versionSummaryFromResponse = (
   definition: WorkflowVersionResponse,
@@ -249,13 +259,21 @@ const WorkflowBuilderPage = () => {
   const isHydratingRef = useRef(false);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
   const viewportRef = useRef<Viewport | null>(null);
+  const viewportMemoryRef = useRef(new Map<string, Viewport>());
+  const viewportKeyRef = useRef<string | null>(null);
   const pendingViewportRestoreRef = useRef(false);
+  const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
 
   const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
+  const baseMinViewportZoom = useMemo(
+    () => (isMobileLayout ? MOBILE_MIN_VIEWPORT_ZOOM : DESKTOP_MIN_VIEWPORT_ZOOM),
+    [isMobileLayout],
+  );
+  const [minViewportZoom, setMinViewportZoom] = useState(baseMinViewportZoom);
   const [isBlockLibraryOpen, setBlockLibraryOpen] = useState<boolean>(() => !isMobileLayout);
   const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
   const propertiesPanelToggleRef = useRef<HTMLButtonElement | null>(null);
@@ -279,6 +297,10 @@ const WorkflowBuilderPage = () => {
     },
     [blockLibraryToggleRef],
   );
+
+  useEffect(() => {
+    setMinViewportZoom(baseMinViewportZoom);
+  }, [baseMinViewportZoom]);
 
   useEffect(() => {
     setBlockLibraryOpen(!isMobileLayout);
@@ -427,6 +449,70 @@ const WorkflowBuilderPage = () => {
     </>
   );
 
+  const refreshViewportConstraints = useCallback(
+    (flowInstance?: ReactFlowInstance | null) => {
+      const instance = flowInstance ?? reactFlowInstanceRef.current;
+      const container = reactFlowWrapperRef.current;
+      const applyMinZoom = (value: number) => {
+        setMinViewportZoom((current) => (Math.abs(current - value) > 0.0001 ? value : current));
+        return value;
+      };
+
+      if (!instance || !container) {
+        return applyMinZoom(baseMinViewportZoom);
+      }
+
+      const nodes = instance.getNodes();
+      if (nodes.length === 0) {
+        return applyMinZoom(baseMinViewportZoom);
+      }
+
+      const bounds = getNodesBounds(nodes);
+      if (
+        !Number.isFinite(bounds.width) ||
+        !Number.isFinite(bounds.height) ||
+        bounds.width <= 0 ||
+        bounds.height <= 0
+      ) {
+        return applyMinZoom(baseMinViewportZoom);
+      }
+
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      if (width <= 0 || height <= 0) {
+        return applyMinZoom(baseMinViewportZoom);
+      }
+
+      const padding = isMobileLayout ? MOBILE_FIT_VIEW_PADDING : DESKTOP_FIT_VIEW_PADDING;
+      const { zoom } = getViewportForBounds(
+        bounds,
+        width,
+        height,
+        MIN_ABSOLUTE_VIEWPORT_ZOOM,
+        1,
+        padding,
+      );
+
+      const effectiveMinZoom = Math.min(
+        baseMinViewportZoom,
+        Number.isFinite(zoom) ? zoom : baseMinViewportZoom,
+      );
+
+      return applyMinZoom(effectiveMinZoom);
+    },
+    [baseMinViewportZoom, isMobileLayout],
+  );
+
+  const reactFlowContainerRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      reactFlowWrapperRef.current = node;
+      if (node) {
+        refreshViewportConstraints();
+      }
+    },
+    [refreshViewportConstraints],
+  );
+
   const restoreViewport = useCallback(() => {
     const instance = reactFlowInstanceRef.current;
     if (!instance) {
@@ -434,20 +520,109 @@ const WorkflowBuilderPage = () => {
       return;
     }
 
-    pendingViewportRestoreRef.current = false;
-    requestAnimationFrame(() => {
+    const applyViewport = () => {
       const flow = reactFlowInstanceRef.current;
       if (!flow) {
         return;
       }
+      pendingViewportRestoreRef.current = false;
+      const effectiveMinZoom = refreshViewportConstraints(flow);
+      const padding = isMobileLayout ? MOBILE_FIT_VIEW_PADDING : DESKTOP_FIT_VIEW_PADDING;
       const savedViewport = viewportRef.current;
       if (savedViewport) {
-        flow.setViewport(savedViewport, { duration: 0 });
+        flow.setViewport(
+          { ...savedViewport, zoom: Math.max(savedViewport.zoom, effectiveMinZoom) },
+          { duration: 0 },
+        );
       } else {
-        flow.fitView({ padding: 0.2, duration: 0 });
+        flow.fitView({
+          padding,
+          minZoom: effectiveMinZoom,
+          duration: 0,
+        });
       }
+
+      const container = reactFlowWrapperRef.current;
+      const nodes = flow.getNodes();
+      let appliedViewport = flow.getViewport();
+
+      if (
+        container &&
+        nodes.length > 0 &&
+        container.clientWidth > 0 &&
+        container.clientHeight > 0
+      ) {
+        const bounds = getNodesBounds(nodes);
+        if (
+          Number.isFinite(bounds.width) &&
+          Number.isFinite(bounds.height) &&
+          bounds.width > 0 &&
+          bounds.height > 0 &&
+          appliedViewport.zoom > 0
+        ) {
+          const visibleLeft = -appliedViewport.x / appliedViewport.zoom;
+          const visibleTop = -appliedViewport.y / appliedViewport.zoom;
+          const visibleRight =
+            visibleLeft + container.clientWidth / appliedViewport.zoom;
+          const visibleBottom =
+            visibleTop + container.clientHeight / appliedViewport.zoom;
+
+          const nodesLeft = bounds.x;
+          const nodesTop = bounds.y;
+          const nodesRight = bounds.x + bounds.width;
+          const nodesBottom = bounds.y + bounds.height;
+          const tolerance = 48 / appliedViewport.zoom;
+
+          const nodesOverflow =
+            nodesLeft < visibleLeft - tolerance ||
+            nodesTop < visibleTop - tolerance ||
+            nodesRight > visibleRight + tolerance ||
+            nodesBottom > visibleBottom + tolerance;
+
+          if (nodesOverflow) {
+            flow.fitView({
+              padding,
+              minZoom: effectiveMinZoom,
+              duration: 0,
+            });
+            appliedViewport = flow.getViewport();
+          }
+        }
+      }
+
+      viewportRef.current = appliedViewport;
+      const key = viewportKeyRef.current;
+      if (key) {
+        viewportMemoryRef.current.set(key, appliedViewport);
+      }
+    };
+
+    if (typeof window === "undefined") {
+      applyViewport();
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(applyViewport);
     });
-  }, []);
+  }, [isMobileLayout, refreshViewportConstraints]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handleResize = () => {
+      refreshViewportConstraints();
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [refreshViewportConstraints]);
+
+  useEffect(() => {
+    refreshViewportConstraints();
+  }, [nodes, isMobileLayout, refreshViewportConstraints]);
 
 
 
@@ -669,6 +844,11 @@ const WorkflowBuilderPage = () => {
           setHasPendingChanges(false);
           setNodes(flowNodes);
           setEdges(flowEdges);
+          const viewportKey = viewportKeyFor(workflowId, versionId);
+          viewportKeyRef.current = viewportKey;
+          viewportRef.current = viewportKey
+            ? viewportMemoryRef.current.get(viewportKey) ?? null
+            : null;
           pendingViewportRestoreRef.current = true;
           restoreViewport();
           setSelectedNodeId(null);
@@ -775,6 +955,11 @@ const WorkflowBuilderPage = () => {
             lastSavedSnapshotRef.current = JSON.stringify(buildGraphPayloadFrom([], []));
             setHasPendingChanges(false);
             setLoading(false);
+            const emptyViewportKey = viewportKeyFor(workflowId, null);
+            viewportKeyRef.current = emptyViewportKey;
+            if (emptyViewportKey) {
+              viewportMemoryRef.current.delete(emptyViewportKey);
+            }
             viewportRef.current = null;
             pendingViewportRestoreRef.current = true;
             restoreViewport();
@@ -864,7 +1049,9 @@ const WorkflowBuilderPage = () => {
             lastSavedSnapshotRef.current = JSON.stringify(buildGraphPayloadFrom([], []));
             setHasPendingChanges(false);
             setLoading(false);
+            viewportKeyRef.current = null;
             viewportRef.current = null;
+            viewportMemoryRef.current.clear();
             pendingViewportRestoreRef.current = true;
             restoreViewport();
             return;
@@ -2003,6 +2190,14 @@ const WorkflowBuilderPage = () => {
               ...versionSummaryFromResponse(created),
               name: DRAFT_DISPLAY_NAME,
             };
+            const newViewportKey = viewportKeyFor(selectedWorkflowId, summary.id);
+            const currentViewport =
+              reactFlowInstanceRef.current?.getViewport() ?? viewportRef.current;
+            if (newViewportKey && currentViewport) {
+              viewportMemoryRef.current.set(newViewportKey, { ...currentViewport });
+            }
+            viewportKeyRef.current = newViewportKey;
+            viewportRef.current = currentViewport ? { ...currentViewport } : null;
             draftVersionIdRef.current = summary.id;
             draftVersionSummaryRef.current = summary;
             setSelectedVersionId(summary.id);
@@ -3044,9 +3239,11 @@ const WorkflowBuilderPage = () => {
   }, [saveState]);
 
   useEffect(() => {
-    viewportRef.current = null;
+    const key = viewportKeyFor(selectedWorkflowId, selectedVersionId);
+    viewportKeyRef.current = key;
+    viewportRef.current = key ? viewportMemoryRef.current.get(key) ?? null : null;
     pendingViewportRestoreRef.current = true;
-  }, [selectedWorkflowId]);
+  }, [selectedVersionId, selectedWorkflowId]);
 
   const headerStyle = useMemo(() => {
     const baseStyle = getHeaderContainerStyle(isMobileLayout);
@@ -3151,6 +3348,7 @@ const WorkflowBuilderPage = () => {
             {shouldShowWorkflowDescription ? renderWorkflowDescription() : null}
             {shouldShowPublicationReminder ? renderWorkflowPublicationReminder() : null}
             <div
+              ref={reactFlowContainerRef}
               style={editorContainerStyle}
               aria-label="Éditeur visuel du workflow"
             >
@@ -3173,14 +3371,20 @@ const WorkflowBuilderPage = () => {
                   defaultEdgeOptions={defaultEdgeOptions}
                   connectionLineStyle={connectionLineStyle}
                   style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
+                  minZoom={minViewportZoom}
                   onInit={(instance) => {
                     reactFlowInstanceRef.current = instance;
+                    refreshViewportConstraints(instance);
                     if (pendingViewportRestoreRef.current) {
                       restoreViewport();
                     }
                   }}
                   onMoveEnd={(_, viewport) => {
                     viewportRef.current = viewport;
+                    const key = viewportKeyRef.current;
+                    if (key) {
+                      viewportMemoryRef.current.set(key, viewport);
+                    }
                   }}
                 >
                   <Background gap={18} size={1} />
