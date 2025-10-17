@@ -1,5 +1,5 @@
 import { Modal } from "./Modal";
-import { WidgetPreview } from "./WidgetPreview";
+import { WidgetPreviewPlayground } from "./WidgetPreviewPlayground";
 
 type WidgetPreviewModalProps = {
   title: string;
@@ -16,7 +16,7 @@ export const WidgetPreviewModal = ({
 }: WidgetPreviewModalProps) => (
   <Modal title={title} onClose={onClose} size="lg">
     {subtitle ? <p className="admin-card__subtitle">{subtitle}</p> : null}
-    <WidgetPreview definition={definition} />
+    <WidgetPreviewPlayground definition={definition} />
     <details className="accordion">
       <summary>Définition JSON normalisée</summary>
       <pre className="code-block" aria-label="Définition JSON du widget">
