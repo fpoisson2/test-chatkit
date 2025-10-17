@@ -50,6 +50,10 @@ class ChatKitWorkflowResponse(BaseModel):
     definition_id: int
     definition_version: int
     auto_start: bool
+    auto_start_user_message: str | None = Field(
+        default=None,
+        description="Message utilisateur injecté lors du démarrage automatique (optionnel).",
+    )
     updated_at: datetime.datetime
 
 

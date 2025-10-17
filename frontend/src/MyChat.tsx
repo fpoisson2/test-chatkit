@@ -496,7 +496,12 @@ export function MyChat() {
 
     autoStartAttemptRef.current = true;
 
-    sendUserMessage({ text: AUTO_START_TRIGGER_MESSAGE, newThread: true }).catch(
+    const configuredMessage = chatkitWorkflowInfo.auto_start_user_message ?? "";
+    const payloadText = configuredMessage.trim()
+      ? configuredMessage
+      : AUTO_START_TRIGGER_MESSAGE;
+
+    sendUserMessage({ text: payloadText, newThread: true }).catch(
       (err: unknown) => {
       autoStartAttemptRef.current = false;
       const message =
@@ -508,7 +513,12 @@ export function MyChat() {
       }
       setError(message);
     });
-  }, [chatkitWorkflowInfo?.auto_start, sendUserMessage, initialThreadId]);
+  }, [
+    chatkitWorkflowInfo?.auto_start,
+    chatkitWorkflowInfo?.auto_start_user_message,
+    sendUserMessage,
+    initialThreadId,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") {

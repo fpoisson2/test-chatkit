@@ -56,6 +56,27 @@ def resolve_start_auto_start(
 
     return False
 
+
+def resolve_start_auto_start_message(
+    definition: "WorkflowDefinition",
+) -> str:
+    """Retourne le message utilisateur injecté lors du démarrage automatique."""
+
+    for step in definition.steps:
+        if getattr(step, "kind", None) != "start":
+            continue
+        if not getattr(step, "is_enabled", True):
+            continue
+        parameters = step.parameters
+        if isinstance(parameters, Mapping):
+            raw_message = parameters.get("auto_start_user_message")
+            if isinstance(raw_message, str):
+                return raw_message
+        break
+
+    return ""
+
+
 SUPPORTED_AGENT_KEYS: set[str] = {
     "triage",
     "get_data_from_web",

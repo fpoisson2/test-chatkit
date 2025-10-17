@@ -163,6 +163,7 @@ export type ChatKitWorkflowInfo = {
   definition_id: number;
   definition_version: number;
   auto_start: boolean;
+  auto_start_user_message: string | null;
   updated_at: string;
 };
 

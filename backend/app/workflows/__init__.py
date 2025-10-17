@@ -14,6 +14,7 @@ from .service import (
     serialize_version_summary,
     serialize_workflow_summary,
     resolve_start_auto_start,
+    resolve_start_auto_start_message,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "serialize_version_summary",
     "serialize_workflow_summary",
     "resolve_start_auto_start",
+    "resolve_start_auto_start_message",
 ]
