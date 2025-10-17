@@ -41,6 +41,18 @@ class VoiceSessionResponse(BaseModel):
     prompt_variables: dict[str, str] = Field(default_factory=dict)
 
 
+class ChatKitWorkflowResponse(BaseModel):
+    """Description minimaliste du workflow utilisé par ChatKit."""
+
+    workflow_id: int
+    workflow_slug: str | None
+    workflow_display_name: str | None
+    definition_id: int
+    definition_version: int
+    auto_start: bool
+    updated_at: datetime.datetime
+
+
 class VoiceSettingsResponse(BaseModel):
     instructions: str
     model: str

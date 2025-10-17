@@ -61,6 +61,7 @@ import {
   setAgentWeatherToolEnabled,
   setAgentWebSearchConfig,
   setStateAssignments,
+  setStartAutoRun,
   stringifyAgentParameters,
   createVectorStoreNodeParameters,
   getVectorStoreNodeConfig,
@@ -1309,6 +1310,24 @@ const WorkflowBuilderPage = () => {
       });
     },
     [updateNodeData]
+  );
+
+  const handleStartAutoRunChange = useCallback(
+    (nodeId: string, value: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "start") {
+          return data;
+        }
+        const nextParameters = setStartAutoRun(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
   );
 
   const handleAgentMessageChange = useCallback(
@@ -3253,6 +3272,7 @@ const WorkflowBuilderPage = () => {
             onAgentWebSearchChange={handleAgentWebSearchChange}
             onAgentFileSearchChange={handleAgentFileSearchChange}
             onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
+            onStartAutoRunChange={handleStartAutoRunChange}
             availableModels={availableModels}
             availableModelsLoading={availableModelsLoading}
             availableModelsError={availableModelsError}

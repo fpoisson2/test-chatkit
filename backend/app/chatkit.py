@@ -51,6 +51,7 @@ from chatkit.types import (
     LockedStatus,
     ProgressUpdateEvent,
     ThreadItem,
+    ThreadItemRemovedEvent,
     ThreadItemUpdated,
     ThreadMetadata,
     ThreadStreamEvent,
@@ -62,12 +63,24 @@ from .chatkit_store import PostgresChatKitStore
 from .database import SessionLocal
 from .models import WorkflowStep, WorkflowTransition
 from .token_sanitizer import sanitize_model_like
-from .workflows import DEFAULT_END_MESSAGE, WorkflowService
+from .workflows import DEFAULT_END_MESSAGE, WorkflowService, resolve_start_auto_start
 from .vector_store import JsonVectorStoreService, SearchResult
 from .weather import fetch_weather
 from .widgets import WidgetLibraryService
 
 logger = logging.getLogger("chatkit.server")
+
+_ZERO_WIDTH_CHARACTERS = frozenset({"\u200b", "\u200c", "\u200d", "\ufeff"})
+
+
+def _normalize_user_text(value: str | None) -> str:
+    """Supprime les caractères invisibles et normalise les messages utilisateurs."""
+
+    if not value:
+        return ""
+
+    sanitized = "".join(ch for ch in value if ch not in _ZERO_WIDTH_CHARACTERS)
+    return sanitized.strip()
 
 
 @dataclass(frozen=True)
@@ -96,6 +109,18 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         self._settings = settings
         self._workflow_service = WorkflowService()
 
+    def _should_auto_start_workflow(self) -> bool:
+        try:
+            definition = self._workflow_service.get_current()
+        except Exception as exc:  # pragma: no cover - devrait rester exceptionnel
+            logger.exception(
+                "Impossible de vérifier l'option de démarrage automatique du workflow.",
+                exc_info=exc,
+            )
+            return False
+
+        return resolve_start_auto_start(definition)
+
     async def respond(
         self,
         thread: ThreadMetadata,
@@ -121,12 +146,32 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         user_text = _resolve_user_input_text(input_user_message, history.data)
         if not user_text:
-            yield ErrorEvent(
-                code=ErrorCode.STREAM_ERROR,
-                message="Impossible de déterminer le message utilisateur à traiter.",
-                allow_retry=False,
+            should_auto_start = self._should_auto_start_workflow()
+            if not should_auto_start:
+                yield ErrorEvent(
+                    code=ErrorCode.STREAM_ERROR,
+                    message="Impossible de déterminer le message utilisateur à traiter.",
+                    allow_retry=False,
+                )
+                return
+
+            if input_user_message is not None:
+                try:
+                    await self.store.delete_thread_item(
+                        thread.id, input_user_message.id, context=context
+                    )
+                    yield ThreadItemRemovedEvent(item_id=input_user_message.id)
+                except Exception as exc:  # pragma: no cover - suppression best effort
+                    logger.warning(
+                        "Impossible de retirer le message utilisateur initial pour le fil %s",
+                        thread.id,
+                        exc_info=exc,
+                    )
+
+            logger.info(
+                "Démarrage automatique du workflow pour le fil %s", thread.id
             )
-            return
+            user_text = ""
 
         agent_context = AgentContext(
             thread=thread,
@@ -296,15 +341,19 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
 
 def _collect_user_text(message: UserMessageItem | None) -> str:
-    """Concatène le texte d'un message utilisateur."""
+    """Concatène le texte d'un message utilisateur après normalisation."""
+
     if not message or not getattr(message, "content", None):
         return ""
+
     parts: list[str] = []
     for content_item in message.content:
         text = getattr(content_item, "text", None)
-        if text:
-            parts.append(text)
-    return "\n".join(part.strip() for part in parts if part.strip())
+        normalized = _normalize_user_text(text) if text else ""
+        if normalized:
+            parts.append(normalized)
+
+    return "\n".join(parts)
 
 
 def _resolve_user_input_text(
@@ -2042,20 +2091,24 @@ async def run_workflow(
 ) -> WorkflowRunSummary:
     workflow_payload = workflow_input.model_dump()
     steps: list[WorkflowStepSummary] = []
-    conversation_history: list[TResponseInputItem] = [
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "input_text",
-                    "text": workflow_payload["input_as_text"],
-                }
-            ],
-        }
-    ]
+    initial_user_text = _normalize_user_text(workflow_payload["input_as_text"])
+    workflow_payload["input_as_text"] = initial_user_text
+    conversation_history: list[TResponseInputItem] = []
+    if initial_user_text.strip():
+        conversation_history.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": initial_user_text,
+                    }
+                ],
+            }
+        )
     state: dict[str, Any] = {
         "has_all_details": False,
-        "infos_manquantes": workflow_payload["input_as_text"],
+        "infos_manquantes": initial_user_text,
         "should_finalize": False,
     }
     final_output: dict[str, Any] | None = None

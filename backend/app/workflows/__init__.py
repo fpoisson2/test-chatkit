@@ -13,6 +13,7 @@ from .service import (
     serialize_definition,
     serialize_version_summary,
     serialize_workflow_summary,
+    resolve_start_auto_start,
 )
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "serialize_definition",
     "serialize_version_summary",
     "serialize_workflow_summary",
+    "resolve_start_auto_start",
 ]

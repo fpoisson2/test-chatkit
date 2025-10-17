@@ -1,6 +1,6 @@
 import asyncio
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Callable
 
 import pytest
 
@@ -52,6 +52,9 @@ def _execute_widget_workflow(
     widget_parameters: dict[str, Any],
     runner_payload: dict[str, Any],
     widget_definition: dict[str, Any] | None = None,
+    start_parameters: dict[str, Any] | None = None,
+    workflow_input_text: str = "Bonjour",
+    runner_callable: Callable[..., _DummyRunnerResult] | None = None,
 ) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
 
@@ -80,11 +83,12 @@ def _execute_widget_workflow(
         "_validate_widget",
         staticmethod(lambda definition: definition),
     )
-    monkeypatch.setattr(
-        chatkit_module.Runner,
-        "run_streamed",
-        lambda *args, **kwargs: _DummyRunnerResult(dict(runner_payload)),
+    runner = (
+        runner_callable
+        if runner_callable is not None
+        else lambda *args, **kwargs: _DummyRunnerResult(dict(runner_payload))
     )
+    monkeypatch.setattr(chatkit_module.Runner, "run_streamed", runner)
 
     async def _fake_stream_agent_response(*args, **kwargs):  # type: ignore[no-untyped-def]
         if False:
@@ -105,7 +109,7 @@ def _execute_widget_workflow(
         slug="start",
         kind="start",
         is_enabled=True,
-        parameters={},
+        parameters=start_parameters or {},
         agent_key=None,
         position=0,
         id=1,
@@ -157,7 +161,7 @@ def _execute_widget_workflow(
 
     async def _exercise() -> None:
         await run_workflow(
-            WorkflowInput(input_as_text="Bonjour"),
+            WorkflowInput(input_as_text=workflow_input_text),
             agent_context=agent_context,
             workflow_service=_DummyWorkflowService(definition),
         )
@@ -184,3 +188,49 @@ def test_widget_node_streams_widget_with_input(monkeypatch: pytest.MonkeyPatch) 
     assert isinstance(widget, dict)
     values = widget.get("children", [])
     assert any(child.get("value") == "Synthèse" for child in values if isinstance(child, dict))
+
+
+def test_auto_start_workflow_runs_without_user_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded_inputs: list[Any] = []
+    runner_payload = {"title": "Synthèse"}
+
+    def _capture_runner(*args, **kwargs):  # type: ignore[no-untyped-def]
+        recorded_inputs.append(kwargs.get("input"))
+        return _DummyRunnerResult(dict(runner_payload))
+
+    _execute_widget_workflow(
+        monkeypatch,
+        widget_parameters={"widget": {"slug": "resume"}},
+        runner_payload=runner_payload,
+        start_parameters={"auto_start": True},
+        workflow_input_text="",
+        runner_callable=_capture_runner,
+    )
+
+    assert recorded_inputs, "L'agent devrait être exécuté"
+    assert recorded_inputs[0] == [], "Le workflow auto-start ne doit pas injecter de message utilisateur"
+
+
+def test_auto_start_workflow_strips_zero_width_input(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded_inputs: list[Any] = []
+    runner_payload = {"title": "Synthèse"}
+
+    def _capture_runner(*args, **kwargs):  # type: ignore[no-untyped-def]
+        recorded_inputs.append(kwargs.get("input"))
+        return _DummyRunnerResult(dict(runner_payload))
+
+    _execute_widget_workflow(
+        monkeypatch,
+        widget_parameters={"widget": {"slug": "resume"}},
+        runner_payload=runner_payload,
+        start_parameters={"auto_start": True},
+        workflow_input_text="\u200B",
+        runner_callable=_capture_runner,
+    )
+
+    assert recorded_inputs, "L'agent devrait être exécuté"
+    assert recorded_inputs[0] == [], "Les caractères invisibles doivent être ignorés lors du démarrage automatique"

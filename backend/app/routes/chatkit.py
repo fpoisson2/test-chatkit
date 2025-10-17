@@ -25,13 +25,38 @@ from ..config import get_settings
 from ..database import get_session
 from ..dependencies import get_current_user
 from ..models import User
-from ..schemas import SessionRequest, VoiceSessionRequest, VoiceSessionResponse
+from ..schemas import (
+    ChatKitWorkflowResponse,
+    SessionRequest,
+    VoiceSessionRequest,
+    VoiceSessionResponse,
+)
 from ..voice_settings import get_or_create_voice_settings
+from ..workflows import WorkflowService, resolve_start_auto_start
 
 router = APIRouter()
 
 
 logger = logging.getLogger("chatkit.voice")
+
+
+@router.get("/api/chatkit/workflow", response_model=ChatKitWorkflowResponse)
+async def get_chatkit_workflow(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> ChatKitWorkflowResponse:
+    service = WorkflowService()
+    definition = service.get_current(session)
+    workflow = definition.workflow
+    return ChatKitWorkflowResponse(
+        workflow_id=workflow.id if workflow else definition.workflow_id,
+        workflow_slug=workflow.slug if workflow else None,
+        workflow_display_name=workflow.display_name if workflow else None,
+        definition_id=definition.id,
+        definition_version=definition.version,
+        auto_start=resolve_start_auto_start(definition),
+        updated_at=definition.updated_at,
+    )
 
 
 def _normalize_expiration(value: Any) -> str | None:
