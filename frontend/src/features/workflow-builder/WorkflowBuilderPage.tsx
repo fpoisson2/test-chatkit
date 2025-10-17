@@ -669,6 +669,7 @@ const WorkflowBuilderPage = () => {
           setHasPendingChanges(false);
           setNodes(flowNodes);
           setEdges(flowEdges);
+          viewportRef.current = null;
           pendingViewportRestoreRef.current = true;
           restoreViewport();
           setSelectedNodeId(null);
