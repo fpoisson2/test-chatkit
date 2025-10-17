@@ -2879,10 +2879,14 @@ async def run_workflow(
         return RunConfig(trace_metadata=metadata)
 
     async def record_step(step_key: str, title: str, payload: Any) -> None:
+        formatted_output = _format_step_output(payload)
+        print(
+            f"[Workflow] Payload envoyé pour l'étape {step_key} ({title}) :\n{formatted_output}"
+        )
         summary = WorkflowStepSummary(
             key=step_key,
             title=title,
-            output=_format_step_output(payload),
+            output=formatted_output,
         )
         steps.append(summary)
         if on_step is not None:
