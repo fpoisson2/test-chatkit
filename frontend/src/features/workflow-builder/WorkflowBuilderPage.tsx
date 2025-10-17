@@ -531,106 +531,68 @@ const WorkflowBuilderPage = () => {
       const effectiveMinZoom = refreshViewportConstraints(flow);
       const padding = isMobileLayout ? MOBILE_FIT_VIEW_PADDING : DESKTOP_FIT_VIEW_PADDING;
       const savedViewport = viewportRef.current;
-      let shouldAdjustAfterFitView = !savedViewport;
+      const container = reactFlowWrapperRef.current;
+      const nodes = flow.getNodes();
+      const hasValidContainer =
+        !!container && container.clientWidth > 0 && container.clientHeight > 0;
 
       if (savedViewport) {
         flow.setViewport(
           { ...savedViewport, zoom: Math.max(savedViewport.zoom, effectiveMinZoom) },
           { duration: 0 },
         );
-      } else {
-        flow.fitView({
-          padding,
-          minZoom: effectiveMinZoom,
-          duration: 0,
-        });
       }
 
-      const container = reactFlowWrapperRef.current;
-      const nodes = flow.getNodes();
       let appliedViewport = flow.getViewport();
 
-      if (
-        container &&
-        nodes.length > 0 &&
-        container.clientWidth > 0 &&
-        container.clientHeight > 0
-      ) {
+      const shouldComputeInitialViewport = !savedViewport;
+      let needsViewportUpdate = shouldComputeInitialViewport;
+
+      if (hasValidContainer && nodes.length > 0 && appliedViewport.zoom > 0) {
         const bounds = getNodesBounds(nodes);
         if (
           Number.isFinite(bounds.width) &&
           Number.isFinite(bounds.height) &&
           bounds.width > 0 &&
-          bounds.height > 0 &&
-          appliedViewport.zoom > 0
+          bounds.height > 0
         ) {
-          const visibleLeft = -appliedViewport.x / appliedViewport.zoom;
-          const visibleTop = -appliedViewport.y / appliedViewport.zoom;
-          const visibleRight =
-            visibleLeft + container.clientWidth / appliedViewport.zoom;
-          const visibleBottom =
-            visibleTop + container.clientHeight / appliedViewport.zoom;
+          if (!shouldComputeInitialViewport) {
+            const visibleLeft = -appliedViewport.x / appliedViewport.zoom;
+            const visibleTop = -appliedViewport.y / appliedViewport.zoom;
+            const visibleRight =
+              visibleLeft + container!.clientWidth / appliedViewport.zoom;
+            const visibleBottom =
+              visibleTop + container!.clientHeight / appliedViewport.zoom;
 
-          const nodesLeft = bounds.x;
-          const nodesTop = bounds.y;
-          const nodesRight = bounds.x + bounds.width;
-          const nodesBottom = bounds.y + bounds.height;
-          const tolerance = 48 / appliedViewport.zoom;
+            const nodesLeft = bounds.x;
+            const nodesTop = bounds.y;
+            const nodesRight = bounds.x + bounds.width;
+            const nodesBottom = bounds.y + bounds.height;
+            const tolerance = 48 / appliedViewport.zoom;
 
-          const nodesOverflow =
-            nodesLeft < visibleLeft - tolerance ||
-            nodesTop < visibleTop - tolerance ||
-            nodesRight > visibleRight + tolerance ||
-            nodesBottom > visibleBottom + tolerance;
-
-          if (nodesOverflow) {
-            flow.fitView({
-              padding,
-              minZoom: effectiveMinZoom,
-              duration: 0,
-            });
-            appliedViewport = flow.getViewport();
-            shouldAdjustAfterFitView = true;
+            needsViewportUpdate =
+              nodesLeft < visibleLeft - tolerance ||
+              nodesTop < visibleTop - tolerance ||
+              nodesRight > visibleRight + tolerance ||
+              nodesBottom > visibleBottom + tolerance;
           }
-        }
-      }
 
-      if (
-        shouldAdjustAfterFitView &&
-        container &&
-        nodes.length > 0 &&
-        container.clientWidth > 0 &&
-        container.clientHeight > 0 &&
-        appliedViewport.zoom > 0
-      ) {
-        const bounds = getNodesBounds(nodes);
-        if (
-          Number.isFinite(bounds.width) &&
-          Number.isFinite(bounds.height) &&
-          Number.isFinite(bounds.x) &&
-          Number.isFinite(bounds.y)
-        ) {
-          const maxInitialZoom = isMobileLayout
-            ? MOBILE_MAX_INITIAL_VIEWPORT_ZOOM
-            : DESKTOP_MAX_INITIAL_VIEWPORT_ZOOM;
-          const limitedZoom = Math.min(
-            Math.max(appliedViewport.zoom, Math.max(effectiveMinZoom, MIN_ABSOLUTE_VIEWPORT_ZOOM)),
-            maxInitialZoom,
-          );
-          const nodesCenterX = bounds.x + bounds.width / 2;
-          const nodesCenterY = bounds.y + bounds.height / 2;
-          const centeredViewport: Viewport = {
-            zoom: limitedZoom,
-            x: -(nodesCenterX * limitedZoom) + container.clientWidth / 2,
-            y: -(nodesCenterY * limitedZoom) + container.clientHeight / 2,
-          };
+          if (needsViewportUpdate) {
+            const maxInitialZoom = isMobileLayout
+              ? MOBILE_MAX_INITIAL_VIEWPORT_ZOOM
+              : DESKTOP_MAX_INITIAL_VIEWPORT_ZOOM;
+            const minZoomLimit = Math.max(effectiveMinZoom, MIN_ABSOLUTE_VIEWPORT_ZOOM);
+            const maxZoomLimit = Math.max(maxInitialZoom, minZoomLimit);
+            const nextViewport = getViewportForBounds(
+              bounds,
+              container!.clientWidth,
+              container!.clientHeight,
+              minZoomLimit,
+              maxZoomLimit,
+              padding,
+            );
 
-          const deltaX = Math.abs(centeredViewport.x - appliedViewport.x);
-          const deltaY = Math.abs(centeredViewport.y - appliedViewport.y);
-          const deltaZoom = Math.abs(centeredViewport.zoom - appliedViewport.zoom);
-
-          if (deltaX > 0.5 || deltaY > 0.5 || deltaZoom > 0.0001) {
-            flow.setViewport(centeredViewport, { duration: 0 });
+            flow.setViewport(nextViewport, { duration: 0 });
             appliedViewport = flow.getViewport();
           }
         }
