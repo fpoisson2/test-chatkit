@@ -2262,35 +2262,6 @@ const WorkflowBuilderPage = () => {
 
   const graphSnapshot = useMemo(() => JSON.stringify(buildGraphPayload()), [buildGraphPayload]);
 
-  const conditionBranchValidation = useMemo(() => {
-    for (const node of nodes) {
-      if (!node.data.isEnabled || node.data.kind !== "condition") {
-        continue;
-      }
-
-      const outgoing = edges.filter((edge) => edge.source === node.id);
-      const rawDisplayName =
-        typeof node.data.displayName === "string" ? node.data.displayName.trim() : "";
-      const nodeLabel = rawDisplayName || humanizeSlug(node.data.slug);
-      if (outgoing.length === 0) {
-        return `Ajoutez des sorties intitulées « true » et « false » au bloc conditionnel « ${nodeLabel} » avant d'enregistrer.`;
-      }
-
-      const branches = new Set(
-        outgoing
-          .map((edge) => edge.data?.condition ?? edge.label ?? "")
-          .map((value) => value.trim().toLowerCase())
-          .filter(Boolean),
-      );
-
-      if (!branches.has("true") || !branches.has("false")) {
-        return `Ajoutez des sorties intitulées « true » et « false » au bloc conditionnel « ${nodeLabel} » avant d'enregistrer.`;
-      }
-    }
-
-    return null;
-  }, [edges, nodes]);
-
   useEffect(() => {
     if (!selectedWorkflowId) {
       lastSavedSnapshotRef.current = null;
@@ -2324,12 +2295,6 @@ const WorkflowBuilderPage = () => {
     if (nodesWithErrors.length > 0) {
       setSaveState("error");
       setSaveMessage("Corrigez les paramètres JSON invalides avant d'enregistrer.");
-      return;
-    }
-
-    if (conditionBranchValidation) {
-      setSaveState("error");
-      setSaveMessage(conditionBranchValidation);
       return;
     }
 
@@ -2479,7 +2444,6 @@ const WorkflowBuilderPage = () => {
     authHeader,
     backendUrl,
     buildGraphPayload,
-    conditionBranchValidation,
     loadVersions,
     nodes,
     selectedWorkflowId,
@@ -2705,10 +2669,6 @@ const WorkflowBuilderPage = () => {
       return true;
     }
 
-    if (conditionBranchValidation) {
-      return true;
-    }
-
     const availableVectorStoreSlugs = new Set(vectorStores.map((store) => store.slug));
     const availableWidgetSlugs = new Set(widgets.map((widget) => widget.slug));
 
@@ -2765,7 +2725,6 @@ const WorkflowBuilderPage = () => {
   }, [
     nodes,
     selectedWorkflowId,
-    conditionBranchValidation,
     vectorStores,
     vectorStoresError,
     widgets,

@@ -528,7 +528,7 @@ def test_update_condition_with_single_branch_is_allowed() -> None:
     assert ("decision", "writer", "true") in edges
 
 
-def test_update_condition_with_two_branches_requires_true_and_false() -> None:
+def test_update_condition_with_multiple_branches_is_allowed() -> None:
     admin = _make_user(email="condition-branches@example.com", is_admin=True)
     token = create_access_token(admin)
     payload = {
@@ -554,8 +554,15 @@ def test_update_condition_with_two_branches_requires_true_and_false() -> None:
         headers=_auth_headers(token),
         json=payload,
     )
-    assert response.status_code == 400
-    assert "conditionnel" in response.json()["detail"].lower()
+    assert response.status_code == 200
+    body = response.json()
+    edges = {
+        (edge["source"], edge["target"], edge.get("condition"))
+        for edge in body["graph"]["edges"]
+    }
+    assert ("decision", "writer", "true") in edges
+    # La branche sans condition explicite est conservée comme valeur par défaut.
+    assert ("decision", "fallback", None) in edges
 
 
 def test_create_workflow_without_graph_creates_empty_version() -> None:
