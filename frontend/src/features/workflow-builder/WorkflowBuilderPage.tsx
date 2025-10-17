@@ -2795,6 +2795,19 @@ const WorkflowBuilderPage = () => {
     : selectedEdge
       ? `${selectedEdge.source} → ${selectedEdge.target}`
       : "";
+
+  const headerOverlayOffset = useMemo(() => (isMobileLayout ? "4rem" : "4.25rem"), [isMobileLayout]);
+
+  const floatingPanelStyle = useMemo<CSSProperties | undefined>(() => {
+    if (isMobileLayout) {
+      return undefined;
+    }
+    return {
+      top: `calc(${headerOverlayOffset} + 1.5rem)`,
+      maxHeight: `calc(100% - (${headerOverlayOffset} + 3rem))`,
+    };
+  }, [headerOverlayOffset, isMobileLayout]);
+
   const propertiesPanelElement = (
     <aside
       id={propertiesPanelId}
@@ -2899,16 +2912,6 @@ const WorkflowBuilderPage = () => {
     return { ...baseStyle, position: "absolute", top: 0, left: 0, right: 0 };
   }, [isMobileLayout]);
 
-  const floatingPanelStyle = useMemo<CSSProperties | undefined>(() => {
-    if (isMobileLayout) {
-      return undefined;
-    }
-    return {
-      top: `calc(${headerOverlayOffset} + 1.5rem)`,
-      maxHeight: `calc(100% - (${headerOverlayOffset} + 3rem))`,
-    };
-  }, [headerOverlayOffset, isMobileLayout]);
-
   const workspaceWrapperStyle = useMemo<CSSProperties>(() => {
     if (isMobileLayout) {
       return { position: "absolute", inset: 0, overflow: "hidden" };
@@ -2919,8 +2922,6 @@ const WorkflowBuilderPage = () => {
   const shouldShowWorkflowDescription = !isMobileLayout && Boolean(selectedWorkflow?.description);
   const shouldShowPublicationReminder =
     !isMobileLayout && Boolean(selectedWorkflow) && !selectedWorkflow?.active_version_id;
-
-  const headerOverlayOffset = useMemo(() => (isMobileLayout ? "4rem" : "4.25rem"), [isMobileLayout]);
 
   const workspaceContentStyle = useMemo<CSSProperties>(() => {
     if (isMobileLayout) {
