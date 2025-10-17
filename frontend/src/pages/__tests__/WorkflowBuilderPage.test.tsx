@@ -182,12 +182,24 @@ describe("WorkflowBuilderPage", () => {
   ) => {
     const workflowDetail = overrides.workflowDetail ?? defaultResponse;
     const workflowList = overrides.workflowList ?? [defaultWorkflowSummary];
-    const versions = overrides.versions ?? [draftVersionSummary, productionVersionSummary];
+    let versions = [...(overrides.versions ?? [draftVersionSummary, productionVersionSummary])];
     const putResponse = overrides.putResponse ?? { success: true };
     const versionDetails = new Map<number, typeof defaultResponse | typeof productionResponse>([
       [workflowDetail.id, workflowDetail],
       [productionResponse.id, productionResponse],
     ]);
+    versions.forEach((version) => {
+      if (!versionDetails.has(version.id)) {
+        versionDetails.set(version.id, {
+          ...defaultResponse,
+          id: version.id,
+          version: version.version,
+          name: version.name,
+          is_active: version.is_active,
+          updated_at: version.updated_at,
+        });
+      }
+    });
 
     return vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = typeof input === "string" ? input : input.url;
@@ -212,8 +224,17 @@ describe("WorkflowBuilderPage", () => {
         url.endsWith(`/api/workflows/${workflowDetail.workflow_id}/versions`) &&
         init?.method === "POST"
       ) {
-        const created = { ...defaultResponse, id: 3, version: 3, name: "Nouvelle version" };
+        const highestId = versions.length > 0 ? Math.max(...versions.map((version) => version.id)) : 2;
+        const createdId = highestId + 1;
+        const created = {
+          ...defaultResponse,
+          id: createdId,
+          version: createdId,
+          name: "Nouvelle version",
+          updated_at: "2024-01-03T00:00:00Z",
+        };
         versionDetails.set(created.id, created);
+        versions = [created, ...versions];
         return {
           ok: true,
           status: 200,
@@ -224,8 +245,11 @@ describe("WorkflowBuilderPage", () => {
       if (versionDetailMatch && init?.method === "PUT") {
         const versionId = Number(versionDetailMatch[1]);
         const detail = versionDetails.get(versionId) ?? defaultResponse;
-        const updated = { ...detail, updated_at: "2024-01-03T00:00:00Z" };
+        const updated = { ...detail, updated_at: "2024-01-04T00:00:00Z" };
         versionDetails.set(versionId, updated);
+        versions = versions.map((version) =>
+          version.id === versionId ? { ...version, updated_at: updated.updated_at } : version,
+        );
         return {
           ok: true,
           status: 200,
@@ -406,6 +430,90 @@ describe("WorkflowBuilderPage", () => {
             ([input, init]) =>
               typeof input === "string" &&
               input.includes(`/api/workflows/${defaultResponse.workflow_id}/versions/${draftVersionSummary.id}`) &&
+              (init as RequestInit | undefined)?.method === "PUT",
+          ),
+        ).toBe(true);
+      },
+      { timeout: 4000 },
+    );
+
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          typeof input === "string" &&
+          input.endsWith(`/api/workflows/${defaultResponse.workflow_id}/versions`) &&
+          (init as RequestInit | undefined)?.method === "POST",
+      ),
+    ).toBe(false);
+  });
+
+  test("permet de modifier une révision inactive sélectionnée sans créer un nouveau brouillon", async () => {
+    const user = userEvent.setup();
+    const activeDraft = {
+      ...draftVersionSummary,
+      id: 5,
+      version: 5,
+      name: "Brouillon",
+      updated_at: "2024-02-01T00:00:00Z",
+    } as const;
+    const historicalDraft = {
+      ...draftVersionSummary,
+      id: 4,
+      version: 4,
+      name: null,
+      updated_at: "2023-12-31T00:00:00Z",
+    } as const;
+    const fetchMock = setupWorkflowApi({
+      versions: [activeDraft, historicalDraft, productionVersionSummary],
+      workflowDetail: {
+        ...defaultResponse,
+        id: activeDraft.id,
+        version: activeDraft.version,
+        name: activeDraft.name,
+        updated_at: activeDraft.updated_at,
+        is_active: activeDraft.is_active,
+      },
+    });
+
+    const { container } = renderWorkflowBuilder();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const versionSelect = await screen.findByLabelText(/révision/i);
+    await user.selectOptions(versionSelect, historicalDraft.id.toString());
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            typeof input === "string" &&
+            input.includes(
+              `/api/workflows/${defaultResponse.workflow_id}/versions/${historicalDraft.id}`,
+            ) &&
+            (!(init as RequestInit | undefined)?.method ||
+              (init as RequestInit | undefined)?.method === "GET"),
+        ),
+      ).toBe(true);
+    });
+
+    const triageNode = container.querySelector('[data-id="agent-triage"]');
+    expect(triageNode).not.toBeNull();
+    fireEvent.click(triageNode!);
+
+    const modelInput = await screen.findByPlaceholderText(/ex\. gpt-4\.1-mini/i);
+    fireEvent.change(modelInput, { target: { value: "gpt-4.1-mini" } });
+
+    await waitFor(
+      () => {
+        expect(
+          fetchMock.mock.calls.some(
+            ([input, init]) =>
+              typeof input === "string" &&
+              input.includes(
+                `/api/workflows/${defaultResponse.workflow_id}/versions/${historicalDraft.id}`,
+              ) &&
               (init as RequestInit | undefined)?.method === "PUT",
           ),
         ).toBe(true);

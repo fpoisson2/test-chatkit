@@ -422,7 +422,24 @@ const WorkflowBuilderPage = () => {
   );
 
   useEffect(() => {
-    draftVersionIdRef.current = findDraftVersionSummary(versions)?.id ?? null;
+    const draft = findDraftVersionSummary(versions);
+    if (draft) {
+      draftVersionIdRef.current = draft.id;
+      return;
+    }
+
+    const knownDraftId = draftVersionIdRef.current;
+    if (knownDraftId != null) {
+      const draftStillListed = versions.some((version) => version.id === knownDraftId);
+      if (!draftStillListed) {
+        draftVersionIdRef.current = null;
+      }
+      return;
+    }
+
+    if (versions.length === 0 || versions.every((version) => version.is_active)) {
+      draftVersionIdRef.current = null;
+    }
   }, [versions]);
 
   const isReasoningModel = useCallback(
@@ -2009,13 +2026,16 @@ const WorkflowBuilderPage = () => {
       const currentWorkflow = workflows.find((workflow) => workflow.id === selectedWorkflowId);
       const draftVersionSummary = findDraftVersionSummary(versions);
       const knownDraftId = draftVersionIdRef.current;
+      const draftCandidates = [
+        selectedVersionSummary && !selectedVersionSummary.is_active
+          ? selectedVersionSummary.id
+          : null,
+        knownDraftId,
+        draftVersionSummary?.id ?? null,
+      ].filter((value): value is number => value != null);
+      const targetDraftId = draftCandidates[0] ?? null;
       const isEditingDraft =
-        selectedVersionSummary?.id != null &&
-        (selectedVersionSummary.id === knownDraftId ||
-          draftVersionSummary?.id === selectedVersionSummary.id);
-      const targetDraftId = isEditingDraft
-        ? selectedVersionSummary!.id
-        : knownDraftId ?? draftVersionSummary?.id ?? null;
+        targetDraftId != null && selectedVersionSummary?.id === targetDraftId;
       const shouldCreateDraft = targetDraftId === null;
 
       const endpoint = shouldCreateDraft
