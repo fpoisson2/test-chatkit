@@ -51,6 +51,7 @@ from chatkit.types import (
     LockedStatus,
     ProgressUpdateEvent,
     ThreadItem,
+    ThreadItemRemovedEvent,
     ThreadItemUpdated,
     ThreadMetadata,
     ThreadStreamEvent,
@@ -68,6 +69,18 @@ from .weather import fetch_weather
 from .widgets import WidgetLibraryService
 
 logger = logging.getLogger("chatkit.server")
+
+_ZERO_WIDTH_CHARACTERS = frozenset({"\u200b", "\u200c", "\u200d", "\ufeff"})
+
+
+def _normalize_user_text(value: str | None) -> str:
+    """Supprime les caractères invisibles et normalise les messages utilisateurs."""
+
+    if not value:
+        return ""
+
+    sanitized = "".join(ch for ch in value if ch not in _ZERO_WIDTH_CHARACTERS)
+    return sanitized.strip()
 
 
 @dataclass(frozen=True)
@@ -133,13 +146,28 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         user_text = _resolve_user_input_text(input_user_message, history.data)
         if not user_text:
-            if not self._should_auto_start_workflow():
+            should_auto_start = self._should_auto_start_workflow()
+            if not should_auto_start:
                 yield ErrorEvent(
                     code=ErrorCode.STREAM_ERROR,
                     message="Impossible de déterminer le message utilisateur à traiter.",
                     allow_retry=False,
                 )
                 return
+
+            if input_user_message is not None:
+                try:
+                    await self.store.delete_thread_item(
+                        thread.id, input_user_message.id, context=context
+                    )
+                    yield ThreadItemRemovedEvent(item_id=input_user_message.id)
+                except Exception as exc:  # pragma: no cover - suppression best effort
+                    logger.warning(
+                        "Impossible de retirer le message utilisateur initial pour le fil %s",
+                        thread.id,
+                        exc_info=exc,
+                    )
+
             logger.info(
                 "Démarrage automatique du workflow pour le fil %s", thread.id
             )
@@ -313,15 +341,19 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
 
 def _collect_user_text(message: UserMessageItem | None) -> str:
-    """Concatène le texte d'un message utilisateur."""
+    """Concatène le texte d'un message utilisateur après normalisation."""
+
     if not message or not getattr(message, "content", None):
         return ""
+
     parts: list[str] = []
     for content_item in message.content:
         text = getattr(content_item, "text", None)
-        if text:
-            parts.append(text)
-    return "\n".join(part.strip() for part in parts if part.strip())
+        normalized = _normalize_user_text(text) if text else ""
+        if normalized:
+            parts.append(normalized)
+
+    return "\n".join(parts)
 
 
 def _resolve_user_input_text(
@@ -1946,7 +1978,8 @@ async def run_workflow(
 ) -> WorkflowRunSummary:
     workflow_payload = workflow_input.model_dump()
     steps: list[WorkflowStepSummary] = []
-    initial_user_text = workflow_payload["input_as_text"]
+    initial_user_text = _normalize_user_text(workflow_payload["input_as_text"])
+    workflow_payload["input_as_text"] = initial_user_text
     conversation_history: list[TResponseInputItem] = []
     if initial_user_text.strip():
         conversation_history.append(

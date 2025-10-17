@@ -36,6 +36,9 @@ type WeatherToolCall = {
 
 type ClientToolCall = WeatherToolCall;
 
+// Caractère invisible utilisé pour déclencher le démarrage automatique côté widget.
+const AUTO_START_TRIGGER_MESSAGE = "\u200B";
+
 
 export function MyChat() {
   const { token, user } = useAuth();
@@ -493,7 +496,8 @@ export function MyChat() {
 
     autoStartAttemptRef.current = true;
 
-    sendUserMessage({ text: "", newThread: true }).catch((err: unknown) => {
+    sendUserMessage({ text: AUTO_START_TRIGGER_MESSAGE, newThread: true }).catch(
+      (err: unknown) => {
       autoStartAttemptRef.current = false;
       const message =
         err instanceof Error
