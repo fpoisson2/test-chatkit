@@ -33,6 +33,7 @@ from agents import (
 from openai.types.shared.reasoning import Reasoning
 from pydantic import BaseModel, Field, create_model
 
+from chatkit.actions import Action
 from chatkit.agents import AgentContext, stream_agent_response
 
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
@@ -51,11 +52,14 @@ from chatkit.types import (
     LockedStatus,
     ProgressUpdateEvent,
     ThreadItem,
+    ThreadItemAddedEvent,
+    ThreadItemDoneEvent,
     ThreadItemRemovedEvent,
     ThreadItemUpdated,
     ThreadMetadata,
     ThreadStreamEvent,
     UserMessageItem,
+    WidgetItem,
 )
 
 from .config import Settings, get_settings
@@ -200,6 +204,74 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 thread.id,
             )
             return
+
+    def action(
+        self,
+        thread: ThreadMetadata,
+        action: Action[str, Any],
+        sender: WidgetItem | None,
+        context: ChatKitRequestContext,
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        async def _handle_condition_action() -> AsyncIterator[ThreadStreamEvent]:
+            payload = action.payload if isinstance(action.payload, Mapping) else {}
+            thread_state = _ThreadWorkflowStateManager(
+                thread=thread,
+                store=self.store,
+                request_context=context,
+            )
+
+            step_slug = _extract_action_step_slug(payload) if isinstance(payload, Mapping) else None
+            if not step_slug and sender is not None:
+                step_slug = thread_state.resolve_widget_step(sender.id)
+            if not step_slug:
+                logger.warning(
+                    "Action workflow sans nœud cible (type=%s, payload=%s)",
+                    action.type,
+                    action.payload,
+                )
+                yield ErrorEvent(
+                    code=ErrorCode.STREAM_ERROR,
+                    message="Action workflow invalide : nœud introuvable.",
+                    allow_retry=True,
+                )
+                return
+
+            branch_value = _extract_action_branch(action.payload)
+            if not branch_value:
+                logger.warning(
+                    "Action workflow sans branche sélectionnée (type=%s, payload=%s)",
+                    action.type,
+                    action.payload,
+                )
+                yield ErrorEvent(
+                    code=ErrorCode.STREAM_ERROR,
+                    message="Action workflow invalide : branche non renseignée.",
+                    allow_retry=True,
+                )
+                return
+
+            thread_state.record_condition_branch(step_slug, branch_value)
+            await thread_state.persist()
+
+            async for event in self.respond(thread, None, context):
+                yield event
+
+        normalized_type = (action.type or "").strip().lower()
+        if normalized_type.startswith("workflow.condition") or normalized_type.startswith(
+            "workflow.branch"
+        ):
+            return _handle_condition_action()
+
+        logger.warning("Action non prise en charge : %s", action.type)
+
+        async def _unsupported() -> AsyncIterator[ThreadStreamEvent]:
+            yield ErrorEvent(
+                code=ErrorCode.STREAM_ERROR,
+                message="Action non prise en charge.",
+                allow_retry=False,
+            )
+
+        return _unsupported()
 
     async def _execute_workflow(
         self,
@@ -1605,6 +1677,201 @@ class _ResponseWidgetConfig:
     bindings: dict[str, _WidgetBinding] = field(default_factory=dict)
 
 
+_WORKFLOW_STATE_METADATA_KEY = "workflow_state"
+_WORKFLOW_WIDGETS_KEY = "widgets"
+_WORKFLOW_CONDITIONS_KEY = "conditions"
+
+
+def _normalize_branch_value(value: Any) -> str | None:
+    """Normalise une valeur de branche transmise via une action."""
+
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        return cleaned.lower()
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        if value == 0:
+            return "false"
+        return str(value)
+    return None
+
+
+@dataclass
+class _ThreadWorkflowStateManager:
+    """Gestion simplifiée de l'état workflow stocké dans les métadonnées du fil."""
+
+    thread: ThreadMetadata | Any | None
+    store: Any | None
+    request_context: Any
+    modified: bool = False
+
+    def _get_metadata(self, *, create: bool) -> dict[str, Any] | None:
+        if self.thread is None:
+            return None
+        metadata = getattr(self.thread, "metadata", None)
+        if isinstance(metadata, dict):
+            return metadata
+        if not create:
+            return None
+        metadata = {}
+        setattr(self.thread, "metadata", metadata)
+        self.modified = True
+        return metadata
+
+    def _get_state(self, *, create: bool) -> dict[str, Any]:
+        metadata = self._get_metadata(create=create)
+        if metadata is None:
+            return {}
+        state = metadata.get(_WORKFLOW_STATE_METADATA_KEY)
+        if isinstance(state, dict):
+            return state
+        if not create:
+            return {}
+        state = {}
+        metadata[_WORKFLOW_STATE_METADATA_KEY] = state
+        self.modified = True
+        return state
+
+    def register_widget(self, item_id: str, *, step_slug: str, widget_slug: str | None) -> None:
+        if not item_id or not step_slug:
+            return
+        state = self._get_state(create=True)
+        widgets = state.get(_WORKFLOW_WIDGETS_KEY)
+        if not isinstance(widgets, dict):
+            widgets = {}
+            state[_WORKFLOW_WIDGETS_KEY] = widgets
+        payload: dict[str, str] = {"step": step_slug}
+        if widget_slug:
+            payload["widget"] = widget_slug
+        if widgets.get(item_id) != payload:
+            widgets[item_id] = payload
+            self.modified = True
+
+    def resolve_widget_step(self, item_id: str) -> str | None:
+        if not item_id:
+            return None
+        state = self._get_state(create=False)
+        widgets = state.get(_WORKFLOW_WIDGETS_KEY)
+        if not isinstance(widgets, dict):
+            return None
+        entry = widgets.get(item_id)
+        if isinstance(entry, dict):
+            candidate = entry.get("step")
+        else:
+            candidate = entry
+        if isinstance(candidate, str):
+            cleaned = candidate.strip()
+            return cleaned or None
+        return None
+
+    def record_condition_branch(self, step_slug: str, branch: str) -> None:
+        if not step_slug:
+            return
+        normalized = _normalize_branch_value(branch)
+        if not normalized:
+            return
+        state = self._get_state(create=True)
+        conditions = state.get(_WORKFLOW_CONDITIONS_KEY)
+        if not isinstance(conditions, dict):
+            conditions = {}
+            state[_WORKFLOW_CONDITIONS_KEY] = conditions
+        if conditions.get(step_slug) != normalized:
+            conditions[step_slug] = normalized
+            self.modified = True
+
+    def pop_condition_branch(self, step_slug: str) -> str | None:
+        if not step_slug:
+            return None
+        state = self._get_state(create=False)
+        conditions = state.get(_WORKFLOW_CONDITIONS_KEY)
+        if not isinstance(conditions, dict):
+            return None
+        value = conditions.pop(step_slug, None)
+        if value is None:
+            return None
+        self.modified = True
+        if not conditions:
+            state.pop(_WORKFLOW_CONDITIONS_KEY, None)
+        if not state:
+            metadata = self._get_metadata(create=False)
+            if isinstance(metadata, dict):
+                metadata.pop(_WORKFLOW_STATE_METADATA_KEY, None)
+        if isinstance(value, str):
+            cleaned = value.strip()
+            return cleaned.lower() or None
+        return _normalize_branch_value(value)
+
+    async def persist(self) -> None:
+        if not self.modified or self.thread is None:
+            return
+        save_thread = getattr(self.store, "save_thread", None)
+        if save_thread is None:
+            self.modified = False
+            return
+        result = save_thread(self.thread, context=self.request_context)
+        if inspect.isawaitable(result):
+            await result
+        self.modified = False
+
+
+_ACTION_STEP_KEYS: tuple[str, ...] = (
+    "step_slug",
+    "step",
+    "node_slug",
+    "node",
+    "slug",
+    "condition",
+    "target",
+)
+
+
+def _extract_action_step_slug(payload: Mapping[str, Any]) -> str | None:
+    for key in _ACTION_STEP_KEYS:
+        candidate = payload.get(key)
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    for nested_key in ("workflow", "metadata"):
+        nested = payload.get(nested_key)
+        if isinstance(nested, Mapping):
+            slug = _extract_action_step_slug(nested)
+            if slug:
+                return slug
+    return None
+
+
+_ACTION_BRANCH_KEYS: tuple[str, ...] = (
+    "branch",
+    "value",
+    "choice",
+    "option",
+    "selected",
+    "id",
+    "slug",
+    "result",
+)
+
+
+def _extract_action_branch(payload: Any) -> str | None:
+    if isinstance(payload, Mapping):
+        for key in _ACTION_BRANCH_KEYS:
+            if key not in payload:
+                continue
+            branch = _normalize_branch_value(payload[key])
+            if branch:
+                return branch
+        for nested_key in ("payload", "selection", "metadata", "data", "result"):
+            nested = payload.get(nested_key)
+            if nested is payload:
+                continue
+            branch = _extract_action_branch(nested)
+            if branch:
+                return branch
+        return None
+    return _normalize_branch_value(payload)
+
 def _parse_response_widget_config(
     parameters: dict[str, Any] | None,
 ) -> _ResponseWidgetConfig | None:
@@ -2113,6 +2380,12 @@ async def run_workflow(
     }
     final_output: dict[str, Any] | None = None
     last_step_context: dict[str, Any] | None = None
+
+    thread_state = _ThreadWorkflowStateManager(
+        thread=getattr(agent_context, "thread", None),
+        store=getattr(agent_context, "store", None),
+        request_context=getattr(agent_context, "request_context", None),
+    )
 
     service = workflow_service or WorkflowService()
     definition = service.get_current()
@@ -2963,6 +3236,16 @@ async def run_workflow(
                 widget,
                 generate_id=_generate_item_id,
             ):
+                if (
+                    isinstance(event, ThreadItemAddedEvent)
+                    and isinstance(event.item, WidgetItem)
+                ):
+                    thread_state.register_widget(
+                        event.item.id,
+                        step_slug=step_slug,
+                        widget_slug=config.slug,
+                    )
+                    await thread_state.persist()
                 await on_stream_event(event)
         except Exception as exc:  # pragma: no cover - dépend du SDK Agents
             logger.exception(
@@ -3119,14 +3402,30 @@ async def run_workflow(
             continue
 
         if current_node.kind == "condition":
-            branch = "true" if _evaluate_condition_node(current_node) else "false"
-            transition = _next_edge(current_slug, branch)
+            transition: WorkflowTransition | None = None
+            manual_branch = thread_state.pop_condition_branch(current_node.slug)
+            branch_label: str | None = None
+            if manual_branch:
+                branch_label = manual_branch
+                transition = _next_edge(current_slug, branch_label)
+                if transition is None:
+                    logger.warning(
+                        "Branche %s introuvable pour le nœud conditionnel %s",
+                        branch_label,
+                        current_node.slug,
+                    )
+                    branch_label = None
+
+            if transition is None:
+                branch_label = "true" if _evaluate_condition_node(current_node) else "false"
+                transition = _next_edge(current_slug, branch_label)
+
             if transition is None:
                 raise WorkflowExecutionError(
                     "configuration",
                     "Configuration du workflow invalide",
                     RuntimeError(
-                        f"Transition manquante pour la branche {branch} du nœud {current_slug}"
+                        f"Transition manquante pour la branche {branch_label} du nœud {current_slug}"
                     ),
                     list(steps),
                 )
@@ -3376,6 +3675,8 @@ async def run_workflow(
             RuntimeError("Impossible de déterminer le nœud final du workflow"),
             list(steps),
         )
+
+    await thread_state.persist()
 
     return WorkflowRunSummary(
         steps=steps,
