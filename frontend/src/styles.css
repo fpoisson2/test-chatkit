@@ -94,31 +94,6 @@ button {
   height: 1.1rem;
 }
 
-.header-icon-button {
-  width: 2.75rem;
-  height: 2.75rem;
-  border-radius: 0.75rem;
-  border: none;
-  background: #f8fafc;
-  display: grid;
-  place-items: center;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
-  color: #0f172a;
-}
-
-.header-icon-button:hover,
-.header-icon-button:focus-visible {
-  background: #f1f5f9;
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.12);
-  transform: translateY(-1px);
-}
-
-.header-icon-button:focus-visible {
-  outline: none;
-}
-
 .button:hover,
 .button:focus-visible {
   background: var(--primary-hover);
@@ -1341,7 +1316,8 @@ button {
   gap: clamp(18px, 4vw, 28px);
 }
 
-.widget-library__add-button {
+
+.management-header__icon-button {
   border: none;
   background: transparent;
   display: inline-flex;
@@ -1353,12 +1329,12 @@ button {
   color: #0f172a;
 }
 
-.widget-library__add-button:hover,
-.widget-library__add-button:focus-visible {
+.management-header__icon-button:hover,
+.management-header__icon-button:focus-visible {
   color: #1d4ed8;
 }
 
-.widget-library__add-button:focus-visible {
+.management-header__icon-button:focus-visible {
   outline: 2px solid rgba(37, 99, 235, 0.45);
   outline-offset: 4px;
 }

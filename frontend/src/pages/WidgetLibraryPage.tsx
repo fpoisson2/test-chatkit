@@ -172,7 +172,7 @@ export const WidgetLibraryPage = () => {
       actions={
         <button
           type="button"
-          className="widget-library__add-button"
+          className="management-header__icon-button"
           aria-label="Créer un nouveau widget"
           title="Nouveau widget"
           onClick={() => setShowCreateModal(true)}
