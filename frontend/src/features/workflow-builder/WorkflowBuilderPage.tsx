@@ -723,7 +723,7 @@ const WorkflowBuilderPage = () => {
           if (draftSummary) {
             const normalizedDraft: WorkflowVersionSummary = {
               ...draftSummary,
-              name: draftSummary.name ?? DRAFT_DISPLAY_NAME,
+              name: DRAFT_DISPLAY_NAME,
             };
             versionsForState = versionsForState.map((version) =>
               version.id === normalizedDraft.id ? normalizedDraft : version,
@@ -2001,7 +2001,7 @@ const WorkflowBuilderPage = () => {
             const created: WorkflowVersionResponse = await response.json();
             const summary: WorkflowVersionSummary = {
               ...versionSummaryFromResponse(created),
-              name: created.name ?? DRAFT_DISPLAY_NAME,
+              name: DRAFT_DISPLAY_NAME,
             };
             draftVersionIdRef.current = summary.id;
             draftVersionSummaryRef.current = summary;
@@ -2057,7 +2057,7 @@ const WorkflowBuilderPage = () => {
         const updated: WorkflowVersionResponse = await response.json();
         const summary: WorkflowVersionSummary = {
           ...versionSummaryFromResponse(updated),
-          name: updated.name ?? DRAFT_DISPLAY_NAME,
+          name: DRAFT_DISPLAY_NAME,
         };
         draftVersionSummaryRef.current = summary;
         await loadVersions(selectedWorkflowId, summary.id);
