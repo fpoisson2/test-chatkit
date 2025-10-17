@@ -143,6 +143,7 @@ export const setStartAutoRunMessage = (
     return stripEmpty(next as Record<string, unknown>);
   }
 
+  delete (next as Record<string, unknown>).auto_start_assistant_message;
   (next as Record<string, unknown>).auto_start_user_message = trimmed;
   return stripEmpty(next as Record<string, unknown>);
 };
@@ -159,6 +160,7 @@ export const setStartAutoRunAssistantMessage = (
     return stripEmpty(next as Record<string, unknown>);
   }
 
+  delete (next as Record<string, unknown>).auto_start_user_message;
   (next as Record<string, unknown>).auto_start_assistant_message = trimmed;
   return stripEmpty(next as Record<string, unknown>);
 };

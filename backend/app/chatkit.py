@@ -150,8 +150,21 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         message = resolve_start_auto_start_message(definition)
         assistant_message = resolve_start_auto_start_assistant_message(definition)
-        user_text = message if isinstance(message, str) else ""
-        assistant_text = assistant_message if isinstance(assistant_message, str) else ""
+        user_text = (
+            _normalize_user_text(message) if isinstance(message, str) else ""
+        )
+        assistant_text = (
+            _normalize_user_text(assistant_message)
+            if isinstance(assistant_message, str)
+            else ""
+        )
+
+        if user_text and assistant_text:
+            logger.warning(
+                "Le bloc début contient simultanément un message utilisateur et un message assistant. "
+                "Seul le message utilisateur sera pris en compte.",
+            )
+            assistant_text = ""
 
         return AutoStartConfiguration(True, user_text, assistant_text)
 
@@ -179,6 +192,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             return
 
         user_text = _resolve_user_input_text(input_user_message, history.data)
+        workflow_input: WorkflowInput | None = None
+        assistant_stream_text = ""
+
         if not user_text:
             config = self._resolve_auto_start_configuration()
             if not config.enabled:
@@ -206,21 +222,33 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 "Démarrage automatique du workflow pour le fil %s", thread.id
             )
             user_text = _normalize_user_text(config.user_message)
-            assistant_text = _normalize_user_text(config.assistant_message)
-            workflow_input = WorkflowInput(
-                input_as_text=user_text,
-                auto_start_was_triggered=True,
-                auto_start_assistant_message=assistant_text,
+            assistant_stream_text = (
+                "" if user_text else _normalize_user_text(config.assistant_message)
             )
+            if not user_text and not assistant_stream_text:
+                yield ErrorEvent(
+                    code=ErrorCode.STREAM_ERROR,
+                    message="Aucun message automatique n'est configuré pour ce workflow.",
+                    allow_retry=False,
+                )
+                return
+
+            if user_text:
+                workflow_input = WorkflowInput(
+                    input_as_text=user_text,
+                    auto_start_was_triggered=True,
+                    auto_start_assistant_message=assistant_stream_text,
+                )
+
             pre_stream_events = await self._prepare_auto_start_thread_items(
                 thread=thread,
                 context=context,
                 user_text=user_text,
-                assistant_text=assistant_text,
+                assistant_text=assistant_stream_text,
             )
         else:
             workflow_input = WorkflowInput(input_as_text=user_text)
-            pre_stream_events: list[ThreadStreamEvent] = []
+            pre_stream_events = []
 
         agent_context = AgentContext(
             thread=thread,
@@ -229,6 +257,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         )
 
         event_queue: asyncio.Queue[Any] = asyncio.Queue()
+
+        for event in pre_stream_events:
+            yield event
+
+        if workflow_input is None:
+            return
 
         workflow_result = _WorkflowStreamResult(
             runner=self._execute_workflow(
@@ -239,9 +273,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             ),
             event_queue=event_queue,
         )
-
-        for event in pre_stream_events:
-            yield event
 
         try:
             async for event in workflow_result.stream_events():
@@ -2230,7 +2261,7 @@ async def run_workflow(
         assistant_message_payload = resolve_start_auto_start_assistant_message(definition)
 
     assistant_message = _normalize_user_text(assistant_message_payload)
-    if auto_started and assistant_message:
+    if auto_started and assistant_message and not initial_user_text.strip():
         conversation_history.append(
             {
                 "role": "assistant",

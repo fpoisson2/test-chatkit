@@ -52,11 +52,17 @@ class ChatKitWorkflowResponse(BaseModel):
     auto_start: bool
     auto_start_user_message: str | None = Field(
         default=None,
-        description="Message utilisateur injecté lors du démarrage automatique (optionnel).",
+        description=(
+            "Message utilisateur injecté lors du démarrage automatique (optionnel, "
+            "mutuellement exclusif avec auto_start_assistant_message)."
+        ),
     )
     auto_start_assistant_message: str | None = Field(
         default=None,
-        description="Message assistant diffusé lors du démarrage automatique (optionnel).",
+        description=(
+            "Message assistant diffusé lors du démarrage automatique (optionnel, "
+            "mutuellement exclusif avec auto_start_user_message)."
+        ),
     )
     updated_at: datetime.datetime
 

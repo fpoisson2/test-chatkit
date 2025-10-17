@@ -206,6 +206,9 @@ const NodeInspector = ({
     kind === "start" ? getStartAutoRunMessage(parameters) : "";
   const startAutoRunAssistantMessage =
     kind === "start" ? getStartAutoRunAssistantMessage(parameters) : "";
+  const hasStartAutoRunUserMessage = startAutoRunMessage.trim().length > 0;
+  const hasStartAutoRunAssistantMessage =
+    startAutoRunAssistantMessage.trim().length > 0;
   const webSearchConfig = getAgentWebSearchConfig(parameters);
   const webSearchEnabled = Boolean(webSearchConfig);
   const fileSearchConfig = getAgentFileSearchConfig(parameters);
@@ -436,10 +439,12 @@ const NodeInspector = ({
             rows={3}
             placeholder="Ex. Bonjour, voici les informations de départ… (facultatif)"
             style={{ resize: "vertical", minHeight: "4.5rem" }}
+            disabled={hasStartAutoRunAssistantMessage}
           />
           <p style={{ color: "#475569", margin: "0.35rem 0 0" }}>
             Ce message est transmis à l'agent lorsqu'un fil démarre sans saisie
-            utilisateur.
+            utilisateur. Saisir un message assistant ci-dessous effacera
+            automatiquement ce contenu.
           </p>
         </label>
       )}
@@ -455,10 +460,12 @@ const NodeInspector = ({
             rows={3}
             placeholder="Ex. Bonjour, je suis votre assistant… (facultatif)"
             style={{ resize: "vertical", minHeight: "4.5rem" }}
+            disabled={hasStartAutoRunUserMessage}
           />
           <p style={{ color: "#475569", margin: "0.35rem 0 0" }}>
             Ce message est diffusé en tant que première réponse de l'assistant
-            lorsque le démarrage automatique est déclenché.
+            lorsque le démarrage automatique est déclenché. Ajoutez un message
+            utilisateur ci-dessus pour désactiver cette réponse.
           </p>
         </label>
       )}
