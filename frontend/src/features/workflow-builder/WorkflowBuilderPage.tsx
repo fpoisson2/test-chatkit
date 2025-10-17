@@ -20,6 +20,7 @@ import ReactFlow, {
   useEdgesState,
   useNodesState,
 } from "reactflow";
+import { getNodesBounds, getViewportForBounds } from "@reactflow/core";
 
 import "reactflow/dist/style.css";
 
@@ -126,6 +127,7 @@ const DRAFT_DISPLAY_NAME = "Brouillon";
 
 const DESKTOP_MIN_VIEWPORT_ZOOM = 0.1;
 const MOBILE_MIN_VIEWPORT_ZOOM = 0.05;
+const MIN_ABSOLUTE_VIEWPORT_ZOOM = 0.01;
 const DESKTOP_FIT_VIEW_PADDING = 0.2;
 const MOBILE_FIT_VIEW_PADDING = 0.08;
 
@@ -260,12 +262,18 @@ const WorkflowBuilderPage = () => {
   const viewportMemoryRef = useRef(new Map<string, Viewport>());
   const viewportKeyRef = useRef<string | null>(null);
   const pendingViewportRestoreRef = useRef(false);
+  const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
 
   const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
+  const baseMinViewportZoom = useMemo(
+    () => (isMobileLayout ? MOBILE_MIN_VIEWPORT_ZOOM : DESKTOP_MIN_VIEWPORT_ZOOM),
+    [isMobileLayout],
+  );
+  const [minViewportZoom, setMinViewportZoom] = useState(baseMinViewportZoom);
   const [isBlockLibraryOpen, setBlockLibraryOpen] = useState<boolean>(() => !isMobileLayout);
   const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
   const propertiesPanelToggleRef = useRef<HTMLButtonElement | null>(null);
@@ -289,6 +297,10 @@ const WorkflowBuilderPage = () => {
     },
     [blockLibraryToggleRef],
   );
+
+  useEffect(() => {
+    setMinViewportZoom(baseMinViewportZoom);
+  }, [baseMinViewportZoom]);
 
   useEffect(() => {
     setBlockLibraryOpen(!isMobileLayout);
@@ -437,6 +449,70 @@ const WorkflowBuilderPage = () => {
     </>
   );
 
+  const refreshViewportConstraints = useCallback(
+    (flowInstance?: ReactFlowInstance | null) => {
+      const instance = flowInstance ?? reactFlowInstanceRef.current;
+      const container = reactFlowWrapperRef.current;
+      const applyMinZoom = (value: number) => {
+        setMinViewportZoom((current) => (Math.abs(current - value) > 0.0001 ? value : current));
+        return value;
+      };
+
+      if (!instance || !container) {
+        return applyMinZoom(baseMinViewportZoom);
+      }
+
+      const nodes = instance.getNodes();
+      if (nodes.length === 0) {
+        return applyMinZoom(baseMinViewportZoom);
+      }
+
+      const bounds = getNodesBounds(nodes);
+      if (
+        !Number.isFinite(bounds.width) ||
+        !Number.isFinite(bounds.height) ||
+        bounds.width <= 0 ||
+        bounds.height <= 0
+      ) {
+        return applyMinZoom(baseMinViewportZoom);
+      }
+
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      if (width <= 0 || height <= 0) {
+        return applyMinZoom(baseMinViewportZoom);
+      }
+
+      const padding = isMobileLayout ? MOBILE_FIT_VIEW_PADDING : DESKTOP_FIT_VIEW_PADDING;
+      const { zoom } = getViewportForBounds(
+        bounds,
+        width,
+        height,
+        MIN_ABSOLUTE_VIEWPORT_ZOOM,
+        1,
+        padding,
+      );
+
+      const effectiveMinZoom = Math.min(
+        baseMinViewportZoom,
+        Number.isFinite(zoom) ? zoom : baseMinViewportZoom,
+      );
+
+      return applyMinZoom(effectiveMinZoom);
+    },
+    [baseMinViewportZoom, isMobileLayout],
+  );
+
+  const reactFlowContainerRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      reactFlowWrapperRef.current = node;
+      if (node) {
+        refreshViewportConstraints();
+      }
+    },
+    [refreshViewportConstraints],
+  );
+
   const restoreViewport = useCallback(() => {
     const instance = reactFlowInstanceRef.current;
     if (!instance) {
@@ -450,13 +526,17 @@ const WorkflowBuilderPage = () => {
       if (!flow) {
         return;
       }
+      const effectiveMinZoom = refreshViewportConstraints(flow);
       const savedViewport = viewportRef.current;
       if (savedViewport) {
-        flow.setViewport(savedViewport, { duration: 0 });
+        flow.setViewport(
+          { ...savedViewport, zoom: Math.max(savedViewport.zoom, effectiveMinZoom) },
+          { duration: 0 },
+        );
       } else {
         flow.fitView({
           padding: isMobileLayout ? MOBILE_FIT_VIEW_PADDING : DESKTOP_FIT_VIEW_PADDING,
-          minZoom: isMobileLayout ? MOBILE_MIN_VIEWPORT_ZOOM : DESKTOP_MIN_VIEWPORT_ZOOM,
+          minZoom: effectiveMinZoom,
           duration: 0,
         });
       }
@@ -467,7 +547,24 @@ const WorkflowBuilderPage = () => {
         viewportMemoryRef.current.set(key, appliedViewport);
       }
     });
-  }, [isMobileLayout]);
+  }, [isMobileLayout, refreshViewportConstraints]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handleResize = () => {
+      refreshViewportConstraints();
+    };
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [refreshViewportConstraints]);
+
+  useEffect(() => {
+    refreshViewportConstraints();
+  }, [nodes, isMobileLayout, refreshViewportConstraints]);
 
 
 
@@ -3185,6 +3282,7 @@ const WorkflowBuilderPage = () => {
             {shouldShowWorkflowDescription ? renderWorkflowDescription() : null}
             {shouldShowPublicationReminder ? renderWorkflowPublicationReminder() : null}
             <div
+              ref={reactFlowContainerRef}
               style={editorContainerStyle}
               aria-label="Éditeur visuel du workflow"
             >
@@ -3207,11 +3305,10 @@ const WorkflowBuilderPage = () => {
                   defaultEdgeOptions={defaultEdgeOptions}
                   connectionLineStyle={connectionLineStyle}
                   style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
-                  minZoom={
-                    isMobileLayout ? MOBILE_MIN_VIEWPORT_ZOOM : DESKTOP_MIN_VIEWPORT_ZOOM
-                  }
+                  minZoom={minViewportZoom}
                   onInit={(instance) => {
                     reactFlowInstanceRef.current = instance;
+                    refreshViewportConstraints(instance);
                     if (pendingViewportRestoreRef.current) {
                       restoreViewport();
                     }
