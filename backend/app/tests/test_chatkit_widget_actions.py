@@ -256,13 +256,16 @@ async def test_wait_for_widget_action_released_by_signal() -> None:
     await asyncio.sleep(0)
     assert not wait_task.done()
 
+    payload = {"type": "menu.select", "values": {"choice": "option-a"}}
     released = await server._signal_widget_action(
         thread.id,
         widget_item_id="widget-1",
         widget_slug="widget-step",
+        payload=payload,
     )
     assert released
 
-    await asyncio.wait_for(wait_task, 0.5)
+    result = await asyncio.wait_for(wait_task, 0.5)
     assert wait_task.done()
+    assert result == payload
 

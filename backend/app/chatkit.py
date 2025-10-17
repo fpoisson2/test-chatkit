@@ -134,6 +134,7 @@ class _WidgetActionWaiter:
     slug: str | None
     widget_item_id: str | None
     event: asyncio.Event
+    payload: Mapping[str, Any] | None = None
 
 
 class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
@@ -152,7 +153,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         thread: ThreadMetadata,
         step_slug: str,
         widget_item_id: str | None,
-    ) -> None:
+    ) -> Mapping[str, Any] | None:
         waiter = _WidgetActionWaiter(
             slug=step_slug,
             widget_item_id=widget_item_id,
@@ -169,6 +170,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         try:
             await waiter.event.wait()
+            payload = waiter.payload
         finally:
             async with self._widget_waiters_lock:
                 existing = self._widget_action_waiters.get(thread.id)
@@ -180,12 +182,15 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             step_slug,
         )
 
+        return payload
+
     async def _signal_widget_action(
         self,
         thread_id: str,
         *,
         widget_item_id: str | None,
         widget_slug: str | None,
+        payload: Mapping[str, Any] | None = None,
     ) -> bool:
         async with self._widget_waiters_lock:
             waiter = self._widget_action_waiters.get(thread_id)
@@ -213,6 +218,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 )
                 return False
 
+            if payload is not None:
+                waiter.payload = _json_safe_copy(payload)
             waiter.event.set()
             return True
 
@@ -432,6 +439,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         if manual_bindings:
             bindings.update(manual_bindings)
 
+        matched_identifiers: set[str] = set()
+
         if values:
             matched = _apply_widget_variable_values(
                 definition, values, bindings=bindings
@@ -443,6 +452,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     action.type,
                     ", ".join(sorted(missing)),
                 )
+            matched_identifiers = matched
 
         try:
             widget_root = WidgetLibraryService._validate_widget(definition)
@@ -456,6 +466,27 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         copy_text_value = copy_text_update
 
+        action_context: dict[str, Any] = {"type": action.type}
+        if slug:
+            action_context["widget"] = slug
+        if payload is not None:
+            action_context["raw_payload"] = _json_safe_copy(payload)
+        if values:
+            action_context["values"] = _json_safe_copy(values)
+        if matched_identifiers:
+            action_context["applied_variables"] = sorted(matched_identifiers)
+        if manual_bindings:
+            action_context["bindings"] = {
+                identifier: {
+                    "path": list(binding.path),
+                    "component_type": binding.component_type,
+                    "sample": binding.sample,
+                }
+                for identifier, binding in manual_bindings.items()
+            }
+        if copy_text_value is not _UNSET:
+            action_context["copy_text"] = copy_text_value
+
         if sender is not None:
             if hasattr(sender, "model_dump"):
                 sender_payload = sender.model_dump()
@@ -468,6 +499,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 sender_payload.setdefault("copy_text", sender_payload.get("copy_text"))
 
             updated_item = _build_widget_item(sender_payload)
+            action_context["widget_item_id"] = updated_item.id
             try:
                 await self.store.save_item(thread.id, updated_item, context=context)
             except Exception as exc:  # pragma: no cover - dépend du stockage
@@ -485,6 +517,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 thread.id,
                 widget_item_id=updated_item.id,
                 widget_slug=slug,
+                payload=action_context,
             )
 
             yield ThreadItemUpdated(
@@ -505,6 +538,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             widget_kwargs["copy_text"] = copy_text_value
 
         new_item = _build_widget_item(widget_kwargs)
+        action_context["widget_item_id"] = new_item.id
 
         try:
             await self.store.add_thread_item(thread.id, new_item, context=context)
@@ -520,6 +554,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             thread.id,
             widget_item_id=new_item.id,
             widget_slug=slug,
+            payload=action_context,
         )
 
         yield ThreadItemDoneEvent(item=new_item)
@@ -582,8 +617,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             async def on_widget_step(
                 step: WorkflowStep,
                 config: "_ResponseWidgetConfig",
-            ) -> None:
-                await self._wait_for_widget_action(
+            ) -> Mapping[str, Any] | None:
+                return await self._wait_for_widget_action(
                     thread=thread,
                     step_slug=step.slug,
                     widget_item_id=most_recent_widget_item_id,
@@ -2419,6 +2454,16 @@ def _clone_widget_definition(definition: Any) -> Any | None:
         return None
 
 
+def _json_safe_copy(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe_copy(item) for key, item in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_json_safe_copy(entry) for entry in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
 def _extract_widget_slug(data: Mapping[str, Any]) -> str | None:
     for key in ("slug", "widget_slug", "widgetSlug"):
         raw = data.get(key)
@@ -2672,7 +2717,10 @@ async def run_workflow(
     on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None = None,
     on_step_stream: Callable[[WorkflowStepStreamUpdate], Awaitable[None]] | None = None,
     on_stream_event: Callable[[ThreadStreamEvent], Awaitable[None]] | None = None,
-    on_widget_step: Callable[[WorkflowStep, _ResponseWidgetConfig], Awaitable[None]] | None = None,
+    on_widget_step: Callable[
+        [WorkflowStep, _ResponseWidgetConfig], Awaitable[Mapping[str, Any] | None]
+    ]
+    | None = None,
     workflow_service: WorkflowService | None = None,
 ) -> WorkflowRunSummary:
     workflow_payload = workflow_input.model_dump()
@@ -3823,16 +3871,36 @@ async def run_workflow(
                     step_title=title,
                     step_context=last_step_context,
                 )
-                await record_step(
-                    current_node.slug,
-                    title,
-                    {"widget": widget_config.slug},
-                )
+                action_payload: dict[str, Any] | None = None
                 if (
                     on_widget_step is not None
                     and _should_wait_for_widget_action(current_node.kind, widget_config)
                 ):
-                    await on_widget_step(current_node, widget_config)
+                    result = await on_widget_step(current_node, widget_config)
+                    if result is not None:
+                        action_payload = dict(result)
+
+                step_payload: dict[str, Any] = {"widget": widget_config.slug}
+                if action_payload is not None:
+                    step_payload["action"] = action_payload
+
+                await record_step(
+                    current_node.slug,
+                    title,
+                    step_payload,
+                )
+
+                if action_payload is not None:
+                    last_step_context = {
+                        "widget": widget_config.slug,
+                        "widget_slug": widget_config.slug,
+                        "action": action_payload,
+                    }
+                else:
+                    last_step_context = {
+                        "widget": widget_config.slug,
+                        "widget_slug": widget_config.slug,
+                    }
             transition = _next_edge(current_slug)
             if transition is None:
                 if not agent_steps_ordered:
@@ -3992,7 +4060,13 @@ async def run_workflow(
                 on_widget_step is not None
                 and _should_wait_for_widget_action(current_node.kind, widget_config)
             ):
-                await on_widget_step(current_node, widget_config)
+                result = await on_widget_step(current_node, widget_config)
+                if result is not None:
+                    augmented_context = dict(last_step_context or {})
+                    augmented_context.setdefault("widget", widget_config.slug)
+                    augmented_context.setdefault("widget_slug", widget_config.slug)
+                    augmented_context["action"] = dict(result)
+                    last_step_context = augmented_context
 
         transition = _next_edge(current_slug)
         if agent_key == "r_dacteur":
