@@ -235,7 +235,7 @@ export const AdminPage = () => {
               </p>
             ) : (
               <div className="admin-table-wrapper">
-                <table className="admin-table">
+                <table className="admin-table admin-table--stack">
                   <thead>
                     <tr>
                       <th>E-mail</th>
@@ -248,19 +248,19 @@ export const AdminPage = () => {
                   <tbody>
                     {users.map((editableUser) => (
                       <tr key={editableUser.id}>
-                        <td>{editableUser.email}</td>
-                        <td>
+                        <td data-label="E-mail">{editableUser.email}</td>
+                        <td data-label="Rôle">
                           {editableUser.is_admin
                             ? "Administrateur"
                             : "Utilisateur"}
                         </td>
-                        <td>
+                        <td data-label="Créé le">
                           {new Date(editableUser.created_at).toLocaleString()}
                         </td>
-                        <td>
+                        <td data-label="Mis à jour le">
                           {new Date(editableUser.updated_at).toLocaleString()}
                         </td>
-                        <td>
+                        <td data-label="Actions">
                           <div className="admin-table__actions">
                             <button
                               className="button button--subtle button--sm"
