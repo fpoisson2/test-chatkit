@@ -1994,12 +1994,21 @@ async def run_workflow(
 
     widget_configs_by_step: dict[str, _ResponseWidgetConfig] = {}
 
+    def _register_widget_config(step: WorkflowStep) -> _ResponseWidgetConfig | None:
+        widget_config = _parse_response_widget_config(step.parameters)
+        if widget_config is None:
+            return None
+        widget_config = _ensure_widget_output_model(widget_config)
+        widget_configs_by_step[step.slug] = widget_config
+        return widget_config
+
+    for step in nodes_by_slug.values():
+        if step.kind == "widget":
+            _register_widget_config(step)
+
     agent_instances: dict[str, Agent] = {}
     for step in agent_steps_ordered:
-        widget_config = _parse_response_widget_config(step.parameters)
-        if widget_config is not None:
-            widget_config = _ensure_widget_output_model(widget_config)
-            widget_configs_by_step[step.slug] = widget_config
+        widget_config = _register_widget_config(step)
 
         agent_key = (step.agent_key or "").strip()
         builder = _AGENT_BUILDERS.get(agent_key)
