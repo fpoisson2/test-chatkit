@@ -63,9 +63,9 @@ export const getCreateWorkflowButtonStyle = (
 ): CSSProperties => ({
   padding: "0.5rem 0.9rem",
   borderRadius: "0.75rem",
-  border: "1px solid rgba(15, 23, 42, 0.15)",
-  background: "#fff",
-  color: "#0f172a",
+  border: "1px solid var(--surface-border)",
+  background: "var(--surface-strong)",
+  color: "var(--text-color)",
   fontWeight: 600,
   whiteSpace: "nowrap",
   width: isMobile ? "100%" : "auto",
@@ -83,9 +83,9 @@ export const getVersionSelectStyle = (
       maxWidth: "240px",
       padding: "0.45rem 1.1rem",
       borderRadius: "9999px",
-      border: "1px solid rgba(15, 23, 42, 0.18)",
-      background: "rgba(248, 250, 252, 0.7)",
-      color: "#0f172a",
+      border: "1px solid var(--surface-border)",
+      background: "var(--surface-color)",
+      color: "var(--text-color)",
       fontWeight: 600,
       backdropFilter: "blur(8px)",
       ...pointerState(options),
@@ -96,9 +96,9 @@ export const getVersionSelectStyle = (
     minWidth: "200px",
     padding: "0.5rem 0.75rem",
     borderRadius: "0.75rem",
-    border: "1px solid rgba(15, 23, 42, 0.15)",
-    background: "#fff",
-    color: "#0f172a",
+    border: "1px solid var(--surface-border)",
+    background: "var(--surface-strong)",
+    color: "var(--text-color)",
     ...pointerState(options),
   };
 };
@@ -122,7 +122,7 @@ export const getDeployButtonStyle = (
   borderRadius: "0.75rem",
   border: "none",
   background: "transparent",
-  color: "#0f172a",
+  color: "var(--text-color)",
   fontWeight: 600,
   whiteSpace: "nowrap",
   width: "auto",
@@ -136,9 +136,9 @@ export const getActionMenuWrapperStyle = (isMobile: boolean): CSSProperties => (
 
 export const getActionMenuTriggerStyle = (isMobile: boolean): CSSProperties => ({
   borderRadius: "0.75rem",
-  border: "1px solid rgba(15, 23, 42, 0.15)",
-  background: "#fff",
-  color: "#0f172a",
+  border: "1px solid var(--surface-border)",
+  background: "var(--surface-strong)",
+  color: "var(--text-color)",
   fontWeight: 600,
   cursor: "pointer",
   width: isMobile ? "100%" : "2.5rem",
@@ -154,22 +154,22 @@ export const getActionMenuTriggerStyle = (isMobile: boolean): CSSProperties => (
 export const actionMenuTriggerIconStyle: CSSProperties = {
   fontSize: "1.5rem",
   lineHeight: 1,
-  color: "#0f172a",
+  color: "var(--text-color)",
 };
 
 export const actionMenuTriggerLabelStyle: CSSProperties = {
   fontSize: "0.95rem",
   fontWeight: 600,
-  color: "#0f172a",
+  color: "var(--text-color)",
 };
 
 export const getActionMenuStyle = (isMobile: boolean): CSSProperties => ({
   position: "absolute",
   top: "calc(100% + 0.5rem)",
-  background: "#fff",
+  background: "var(--surface-strong)",
   borderRadius: "0.75rem",
-  border: "1px solid rgba(15, 23, 42, 0.1)",
-  boxShadow: "0 20px 40px rgba(15, 23, 42, 0.12)",
+  border: "1px solid var(--surface-border)",
+  boxShadow: "var(--shadow-card)",
   padding: "0.5rem",
   minWidth: isMobile ? "100%" : "220px",
   width: isMobile ? "100%" : "auto",
@@ -189,7 +189,7 @@ export const getActionMenuItemStyle = (
   borderRadius: "0.6rem",
   border: "none",
   background: "transparent",
-  color: options?.danger ? "#b91c1c" : "#0f172a",
+  color: options?.danger ? "#b91c1c" : "var(--text-color)",
   fontWeight: 500,
   ...pointerState(options),
 });
@@ -199,7 +199,7 @@ export const controlLabelStyle: CSSProperties = {
   letterSpacing: "0.08em",
   textTransform: "uppercase",
   fontWeight: 600,
-  color: "#64748b",
+  color: "var(--color-text-muted)",
   display: "inline-flex",
   alignItems: "center",
   whiteSpace: "nowrap",
@@ -211,4 +211,5 @@ export const loadingStyle: CSSProperties = {
   justifyContent: "center",
   fontSize: "1.1rem",
   height: "100%",
+  color: "var(--text-color)",
 };

@@ -87,17 +87,17 @@
   height: 3.25rem;
   border-radius: 50%;
   border: none;
-  background: #0f172a;
-  color: #fff;
+  background: var(--text-color);
+  color: var(--main-background);
   font-size: 1.75rem;
   font-weight: 500;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.28);
+  box-shadow: var(--shadow-soft);
   cursor: pointer;
   z-index: 40;
 }
 
 .mobileToggleButton:focus-visible {
-  outline: 2px solid #38bdf8;
+  outline: 2px solid var(--primary-color);
   outline-offset: 2px;
 }
 
@@ -140,9 +140,9 @@
   width: min(620px, 100%);
   max-height: min(90vh, 640px);
   border-radius: 1.25rem;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  background: #fff;
-  box-shadow: 0 -16px 36px rgba(15, 23, 42, 0.25);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-card);
   padding: 1.5rem 1.25rem 1.75rem;
   display: flex;
   flex-direction: column;
@@ -160,16 +160,16 @@
 .mobileHeaderModalTitle {
   margin: 0;
   font-size: 1.2rem;
-  color: #0f172a;
+  color: var(--color-text-strong);
 }
 
 .mobileHeaderModalClose {
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 0.6rem;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  background: #f8fafc;
-  color: #0f172a;
+  border: 1px solid var(--surface-border);
+  background: var(--color-surface-subtle);
+  color: var(--text-color);
   font-size: 1.25rem;
   font-weight: 600;
   cursor: pointer;
@@ -179,7 +179,7 @@
 }
 
 .mobileHeaderModalClose:focus-visible {
-  outline: 2px solid #38bdf8;
+  outline: 2px solid var(--primary-color);
   outline-offset: 2px;
 }
 
@@ -190,7 +190,7 @@
 }
 
 .mobileHeaderModalInfo {
-  color: #475569;
+  color: var(--text-muted);
   font-size: 0.95rem;
 }
 
@@ -208,9 +208,9 @@
   max-width: calc(100% - 3rem);
   max-height: calc(100% - 3rem);
   border-radius: 1rem;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  background: #fff;
-  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.1);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
   z-index: 25;
@@ -221,7 +221,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.25rem;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  border-bottom: 1px solid var(--surface-border);
   gap: 0.75rem;
 }
 
@@ -235,22 +235,22 @@
   margin: 0;
   font-size: 0.75rem;
   letter-spacing: 0.08em;
-  color: #64748b;
+  color: var(--color-text-muted);
 }
 
 .propertiesPanelTitle {
   margin: 0;
   font-size: 1.25rem;
-  color: #0f172a;
+  color: var(--color-text-strong);
 }
 
 .propertiesPanelCloseButton {
   width: 2.25rem;
   height: 2.25rem;
   border-radius: 0.6rem;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  background: #f8fafc;
-  color: #0f172a;
+  border: 1px solid var(--surface-border);
+  background: var(--color-surface-subtle);
+  color: var(--text-color);
   font-size: 1.25rem;
   font-weight: 600;
   cursor: pointer;
@@ -260,7 +260,7 @@
 }
 
 .propertiesPanelCloseButton:focus-visible {
-  outline: 2px solid #38bdf8;
+  outline: 2px solid var(--primary-color);
   outline-offset: 2px;
 }
 
@@ -286,9 +286,9 @@
   width: min(640px, 100%);
   max-height: min(85vh, 720px);
   border-radius: 1.25rem;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  background: #fff;
-  box-shadow: 0 -16px 32px rgba(15, 23, 42, 0.18);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -314,17 +314,17 @@
   padding: 0.75rem 1.1rem;
   border-radius: 9999px;
   border: none;
-  background: #0f172a;
-  color: #fff;
+  background: var(--text-color);
+  color: var(--main-background);
   font-weight: 600;
   font-size: 0.95rem;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.28);
+  box-shadow: var(--shadow-soft);
   cursor: pointer;
   z-index: 40;
 }
 
 .propertiesToggleButton:focus-visible {
-  outline: 2px solid #38bdf8;
+  outline: 2px solid var(--primary-color);
   outline-offset: 2px;
 }
 
