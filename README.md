@@ -169,6 +169,8 @@ Le chargement du modèle e5 est effectué paresseusement et mis en cache. Pensez
 
 Un nouvel ensemble d'endpoints REST permet aux administrateurs de constituer une bibliothèque de widgets réutilisables par les modules d'agent du workflow builder. Les définitions sont stockées dans la table `widget_templates` et validées via `chatkit.widgets.WidgetRoot` avant d'être persistées.
 
+Chaque création ou mise à jour indexe désormais la définition JSON dans un vector store dédié (`chatkit-widgets`). Celui-ci est automatiquement créé au besoin et enrichi de métadonnées (slug, titre, description). Les recherches hybrides peuvent ainsi exploiter la bibliothèque de widgets pour suggérer des composants pertinents dans vos prompts.
+
 - `GET /api/widgets` — lister l'ensemble des widgets disponibles (administrateur uniquement) ;
 - `POST /api/widgets` — créer un widget (`slug`, titres/description optionnels et JSON décrivant le widget) ;
 - `PATCH /api/widgets/{slug}` — mettre à jour le libellé, la description ou la définition JSON d'un widget ;
