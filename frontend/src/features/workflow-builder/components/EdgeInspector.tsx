@@ -2,12 +2,6 @@ import type { CSSProperties } from "react";
 
 import type { FlowEdge } from "../types";
 
-const conditionOptions = [
-  { value: "", label: "(par défaut)" },
-  { value: "true", label: "Branche true" },
-  { value: "false", label: "Branche false" },
-];
-
 export type EdgeInspectorProps = {
   edge: FlowEdge;
   onConditionChange: (edgeId: string, value: string) => void;
@@ -42,17 +36,16 @@ const EdgeInspector = ({ edge, onConditionChange, onLabelChange, onRemove }: Edg
     </dl>
     <label style={fieldStyle}>
       <span>Branche conditionnelle</span>
-      <select
+      <input
+        type="text"
         value={edge.data?.condition ?? ""}
         onChange={(event) => onConditionChange(edge.id, event.target.value)}
-      >
-        {conditionOptions.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
+        placeholder="Laisser vide pour la branche par défaut"
+      />
     </label>
+    <p style={{ color: "#475569", margin: "0.35rem 0 0" }}>
+      Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.
+    </p>
     <label style={fieldStyle}>
       <span>Libellé affiché</span>
       <input
