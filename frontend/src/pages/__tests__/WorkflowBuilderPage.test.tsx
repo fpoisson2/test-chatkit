@@ -24,6 +24,10 @@ const listVectorStoresMock = vi.hoisted(() => vi.fn(async () => []));
 const listModelsMock = vi.hoisted(() => vi.fn(async () => []));
 const listWidgetsMock = vi.hoisted(() => vi.fn(async () => []));
 const listWorkflowWidgetsMock = vi.hoisted(() => vi.fn(async () => []));
+const openSidebarMock = vi.hoisted(() => vi.fn());
+const closeSidebarMock = vi.hoisted(() => vi.fn());
+const setSidebarContentMock = vi.hoisted(() => vi.fn());
+const clearSidebarContentMock = vi.hoisted(() => vi.fn());
 
 vi.mock("../../utils/backend", () => ({
   makeApiEndpointCandidates: makeApiEndpointCandidatesMock,
@@ -37,6 +41,19 @@ vi.mock("../../utils/backend", () => ({
     listWidgets: listWidgetsMock,
     listWorkflowWidgets: listWorkflowWidgetsMock,
   },
+}));
+
+vi.mock("../../components/AppLayout", () => ({
+  useAppLayout: () => ({
+    openSidebar: openSidebarMock,
+    closeSidebar: closeSidebarMock,
+    isSidebarOpen: false,
+    isDesktopLayout: true,
+  }),
+  useSidebarPortal: () => ({
+    setSidebarContent: setSidebarContentMock,
+    clearSidebarContent: clearSidebarContentMock,
+  }),
 }));
 
 describe("WorkflowBuilderPage", () => {
@@ -251,6 +268,30 @@ describe("WorkflowBuilderPage", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  test("affiche le brouillon sans numéro de version en tête de liste", async () => {
+    setupWorkflowApi();
+
+    renderWorkflowBuilder();
+
+    const versionSelect = await screen.findByLabelText(/révision/i);
+    await waitFor(() => expect(versionSelect).toHaveValue(String(draftVersionSummary.id)));
+    await waitFor(() => {
+      const currentOptions = within(versionSelect).getAllByRole("option");
+      const draft = currentOptions.find(
+        (option) => option.getAttribute("value") === String(draftVersionSummary.id),
+      );
+      expect(draft).toBeDefined();
+      expect(draft).toHaveTextContent(/^Brouillon$/);
+    });
+
+    const options = within(versionSelect).getAllByRole("option");
+    const productionOption = options.find(
+      (option) => option.getAttribute("value") === String(productionVersionSummary.id),
+    );
+    expect(productionOption).toBeDefined();
+    expect(productionOption).toHaveTextContent(`v${productionVersionSummary.version}`);
   });
 
   test("permet de modifier un nœud et d'enregistrer le graphe", async () => {

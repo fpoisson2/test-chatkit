@@ -385,9 +385,19 @@ const WorkflowBuilderPage = () => {
               <option value="">Aucune version disponible</option>
             ) : (
               versions.map((version) => {
-                const labelParts = [`v${version.version}`];
-                if (version.name) {
-                  labelParts.push(version.name);
+                const isDraft = draftVersionIdRef.current === version.id;
+                const displayName = version.name?.trim() || null;
+                const labelParts: string[] = [];
+                if (isDraft) {
+                  labelParts.push(displayName ?? DRAFT_DISPLAY_NAME);
+                } else {
+                  labelParts.push(`v${version.version}`);
+                  if (
+                    displayName &&
+                    (!version.is_active || displayName.toLowerCase() !== "production")
+                  ) {
+                    labelParts.push(displayName);
+                  }
                 }
                 if (version.is_active) {
                   labelParts.push("Production");
