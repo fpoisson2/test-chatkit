@@ -256,11 +256,60 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             async for event in self.respond(thread, None, context):
                 yield event
 
+        async def _handle_widget_action() -> AsyncIterator[ThreadStreamEvent]:
+            payload = action.payload if isinstance(action.payload, Mapping) else {}
+            thread_state = _ThreadWorkflowStateManager(
+                thread=thread,
+                store=self.store,
+                request_context=context,
+            )
+
+            step_slug = _extract_action_step_slug(payload) if isinstance(payload, Mapping) else None
+            if not step_slug and sender is not None:
+                sender_id = getattr(sender, "id", None)
+                if isinstance(sender_id, str):
+                    step_slug = thread_state.resolve_widget_step(sender_id)
+            if not step_slug:
+                logger.warning(
+                    "Action widget sans nœud cible (type=%s, payload=%s)",
+                    action.type,
+                    action.payload,
+                )
+                yield ErrorEvent(
+                    code=ErrorCode.STREAM_ERROR,
+                    message="Action widget invalide : nœud introuvable.",
+                    allow_retry=True,
+                )
+                return
+
+            branch_value = _extract_action_branch(action.payload)
+            if not branch_value:
+                logger.warning(
+                    "Action widget sans sélection exploitable (type=%s, payload=%s)",
+                    action.type,
+                    action.payload,
+                )
+                yield ErrorEvent(
+                    code=ErrorCode.STREAM_ERROR,
+                    message="Action widget invalide : sélection non reconnue.",
+                    allow_retry=True,
+                )
+                return
+
+            thread_state.record_condition_branch(step_slug, branch_value)
+            await thread_state.persist()
+
+            async for event in self.respond(thread, None, context):
+                yield event
+
         normalized_type = (action.type or "").strip().lower()
         if normalized_type.startswith("workflow.condition") or normalized_type.startswith(
             "workflow.branch"
         ):
             return _handle_condition_action()
+
+        if normalized_type.endswith("menu.select"):
+            return _handle_widget_action()
 
         logger.warning("Action non prise en charge : %s", action.type)
 
