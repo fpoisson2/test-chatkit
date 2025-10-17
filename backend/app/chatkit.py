@@ -2671,22 +2671,6 @@ async def run_workflow(
     total_runtime_steps = len(agent_steps_ordered)
 
     widget_configs_by_step: dict[str, _ResponseWidgetConfig] = {}
-    widget_condition_targets: dict[str, list[str]] = {}
-
-    for transition in transitions:
-        source_slug = getattr(transition.source_step, "slug", None)
-        target_slug = getattr(transition.target_step, "slug", None)
-        source_node = nodes_by_slug.get(source_slug) if source_slug else None
-        target_node = nodes_by_slug.get(target_slug) if target_slug else None
-        if (
-            source_node is not None
-            and source_node.kind == "widget"
-            and target_node is not None
-            and target_node.kind == "condition"
-            and isinstance(source_slug, str)
-            and isinstance(target_slug, str)
-        ):
-            widget_condition_targets.setdefault(source_slug, []).append(target_slug)
 
     def _register_widget_config(step: WorkflowStep) -> _ResponseWidgetConfig | None:
         widget_config = _parse_response_widget_config(step.parameters)
@@ -2697,12 +2681,28 @@ async def run_workflow(
         return widget_config
 
     for step in nodes_by_slug.values():
-        if step.kind == "widget":
-            _register_widget_config(step)
+        _register_widget_config(step)
+
+    widget_condition_targets: dict[str, list[str]] = {}
+
+    for transition in transitions:
+        source_slug = getattr(transition.source_step, "slug", None)
+        target_slug = getattr(transition.target_step, "slug", None)
+        target_node = nodes_by_slug.get(target_slug) if target_slug else None
+        if (
+            isinstance(source_slug, str)
+            and source_slug in widget_configs_by_step
+            and target_node is not None
+            and target_node.kind == "condition"
+            and isinstance(target_slug, str)
+        ):
+            widget_condition_targets.setdefault(source_slug, []).append(target_slug)
 
     agent_instances: dict[str, Agent] = {}
     for step in agent_steps_ordered:
-        widget_config = _register_widget_config(step)
+        widget_config = widget_configs_by_step.get(step.slug)
+        if widget_config is None:
+            widget_config = _register_widget_config(step)
 
         agent_key = (step.agent_key or "").strip()
         builder = _AGENT_BUILDERS.get(agent_key)

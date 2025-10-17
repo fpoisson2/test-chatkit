@@ -1,4 +1,5 @@
 import asyncio
+import datetime as dt
 import sys
 from pathlib import Path
 from types import MethodType, SimpleNamespace
@@ -184,6 +185,172 @@ def _execute_widget_workflow(
     asyncio.run(_exercise())
 
     return events, agent_context.thread, saved_threads
+
+
+def test_agent_widget_registers_condition_targets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[tuple[str, tuple[str, ...]]] = []
+    original_register = chatkit_module._ThreadWorkflowStateManager.register_widget
+
+    def _capture_register(
+        self,
+        item_id: str,
+        *,
+        step_slug: str,
+        widget_slug: str | None,
+        condition_slugs: list[str] | None = None,
+    ) -> None:
+        captured.append((step_slug, tuple(condition_slugs or ())))
+        return original_register(
+            self,
+            item_id,
+            step_slug=step_slug,
+            widget_slug=widget_slug,
+            condition_slugs=condition_slugs,
+        )
+
+    async def _fake_stream_widget(thread_metadata, widget, *, generate_id):  # type: ignore[no-untyped-def]
+        item_id = generate_id("widget")
+        event = chatkit_module.ThreadItemAddedEvent(
+            item=chatkit_module.WidgetItem(
+                id=item_id,
+                thread_id=getattr(thread_metadata, "id", "thread_agent_widget"),
+                created_at=dt.datetime.now(dt.UTC),
+                widget=widget,
+                copy_text=None,
+            )
+        )
+        yield event
+
+    async def _fake_stream_agent_response(*args, **kwargs):  # type: ignore[no-untyped-def]
+        if False:
+            yield None
+        return
+
+    monkeypatch.setattr(
+        chatkit_module._ThreadWorkflowStateManager,
+        "register_widget",
+        _capture_register,
+    )
+    monkeypatch.setattr(chatkit_module, "_sdk_stream_widget", _fake_stream_widget)
+    monkeypatch.setattr(chatkit_module, "stream_agent_response", _fake_stream_agent_response)
+    monkeypatch.setattr(
+        chatkit_module.Runner,
+        "run_streamed",
+        lambda *args, **kwargs: _DummyRunnerResult({"summary": "ok"}),
+    )
+
+    saved_threads: list[dict[str, Any]] = []
+
+    async def _save_thread(thread, context=None):  # type: ignore[no-untyped-def]
+        metadata = getattr(thread, "metadata", None)
+        if isinstance(metadata, dict):
+            saved_threads.append(dict(metadata))
+        else:
+            saved_threads.append({})
+
+    agent_context = SimpleNamespace(
+        store=SimpleNamespace(
+            generate_item_id=lambda item_type, thread, request_context: f"{item_type}_1",
+            save_thread=_save_thread,
+        ),
+        thread=SimpleNamespace(id="thread_agent_widget", metadata={}),
+        request_context=None,
+    )
+
+    start_step = SimpleNamespace(
+        slug="start",
+        kind="start",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=0,
+        id=1,
+        display_name="Début",
+    )
+    agent_step = SimpleNamespace(
+        slug="writer",
+        kind="agent",
+        is_enabled=True,
+        parameters={"response_widget": {"slug": "menu"}},
+        agent_key="triage",
+        position=1,
+        id=2,
+        display_name="Agent",
+    )
+    condition_step = SimpleNamespace(
+        slug="decision",
+        kind="condition",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=2,
+        id=3,
+        display_name="Condition",
+    )
+    true_end = SimpleNamespace(
+        slug="end-true",
+        kind="end",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=3,
+        id=4,
+        display_name="Fin (vrai)",
+    )
+    false_end = SimpleNamespace(
+        slug="end-false",
+        kind="end",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=4,
+        id=5,
+        display_name="Fin (faux)",
+    )
+
+    transitions = [
+        SimpleNamespace(id=1, source_step=start_step, target_step=agent_step, condition=None),
+        SimpleNamespace(id=2, source_step=agent_step, target_step=condition_step, condition=None),
+        SimpleNamespace(id=3, source_step=condition_step, target_step=true_end, condition="true"),
+        SimpleNamespace(id=4, source_step=condition_step, target_step=false_end, condition="false"),
+    ]
+
+    definition = SimpleNamespace(
+        steps=[start_step, agent_step, condition_step, true_end, false_end],
+        transitions=transitions,
+        workflow_id=42,
+        workflow=SimpleNamespace(slug="demo", display_name="Démo"),
+    )
+
+    async def _run() -> None:
+        await run_workflow(
+            WorkflowInput(input_as_text="Bonjour"),
+            agent_context=agent_context,
+            workflow_service=_DummyWorkflowService(definition),
+        )
+
+    asyncio.run(_run())
+
+    assert captured, "Le widget associé à l'agent devrait être enregistré"
+    assert any(
+        step == "writer" and details == ("decision",)
+        for step, details in captured
+    ), "La transition vers le nœud conditionnel doit être mémorisée"
+
+    workflow_state = agent_context.thread.metadata.get("workflow_state")
+    assert isinstance(workflow_state, dict)
+    widgets = workflow_state.get("widgets") if isinstance(workflow_state, dict) else None
+    assert widgets, "Les métadonnées du fil doivent référencer le widget diffusé"
+    assert any(
+        isinstance(payload, dict)
+        and payload.get("step") == "writer"
+        and payload.get("conditions") == ["decision"]
+        for payload in widgets.values()
+        if isinstance(payload, dict)
+    ), "Les conditions ciblées doivent être associées au widget"
+    assert saved_threads, "Les métadonnées du fil doivent être persistées"
 
 
 def test_widget_node_streams_widget_with_input(monkeypatch: pytest.MonkeyPatch) -> None:
