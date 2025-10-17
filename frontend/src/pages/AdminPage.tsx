@@ -35,7 +35,11 @@ export const AdminPage = () => {
         setError("Session expirée, veuillez vous reconnecter.");
         return;
       }
-      setError(err instanceof Error ? err.message : "Une erreur inattendue est survenue");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Une erreur inattendue est survenue",
+      );
     } finally {
       setLoading(false);
     }
@@ -61,7 +65,11 @@ export const AdminPage = () => {
         setError("Session expirée, veuillez vous reconnecter.");
         return;
       }
-      setError(err instanceof Error ? err.message : "Une erreur inattendue est survenue");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Une erreur inattendue est survenue",
+      );
     }
   };
 
@@ -70,14 +78,20 @@ export const AdminPage = () => {
       const updated = await adminApi.updateUser(token, editableUser.id, {
         is_admin: !editableUser.is_admin,
       });
-      setUsers((prev) => prev.map((user) => (user.id === updated.id ? updated : user)));
+      setUsers((prev) =>
+        prev.map((user) => (user.id === updated.id ? updated : user)),
+      );
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
         setError("Session expirée, veuillez vous reconnecter.");
         return;
       }
-      setError(err instanceof Error ? err.message : "Une erreur inattendue est survenue");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Une erreur inattendue est survenue",
+      );
     }
   };
 
@@ -95,39 +109,56 @@ export const AdminPage = () => {
         setError("Session expirée, veuillez vous reconnecter.");
         return;
       }
-      setError(err instanceof Error ? err.message : "Une erreur inattendue est survenue");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Une erreur inattendue est survenue",
+      );
     }
   };
 
   const handleResetPassword = async (editableUser: EditableUser) => {
-    const newPassword = window.prompt(`Nouveau mot de passe pour ${editableUser.email}`);
+    const newPassword = window.prompt(
+      `Nouveau mot de passe pour ${editableUser.email}`,
+    );
     if (!newPassword) {
       return;
     }
 
     try {
-      const updated = await resetUserPassword(token, editableUser.id, { password: newPassword });
-      setUsers((prev) => prev.map((user) => (user.id === updated.id ? updated : user)));
+      const updated = await resetUserPassword(token, editableUser.id, {
+        password: newPassword,
+      });
+      setUsers((prev) =>
+        prev.map((user) => (user.id === updated.id ? updated : user)),
+      );
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
         setError("Session expirée, veuillez vous reconnecter.");
         return;
       }
-      setError(err instanceof Error ? err.message : "Une erreur inattendue est survenue");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Une erreur inattendue est survenue",
+      );
     }
   };
 
   return (
-    <ManagementPageLayout tabs={<AdminTabs activeTab="users" />}>
-      {error && <div className="alert alert--danger">{error}</div>}
+    <>
+      <AdminTabs activeTab="users" />
+      <ManagementPageLayout>
+        {error && <div className="alert alert--danger">{error}</div>}
 
-      <div className="admin-grid">
-        <section className="admin-card">
-          <div>
+        <div className="admin-grid">
+          <section className="admin-card">
+            <div>
               <h2 className="admin-card__title">Créer un utilisateur</h2>
               <p className="admin-card__subtitle">
-                Invitez un collaborateur et attribuez-lui un rôle adapté à son usage de ChatKit.
+                Invitez un collaborateur et attribuez-lui un rôle adapté à son
+                usage de ChatKit.
               </p>
             </div>
             <form className="admin-form" onSubmit={handleCreate}>
@@ -139,7 +170,12 @@ export const AdminPage = () => {
                     type="email"
                     required
                     value={createPayload.email}
-                    onChange={(event) => setCreatePayload((prev) => ({ ...prev, email: event.target.value }))}
+                    onChange={(event) =>
+                      setCreatePayload((prev) => ({
+                        ...prev,
+                        email: event.target.value,
+                      }))
+                    }
                     placeholder="nouvel.utilisateur@example.com"
                   />
                 </label>
@@ -150,7 +186,12 @@ export const AdminPage = () => {
                     type="text"
                     required
                     value={createPayload.password}
-                    onChange={(event) => setCreatePayload((prev) => ({ ...prev, password: event.target.value }))}
+                    onChange={(event) =>
+                      setCreatePayload((prev) => ({
+                        ...prev,
+                        password: event.target.value,
+                      }))
+                    }
                     placeholder="Mot de passe temporaire"
                   />
                 </label>
@@ -160,7 +201,10 @@ export const AdminPage = () => {
                   type="checkbox"
                   checked={createPayload.is_admin}
                   onChange={(event) =>
-                    setCreatePayload((prev) => ({ ...prev, is_admin: event.target.checked }))
+                    setCreatePayload((prev) => ({
+                      ...prev,
+                      is_admin: event.target.checked,
+                    }))
                   }
                 />
                 Administrateur
@@ -173,69 +217,85 @@ export const AdminPage = () => {
             </form>
           </section>
 
-        <section className="admin-card">
-          <div>
-            <h2 className="admin-card__title">Utilisateurs</h2>
-            <p className="admin-card__subtitle">
-              Consultez les accès existants et appliquez des actions rapides pour chaque compte.
-            </p>
-          </div>
-          {isLoading ? (
-            <p className="admin-card__subtitle">Chargement des utilisateurs…</p>
-          ) : users.length === 0 ? (
-            <p className="admin-card__subtitle">Aucun utilisateur pour le moment.</p>
-          ) : (
-            <div className="admin-table-wrapper">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>E-mail</th>
-                    <th>Rôle</th>
-                    <th>Créé le</th>
-                    <th>Mis à jour le</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((editableUser) => (
-                    <tr key={editableUser.id}>
-                      <td>{editableUser.email}</td>
-                      <td>{editableUser.is_admin ? "Administrateur" : "Utilisateur"}</td>
-                      <td>{new Date(editableUser.created_at).toLocaleString()}</td>
-                      <td>{new Date(editableUser.updated_at).toLocaleString()}</td>
-                      <td>
-                        <div className="admin-table__actions">
-                          <button
-                            className="button button--subtle button--sm"
-                            type="button"
-                            onClick={() => handleToggleAdmin(editableUser)}
-                          >
-                            {editableUser.is_admin ? "Retirer admin" : "Promouvoir"}
-                          </button>
-                          <button
-                            className="button button--ghost button--sm"
-                            type="button"
-                            onClick={() => handleResetPassword(editableUser)}
-                          >
-                            Réinitialiser
-                          </button>
-                          <button
-                            className="button button--danger button--sm"
-                            type="button"
-                            onClick={() => handleDelete(editableUser)}
-                          >
-                            Supprimer
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <section className="admin-card">
+            <div>
+              <h2 className="admin-card__title">Utilisateurs</h2>
+              <p className="admin-card__subtitle">
+                Consultez les accès existants et appliquez des actions rapides
+                pour chaque compte.
+              </p>
             </div>
-          )}
-        </section>
-      </div>
-    </ManagementPageLayout>
+            {isLoading ? (
+              <p className="admin-card__subtitle">
+                Chargement des utilisateurs…
+              </p>
+            ) : users.length === 0 ? (
+              <p className="admin-card__subtitle">
+                Aucun utilisateur pour le moment.
+              </p>
+            ) : (
+              <div className="admin-table-wrapper">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>E-mail</th>
+                      <th>Rôle</th>
+                      <th>Créé le</th>
+                      <th>Mis à jour le</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((editableUser) => (
+                      <tr key={editableUser.id}>
+                        <td>{editableUser.email}</td>
+                        <td>
+                          {editableUser.is_admin
+                            ? "Administrateur"
+                            : "Utilisateur"}
+                        </td>
+                        <td>
+                          {new Date(editableUser.created_at).toLocaleString()}
+                        </td>
+                        <td>
+                          {new Date(editableUser.updated_at).toLocaleString()}
+                        </td>
+                        <td>
+                          <div className="admin-table__actions">
+                            <button
+                              className="button button--subtle button--sm"
+                              type="button"
+                              onClick={() => handleToggleAdmin(editableUser)}
+                            >
+                              {editableUser.is_admin
+                                ? "Retirer admin"
+                                : "Promouvoir"}
+                            </button>
+                            <button
+                              className="button button--ghost button--sm"
+                              type="button"
+                              onClick={() => handleResetPassword(editableUser)}
+                            >
+                              Réinitialiser le mot de passe
+                            </button>
+                            <button
+                              className="button button--danger button--sm"
+                              type="button"
+                              onClick={() => handleDelete(editableUser)}
+                            >
+                              Supprimer
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </div>
+      </ManagementPageLayout>
+    </>
   );
 };

@@ -44,7 +44,11 @@ export const AdminModelsPage = () => {
         setError("Session expirée, veuillez vous reconnecter.");
         return;
       }
-      setError(err instanceof Error ? err.message : "Impossible de charger les modèles disponibles.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Impossible de charger les modèles disponibles.",
+      );
     } finally {
       setLoading(false);
     }
@@ -76,7 +80,12 @@ export const AdminModelsPage = () => {
     try {
       const created = await modelRegistryApi.create(token, payload);
       setModels((prev) => sortModels([...prev, created]));
-      setForm({ name: "", display_name: "", description: "", supports_reasoning: false });
+      setForm({
+        name: "",
+        display_name: "",
+        description: "",
+        supports_reasoning: false,
+      });
       setSuccess(`Modèle « ${created.name} » ajouté avec succès.`);
       setError(null);
     } catch (err) {
@@ -86,7 +95,9 @@ export const AdminModelsPage = () => {
         return;
       }
       setSuccess(null);
-      setError(err instanceof Error ? err.message : "Impossible d'ajouter le modèle.");
+      setError(
+        err instanceof Error ? err.message : "Impossible d'ajouter le modèle.",
+      );
     }
   };
 
@@ -115,123 +126,139 @@ export const AdminModelsPage = () => {
   };
 
   return (
-    <ManagementPageLayout tabs={<AdminTabs activeTab="models" />}>
-      {error && <div className="alert alert--danger">{error}</div>}
-      {success && <div className="alert alert--success">{success}</div>}
+    <>
+      <AdminTabs activeTab="models" />
+      <ManagementPageLayout>
+        {error && <div className="alert alert--danger">{error}</div>}
+        {success && <div className="alert alert--success">{success}</div>}
 
-      <div className="admin-grid">
-        <section className="admin-card">
-          <div>
-            <h2 className="admin-card__title">Ajouter un modèle</h2>
-            <p className="admin-card__subtitle">
-              Déclarez un modèle accessible dans le workflow builder et précisez s'il supporte le raisonnement.
-            </p>
-          </div>
-          <form className="admin-form" onSubmit={handleSubmit}>
-            <div className="admin-form__row">
+        <div className="admin-grid">
+          <section className="admin-card">
+            <div>
+              <h2 className="admin-card__title">Ajouter un modèle</h2>
+              <p className="admin-card__subtitle">
+                Déclarez un modèle accessible dans le workflow builder et
+                précisez s'il supporte le raisonnement.
+              </p>
+            </div>
+            <form className="admin-form" onSubmit={handleSubmit}>
+              <div className="admin-form__row">
+                <label className="label">
+                  Identifiant du modèle*
+                  <input
+                    className="input"
+                    type="text"
+                    value={form.name}
+                    required
+                    onChange={(event) =>
+                      setForm((prev) => ({ ...prev, name: event.target.value }))
+                    }
+                    placeholder="Ex. gpt-4.1-mini"
+                  />
+                </label>
+                <label className="label">
+                  Nom affiché (optionnel)
+                  <input
+                    className="input"
+                    type="text"
+                    value={form.display_name ?? ""}
+                    onChange={(event) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        display_name: event.target.value,
+                      }))
+                    }
+                    placeholder="Nom convivial"
+                  />
+                </label>
+              </div>
               <label className="label">
-                Identifiant du modèle*
-                <input
+                Description (optionnel)
+                <textarea
                   className="input"
-                  type="text"
-                  value={form.name}
-                  required
+                  rows={3}
+                  value={form.description ?? ""}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, name: event.target.value }))
+                    setForm((prev) => ({
+                      ...prev,
+                      description: event.target.value,
+                    }))
                   }
-                  placeholder="Ex. gpt-4.1-mini"
+                  placeholder="Ajoutez des notes pour aider les administrateurs."
                 />
               </label>
-              <label className="label">
-                Nom affiché (optionnel)
+              <label className="checkbox-field">
                 <input
-                  className="input"
-                  type="text"
-                  value={form.display_name ?? ""}
+                  type="checkbox"
+                  checked={form.supports_reasoning}
                   onChange={(event) =>
-                    setForm((prev) => ({ ...prev, display_name: event.target.value }))
+                    setForm((prev) => ({
+                      ...prev,
+                      supports_reasoning: event.target.checked,
+                    }))
                   }
-                  placeholder="Nom convivial"
                 />
+                Modèle de raisonnement (affiche les options avancées dans le
+                workflow builder)
               </label>
-            </div>
-            <label className="label">
-              Description (optionnel)
-              <textarea
-                className="input"
-                rows={3}
-                value={form.description ?? ""}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, description: event.target.value }))
-                }
-                placeholder="Ajoutez des notes pour aider les administrateurs."
-              />
-            </label>
-            <label className="checkbox-field">
-              <input
-                type="checkbox"
-                checked={form.supports_reasoning}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, supports_reasoning: event.target.checked }))
-                }
-              />
-              Modèle de raisonnement (affiche les options avancées dans le workflow builder)
-            </label>
-            <div className="admin-form__actions">
-              <button className="button" type="submit" disabled={isLoading}>
-                Ajouter le modèle
-              </button>
-            </div>
-          </form>
-        </section>
+              <div className="admin-form__actions">
+                <button className="button" type="submit" disabled={isLoading}>
+                  Ajouter le modèle
+                </button>
+              </div>
+            </form>
+          </section>
 
-        <section className="admin-card">
-          <div>
-            <h2 className="admin-card__title">Modèles autorisés</h2>
-            <p className="admin-card__subtitle">
-              Consultez la liste des modèles disponibles et supprimez ceux qui ne doivent plus apparaître dans le workflow builder.
-            </p>
-          </div>
-          {isLoading ? (
-            <p style={{ color: "#475569" }}>Chargement des modèles…</p>
-          ) : models.length === 0 ? (
-            <p style={{ color: "#475569" }}>
-              Aucun modèle n'est encore enregistré. Ajoutez-en un pour alimenter le menu déroulant du workflow builder.
-            </p>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Modèle</th>
-                  <th>Affichage</th>
-                  <th>Raisonnement</th>
-                  <th>Description</th>
-                  <th style={{ width: "6rem" }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {models.map((model) => (
-                  <tr key={model.id}>
-                    <td>{model.name}</td>
-                    <td>{model.display_name ?? "—"}</td>
-                    <td>{model.supports_reasoning ? "Oui" : "Non"}</td>
-                    <td>{model.description ?? "—"}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="button button--ghost"
-                        onClick={() => handleDelete(model)}
-                      >
-                        Supprimer
-                      </button>
-                    </td>
+          <section className="admin-card">
+            <div>
+              <h2 className="admin-card__title">Modèles autorisés</h2>
+              <p className="admin-card__subtitle">
+                Consultez la liste des modèles disponibles et supprimez ceux qui
+                ne doivent plus apparaître dans le workflow builder.
+              </p>
+            </div>
+            {isLoading ? (
+              <p style={{ color: "#475569" }}>Chargement des modèles…</p>
+            ) : models.length === 0 ? (
+              <p style={{ color: "#475569" }}>
+                Aucun modèle n'est encore enregistré. Ajoutez-en un pour
+                alimenter le menu déroulant du workflow builder.
+              </p>
+            ) : (
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Modèle</th>
+                    <th>Affichage</th>
+                    <th>Raisonnement</th>
+                    <th>Description</th>
+                    <th style={{ width: "6rem" }}>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </section>
-      </div>
-    </ManagementPageLayout>
+                </thead>
+                <tbody>
+                  {models.map((model) => (
+                    <tr key={model.id}>
+                      <td>{model.name}</td>
+                      <td>{model.display_name ?? "—"}</td>
+                      <td>{model.supports_reasoning ? "Oui" : "Non"}</td>
+                      <td>{model.description ?? "—"}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="button button--ghost"
+                          onClick={() => handleDelete(model)}
+                        >
+                          Supprimer
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+        </div>
+      </ManagementPageLayout>
+    </>
   );
 };
