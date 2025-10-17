@@ -411,7 +411,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 inference_options=InferenceOptions(),
             )
             user_item = await self._build_user_message_item(user_input, thread, context)
-            await self.store.add_thread_item(thread.id, user_item, context=context)
             events.append(ThreadItemDoneEvent(item=user_item))
 
         if assistant_text:
@@ -421,7 +420,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 created_at=datetime.now(),
                 content=[AssistantMessageContent(text=assistant_text)],
             )
-            await self.store.add_thread_item(thread.id, assistant_item, context=context)
             events.append(ThreadItemDoneEvent(item=assistant_item))
 
         return events

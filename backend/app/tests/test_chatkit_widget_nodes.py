@@ -422,3 +422,99 @@ async def test_auto_start_server_streams_initial_messages(
     assert user_events, "Le message utilisateur automatique doit être diffusé"
     assert assistant_events, "Le message assistant automatique doit être diffusé"
     assert assistant_events[0].item.content[0].text == "Bienvenue dans cet espace."
+
+
+@pytest.mark.asyncio
+async def test_auto_start_messages_are_persisted_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        allowed_origins=["*"],
+        openai_api_key="sk-test",
+        chatkit_workflow_id=None,
+        chatkit_api_base="https://api.openai.com",
+        chatkit_agent_model="gpt-5",
+        chatkit_agent_instructions="Assistant",
+        chatkit_realtime_model="gpt-realtime",
+        chatkit_realtime_instructions="Assistant vocal",
+        chatkit_realtime_voice="verse",
+        database_url="sqlite://",
+        auth_secret_key="secret",
+        access_token_expire_minutes=60,
+        admin_email=None,
+        admin_password=None,
+        database_connect_retries=1,
+        database_connect_delay=0.1,
+    )
+    server = DemoChatKitServer(settings)
+
+    class _FakeStore:
+        def __init__(self) -> None:
+            self.items: dict[str, Any] = {}
+            self.generated = 0
+
+        async def load_thread_items(
+            self, thread_id: str, after: str | None, limit: int, order: str, context
+        ) -> Page[UserMessageItem]:
+            return Page(data=[], has_more=False, after=None)
+
+        async def delete_thread_item(self, thread_id: str, item_id: str, context) -> None:
+            return None
+
+        async def add_thread_item(self, thread_id: str, item, context) -> None:  # type: ignore[no-untyped-def]
+            if item.id in self.items:
+                raise AssertionError("L'item ne devrait être inséré qu'une seule fois")
+            self.items[item.id] = item
+
+        async def save_thread(self, thread, context) -> None:  # type: ignore[no-untyped-def]
+            return None
+
+        async def save_item(self, thread_id: str, item, context) -> None:  # type: ignore[no-untyped-def]
+            self.items[item.id] = item
+
+        def generate_item_id(self, prefix: str, thread, context) -> str:  # type: ignore[no-untyped-def]
+            self.generated += 1
+            return f"{prefix}-{self.generated}"
+
+    fake_store = _FakeStore()
+    server.store = fake_store  # type: ignore[assignment]
+
+    monkeypatch.setattr(
+        server,
+        "_resolve_auto_start_configuration",
+        lambda: AutoStartConfiguration(
+            True,
+            "Bonjour",
+            "Bienvenue dans cet espace.",
+        ),
+    )
+
+    async def _fake_execute_workflow(**kwargs):  # type: ignore[no-untyped-def]
+        await kwargs["event_queue"].put(_STREAM_DONE)
+
+    monkeypatch.setattr(server, "_execute_workflow", _fake_execute_workflow)
+
+    thread = ThreadMetadata(
+        id="thread-1",
+        created_at=datetime.now(),
+        status=ActiveStatus(),
+        metadata={},
+    )
+    context = ChatKitRequestContext(user_id="user-1", email="user@example.com")
+
+    async def _stream():
+        async for event in server.respond(thread, None, context):
+            yield event
+
+    events: list[Any] = []
+    async for event in server._process_events(thread, context, _stream):
+        events.append(event)
+
+    assert len(fake_store.items) == 2, "Les deux messages auto-start doivent être persistés une seule fois"
+    user_ids = {
+        event.item.id
+        for event in events
+        if isinstance(event, ThreadItemDoneEvent)
+        and isinstance(event.item, (UserMessageItem, AssistantMessageItem))
+    }
+    assert len(user_ids) == 2, "Chaque message auto-start doit posséder un identifiant unique"
