@@ -7,7 +7,7 @@ import styles from "./ManagementPageLayout.module.css";
 type ContentWidth = "md" | "lg" | "full";
 
 type ManagementPageLayoutProps = {
-  title: string;
+  title?: string;
   subtitle?: string;
   badge?: ReactNode;
   actions?: ReactNode;
@@ -37,10 +37,13 @@ export const ManagementPageLayout = ({
 }: ManagementPageLayoutProps) => {
   const { openSidebar, isDesktopLayout, isSidebarOpen } = useAppLayout();
   const showSidebarButton = !isDesktopLayout || !isSidebarOpen;
+  const hasHeaderMain = Boolean(title || subtitle);
+  const hasHeaderAside = Boolean(badge || actions);
+  const shouldRenderHeader = showSidebarButton || hasHeaderMain || hasHeaderAside;
 
   return (
     <div className={styles.page}>
-      {hideHeader ? null : (
+      {shouldRenderHeader ? (
         <header className={styles.header}>
           {showSidebarButton ? (
             <button
@@ -55,19 +58,7 @@ export const ManagementPageLayout = ({
             </button>
           ) : null}
 
-          <div className={styles.headerMain}>
-            <h1 className={styles.title}>{title}</h1>
-            {subtitle ? <p className={styles.subtitle}>{subtitle}</p> : null}
-          </div>
-
-          {badge || actions ? (
-            <div className={styles.headerAside}>
-              {badge ? <span className={styles.badge}>{badge}</span> : null}
-              {actions ? <div className={styles.headerActions}>{actions}</div> : null}
-            </div>
-          ) : null}
-        </header>
-      )}
+      ) : null}
 
       <div className={styles.inner}>
         <div className={`${styles.content} ${contentWidthClassName[maxWidth]}`}>

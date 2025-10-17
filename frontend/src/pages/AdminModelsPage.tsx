@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
@@ -14,7 +14,7 @@ const sortModels = (models: AvailableModel[]): AvailableModel[] =>
   [...models].sort((a, b) => a.name.localeCompare(b.name, "fr"));
 
 export const AdminModelsPage = () => {
-  const { token, user, logout } = useAuth();
+  const { token, logout } = useAuth();
   const [models, setModels] = useState<AvailableModel[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -114,23 +114,8 @@ export const AdminModelsPage = () => {
     }
   };
 
-  const badge = useMemo(() => {
-    const countLabel = models.length ? ` · ${models.length} modèle${models.length > 1 ? "s" : ""}` : "";
-    return `${user?.email ?? "Administrateur"}${countLabel}`;
-  }, [models.length, user?.email]);
-
   return (
-    <ManagementPageLayout
-      title="Gestion des modèles"
-      subtitle="Contrôlez les modèles OpenAI que vos équipes peuvent sélectionner dans le workflow builder."
-      badge={badge}
-      actions={
-        <button className="button button--subtle" type="button" onClick={logout}>
-          Déconnexion
-        </button>
-      }
-      tabs={<AdminTabs activeTab="models" />}
-    >
+    <ManagementPageLayout tabs={<AdminTabs activeTab="models" />}>
       {error && <div className="alert alert--danger">{error}</div>}
       {success && <div className="alert alert--success">{success}</div>}
 
