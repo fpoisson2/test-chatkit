@@ -1986,13 +1986,6 @@ async def run_workflow(
         for step in sorted(definition.steps, key=lambda s: s.position)
         if step.kind == "agent" and step.is_enabled and step.slug in nodes_by_slug
     ]
-    if not agent_steps_ordered:
-        raise WorkflowExecutionError(
-            "configuration",
-            "Configuration du workflow invalide",
-            RuntimeError("Aucun agent actif utilisable"),
-            [],
-        )
 
     agent_positions = {
         step.slug: index for index, step in enumerate(agent_steps_ordered, start=1)
@@ -2029,7 +2022,9 @@ async def run_workflow(
         else:
             agent_instances[step.slug] = builder(overrides)
 
-    if all((step.agent_key == "r_dacteur") for step in agent_steps_ordered):
+    if agent_steps_ordered and all(
+        (step.agent_key == "r_dacteur") for step in agent_steps_ordered
+    ):
         state["should_finalize"] = True
 
     edges_by_source: dict[str, list[WorkflowTransition]] = {}
