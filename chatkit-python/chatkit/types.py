@@ -765,11 +765,47 @@ class FileTask(BaseTask):
     sources: list[FileSource] = Field(default_factory=list)
 
 
+class GeneratedImage(BaseModel):
+    """Image generated during an image generation tool call."""
+
+    id: str
+    """Unique identifier for the generated image."""
+
+    b64_json: str | None = None
+    """Base64-encoded representation of the latest image frame."""
+
+    data_url: str | None = None
+    """Convenience field exposing the image as a ``data:`` URL."""
+
+    output_format: Literal["png", "webp", "jpeg", "auto"] | None = None
+    """Output format requested for the image."""
+
+    background: Literal["transparent", "opaque", "auto"] | None = None
+    """Background option applied to the generated image."""
+
+    quality: Literal["low", "medium", "high", "auto"] | None = None
+    """Quality level returned by the image generation API."""
+
+    size: Literal["1024x1024", "1024x1536", "1536x1024", "auto"] | None = None
+    """Dimensions of the generated image."""
+
+    partials: list[str] = Field(default_factory=list)
+    """List of partial frames emitted while the image was generated."""
+
+
 class ImageTask(BaseTask):
     """Workflow task rendering image content."""
 
     type: Literal["image"] = "image"
     title: str | None = None
+    images: list[GeneratedImage] = Field(default_factory=list)
+    """Images associated with this generation task."""
+
+    call_id: str | None = None
+    """Identifier of the underlying image generation call."""
+
+    output_index: int | None = None
+    """Index of the image within the tool call output array."""
 
 
 Task = Annotated[

@@ -31,6 +31,11 @@ from agents import (
     function_tool,
 )
 from openai.types.shared.reasoning import Reasoning
+
+try:  # pragma: no cover - certaines versions du client OpenAI n'exposent pas encore ImageGeneration
+    from openai.types.responses.tool import ImageGeneration
+except ImportError:  # pragma: no cover - compatibilité rétro
+    ImageGeneration = None  # type: ignore[assignment]
 from pydantic import BaseModel, Field, create_model
 
 from chatkit.actions import Action
@@ -1002,6 +1007,47 @@ def _build_web_search_tool(payload: Any) -> WebSearchTool | None:
         return None
 
 
+def _build_image_generation_tool(payload: Any) -> ImageGeneration | None:
+    """Construit un outil de génération d'image pour l'Agents SDK."""
+
+    if ImageGeneration is None:
+        return None
+
+    if isinstance(payload, ImageGeneration):
+        return payload
+
+    config: Any = payload
+    if isinstance(payload, dict):
+        candidate = payload.get("image_generation")
+        if isinstance(candidate, dict):
+            config = candidate
+
+    if not isinstance(config, dict):
+        return None
+
+    field_names: set[str]
+    if hasattr(ImageGeneration, "model_fields"):
+        field_names = set(ImageGeneration.model_fields)
+    else:  # pragma: no cover - compatibilité Pydantic v1
+        field_names = set(ImageGeneration.__fields__)  # type: ignore[attr-defined]
+
+    tool_kwargs: dict[str, Any] = {"type": "image_generation"}
+    for key in field_names:
+        if key == "type":
+            continue
+        value = config.get(key)
+        if value is not None:
+            tool_kwargs[key] = value
+
+    try:
+        return ImageGeneration(**tool_kwargs)
+    except Exception:  # pragma: no cover - dépend de la version du client
+        logger.warning(
+            "Impossible de construire ImageGeneration avec la configuration %s", config
+        )
+        return None
+
+
 def _extract_vector_store_ids(config: dict[str, Any]) -> list[str]:
     """Récupère la liste des identifiants de vector store à partir du payload."""
 
@@ -1511,6 +1557,12 @@ def _coerce_agent_tools(
 
             if normalized_type == "file_search":
                 tool = _build_file_search_tool(entry.get("file_search"))
+                if tool is not None:
+                    coerced.append(tool)
+                continue
+
+            if normalized_type == "image_generation":
+                tool = _build_image_generation_tool(entry)
                 if tool is not None:
                     coerced.append(tool)
                 continue
