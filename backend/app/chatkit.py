@@ -68,6 +68,7 @@ from .workflows import (
     WorkflowService,
     resolve_start_auto_start,
     resolve_start_auto_start_message,
+    resolve_start_auto_start_assistant_message,
 )
 from .vector_store import JsonVectorStoreService, SearchResult
 from .weather import fetch_weather
@@ -106,6 +107,19 @@ class ChatKitRequestContext:
         return metadata
 
 
+@dataclass(frozen=True)
+class AutoStartConfiguration:
+    """Configuration extraite du bloc début pour le démarrage automatique."""
+
+    enabled: bool
+    user_message: str
+    assistant_message: str
+
+    @classmethod
+    def disabled(cls) -> "AutoStartConfiguration":
+        return cls(False, "", "")
+
+
 class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     """Serveur ChatKit piloté par un workflow local."""
 
@@ -114,7 +128,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         self._settings = settings
         self._workflow_service = WorkflowService()
 
-    def _resolve_auto_start_configuration(self) -> tuple[bool, str]:
+    def _resolve_auto_start_configuration(self) -> AutoStartConfiguration:
         try:
             definition = self._workflow_service.get_current()
         except Exception as exc:  # pragma: no cover - devrait rester exceptionnel
@@ -122,17 +136,18 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 "Impossible de vérifier l'option de démarrage automatique du workflow.",
                 exc_info=exc,
             )
-            return False, ""
+            return AutoStartConfiguration.disabled()
 
         should_auto_start = resolve_start_auto_start(definition)
         if not should_auto_start:
-            return False, ""
+            return AutoStartConfiguration.disabled()
 
         message = resolve_start_auto_start_message(definition)
-        if not isinstance(message, str):
-            return True, ""
+        assistant_message = resolve_start_auto_start_assistant_message(definition)
+        user_text = message if isinstance(message, str) else ""
+        assistant_text = assistant_message if isinstance(assistant_message, str) else ""
 
-        return True, message
+        return AutoStartConfiguration(True, user_text, assistant_text)
 
     async def respond(
         self,
@@ -159,8 +174,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         user_text = _resolve_user_input_text(input_user_message, history.data)
         if not user_text:
-            should_auto_start, auto_start_message = self._resolve_auto_start_configuration()
-            if not should_auto_start:
+            config = self._resolve_auto_start_configuration()
+            if not config.enabled:
                 yield ErrorEvent(
                     code=ErrorCode.STREAM_ERROR,
                     message="Impossible de déterminer le message utilisateur à traiter.",
@@ -184,7 +199,15 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             logger.info(
                 "Démarrage automatique du workflow pour le fil %s", thread.id
             )
-            user_text = _normalize_user_text(auto_start_message)
+            user_text = _normalize_user_text(config.user_message)
+            assistant_text = _normalize_user_text(config.assistant_message)
+            workflow_input = WorkflowInput(
+                input_as_text=user_text,
+                auto_start_was_triggered=True,
+                auto_start_assistant_message=assistant_text,
+            )
+        else:
+            workflow_input = WorkflowInput(input_as_text=user_text)
 
         agent_context = AgentContext(
             thread=thread,
@@ -198,7 +221,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             runner=self._execute_workflow(
                 thread=thread,
                 agent_context=agent_context,
-                workflow_input=WorkflowInput(input_as_text=user_text),
+                workflow_input=workflow_input,
                 event_queue=event_queue,
             ),
             event_queue=event_queue,
@@ -2104,6 +2127,7 @@ async def run_workflow(
 ) -> WorkflowRunSummary:
     workflow_payload = workflow_input.model_dump()
     steps: list[WorkflowStepSummary] = []
+    auto_started = bool(workflow_payload.get("auto_start_was_triggered"))
     initial_user_text = _normalize_user_text(workflow_payload["input_as_text"])
     workflow_payload["input_as_text"] = initial_user_text
     conversation_history: list[TResponseInputItem] = []
@@ -2129,6 +2153,46 @@ async def run_workflow(
 
     service = workflow_service or WorkflowService()
     definition = service.get_current()
+
+    should_auto_start = resolve_start_auto_start(definition)
+    if not auto_started and not initial_user_text.strip() and should_auto_start:
+        configured_message = _normalize_user_text(
+            resolve_start_auto_start_message(definition)
+        )
+        if configured_message:
+            auto_started = True
+            initial_user_text = configured_message
+            workflow_payload["input_as_text"] = initial_user_text
+            conversation_history.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": configured_message,
+                        }
+                    ],
+                }
+            )
+            state["infos_manquantes"] = configured_message
+
+    assistant_message_payload = workflow_payload.get("auto_start_assistant_message")
+    if not isinstance(assistant_message_payload, str):
+        assistant_message_payload = resolve_start_auto_start_assistant_message(definition)
+
+    assistant_message = _normalize_user_text(assistant_message_payload)
+    if auto_started and assistant_message:
+        conversation_history.append(
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": assistant_message,
+                    }
+                ],
+            }
+        )
 
     nodes_by_slug: dict[str, WorkflowStep] = {
         step.slug: step for step in definition.steps if step.is_enabled

@@ -37,6 +37,7 @@ import {
   getWidgetNodeConfig,
   getStartAutoRun,
   getStartAutoRunMessage,
+  getStartAutoRunAssistantMessage,
 } from "../../../utils/workflows";
 import type {
   FileSearchConfig,
@@ -115,6 +116,7 @@ export type NodeInspectorProps = {
   ) => void;
   onStartAutoRunChange: (nodeId: string, value: boolean) => void;
   onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
+  onStartAutoRunAssistantMessageChange: (nodeId: string, value: string) => void;
   availableModels: AvailableModel[];
   availableModelsLoading: boolean;
   availableModelsError: string | null;
@@ -162,6 +164,7 @@ const NodeInspector = ({
   onVectorStoreNodeConfigChange,
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
+  onStartAutoRunAssistantMessageChange,
   availableModels,
   availableModelsLoading,
   availableModelsError,
@@ -201,6 +204,8 @@ const NodeInspector = ({
   const startAutoRun = kind === "start" ? getStartAutoRun(parameters) : false;
   const startAutoRunMessage =
     kind === "start" ? getStartAutoRunMessage(parameters) : "";
+  const startAutoRunAssistantMessage =
+    kind === "start" ? getStartAutoRunAssistantMessage(parameters) : "";
   const webSearchConfig = getAgentWebSearchConfig(parameters);
   const webSearchEnabled = Boolean(webSearchConfig);
   const fileSearchConfig = getAgentFileSearchConfig(parameters);
@@ -435,6 +440,25 @@ const NodeInspector = ({
           <p style={{ color: "#475569", margin: "0.35rem 0 0" }}>
             Ce message est transmis à l'agent lorsqu'un fil démarre sans saisie
             utilisateur.
+          </p>
+        </label>
+      )}
+
+      {kind === "start" && startAutoRun && (
+        <label style={fieldStyle}>
+          <span style={labelContentStyle}>Message assistant initial</span>
+          <textarea
+            value={startAutoRunAssistantMessage}
+            onChange={(event) =>
+              onStartAutoRunAssistantMessageChange(node.id, event.target.value)
+            }
+            rows={3}
+            placeholder="Ex. Bonjour, je suis votre assistant… (facultatif)"
+            style={{ resize: "vertical", minHeight: "4.5rem" }}
+          />
+          <p style={{ color: "#475569", margin: "0.35rem 0 0" }}>
+            Ce message est diffusé en tant que première réponse de l'assistant
+            lorsque le démarrage automatique est déclenché.
           </p>
         </label>
       )}

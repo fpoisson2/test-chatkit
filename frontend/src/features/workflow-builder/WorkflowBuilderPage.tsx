@@ -63,6 +63,7 @@ import {
   setStateAssignments,
   setStartAutoRun,
   setStartAutoRunMessage,
+  setStartAutoRunAssistantMessage,
   stringifyAgentParameters,
   createVectorStoreNodeParameters,
   getVectorStoreNodeConfig,
@@ -1338,6 +1339,27 @@ const WorkflowBuilderPage = () => {
           return data;
         }
         const nextParameters = setStartAutoRunMessage(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleStartAutoRunAssistantMessageChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "start") {
+          return data;
+        }
+        const nextParameters = setStartAutoRunAssistantMessage(
+          data.parameters,
+          value,
+        );
         return {
           ...data,
           parameters: nextParameters,
@@ -3293,6 +3315,9 @@ const WorkflowBuilderPage = () => {
             onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
             onStartAutoRunChange={handleStartAutoRunChange}
             onStartAutoRunMessageChange={handleStartAutoRunMessageChange}
+            onStartAutoRunAssistantMessageChange={
+              handleStartAutoRunAssistantMessageChange
+            }
             availableModels={availableModels}
             availableModelsLoading={availableModelsLoading}
             availableModelsError={availableModelsError}

@@ -267,3 +267,49 @@ def test_auto_start_workflow_injects_configured_user_message(
             ],
         }
     ], "Le message défini sur le bloc début doit être injecté pour l'auto-start"
+
+
+def test_auto_start_workflow_injects_assistant_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded_inputs: list[Any] = []
+    runner_payload = {"title": "Synthèse"}
+
+    def _capture_runner(*args, **kwargs):  # type: ignore[no-untyped-def]
+        recorded_inputs.append(kwargs.get("input"))
+        return _DummyRunnerResult(dict(runner_payload))
+
+    _execute_widget_workflow(
+        monkeypatch,
+        widget_parameters={"widget": {"slug": "resume"}},
+        runner_payload=runner_payload,
+        start_parameters={
+            "auto_start": True,
+            "auto_start_user_message": "Bonjour",
+            "auto_start_assistant_message": "Bienvenue dans cet espace.",
+        },
+        workflow_input_text="",
+        runner_callable=_capture_runner,
+    )
+
+    assert recorded_inputs, "L'agent devrait être exécuté"
+    assert recorded_inputs[0] == [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": "Bonjour",
+                }
+            ],
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "output_text",
+                    "text": "Bienvenue dans cet espace.",
+                }
+            ],
+        },
+    ], "Le message assistant doit être ajouté à l'historique lors du démarrage automatique"
