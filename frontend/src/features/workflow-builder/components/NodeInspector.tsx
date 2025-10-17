@@ -29,6 +29,7 @@ import {
   getAgentStorePreference,
   getAgentTemperature,
   getAgentTopP,
+  getConditionConfiguration,
   getAgentWeatherToolEnabled,
   getAgentWebSearchConfig,
   getVectorStoreNodeConfig,
@@ -38,6 +39,8 @@ import {
   getStartAutoRun,
   getStartAutoRunMessage,
   getStartAutoRunAssistantMessage,
+  type ConditionBranchRule,
+  type ConditionConfiguration,
 } from "../../../utils/workflows";
 import type {
   FileSearchConfig,
@@ -69,6 +72,13 @@ const reasoningSummaryOptions = [
   { value: "auto", label: "Résumé automatique" },
   { value: "detailed", label: "Résumé détaillé" },
 ];
+
+const conditionModeOptions = [
+  { value: "truthy", label: "Vérité (la valeur est considérée comme vraie)" },
+  { value: "falsy", label: "Fausseté (la valeur est considérée comme fausse)" },
+  { value: "equals", label: "Égalité stricte avec la valeur attendue" },
+  { value: "not_equals", label: "Différent de la valeur attendue" },
+] as const;
 
 const DEFAULT_JSON_SCHEMA_OBJECT = { type: "object", properties: {} } as const;
 const DEFAULT_JSON_SCHEMA_TEXT = JSON.stringify(DEFAULT_JSON_SCHEMA_OBJECT, null, 2);
@@ -114,6 +124,7 @@ export type NodeInspectorProps = {
     nodeId: string,
     updates: Partial<VectorStoreNodeConfig>,
   ) => void;
+  onConditionParametersChange: (nodeId: string, configuration: ConditionConfiguration) => void;
   onStartAutoRunChange: (nodeId: string, value: boolean) => void;
   onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
   onStartAutoRunAssistantMessageChange: (nodeId: string, value: string) => void;
@@ -162,6 +173,7 @@ const NodeInspector = ({
   onAgentWebSearchChange,
   onAgentFileSearchChange,
   onVectorStoreNodeConfigChange,
+  onConditionParametersChange,
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
   onStartAutoRunAssistantMessageChange,
@@ -214,6 +226,126 @@ const NodeInspector = ({
   const fileSearchConfig = getAgentFileSearchConfig(parameters);
   const fileSearchEnabled = Boolean(fileSearchConfig);
   const weatherFunctionEnabled = getAgentWeatherToolEnabled(parameters);
+  const conditionConfiguration = useMemo(
+    () => getConditionConfiguration(parameters),
+    [parameters],
+  );
+  const conditionModeNormalized = conditionConfiguration.mode.trim().toLowerCase();
+  const conditionValueFieldVisible =
+    conditionModeNormalized === "equals" ||
+    conditionModeNormalized === "not_equals" ||
+    conditionConfiguration.value.trim().length > 0;
+  const isMultiBranchConfiguration = conditionConfiguration.kind === "multi";
+  const conditionBranches = isMultiBranchConfiguration
+    ? conditionConfiguration.branches
+    : [];
+  const conditionDefaultBranch = isMultiBranchConfiguration
+    ? conditionConfiguration.defaultBranch
+    : "";
+  const handleConditionConfigurationChange = useCallback(
+    (updater: (config: ConditionConfiguration) => ConditionConfiguration) => {
+      if (kind !== "condition") {
+        return;
+      }
+      const next = updater(conditionConfiguration);
+      onConditionParametersChange(node.id, next);
+    },
+    [conditionConfiguration, kind, node.id, onConditionParametersChange],
+  );
+  const updateConditionBaseField = useCallback(
+    (field: "mode" | "path" | "value", value: string) => {
+      handleConditionConfigurationChange((current) => {
+        if (current.kind === "multi") {
+          return { ...current, [field]: value } as ConditionConfiguration;
+        }
+        return { ...current, [field]: value } as ConditionConfiguration;
+      });
+    },
+    [handleConditionConfigurationChange],
+  );
+  const handleConditionKindChange = useCallback(
+    (nextKind: "binary" | "multi") => {
+      handleConditionConfigurationChange((current) => {
+        if (nextKind === current.kind) {
+          return current;
+        }
+        if (nextKind === "multi") {
+          const baseBranches =
+            current.kind === "multi" && current.branches.length > 0
+              ? current.branches
+              : ([
+                  { branch: "true", mode: "", path: "", value: "" },
+                  { branch: "false", mode: "", path: "", value: "" },
+                ] as ConditionBranchRule[]);
+          const defaultBranch =
+            current.kind === "multi" ? current.defaultBranch : "default";
+          return {
+            kind: "multi",
+            mode: current.mode,
+            path: current.path,
+            value: current.value,
+            branches: baseBranches,
+            defaultBranch,
+          } satisfies ConditionConfiguration;
+        }
+        return {
+          kind: "binary",
+          mode: current.mode,
+          path: current.path,
+          value: current.value,
+        } satisfies ConditionConfiguration;
+      });
+    },
+    [handleConditionConfigurationChange],
+  );
+  const addConditionBranch = useCallback(() => {
+    handleConditionConfigurationChange((current) => {
+      if (current.kind !== "multi") {
+        return current;
+      }
+      return {
+        ...current,
+        branches: [...current.branches, { branch: "", mode: "", path: "", value: "" }],
+      } satisfies ConditionConfiguration;
+    });
+  }, [handleConditionConfigurationChange]);
+  const updateConditionBranch = useCallback(
+    (index: number, updates: Partial<ConditionBranchRule>) => {
+      handleConditionConfigurationChange((current) => {
+        if (current.kind !== "multi") {
+          return current;
+        }
+        const nextBranches = current.branches.map((branch, branchIndex) =>
+          branchIndex === index ? { ...branch, ...updates } : branch,
+        );
+        return { ...current, branches: nextBranches } satisfies ConditionConfiguration;
+      });
+    },
+    [handleConditionConfigurationChange],
+  );
+  const removeConditionBranch = useCallback(
+    (index: number) => {
+      handleConditionConfigurationChange((current) => {
+        if (current.kind !== "multi") {
+          return current;
+        }
+        const nextBranches = current.branches.filter((_, branchIndex) => branchIndex !== index);
+        return { ...current, branches: nextBranches } satisfies ConditionConfiguration;
+      });
+    },
+    [handleConditionConfigurationChange],
+  );
+  const updateConditionDefaultBranch = useCallback(
+    (value: string) => {
+      handleConditionConfigurationChange((current) => {
+        if (current.kind !== "multi") {
+          return current;
+        }
+        return { ...current, defaultBranch: value } satisfies ConditionConfiguration;
+      });
+    },
+    [handleConditionConfigurationChange],
+  );
   const selectedVectorStoreSlug = fileSearchConfig?.vector_store_slug ?? "";
   const trimmedVectorStoreSlug = selectedVectorStoreSlug.trim();
   const selectedVectorStoreExists =
@@ -410,14 +542,185 @@ const NodeInspector = ({
           <dd>{labelForKind(kind)}</dd>
         </dl>
 
-        <label style={fieldStyle}>
-          <span>Nom affiché</span>
+      <label style={fieldStyle}>
+        <span>Nom affiché</span>
         <input
           type="text"
           value={displayName}
           onChange={(event) => onDisplayNameChange(node.id, event.target.value)}
         />
       </label>
+
+      {kind === "condition" && (
+        <section style={conditionSectionStyle} aria-label="Règles du bloc conditionnel">
+          <p style={conditionHelpStyle}>
+            Ce bloc oriente le workflow selon l'état partagé. Définissez ici les règles
+            d'orientation et créez ensuite les connexions sortantes correspondantes.
+          </p>
+          <label style={fieldStyle}>
+            <span style={labelContentStyle}>Type de branches</span>
+            <select
+              value={isMultiBranchConfiguration ? "multi" : "binary"}
+              onChange={(event) =>
+                handleConditionKindChange(event.target.value === "multi" ? "multi" : "binary")
+              }
+            >
+              <option value="binary">Binaire (branches true / false)</option>
+              <option value="multi">Branches personnalisées</option>
+            </select>
+          </label>
+          <label style={fieldStyle}>
+            <span style={labelContentStyle}>Chemin évalué dans l'état</span>
+            <input
+              type="text"
+              value={conditionConfiguration.path}
+              onChange={(event) => updateConditionBaseField("path", event.target.value)}
+              placeholder="Ex. state.has_all_details"
+            />
+            <span style={conditionFieldHintStyle}>
+              Utilisez la notation pointée pour accéder aux champs de l'état partagé
+              (ex. <code>state.priority</code>).
+            </span>
+          </label>
+          <label style={fieldStyle}>
+            <span style={labelContentStyle}>Mode d'évaluation</span>
+            <select
+              value={conditionConfiguration.mode}
+              onChange={(event) => updateConditionBaseField("mode", event.target.value)}
+            >
+              {conditionModeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {conditionValueFieldVisible && (
+            <label style={fieldStyle}>
+              <span style={labelContentStyle}>Valeur attendue (optionnelle)</span>
+              <input
+                type="text"
+                value={conditionConfiguration.value}
+                onChange={(event) => updateConditionBaseField("value", event.target.value)}
+                placeholder="Ex. elevee"
+              />
+              <span style={conditionFieldHintStyle}>
+                La valeur est interprétée comme JSON si possible (booléens, nombres, objets…).
+              </span>
+            </label>
+          )}
+          {isMultiBranchConfiguration ? (
+            <>
+              <p style={conditionHelpStyle}>
+                Ajoutez une ligne par branche attendue. Le libellé doit correspondre à la
+                valeur configurée sur la connexion sortante.
+              </p>
+              <div style={conditionBranchesContainerStyle}>
+                {conditionBranches.map((branch, index) => (
+                  <div key={`condition-branch-${index}`} style={conditionBranchCardStyle}>
+                    <div style={conditionBranchHeaderStyle}>
+                      <strong>Branche {index + 1}</strong>
+                      <button
+                        type="button"
+                        onClick={() => removeConditionBranch(index)}
+                        style={conditionBranchRemoveButtonStyle}
+                        aria-label={`Supprimer la branche ${branch.branch || index + 1}`}
+                      >
+                        Supprimer
+                      </button>
+                    </div>
+                    <label style={conditionBranchFieldStyle}>
+                      <span style={labelContentStyle}>Nom de la branche</span>
+                      <input
+                        type="text"
+                        value={branch.branch}
+                        onChange={(event) =>
+                          updateConditionBranch(index, { branch: event.target.value })
+                        }
+                        placeholder="Ex. priorite-elevee"
+                      />
+                    </label>
+                    <label style={conditionBranchFieldStyle}>
+                      <span style={labelContentStyle}>Mode spécifique (optionnel)</span>
+                      <select
+                        value={branch.mode}
+                        onChange={(event) =>
+                          updateConditionBranch(index, { mode: event.target.value })
+                        }
+                      >
+                        <option value="">
+                          Mode global ({conditionConfiguration.mode})
+                        </option>
+                        {conditionModeOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={conditionBranchFieldStyle}>
+                      <span style={labelContentStyle}>Chemin spécifique (optionnel)</span>
+                      <input
+                        type="text"
+                        value={branch.path}
+                        onChange={(event) =>
+                          updateConditionBranch(index, { path: event.target.value })
+                        }
+                        placeholder={
+                          conditionConfiguration.path
+                            ? `Ex. ${conditionConfiguration.path}`
+                            : "Ex. state.priority"
+                        }
+                      />
+                    </label>
+                    <label style={conditionBranchFieldStyle}>
+                      <span style={labelContentStyle}>Valeur attendue (optionnelle)</span>
+                      <input
+                        type="text"
+                        value={branch.value}
+                        onChange={(event) =>
+                          updateConditionBranch(index, { value: event.target.value })
+                        }
+                        placeholder="Ex. elevee"
+                      />
+                    </label>
+                  </div>
+                ))}
+                {conditionBranches.length === 0 && (
+                  <p style={conditionEmptyBranchesStyle}>
+                    Ajoutez au moins deux branches pour exploiter ce bloc.
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={addConditionBranch}
+                style={conditionAddBranchButtonStyle}
+              >
+                Ajouter une branche
+              </button>
+              <label style={fieldStyle}>
+                <span style={labelContentStyle}>Branche par défaut (optionnelle)</span>
+                <input
+                  type="text"
+                  value={conditionDefaultBranch}
+                  onChange={(event) => updateConditionDefaultBranch(event.target.value)}
+                  placeholder="Ex. standard"
+                />
+                <span style={conditionFieldHintStyle}>
+                  Utilisée si aucune règle ci-dessus ne correspond. Laissez vide pour basculer
+                  sur la connexion sans condition.
+                </span>
+              </label>
+            </>
+          ) : (
+            <p style={conditionHelpStyle}>
+              Créez deux connexions sortantes depuis ce bloc avec les conditions « true » et
+              « false ». La règle ci-dessus déterminera quelle branche est choisie.
+            </p>
+          )}
+        </section>
+      )}
 
       {kind === "start" && (
         <ToggleRow
@@ -1571,6 +1874,85 @@ const WidgetVariablesPanel = ({ assignments, onChange }: WidgetVariablesPanelPro
       </div>
     </section>
   );
+};
+
+const conditionSectionStyle: CSSProperties = {
+  marginTop: "1rem",
+  border: "1px solid rgba(148, 163, 184, 0.35)",
+  borderRadius: "0.75rem",
+  padding: "0.9rem",
+  backgroundColor: "#f8fafc",
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.25rem",
+};
+
+const conditionHelpStyle: CSSProperties = {
+  color: "#475569",
+  margin: "0.35rem 0 0",
+  fontSize: "0.95rem",
+};
+
+const conditionFieldHintStyle: CSSProperties = {
+  display: "block",
+  color: "#64748b",
+  fontSize: "0.85rem",
+};
+
+const conditionBranchesContainerStyle: CSSProperties = {
+  display: "grid",
+  gap: "0.75rem",
+  marginTop: "0.5rem",
+};
+
+const conditionBranchCardStyle: CSSProperties = {
+  border: "1px solid rgba(148, 163, 184, 0.35)",
+  borderRadius: "0.75rem",
+  padding: "0.75rem",
+  backgroundColor: "#ffffff",
+  display: "grid",
+  gap: "0.55rem",
+};
+
+const conditionBranchHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "0.5rem",
+};
+
+const conditionBranchRemoveButtonStyle: CSSProperties = {
+  border: "1px solid rgba(220, 38, 38, 0.25)",
+  backgroundColor: "rgba(254, 226, 226, 0.85)",
+  color: "#991b1b",
+  borderRadius: "9999px",
+  padding: "0.25rem 0.85rem",
+  fontSize: "0.85rem",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const conditionBranchFieldStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.35rem",
+};
+
+const conditionAddBranchButtonStyle: CSSProperties = {
+  alignSelf: "flex-start",
+  borderRadius: "9999px",
+  border: "1px solid rgba(37, 99, 235, 0.3)",
+  backgroundColor: "rgba(37, 99, 235, 0.12)",
+  color: "#1d4ed8",
+  padding: "0.35rem 0.95rem",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const conditionEmptyBranchesStyle: CSSProperties = {
+  margin: 0,
+  color: "#64748b",
+  fontSize: "0.9rem",
 };
 
 const labelContentStyle: CSSProperties = {

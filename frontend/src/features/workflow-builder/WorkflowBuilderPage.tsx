@@ -58,6 +58,7 @@ import {
   setAgentStorePreference,
   setAgentTemperature,
   setAgentTopP,
+  setConditionConfiguration,
   setAgentWeatherToolEnabled,
   setAgentWebSearchConfig,
   setStateAssignments,
@@ -74,6 +75,7 @@ import {
   resolveWidgetNodeParameters,
   setWidgetNodeSlug,
   setWidgetNodeVariables,
+  type ConditionConfiguration,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
@@ -1826,6 +1828,24 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleConditionParametersChange = useCallback(
+    (nodeId: string, configuration: ConditionConfiguration) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "condition") {
+          return data;
+        }
+        const nextParameters = setConditionConfiguration(data.parameters, configuration);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleConditionChange = useCallback(
     (edgeId: string, value: string) => {
       const normalizedLabel = value.trim();
@@ -3318,6 +3338,7 @@ const WorkflowBuilderPage = () => {
             onAgentWebSearchChange={handleAgentWebSearchChange}
             onAgentFileSearchChange={handleAgentFileSearchChange}
             onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
+            onConditionParametersChange={handleConditionParametersChange}
             onStartAutoRunChange={handleStartAutoRunChange}
             onStartAutoRunMessageChange={handleStartAutoRunMessageChange}
             onStartAutoRunAssistantMessageChange={
