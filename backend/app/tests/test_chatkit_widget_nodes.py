@@ -416,6 +416,7 @@ def test_widget_menu_select_action_records_condition(monkeypatch: pytest.MonkeyP
         metadata={
             "workflow_state": {
                 "widgets": {"widget_item": {"step": "decision"}},
+                "widget_queue": ["decision"],
             }
         },
     )
@@ -437,5 +438,56 @@ def test_widget_menu_select_action_records_condition(monkeypatch: pytest.MonkeyP
     assert workflow_state is not None
     conditions = workflow_state.get("conditions") if isinstance(workflow_state, dict) else None
     assert conditions is not None and conditions.get("decision") == "approve"
+    assert not workflow_state.get("widget_queue"), "La file des widgets devrait être nettoyée"
     assert saved_threads, "L'état du fil doit être persisté après la sélection du widget"
+
+
+def test_widget_menu_select_action_uses_widget_queue_when_missing_sender() -> None:
+    server = chatkit_module.DemoChatKitServer.__new__(chatkit_module.DemoChatKitServer)
+    saved_threads: list[dict[str, Any]] = []
+    respond_calls: list[tuple[Any, Any, Any]] = []
+
+    async def _fake_respond(self, thread, user_message, context):  # type: ignore[no-untyped-def]
+        respond_calls.append((thread, user_message, context))
+        if False:
+            yield None
+        return
+
+    async def _save_thread(thread, context=None):  # type: ignore[no-untyped-def]
+        metadata = getattr(thread, "metadata", None)
+        if isinstance(metadata, dict):
+            saved_threads.append(dict(metadata))
+        else:
+            saved_threads.append({})
+
+    server.store = SimpleNamespace(save_thread=_save_thread)
+    server.respond = MethodType(_fake_respond, server)
+
+    thread = SimpleNamespace(
+        id="thread_widget_queue_action",
+        metadata={
+            "workflow_state": {
+                "widget_queue": ["decision"],
+            }
+        },
+    )
+    action = SimpleNamespace(type="menu.select", payload={"id": "approve"})
+    context = SimpleNamespace(user_id="user-1")
+
+    async def _exercise() -> list[Any]:
+        events: list[Any] = []
+        async for event in server.action(thread, action, None, context):
+            events.append(event)
+        return events
+
+    events = asyncio.run(_exercise())
+
+    assert events == []
+    assert respond_calls, "Le workflow devrait être relancé après l'action issue de la file"
+    workflow_state = thread.metadata.get("workflow_state") if isinstance(thread.metadata, dict) else None
+    assert workflow_state is not None
+    conditions = workflow_state.get("conditions") if isinstance(workflow_state, dict) else None
+    assert conditions is not None and conditions.get("decision") == "approve"
+    assert not workflow_state.get("widget_queue"), "La file des widgets devrait être vidée"
+    assert saved_threads, "La persistance doit être déclenchée après l'utilisation de la file"
 

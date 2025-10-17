@@ -270,6 +270,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 if isinstance(sender_id, str):
                     step_slug = thread_state.resolve_widget_step(sender_id)
             if not step_slug:
+                step_slug = thread_state.peek_widget_step()
+            if not step_slug:
                 logger.warning(
                     "Action widget sans nœud cible (type=%s, payload=%s)",
                     action.type,
@@ -297,6 +299,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 return
 
             thread_state.record_condition_branch(step_slug, branch_value)
+            thread_state.consume_widget_step(step_slug)
             await thread_state.persist()
 
             async for event in self.respond(thread, None, context):
@@ -1728,6 +1731,7 @@ class _ResponseWidgetConfig:
 
 _WORKFLOW_STATE_METADATA_KEY = "workflow_state"
 _WORKFLOW_WIDGETS_KEY = "widgets"
+_WORKFLOW_WIDGET_QUEUE_KEY = "widget_queue"
 _WORKFLOW_CONDITIONS_KEY = "conditions"
 
 
@@ -1784,6 +1788,77 @@ class _ThreadWorkflowStateManager:
         self.modified = True
         return state
 
+    def _get_widget_queue(self, *, create: bool) -> list[str] | None:
+        state = self._get_state(create=create)
+        queue = state.get(_WORKFLOW_WIDGET_QUEUE_KEY)
+        if isinstance(queue, list):
+            return queue
+        if not create:
+            return None
+        queue = []
+        state[_WORKFLOW_WIDGET_QUEUE_KEY] = queue
+        self.modified = True
+        return queue
+
+    @staticmethod
+    def _normalize_step_slug(step_slug: str | None) -> str | None:
+        if isinstance(step_slug, str):
+            cleaned = step_slug.strip()
+            if cleaned:
+                return cleaned
+        return None
+
+    def append_widget_step(self, step_slug: str) -> None:
+        normalized = self._normalize_step_slug(step_slug)
+        if not normalized:
+            return
+        queue = self._get_widget_queue(create=True)
+        assert queue is not None
+        queue.append(normalized)
+        self.modified = True
+
+    def peek_widget_step(self) -> str | None:
+        queue = self._get_widget_queue(create=False)
+        if not queue:
+            return None
+        for entry in reversed(queue):
+            normalized = self._normalize_step_slug(entry)
+            if normalized:
+                return normalized
+        return None
+
+    def consume_widget_step(self, step_slug: str | None = None) -> str | None:
+        queue = self._get_widget_queue(create=False)
+        if not queue:
+            return None
+        normalized = self._normalize_step_slug(step_slug)
+        consumed: str | None = None
+        if normalized:
+            for index in range(len(queue) - 1, -1, -1):
+                candidate = self._normalize_step_slug(queue[index])
+                if candidate == normalized:
+                    queue.pop(index)
+                    consumed = normalized
+                    break
+            if consumed is None:
+                return None
+        else:
+            for index in range(len(queue) - 1, -1, -1):
+                candidate = self._normalize_step_slug(queue[index])
+                if candidate is not None:
+                    queue.pop(index)
+                    consumed = candidate
+                    break
+            if consumed is None:
+                return None
+
+        self.modified = True
+        if not queue:
+            state = self._get_state(create=False)
+            if state:
+                state.pop(_WORKFLOW_WIDGET_QUEUE_KEY, None)
+        return consumed
+
     def register_widget(self, item_id: str, *, step_slug: str, widget_slug: str | None) -> None:
         if not item_id or not step_slug:
             return
@@ -1798,6 +1873,7 @@ class _ThreadWorkflowStateManager:
         if widgets.get(item_id) != payload:
             widgets[item_id] = payload
             self.modified = True
+        self.append_widget_step(step_slug)
 
     def resolve_widget_step(self, item_id: str) -> str | None:
         if not item_id:
