@@ -17,6 +17,12 @@
   --shadow-soft: 0 20px 45px rgba(15, 23, 42, 0.18);
   --shadow-card: 0 30px 60px rgba(15, 23, 42, 0.15);
   --header-height: clamp(64px, 8vh, 80px);
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f1f5f9;
+  --color-border-subtle: rgba(148, 163, 184, 0.28);
+  --color-text: #1e293b;
+  --color-text-strong: #0f172a;
+  --color-text-muted: #64748b;
 }
 
 *,
@@ -2083,6 +2089,10 @@ button {
   --widget-preview-status-bg: rgba(148, 163, 184, 0.22);
   --widget-preview-status-color: rgba(226, 232, 240, 0.96);
   --widget-preview-item-bg: rgba(15, 23, 42, 0.45);
+  --color-text: rgba(226, 232, 240, 0.92);
+  --color-text-strong: rgba(226, 232, 240, 0.98);
+  --color-text-muted: rgba(148, 163, 184, 0.82);
+  --color-border-subtle: rgba(148, 163, 184, 0.32);
 }
 
 .widget-preview__card[data-theme="dark"] .widget-preview__text,
