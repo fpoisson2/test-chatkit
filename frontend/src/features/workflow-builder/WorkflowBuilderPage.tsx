@@ -520,12 +520,12 @@ const WorkflowBuilderPage = () => {
       return;
     }
 
-    pendingViewportRestoreRef.current = false;
-    requestAnimationFrame(() => {
+    const applyViewport = () => {
       const flow = reactFlowInstanceRef.current;
       if (!flow) {
         return;
       }
+      pendingViewportRestoreRef.current = false;
       const effectiveMinZoom = refreshViewportConstraints(flow);
       const savedViewport = viewportRef.current;
       if (savedViewport) {
@@ -546,6 +546,15 @@ const WorkflowBuilderPage = () => {
       if (key) {
         viewportMemoryRef.current.set(key, appliedViewport);
       }
+    };
+
+    if (typeof window === "undefined") {
+      applyViewport();
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(applyViewport);
     });
   }, [isMobileLayout, refreshViewportConstraints]);
 
@@ -2132,6 +2141,14 @@ const WorkflowBuilderPage = () => {
               ...versionSummaryFromResponse(created),
               name: DRAFT_DISPLAY_NAME,
             };
+            const newViewportKey = viewportKeyFor(selectedWorkflowId, summary.id);
+            const currentViewport =
+              reactFlowInstanceRef.current?.getViewport() ?? viewportRef.current;
+            if (newViewportKey && currentViewport) {
+              viewportMemoryRef.current.set(newViewportKey, { ...currentViewport });
+            }
+            viewportKeyRef.current = newViewportKey;
+            viewportRef.current = currentViewport ? { ...currentViewport } : null;
             draftVersionIdRef.current = summary.id;
             draftVersionSummaryRef.current = summary;
             setSelectedVersionId(summary.id);
