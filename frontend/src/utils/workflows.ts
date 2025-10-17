@@ -781,18 +781,26 @@ const sanitizeWidgetAssignments = (
   return normalized;
 };
 
+export type WidgetNodeConfig = {
+  slug: string;
+  variables: WidgetVariableAssignment[];
+  awaitAction: boolean;
+};
+
+const DEFAULT_WIDGET_NODE_AWAIT_ACTION = true;
+
 export const getWidgetNodeConfig = (
   parameters: AgentParameters | null | undefined,
-): { slug: string; variables: WidgetVariableAssignment[] } => {
+): WidgetNodeConfig => {
   if (!parameters) {
-    return { slug: "", variables: [] };
+    return { slug: "", variables: [], awaitAction: DEFAULT_WIDGET_NODE_AWAIT_ACTION };
   }
   const rawWidget = (parameters as Record<string, unknown>).widget;
   if (typeof rawWidget === "string") {
-    return { slug: rawWidget.trim(), variables: [] };
+    return { slug: rawWidget.trim(), variables: [], awaitAction: DEFAULT_WIDGET_NODE_AWAIT_ACTION };
   }
   if (!isPlainRecord(rawWidget)) {
-    return { slug: "", variables: [] };
+    return { slug: "", variables: [], awaitAction: DEFAULT_WIDGET_NODE_AWAIT_ACTION };
   }
   const slugValue = rawWidget.slug;
   const slug = typeof slugValue === "string" ? slugValue.trim() : "";
@@ -805,25 +813,39 @@ export const getWidgetNodeConfig = (
       }
     }
   }
-  return { slug, variables };
+  const rawAwaitAction =
+    rawWidget.await_action ??
+    rawWidget.wait_for_action ??
+    rawWidget.awaitAction ??
+    rawWidget.waitForAction;
+  const awaitAction =
+    rawAwaitAction === undefined
+      ? DEFAULT_WIDGET_NODE_AWAIT_ACTION
+      : coerceBoolean(rawAwaitAction);
+  return { slug, variables, awaitAction };
 };
 
 const mergeWidgetParameters = (
   parameters: AgentParameters,
-  slug: string,
-  assignments: WidgetVariableAssignment[],
+  config: WidgetNodeConfig,
 ): AgentParameters => {
-  const trimmedSlug = slug.trim();
-  const normalizedAssignments = sanitizeWidgetAssignments(assignments);
+  const trimmedSlug = config.slug.trim();
+  const normalizedAssignments = sanitizeWidgetAssignments(config.variables);
+  const awaitAction = config.awaitAction ?? DEFAULT_WIDGET_NODE_AWAIT_ACTION;
   const next = { ...(parameters as Record<string, unknown>) };
-  if (!trimmedSlug && Object.keys(normalizedAssignments).length === 0) {
+  const hasAssignments = Object.keys(normalizedAssignments).length > 0;
+
+  if (!trimmedSlug && !hasAssignments && awaitAction === DEFAULT_WIDGET_NODE_AWAIT_ACTION) {
     delete next.widget;
     return stripEmpty(next);
   }
 
   const widgetConfig: Record<string, unknown> = { slug: trimmedSlug };
-  if (Object.keys(normalizedAssignments).length > 0) {
+  if (hasAssignments) {
     widgetConfig.variables = normalizedAssignments;
+  }
+  if (awaitAction !== DEFAULT_WIDGET_NODE_AWAIT_ACTION) {
+    widgetConfig.await_action = awaitAction;
   }
   next.widget = widgetConfig;
   return next as AgentParameters;
@@ -833,11 +855,16 @@ export const createWidgetNodeParameters = (
   options: {
     slug?: string;
     variables?: WidgetVariableAssignment[];
+    awaitAction?: boolean;
   } = {},
 ): AgentParameters => {
   const slug = options.slug ?? "";
   const assignments = options.variables ?? [];
-  return mergeWidgetParameters({}, slug, assignments);
+  const awaitAction =
+    options.awaitAction === undefined
+      ? DEFAULT_WIDGET_NODE_AWAIT_ACTION
+      : !!options.awaitAction;
+  return mergeWidgetParameters({}, { slug, variables: assignments, awaitAction });
 };
 
 export const setWidgetNodeSlug = (
@@ -848,7 +875,11 @@ export const setWidgetNodeSlug = (
   if (current.slug === slug) {
     return parameters;
   }
-  return mergeWidgetParameters(parameters, slug, current.variables);
+  return mergeWidgetParameters(parameters, {
+    slug,
+    variables: current.variables,
+    awaitAction: current.awaitAction,
+  });
 };
 
 export const setWidgetNodeVariables = (
@@ -856,14 +887,33 @@ export const setWidgetNodeVariables = (
   assignments: WidgetVariableAssignment[],
 ): AgentParameters => {
   const current = getWidgetNodeConfig(parameters);
-  return mergeWidgetParameters(parameters, current.slug, assignments);
+  return mergeWidgetParameters(parameters, {
+    slug: current.slug,
+    variables: assignments,
+    awaitAction: current.awaitAction,
+  });
 };
 
 export const resolveWidgetNodeParameters = (
   parameters: AgentParameters | null | undefined,
 ): AgentParameters => {
   const current = getWidgetNodeConfig(parameters ?? {});
-  return mergeWidgetParameters(parameters ?? {}, current.slug, current.variables);
+  return mergeWidgetParameters(parameters ?? {}, current);
+};
+
+export const setWidgetNodeAwaitAction = (
+  parameters: AgentParameters,
+  awaitAction: boolean,
+): AgentParameters => {
+  const current = getWidgetNodeConfig(parameters);
+  if (current.awaitAction === awaitAction) {
+    return parameters;
+  }
+  return mergeWidgetParameters(parameters, {
+    slug: current.slug,
+    variables: current.variables,
+    awaitAction,
+  });
 };
 
 export type StateAssignment = {

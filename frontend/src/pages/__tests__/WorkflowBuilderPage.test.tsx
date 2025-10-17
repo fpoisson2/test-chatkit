@@ -889,14 +889,39 @@ describe("WorkflowBuilderPage", () => {
       { timeout: 4000 },
     );
 
-    const putCall = fetchMock.mock.calls.find(
+    const initialPutCount = fetchMock.mock.calls.filter(
+      ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+    ).length;
+
+    const awaitActionCheckbox = await screen.findByRole("checkbox", {
+      name: /attendre une action utilisateur/i,
+    });
+    expect(awaitActionCheckbox).toBeChecked();
+    fireEvent.click(awaitActionCheckbox);
+
+    await waitFor(
+      () => {
+        const putCalls = fetchMock.mock.calls.filter(
+          ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
+        );
+        expect(putCalls.length).toBeGreaterThan(initialPutCount);
+      },
+      { timeout: 4000 },
+    );
+
+    const putCalls = fetchMock.mock.calls.filter(
       ([, init]) => (init as RequestInit | undefined)?.method === "PUT",
     );
-    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const lastPutCall = putCalls[putCalls.length - 1];
+    const body = JSON.parse((lastPutCall[1] as RequestInit).body as string);
     const widgetPayload = body.graph.nodes.find((node: any) => node.kind === "widget");
     expect(widgetPayload).toBeTruthy();
     expect(widgetPayload.parameters).toEqual({
-      widget: { slug: "resume", variables: { title: "state.resume" } },
+      widget: {
+        slug: "resume",
+        variables: { title: "state.resume" },
+        await_action: false,
+      },
     });
   });
 
