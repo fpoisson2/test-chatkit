@@ -456,11 +456,6 @@ const WorkflowBuilderPage = () => {
     [selectedWorkflowId, workflows],
   );
 
-  const selectedVersionSummary = useMemo(
-    () => versions.find((version) => version.id === selectedVersionId) ?? null,
-    [selectedVersionId, versions],
-  );
-
   const isReasoningModel = useCallback(
     (model: string): boolean => {
       const trimmed = model.trim();
@@ -1962,9 +1957,6 @@ const WorkflowBuilderPage = () => {
 
     const graphPayload = buildGraphPayload();
     const graphSnapshot = JSON.stringify(graphPayload);
-    const currentWorkflow =
-      workflows.find((workflow) => workflow.id === selectedWorkflowId) ?? null;
-
     if (!draftVersionIdRef.current) {
       const draftFromState = resolveDraftCandidate(versions);
       if (draftFromState) {
@@ -1972,47 +1964,6 @@ const WorkflowBuilderPage = () => {
         draftVersionSummaryRef.current = draftFromState;
       }
     }
-
-    const updateChatKit = async () => {
-      if (!currentWorkflow?.is_chatkit_default) {
-        return;
-      }
-      const updateCandidates = makeApiEndpointCandidates(
-        backendUrl,
-        "/api/workflows/current",
-      );
-      let updateError: Error | null = null;
-      for (const updateUrl of updateCandidates) {
-        try {
-          const updateResponse = await fetch(updateUrl, {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              ...authHeader,
-            },
-            body: JSON.stringify({ graph: graphPayload }),
-          });
-          if (!updateResponse.ok) {
-            throw new Error(
-              `Échec de la mise à jour du workflow ChatKit (${updateResponse.status})`,
-            );
-          }
-          updateError = null;
-          break;
-        } catch (error) {
-          if (error instanceof Error && error.name === "AbortError") {
-            continue;
-          }
-          updateError =
-            error instanceof Error
-              ? error
-              : new Error("Impossible de mettre à jour le workflow ChatKit.");
-        }
-      }
-      if (updateError) {
-        throw updateError;
-      }
-    };
 
     const draftId = draftVersionIdRef.current;
 
@@ -2055,7 +2006,6 @@ const WorkflowBuilderPage = () => {
             draftVersionIdRef.current = summary.id;
             draftVersionSummaryRef.current = summary;
             setSelectedVersionId(summary.id);
-            await updateChatKit();
             await loadVersions(selectedWorkflowId, summary.id);
             lastSavedSnapshotRef.current = graphSnapshot;
             setHasPendingChanges(false);
@@ -2110,7 +2060,6 @@ const WorkflowBuilderPage = () => {
           name: updated.name ?? DRAFT_DISPLAY_NAME,
         };
         draftVersionSummaryRef.current = summary;
-        await updateChatKit();
         await loadVersions(selectedWorkflowId, summary.id);
         lastSavedSnapshotRef.current = graphSnapshot;
         setHasPendingChanges(false);
@@ -2143,10 +2092,8 @@ const WorkflowBuilderPage = () => {
     buildGraphPayload,
     loadVersions,
     nodes,
-    selectedVersionSummary,
     selectedWorkflowId,
     versions,
-    workflows,
   ]);
 
   const handleOpenDeployModal = useCallback(() => {
@@ -2167,8 +2114,6 @@ const WorkflowBuilderPage = () => {
       return;
     }
 
-    const currentWorkflow =
-      workflows.find((workflow) => workflow.id === selectedWorkflowId) ?? null;
     const draftId = draftVersionIdRef.current;
     if (!draftId) {
       setSaveState("error");
@@ -2214,44 +2159,6 @@ const WorkflowBuilderPage = () => {
         }
         const promoted: WorkflowVersionResponse = await response.json();
 
-        if (currentWorkflow?.is_chatkit_default) {
-          const updateCandidates = makeApiEndpointCandidates(
-            backendUrl,
-            "/api/workflows/current",
-          );
-          let updateError: Error | null = null;
-          for (const updateUrl of updateCandidates) {
-            try {
-              const updateResponse = await fetch(updateUrl, {
-                method: "PUT",
-                headers: {
-                  "Content-Type": "application/json",
-                  ...authHeader,
-                },
-                body: JSON.stringify({ graph: graphPayload }),
-              });
-              if (!updateResponse.ok) {
-                throw new Error(
-                  `Échec de la mise à jour du workflow ChatKit (${updateResponse.status})`,
-                );
-              }
-              updateError = null;
-              break;
-            } catch (error) {
-              if (error instanceof Error && error.name === "AbortError") {
-                continue;
-              }
-              updateError =
-                error instanceof Error
-                  ? error
-                  : new Error("Impossible de mettre à jour le workflow ChatKit.");
-            }
-          }
-          if (updateError) {
-            throw updateError;
-          }
-        }
-
         draftVersionIdRef.current = null;
         draftVersionSummaryRef.current = null;
         setSelectedVersionId(promoted.id);
@@ -2291,7 +2198,6 @@ const WorkflowBuilderPage = () => {
     loadVersions,
     loadWorkflows,
     selectedWorkflowId,
-    workflows,
   ]);
 
   useEffect(() => {

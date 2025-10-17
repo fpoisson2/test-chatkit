@@ -386,6 +386,15 @@ describe("WorkflowBuilderPage", () => {
       },
     });
 
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) =>
+          typeof input === "string" &&
+          input.includes("/api/workflows/current") &&
+          (init as RequestInit | undefined)?.method === "PUT",
+      ),
+    ).toBe(false);
+
     await screen.findByText(/modifications enregistrées automatiquement/i);
   });
 
