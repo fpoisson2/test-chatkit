@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
   type HTMLAttributes,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -33,15 +32,34 @@ type ApplicationDescriptor = {
   key: ApplicationKey;
   label: string;
   path: string;
+  icon: SidebarIconName;
   requiresAdmin?: boolean;
 };
 
 const APPLICATIONS: ApplicationDescriptor[] = [
-  { key: "chat", label: "Chat", path: "/" },
-  { key: "voice", label: "Voix", path: "/voice" },
-  { key: "workflows", label: "Workflow Builder", path: "/workflows", requiresAdmin: true },
-  { key: "vector-stores", label: "Vector Store", path: "/vector-stores", requiresAdmin: true },
-  { key: "widgets", label: "Widget Library", path: "/widgets", requiresAdmin: true },
+  { key: "chat", label: "Chat", path: "/", icon: "chat" },
+  { key: "voice", label: "Voix", path: "/voice", icon: "voice" },
+  {
+    key: "workflows",
+    label: "Workflow Builder",
+    path: "/workflows",
+    icon: "workflow",
+    requiresAdmin: true,
+  },
+  {
+    key: "vector-stores",
+    label: "Vector Store",
+    path: "/vector-stores",
+    icon: "vectorStore",
+    requiresAdmin: true,
+  },
+  {
+    key: "widgets",
+    label: "Widget Library",
+    path: "/widgets",
+    icon: "widgets",
+    requiresAdmin: true,
+  },
 ];
 
 const buildNavigationItems = ({
@@ -179,6 +197,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
   const sidebarTabIndex = isSidebarOpen || isDesktopLayout ? 0 : -1;
   const isSidebarCollapsed = isDesktopLayout && !isSidebarOpen;
+  const applicationButtonTabIndex = isSidebarCollapsed ? -1 : sidebarTabIndex;
 
   const availableApplications = useMemo(
     () => APPLICATIONS.filter((application) => (application.requiresAdmin ? isAdmin : true)),
@@ -200,9 +219,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     return matchingApplication?.key ?? "chat";
   }, [availableApplications, location.pathname]);
 
-  const handleApplicationChange = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      const nextApplication = availableApplications.find((application) => application.key === event.target.value);
+  const handleSelectApplication = useCallback(
+    (applicationKey: ApplicationKey) => {
+      const nextApplication = availableApplications.find((application) => application.key === applicationKey);
 
       if (!nextApplication) {
         return;
@@ -426,23 +445,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             <div className="chatkit-sidebar__topline">
               <div className="chatkit-sidebar__brand">
                 <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
-                <div className="chatkit-sidebar__brand-switcher">
-                  <label htmlFor="chatkit-app-switcher" className="visually-hidden">
-                    Applications
-                  </label>
-                  <select
-                    id="chatkit-app-switcher"
-                    className="chatkit-sidebar__brand-select"
-                    value={activeApplication}
-                    onChange={handleApplicationChange}
-                    tabIndex={sidebarTabIndex}
-                  >
-                    {availableApplications.map((application) => (
-                      <option key={application.key} value={application.key}>
-                        {application.label}
-                      </option>
-                    ))}
-                  </select>
+                <div className="chatkit-sidebar__brand-info">
+                  <span className="chatkit-sidebar__brand-title">ChatKit Studio</span>
+                  <span className="chatkit-sidebar__brand-caption">Choisissez votre application</span>
                 </div>
               </div>
               {isSidebarOpen && (
@@ -457,6 +462,34 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                 </button>
               )}
             </div>
+            {availableApplications.length > 0 ? (
+              <ul
+                className="chatkit-sidebar__app-menu"
+                aria-label="Choisir une application"
+                aria-hidden={isSidebarCollapsed || undefined}
+              >
+                {availableApplications.map((application) => {
+                  const isActive = application.key === activeApplication;
+
+                  return (
+                    <li key={application.key} className="chatkit-sidebar__app-menu-item">
+                      <button
+                        type="button"
+                        className={`chatkit-sidebar__app-button${isActive ? " chatkit-sidebar__app-button--active" : ""}`}
+                        onClick={() => handleSelectApplication(application.key)}
+                        tabIndex={applicationButtonTabIndex}
+                        aria-pressed={isActive}
+                      >
+                        <span className="chatkit-sidebar__app-icon" aria-hidden="true">
+                          <SidebarIcon name={application.icon} />
+                        </span>
+                        <span className="chatkit-sidebar__app-label">{application.label}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
           </header>
           {sidebarContent ? (
             <div className="chatkit-sidebar__dynamic">{sidebarContent}</div>
