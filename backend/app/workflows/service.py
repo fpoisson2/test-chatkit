@@ -751,6 +751,68 @@ class WorkflowService:
             if owns_session:
                 db.close()
 
+    def update_workflow(
+        self,
+        workflow_id: int,
+        updates: Mapping[str, Any],
+        *,
+        session: Session | None = None,
+    ) -> Workflow:
+        db, owns_session = self._get_session(session)
+        try:
+            workflow = db.get(Workflow, workflow_id)
+            if workflow is None:
+                raise WorkflowNotFoundError(workflow_id)
+
+            if not updates:
+                return workflow
+
+            if "display_name" in updates:
+                display_name_raw = updates["display_name"]
+                if display_name_raw is None:
+                    raise WorkflowValidationError("Le nom du workflow ne peut pas être vide.")
+                display_name = str(display_name_raw).strip()
+                if not display_name:
+                    raise WorkflowValidationError("Le nom du workflow ne peut pas être vide.")
+                workflow.display_name = display_name
+
+            if "slug" in updates:
+                slug_raw = updates["slug"]
+                if slug_raw is None:
+                    raise WorkflowValidationError("Le slug du workflow ne peut pas être vide.")
+                slug = str(slug_raw).strip()
+                if not slug:
+                    raise WorkflowValidationError("Le slug du workflow ne peut pas être vide.")
+                if workflow.slug == DEFAULT_WORKFLOW_SLUG and slug != DEFAULT_WORKFLOW_SLUG:
+                    raise WorkflowValidationError(
+                        "Le slug du workflow par défaut ne peut pas être modifié."
+                    )
+                if slug != workflow.slug:
+                    existing = db.scalar(
+                        select(Workflow.id)
+                        .where(Workflow.slug == slug, Workflow.id != workflow_id)
+                    )
+                    if existing is not None:
+                        raise WorkflowValidationError("Un workflow avec ce slug existe déjà.")
+                    workflow.slug = slug
+
+            if "description" in updates:
+                description_raw = updates["description"]
+                if description_raw is None:
+                    workflow.description = None
+                else:
+                    description = str(description_raw).strip()
+                    workflow.description = description or None
+
+            workflow.updated_at = datetime.datetime.now(datetime.UTC)
+            db.add(workflow)
+            db.commit()
+            db.refresh(workflow)
+            return workflow
+        finally:
+            if owns_session:
+                db.close()
+
     def delete_workflow(
         self, workflow_id: int, *, session: Session | None = None
     ) -> None:

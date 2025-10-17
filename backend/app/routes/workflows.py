@@ -12,6 +12,7 @@ from ..schemas import (
     WorkflowDefinitionUpdate,
     WorkflowProductionUpdate,
     WorkflowSummaryResponse,
+    WorkflowUpdateRequest,
     WorkflowVersionCreateRequest,
     WorkflowVersionUpdateRequest,
     WorkflowVersionSummaryResponse,
@@ -91,6 +92,28 @@ async def create_workflow(
     except WorkflowValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
     return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
+
+
+@router.patch("/api/workflows/{workflow_id}", response_model=WorkflowSummaryResponse)
+async def update_workflow(
+    workflow_id: int,
+    payload: WorkflowUpdateRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowSummaryResponse:
+    _ensure_admin(current_user)
+    service = WorkflowService()
+    try:
+        workflow = service.update_workflow(
+            workflow_id,
+            payload.model_dump(exclude_unset=True),
+            session=session,
+        )
+    except WorkflowNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except WorkflowValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
+    return WorkflowSummaryResponse.model_validate(serialize_workflow_summary(workflow))
 
 
 @router.delete("/api/workflows/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -2732,18 +2732,95 @@ const WorkflowBuilderPage = () => {
   );
 
   const handleRenameWorkflow = useCallback(
-    (workflowId?: number) => {
+    async (workflowId?: number) => {
       const targetId = workflowId ?? selectedWorkflowId;
       if (!targetId) {
         return;
       }
 
+      const target = workflows.find((workflow) => workflow.id === targetId);
+      if (!target) {
+        setOpenWorkflowMenuId(null);
+        return;
+      }
+
       setOpenWorkflowMenuId(null);
+
+      const baseName = target.display_name?.trim() || "Workflow sans nom";
+      const proposed = window.prompt("Nouveau nom du workflow ?", baseName);
+      if (proposed === null) {
+        return;
+      }
+
+      const displayName = proposed.trim();
+      if (!displayName || displayName === target.display_name) {
+        return;
+      }
+
+      const slug =
+        target.slug === "workflow-par-defaut"
+          ? target.slug
+          : slugifyWorkflowName(displayName);
+      if (!slug) {
+        setSaveState("error");
+        setSaveMessage("Impossible de renommer le workflow.");
+        return;
+      }
+
+      const payload = {
+        display_name: displayName,
+        slug,
+      };
+
+      const candidates = makeApiEndpointCandidates(backendUrl, `/api/workflows/${targetId}`);
+      let lastError: Error | null = null;
+
+      setSaveState("saving");
+      setSaveMessage("Renommage en cours…");
+
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeader,
+            },
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Échec du renommage (${response.status})`);
+          }
+
+          const summary: WorkflowSummary = await response.json();
+          await loadWorkflows({
+            selectWorkflowId: summary.id,
+            selectVersionId: selectedVersionId ?? null,
+          });
+          setSaveState("saved");
+          setSaveMessage(`Workflow renommé en "${summary.display_name}".`);
+          setTimeout(() => setSaveState("idle"), 1500);
+          return;
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            continue;
+          }
+          lastError = error instanceof Error ? error : new Error("Impossible de renommer le workflow.");
+        }
+      }
+
       setSaveState("error");
-      setSaveMessage("Le renommage de workflow sera bientôt disponible.");
-      setTimeout(() => setSaveState("idle"), 1500);
+      setSaveMessage(lastError?.message ?? "Impossible de renommer le workflow.");
     },
-    [selectedWorkflowId],
+    [
+      authHeader,
+      backendUrl,
+      loadWorkflows,
+      selectedVersionId,
+      selectedWorkflowId,
+      workflows,
+    ],
   );
 
   const disableSave = useMemo(() => {

@@ -293,6 +293,12 @@ class WorkflowCreateRequest(BaseModel):
     graph: WorkflowGraphInput | None = None
 
 
+class WorkflowUpdateRequest(BaseModel):
+    slug: str | None = None
+    display_name: str | None = None
+    description: str | None = None
+
+
 class WorkflowVersionCreateRequest(BaseModel):
     graph: WorkflowGraphInput
     name: str | None = None
