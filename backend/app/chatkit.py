@@ -276,6 +276,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             if not step_slug:
                 step_slug = thread_state.peek_widget_step()
             if not step_slug:
+                step_slug = thread_state.resolve_last_widget_step()
+            if not step_slug:
                 logger.warning(
                     "Action widget sans nœud cible (type=%s, payload=%s)",
                     action.type,
@@ -1750,6 +1752,7 @@ class _ResponseWidgetConfig:
 _WORKFLOW_STATE_METADATA_KEY = "workflow_state"
 _WORKFLOW_WIDGETS_KEY = "widgets"
 _WORKFLOW_WIDGET_QUEUE_KEY = "widget_queue"
+_WORKFLOW_LAST_WIDGET_ITEM_KEY = "last_widget_item"
 _WORKFLOW_CONDITIONS_KEY = "conditions"
 
 
@@ -1856,6 +1859,61 @@ class _ThreadWorkflowStateManager:
         self.modified = True
         return queue
 
+    def _set_last_widget_item(self, item_id: str | None) -> None:
+        if not item_id:
+            return
+        state = self._get_state(create=True)
+        if state.get(_WORKFLOW_LAST_WIDGET_ITEM_KEY) == item_id:
+            return
+        state[_WORKFLOW_LAST_WIDGET_ITEM_KEY] = item_id
+        self.modified = True
+
+    def _clear_last_widget_item(self) -> None:
+        state = self._get_state(create=False)
+        if not state:
+            return
+        if state.pop(_WORKFLOW_LAST_WIDGET_ITEM_KEY, None) is not None:
+            self.modified = True
+
+    def _update_last_widget_from_queue(self, queue: Sequence[str]) -> None:
+        if not queue:
+            self._clear_last_widget_item()
+            return
+        state = self._get_state(create=False)
+        if not state:
+            return
+        widgets = state.get(_WORKFLOW_WIDGETS_KEY)
+        if not isinstance(widgets, dict):
+            return
+        target_step: str | None = None
+        for entry in reversed(queue):
+            normalized = self._normalize_step_slug(entry)
+            if normalized:
+                target_step = normalized
+                break
+        if not target_step:
+            self._clear_last_widget_item()
+            return
+        for item_id, payload in widgets.items():
+            if not isinstance(item_id, str):
+                continue
+            resolved_step = None
+            if isinstance(payload, dict):
+                conditions = payload.get("conditions")
+                if isinstance(conditions, list) and target_step in (
+                    self._normalize_step_slug(cond) for cond in conditions
+                ):
+                    resolved_step = target_step
+                elif self._normalize_step_slug(payload.get("step")) == target_step:
+                    resolved_step = target_step
+            elif isinstance(payload, str):
+                if self._normalize_step_slug(payload) == target_step:
+                    resolved_step = target_step
+            if resolved_step:
+                self._set_last_widget_item(item_id)
+                return
+        self._clear_last_widget_item()
+
     @staticmethod
     def _normalize_step_slug(step_slug: str | None) -> str | None:
         if isinstance(step_slug, str):
@@ -1913,6 +1971,7 @@ class _ThreadWorkflowStateManager:
             state = self._get_state(create=False)
             if state:
                 state.pop(_WORKFLOW_WIDGET_QUEUE_KEY, None)
+        self._update_last_widget_from_queue(queue or [])
         return consumed
 
     def register_widget(
@@ -1949,6 +2008,7 @@ class _ThreadWorkflowStateManager:
                 self.append_widget_step(condition_slug)
         else:
             self.append_widget_step(step_slug)
+        self._set_last_widget_item(item_id)
 
     def resolve_widget_step(self, item_id: str) -> str | None:
         if not item_id:
@@ -2005,6 +2065,15 @@ class _ThreadWorkflowStateManager:
                     if stored_step == normalized:
                         return normalized
         return normalized
+
+    def resolve_last_widget_step(self) -> str | None:
+        state = self._get_state(create=False)
+        if not state:
+            return None
+        item_id = state.get(_WORKFLOW_LAST_WIDGET_ITEM_KEY)
+        if not isinstance(item_id, str):
+            return None
+        return self.resolve_widget_step(item_id)
 
     def record_condition_branch(self, step_slug: str, branch: str) -> None:
         if not step_slug:
