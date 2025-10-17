@@ -132,7 +132,7 @@ export const WidgetPreviewPlayground = ({ definition }: WidgetPreviewPlaygroundP
             vérifier le rendu en temps réel.
           </p>
           {hasBindings ? (
-            <p style={{ margin: 0, color: "#0f172a" }}>
+            <p style={{ margin: 0, color: "var(--text-color)" }}>
               <strong>Champs dynamiques disponibles :</strong> {availableBindings}
             </p>
           ) : (
@@ -141,7 +141,7 @@ export const WidgetPreviewPlayground = ({ definition }: WidgetPreviewPlaygroundP
             </p>
           )}
           <label className="label" style={{ display: "grid", gap: "0.35rem" }}>
-            <span style={{ color: "#0f172a", fontWeight: 600 }}>JSON d'entrée du widget</span>
+            <span style={{ color: "var(--color-text-strong)", fontWeight: 600 }}>JSON d'entrée du widget</span>
             <textarea
               className="textarea"
               rows={hasBindings ? 8 : 5}

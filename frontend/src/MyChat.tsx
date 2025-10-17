@@ -10,6 +10,7 @@ import type { ChatKitOptions } from "@openai/chatkit";
 
 import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
+import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { getOrCreateDeviceId } from "./utils/device";
 import {
   clearStoredChatKitSecret,
@@ -43,6 +44,7 @@ const AUTO_START_TRIGGER_MESSAGE = "\u200B";
 export function MyChat() {
   const { token, user } = useAuth();
   const { openSidebar } = useAppLayout();
+  const preferredColorScheme = usePreferredColorScheme();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [deviceId] = useState(() => getOrCreateDeviceId());
@@ -58,6 +60,13 @@ export function MyChat() {
   const lastVisibilityRefreshRef = useRef(0);
   const previousSessionOwnerRef = useRef<string | null>(null);
   const autoStartAttemptRef = useRef(false);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    document.documentElement.dataset.theme = preferredColorScheme;
+  }, [preferredColorScheme]);
 
   const handleWorkflowActivated = useCallback(
     (workflow: WorkflowSummary | null, { reason }: { reason: "initial" | "user" }) => {
@@ -391,7 +400,26 @@ export function MyChat() {
           },
         },
         theme: {
-          colorScheme: "light" as const,
+          colorScheme: preferredColorScheme,
+          radius: "pill",
+          density: "normal",
+          typography: {
+            baseSize: 16,
+            fontFamily:
+              '"OpenAI Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif',
+            fontFamilyMono:
+              'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace',
+            fontSources: [
+              {
+                family: "OpenAI Sans",
+                src: "https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Regular.woff2",
+                weight: 400,
+                style: "normal",
+                display: "swap",
+              },
+              // ...and 7 more font sources
+            ],
+          },
         },
         composer: {
           placeholder: "Posez votre question...",
@@ -475,6 +503,7 @@ export function MyChat() {
       sessionOwner,
       activeWorkflow?.id,
       chatInstanceKey,
+      preferredColorScheme,
     ],
   );
 

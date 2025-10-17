@@ -25,6 +25,34 @@
   --color-text-muted: #64748b;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --app-gradient: linear-gradient(160deg, #020617 0%, #1e3a8a 45%, #0ea5e9 100%);
+    --surface-color: rgba(15, 23, 42, 0.72);
+    --surface-strong: #0f172a;
+    --surface-border: rgba(148, 163, 184, 0.22);
+    --text-color: #e2e8f0;
+    --text-muted: #94a3b8;
+    --sidebar-background: #0b1120;
+    --main-background: #020617;
+    --sidebar-border: #1e293b;
+    --primary-color: #38bdf8;
+    --primary-hover: #0ea5e9;
+    --danger-color: #ef4444;
+    --danger-hover: #dc2626;
+    --shadow-soft: 0 20px 45px rgba(2, 6, 23, 0.65);
+    --shadow-card: 0 30px 60px rgba(2, 6, 23, 0.55);
+    --header-height: clamp(64px, 8vh, 80px);
+    --color-surface: #0f172a;
+    --color-surface-subtle: #111827;
+    --color-border-subtle: rgba(148, 163, 184, 0.22);
+    --color-text: #e2e8f0;
+    --color-text-strong: #f1f5f9;
+    --color-text-muted: #94a3b8;
+  }
+}
+
 *,
 *::before,
 *::after {
@@ -35,7 +63,7 @@ body {
   margin: 0;
   min-height: 100dvh;
   height: 100dvh;
-  background: #ffffff;
+  background: var(--main-background);
   color: var(--text-color);
   display: flex;
   flex-direction: column;
@@ -337,8 +365,8 @@ button {
   width: var(--handle-size);
   height: var(--handle-size);
   border-radius: 9999px;
-  background: #ffffff;
-  border: 2px solid rgba(15, 23, 42, 0.35);
+  background: var(--surface-strong);
+  border: 2px solid var(--surface-border);
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
   box-sizing: border-box;
 }
@@ -411,11 +439,11 @@ button {
   margin: 0;
   font-size: 0.95rem;
   line-height: 1.45;
-  color: #475569;
+  color: var(--text-muted);
 }
 
 .chatkit-sidebar__section-text--muted {
-  color: #64748b;
+  color: var(--color-text-muted);
 }
 
 .chatkit-sidebar__section-error {
@@ -428,29 +456,29 @@ button {
   margin: 0;
   font-size: 0.85rem;
   font-weight: 600;
-  color: #334155;
+  color: var(--text-color);
 }
 
 .chatkit-sidebar__section-label {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #475569;
+  color: var(--text-muted);
 }
 
 .chatkit-sidebar__section-select {
   width: 100%;
   border-radius: 12px;
-  border: 1px solid rgba(15, 23, 42, 0.18);
+  border: 1px solid var(--surface-border);
   padding: 10px 12px;
   font-weight: 600;
   color: var(--text-color);
-  background: #fff;
+  background: var(--surface-strong);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .chatkit-sidebar__section-select:focus-visible {
   outline: none;
-  border-color: #2563eb;
+  border-color: var(--primary-color);
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
 }
 
@@ -462,7 +490,7 @@ button {
 .chatkit-sidebar__section-button {
   border: 1px solid rgba(37, 99, 235, 0.35);
   background: transparent;
-  color: #1d4ed8;
+  color: var(--primary-hover);
   font-weight: 600;
   padding: 10px 12px;
   border-radius: 12px;
@@ -474,7 +502,7 @@ button {
 .chatkit-sidebar__section-button:hover,
 .chatkit-sidebar__section-button:focus-visible {
   background: rgba(37, 99, 235, 0.08);
-  color: #1d4ed8;
+  color: var(--primary-hover);
   outline: none;
 }
 
@@ -508,7 +536,7 @@ button {
   margin-inline: calc(-1 * var(--chatkit-sidebar-padding-x));
   padding: 12px var(--chatkit-sidebar-padding-x);
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-color);
   text-decoration: none;
   border-radius: 0;
   position: relative;
@@ -531,13 +559,13 @@ button {
 .chatkit-sidebar__nav-link:hover,
 .chatkit-sidebar__nav-link:focus-visible {
   background: rgba(37, 99, 235, 0.08);
-  color: #1d4ed8;
+  color: var(--primary-hover);
   outline: none;
 }
 
 .chatkit-sidebar__nav-link--active {
   background: rgba(37, 99, 235, 0.08);
-  color: #1d4ed8;
+  color: var(--primary-hover);
 }
 
 .chatkit-sidebar__nav-link--active::before {
@@ -563,7 +591,7 @@ button {
   border-radius: 0;
   font: inherit;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--text-color);
   cursor: pointer;
   transition: background-color 0.2s ease, color 0.2s ease;
   text-align: left;
@@ -580,13 +608,13 @@ button {
 .chatkit-sidebar__workflow-button:hover,
 .chatkit-sidebar__workflow-button:focus-visible {
   background: rgba(37, 99, 235, 0.08);
-  color: #1d4ed8;
+  color: var(--primary-hover);
   outline: none;
 }
 
 .chatkit-sidebar__workflow-button[aria-current="true"] {
   background: rgba(37, 99, 235, 0.18);
-  color: #1d4ed8;
+  color: var(--primary-hover);
 }
 
 .chatkit-sidebar__workflow-actions {
@@ -621,7 +649,7 @@ button {
 .chatkit-sidebar__workflow-action-button:hover,
 .chatkit-sidebar__workflow-action-button:focus-visible {
   background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
+  color: var(--primary-hover);
   outline: none;
 }
 
@@ -1352,8 +1380,8 @@ button {
 }
 
 .vector-store-card {
-  background: #ffffff;
-  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: var(--surface-strong);
+  border: 1px solid var(--surface-border);
   border-radius: 20px;
   display: flex;
   flex-direction: column;
@@ -1444,12 +1472,12 @@ button {
   padding: 0.35rem;
   cursor: pointer;
   transition: color 0.2s ease;
-  color: #0f172a;
+  color: var(--text-color);
 }
 
 .management-header__icon-button:hover,
 .management-header__icon-button:focus-visible {
-  color: #1d4ed8;
+  color: var(--primary-hover);
 }
 
 .management-header__icon-button:focus-visible {
@@ -2070,7 +2098,7 @@ button {
   color: var(--color-text);
   position: relative;
   --widget-preview-status-bg: rgba(15, 23, 42, 0.08);
-  --widget-preview-status-color: #0f172a;
+  --widget-preview-status-color: var(--text-color);
 }
 
 .widget-preview__card--sm {
@@ -2150,7 +2178,7 @@ button {
   gap: 0.45rem;
   font-size: 0.78rem;
   font-weight: 600;
-  color: var(--widget-preview-status-color, #0f172a);
+  color: var(--widget-preview-status-color, var(--text-color));
   background: var(--widget-preview-status-bg, rgba(15, 23, 42, 0.08));
   border-radius: 0.75rem;
   padding: 0.35rem 0.65rem;
@@ -2262,7 +2290,7 @@ button {
   font-size: 0.75rem;
   font-weight: 600;
   background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
+  color: var(--primary-hover);
   border: none;
 }
 
@@ -2282,12 +2310,12 @@ button {
 
 .widget-preview__badge--secondary {
   background: rgba(148, 163, 184, 0.18);
-  color: #475569;
+  color: var(--text-muted);
 }
 
 .widget-preview__badge--primary {
   background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
+  color: var(--primary-hover);
 }
 
 .widget-preview__badge--success {
@@ -2449,7 +2477,7 @@ button {
 
 .widget-preview__button--soft {
   background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
+  color: var(--primary-hover);
   box-shadow: none;
 }
 

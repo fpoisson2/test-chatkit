@@ -75,12 +75,12 @@ const inspectorHeaderStyle: CSSProperties = {
 const inspectorTitleStyle: CSSProperties = {
   fontSize: "1.1rem",
   fontWeight: 700,
-  color: "#0f172a",
+  color: "var(--color-text-strong)",
 };
 
 const inspectorSubtitleStyle: CSSProperties = {
   fontSize: "0.85rem",
-  color: "#475569",
+  color: "var(--text-muted)",
 };
 
 const deleteButtonStyle: CSSProperties = {
