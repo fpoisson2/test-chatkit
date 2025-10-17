@@ -27,7 +27,13 @@ type NavigationItem = {
   onClick: () => void;
 };
 
-type ApplicationKey = "chat" | "voice" | "workflows" | "vector-stores" | "widgets";
+type ApplicationKey =
+  | "chat"
+  | "voice"
+  | "workflows"
+  | "vector-stores"
+  | "widgets"
+  | "admin";
 
 type ApplicationDescriptor = {
   key: ApplicationKey;
@@ -42,6 +48,7 @@ const APPLICATIONS: ApplicationDescriptor[] = [
   { key: "workflows", label: "Workflow Builder", path: "/workflows", requiresAdmin: true },
   { key: "vector-stores", label: "Vector Store", path: "/vector-stores", requiresAdmin: true },
   { key: "widgets", label: "Widget Library", path: "/widgets", requiresAdmin: true },
+  { key: "admin", label: "Administration", path: "/admin", requiresAdmin: true },
 ];
 
 const buildNavigationItems = ({

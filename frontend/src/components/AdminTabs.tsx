@@ -1,7 +1,7 @@
-import { useEffect, useMemo } from "react";
+import { MouseEvent, useCallback, useEffect, useMemo } from "react";
 import { NavLink } from "react-router-dom";
 
-import { useSidebarPortal } from "./AppLayout";
+import { useAppLayout, useSidebarPortal } from "./AppLayout";
 
 type AdminTabsProps = {
   activeTab: "users" | "voice" | "models";
@@ -19,6 +19,27 @@ const tabs = [
 
 export const AdminTabs = ({ activeTab }: AdminTabsProps) => {
   const { setSidebarContent, clearSidebarContent } = useSidebarPortal();
+  const { closeSidebar, isDesktopLayout } = useAppLayout();
+
+  const handleNavLinkClick = useCallback(
+    (event: MouseEvent<HTMLAnchorElement>) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.shiftKey
+      ) {
+        return;
+      }
+
+      if (!isDesktopLayout) {
+        closeSidebar();
+      }
+    },
+    [closeSidebar, isDesktopLayout],
+  );
 
   const sidebarContent = useMemo(
     () => (
@@ -42,6 +63,7 @@ export const AdminTabs = ({ activeTab }: AdminTabsProps) => {
                       : ""
                   }`
                 }
+                onClick={handleNavLinkClick}
               >
                 {tab.label}
               </NavLink>
@@ -50,7 +72,7 @@ export const AdminTabs = ({ activeTab }: AdminTabsProps) => {
         </ul>
       </section>
     ),
-    [activeTab],
+    [activeTab, handleNavLinkClick],
   );
 
   useEffect(() => {

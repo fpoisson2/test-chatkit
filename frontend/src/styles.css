@@ -494,7 +494,21 @@ button {
   color: #0f172a;
   text-decoration: none;
   border-radius: 0;
+  position: relative;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.chatkit-sidebar__nav-link::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: calc(-1 * var(--chatkit-sidebar-padding-x));
+  width: 4px;
+  border-radius: 0 999px 999px 0;
+  background: transparent;
+  opacity: 0;
+  transition: opacity 0.2s ease, background-color 0.2s ease;
 }
 
 .chatkit-sidebar__nav-link:hover,
@@ -505,8 +519,13 @@ button {
 }
 
 .chatkit-sidebar__nav-link--active {
-  background: rgba(37, 99, 235, 0.18);
+  background: rgba(37, 99, 235, 0.08);
   color: #1d4ed8;
+}
+
+.chatkit-sidebar__nav-link--active::before {
+  opacity: 1;
+  background: #2563eb;
 }
 
 .chatkit-sidebar__workflow-list-item {
