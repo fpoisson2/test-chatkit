@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import datetime
 import json
 import logging
+from dataclasses import asdict, dataclass
 from typing import Any, Iterable
 
 from pydantic import ValidationError
@@ -15,7 +17,6 @@ try:  # pragma: no cover - API disponible sur Pydantic v1
     from pydantic import parse_obj_as
 except ImportError:  # pragma: no cover - supprimé en v2
     parse_obj_as = None  # type: ignore[assignment]
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 try:  # pragma: no cover - dépendance optionnelle pour les tests rapides
@@ -23,7 +24,7 @@ try:  # pragma: no cover - dépendance optionnelle pour les tests rapides
 except ModuleNotFoundError:  # pragma: no cover - lorsque le SDK n'est pas disponible
     WidgetRoot = None  # type: ignore[assignment]
 
-from ..models import WidgetTemplate
+from ..models import JsonDocument
 from ..vector_store import JsonVectorStoreService
 
 logger = logging.getLogger("chatkit.widgets")
@@ -46,8 +47,30 @@ class WidgetValidationError(ValueError):
         self.errors = list(errors or [])
 
 
+@dataclass(slots=True)
+class WidgetTemplateEntry:
+    """Représentation immuable d'un widget stocké dans le vector store."""
+
+    slug: str
+    title: str | None
+    description: str | None
+    definition: dict[str, Any]
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    def as_response(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def as_summary(self) -> dict[str, Any]:
+        return {
+            "slug": self.slug,
+            "title": self.title,
+            "description": self.description,
+        }
+
+
 class WidgetLibraryService:
-    """Encapsule la gestion des widgets stockés dans la base."""
+    """Encapsule la gestion des widgets stockés dans le vector store."""
 
     def __init__(
         self,
@@ -57,20 +80,43 @@ class WidgetLibraryService:
     ) -> None:
         self.session = session
         self._vector_store_slug = (vector_store_slug or "").strip()
-        self._vector_store_disabled = False
+        if not self._vector_store_slug:
+            raise RuntimeError(
+                "Le vector store des widgets doit être configuré pour utiliser la bibliothèque."
+            )
+
+    def _vector_service(self) -> JsonVectorStoreService:
+        return JsonVectorStoreService(self.session)
 
     # -- Opérations CRUD -----------------------------------------------------
 
-    def list_widgets(self) -> list[WidgetTemplate]:
-        stmt = select(WidgetTemplate).order_by(WidgetTemplate.slug.asc())
-        return list(self.session.scalars(stmt))
+    def list_widgets(self) -> list[WidgetTemplateEntry]:
+        service = self._vector_service()
+        try:
+            documents = service.list_documents(self._vector_store_slug)
+        except LookupError:
+            return []
 
-    def get_widget(self, slug: str) -> WidgetTemplate | None:
+        widgets: list[WidgetTemplateEntry] = []
+        for document, _chunk_count in documents:
+            try:
+                widgets.append(self._from_document(document))
+            except WidgetValidationError as exc:
+                logger.warning(
+                    "Widget invalide ignoré dans le vector store (%s): %s",
+                    document.doc_id,
+                    exc,
+                )
+        return widgets
+
+    def get_widget(self, slug: str) -> WidgetTemplateEntry | None:
         normalized = slug.strip()
         if not normalized:
             return None
-        stmt = select(WidgetTemplate).where(WidgetTemplate.slug == normalized)
-        return self.session.scalar(stmt)
+        document = self._vector_service().get_document(self._vector_store_slug, normalized)
+        if document is None:
+            return None
+        return self._from_document(document)
 
     def create_widget(
         self,
@@ -79,7 +125,7 @@ class WidgetLibraryService:
         title: str | None = None,
         description: str | None = None,
         definition: dict[str, Any] | str,
-    ) -> WidgetTemplate:
+    ) -> WidgetTemplateEntry:
         normalized_slug = slug.strip()
         if not normalized_slug:
             raise ValueError("Le slug du widget ne peut pas être vide")
@@ -90,16 +136,27 @@ class WidgetLibraryService:
 
         normalized_definition = self._normalize_definition(definition)
 
-        widget = WidgetTemplate(
-            slug=normalized_slug,
-            title=self._normalize_text(title),
-            description=self._normalize_text(description),
-            definition=normalized_definition,
+        payload = {
+            "slug": normalized_slug,
+            "title": self._normalize_text(title),
+            "description": self._normalize_text(description),
+            "definition": normalized_definition,
+        }
+
+        service = self._vector_service()
+        document = service.ingest(
+            self._vector_store_slug,
+            normalized_slug,
+            payload,
+            store_title=WIDGET_VECTOR_STORE_TITLE,
+            store_metadata=WIDGET_VECTOR_STORE_METADATA,
+            document_metadata={
+                key: value
+                for key, value in payload.items()
+                if key != "definition" and value is not None
+            },
         )
-        self.session.add(widget)
-        self.session.flush()
-        self._sync_vector_store(widget)
-        return widget
+        return self._from_document(document)
 
     def update_widget(
         self,
@@ -108,30 +165,41 @@ class WidgetLibraryService:
         title: str | None = None,
         description: str | None = None,
         definition: dict[str, Any] | str | None = None,
-    ) -> WidgetTemplate:
-        widget = self.get_widget(slug)
-        if widget is None:
+    ) -> WidgetTemplateEntry:
+        existing = self.get_widget(slug)
+        if existing is None:
             raise LookupError("Widget introuvable")
 
-        if title is not None:
-            widget.title = self._normalize_text(title)
-        if description is not None:
-            widget.description = self._normalize_text(description)
-        if definition is not None:
-            widget.definition = self._normalize_definition(definition)
+        updated_payload = {
+            "slug": existing.slug,
+            "title": existing.title if title is None else self._normalize_text(title),
+            "description": existing.description
+            if description is None
+            else self._normalize_text(description),
+            "definition": existing.definition
+            if definition is None
+            else self._normalize_definition(definition),
+        }
 
-        self.session.add(widget)
-        self.session.flush()
-        self._sync_vector_store(widget)
-        return widget
+        document = self._vector_service().ingest(
+            self._vector_store_slug,
+            existing.slug,
+            updated_payload,
+            store_title=WIDGET_VECTOR_STORE_TITLE,
+            store_metadata=WIDGET_VECTOR_STORE_METADATA,
+            document_metadata={
+                key: value
+                for key, value in updated_payload.items()
+                if key != "definition" and value is not None
+            },
+        )
+        return self._from_document(document)
 
     def delete_widget(self, slug: str) -> None:
-        widget = self.get_widget(slug)
-        if widget is None:
+        existing = self.get_widget(slug)
+        if existing is None:
             raise LookupError("Widget introuvable")
-        self._remove_from_vector_store(widget.slug)
-        self.session.delete(widget)
-        self.session.flush()
+        self._vector_service().delete_document(self._vector_store_slug, existing.slug)
 
     # -- Validation ----------------------------------------------------------
 
@@ -221,62 +289,6 @@ class WidgetLibraryService:
 
     # -- Intégration vector store -------------------------------------------
 
-    def _vector_store_enabled(self) -> bool:
-        return bool(self._vector_store_slug) and not self._vector_store_disabled
-
-    def _sync_vector_store(self, widget: WidgetTemplate) -> None:
-        if not self._vector_store_enabled():
-            return
-        payload = {
-            "slug": widget.slug,
-            "title": widget.title,
-            "description": widget.description,
-            "definition": widget.definition,
-        }
-        metadata = {
-            "slug": widget.slug,
-            "title": widget.title,
-            "description": widget.description,
-        }
-        try:
-            service = JsonVectorStoreService(self.session)
-            service.ingest(
-                self._vector_store_slug,
-                widget.slug,
-                payload,
-                store_title=WIDGET_VECTOR_STORE_TITLE,
-                store_metadata=WIDGET_VECTOR_STORE_METADATA,
-                document_metadata={
-                    key: value for key, value in metadata.items() if value is not None
-                },
-            )
-        except RuntimeError as exc:
-            logger.debug(
-                "Vector store indisponible pour la bibliothèque de widgets (%s)",
-                exc,
-            )
-            self._vector_store_disabled = True
-        except Exception as exc:  # pragma: no cover - dépend du runtime
-            logger.warning(
-                "Impossible d'indexer le widget %s dans le vector store", widget.slug,
-                exc_info=exc,
-            )
-
-    def _remove_from_vector_store(self, slug: str) -> None:
-        if not self._vector_store_enabled():
-            return
-        try:
-            service = JsonVectorStoreService(self.session)
-            service.delete_document(self._vector_store_slug, slug)
-        except LookupError:
-            logger.debug(
-                "Document vector store introuvable pour le widget %s", slug
-            )
-        except Exception as exc:  # pragma: no cover - dépend du runtime
-            logger.warning(
-                "Impossible de supprimer le widget %s du vector store", slug,
-                exc_info=exc,
-            )
 
     @staticmethod
     def _normalize_text(value: str | None) -> str | None:
@@ -284,3 +296,28 @@ class WidgetLibraryService:
             return None
         normalized = value.strip()
         return normalized or None
+
+    @staticmethod
+    def _from_document(document: JsonDocument) -> WidgetTemplateEntry:
+        raw = document.raw_document or {}
+        if not isinstance(raw, dict):
+            raise WidgetValidationError(
+                "Définition de widget invalide",
+                errors=["Le document vectoriel ne contient pas un objet JSON."],
+            )
+
+        definition = raw.get("definition")
+        if not isinstance(definition, dict):
+            raise WidgetValidationError(
+                "Définition de widget invalide",
+                errors=["La définition du widget doit être un objet JSON."],
+            )
+
+        return WidgetTemplateEntry(
+            slug=str(raw.get("slug") or document.doc_id),
+            title=WidgetLibraryService._normalize_text(raw.get("title")),
+            description=WidgetLibraryService._normalize_text(raw.get("description")),
+            definition=json.loads(json.dumps(definition, ensure_ascii=False)),
+            created_at=document.created_at,
+            updated_at=document.updated_at,
+        )
