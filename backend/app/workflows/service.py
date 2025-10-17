@@ -1067,9 +1067,12 @@ class WorkflowService:
                 raise WorkflowValidationError(f"Connexion inconnue : cible {target_slug} absente")
 
             condition_raw = entry.get("condition")
-            condition = str(condition_raw).strip().lower() if condition_raw else None
-            if condition == "":
+            if condition_raw is None:
                 condition = None
+            else:
+                condition = str(condition_raw).strip()
+                if condition == "":
+                    condition = None
 
             metadata = self._ensure_dict(entry.get("metadata"), "métadonnées")
 
@@ -1196,11 +1199,25 @@ class WorkflowService:
             if node.kind == "end" and outgoing:
                 raise WorkflowValidationError("Le nœud de fin ne doit pas avoir de sortie.")
             if node.kind == "condition":
-                conditions = {edge.condition or "default" for edge in outgoing}
-                if "true" not in conditions or "false" not in conditions:
+                if len(outgoing) < 2:
                     raise WorkflowValidationError(
-                        f"Le nœud conditionnel {slug} doit exposer des branches true et false."
+                        f"Le nœud conditionnel {slug} doit comporter au moins deux sorties."
                     )
+                seen_branches: set[str] = set()
+                default_count = 0
+                for edge in outgoing:
+                    normalized = (edge.condition or "default").strip().lower()
+                    if normalized == "default":
+                        default_count += 1
+                        if default_count > 1:
+                            raise WorkflowValidationError(
+                                f"Le nœud conditionnel {slug} ne peut contenir qu'une seule branche par défaut."
+                            )
+                    if normalized in seen_branches:
+                        raise WorkflowValidationError(
+                            f"Le nœud conditionnel {slug} contient des branches conditionnelles en double."
+                        )
+                    seen_branches.add(normalized)
 
         visited: set[str] = set()
         stack: set[str] = set()

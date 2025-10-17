@@ -38,6 +38,9 @@ import {
   getStartAutoRun,
   getStartAutoRunMessage,
   getStartAutoRunAssistantMessage,
+  getConditionMode,
+  getConditionPath,
+  getConditionValue,
 } from "../../../utils/workflows";
 import type {
   FileSearchConfig,
@@ -68,6 +71,29 @@ const reasoningSummaryOptions = [
   { value: "none", label: "Pas de résumé" },
   { value: "auto", label: "Résumé automatique" },
   { value: "detailed", label: "Résumé détaillé" },
+];
+
+const conditionModeOptions = [
+  {
+    value: "truthy",
+    label: "Comparer la valeur en tant que booléen (branches true/false)",
+  },
+  {
+    value: "falsy",
+    label: "Branche true si la valeur est vide ou fausse",
+  },
+  {
+    value: "equals",
+    label: "Branche true si la valeur est égale à la valeur ci-dessous",
+  },
+  {
+    value: "not_equals",
+    label: "Branche true si la valeur est différente de la valeur ci-dessous",
+  },
+  {
+    value: "value",
+    label: "Utiliser directement la valeur observée (plusieurs branches)",
+  },
 ];
 
 const DEFAULT_JSON_SCHEMA_OBJECT = { type: "object", properties: {} } as const;
@@ -117,6 +143,9 @@ export type NodeInspectorProps = {
   onStartAutoRunChange: (nodeId: string, value: boolean) => void;
   onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
   onStartAutoRunAssistantMessageChange: (nodeId: string, value: string) => void;
+  onConditionPathChange: (nodeId: string, value: string) => void;
+  onConditionModeChange: (nodeId: string, value: string) => void;
+  onConditionValueChange: (nodeId: string, value: string) => void;
   availableModels: AvailableModel[];
   availableModelsLoading: boolean;
   availableModelsError: string | null;
@@ -165,6 +194,9 @@ const NodeInspector = ({
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
   onStartAutoRunAssistantMessageChange,
+  onConditionPathChange,
+  onConditionModeChange,
+  onConditionValueChange,
   availableModels,
   availableModelsLoading,
   availableModelsError,
@@ -206,6 +238,9 @@ const NodeInspector = ({
     kind === "start" ? getStartAutoRunMessage(parameters) : "";
   const startAutoRunAssistantMessage =
     kind === "start" ? getStartAutoRunAssistantMessage(parameters) : "";
+  const conditionPath = kind === "condition" ? getConditionPath(parameters) : "";
+  const conditionMode = kind === "condition" ? getConditionMode(parameters) : "truthy";
+  const conditionValue = kind === "condition" ? getConditionValue(parameters) : "";
   const hasStartAutoRunUserMessage = startAutoRunMessage.trim().length > 0;
   const hasStartAutoRunAssistantMessage =
     startAutoRunAssistantMessage.trim().length > 0;
@@ -468,6 +503,60 @@ const NodeInspector = ({
             utilisateur ci-dessus pour désactiver cette réponse.
           </p>
         </label>
+      )}
+
+      {kind === "condition" && (
+        <>
+          <label style={fieldStyle}>
+            <span style={labelContentStyle}>
+              Variable observée
+              <HelpTooltip label="Référencez une valeur disponible dans l'état (ex. state.status ou globals.client_type)." />
+            </span>
+            <input
+              type="text"
+              value={conditionPath}
+              onChange={(event) => onConditionPathChange(node.id, event.target.value)}
+              placeholder="Ex. state.statut_demande"
+            />
+          </label>
+
+          <label style={fieldStyle}>
+            <span style={labelContentStyle}>
+              Mode d'évaluation
+              <HelpTooltip label="Choisissez comment interpréter la valeur observée pour déterminer la branche à suivre." />
+            </span>
+            <select
+              value={conditionMode}
+              onChange={(event) => onConditionModeChange(node.id, event.target.value)}
+            >
+              {conditionModeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {(conditionMode === "equals" || conditionMode === "not_equals") && (
+            <label style={fieldStyle}>
+              <span style={labelContentStyle}>
+                Valeur de comparaison
+                <HelpTooltip label="La valeur (chaîne, nombre…) qui servira de référence pour la comparaison." />
+              </span>
+              <input
+                type="text"
+                value={conditionValue}
+                onChange={(event) => onConditionValueChange(node.id, event.target.value)}
+                placeholder="Ex. approuvée"
+              />
+            </label>
+          )}
+
+          <p style={{ color: "#475569", margin: "0.35rem 0 0" }}>
+            Définissez les différentes branches dans les propriétés des connexions. Laissez le champ vide pour créer une branche
+            par défaut.
+          </p>
+        </>
       )}
 
       {kind === "widget" && (

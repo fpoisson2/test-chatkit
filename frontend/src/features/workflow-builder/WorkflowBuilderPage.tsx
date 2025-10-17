@@ -64,6 +64,9 @@ import {
   setStartAutoRun,
   setStartAutoRunMessage,
   setStartAutoRunAssistantMessage,
+  setConditionMode,
+  setConditionPath,
+  setConditionValue,
   stringifyAgentParameters,
   createVectorStoreNodeParameters,
   getVectorStoreNodeConfig,
@@ -1680,6 +1683,63 @@ const WorkflowBuilderPage = () => {
       });
     },
     [updateNodeData]
+  );
+
+  const handleConditionPathChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "condition") {
+          return data;
+        }
+        const nextParameters = setConditionPath(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleConditionModeChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "condition") {
+          return data;
+        }
+        let nextParameters = setConditionMode(data.parameters, value);
+        if (value !== "equals" && value !== "not_equals") {
+          nextParameters = setConditionValue(nextParameters, "");
+        }
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleConditionValueChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "condition") {
+          return data;
+        }
+        const nextParameters = setConditionValue(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
   );
 
   const handleWidgetNodeSlugChange = useCallback(
@@ -3318,6 +3378,9 @@ const WorkflowBuilderPage = () => {
             onStartAutoRunAssistantMessageChange={
               handleStartAutoRunAssistantMessageChange
             }
+            onConditionPathChange={handleConditionPathChange}
+            onConditionModeChange={handleConditionModeChange}
+            onConditionValueChange={handleConditionValueChange}
             availableModels={availableModels}
             availableModelsLoading={availableModelsLoading}
             availableModelsError={availableModelsError}

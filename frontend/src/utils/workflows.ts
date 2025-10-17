@@ -117,6 +117,36 @@ export const getStartAutoRunAssistantMessage = (
   return typeof message === "string" ? message : "";
 };
 
+export const getConditionPath = (parameters: AgentParameters | null | undefined): string => {
+  if (!parameters) {
+    return "";
+  }
+  const path = (parameters as Record<string, unknown>).path;
+  return typeof path === "string" ? path : "";
+};
+
+export const getConditionMode = (parameters: AgentParameters | null | undefined): string => {
+  if (!parameters) {
+    return "truthy";
+  }
+  const mode = (parameters as Record<string, unknown>).mode;
+  return typeof mode === "string" && mode.trim() ? mode : "truthy";
+};
+
+export const getConditionValue = (parameters: AgentParameters | null | undefined): string => {
+  if (!parameters) {
+    return "";
+  }
+  const value = (parameters as Record<string, unknown>).value;
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "";
+};
+
 export const setStartAutoRun = (
   parameters: AgentParameters,
   autoRun: boolean,
@@ -162,6 +192,48 @@ export const setStartAutoRunAssistantMessage = (
 
   delete (next as Record<string, unknown>).auto_start_user_message;
   (next as Record<string, unknown>).auto_start_assistant_message = trimmed;
+  return stripEmpty(next as Record<string, unknown>);
+};
+
+export const setConditionPath = (
+  parameters: AgentParameters,
+  path: string,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const trimmed = path.trim();
+  if (!trimmed) {
+    delete (next as Record<string, unknown>).path;
+    return stripEmpty(next as Record<string, unknown>);
+  }
+  (next as Record<string, unknown>).path = trimmed;
+  return stripEmpty(next as Record<string, unknown>);
+};
+
+export const setConditionMode = (
+  parameters: AgentParameters,
+  mode: string,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const trimmed = mode.trim();
+  if (!trimmed) {
+    delete (next as Record<string, unknown>).mode;
+    return stripEmpty(next as Record<string, unknown>);
+  }
+  (next as Record<string, unknown>).mode = trimmed;
+  return stripEmpty(next as Record<string, unknown>);
+};
+
+export const setConditionValue = (
+  parameters: AgentParameters,
+  value: string,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const trimmed = value.trim();
+  if (!trimmed) {
+    delete (next as Record<string, unknown>).value;
+    return stripEmpty(next as Record<string, unknown>);
+  }
+  (next as Record<string, unknown>).value = trimmed;
   return stripEmpty(next as Record<string, unknown>);
 };
 
