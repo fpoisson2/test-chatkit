@@ -494,25 +494,58 @@ def test_update_accepts_custom_agent_without_key() -> None:
     assert custom["parameters"]["instructions"] == "Rédige une réponse personnalisée."
 
 
-def test_update_condition_requires_branches() -> None:
+def test_update_condition_with_single_branch_is_allowed() -> None:
     admin = _make_user(email="condition@example.com", is_admin=True)
     token = create_access_token(admin)
     payload = {
         "graph": {
             "nodes": [
-                {"slug": "start", "kind": "start"},
+                {"slug": "start", "kind": "start", "is_enabled": True},
                 {
                     "slug": "decision",
                     "kind": "condition",
+                    "is_enabled": True,
                     "parameters": {"path": "has_all_details"},
                 },
-                {"slug": "writer", "kind": "agent", "agent_key": "r_dacteur"},
-                {"slug": "end", "kind": "end"},
+                {"slug": "writer", "kind": "agent", "agent_key": "r_dacteur", "is_enabled": True},
+                {"slug": "end", "kind": "end", "is_enabled": True},
             ],
             "edges": [
                 {"source": "start", "target": "decision"},
                 {"source": "decision", "target": "writer", "condition": "true"},
                 {"source": "writer", "target": "end"},
+            ],
+        }
+    }
+    response = client.put(
+        "/api/workflows/current",
+        headers=_auth_headers(token),
+        json=payload,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    edges = {(edge["source"], edge["target"], edge.get("condition")) for edge in body["graph"]["edges"]}
+    assert ("decision", "writer", "true") in edges
+
+
+def test_update_condition_with_two_branches_requires_true_and_false() -> None:
+    admin = _make_user(email="condition-branches@example.com", is_admin=True)
+    token = create_access_token(admin)
+    payload = {
+        "graph": {
+            "nodes": [
+                {"slug": "start", "kind": "start", "is_enabled": True},
+                {"slug": "decision", "kind": "condition", "is_enabled": True},
+                {"slug": "writer", "kind": "agent", "agent_key": "r_dacteur", "is_enabled": True},
+                {"slug": "fallback", "kind": "agent", "agent_key": "triage", "is_enabled": True},
+                {"slug": "end", "kind": "end", "is_enabled": True},
+            ],
+            "edges": [
+                {"source": "start", "target": "decision"},
+                {"source": "decision", "target": "writer", "condition": "true"},
+                {"source": "decision", "target": "fallback"},
+                {"source": "writer", "target": "end"},
+                {"source": "fallback", "target": "end"},
             ],
         }
     }

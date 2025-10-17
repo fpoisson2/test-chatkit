@@ -1155,11 +1155,16 @@ class WorkflowService:
             if node.kind == "end" and outgoing:
                 raise WorkflowValidationError("Le nœud de fin ne doit pas avoir de sortie.")
             if node.kind == "condition":
-                conditions = {edge.condition or "default" for edge in outgoing}
-                if "true" not in conditions or "false" not in conditions:
-                    raise WorkflowValidationError(
-                        f"Le nœud conditionnel {slug} doit exposer des branches true et false."
-                    )
+                if len(outgoing) >= 2:
+                    branches = {
+                        (edge.condition or "").strip().lower()
+                        for edge in outgoing
+                        if (edge.condition or "").strip()
+                    }
+                    if "true" not in branches or "false" not in branches:
+                        raise WorkflowValidationError(
+                            f"Le nœud conditionnel {slug} doit exposer des branches true et false."
+                        )
 
         visited: set[str] = set()
         stack: set[str] = set()
