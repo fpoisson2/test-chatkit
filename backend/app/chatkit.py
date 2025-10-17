@@ -43,19 +43,25 @@ from chatkit.server import ChatKitServer
 from chatkit.store import NotFoundError
 from chatkit.types import (
     ActiveStatus,
+    AssistantMessageContent,
     AssistantMessageContentPartTextDelta,
+    AssistantMessageItem,
     ClosedStatus,
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
+    InferenceOptions,
     LockedStatus,
     ProgressUpdateEvent,
     ThreadItem,
+    ThreadItemDoneEvent,
     ThreadItemRemovedEvent,
     ThreadItemUpdated,
     ThreadMetadata,
     ThreadStreamEvent,
+    UserMessageInput,
     UserMessageItem,
+    UserMessageTextContent,
 )
 
 from .config import Settings, get_settings
@@ -206,8 +212,15 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 auto_start_was_triggered=True,
                 auto_start_assistant_message=assistant_text,
             )
+            pre_stream_events = await self._prepare_auto_start_thread_items(
+                thread=thread,
+                context=context,
+                user_text=user_text,
+                assistant_text=assistant_text,
+            )
         else:
             workflow_input = WorkflowInput(input_as_text=user_text)
+            pre_stream_events: list[ThreadStreamEvent] = []
 
         agent_context = AgentContext(
             thread=thread,
@@ -226,6 +239,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             ),
             event_queue=event_queue,
         )
+
+        for event in pre_stream_events:
+            yield event
 
         try:
             async for event in workflow_result.stream_events():
@@ -374,6 +390,41 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
         finally:
             event_queue.put_nowait(_STREAM_DONE)
+
+    async def _prepare_auto_start_thread_items(
+        self,
+        *,
+        thread: ThreadMetadata,
+        context: ChatKitRequestContext,
+        user_text: str,
+        assistant_text: str,
+    ) -> list[ThreadStreamEvent]:
+        """Ajoute les messages initialisés automatiquement au fil et prépare les événements."""
+
+        events: list[ThreadStreamEvent] = []
+
+        if user_text:
+            user_input = UserMessageInput(
+                content=[UserMessageTextContent(text=user_text)],
+                attachments=[],
+                quoted_text=None,
+                inference_options=InferenceOptions(),
+            )
+            user_item = await self._build_user_message_item(user_input, thread, context)
+            await self.store.add_thread_item(thread.id, user_item, context=context)
+            events.append(ThreadItemDoneEvent(item=user_item))
+
+        if assistant_text:
+            assistant_item = AssistantMessageItem(
+                id=self.store.generate_item_id("message", thread, context),
+                thread_id=thread.id,
+                created_at=datetime.now(),
+                content=[AssistantMessageContent(text=assistant_text)],
+            )
+            await self.store.add_thread_item(thread.id, assistant_item, context=context)
+            events.append(ThreadItemDoneEvent(item=assistant_item))
+
+        return events
 
 
 def _collect_user_text(message: UserMessageItem | None) -> str:
