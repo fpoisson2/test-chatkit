@@ -115,4 +115,55 @@ describe("widgetPreview helpers", () => {
     const originalChildren = definition.children as Array<Record<string, unknown>>;
     expect(originalChildren[0].value).toBe("Titre");
   });
+
+  it("applies updates to button labels and icons", () => {
+    const buttonWidget: Record<string, unknown> = {
+      type: "Card",
+      children: [
+        {
+          type: "Row",
+          children: [
+            {
+              type: "Button",
+              key: "opt1",
+              label: "Option 1",
+              iconStart: "sparkle",
+            },
+            {
+              type: "Button",
+              onClickAction: { type: "menu.select", payload: { id: "opt2" } },
+              label: "Option 2",
+              iconStart: "bolt",
+            },
+          ],
+        },
+      ],
+    };
+
+    const bindings = collectWidgetBindings(buttonWidget);
+    const updated = applyWidgetInputValues(
+      buttonWidget as Record<string, unknown>,
+      {
+        opt1: "Choix A",
+        "opt1.icon": "star",
+        opt2: "Choix B",
+        "opt2.icon": "zap",
+      },
+      bindings,
+    );
+
+    expect(bindings.opt1.valueKey).toBe("label");
+    expect(bindings["opt1.icon"].valueKey).toBe("iconStart");
+    expect(bindings.opt2.valueKey).toBe("label");
+    expect(bindings["opt2.icon"].valueKey).toBe("iconStart");
+    expect(bindings.opt1.path).toEqual(["children", 0, "children", 0]);
+    expect(bindings.opt2.path).toEqual(["children", 0, "children", 1]);
+
+    const row = (updated.children as Array<Record<string, unknown>>)[0];
+    const [firstButton, secondButton] = row.children as Array<Record<string, unknown>>;
+    expect(firstButton.label).toBe("Choix A");
+    expect(firstButton.iconStart).toBe("star");
+    expect(secondButton.label).toBe("Choix B");
+    expect(secondButton.iconStart).toBe("zap");
+  });
 });

@@ -4,6 +4,7 @@ export type WidgetBinding = {
   path: Array<string | number>;
   componentType: string | null;
   sample: string | string[] | null;
+  valueKey: string | null;
 };
 
 export type WidgetBindingMap = Record<string, WidgetBinding>;
@@ -158,6 +159,7 @@ export const collectWidgetBindings = (definition: unknown): WidgetBindingMap => 
     }
     const componentType = typeof node.type === "string" ? node.type : null;
     let sample: string | string[] | null = null;
+    let capturedKey: string | null = valueKey ?? null;
     const preferredKeys = valueKey ? [valueKey] : [];
     for (const key of [
       ...preferredKeys,
@@ -176,6 +178,7 @@ export const collectWidgetBindings = (definition: unknown): WidgetBindingMap => 
       }
       sample = toSampleValue(node[key]);
       if (sample !== null) {
+        capturedKey = key;
         break;
       }
     }
@@ -183,6 +186,7 @@ export const collectWidgetBindings = (definition: unknown): WidgetBindingMap => 
       path: [...path],
       componentType,
       sample,
+      valueKey: capturedKey,
     };
     if (isManual) {
       manualPathKeys.add(pathKey);
@@ -347,19 +351,49 @@ const cloneDefinition = <T>(definition: T): T => {
   return JSON.parse(JSON.stringify(definition)) as T;
 };
 
-const updateNodeValue = (node: Record<string, unknown>, value: string | string[]): void => {
-  if (Array.isArray(value)) {
-    node.value = value;
+const updateNodeValue = (
+  node: Record<string, unknown>,
+  value: string | string[],
+  preferredKey: string | null,
+): void => {
+  const assign = (key: string, payload: string | string[]) => {
+    node[key] = payload;
+  };
+
+  if (preferredKey && preferredKey in node) {
+    assign(preferredKey, value);
     return;
   }
-  const text = value;
-  if ("value" in node) {
-    node.value = text;
-  } else if ("text" in node) {
-    node.text = text;
-  } else {
-    node.value = text;
+
+  if (Array.isArray(value)) {
+    assign("value", value);
+    return;
   }
+
+  const candidateKeys = [
+    "value",
+    "text",
+    "label",
+    "title",
+    "body",
+    "content",
+    "heading",
+    "subtitle",
+    "description",
+    "caption",
+    "icon",
+    "iconStart",
+    "iconEnd",
+  ];
+
+  for (const key of candidateKeys) {
+    if (key in node) {
+      assign(key, value);
+      return;
+    }
+  }
+
+  assign("value", value);
 };
 
 export const applyWidgetInputValues = (
@@ -371,9 +405,13 @@ export const applyWidgetInputValues = (
   const clone = cloneDefinition(definition);
   const matched = new Set<string>();
 
-  const walk = (node: unknown): void => {
+  const walk = (node: unknown, path: Array<string | number>): void => {
     if (Array.isArray(node)) {
-      node.forEach(walk);
+      node.forEach((entry, index) => {
+        if (typeof entry === "object" && entry !== null) {
+          walk(entry, [...path, index]);
+        }
+      });
       return;
     }
     if (!isRecord(node)) {
@@ -382,15 +420,20 @@ export const applyWidgetInputValues = (
 
     const identifier = typeof node.id === "string" ? node.id : null;
     if (identifier && identifier in sanitized) {
-      updateNodeValue(node, sanitized[identifier]);
-      matched.add(identifier);
+      const binding = bindings?.[identifier];
+      const pathMatches = !binding || getPathKey(binding.path) === getPathKey(path);
+      if (pathMatches) {
+        updateNodeValue(node, sanitized[identifier], binding?.valueKey ?? null);
+        matched.add(identifier);
+      }
     }
 
     const editable = node.editable;
     if (isRecord(editable)) {
       const editableName = typeof editable.name === "string" ? editable.name : null;
       if (editableName && editableName in sanitized && !matched.has(editableName)) {
-        updateNodeValue(node, sanitized[editableName]);
+        const binding = bindings?.[editableName];
+        updateNodeValue(node, sanitized[editableName], binding?.valueKey ?? null);
         matched.add(editableName);
       }
       const editableNames = editable.names;
@@ -413,26 +456,27 @@ export const applyWidgetInputValues = (
           matched.add(trimmed);
         });
         if (collected.length > 0) {
-          updateNodeValue(node, collected);
+          updateNodeValue(node, collected, null);
         }
       } else if (
         typeof editableNames === "string" &&
         editableNames in sanitized &&
         !matched.has(editableNames)
       ) {
-        updateNodeValue(node, sanitized[editableNames]);
+        const binding = bindings?.[editableNames];
+        updateNodeValue(node, sanitized[editableNames], binding?.valueKey ?? null);
         matched.add(editableNames);
       }
     }
 
-    Object.values(node).forEach((child) => {
+    for (const [key, child] of Object.entries(node)) {
       if (typeof child === "object" && child !== null) {
-        walk(child);
+        walk(child, [...path, key]);
       }
-    });
+    }
   };
 
-  walk(clone);
+  walk(clone, []);
 
   if (bindings) {
     for (const [identifier, binding] of Object.entries(bindings)) {
@@ -462,7 +506,7 @@ export const applyWidgetInputValues = (
       if (!validPath || !isRecord(target)) {
         continue;
       }
-      updateNodeValue(target, sanitized[identifier]);
+      updateNodeValue(target, sanitized[identifier], binding.valueKey);
       matched.add(identifier);
     }
   }
