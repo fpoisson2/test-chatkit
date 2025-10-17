@@ -24,6 +24,16 @@ const listVectorStoresMock = vi.hoisted(() => vi.fn(async () => []));
 const listModelsMock = vi.hoisted(() => vi.fn(async () => []));
 const listWidgetsMock = vi.hoisted(() => vi.fn(async () => []));
 const listWorkflowWidgetsMock = vi.hoisted(() => vi.fn(async () => []));
+const getWidgetMock = vi.hoisted(() =>
+  vi.fn(async (_token: string | null, slug: string) => ({
+    slug,
+    title: slug,
+    description: null,
+    definition: { type: "Text", value: `Prévisualisation ${slug}` },
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
+  })),
+);
 const openSidebarMock = vi.hoisted(() => vi.fn());
 const closeSidebarMock = vi.hoisted(() => vi.fn());
 const setSidebarContentMock = vi.hoisted(() => vi.fn());
@@ -40,6 +50,7 @@ vi.mock("../../utils/backend", () => ({
   widgetLibraryApi: {
     listWidgets: listWidgetsMock,
     listWorkflowWidgets: listWorkflowWidgetsMock,
+    getWidget: getWidgetMock,
   },
 }));
 

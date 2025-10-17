@@ -314,6 +314,13 @@ export const widgetLibraryApi = {
     return response.json();
   },
 
+  async getWidget(token: string | null, slug: string): Promise<WidgetTemplate> {
+    const response = await requestWithFallback(`/api/widgets/${encodeURIComponent(slug)}`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
   async listWorkflowWidgets(token: string | null): Promise<WidgetTemplateSummary[]> {
     const response = await requestWithFallback("/api/workflow-widgets", {
       headers: withAuthHeaders(token),
