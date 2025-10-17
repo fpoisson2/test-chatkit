@@ -3,6 +3,8 @@ import ReactMarkdown from "react-markdown";
 
 import type { Widgets } from "@openai/chatkit";
 
+import { renderWidgetIcon } from "./widgetIcons";
+
 type WidgetPreviewProps = {
   definition: Record<string, unknown>;
 };
@@ -421,7 +423,7 @@ const renderStatus = (status?: Widgets.WidgetStatus) => {
       ) : null}
       {iconName ? (
         <span className="widget-preview__status-icon" aria-hidden>
-          {iconName}
+          {renderWidgetIcon(iconName)}
         </span>
       ) : null}
       <span className="widget-preview__status-text">{status.text}</span>
@@ -465,13 +467,13 @@ const renderButton = (component: Widgets.Button) => {
     >
       {component.iconStart ? (
         <span className="widget-preview__button-icon widget-preview__button-icon--start" style={iconStyle} aria-hidden>
-          {component.iconStart}
+          {renderWidgetIcon(component.iconStart)}
         </span>
       ) : null}
       <span className="widget-preview__button-label">{component.label ?? "Bouton"}</span>
       {component.iconEnd ? (
         <span className="widget-preview__button-icon widget-preview__button-icon--end" style={iconStyle} aria-hidden>
-          {component.iconEnd}
+          {renderWidgetIcon(component.iconEnd)}
         </span>
       ) : null}
     </button>
@@ -497,9 +499,10 @@ const renderIcon = (component: Widgets.Icon) => {
       style.color = color;
     }
   }
+  const iconElement = renderWidgetIcon(component.name);
   return (
     <span className={classNames.join(" ")} aria-hidden style={style}>
-      {component.name}
+      {iconElement ?? <span className="widget-preview__icon-fallback">{component.name}</span>}
     </span>
   );
 };

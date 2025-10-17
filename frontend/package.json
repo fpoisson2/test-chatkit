@@ -11,8 +11,9 @@
   },
   "dependencies": {
     "@openai/agents": "*",
-    "@reactflow/core": "*",
     "@openai/chatkit-react": "*",
+    "@reactflow/core": "*",
+    "lucide-react": "^0.546.0",
     "react": "*",
     "react-dom": "*",
     "react-markdown": "^10.1.0",

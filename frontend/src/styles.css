@@ -2161,8 +2161,7 @@ button {
   height: 1.25rem;
   border-radius: 0.5rem;
   background: rgba(15, 23, 42, 0.12);
-  text-transform: uppercase;
-  font-size: 0.75rem;
+  line-height: 1;
 }
 
 .widget-preview__status-favicon {
@@ -2369,6 +2368,7 @@ button {
   height: 1.25em;
   border-radius: 0.45rem;
   background: rgba(15, 23, 42, 0.15);
+  line-height: 1;
 }
 
 .widget-preview__button-icon--start {
@@ -2496,11 +2496,23 @@ button {
   justify-content: center;
   font-size: 0.85rem;
   font-weight: 600;
-  text-transform: uppercase;
   padding: 0.25rem 0.5rem;
   border-radius: 0.5rem;
   background: rgba(15, 23, 42, 0.08);
   color: var(--color-text-muted);
+  line-height: 1;
+}
+
+.widget-preview__status-icon svg,
+.widget-preview__button-icon svg,
+.widget-preview__icon svg {
+  width: 1em;
+  height: 1em;
+}
+
+.widget-preview__icon-fallback {
+  font-size: 0.75em;
+  text-transform: uppercase;
 }
 
 .widget-preview__icon--xs {
