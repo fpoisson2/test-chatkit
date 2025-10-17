@@ -1320,6 +1320,16 @@ button {
     margin-bottom: 2px;
   }
 
+  .admin-table--stack td[data-label="Actions"] .admin-table__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-table--stack td[data-label="Actions"] .admin-table__actions .button {
+    width: 100%;
+    justify-content: center;
+  }
+
   .admin-table--stack td[data-label="Métadonnées"] code {
     white-space: normal;
   }

@@ -225,36 +225,42 @@ export const AdminModelsPage = () => {
                 alimenter le menu déroulant du workflow builder.
               </p>
             ) : (
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>Modèle</th>
-                    <th>Affichage</th>
-                    <th>Raisonnement</th>
-                    <th>Description</th>
-                    <th style={{ width: "6rem" }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {models.map((model) => (
-                    <tr key={model.id}>
-                      <td>{model.name}</td>
-                      <td>{model.display_name ?? "—"}</td>
-                      <td>{model.supports_reasoning ? "Oui" : "Non"}</td>
-                      <td>{model.description ?? "—"}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="button button--ghost"
-                          onClick={() => handleDelete(model)}
-                        >
-                          Supprimer
-                        </button>
-                      </td>
+              <div className="admin-table-wrapper">
+                <table className="admin-table admin-table--stack">
+                  <thead>
+                    <tr>
+                      <th>Modèle</th>
+                      <th>Affichage</th>
+                      <th>Raisonnement</th>
+                      <th>Description</th>
+                      <th>Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {models.map((model) => (
+                      <tr key={model.id}>
+                        <td data-label="Modèle">{model.name}</td>
+                        <td data-label="Affichage">{model.display_name ?? "—"}</td>
+                        <td data-label="Raisonnement">
+                          {model.supports_reasoning ? "Oui" : "Non"}
+                        </td>
+                        <td data-label="Description">{model.description ?? "—"}</td>
+                        <td data-label="Actions">
+                          <div className="admin-table__actions">
+                            <button
+                              type="button"
+                              className="button button--ghost button--sm"
+                              onClick={() => handleDelete(model)}
+                            >
+                              Supprimer
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </section>
         </div>
