@@ -298,7 +298,6 @@ describe("WorkflowBuilderPage", () => {
 
   test("permet de modifier un nœud et d'enregistrer le graphe", async () => {
     const fetchMock = setupWorkflowApi();
-
     const { container } = renderWorkflowBuilder();
 
     await waitFor(() => {
@@ -529,6 +528,63 @@ describe("WorkflowBuilderPage", () => {
           (init as RequestInit | undefined)?.method === "POST",
       ),
     ).toBe(false);
+  });
+
+  test("ne crée qu'un seul brouillon lors d'autosauvegardes successives", async () => {
+    const fetchMock = setupWorkflowApi({
+      versions: [productionVersionSummary],
+      workflowDetail: productionResponse,
+    });
+
+    const createdId = productionVersionSummary.id + 1;
+    const { container } = renderWorkflowBuilder();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const triageNode = container.querySelector('[data-id="agent-triage"]');
+    expect(triageNode).not.toBeNull();
+    fireEvent.click(triageNode!);
+
+    const modelInput = await screen.findByPlaceholderText(/ex\. gpt-4\.1-mini/i);
+    fireEvent.change(modelInput, { target: { value: "gpt-4.1-mini" } });
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            typeof input === "string" &&
+            input.endsWith(`/api/workflows/${defaultResponse.workflow_id}/versions`) &&
+            (init as RequestInit | undefined)?.method === "POST",
+        ),
+      ).toBe(true);
+    });
+
+    fireEvent.change(modelInput, { target: { value: "gpt-4.1-large" } });
+
+    await waitFor(
+      () => {
+        const postCalls = fetchMock.mock.calls.filter(
+          ([input, init]) =>
+            typeof input === "string" &&
+            input.endsWith(`/api/workflows/${defaultResponse.workflow_id}/versions`) &&
+            (init as RequestInit | undefined)?.method === "POST",
+        );
+        expect(postCalls).toHaveLength(1);
+        expect(
+          fetchMock.mock.calls.some(
+            ([input, init]) =>
+              typeof input === "string" &&
+              input.includes(
+                `/api/workflows/${defaultResponse.workflow_id}/versions/${createdId}`,
+              ) &&
+              (init as RequestInit | undefined)?.method === "PUT",
+          ),
+        ).toBe(true);
+      },
+      { timeout: 4000 },
+    );
   });
 
 

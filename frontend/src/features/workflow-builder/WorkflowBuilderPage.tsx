@@ -138,10 +138,54 @@ const findDraftVersionSummary = (
   if (draftByName) {
     return draftByName;
   }
-  const [latestDraft] = [...summaries]
+  const inactiveVersions = summaries.filter((version) => !version.is_active);
+  if (inactiveVersions.length === 0) {
+    return null;
+  }
+  const [latestDraft] = inactiveVersions.sort(
+    (left, right) => parseTimestamp(right.updated_at) - parseTimestamp(left.updated_at),
+  );
+  return latestDraft;
+};
+
+const collectDraftVersionCandidates = (
+  versions: WorkflowVersionSummary[],
+  knownDraftId: number | null,
+  rememberedDraftId: number | null,
+  selectedVersionSummary: WorkflowVersionSummary | null,
+): number[] => {
+  const candidates: number[] = [];
+  const addCandidate = (value: number | null | undefined) => {
+    if (value == null || candidates.includes(value)) {
+      return;
+    }
+    candidates.push(value);
+  };
+
+  addCandidate(knownDraftId);
+  addCandidate(rememberedDraftId);
+
+  const draftSummary = findDraftVersionSummary(versions);
+  addCandidate(draftSummary?.id ?? null);
+
+  const latestInactive = [...versions]
     .filter((version) => !version.is_active)
     .sort((left, right) => parseTimestamp(right.updated_at) - parseTimestamp(left.updated_at));
-  return latestDraft ?? null;
+  if (latestInactive.length > 0) {
+    addCandidate(latestInactive[0]?.id ?? null);
+  }
+
+  if (
+    selectedVersionSummary &&
+    !selectedVersionSummary.is_active &&
+    candidates.includes(selectedVersionSummary.id)
+  ) {
+    // Lorsque l'utilisateur se trouve déjà sur le brouillon, on conserve la priorité sur cette révision.
+    candidates.splice(candidates.indexOf(selectedVersionSummary.id), 1);
+    candidates.unshift(selectedVersionSummary.id);
+  }
+
+  return candidates;
 };
 
 const normalizeVersionSummaries = (
@@ -2045,18 +2089,22 @@ const WorkflowBuilderPage = () => {
       const graphPayload = buildGraphPayload();
       const graphSnapshot = JSON.stringify(graphPayload);
       const currentWorkflow = workflows.find((workflow) => workflow.id === selectedWorkflowId);
-      const draftVersionSummary = findDraftVersionSummary(versions);
       const knownDraftId = draftVersionIdRef.current;
-      const draftCandidates = [
-        selectedVersionSummary && !selectedVersionSummary.is_active
-          ? selectedVersionSummary.id
-          : null,
+      const rememberedDraftId =
+        selectedWorkflowId != null
+          ? draftVersionByWorkflowRef.current.get(selectedWorkflowId) ?? null
+          : null;
+      const draftCandidates = collectDraftVersionCandidates(
+        versions,
         knownDraftId,
-        draftVersionSummary?.id ?? null,
-      ].filter((value): value is number => value != null);
+        rememberedDraftId,
+        selectedVersionSummary,
+      );
       const targetDraftId = draftCandidates[0] ?? null;
       const isEditingDraft =
-        targetDraftId != null && selectedVersionSummary?.id === targetDraftId;
+        targetDraftId != null &&
+        selectedVersionSummary?.id === targetDraftId &&
+        !selectedVersionSummary.is_active;
       const shouldCreateDraft = targetDraftId === null;
 
       const endpoint = shouldCreateDraft
