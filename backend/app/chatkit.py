@@ -2007,6 +2007,7 @@ class _WidgetBinding:
     path: tuple[str | int, ...]
     component_type: str | None = None
     sample: str | list[str] | None = None
+    value_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -2327,6 +2328,7 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
             return
         component_type = node.get("type") if isinstance(node.get("type"), str) else None
         sample: str | list[str] | None = None
+        matched_key: str | None = None
         candidate_keys: tuple[str, ...]
         if value_key:
             candidate_keys = (
@@ -2358,15 +2360,28 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
                 continue
             raw_value = node.get(candidate_key)
             if isinstance(raw_value, list):
-                sample = [str(item) for item in raw_value]
+                simple_values = [
+                    item if isinstance(item, str) else str(item)
+                    for item in raw_value
+                    if isinstance(item, (str, int, float, bool))
+                ]
+                if simple_values:
+                    sample = simple_values
+                    matched_key = candidate_key
+                    break
+            elif isinstance(raw_value, str):
+                sample = raw_value
+                matched_key = candidate_key
                 break
-            if isinstance(raw_value, (str, int, float, bool)):
+            elif isinstance(raw_value, (int, float, bool)):
                 sample = str(raw_value)
+                matched_key = candidate_key
                 break
         bindings[identifier] = _WidgetBinding(
             path=path,
             component_type=component_type,
             sample=sample,
+            value_key=matched_key,
         )
         if is_manual:
             manual_paths.add(path)
@@ -2562,10 +2577,16 @@ def _extract_widget_bindings_from_payload(
             sample = None
         else:
             sample = str(sample_value)
+        value_key = binding_mapping.get("value_key")
+        if not isinstance(value_key, str):
+            value_key = binding_mapping.get("valueKey")
+        if not isinstance(value_key, str):
+            value_key = None
         bindings[trimmed] = _WidgetBinding(
             path=tuple(normalized_path),
             component_type=component_type,
             sample=sample,
+            value_key=value_key,
         )
     return bindings
 
@@ -3463,17 +3484,68 @@ async def run_workflow(
     def _update_widget_node_value(
         node: dict[str, Any],
         value: str | list[str],
+        *,
+        preferred_key: str | None = None,
     ) -> None:
+        def _assign(key: str, payload: str | list[str]) -> None:
+            node[key] = payload
+
+        def _alternate_keys(key: str) -> list[str]:
+            if not key:
+                return []
+            candidates: list[str] = []
+            if "_" in key:
+                parts = key.split("_")
+                camel = parts[0] + "".join(part.capitalize() for part in parts[1:])
+                candidates.append(camel)
+            else:
+                snake = re.sub(r"(?<!^)(?=[A-Z])", "_", key).lower()
+                if snake != key:
+                    candidates.append(snake)
+            return candidates
+
         if isinstance(value, list):
-            node["value"] = value
+            if preferred_key and preferred_key in node:
+                _assign(preferred_key, value)
+                return
+            for alias in _alternate_keys(preferred_key or ""):
+                if alias and alias in node:
+                    _assign(alias, value)
+                    return
+            _assign("value", value)
             return
+
         text = value
-        if "value" in node:
-            node["value"] = text
-        elif "text" in node:
-            node["text"] = text
-        else:
-            node["value"] = text
+        if preferred_key and preferred_key in node:
+            _assign(preferred_key, text)
+            return
+        for alias in _alternate_keys(preferred_key or ""):
+            if alias and alias in node:
+                _assign(alias, text)
+                return
+
+        candidate_keys = (
+            "value",
+            "text",
+            "label",
+            "title",
+            "body",
+            "content",
+            "heading",
+            "subtitle",
+            "description",
+            "caption",
+            "icon",
+            "iconStart",
+            "iconEnd",
+        )
+
+        for candidate in candidate_keys:
+            if candidate in node:
+                _assign(candidate, text)
+                return
+
+        _assign("value", text)
 
     def _apply_widget_variable_values(
         definition: Any,
@@ -3483,42 +3555,65 @@ async def run_workflow(
     ) -> set[str]:
         matched: set[str] = set()
 
+        def _sanitize(value: str | list[str]) -> str | list[str]:
+            if isinstance(value, list):
+                sanitized: list[str] = []
+                for entry in value:
+                    if isinstance(entry, str):
+                        sanitized.append(entry)
+                    elif isinstance(entry, (int, float, bool)):
+                        sanitized.append(str(entry))
+                return sanitized
+            if isinstance(value, (int, float, bool)):
+                return str(value)
+            return value
+
+        sanitized_values: dict[str, str | list[str]] = {
+            key: _sanitize(val) for key, val in values.items()
+        }
+
         def _walk(node: Any) -> None:
             if isinstance(node, dict):
                 identifier = node.get("id")
-                if isinstance(identifier, str) and identifier in values:
-                    _update_widget_node_value(node, values[identifier])
+                if isinstance(identifier, str) and identifier in sanitized_values:
+                    _update_widget_node_value(node, sanitized_values[identifier])
                     matched.add(identifier)
                 editable = node.get("editable")
                 if isinstance(editable, dict):
                     editable_name = editable.get("name")
                     if (
                         isinstance(editable_name, str)
-                        and editable_name in values
+                        and editable_name in sanitized_values
                         and editable_name not in matched
                     ):
-                        _update_widget_node_value(node, values[editable_name])
+                        _update_widget_node_value(
+                            node, sanitized_values[editable_name]
+                        )
                         matched.add(editable_name)
                     editable_names = editable.get("names")
                     if isinstance(editable_names, list):
-                        collected = [
-                            values[name]
-                            for name in editable_names
-                            if isinstance(name, str) and name in values
-                        ]
+                        collected: list[str] = []
+                        for name in editable_names:
+                            if not isinstance(name, str):
+                                continue
+                            if name not in sanitized_values:
+                                continue
+                            current = sanitized_values[name]
+                            if isinstance(current, list):
+                                collected.extend(current)
+                            else:
+                                collected.append(current)
+                            matched.add(name)
                         if collected:
                             _update_widget_node_value(node, collected)
-                            matched.update(
-                                name
-                                for name in editable_names
-                                if isinstance(name, str) and name in values
-                            )
                     elif (
                         isinstance(editable_names, str)
-                        and editable_names in values
+                        and editable_names in sanitized_values
                         and editable_names not in matched
                     ):
-                        _update_widget_node_value(node, values[editable_names])
+                        _update_widget_node_value(
+                            node, sanitized_values[editable_names]
+                        )
                         matched.add(editable_names)
                 for child in node.values():
                     if isinstance(child, (dict, list)):
@@ -3533,7 +3628,7 @@ async def run_workflow(
             for identifier, binding in bindings.items():
                 if identifier in matched:
                     continue
-                if identifier not in values:
+                if identifier not in sanitized_values:
                     continue
 
                 target: Any = definition
@@ -3556,7 +3651,11 @@ async def run_workflow(
                 if not valid_path or not isinstance(target, dict):
                     continue
 
-                _update_widget_node_value(target, values[identifier])
+                _update_widget_node_value(
+                    target,
+                    sanitized_values[identifier],
+                    preferred_key=binding.value_key,
+                )
                 matched.add(identifier)
 
         return matched
