@@ -35,6 +35,7 @@ import {
   getStateAssignments,
   getEndMessage,
   getWidgetNodeConfig,
+  getStartAutoRun,
 } from "../../../utils/workflows";
 import type {
   FileSearchConfig,
@@ -111,6 +112,7 @@ export type NodeInspectorProps = {
     nodeId: string,
     updates: Partial<VectorStoreNodeConfig>,
   ) => void;
+  onStartAutoRunChange: (nodeId: string, value: boolean) => void;
   availableModels: AvailableModel[];
   availableModelsLoading: boolean;
   availableModelsError: string | null;
@@ -156,6 +158,7 @@ const NodeInspector = ({
   onAgentWebSearchChange,
   onAgentFileSearchChange,
   onVectorStoreNodeConfigChange,
+  onStartAutoRunChange,
   availableModels,
   availableModelsLoading,
   availableModelsError,
@@ -192,6 +195,7 @@ const NodeInspector = ({
   const showSearchSources = getAgentShowSearchSources(parameters);
   const continueOnError = getAgentContinueOnError(parameters);
   const storeResponses = getAgentStorePreference(parameters);
+  const startAutoRun = kind === "start" ? getStartAutoRun(parameters) : false;
   const webSearchConfig = getAgentWebSearchConfig(parameters);
   const webSearchEnabled = Boolean(webSearchConfig);
   const fileSearchConfig = getAgentFileSearchConfig(parameters);
@@ -395,12 +399,21 @@ const NodeInspector = ({
 
         <label style={fieldStyle}>
           <span>Nom affiché</span>
-          <input
-            type="text"
-            value={displayName}
-            onChange={(event) => onDisplayNameChange(node.id, event.target.value)}
-          />
-        </label>
+        <input
+          type="text"
+          value={displayName}
+          onChange={(event) => onDisplayNameChange(node.id, event.target.value)}
+        />
+      </label>
+
+      {kind === "start" && (
+        <ToggleRow
+          label="Démarrer automatiquement"
+          checked={startAutoRun}
+          onChange={(next) => onStartAutoRunChange(node.id, next)}
+          help="Exécute immédiatement le workflow lors de l'ouverture d'un fil, même sans message utilisateur."
+        />
+      )}
 
       {kind === "widget" && (
         <>

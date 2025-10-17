@@ -96,6 +96,29 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         self._settings = settings
         self._workflow_service = WorkflowService()
 
+    def _should_auto_start_workflow(self) -> bool:
+        try:
+            definition = self._workflow_service.get_current()
+        except Exception as exc:  # pragma: no cover - devrait rester exceptionnel
+            logger.exception(
+                "Impossible de vérifier l'option de démarrage automatique du workflow.",
+                exc_info=exc,
+            )
+            return False
+
+        for step in definition.steps:
+            if getattr(step, "kind", None) != "start":
+                continue
+            if not getattr(step, "is_enabled", True):
+                continue
+            params = step.parameters if isinstance(step.parameters, Mapping) else {}
+            raw_value = params.get("auto_start")
+            if raw_value is None:
+                raw_value = params.get("start_automatically")
+            return _coerce_auto_start(raw_value)
+
+        return False
+
     async def respond(
         self,
         thread: ThreadMetadata,
@@ -121,12 +144,17 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         user_text = _resolve_user_input_text(input_user_message, history.data)
         if not user_text:
-            yield ErrorEvent(
-                code=ErrorCode.STREAM_ERROR,
-                message="Impossible de déterminer le message utilisateur à traiter.",
-                allow_retry=False,
+            if not self._should_auto_start_workflow():
+                yield ErrorEvent(
+                    code=ErrorCode.STREAM_ERROR,
+                    message="Impossible de déterminer le message utilisateur à traiter.",
+                    allow_retry=False,
+                )
+                return
+            logger.info(
+                "Démarrage automatique du workflow pour le fil %s", thread.id
             )
-            return
+            user_text = ""
 
         agent_context = AgentContext(
             thread=thread,
@@ -323,6 +351,27 @@ def _resolve_user_input_text(
                 return candidate
 
     return ""
+
+
+_TRUTHY_STRINGS = {"true", "1", "yes", "on"}
+_FALSY_STRINGS = {"false", "0", "no", "off"}
+
+
+def _coerce_auto_start(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if not normalized:
+            return False
+        if normalized in _TRUTHY_STRINGS:
+            return True
+        if normalized in _FALSY_STRINGS:
+            return False
+        return False
+    if isinstance(value, (int, float)):
+        return value != 0
+    return False
 
 
 def _log_background_exceptions(task: asyncio.Task[None]) -> None:
@@ -1929,20 +1978,23 @@ async def run_workflow(
 ) -> WorkflowRunSummary:
     workflow_payload = workflow_input.model_dump()
     steps: list[WorkflowStepSummary] = []
-    conversation_history: list[TResponseInputItem] = [
-        {
-            "role": "user",
-            "content": [
-                {
-                    "type": "input_text",
-                    "text": workflow_payload["input_as_text"],
-                }
-            ],
-        }
-    ]
+    initial_user_text = workflow_payload["input_as_text"]
+    conversation_history: list[TResponseInputItem] = []
+    if initial_user_text.strip():
+        conversation_history.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": initial_user_text,
+                    }
+                ],
+            }
+        )
     state: dict[str, Any] = {
         "has_all_details": False,
-        "infos_manquantes": workflow_payload["input_as_text"],
+        "infos_manquantes": initial_user_text,
         "should_finalize": False,
     }
     final_output: dict[str, Any] | None = None

@@ -59,6 +59,58 @@ export const getEndMessage = (parameters: AgentParameters | null | undefined): s
   return typeof fallback === "string" ? fallback : "";
 };
 
+const truthyStrings = new Set(["true", "1", "yes", "on"]);
+const falsyStrings = new Set(["false", "0", "no", "off"]);
+
+const coerceBoolean = (value: unknown): boolean => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    if (truthyStrings.has(normalized)) {
+      return true;
+    }
+    if (falsyStrings.has(normalized)) {
+      return false;
+    }
+    return false;
+  }
+  if (typeof value === "number") {
+    return value !== 0;
+  }
+  return false;
+};
+
+export const getStartAutoRun = (
+  parameters: AgentParameters | null | undefined,
+): boolean => {
+  if (!parameters) {
+    return false;
+  }
+  const rawValue =
+    (parameters as Record<string, unknown>).auto_start ??
+    (parameters as Record<string, unknown>).start_automatically;
+  return coerceBoolean(rawValue);
+};
+
+export const setStartAutoRun = (
+  parameters: AgentParameters,
+  autoRun: boolean,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  delete (next as Record<string, unknown>).start_automatically;
+  if (autoRun) {
+    (next as Record<string, unknown>).auto_start = true;
+  } else {
+    delete (next as Record<string, unknown>).auto_start;
+  }
+  return stripEmpty(next as Record<string, unknown>);
+};
+
 export const setEndMessage = (
   parameters: AgentParameters,
   message: string,
