@@ -29,10 +29,41 @@ describe("widgetPreview helpers", () => {
     ],
   };
 
+  it("prefers button identifiers derived from keys", () => {
+    const buttonWidget: Record<string, unknown> = {
+      type: "Card",
+      children: [
+        {
+          type: "Row",
+          children: [
+            {
+              type: "Button",
+              key: "opt1",
+              label: "Option 1",
+              iconStart: "sparkle",
+            },
+            {
+              type: "Button",
+              onClickAction: { type: "menu.select", payload: { id: "opt2" } },
+              label: "Option 2",
+              iconStart: "bolt",
+            },
+          ],
+        },
+      ],
+    };
+    const bindings = collectWidgetBindings(buttonWidget);
+    expect(Object.keys(bindings).sort()).toEqual(["opt1", "opt1.icon", "opt2", "opt2.icon"]);
+    expect(bindings.opt1.sample).toBe("Option 1");
+    expect(bindings["opt1.icon"].sample).toBe("sparkle");
+    expect(bindings.opt2.sample).toBe("Option 2");
+    expect(bindings["opt2.icon"].sample).toBe("bolt");
+  });
+
   it("collects bindings from component ids and editable fields", () => {
     const bindings = collectWidgetBindings(definition);
     expect(Object.keys(bindings).sort()).toEqual([
-      "children.3.value",
+      "caption",
       "description",
       "item_a",
       "item_b",
@@ -48,7 +79,7 @@ describe("widgetPreview helpers", () => {
       description: "**Résumé**",
       item_a: ["A", "B"],
       item_b: ["A", "B"],
-      "children.3.value": "Détails",
+      caption: "Détails",
     });
   });
 
@@ -65,12 +96,16 @@ describe("widgetPreview helpers", () => {
   });
 
   it("applies custom values to the widget definition", () => {
-    const updated = applyWidgetInputValues(definition, {
-      title: "Nouveau titre",
-      description: "Nouvelle description",
-      item_a: ["X", "Y"],
-      "children.3.value": "Note",
-    }, collectWidgetBindings(definition));
+    const updated = applyWidgetInputValues(
+      definition,
+      {
+        title: "Nouveau titre",
+        description: "Nouvelle description",
+        item_a: ["X", "Y"],
+        caption: "Note",
+      },
+      collectWidgetBindings(definition),
+    );
     const children = updated.children as Array<Record<string, unknown>>;
     expect(children[0].value).toBe("Nouveau titre");
     expect(children[1].value).toBe("Nouvelle description");

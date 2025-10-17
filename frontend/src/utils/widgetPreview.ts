@@ -19,6 +19,9 @@ const valueKeys = new Set<keyof Widgets.WidgetRoot | string>([
   "content",
   "heading",
   "subtitle",
+  "icon",
+  "iconStart",
+  "iconEnd",
 ]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -50,6 +53,85 @@ const toSampleValue = (value: unknown): string | string[] | null => {
 
 const getPathKey = (path: Array<string | number>): string => JSON.stringify(path);
 
+const formatComponentIdentifier = (
+  node: Record<string, unknown>,
+  valueKey: string,
+  bindings: WidgetBindingMap,
+): string | null => {
+  const componentType = typeof node.type === "string" ? node.type.trim() : null;
+
+  const ensureUnique = (base: string): string => {
+    if (!bindings[base]) {
+      return base;
+    }
+    let index = 2;
+    let candidate = `${base}_${index}`;
+    while (bindings[candidate]) {
+      index += 1;
+      candidate = `${base}_${index}`;
+    }
+    return candidate;
+  };
+
+  const fromButton = (): string | null => {
+    if (!componentType || componentType.toLowerCase() !== "button") {
+      return null;
+    }
+    const keyAttr = typeof node.key === "string" ? node.key.trim() : null;
+    let base = keyAttr && keyAttr.length > 0 ? keyAttr : null;
+    if (!base) {
+      const action = node.onClickAction;
+      if (isRecord(action)) {
+        const payload = action.payload;
+        if (isRecord(payload)) {
+          const candidate = typeof payload.id === "string" ? payload.id.trim() : null;
+          if (candidate) {
+            base = candidate;
+          }
+        }
+      }
+    }
+    if (!base) {
+      return null;
+    }
+    if (["label", "text", "title", "value"].includes(valueKey)) {
+      return ensureUnique(base);
+    }
+    if (["icon", "iconStart", "iconEnd"].includes(valueKey)) {
+      const suffix = valueKey === "iconEnd" ? "icon_end" : "icon";
+      return ensureUnique(`${base}.${suffix}`);
+    }
+    return ensureUnique(`${base}.${valueKey}`);
+  };
+
+  const buttonIdentifier = fromButton();
+  if (buttonIdentifier) {
+    return buttonIdentifier;
+  }
+
+  if (componentType) {
+    const aliasMap: Record<string, string> = {
+      title: "title",
+      subtitle: "subtitle",
+      heading: "heading",
+      text: "text",
+      caption: "caption",
+      markdown: "markdown",
+      badge: "badge",
+    };
+    const alias = aliasMap[componentType.toLowerCase()];
+    if (alias && ["value", "text", "title", "label", "content", "body"].includes(valueKey)) {
+      return ensureUnique(alias);
+    }
+  }
+
+  if (typeof node.name === "string" && node.name.trim().length > 0) {
+    return ensureUnique(node.name.trim());
+  }
+
+  return null;
+};
+
 export const collectWidgetBindings = (definition: unknown): WidgetBindingMap => {
   const bindings: WidgetBindingMap = {};
   const manualPathKeys = new Set<string>();
@@ -58,7 +140,7 @@ export const collectWidgetBindings = (definition: unknown): WidgetBindingMap => 
     identifier: unknown,
     path: Array<string | number>,
     node: Record<string, unknown>,
-    { isManual }: { isManual: boolean },
+    { isManual, valueKey }: { isManual: boolean; valueKey?: string },
   ) => {
     if (typeof identifier !== "string") {
       return;
@@ -76,7 +158,19 @@ export const collectWidgetBindings = (definition: unknown): WidgetBindingMap => 
     }
     const componentType = typeof node.type === "string" ? node.type : null;
     let sample: string | string[] | null = null;
-    for (const key of ["value", "text", "src", "url", "href"]) {
+    const preferredKeys = valueKey ? [valueKey] : [];
+    for (const key of [
+      ...preferredKeys,
+      "value",
+      "text",
+      "label",
+      "src",
+      "url",
+      "href",
+      "icon",
+      "iconStart",
+      "iconEnd",
+    ]) {
       if (!(key in node)) {
         continue;
       }
@@ -145,23 +239,24 @@ export const collectWidgetBindings = (definition: unknown): WidgetBindingMap => 
       const identifierParts = [...path, key]
         .map((part) => String(part))
         .filter((part) => part.length > 0);
-      if (identifierParts.length === 0) {
+      const syntheticIdentifier = identifierParts.length === 0 ? null : identifierParts.join(".");
+      const candidateIdentifier = formatComponentIdentifier(node, key, bindings) ?? syntheticIdentifier;
+      if (!candidateIdentifier) {
         continue;
       }
-      const syntheticIdentifier = identifierParts.join(".");
       if (
         typeof rawValue === "string" ||
         typeof rawValue === "number" ||
         typeof rawValue === "boolean"
       ) {
-        register(syntheticIdentifier, path, node, { isManual: false });
+        register(candidateIdentifier, path, node, { isManual: false, valueKey: key });
       } else if (Array.isArray(rawValue)) {
         const hasSimpleValue = rawValue.some(
           (item) =>
             typeof item === "string" || typeof item === "number" || typeof item === "boolean",
         );
         if (hasSimpleValue) {
-          register(syntheticIdentifier, path, node, { isManual: false });
+          register(candidateIdentifier, path, node, { isManual: false, valueKey: key });
         }
       }
     }
