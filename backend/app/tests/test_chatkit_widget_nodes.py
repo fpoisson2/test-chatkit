@@ -212,6 +212,18 @@ def test_watch_node_emits_notice_event(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "status" in message
     assert "details" in message
 
+    assistant_messages = [
+        event
+        for event in events
+        if isinstance(event, ThreadItemDoneEvent)
+        and isinstance(event.item, AssistantMessageItem)
+        and any("Bloc watch" in part.text for part in event.item.content)
+    ]
+    assert assistant_messages, "Le bloc watch devrait diffuser un message assistant."
+    watch_message_text = assistant_messages[0].item.content[0].text
+    assert "Bloc watch" in watch_message_text
+    assert "status" in watch_message_text
+
 
 def test_resolve_watch_payload_prefers_structured_output() -> None:
     steps = [
