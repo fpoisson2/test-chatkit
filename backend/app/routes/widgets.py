@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_session
 from ..dependencies import get_current_user, require_admin
-from ..models import User, WidgetTemplate
+from ..models import User
 from ..schemas import (
     WidgetPreviewRequest,
     WidgetPreviewResponse,
@@ -14,13 +14,17 @@ from ..schemas import (
     WidgetTemplateSummaryResponse,
     WidgetTemplateUpdateRequest,
 )
-from ..widgets import WidgetLibraryService, WidgetValidationError
+from ..widgets import (
+    WidgetLibraryService,
+    WidgetTemplateEntry,
+    WidgetValidationError,
+)
 
 router = APIRouter()
 
 
-def _serialize_widget(widget: WidgetTemplate) -> WidgetTemplateResponse:
-    return WidgetTemplateResponse.model_validate(widget)
+def _serialize_widget(widget: WidgetTemplateEntry) -> WidgetTemplateResponse:
+    return WidgetTemplateResponse.model_validate(widget.as_response())
 
 
 def _handle_widget_error(exc: Exception) -> None:
@@ -55,7 +59,10 @@ async def list_workflow_widgets(
 ) -> list[WidgetTemplateSummaryResponse]:
     service = WidgetLibraryService(session)
     widgets = service.list_widgets()
-    return [WidgetTemplateSummaryResponse.model_validate(widget) for widget in widgets]
+    return [
+        WidgetTemplateSummaryResponse.model_validate(widget.as_summary())
+        for widget in widgets
+    ]
 
 
 @router.post(
@@ -79,7 +86,6 @@ async def create_widget(
     except Exception as exc:  # pragma: no cover - mutualisé via _handle_widget_error
         _handle_widget_error(exc)
     session.commit()
-    session.refresh(widget)
     return _serialize_widget(widget)
 
 
@@ -120,7 +126,6 @@ async def update_widget(
     except Exception as exc:  # pragma: no cover - mutualisé via _handle_widget_error
         _handle_widget_error(exc)
     session.commit()
-    session.refresh(widget)
     return _serialize_widget(widget)
 
 
