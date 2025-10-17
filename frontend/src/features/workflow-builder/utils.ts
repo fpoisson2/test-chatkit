@@ -185,3 +185,33 @@ export const formatDateTime = (value: string | null | undefined): string => {
     timeStyle: "short",
   });
 };
+
+export type SelectionState = { nodeId: string | null; edgeId: string | null };
+
+export const resolveSelectionAfterLoad = ({
+  background,
+  previousNodeId,
+  previousEdgeId,
+  nodes,
+  edges,
+}: {
+  background: boolean;
+  previousNodeId: string | null;
+  previousEdgeId: string | null;
+  nodes: Array<{ id: string }>;
+  edges: Array<{ id: string }>;
+}): SelectionState => {
+  if (!background) {
+    return { nodeId: null, edgeId: null };
+  }
+
+  if (previousNodeId && nodes.some((node) => node.id === previousNodeId)) {
+    return { nodeId: previousNodeId, edgeId: null };
+  }
+
+  if (previousEdgeId && edges.some((edge) => edge.id === previousEdgeId)) {
+    return { nodeId: null, edgeId: previousEdgeId };
+  }
+
+  return { nodeId: null, edgeId: null };
+};
