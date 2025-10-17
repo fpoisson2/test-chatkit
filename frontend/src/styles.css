@@ -12,6 +12,7 @@
   --sidebar-border: #cbd5f5;
   --primary-color: #2563eb;
   --primary-hover: #1d4ed8;
+  --form-field-background: var(--color-surface-subtle);
   --danger-color: #dc2626;
   --danger-hover: #b91c1c;
   --shadow-soft: 0 20px 45px rgba(15, 23, 42, 0.18);
@@ -39,6 +40,7 @@
     --sidebar-border: #1e293b;
     --primary-color: #38bdf8;
     --primary-hover: #0ea5e9;
+    --form-field-background: var(--color-surface-subtle);
     --danger-color: #ef4444;
     --danger-hover: #dc2626;
     --shadow-soft: 0 20px 45px rgba(2, 6, 23, 0.65);
@@ -1100,7 +1102,7 @@ button {
   border: 1px solid rgba(148, 163, 184, 0.5);
   font-size: 1rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  background-color: rgba(255, 255, 255, 0.95);
+  background-color: var(--form-field-background);
 }
 
 .input:focus {
@@ -1118,7 +1120,7 @@ button {
   font-family: "JetBrains Mono", "Fira Code", "SFMono-Regular", ui-monospace, monospace;
   resize: vertical;
   min-height: 120px;
-  background-color: rgba(255, 255, 255, 0.95);
+  background-color: var(--form-field-background);
 }
 
 .textarea:focus {
@@ -2602,7 +2604,7 @@ button {
   border: 1px solid var(--color-border-subtle);
   padding: 0.55rem 0.75rem;
   font-size: 0.9rem;
-  background: rgba(15, 23, 42, 0.03);
+  background: var(--form-field-background);
 }
 
 .widget-preview__control input[disabled],
