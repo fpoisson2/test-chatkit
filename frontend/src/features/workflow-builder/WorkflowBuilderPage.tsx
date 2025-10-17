@@ -2804,6 +2804,7 @@ const WorkflowBuilderPage = () => {
       role={isMobileLayout ? "dialog" : undefined}
       aria-modal={isMobileLayout ? true : undefined}
       onClick={isMobileLayout ? (event) => event.stopPropagation() : undefined}
+      style={!isMobileLayout ? floatingPanelStyle : undefined}
     >
       <header className={styles.propertiesPanelHeader}>
         <div className={styles.propertiesPanelHeaderMeta}>
@@ -2897,6 +2898,16 @@ const WorkflowBuilderPage = () => {
     const baseStyle = getHeaderContainerStyle(isMobileLayout);
     return { ...baseStyle, position: "absolute", top: 0, left: 0, right: 0 };
   }, [isMobileLayout]);
+
+  const floatingPanelStyle = useMemo<CSSProperties | undefined>(() => {
+    if (isMobileLayout) {
+      return undefined;
+    }
+    return {
+      top: `calc(${headerOverlayOffset} + 1.5rem)`,
+      maxHeight: `calc(100% - (${headerOverlayOffset} + 3rem))`,
+    };
+  }, [headerOverlayOffset, isMobileLayout]);
 
   const workspaceWrapperStyle = useMemo<CSSProperties>(() => {
     if (isMobileLayout) {
@@ -3084,6 +3095,7 @@ const WorkflowBuilderPage = () => {
               id={blockLibraryId}
               aria-label="Bibliothèque de blocs"
               className={styles.blockLibrary}
+              style={floatingPanelStyle}
             >
               {renderBlockLibraryContent()}
             </aside>
