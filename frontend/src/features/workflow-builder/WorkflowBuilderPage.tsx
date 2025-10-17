@@ -219,6 +219,7 @@ const WorkflowBuilderPage = () => {
   const [isDeploying, setIsDeploying] = useState(false);
   const autoSaveTimeoutRef = useRef<number | null>(null);
   const draftVersionIdRef = useRef<number | null>(null);
+  const draftVersionByWorkflowRef = useRef<Map<number, number>>(new Map());
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const isHydratingRef = useRef(false);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
@@ -422,25 +423,45 @@ const WorkflowBuilderPage = () => {
   );
 
   useEffect(() => {
+    if (selectedWorkflowId == null) {
+      draftVersionIdRef.current = null;
+      return;
+    }
+
     const draft = findDraftVersionSummary(versions);
     if (draft) {
       draftVersionIdRef.current = draft.id;
+      draftVersionByWorkflowRef.current.set(selectedWorkflowId, draft.id);
       return;
     }
 
-    const knownDraftId = draftVersionIdRef.current;
-    if (knownDraftId != null) {
-      const draftStillListed = versions.some((version) => version.id === knownDraftId);
-      if (!draftStillListed) {
-        draftVersionIdRef.current = null;
+    const rememberedId = draftVersionByWorkflowRef.current.get(selectedWorkflowId) ?? null;
+    if (rememberedId != null) {
+      const stillListed = versions.some((version) => version.id === rememberedId);
+      if (stillListed) {
+        draftVersionIdRef.current = rememberedId;
+        return;
       }
+    }
+
+    const currentDraftId = draftVersionIdRef.current;
+    if (currentDraftId != null) {
+      const stillListed = versions.some((version) => version.id === currentDraftId);
+      if (stillListed) {
+        return;
+      }
+    }
+
+    const fallbackDraft = versions.find((version) => !version.is_active);
+    if (fallbackDraft) {
+      draftVersionIdRef.current = fallbackDraft.id;
+      draftVersionByWorkflowRef.current.set(selectedWorkflowId, fallbackDraft.id);
       return;
     }
 
-    if (versions.length === 0 || versions.every((version) => version.is_active)) {
-      draftVersionIdRef.current = null;
-    }
-  }, [versions]);
+    draftVersionIdRef.current = null;
+    draftVersionByWorkflowRef.current.delete(selectedWorkflowId);
+  }, [selectedWorkflowId, versions]);
 
   const isReasoningModel = useCallback(
     (model: string): boolean => {
@@ -2078,6 +2099,9 @@ const WorkflowBuilderPage = () => {
         }
 
         draftVersionIdRef.current = ensuredVersionId;
+        if (selectedWorkflowId != null) {
+          draftVersionByWorkflowRef.current.set(selectedWorkflowId, ensuredVersionId);
+        }
 
         if (currentWorkflow?.is_chatkit_default) {
           const updateCandidates = makeApiEndpointCandidates(
