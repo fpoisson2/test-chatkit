@@ -2007,12 +2007,6 @@ const WorkflowBuilderPage = () => {
     const draftId = draftVersionIdRef.current;
 
     if (!draftId) {
-      if (!selectedVersionSummary || !selectedVersionSummary.is_active) {
-        setSaveState("error");
-        setSaveMessage("Créez un brouillon à partir de la version publiée avant d'enregistrer.");
-        return;
-      }
-
       if (isCreatingDraftRef.current) {
         return;
       }
