@@ -784,9 +784,12 @@ const WorkflowBuilderPage = () => {
     async (
       workflowId: number,
       versionId: number,
-      options: { preserveViewport?: boolean } = {},
+      options: { preserveViewport?: boolean; background?: boolean } = {},
     ): Promise<boolean> => {
-      setLoading(true);
+      const { preserveViewport = false, background = false } = options;
+      if (!background) {
+        setLoading(true);
+      }
       setLoadError(null);
       const candidates = makeApiEndpointCandidates(
         backendUrl,
@@ -863,8 +866,7 @@ const WorkflowBuilderPage = () => {
           const restoredViewport = viewportKey
             ? viewportMemoryRef.current.get(viewportKey) ?? null
             : null;
-          const shouldPreserveViewport = options.preserveViewport ?? false;
-          if (shouldPreserveViewport) {
+          if (preserveViewport) {
             if (viewportKey) {
               const currentViewport =
                 reactFlowInstanceRef.current?.getViewport() ?? viewportRef.current;
@@ -885,7 +887,9 @@ const WorkflowBuilderPage = () => {
           setSelectedEdgeId(null);
           setSaveState("idle");
           setSaveMessage(null);
-          setLoading(false);
+          if (!background) {
+            setLoading(false);
+          }
           return true;
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") {
@@ -897,7 +901,9 @@ const WorkflowBuilderPage = () => {
       if (lastError) {
         setLoadError(lastError.message);
       }
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
       return false;
     },
     [authHeader, restoreViewport, setEdges, setHasPendingChanges, setNodes],
@@ -907,8 +913,9 @@ const WorkflowBuilderPage = () => {
     async (
       workflowId: number,
       preferredVersionId: number | null = null,
-      options: { preserveViewport?: boolean } = {},
+      options: { preserveViewport?: boolean; background?: boolean } = {},
     ): Promise<boolean> => {
+      const { preserveViewport = false, background = false } = options;
       setLoadError(null);
       const candidates = makeApiEndpointCandidates(
         backendUrl,
@@ -985,7 +992,9 @@ const WorkflowBuilderPage = () => {
             isHydratingRef.current = true;
             lastSavedSnapshotRef.current = JSON.stringify(buildGraphPayloadFrom([], []));
             setHasPendingChanges(false);
-            setLoading(false);
+            if (!background) {
+              setLoading(false);
+            }
             const emptyViewportKey = viewportKeyFor(workflowId, null);
             viewportKeyRef.current = emptyViewportKey;
             if (emptyViewportKey) {
@@ -1014,16 +1023,18 @@ const WorkflowBuilderPage = () => {
               nextVersionId = active?.id ?? orderedVersions[0]?.id ?? null;
             }
           }
-          const preserveViewport = options.preserveViewport ?? false;
           const shouldPreserveViewport =
             preserveViewport && selectedVersionId != null && nextVersionId === selectedVersionId;
           setSelectedVersionId(nextVersionId);
           if (nextVersionId != null) {
             await loadVersionDetail(workflowId, nextVersionId, {
               preserveViewport: shouldPreserveViewport,
+              background: shouldPreserveViewport && background,
             });
           } else {
-            setLoading(false);
+            if (!background) {
+              setLoading(false);
+            }
           }
           return true;
         } catch (error) {
@@ -1036,7 +1047,9 @@ const WorkflowBuilderPage = () => {
       if (lastError) {
         setLoadError(lastError.message);
       }
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
       return false;
     },
     [
@@ -2293,7 +2306,10 @@ const WorkflowBuilderPage = () => {
           name: DRAFT_DISPLAY_NAME,
         };
         draftVersionSummaryRef.current = summary;
-        await loadVersions(selectedWorkflowId, summary.id, { preserveViewport: true });
+        await loadVersions(selectedWorkflowId, summary.id, {
+          preserveViewport: true,
+          background: true,
+        });
         lastSavedSnapshotRef.current = graphSnapshot;
         setHasPendingChanges(false);
         setSaveState("saved");
