@@ -125,16 +125,22 @@
 
 @media (max-width: 768px) {
   .header {
-    align-items: flex-start;
+    align-items: center;
+    flex-wrap: nowrap;
   }
 
   .headerAside {
-    width: 100%;
-    justify-content: flex-start;
+    width: auto;
+    margin-left: auto;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
   }
 
   .headerActions {
-    width: 100%;
-    justify-content: flex-start;
+    width: auto;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
+    gap: 0.5rem;
   }
 }

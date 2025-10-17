@@ -35,20 +35,7 @@ export const WidgetTemplateGallery = ({
     return (
       <div className="widget-gallery" role="list">
         {widgets.map((widget) => (
-          <article
-            key={widget.slug}
-            className="widget-gallery__item"
-            role="listitem"
-            tabIndex={0}
-            aria-label={`Modifier le widget ${widget.slug}`}
-            onClick={() => onEdit(widget)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onEdit(widget);
-              }
-            }}
-          >
+          <article key={widget.slug} className="widget-gallery__item" role="listitem">
             <div className="widget-gallery__preview">
               <div className="widget-gallery__preview-canvas" aria-hidden={true}>
                 <WidgetPreview definition={widget.definition} />
