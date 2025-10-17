@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime
 
@@ -213,4 +214,55 @@ async def test_action_falls_back_to_sender_widget(monkeypatch: pytest.MonkeyPatc
     updated_widget = events[0].update.widget
     assert updated_widget.children[0].value == "Choix utilisateur"
     assert store.saved and not store.added
+
+
+@pytest.mark.asyncio
+async def test_wait_for_widget_action_released_by_signal() -> None:
+    settings = Settings(
+        allowed_origins=["*"],
+        openai_api_key="sk-test",
+        chatkit_workflow_id=None,
+        chatkit_api_base="https://api.openai.com",
+        chatkit_agent_model="gpt-5",
+        chatkit_agent_instructions="Assistant",
+        chatkit_realtime_model="gpt-realtime",
+        chatkit_realtime_instructions="Assistant vocal",
+        chatkit_realtime_voice="verse",
+        database_url="sqlite://",
+        auth_secret_key="secret",
+        access_token_expire_minutes=60,
+        admin_email=None,
+        admin_password=None,
+        database_connect_retries=1,
+        database_connect_delay=0.1,
+    )
+    server = DemoChatKitServer(settings)
+
+    thread = ThreadMetadata(
+        id="thread-1",
+        created_at=datetime.now(),
+        status=ActiveStatus(),
+        metadata={},
+    )
+
+    wait_task = asyncio.create_task(
+        server._wait_for_widget_action(
+            thread=thread,
+            step_slug="widget-step",
+            widget_item_id="widget-1",
+        )
+    )
+
+    await asyncio.sleep(0)
+    assert not wait_task.done()
+
+    released = await server._signal_widget_action(
+        thread.id,
+        widget_item_id="widget-1",
+        widget_slug="widget-step",
+    )
+    assert released
+
+    await asyncio.wait_for(wait_task, 0.5)
+    assert wait_task.done()
 

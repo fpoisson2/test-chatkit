@@ -129,6 +129,13 @@ class AutoStartConfiguration:
         return cls(False, "", "")
 
 
+@dataclass
+class _WidgetActionWaiter:
+    slug: str | None
+    widget_item_id: str | None
+    event: asyncio.Event
+
+
 class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     """Serveur ChatKit piloté par un workflow local."""
 
@@ -136,6 +143,78 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         super().__init__(PostgresChatKitStore(SessionLocal))
         self._settings = settings
         self._workflow_service = WorkflowService()
+        self._widget_action_waiters: dict[str, _WidgetActionWaiter] = {}
+        self._widget_waiters_lock = asyncio.Lock()
+
+    async def _wait_for_widget_action(
+        self,
+        *,
+        thread: ThreadMetadata,
+        step_slug: str,
+        widget_item_id: str | None,
+    ) -> None:
+        waiter = _WidgetActionWaiter(
+            slug=step_slug,
+            widget_item_id=widget_item_id,
+            event=asyncio.Event(),
+        )
+        async with self._widget_waiters_lock:
+            self._widget_action_waiters[thread.id] = waiter
+
+        logger.info(
+            "En attente d'une action utilisateur pour le widget %s (item=%s)",
+            step_slug,
+            widget_item_id,
+        )
+
+        try:
+            await waiter.event.wait()
+        finally:
+            async with self._widget_waiters_lock:
+                existing = self._widget_action_waiters.get(thread.id)
+                if existing is waiter:
+                    self._widget_action_waiters.pop(thread.id, None)
+
+        logger.info(
+            "Action utilisateur détectée pour le widget %s, poursuite du workflow.",
+            step_slug,
+        )
+
+    async def _signal_widget_action(
+        self,
+        thread_id: str,
+        *,
+        widget_item_id: str | None,
+        widget_slug: str | None,
+    ) -> bool:
+        async with self._widget_waiters_lock:
+            waiter = self._widget_action_waiters.get(thread_id)
+            if waiter is None:
+                return False
+
+            id_matches = (
+                waiter.widget_item_id is None
+                or widget_item_id is None
+                or waiter.widget_item_id == widget_item_id
+            )
+            slug_matches = (
+                waiter.slug is None
+                or widget_slug is None
+                or waiter.slug == widget_slug
+            )
+
+            if not id_matches and not slug_matches:
+                logger.debug(
+                    "Action reçue pour le widget %s (item=%s) alors que %s est attendu (item=%s).",
+                    widget_slug,
+                    widget_item_id,
+                    waiter.slug,
+                    waiter.widget_item_id,
+                )
+                return False
+
+            waiter.event.set()
+            return True
 
     def _resolve_auto_start_configuration(self) -> AutoStartConfiguration:
         try:
@@ -402,6 +481,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     yield None
                 return
 
+            await self._signal_widget_action(
+                thread.id,
+                widget_item_id=updated_item.id,
+                widget_slug=slug,
+            )
+
             yield ThreadItemUpdated(
                 item_id=updated_item.id,
                 update=WidgetRootUpdated(widget=widget_root),
@@ -431,6 +516,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 yield None
             return
 
+        await self._signal_widget_action(
+            thread.id,
+            widget_item_id=new_item.id,
+            widget_slug=slug,
+        )
+
         yield ThreadItemDoneEvent(item=new_item)
 
     async def _execute_workflow(
@@ -444,6 +535,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         streamed_step_keys: set[str] = set()
         step_progress_text: dict[str, str] = {}
         step_progress_headers: dict[str, str] = {}
+        most_recent_widget_item_id: str | None = None
 
         try:
             logger.info("Démarrage du workflow pour le fil %s", thread.id)
@@ -461,6 +553,15 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     await on_stream_event(ProgressUpdateEvent(text=""))
 
             async def on_stream_event(event: ThreadStreamEvent) -> None:
+                nonlocal most_recent_widget_item_id
+                if isinstance(event, ThreadItemDoneEvent) and isinstance(
+                    getattr(event, "item", None), WidgetItem
+                ):
+                    most_recent_widget_item_id = event.item.id
+                elif isinstance(event, ThreadItemUpdated) and isinstance(
+                    event.update, WidgetRootUpdated
+                ):
+                    most_recent_widget_item_id = event.item_id
                 await event_queue.put(event)
 
             async def on_step_stream(
@@ -478,12 +579,23 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 if not update.text.strip():
                     return
 
+            async def on_widget_step(
+                step: WorkflowStep,
+                config: "_ResponseWidgetConfig",
+            ) -> None:
+                await self._wait_for_widget_action(
+                    thread=thread,
+                    step_slug=step.slug,
+                    widget_item_id=most_recent_widget_item_id,
+                )
+
             summary = await run_workflow(
                 workflow_input,
                 agent_context=agent_context,
                 on_step=on_step,
                 on_step_stream=on_step_stream,
                 on_stream_event=on_stream_event,
+                on_widget_step=on_widget_step,
                 workflow_service=self._workflow_service,
             )
 
@@ -1866,8 +1978,23 @@ class _WidgetBinding:
 class _ResponseWidgetConfig:
     slug: str
     variables: dict[str, str]
+    await_action: bool | None = None
     output_model: type[BaseModel] | None = None
     bindings: dict[str, _WidgetBinding] = field(default_factory=dict)
+
+
+def _coerce_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "on", "oui"}:
+            return True
+        if normalized in {"false", "0", "no", "off", "non"}:
+            return False
+    return None
 
 
 def _parse_response_widget_config(
@@ -1906,7 +2033,17 @@ def _parse_response_widget_config(
             if trimmed_key and trimmed_expression:
                 variables[trimmed_key] = trimmed_expression
 
-    return _ResponseWidgetConfig(slug=slug, variables=variables)
+    await_action_value = (
+        _coerce_bool(candidate.get("await_action"))
+        if "await_action" in candidate
+        else _coerce_bool(candidate.get("wait_for_action"))
+    )
+
+    return _ResponseWidgetConfig(
+        slug=slug,
+        variables=variables,
+        await_action=await_action_value,
+    )
 
 
 def _sanitize_widget_field_name(candidate: str, *, fallback: str = "value") -> str:
@@ -2466,6 +2603,17 @@ def _ensure_widget_output_model(
     return replace(config, output_model=model)
 
 
+def _should_wait_for_widget_action(
+    step_kind: str,
+    config: _ResponseWidgetConfig | None,
+) -> bool:
+    if config is None:
+        return False
+    if config.await_action is not None:
+        return config.await_action
+    return step_kind == "widget"
+
+
 class WorkflowExecutionError(RuntimeError):
     def __init__(
         self,
@@ -2524,6 +2672,7 @@ async def run_workflow(
     on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None = None,
     on_step_stream: Callable[[WorkflowStepStreamUpdate], Awaitable[None]] | None = None,
     on_stream_event: Callable[[ThreadStreamEvent], Awaitable[None]] | None = None,
+    on_widget_step: Callable[[WorkflowStep, _ResponseWidgetConfig], Awaitable[None]] | None = None,
     workflow_service: WorkflowService | None = None,
 ) -> WorkflowRunSummary:
     workflow_payload = workflow_input.model_dump()
@@ -3675,6 +3824,11 @@ async def run_workflow(
                     title,
                     {"widget": widget_config.slug},
                 )
+                if (
+                    on_widget_step is not None
+                    and _should_wait_for_widget_action(current_node.kind, widget_config)
+                ):
+                    await on_widget_step(current_node, widget_config)
             transition = _next_edge(current_slug)
             if transition is None:
                 if not agent_steps_ordered:
@@ -3830,6 +3984,11 @@ async def run_workflow(
                 step_title=title,
                 step_context=last_step_context,
             )
+            if (
+                on_widget_step is not None
+                and _should_wait_for_widget_action(current_node.kind, widget_config)
+            ):
+                await on_widget_step(current_node, widget_config)
 
         transition = _next_edge(current_slug)
         if agent_key == "r_dacteur":
