@@ -3731,18 +3731,41 @@ async def run_workflow(
                 return None
         return value
 
-    def _evaluate_condition_node(step: WorkflowStep) -> bool:
+    def _stringify_branch_value(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)):
+            return str(value)
+        if isinstance(value, str):
+            trimmed = value.strip()
+            return trimmed or None
+        return None
+
+    def _evaluate_condition_node(step: WorkflowStep) -> str | None:
         params = step.parameters or {}
-        mode = str(params.get("mode", "truthy")).lower()
+        mode = str(params.get("mode", "truthy")).strip().lower()
         path = str(params.get("path", "")).strip()
         value = _resolve_state_path(path) if path else None
-        if mode == "equals":
-            return value == params.get("value")
-        if mode == "not_equals":
-            return value != params.get("value")
+
+        if mode == "value":
+            return _stringify_branch_value(value)
+
+        if mode in {"equals", "not_equals"}:
+            expected = _stringify_branch_value(params.get("value"))
+            candidate = _stringify_branch_value(value)
+            if expected is None:
+                return "false" if mode == "equals" else "true"
+            comparison = (candidate or "").lower() == expected.lower()
+            if mode == "equals":
+                return "true" if comparison else "false"
+            return "false" if comparison else "true"
+
         if mode == "falsy":
-            return not bool(value)
-        return bool(value)
+            return "true" if not bool(value) else "false"
+
+        return "true" if bool(value) else "false"
 
     def _next_edge(source_slug: str, branch: str | None = None) -> WorkflowTransition | None:
         candidates = edges_by_source.get(source_slug, [])
@@ -3798,14 +3821,15 @@ async def run_workflow(
             continue
 
         if current_node.kind == "condition":
-            branch = "true" if _evaluate_condition_node(current_node) else "false"
+            branch = _evaluate_condition_node(current_node)
             transition = _next_edge(current_slug, branch)
             if transition is None:
+                branch_label = branch if branch is not None else "par défaut"
                 raise WorkflowExecutionError(
                     "configuration",
                     "Configuration du workflow invalide",
                     RuntimeError(
-                        f"Transition manquante pour la branche {branch} du nœud {current_slug}"
+                        f"Transition manquante pour la branche {branch_label} du nœud {current_slug}"
                     ),
                     list(steps),
                 )

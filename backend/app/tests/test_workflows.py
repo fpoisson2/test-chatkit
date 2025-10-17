@@ -522,7 +522,106 @@ def test_update_condition_requires_branches() -> None:
         json=payload,
     )
     assert response.status_code == 400
-    assert "conditionnel" in response.json()["detail"].lower()
+    assert "deux sorties" in response.json()["detail"].lower()
+
+
+def test_update_condition_accepts_custom_branches() -> None:
+    admin = _make_user(email="condition@example.com", is_admin=True)
+    token = create_access_token(admin)
+    payload = {
+        "graph": {
+            "nodes": [
+                {"slug": "start", "kind": "start"},
+                {
+                    "slug": "decision",
+                    "kind": "condition",
+                    "parameters": {"path": "state.statut", "mode": "value"},
+                },
+                {"slug": "approve", "kind": "agent", "agent_key": "writer"},
+                {"slug": "pending", "kind": "agent", "agent_key": "writer"},
+                {"slug": "end", "kind": "end"},
+            ],
+            "edges": [
+                {"source": "start", "target": "decision"},
+                {"source": "decision", "target": "approve", "condition": "Approuvé"},
+                {"source": "decision", "target": "pending", "condition": "EN_ATTENTE"},
+                {"source": "pending", "target": "end"},
+                {"source": "approve", "target": "end"},
+            ],
+        }
+    }
+    response = client.put(
+        "/api/workflows/current",
+        headers=_auth_headers(token),
+        json=payload,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    edges = {(edge["source"], edge["target"], edge.get("condition")) for edge in body["graph"]["edges"]}
+    assert ("decision", "approve", "Approuvé") in edges
+    assert ("decision", "pending", "EN_ATTENTE") in edges
+
+
+def test_update_condition_rejects_duplicate_branches() -> None:
+    admin = _make_user(email="condition@example.com", is_admin=True)
+    token = create_access_token(admin)
+    payload = {
+        "graph": {
+            "nodes": [
+                {"slug": "start", "kind": "start"},
+                {
+                    "slug": "decision",
+                    "kind": "condition",
+                    "parameters": {"path": "state.status", "mode": "value"},
+                },
+                {"slug": "writer", "kind": "agent", "agent_key": "r_dacteur"},
+                {"slug": "end", "kind": "end"},
+            ],
+            "edges": [
+                {"source": "start", "target": "decision"},
+                {"source": "decision", "target": "writer", "condition": "en-attente"},
+                {"source": "decision", "target": "end", "condition": "EN-ATTENTE"},
+            ],
+        }
+    }
+    response = client.put(
+        "/api/workflows/current",
+        headers=_auth_headers(token),
+        json=payload,
+    )
+    assert response.status_code == 400
+    assert "double" in response.json()["detail"].lower()
+
+
+def test_update_condition_rejects_multiple_defaults() -> None:
+    admin = _make_user(email="condition@example.com", is_admin=True)
+    token = create_access_token(admin)
+    payload = {
+        "graph": {
+            "nodes": [
+                {"slug": "start", "kind": "start"},
+                {
+                    "slug": "decision",
+                    "kind": "condition",
+                    "parameters": {"path": "state.status", "mode": "truthy"},
+                },
+                {"slug": "writer", "kind": "agent", "agent_key": "r_dacteur"},
+                {"slug": "end", "kind": "end"},
+            ],
+            "edges": [
+                {"source": "start", "target": "decision"},
+                {"source": "decision", "target": "writer"},
+                {"source": "decision", "target": "end"},
+            ],
+        }
+    }
+    response = client.put(
+        "/api/workflows/current",
+        headers=_auth_headers(token),
+        json=payload,
+    )
+    assert response.status_code == 400
+    assert "branche par défaut" in response.json()["detail"].lower()
 
 
 def test_create_workflow_without_graph_creates_empty_version() -> None:
