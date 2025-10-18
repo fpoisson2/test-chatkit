@@ -292,9 +292,11 @@ export function MyChat() {
       | undefined;
 
     if (!normalizedStrategy) {
-      console.warn(
-        "[ChatKit] VITE_CHATKIT_API_URL détecté sans VITE_CHATKIT_UPLOAD_STRATEGY : les pièces jointes seront désactivées.",
-      );
+      if (explicitCustomUrl) {
+        console.warn(
+          "[ChatKit] VITE_CHATKIT_API_URL détecté sans VITE_CHATKIT_UPLOAD_STRATEGY : les pièces jointes seront désactivées.",
+        );
+      }
     } else if (normalizedStrategy === "two_phase" || normalizedStrategy === "two-phase") {
       uploadStrategy = { type: "two_phase" };
       attachmentsAreEnabled = true;
