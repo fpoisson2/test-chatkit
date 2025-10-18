@@ -3416,6 +3416,7 @@ async def run_workflow(
         )
         await on_stream_event(ThreadItemAddedEvent(item=assistant_item))
         first_chunk = True
+        content_index = 0
         for chunk in _iter_stream_chunks(text):
             if not first_chunk and delay_seconds > 0:
                 await asyncio.sleep(delay_seconds)
@@ -3423,7 +3424,10 @@ async def run_workflow(
             await on_stream_event(
                 ThreadItemUpdated(
                     item_id=assistant_item.id,
-                    update=AssistantMessageContentPartTextDelta(delta=chunk),
+                    update=AssistantMessageContentPartTextDelta(
+                        content_index=content_index,
+                        delta=chunk,
+                    ),
                 )
             )
         final_item = AssistantMessageItem(

@@ -431,6 +431,10 @@ def test_assistant_message_node_streams_with_effect() -> None:
         and isinstance(event.update, AssistantMessageContentPartTextDelta)
     ]
     assert update_events, "Le mode streaming doit produire des mises à jour incrémentales."
+    for update in update_events:
+        assert (
+            update.update.content_index == 0
+        ), "Les deltas doivent cibler le premier contenu de message."
     streamed_text = "".join(update.update.delta for update in update_events)
     assert streamed_text == "Bienvenue en streaming."
 
