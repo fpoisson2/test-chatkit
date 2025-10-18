@@ -75,6 +75,7 @@ import {
   getVectorStoreNodeConfig,
   setVectorStoreNodeConfig,
   setEndMessage,
+  setAssistantMessage,
   DEFAULT_END_MESSAGE,
   createWidgetNodeParameters,
   resolveWidgetNodeParameters,
@@ -2022,6 +2023,24 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleAssistantMessageChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "assistant_message") {
+          return data;
+        }
+        const nextParameters = setAssistantMessage(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleConditionChange = useCallback(
     (edgeId: string, value: string) => {
       setEdges((current) =>
@@ -2189,6 +2208,32 @@ const WorkflowBuilderPage = () => {
       },
       draggable: true,
       style: buildNodeStyle("watch"),
+    } satisfies FlowNode;
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes]);
+
+  const handleAddAssistantMessageNode = useCallback(() => {
+    const slug = `assistant-message-${Date.now()}`;
+    const parameters: AgentParameters = {};
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 460, y: 220 },
+      data: {
+        slug,
+        kind: "assistant_message",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("assistant_message"),
     } satisfies FlowNode;
     setNodes((current) => [...current, newNode]);
     setSelectedNodeId(slug);
@@ -3119,6 +3164,13 @@ const WorkflowBuilderPage = () => {
         onClick: handleAddWatchNode,
       },
       {
+        key: "assistant-message",
+        label: "Message assistant",
+        shortLabel: "MA",
+        color: NODE_COLORS.assistant_message,
+        onClick: handleAddAssistantMessageNode,
+      },
+      {
         key: "json-vector-store",
         label: "Stockage JSON",
         shortLabel: "VS",
@@ -3145,6 +3197,7 @@ const WorkflowBuilderPage = () => {
       handleAddConditionNode,
       handleAddStateNode,
       handleAddWatchNode,
+      handleAddAssistantMessageNode,
       handleAddVectorStoreNode,
       handleAddWidgetNode,
       handleAddEndNode,
@@ -3715,6 +3768,7 @@ const WorkflowBuilderPage = () => {
             widgetsError={widgetsError}
             onStateAssignmentsChange={handleStateAssignmentsChange}
             onEndMessageChange={handleEndMessageChange}
+            onAssistantMessageChange={handleAssistantMessageChange}
             onRemove={handleRemoveNode}
           />
         ) : selectedEdge ? (
