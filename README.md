@@ -13,6 +13,14 @@ This repository mirrors the walkthrough in `chatkit.md`, providing both the lega
 - Une implémentation ChatKit auto‑hébergée est disponible sur `/api/chatkit`. Elle orchestre l'Agents SDK en local pour répondre via le widget sans passer par un workflow hébergé.
 - Les endpoints `/api/chatkit/session`, `/api/chatkit` et `/api/chatkit/proxy/*` exigent désormais un JWT valide : toute tentative non authentifiée renvoie `401` avant même de contacter l'API ChatKit.
 
+## Domaines personnalisés et clé de domaine ChatKit
+
+Lorsque vous servez le frontend depuis un domaine public (ex. `https://chatkit.ve2fpd.com`), renseignez la variable `VITE_CHATKIT_DOMAIN_KEY` dans votre `.env`. Sans cette clé, le widget retombe sur le jeton de développement (`domain_pk_localhost_dev`) : sur un domaine externe, ChatKit masque alors le module après l'initialisation. Le navigateur affiche désormais un avertissement explicite dans la console (`[ChatKit] Domaine personnalisé ...`) pour vous guider vers l'ajout de la variable.
+
+Vous pouvez récupérer la clé dans la console OpenAI (« Domain keys ») ou via l'API `domain_keys`. Ajoutez ensuite la valeur dans `.env` et redémarrez le frontend. Le script `node scripts/check-env.js` (à lancer depuis la racine du dépôt) rappelle également qu'un domaine personnalisé sans clé dédiée désactivera le widget.
+
+Pour les environnements de test, vous pouvez temporairement définir `VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION=true` afin d'ignorer la vérification distante, mais conservez cette option pour le développement : en production, ChatKit doit valider que le domaine est bien approuvé.
+
 ## Commandes depuis la racine
 
 - `npm run backend:sync` — installe les dépendances Python (utilise `uv` si présent, sinon bascule sur `python3 -m pip install -r backend/requirements.txt`)

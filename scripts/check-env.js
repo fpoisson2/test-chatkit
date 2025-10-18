@@ -127,7 +127,19 @@ function main() {
   if (env.VITE_CHATKIT_DOMAIN_KEY) {
     logStatus(true, "VITE_CHATKIT_DOMAIN_KEY détectée.");
   } else {
-    logStatus(false, "VITE_CHATKIT_DOMAIN_KEY non défini.", "Le widget utilisera la clé de domaine de développement. Ajoutez votre clé pour un domaine vérifié.");
+    logStatus(
+      false,
+      "VITE_CHATKIT_DOMAIN_KEY non défini.",
+      "Sur un domaine personnalisé, récupérez la clé dans la console OpenAI (section Domain keys) et ajoutez-la pour éviter que le widget ne se masque.",
+    );
+  }
+
+  if (env.VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION?.toLowerCase() === "true") {
+    logStatus(
+      true,
+      "VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION activé.",
+      "La vérification distante sera ignorée : conservez ce réglage uniquement en développement.",
+    );
   }
 
   if (env.VITE_CHATKIT_FORCE_HOSTED?.toLowerCase() === "true") {
