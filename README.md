@@ -395,7 +395,7 @@ Depuis la racine du dépôt, vous pouvez orchestrer le backend FastAPI et le fro
    # Optionnel : alignez la liste d'hôtes autorisés par Vite (séparés par des virgules)
    # VITE_ALLOWED_HOSTS="chatkit.example.com"
    ```
-   Par défaut, `docker-compose.yml` injecte désormais `VITE_CHATKIT_API_URL=/api/chatkit`. Cette valeur relative fonctionne aussi bien en local qu'à travers un reverse proxy, puisque le navigateur réutilise l'origine courante (ex. `https://chatkit.example.com/api/chatkit`). Définissez explicitement `VITE_CHATKIT_API_URL` uniquement si vous devez cibler une autre racine publique.
+  Par défaut, `docker-compose.yml` injecte désormais `VITE_CHATKIT_API_URL=/api/chatkit`. Cette valeur relative fonctionne aussi bien en local qu'à travers un reverse proxy, puisque le navigateur réutilise l'origine courante (ex. `https://chatkit.example.com/api/chatkit`). Si vous laissez cette variable vide, le frontend tentera également de déduire automatiquement l'URL absolue à partir de `VITE_BACKEND_URL` (par exemple `https://chatkit.example.com/api/chatkit`). Définissez explicitement `VITE_CHATKIT_API_URL` uniquement si vous devez cibler une autre racine publique.
    Pour créer automatiquement un compte administrateur lors du démarrage du backend, ajoutez dans ce même fichier :
 
    ```env

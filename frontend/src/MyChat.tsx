@@ -25,7 +25,11 @@ import {
 } from "./utils/chatkitThread";
 import type { WorkflowSummary } from "./types/workflows";
 import { ChatWorkflowSidebar } from "./features/workflows/ChatWorkflowSidebar";
-import { chatkitApi, type ChatKitWorkflowInfo } from "./utils/backend";
+import {
+  chatkitApi,
+  makeApiEndpointCandidates,
+  type ChatKitWorkflowInfo,
+} from "./utils/backend";
 
 type WeatherToolCall = {
   name: "get_weather";
@@ -271,7 +275,16 @@ export function MyChat() {
       "true";
     const shouldBypassDomainCheck = skipDomainVerification || !rawDomainKey;
     const explicitCustomUrl = import.meta.env.VITE_CHATKIT_API_URL?.trim();
-    const customApiUrl = explicitCustomUrl || "/api/chatkit";
+    const backendUrl = import.meta.env.VITE_BACKEND_URL?.trim() ?? "";
+    const [defaultRelativeUrl, ...otherCandidates] = makeApiEndpointCandidates(
+      backendUrl,
+      "/api/chatkit",
+    );
+    const firstAbsoluteCandidate = [defaultRelativeUrl, ...otherCandidates].find((candidate) =>
+      candidate.startsWith("http"),
+    );
+    const customApiUrl =
+      explicitCustomUrl || firstAbsoluteCandidate || defaultRelativeUrl || "/api/chatkit";
     const useHostedFlow = forceHosted;
 
     if (useHostedFlow) {
