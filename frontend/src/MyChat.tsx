@@ -363,6 +363,8 @@ export function MyChat() {
       }
 
       const targetUrl = resolveResourceUrl(resource);
+      const isDomainVerificationRequest =
+        typeof targetUrl === "string" && targetUrl.includes("/domain_keys/verify");
 
       if (shouldBypassDomainCheck && targetUrl?.includes("/domain_keys/verify")) {
         console.info("[ChatKit] Vérification de domaine ignorée (mode développement).");
@@ -380,6 +382,23 @@ export function MyChat() {
           ...init,
           headers,
         });
+
+        if (
+          isDomainVerificationRequest &&
+          !response.ok &&
+          (response.status === 404 || response.status === 405 || response.status === 501)
+        ) {
+          if (import.meta.env.DEV) {
+            console.info(
+              "[ChatKit] Endpoint de vérification de domaine indisponible. Passage en mode ignoré.",
+            );
+          }
+
+          return new Response(JSON.stringify({ status: "skipped" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
 
         if (!response.ok) {
           let responseDetails: string | null = null;
@@ -406,6 +425,20 @@ export function MyChat() {
         return response;
       } catch (err) {
         if (err instanceof TypeError) {
+          if (isDomainVerificationRequest) {
+            if (import.meta.env.DEV) {
+              console.warn(
+                "[ChatKit] Impossible de joindre l'endpoint de vérification de domaine. Passage en mode ignoré.",
+                err,
+              );
+            }
+
+            return new Response(JSON.stringify({ status: "skipped" }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+
           const connectivityMessage = targetUrl
             ? `Impossible de contacter ${targetUrl}. Vérifiez votre connexion réseau ou la disponibilité du serveur ChatKit.`
             : "Impossible de joindre le serveur ChatKit. Vérifiez votre connexion réseau.";
