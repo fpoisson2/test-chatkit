@@ -287,6 +287,7 @@ const NodeInspector = ({
   const assistantMessage =
     kind === "assistant_message" ? getAssistantMessage(parameters) : "";
   const userMessage = kind === "user_message" ? getUserMessage(parameters) : "";
+  const [userMessageDraft, setUserMessageDraft] = useState(userMessage);
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
   const reasoningEffort = getAgentReasoningEffort(parameters);
@@ -563,6 +564,13 @@ const NodeInspector = ({
     }
     setSchemaError(null);
   }, [node.id, responseFormat.kind, schemaSignature]);
+
+  useEffect(() => {
+    if (kind !== "user_message") {
+      return;
+    }
+    setUserMessageDraft(userMessage);
+  }, [kind, node.id, userMessage]);
 
   return (
     <>
@@ -882,10 +890,12 @@ const NodeInspector = ({
         <label style={fieldStyle}>
           <span style={labelContentStyle}>Texte du message utilisateur</span>
           <textarea
-            value={userMessage}
-            onChange={(event) =>
-              onUserMessageChange(node.id, event.target.value)
-            }
+            value={userMessageDraft}
+            onChange={(event) => {
+              const nextValue = event.target.value;
+              setUserMessageDraft(nextValue);
+              onUserMessageChange(node.id, nextValue);
+            }}
             rows={4}
             placeholder="Texte injecté dans la conversation comme message utilisateur"
             style={{ resize: "vertical", minHeight: "4.5rem" }}
