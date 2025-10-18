@@ -5,6 +5,7 @@ import pytest
 from backend.app.chatkit import (
     FunctionTool,
     ImageGeneration,
+    ImageGenerationTool,
     WebSearchTool,
     _coerce_agent_tools,
     web_search_preview,
@@ -167,12 +168,20 @@ def test_coerce_agent_tools_from_image_generation_with_unknown_model() -> None:
     assert isinstance(tools, list)
     assert len(tools) == 1
     tool = tools[0]
-    assert isinstance(tool, ImageGeneration)
-    assert getattr(tool, "model", None) == "gpt-image-1-mini"
-    assert getattr(tool, "size", None) == "1024x1024"
-    assert getattr(tool, "quality", None) == "high"
-    assert getattr(tool, "background", None) == "transparent"
-    assert getattr(tool, "output_format", None) == "auto"
+    expected_type = ImageGenerationTool or ImageGeneration
+    assert expected_type is not None
+    assert isinstance(tool, expected_type)
+    config = tool.tool_config if ImageGenerationTool is not None else tool
+    def _read(value: object, key: str) -> object | None:
+        if isinstance(value, dict):
+            return value.get(key)
+        return getattr(value, key, None)
+
+    assert _read(config, "model") == "gpt-image-1-mini"
+    assert _read(config, "size") == "1024x1024"
+    assert _read(config, "quality") == "high"
+    assert _read(config, "background") == "transparent"
+    assert _read(config, "output_format") == "auto"
 
 
 def test_build_image_generation_tool_sets_default_name(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -193,6 +202,7 @@ def test_build_image_generation_tool_sets_default_name(monkeypatch: pytest.Monke
                 setattr(instance, key, value)
             return instance
 
+    monkeypatch.setattr(module, "_AgentImageGenerationConfig", None)
     monkeypatch.setattr(module, "ImageGeneration", _FailingImageGeneration)
 
     tool = module._build_image_generation_tool(
@@ -204,9 +214,16 @@ def test_build_image_generation_tool_sets_default_name(monkeypatch: pytest.Monke
     )
 
     assert tool is not None
-    assert getattr(tool, "type", None) == "image_generation"
+    target = tool.tool_config if ImageGenerationTool is not None else tool
+
+    def _read(value: object, key: str) -> object | None:
+        if isinstance(value, dict):
+            return value.get(key)
+        return getattr(value, key, None)
+
+    assert _read(target, "type") == "image_generation"
+    assert _read(target, "model") == "fallback-model"
     assert getattr(tool, "name", None) == "image_generation"
-    assert getattr(tool, "model", None) == "fallback-model"
 
 
 def test_build_image_generation_tool_restores_missing_name(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -227,6 +244,7 @@ def test_build_image_generation_tool_restores_missing_name(monkeypatch: pytest.M
                 setattr(instance, key, value)
             return instance
 
+    monkeypatch.setattr(module, "_AgentImageGenerationConfig", None)
     monkeypatch.setattr(module, "ImageGeneration", _PartialImageGeneration)
 
     tool = module._build_image_generation_tool(
@@ -238,6 +256,13 @@ def test_build_image_generation_tool_restores_missing_name(monkeypatch: pytest.M
     )
 
     assert tool is not None
-    assert getattr(tool, "type", None) == "image_generation"
-    assert getattr(tool, "model", None) == "fallback-model"
+    target = tool.tool_config if ImageGenerationTool is not None else tool
+
+    def _read(value: object, key: str) -> object | None:
+        if isinstance(value, dict):
+            return value.get(key)
+        return getattr(value, key, None)
+
+    assert _read(target, "type") == "image_generation"
+    assert _read(target, "model") == "fallback-model"
     assert getattr(tool, "name", None) == "image_generation"
