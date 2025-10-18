@@ -6,6 +6,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
 from inspect import cleandoc
+import os
 from urllib.parse import urlparse
 from typing import (
     Annotated,
@@ -405,6 +406,78 @@ def _guess_format_from_url(url: str) -> str | None:
     return _normalize_image_format(extension)
 
 
+def _normalize_host(candidate: str | None) -> str | None:
+    """Normalise un nom d'hôte fourni via la configuration."""
+
+    if not candidate:
+        return None
+
+    stripped = candidate.strip()
+    if not stripped:
+        return None
+
+    try:
+        parsed = urlparse(stripped)
+    except ValueError:
+        parsed = None
+
+    host = None
+    if parsed and (parsed.hostname or parsed.netloc):
+        host = parsed.hostname or parsed.netloc
+    else:
+        host = stripped
+
+    if "@" in host:
+        host = host.split("@", 1)[-1]
+    if ":" in host:
+        host = host.split(":", 1)[0]
+
+    normalized = host.strip().lower()
+    return normalized or None
+
+
+def _resolve_allowed_inline_image_hosts() -> set[str]:
+    """Retourne les hôtes autorisés à recevoir la clé OpenAI lors d'un inline."""
+
+    hosts: set[str] = {"api.openai.com"}
+
+    for env_var in ("CHATKIT_API_BASE", "OPENAI_API_BASE", "OPENAI_BASE_URL"):
+        normalized = _normalize_host(os.getenv(env_var))
+        if normalized:
+            hosts.add(normalized)
+
+    extra_hosts = os.getenv("CHATKIT_INLINE_IMAGE_AUTH_HOSTS")
+    if extra_hosts:
+        for entry in extra_hosts.split(","):
+            normalized = _normalize_host(entry)
+            if normalized:
+                hosts.add(normalized)
+
+    return hosts
+
+
+def _resolve_inline_authorization(url: str) -> str | None:
+    """Construit l'en-tête Authorization pour un téléchargement d'image protégé."""
+
+    api_key = _coerce_optional_str(os.getenv("OPENAI_API_KEY"))
+    if not api_key:
+        return None
+
+    try:
+        host = urlparse(url).hostname
+    except ValueError:
+        return None
+
+    if not host:
+        return None
+
+    normalized_host = host.strip().lower()
+    if normalized_host not in _resolve_allowed_inline_image_hosts():
+        return None
+
+    return f"Bearer {api_key}"
+
+
 def _inline_remote_image(
     url: str,
     *,
@@ -420,8 +493,13 @@ def _inline_remote_image(
     if timeout is None:
         timeout = httpx.Timeout(15.0, connect=5.0)
 
+    headers: dict[str, str] | None = None
+    authorization = _resolve_inline_authorization(candidate)
+    if authorization:
+        headers = {"Authorization": authorization}
+
     try:
-        with httpx.Client(timeout=timeout) as client:
+        with httpx.Client(timeout=timeout, headers=headers) as client:
             response = client.get(candidate)
         response.raise_for_status()
     except Exception:  # pragma: no cover - dépend des conditions réseau
