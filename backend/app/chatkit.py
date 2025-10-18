@@ -1042,8 +1042,29 @@ def _build_image_generation_tool(payload: Any) -> ImageGeneration | None:
     if "name" in field_names and "name" not in tool_kwargs:
         tool_kwargs["name"] = "image_generation"
 
+    def _ensure_metadata(tool: ImageGeneration) -> ImageGeneration:
+        for attribute, default in (
+            ("type", "image_generation"),
+            ("name", "image_generation"),
+        ):
+            current = getattr(tool, attribute, None)
+            if isinstance(current, str) and current.strip():
+                continue
+            try:
+                setattr(tool, attribute, default)
+                continue
+            except Exception:  # pragma: no cover - dépend de la classe retournée
+                pass
+            try:
+                object.__setattr__(tool, attribute, default)
+            except Exception:  # pragma: no cover - dernier recours
+                logger.debug(
+                    "Impossible d'imposer l'attribut %s sur %r", attribute, tool
+                )
+        return tool
+
     try:
-        return ImageGeneration(**tool_kwargs)
+        tool = ImageGeneration(**tool_kwargs)
     except Exception:  # pragma: no cover - dépend de la version du client
         logger.warning(
             "Impossible de construire ImageGeneration avec la configuration %s", config
@@ -1052,18 +1073,26 @@ def _build_image_generation_tool(payload: Any) -> ImageGeneration | None:
         construct = getattr(ImageGeneration, "model_construct", None)
         if callable(construct):  # pragma: no branch - dépend de Pydantic v2
             try:
-                return construct(**tool_kwargs)  # type: ignore[misc]
+                tool = construct(**tool_kwargs)  # type: ignore[misc]
             except Exception:  # pragma: no cover - garde-fou en dernier recours
-                pass
+                tool = None
+        else:
+            tool = None
 
-        construct = getattr(ImageGeneration, "construct", None)
-        if callable(construct):  # pragma: no branch - compat Pydantic v1
-            try:
-                return construct(**tool_kwargs)  # type: ignore[misc]
-            except Exception:  # pragma: no cover - garde-fou en dernier recours
-                pass
+        if tool is None:
+            construct = getattr(ImageGeneration, "construct", None)
+            if callable(construct):  # pragma: no branch - compat Pydantic v1
+                try:
+                    tool = construct(**tool_kwargs)  # type: ignore[misc]
+                except Exception:  # pragma: no cover - garde-fou en dernier recours
+                    tool = None
 
-        return None
+        if tool is None:
+            return None
+
+        return _ensure_metadata(tool)
+
+    return _ensure_metadata(tool)
 
 
 def _extract_vector_store_ids(config: dict[str, Any]) -> list[str]:

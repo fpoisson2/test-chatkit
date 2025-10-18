@@ -207,3 +207,37 @@ def test_build_image_generation_tool_sets_default_name(monkeypatch: pytest.Monke
     assert getattr(tool, "type", None) == "image_generation"
     assert getattr(tool, "name", None) == "image_generation"
     assert getattr(tool, "model", None) == "fallback-model"
+
+
+def test_build_image_generation_tool_restores_missing_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Le repli doit imposer un nom même lorsque le modèle ne le déclare pas."""
+
+    from backend.app import chatkit as module
+
+    class _PartialImageGeneration:
+        model_fields = {"type": None, "model": None}
+
+        def __init__(self, **_: object) -> None:  # pragma: no cover - simulé dans le test
+            raise ValueError("validation stricte refusée")
+
+        @classmethod
+        def model_construct(cls, **kwargs: object):
+            instance = cls.__new__(cls)
+            for key, value in kwargs.items():
+                setattr(instance, key, value)
+            return instance
+
+    monkeypatch.setattr(module, "ImageGeneration", _PartialImageGeneration)
+
+    tool = module._build_image_generation_tool(
+        {
+            "image_generation": {
+                "model": "fallback-model",
+            }
+        }
+    )
+
+    assert tool is not None
+    assert getattr(tool, "type", None) == "image_generation"
+    assert getattr(tool, "model", None) == "fallback-model"
+    assert getattr(tool, "name", None) == "image_generation"
