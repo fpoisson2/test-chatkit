@@ -181,7 +181,37 @@ def test_coerce_agent_tools_from_image_generation_with_unknown_model() -> None:
     assert _read(config, "size") == "1024x1024"
     assert _read(config, "quality") == "high"
     assert _read(config, "background") == "transparent"
-    assert _read(config, "output_format") == "auto"
+    assert _read(config, "output_format") == "png"
+
+
+@pytest.mark.skipif(ImageGeneration is None, reason="ImageGeneration n'est pas disponible")
+def test_coerce_agent_tools_normalizes_unknown_output_format() -> None:
+    tools = _coerce_agent_tools(
+        [
+            {
+                "type": "image_generation",
+                "image_generation": {
+                    "model": "gpt-image-1",
+                    "output_format": "WEBP",
+                },
+            }
+        ]
+    )
+
+    assert isinstance(tools, list)
+    assert len(tools) == 1
+    tool = tools[0]
+    expected_type = ImageGenerationTool or ImageGeneration
+    assert expected_type is not None
+    assert isinstance(tool, expected_type)
+    config = tool.tool_config if ImageGenerationTool is not None else tool
+
+    def _read(value: object, key: str) -> object | None:
+        if isinstance(value, dict):
+            return value.get(key)
+        return getattr(value, key, None)
+
+    assert _read(config, "output_format") == "webp"
 
 
 def test_build_image_generation_tool_sets_default_name(monkeypatch: pytest.MonkeyPatch) -> None:

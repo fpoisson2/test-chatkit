@@ -1021,6 +1021,27 @@ def _build_web_search_tool(payload: Any) -> WebSearchTool | None:
         return None
 
 
+_SUPPORTED_IMAGE_OUTPUT_FORMATS = frozenset({"png", "jpeg", "webp"})
+
+
+def _normalize_image_generation_field(key: str, value: Any) -> Any:
+    """Nettoie et normalise les attributs spécifiques à la génération d'image."""
+
+    if key == "output_format":
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if not normalized or normalized == "auto":
+                return "png"
+            if normalized in _SUPPORTED_IMAGE_OUTPUT_FORMATS:
+                return normalized
+            logger.warning(
+                "Format de sortie %r non supporté, repli sur 'png'", value
+            )
+            return "png"
+        return None
+    return value
+
+
 def _build_image_generation_tool(payload: Any) -> Any | None:
     """Construit un outil de génération d'image pour l'Agents SDK."""
 
@@ -1072,7 +1093,9 @@ def _build_image_generation_tool(payload: Any) -> Any | None:
             continue
         value = config.get(key)
         if value is not None:
-            config_kwargs[key] = value
+            normalized = _normalize_image_generation_field(key, value)
+            if normalized is not None:
+                config_kwargs[key] = normalized
 
     def _construct_config() -> Any | None:
         try:
