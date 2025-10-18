@@ -35,8 +35,6 @@ async def test_action_updates_existing_widget(monkeypatch: pytest.MonkeyPatch) -
         database_connect_retries=1,
         database_connect_delay=0.1,
     )
-    server = DemoChatKitServer(settings)
-
     class _Store:
         def __init__(self) -> None:
             self.saved: list[WidgetItem] = []
@@ -52,9 +50,11 @@ async def test_action_updates_existing_widget(monkeypatch: pytest.MonkeyPatch) -
             return f"{prefix}-1"
 
     store = _Store()
-    server.store = store  # type: ignore[assignment]
 
     import backend.app.chatkit as chatkit_module
+
+    monkeypatch.setattr(chatkit_module, "PostgresChatKitStore", lambda *args, **kwargs: store)
+    server = DemoChatKitServer(settings)
 
     base_definition = {
         "type": "Card",
@@ -140,8 +140,6 @@ async def test_action_falls_back_to_sender_widget(monkeypatch: pytest.MonkeyPatc
         database_connect_retries=1,
         database_connect_delay=0.1,
     )
-    server = DemoChatKitServer(settings)
-
     class _Store:
         def __init__(self) -> None:
             self.saved: list[WidgetItem] = []
@@ -157,9 +155,11 @@ async def test_action_falls_back_to_sender_widget(monkeypatch: pytest.MonkeyPatc
             return f"{prefix}-1"
 
     store = _Store()
-    server.store = store  # type: ignore[assignment]
 
     import backend.app.chatkit as chatkit_module
+
+    monkeypatch.setattr(chatkit_module, "PostgresChatKitStore", lambda *args, **kwargs: store)
+    server = DemoChatKitServer(settings)
 
     base_definition = {
         "type": "Card",
@@ -214,6 +214,69 @@ async def test_action_falls_back_to_sender_widget(monkeypatch: pytest.MonkeyPatc
     updated_widget = events[0].update.widget
     assert updated_widget.children[0].value == "Choix utilisateur"
     assert store.saved and not store.added
+
+
+def test_apply_widget_values_updates_button_labels() -> None:
+    import backend.app.chatkit as chatkit_module
+
+    base_definition = {
+        "type": "Card",
+        "children": [
+            {"type": "Title", "value": "Que voulez-vous faire ?"},
+            {
+                "type": "Row",
+                "children": [
+                    {
+                        "type": "Button",
+                        "key": "opt1",
+                        "label": "Option 1",
+                        "text": "Option 1",
+                        "iconStart": "sparkle",
+                        "onClickAction": {
+                            "type": "menu.select",
+                            "payload": {"id": "opt1"},
+                        },
+                    },
+                    {
+                        "type": "Button",
+                        "onClickAction": {
+                            "type": "menu.select",
+                            "payload": {"id": "opt2"},
+                        },
+                        "label": "Option 2",
+                        "text": "Option 2",
+                        "iconStart": "bolt",
+                    },
+                ],
+            },
+        ],
+    }
+
+    definition = json.loads(json.dumps(base_definition))
+    bindings = chatkit_module._collect_widget_bindings(definition)
+
+    matched = chatkit_module._apply_widget_variable_values(
+        definition,
+        {
+            "opt1": "Oui",
+            "opt1.icon": "star",
+            "opt2": "Non",
+            "opt2.icon": "check",
+        },
+        bindings=bindings,
+    )
+
+    assert matched == {"opt1", "opt1.icon", "opt2", "opt2.icon"}
+
+    buttons = definition["children"][1]["children"]
+    first_button = next(button for button in buttons if button.get("key") == "opt1")
+    second_button = next(button for button in buttons if button.get("key") in {"opt2", None})
+    assert first_button["label"] == "Oui"
+    assert first_button["text"] == "Oui"
+    assert first_button["iconStart"] == "star"
+    assert second_button["label"] == "Non"
+    assert second_button["text"] == "Non"
+    assert second_button["iconStart"] == "check"
 
 
 @pytest.mark.asyncio

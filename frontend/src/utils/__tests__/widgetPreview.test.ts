@@ -40,12 +40,14 @@ describe("widgetPreview helpers", () => {
               type: "Button",
               key: "opt1",
               label: "Option 1",
+              text: "Option 1",
               iconStart: "sparkle",
             },
             {
               type: "Button",
               onClickAction: { type: "menu.select", payload: { id: "opt2" } },
               label: "Option 2",
+              text: "Option 2",
               iconStart: "bolt",
             },
           ],
@@ -127,12 +129,14 @@ describe("widgetPreview helpers", () => {
               type: "Button",
               key: "opt1",
               label: "Option 1",
+              text: "Option 1",
               iconStart: "sparkle",
             },
             {
               type: "Button",
               onClickAction: { type: "menu.select", payload: { id: "opt2" } },
               label: "Option 2",
+              text: "Option 2",
               iconStart: "bolt",
             },
           ],
@@ -152,9 +156,9 @@ describe("widgetPreview helpers", () => {
       bindings,
     );
 
-    expect(bindings.opt1.valueKey).toBe("label");
+    expect(bindings.opt1.valueKey).toBe("text");
     expect(bindings["opt1.icon"].valueKey).toBe("iconStart");
-    expect(bindings.opt2.valueKey).toBe("label");
+    expect(bindings.opt2.valueKey).toBe("text");
     expect(bindings["opt2.icon"].valueKey).toBe("iconStart");
     expect(bindings.opt1.path).toEqual(["children", 0, "children", 0]);
     expect(bindings.opt2.path).toEqual(["children", 0, "children", 1]);
@@ -162,8 +166,10 @@ describe("widgetPreview helpers", () => {
     const row = (updated.children as Array<Record<string, unknown>>)[0];
     const [firstButton, secondButton] = row.children as Array<Record<string, unknown>>;
     expect(firstButton.label).toBe("Choix A");
+    expect(firstButton.text).toBe("Choix A");
     expect(firstButton.iconStart).toBe("star");
     expect(secondButton.label).toBe("Choix B");
+    expect(secondButton.text).toBe("Choix B");
     expect(secondButton.iconStart).toBe("zap");
   });
 });
