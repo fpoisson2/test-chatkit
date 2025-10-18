@@ -56,6 +56,17 @@ export function MyChat() {
   const [chatkitWorkflowInfo, setChatkitWorkflowInfo] =
     useState<ChatKitWorkflowInfo | null>(null);
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
+  const [hostedFlowEnabled, setHostedFlowEnabled] = useState(() => {
+    const raw = import.meta.env.VITE_CHATKIT_FORCE_HOSTED;
+    if (!raw) {
+      return false;
+    }
+    const normalized = raw.trim().toLowerCase();
+    if (normalized === "false" || normalized === "0" || normalized === "no") {
+      return false;
+    }
+    return normalized === "true" || normalized === "1" || normalized === "yes";
+  });
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const lastVisibilityRefreshRef = useRef(0);
   const previousSessionOwnerRef = useRef<string | null>(null);
@@ -134,6 +145,27 @@ export function MyChat() {
     };
   }, [token, activeWorkflow?.id, activeWorkflow?.active_version_id, activeWorkflow?.updated_at]);
 
+  const disableHostedFlow = useCallback(
+    (reason: string | null = null) => {
+      if (!hostedFlowEnabled) {
+        return;
+      }
+
+      if (import.meta.env.DEV) {
+        const hint = reason ? ` (${reason})` : "";
+        console.info("[ChatKit] Désactivation du flux hébergé%s.", hint);
+      }
+
+      clearStoredChatKitSecret(sessionOwner);
+      clearStoredThreadId(sessionOwner);
+      lastThreadSnapshotRef.current = null;
+      setInitialThreadId(null);
+      setHostedFlowEnabled(false);
+      setChatInstanceKey((value) => value + 1);
+    },
+    [hostedFlowEnabled, sessionOwner],
+  );
+
   const getClientSecret = useCallback(async (currentSecret: string | null) => {
     const { session: storedSession, shouldRefresh } = readStoredChatKitSession(sessionOwner);
 
@@ -168,7 +200,38 @@ export function MyChat() {
 
       if (!res.ok) {
         const message = await res.text();
-        const errorMessage = `Failed to fetch client secret: ${res.status} ${message}`;
+        const combinedMessage = `${res.status} ${message}`.trim();
+
+        const normalizedMessage = (() => {
+          try {
+            const parsed = JSON.parse(message);
+            if (parsed?.detail) {
+              if (typeof parsed.detail === "string") {
+                return parsed.detail;
+              }
+              if (typeof parsed.detail?.hint === "string") {
+                return parsed.detail.hint;
+              }
+              if (typeof parsed.detail?.error === "string") {
+                return parsed.detail.error;
+              }
+            }
+          } catch (err) {
+            if (import.meta.env.DEV) {
+              console.warn("[ChatKit] Impossible d'analyser la réponse de session", err);
+            }
+          }
+          return message;
+        })();
+
+        if (res.status === 500 && normalizedMessage.includes("CHATKIT_WORKFLOW_ID")) {
+          disableHostedFlow("CHATKIT_WORKFLOW_ID manquant");
+          throw new Error(
+            "Le flux hébergé a été désactivé car CHATKIT_WORKFLOW_ID n'est pas configuré côté serveur.",
+          );
+        }
+
+        const errorMessage = `Failed to fetch client secret: ${combinedMessage}`;
         setError(errorMessage);
         throw new Error(errorMessage);
       }
@@ -193,14 +256,13 @@ export function MyChat() {
     } finally {
       setIsLoading(false);
     }
-  }, [sessionOwner, token]);
+  }, [disableHostedFlow, sessionOwner, token]);
 
   const { apiConfig, attachmentsEnabled } = useMemo<{
     apiConfig: ChatKitOptions["api"];
     attachmentsEnabled: boolean;
   }>(() => {
-    const forceHosted =
-      import.meta.env.VITE_CHATKIT_FORCE_HOSTED?.trim().toLowerCase() === "true";
+    const forceHosted = hostedFlowEnabled;
 
     const rawDomainKey = import.meta.env.VITE_CHATKIT_DOMAIN_KEY?.trim();
     const domainKey = rawDomainKey || "domain_pk_localhost_dev";
@@ -369,7 +431,7 @@ export function MyChat() {
       apiConfig: customApiConfig,
       attachmentsEnabled: attachmentsAreEnabled,
     };
-  }, [getClientSecret, token]);
+  }, [getClientSecret, hostedFlowEnabled, token]);
 
   const attachmentsConfig = useMemo(
     () =>
