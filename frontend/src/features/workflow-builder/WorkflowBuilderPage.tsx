@@ -54,6 +54,8 @@ import {
   setAgentResponseFormatName,
   setAgentResponseFormatSchema,
   setAgentResponseWidgetSlug,
+  setAgentResponseWidgetSource,
+  setAgentResponseWidgetDefinition,
   setAgentShowSearchSources,
   setAgentStorePreference,
   setAgentTemperature,
@@ -77,6 +79,8 @@ import {
   resolveWidgetNodeParameters,
   setWidgetNodeAwaitAction,
   setWidgetNodeSlug,
+  setWidgetNodeSource,
+  setWidgetNodeDefinitionExpression,
   setWidgetNodeVariables,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
@@ -1707,6 +1711,42 @@ const WorkflowBuilderPage = () => {
     [updateNodeData]
   );
 
+  const handleAgentResponseWidgetSourceChange = useCallback(
+    (nodeId: string, source: "library" | "variable") => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentResponseWidgetSource(data.parameters, source);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleAgentResponseWidgetDefinitionChange = useCallback(
+    (nodeId: string, expression: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentResponseWidgetDefinition(data.parameters, expression);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
   const handleConditionPathChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
@@ -1771,6 +1811,42 @@ const WorkflowBuilderPage = () => {
           return data;
         }
         const nextParameters = setWidgetNodeSlug(data.parameters, slug);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleWidgetNodeSourceChange = useCallback(
+    (nodeId: string, source: "library" | "variable") => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "widget") {
+          return data;
+        }
+        const nextParameters = setWidgetNodeSource(data.parameters, source);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData]
+  );
+
+  const handleWidgetNodeDefinitionExpressionChange = useCallback(
+    (nodeId: string, expression: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "widget") {
+          return data;
+        }
+        const nextParameters = setWidgetNodeDefinitionExpression(data.parameters, expression);
         return {
           ...data,
           parameters: nextParameters,
@@ -3578,7 +3654,15 @@ const WorkflowBuilderPage = () => {
             onAgentResponseFormatNameChange={handleAgentResponseFormatNameChange}
             onAgentResponseFormatSchemaChange={handleAgentResponseFormatSchemaChange}
             onAgentResponseWidgetSlugChange={handleAgentResponseWidgetSlugChange}
+            onAgentResponseWidgetSourceChange={handleAgentResponseWidgetSourceChange}
+            onAgentResponseWidgetDefinitionChange={
+              handleAgentResponseWidgetDefinitionChange
+            }
             onWidgetNodeSlugChange={handleWidgetNodeSlugChange}
+            onWidgetNodeSourceChange={handleWidgetNodeSourceChange}
+            onWidgetNodeDefinitionExpressionChange={
+              handleWidgetNodeDefinitionExpressionChange
+            }
             onWidgetNodeVariablesChange={handleWidgetNodeVariablesChange}
             onWidgetNodeAwaitActionChange={handleWidgetNodeAwaitActionChange}
             onAgentIncludeChatHistoryChange={handleAgentIncludeChatHistoryChange}

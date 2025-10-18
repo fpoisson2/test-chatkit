@@ -657,10 +657,13 @@ export const setAgentStorePreference = (
   value: boolean,
 ): AgentParameters => setBooleanSetting(parameters, "store", value);
 
+export type WidgetSource = "library" | "variable";
+
 export type AgentResponseFormat =
   | { kind: "text" }
   | { kind: "json_schema"; name: string; schema: unknown }
-  | { kind: "widget"; slug: string; variables: Record<string, string> };
+  | { kind: "widget"; source: "library"; slug: string; variables: Record<string, string> }
+  | { kind: "widget"; source: "variable"; definitionExpression: string };
 
 const DEFAULT_SCHEMA_NAME = "workflow_output";
 const DEFAULT_JSON_SCHEMA = { type: "object", properties: {} } as const;
@@ -713,12 +716,30 @@ export const getAgentResponseFormat = (
   if (typeof widget === "string") {
     const slug = widget.trim();
     if (slug) {
-      return { kind: "widget", slug, variables: {} };
+      return { kind: "widget", source: "library", slug, variables: {} };
     }
-  } else if (isPlainRecord(widget) && typeof widget.slug === "string") {
-    const slug = widget.slug.trim();
-    const variables = sanitizeWidgetVariables(widget.variables);
-    return { kind: "widget", slug, variables };
+  } else if (isPlainRecord(widget)) {
+    const rawSource = typeof widget.source === "string" ? widget.source.trim().toLowerCase() : "";
+    const definitionExpressionRaw = widget.definition_expression;
+    const definitionExpression =
+      typeof definitionExpressionRaw === "string" ? definitionExpressionRaw.trim() : "";
+    if (rawSource === "variable" || (!widget.slug && definitionExpression)) {
+      if (definitionExpression) {
+        return {
+          kind: "widget",
+          source: "variable",
+          definitionExpression,
+        };
+      }
+    }
+
+    if (typeof widget.slug === "string") {
+      const slug = widget.slug.trim();
+      if (slug) {
+        const variables = sanitizeWidgetVariables(widget.variables);
+        return { kind: "widget", source: "library", slug, variables };
+      }
+    }
   }
 
   const responseFormat = parameters.response_format;
@@ -756,7 +777,11 @@ const setAgentResponseFormat = (
     return next as AgentParameters;
   }
 
-  return setAgentResponseWidget(parameters, format.slug, format.variables);
+  if (format.source === "variable") {
+    return setAgentResponseWidgetDefinitionExpression(parameters, format.definitionExpression);
+  }
+
+  return setAgentResponseWidgetLibrary(parameters, format.slug, format.variables);
 };
 
 export const setAgentResponseFormatKind = (
@@ -768,9 +793,15 @@ export const setAgentResponseFormatKind = (
   }
   const current = getAgentResponseFormat(parameters);
   if (kind === "widget") {
-    const slug = current.kind === "widget" ? current.slug : "";
-    const variables = current.kind === "widget" ? current.variables : {};
-    return setAgentResponseWidget(parameters, slug, variables);
+    if (current.kind === "widget") {
+      return setAgentResponseFormat(parameters, current);
+    }
+    return setAgentResponseFormat(parameters, {
+      kind: "widget",
+      source: "library",
+      slug: "",
+      variables: {},
+    });
   }
   const name = current.kind === "json_schema" ? current.name : DEFAULT_SCHEMA_NAME;
   const schema = current.kind === "json_schema" ? current.schema : DEFAULT_JSON_SCHEMA;
@@ -795,7 +826,7 @@ export const setAgentResponseFormatSchema = (
   return setAgentResponseFormat(parameters, { kind: "json_schema", name, schema });
 };
 
-const setAgentResponseWidget = (
+const setAgentResponseWidgetLibrary = (
   parameters: AgentParameters,
   slug: string,
   variables: Record<string, string>,
@@ -805,11 +836,14 @@ const setAgentResponseWidget = (
   const next = { ...(parameters as Record<string, unknown>) };
   delete next.response_format;
 
+  const widgetConfig: Record<string, unknown> = {
+    source: "library",
+    slug: trimmedSlug,
+  };
   if (Object.keys(normalizedVariables).length > 0) {
-    next.response_widget = { slug: trimmedSlug, variables: normalizedVariables };
-  } else {
-    next.response_widget = { slug: trimmedSlug };
+    widgetConfig.variables = normalizedVariables;
   }
+  next.response_widget = widgetConfig;
   return next as AgentParameters;
 };
 
@@ -818,9 +852,10 @@ export const setAgentResponseWidgetSlug = (
   slug: string,
 ): AgentParameters => {
   const current = getAgentResponseFormat(parameters);
-  const variables =
-    current.kind === "widget" && current.slug === slug.trim() ? current.variables : {};
-  return setAgentResponseWidget(parameters, slug, variables);
+  if (current.kind !== "widget" || current.source !== "library") {
+    return setAgentResponseWidgetLibrary(parameters, slug, {});
+  }
+  return setAgentResponseWidgetLibrary(parameters, slug, current.variables);
 };
 
 export const setAgentResponseWidgetVariables = (
@@ -828,11 +863,58 @@ export const setAgentResponseWidgetVariables = (
   variables: Record<string, string>,
 ): AgentParameters => {
   const current = getAgentResponseFormat(parameters);
-  if (current.kind !== "widget") {
+  if (current.kind !== "widget" || current.source !== "library") {
     return parameters;
   }
-  return setAgentResponseWidget(parameters, current.slug, variables);
+  return setAgentResponseWidgetLibrary(parameters, current.slug, variables);
 };
+
+const setAgentResponseWidgetDefinitionExpression = (
+  parameters: AgentParameters,
+  expression: string,
+): AgentParameters => {
+  const trimmedExpression = expression.trim();
+  const next = { ...(parameters as Record<string, unknown>) };
+  delete next.response_format;
+
+  if (trimmedExpression) {
+    next.response_widget = {
+      source: "variable",
+      definition_expression: trimmedExpression,
+    };
+  } else {
+    delete next.response_widget;
+  }
+
+  return stripEmpty(next) as AgentParameters;
+};
+
+export const setAgentResponseWidgetSource = (
+  parameters: AgentParameters,
+  source: WidgetSource,
+): AgentParameters => {
+  const current = getAgentResponseFormat(parameters);
+  if (current.kind === "widget" && current.source === source) {
+    return parameters;
+  }
+  if (source === "variable") {
+    const expression =
+      current.kind === "widget" && current.source === "variable"
+        ? current.definitionExpression
+        : "";
+    return setAgentResponseWidgetDefinitionExpression(parameters, expression);
+  }
+  const slug =
+    current.kind === "widget" && current.source === "library" ? current.slug : "";
+  const variables =
+    current.kind === "widget" && current.source === "library" ? current.variables : {};
+  return setAgentResponseWidgetLibrary(parameters, slug, variables);
+};
+
+export const setAgentResponseWidgetDefinition = (
+  parameters: AgentParameters,
+  expression: string,
+): AgentParameters => setAgentResponseWidgetDefinitionExpression(parameters, expression);
 
 export type WidgetVariableAssignment = {
   identifier: string;
@@ -854,7 +936,9 @@ const sanitizeWidgetAssignments = (
 };
 
 export type WidgetNodeConfig = {
+  source: WidgetSource;
   slug: string;
+  definitionExpression: string;
   variables: WidgetVariableAssignment[];
   awaitAction: boolean;
 };
@@ -864,18 +948,28 @@ const DEFAULT_WIDGET_NODE_AWAIT_ACTION = true;
 export const getWidgetNodeConfig = (
   parameters: AgentParameters | null | undefined,
 ): WidgetNodeConfig => {
+  const baseConfig: WidgetNodeConfig = {
+    source: "library",
+    slug: "",
+    definitionExpression: "",
+    variables: [],
+    awaitAction: DEFAULT_WIDGET_NODE_AWAIT_ACTION,
+  };
+
   if (!parameters) {
-    return { slug: "", variables: [], awaitAction: DEFAULT_WIDGET_NODE_AWAIT_ACTION };
+    return baseConfig;
   }
   const rawWidget = (parameters as Record<string, unknown>).widget;
   if (typeof rawWidget === "string") {
-    return { slug: rawWidget.trim(), variables: [], awaitAction: DEFAULT_WIDGET_NODE_AWAIT_ACTION };
+    return { ...baseConfig, slug: rawWidget.trim() };
   }
   if (!isPlainRecord(rawWidget)) {
-    return { slug: "", variables: [], awaitAction: DEFAULT_WIDGET_NODE_AWAIT_ACTION };
+    return baseConfig;
   }
-  const slugValue = rawWidget.slug;
-  const slug = typeof slugValue === "string" ? slugValue.trim() : "";
+  const rawSource = typeof rawWidget.source === "string" ? rawWidget.source.trim().toLowerCase() : "";
+  const definitionExpressionRaw = rawWidget.definition_expression;
+  const definitionExpression =
+    typeof definitionExpressionRaw === "string" ? definitionExpressionRaw.trim() : "";
   const variablesRaw = rawWidget.variables;
   const variables: WidgetVariableAssignment[] = [];
   if (isPlainRecord(variablesRaw)) {
@@ -894,27 +988,57 @@ export const getWidgetNodeConfig = (
     rawAwaitAction === undefined
       ? DEFAULT_WIDGET_NODE_AWAIT_ACTION
       : coerceBoolean(rawAwaitAction);
-  return { slug, variables, awaitAction };
+  if (rawSource === "variable" || (!rawWidget.slug && definitionExpression)) {
+    return {
+      source: "variable",
+      slug: "",
+      definitionExpression,
+      variables: [],
+      awaitAction,
+    };
+  }
+  const slugValue = rawWidget.slug;
+  const slug = typeof slugValue === "string" ? slugValue.trim() : "";
+  return {
+    source: "library",
+    slug,
+    definitionExpression: "",
+    variables,
+    awaitAction,
+  };
 };
 
 const mergeWidgetParameters = (
   parameters: AgentParameters,
   config: WidgetNodeConfig,
 ): AgentParameters => {
-  const trimmedSlug = config.slug.trim();
-  const normalizedAssignments = sanitizeWidgetAssignments(config.variables);
   const awaitAction = config.awaitAction ?? DEFAULT_WIDGET_NODE_AWAIT_ACTION;
   const next = { ...(parameters as Record<string, unknown>) };
-  const hasAssignments = Object.keys(normalizedAssignments).length > 0;
+  const widgetConfig: Record<string, unknown> = { source: config.source };
 
-  if (!trimmedSlug && !hasAssignments && awaitAction === DEFAULT_WIDGET_NODE_AWAIT_ACTION) {
-    delete next.widget;
-    return stripEmpty(next);
-  }
+  if (config.source === "variable") {
+    const trimmedExpression = config.definitionExpression.trim();
+    if (trimmedExpression) {
+      widgetConfig.definition_expression = trimmedExpression;
+    }
+    if (!trimmedExpression && awaitAction === DEFAULT_WIDGET_NODE_AWAIT_ACTION) {
+      delete next.widget;
+      return stripEmpty(next);
+    }
+  } else {
+    const trimmedSlug = config.slug.trim();
+    const normalizedAssignments = sanitizeWidgetAssignments(config.variables);
+    const hasAssignments = Object.keys(normalizedAssignments).length > 0;
 
-  const widgetConfig: Record<string, unknown> = { slug: trimmedSlug };
-  if (hasAssignments) {
-    widgetConfig.variables = normalizedAssignments;
+    if (!trimmedSlug && !hasAssignments && awaitAction === DEFAULT_WIDGET_NODE_AWAIT_ACTION) {
+      delete next.widget;
+      return stripEmpty(next);
+    }
+
+    widgetConfig.slug = trimmedSlug;
+    if (hasAssignments) {
+      widgetConfig.variables = normalizedAssignments;
+    }
   }
   if (awaitAction !== DEFAULT_WIDGET_NODE_AWAIT_ACTION) {
     widgetConfig.await_action = awaitAction;
@@ -926,17 +1050,27 @@ const mergeWidgetParameters = (
 export const createWidgetNodeParameters = (
   options: {
     slug?: string;
+    definitionExpression?: string;
+    source?: WidgetSource;
     variables?: WidgetVariableAssignment[];
     awaitAction?: boolean;
   } = {},
 ): AgentParameters => {
   const slug = options.slug ?? "";
+  const definitionExpression = options.definitionExpression ?? "";
+  const source = options.source ?? "library";
   const assignments = options.variables ?? [];
   const awaitAction =
     options.awaitAction === undefined
       ? DEFAULT_WIDGET_NODE_AWAIT_ACTION
       : !!options.awaitAction;
-  return mergeWidgetParameters({}, { slug, variables: assignments, awaitAction });
+  return mergeWidgetParameters({}, {
+    source,
+    slug,
+    definitionExpression,
+    variables: assignments,
+    awaitAction,
+  });
 };
 
 export const setWidgetNodeSlug = (
@@ -944,12 +1078,14 @@ export const setWidgetNodeSlug = (
   slug: string,
 ): AgentParameters => {
   const current = getWidgetNodeConfig(parameters);
-  if (current.slug === slug) {
+  if (current.source === "library" && current.slug === slug) {
     return parameters;
   }
   return mergeWidgetParameters(parameters, {
+    source: "library",
     slug,
-    variables: current.variables,
+    definitionExpression: "",
+    variables: current.source === "library" ? current.variables : [],
     awaitAction: current.awaitAction,
   });
 };
@@ -959,8 +1095,13 @@ export const setWidgetNodeVariables = (
   assignments: WidgetVariableAssignment[],
 ): AgentParameters => {
   const current = getWidgetNodeConfig(parameters);
+  if (current.source !== "library") {
+    return parameters;
+  }
   return mergeWidgetParameters(parameters, {
+    source: "library",
     slug: current.slug,
+    definitionExpression: "",
     variables: assignments,
     awaitAction: current.awaitAction,
   });
@@ -982,9 +1123,52 @@ export const setWidgetNodeAwaitAction = (
     return parameters;
   }
   return mergeWidgetParameters(parameters, {
+    source: current.source,
     slug: current.slug,
+    definitionExpression: current.definitionExpression,
     variables: current.variables,
     awaitAction,
+  });
+};
+
+export const setWidgetNodeSource = (
+  parameters: AgentParameters,
+  source: WidgetSource,
+): AgentParameters => {
+  const current = getWidgetNodeConfig(parameters);
+  if (current.source === source) {
+    return parameters;
+  }
+  if (source === "variable") {
+    return mergeWidgetParameters(parameters, {
+      source: "variable",
+      slug: "",
+      definitionExpression:
+        current.source === "variable" ? current.definitionExpression : "",
+      variables: [],
+      awaitAction: current.awaitAction,
+    });
+  }
+  return mergeWidgetParameters(parameters, {
+    source: "library",
+    slug: current.source === "library" ? current.slug : "",
+    definitionExpression: "",
+    variables: current.source === "library" ? current.variables : [],
+    awaitAction: current.awaitAction,
+  });
+};
+
+export const setWidgetNodeDefinitionExpression = (
+  parameters: AgentParameters,
+  expression: string,
+): AgentParameters => {
+  const current = getWidgetNodeConfig(parameters);
+  return mergeWidgetParameters(parameters, {
+    source: "variable",
+    slug: "",
+    definitionExpression: expression,
+    variables: [],
+    awaitAction: current.awaitAction,
   });
 };
 

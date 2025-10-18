@@ -601,7 +601,10 @@ describe("WorkflowBuilderPage", () => {
     );
     const payload = JSON.parse((putCall?.[1] as RequestInit).body as string);
     const agentNode = payload.graph.nodes.find((node: any) => node.slug === "agent-triage");
-    expect(agentNode.parameters.response_widget).toEqual({ slug: "email-card" });
+    expect(agentNode.parameters.response_widget).toEqual({
+      source: "library",
+      slug: "email-card",
+    });
   });
 
   test("permet de sélectionner un widget depuis la bibliothèque modale", async () => {
@@ -670,7 +673,10 @@ describe("WorkflowBuilderPage", () => {
     );
     const payload = JSON.parse((putCall?.[1] as RequestInit).body as string);
     const agentNode = payload.graph.nodes.find((node: any) => node.slug === "agent-triage");
-    expect(agentNode.parameters.response_widget).toEqual({ slug: "resume" });
+    expect(agentNode.parameters.response_widget).toEqual({
+      source: "library",
+      slug: "resume",
+    });
   });
 
   test("pré-remplit un agent hérité avec les valeurs par défaut", async () => {
@@ -1043,6 +1049,8 @@ describe("WorkflowBuilderPage", () => {
     const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
     const widgetPayload = body.graph.nodes.find((node: any) => node.kind === "widget");
     expect(widgetPayload).toBeTruthy();
-    expect(widgetPayload.parameters).toEqual({ widget: { slug: "resume" } });
+    expect(widgetPayload.parameters).toEqual({
+      widget: { source: "library", slug: "resume" },
+    });
   });
 });

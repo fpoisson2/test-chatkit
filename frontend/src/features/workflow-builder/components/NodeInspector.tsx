@@ -124,7 +124,17 @@ export type NodeInspectorProps = {
   onAgentResponseFormatNameChange: (nodeId: string, value: string) => void;
   onAgentResponseFormatSchemaChange: (nodeId: string, schema: unknown) => void;
   onAgentResponseWidgetSlugChange: (nodeId: string, slug: string) => void;
+  onAgentResponseWidgetSourceChange: (
+    nodeId: string,
+    source: "library" | "variable",
+  ) => void;
+  onAgentResponseWidgetDefinitionChange: (nodeId: string, expression: string) => void;
   onWidgetNodeSlugChange: (nodeId: string, slug: string) => void;
+  onWidgetNodeSourceChange: (
+    nodeId: string,
+    source: "library" | "variable",
+  ) => void;
+  onWidgetNodeDefinitionExpressionChange: (nodeId: string, expression: string) => void;
   onWidgetNodeVariablesChange: (
     nodeId: string,
     assignments: WidgetVariableAssignment[],
@@ -182,7 +192,11 @@ const NodeInspector = ({
   onAgentResponseFormatNameChange,
   onAgentResponseFormatSchemaChange,
   onAgentResponseWidgetSlugChange,
+  onAgentResponseWidgetSourceChange,
+  onAgentResponseWidgetDefinitionChange,
   onWidgetNodeSlugChange,
+  onWidgetNodeSourceChange,
+  onWidgetNodeDefinitionExpressionChange,
   onWidgetNodeVariablesChange,
   onWidgetNodeAwaitActionChange,
   onAgentIncludeChatHistoryChange,
@@ -263,35 +277,52 @@ const NodeInspector = ({
   const vectorStoreNodeDocIdExpression = vectorStoreNodeConfig.doc_id_expression.trim();
   const vectorStoreNodeDocumentExpression = vectorStoreNodeConfig.document_expression.trim();
   const vectorStoreNodeMetadataExpression = vectorStoreNodeConfig.metadata_expression.trim();
-  const responseWidgetSlug = responseFormat.kind === "widget" ? responseFormat.slug : "";
+  const responseWidgetSource =
+    responseFormat.kind === "widget" ? responseFormat.source : "library";
+  const responseWidgetSlug =
+    responseFormat.kind === "widget" && responseFormat.source === "library"
+      ? responseFormat.slug
+      : "";
+  const responseWidgetDefinitionExpression =
+    responseFormat.kind === "widget" && responseFormat.source === "variable"
+      ? responseFormat.definitionExpression
+      : "";
   const trimmedWidgetSlug = responseWidgetSlug.trim();
   const selectedWidget = useMemo(() => {
-    if (responseFormat.kind !== "widget") {
+    if (responseFormat.kind !== "widget" || responseFormat.source !== "library") {
       return null;
     }
     if (!trimmedWidgetSlug) {
       return null;
     }
     return widgets.find((widget) => widget.slug === trimmedWidgetSlug) ?? null;
-  }, [responseFormat.kind, trimmedWidgetSlug, widgets]);
+  }, [responseFormat.kind, responseWidgetSource, trimmedWidgetSlug, widgets]);
   const selectedWidgetExists =
-    responseFormat.kind === "widget" && trimmedWidgetSlug.length > 0 && Boolean(selectedWidget);
+    responseFormat.kind === "widget" &&
+    responseFormat.source === "library" &&
+    trimmedWidgetSlug.length > 0 &&
+    Boolean(selectedWidget);
   const widgetNodeConfig = useMemo(() => getWidgetNodeConfig(parameters), [parameters]);
+  const widgetNodeSource = widgetNodeConfig.source;
   const widgetNodeSlug = widgetNodeConfig.slug;
   const widgetNodeVariables = widgetNodeConfig.variables;
   const widgetNodeAwaitAction = widgetNodeConfig.awaitAction;
+  const widgetNodeDefinitionExpression = widgetNodeConfig.definitionExpression;
   const trimmedWidgetNodeSlug = widgetNodeSlug.trim();
   const [widgetDefinition, setWidgetDefinition] = useState<Record<string, unknown> | null>(null);
   const [widgetDefinitionLoading, setWidgetDefinitionLoading] = useState(false);
   const [widgetDefinitionError, setWidgetDefinitionError] = useState<string | null>(null);
   const widgetNodeSelectedWidget = useMemo(() => {
+    if (widgetNodeSource !== "library") {
+      return null;
+    }
     if (!trimmedWidgetNodeSlug) {
       return null;
     }
     return widgets.find((widget) => widget.slug === trimmedWidgetNodeSlug) ?? null;
-  }, [trimmedWidgetNodeSlug, widgets]);
+  }, [widgetNodeSource, trimmedWidgetNodeSlug, widgets]);
   useEffect(() => {
-    if (kind !== "widget") {
+    if (kind !== "widget" || widgetNodeSource !== "library") {
       setWidgetDefinition(null);
       setWidgetDefinitionError(null);
       setWidgetDefinitionLoading(false);
@@ -333,7 +364,7 @@ const NodeInspector = ({
     return () => {
       isCancelled = true;
     };
-  }, [kind, token, trimmedWidgetNodeSlug]);
+  }, [kind, token, widgetNodeSource, trimmedWidgetNodeSlug]);
   const widgetSelectId = useId();
   const widgetNodeSlugSuggestionsId = useId();
   let fileSearchValidationMessage: string | null = null;
@@ -350,7 +381,12 @@ const NodeInspector = ({
     }
   }
   let widgetValidationMessage: string | null = null;
-  if (responseFormat.kind === "widget" && !widgetsLoading && !widgetsError) {
+  if (
+    responseFormat.kind === "widget" &&
+    responseWidgetSource === "library" &&
+    !widgetsLoading &&
+    !widgetsError
+  ) {
     if (widgets.length === 0) {
       widgetValidationMessage = "Aucun widget n'est disponible dans la bibliothèque.";
     } else if (!trimmedWidgetSlug) {
@@ -358,17 +394,35 @@ const NodeInspector = ({
     } else if (!selectedWidgetExists) {
       widgetValidationMessage = "Le widget sélectionné n'est plus disponible. Choisissez-en un autre.";
     }
+  } else if (responseFormat.kind === "widget" && responseWidgetSource === "variable") {
+    if (!responseWidgetDefinitionExpression.trim()) {
+      widgetValidationMessage =
+        "Renseignez une expression qui retourne le JSON du widget (ex. state.widget_json).";
+    }
   }
   let widgetNodeValidationMessage: string | null = null;
-  if (kind === "widget" && !widgetsLoading && !widgetsError && widgets.length > 0) {
+  if (
+    kind === "widget" &&
+    widgetNodeSource === "library" &&
+    !widgetsLoading &&
+    !widgetsError &&
+    widgets.length > 0
+  ) {
     if (!trimmedWidgetNodeSlug) {
       widgetNodeValidationMessage = "Sélectionnez un widget à afficher.";
     } else if (!widgetNodeSelectedWidget) {
       widgetNodeValidationMessage = "Le widget sélectionné n'est plus disponible. Choisissez-en un autre.";
     }
+  } else if (kind === "widget" && widgetNodeSource === "variable") {
+    if (!widgetNodeDefinitionExpression.trim()) {
+      widgetNodeValidationMessage =
+        "Renseignez une expression qui retourne le JSON du widget à afficher.";
+    }
   }
-  const widgetNodeSelectValue = widgetNodeSelectedWidget ? trimmedWidgetNodeSlug : "";
-  const widgetSelectValue = selectedWidgetExists ? trimmedWidgetSlug : "";
+  const widgetNodeSelectValue =
+    widgetNodeSource === "library" && widgetNodeSelectedWidget ? trimmedWidgetNodeSlug : "";
+  const widgetSelectValue =
+    responseWidgetSource === "library" && selectedWidgetExists ? trimmedWidgetSlug : "";
   const vectorStoreNodeExists =
     vectorStoreNodeSlug.length > 0 && vectorStores.some((store) => store.slug === vectorStoreNodeSlug);
   const vectorStoreNodeValidationMessages: string[] = [];
@@ -565,86 +619,131 @@ const NodeInspector = ({
       {kind === "widget" && (
         <>
           <p style={{ color: "var(--text-muted)", margin: "0.5rem 0 0" }}>
-            Choisissez un widget de la bibliothèque ou renseignez son slug pour l'afficher dans ChatKit.
+            Affichez un widget existant ou fournissez une expression qui renvoie sa définition JSON.
           </p>
-          <label style={fieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-input`}>
+          <label style={fieldStyle}>
             <span style={labelContentStyle}>
-              Slug du widget
-              <HelpTooltip label="Correspond au slug défini lors de l'enregistrement du widget dans la bibliothèque." />
-            </span>
-            <input
-              id={`${widgetNodeSlugSuggestionsId}-input`}
-              type="text"
-              value={widgetNodeSlug}
-              onChange={(event) => onWidgetNodeSlugChange(node.id, event.target.value)}
-              placeholder="Ex. mon-widget-personnalise"
-              list={widgets.length > 0 ? `${widgetNodeSlugSuggestionsId}-list` : undefined}
-            />
-          </label>
-          <label style={inlineFieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-select`}>
-            <span style={labelContentStyle}>
-              Widget enregistré
-              <HelpTooltip label="La liste provient automatiquement de la bibliothèque des widgets partageables. Le widget sélectionné est diffusé immédiatement dans ChatKit lorsqu'on atteint ce bloc." />
+              Source du widget
+              <HelpTooltip label="Diffusez un widget de la bibliothèque ou un JSON stocké dans les variables du workflow." />
             </span>
             <select
-              id={`${widgetNodeSlugSuggestionsId}-select`}
-              value={widgetNodeSelectValue}
-              onChange={(event) => onWidgetNodeSlugChange(node.id, event.target.value)}
-              disabled={widgetsLoading || !!widgetsError || widgets.length === 0}
+              value={widgetNodeSource}
+              onChange={(event) =>
+                onWidgetNodeSourceChange(node.id, event.target.value as "library" | "variable")
+              }
             >
-              <option value="">Sélectionnez un widget</option>
-              {widgets.map((widget) => (
-                <option key={widget.slug} value={widget.slug}>
-                  {widget.title?.trim() ? `${widget.title} (${widget.slug})` : widget.slug}
-                </option>
-              ))}
+              <option value="library">Bibliothèque de widgets</option>
+              <option value="variable">Expression JSON (variable)</option>
             </select>
           </label>
-          {widgetsLoading ? (
-            <p style={{ color: "var(--text-muted)", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
-          ) : widgetsError ? (
-            <p style={{ color: "#b91c1c", margin: 0 }}>
-              {widgetsError}
-              <br />
-              Vous pouvez saisir le slug du widget manuellement ci-dessus.
-            </p>
-          ) : widgets.length === 0 ? (
-            <p style={{ color: "var(--text-muted)", margin: 0 }}>
-              Créez un widget dans la bibliothèque dédiée ou saisissez son slug manuellement ci-dessus.
-            </p>
-          ) : null}
 
-          {widgetNodeValidationMessage ? (
-            <p style={{ color: "#b91c1c", margin: 0 }}>{widgetNodeValidationMessage}</p>
-          ) : null}
+          {widgetNodeSource === "library" ? (
+            <>
+              <label style={fieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-input`}>
+                <span style={labelContentStyle}>
+                  Slug du widget
+                  <HelpTooltip label="Correspond au slug défini lors de l'enregistrement du widget dans la bibliothèque." />
+                </span>
+                <input
+                  id={`${widgetNodeSlugSuggestionsId}-input`}
+                  type="text"
+                  value={widgetNodeSlug}
+                  onChange={(event) => onWidgetNodeSlugChange(node.id, event.target.value)}
+                  placeholder="Ex. mon-widget-personnalise"
+                  list={widgets.length > 0 ? `${widgetNodeSlugSuggestionsId}-list` : undefined}
+                />
+              </label>
+              <label style={inlineFieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-select`}>
+                <span style={labelContentStyle}>
+                  Widget enregistré
+                  <HelpTooltip label="La liste provient automatiquement de la bibliothèque des widgets partageables. Le widget sélectionné est diffusé immédiatement dans ChatKit lorsqu'on atteint ce bloc." />
+                </span>
+                <select
+                  id={`${widgetNodeSlugSuggestionsId}-select`}
+                  value={widgetNodeSelectValue}
+                  onChange={(event) => onWidgetNodeSlugChange(node.id, event.target.value)}
+                  disabled={widgetsLoading || !!widgetsError || widgets.length === 0}
+                >
+                  <option value="">Sélectionnez un widget</option>
+                  {widgets.map((widget) => (
+                    <option key={widget.slug} value={widget.slug}>
+                      {widget.title?.trim() ? `${widget.title} (${widget.slug})` : widget.slug}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {widgetsLoading ? (
+                <p style={{ color: "var(--text-muted)", margin: 0 }}>
+                  Chargement de la bibliothèque de widgets…
+                </p>
+              ) : widgetsError ? (
+                <p style={{ color: "#b91c1c", margin: 0 }}>
+                  {widgetsError}
+                  <br />
+                  Vous pouvez saisir le slug du widget manuellement ci-dessus.
+                </p>
+              ) : widgets.length === 0 ? (
+                <p style={{ color: "var(--text-muted)", margin: 0 }}>
+                  Créez un widget dans la bibliothèque dédiée ou saisissez son slug manuellement ci-dessus.
+                </p>
+              ) : null}
 
-          {widgets.length > 0 && (
-            <datalist id={`${widgetNodeSlugSuggestionsId}-list`}>
-              {widgets.map((widget) => (
-                <option key={widget.slug} value={widget.slug}>
-                  {widget.title?.trim() ? widget.title : widget.slug}
-                </option>
-              ))}
-            </datalist>
+              {widgetNodeValidationMessage ? (
+                <p style={{ color: "#b91c1c", margin: 0 }}>{widgetNodeValidationMessage}</p>
+              ) : null}
+
+              {widgets.length > 0 && (
+                <datalist id={`${widgetNodeSlugSuggestionsId}-list`}>
+                  {widgets.map((widget) => (
+                    <option key={widget.slug} value={widget.slug}>
+                      {widget.title?.trim() ? widget.title : widget.slug}
+                    </option>
+                  ))}
+                </datalist>
+              )}
+
+              {!isTestEnvironment && (
+                <WidgetNodeContentEditor
+                  slug={trimmedWidgetNodeSlug}
+                  definition={widgetDefinition}
+                  loading={widgetDefinitionLoading}
+                  error={widgetDefinitionError}
+                  assignments={widgetNodeVariables}
+                  onChange={(next) => onWidgetNodeVariablesChange(node.id, next)}
+                />
+              )}
+
+              <div style={{ marginTop: "0.75rem" }}>
+                <WidgetVariablesPanel
+                  assignments={widgetNodeVariables}
+                  onChange={(next) => onWidgetNodeVariablesChange(node.id, next)}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <label style={fieldStyle}>
+                <span style={labelContentStyle}>
+                  Expression JSON du widget
+                  <HelpTooltip label="Saisissez une expression (ex. state.widget_output) qui renvoie la définition JSON complète du widget." />
+                </span>
+                <input
+                  type="text"
+                  value={widgetNodeDefinitionExpression}
+                  onChange={(event) =>
+                    onWidgetNodeDefinitionExpressionChange(node.id, event.target.value)
+                  }
+                  placeholder="Ex. state.widget_output"
+                />
+              </label>
+              <p style={{ color: "var(--text-muted)", margin: "-0.35rem 0 0.35rem" }}>
+                Le JSON fourni est transmis tel quel au widget ChatKit. Vérifiez qu'il respecte le schéma attendu.
+              </p>
+              {widgetNodeValidationMessage ? (
+                <p style={{ color: "#b91c1c", margin: 0 }}>{widgetNodeValidationMessage}</p>
+              ) : null}
+            </>
           )}
-
-          {!isTestEnvironment && (
-            <WidgetNodeContentEditor
-              slug={trimmedWidgetNodeSlug}
-              definition={widgetDefinition}
-              loading={widgetDefinitionLoading}
-              error={widgetDefinitionError}
-              assignments={widgetNodeVariables}
-              onChange={(next) => onWidgetNodeVariablesChange(node.id, next)}
-            />
-          )}
-
-          <div style={{ marginTop: "0.75rem" }}>
-            <WidgetVariablesPanel
-              assignments={widgetNodeVariables}
-              onChange={(next) => onWidgetNodeVariablesChange(node.id, next)}
-            />
-          </div>
 
           <label style={{ ...fieldStyle, marginTop: "0.75rem" }}>
             <span style={labelContentStyle}>Progression du workflow</span>
@@ -923,54 +1022,109 @@ const NodeInspector = ({
 
           {responseFormat.kind === "widget" && (
             <>
-              <label style={inlineFieldStyle} htmlFor={`${widgetSelectId}-select`}>
+              <label style={fieldStyle}>
                 <span style={labelContentStyle}>
-                  Widget de sortie
-                  <HelpTooltip label="Sélectionnez un widget existant pour afficher la réponse dans ChatKit." />
+                  Source du widget
+                  <HelpTooltip label="Choisissez entre un widget enregistré ou un JSON fourni par une variable du workflow." />
                 </span>
                 <select
-                  id={`${widgetSelectId}-select`}
-                  value={widgetSelectValue}
-                  onChange={(event) => onAgentResponseWidgetSlugChange(node.id, event.target.value)}
-                  disabled={widgetsLoading || !!widgetsError || widgets.length === 0}
-                  aria-describedby={
-                    widgetValidationMessage ? `${widgetSelectId}-message` : undefined
+                  value={responseWidgetSource}
+                  onChange={(event) =>
+                    onAgentResponseWidgetSourceChange(
+                      node.id,
+                      event.target.value as "library" | "variable",
+                    )
                   }
                 >
-                  <option value="">
-                    {widgets.length === 0
-                      ? "Aucun widget disponible"
-                      : "Sélectionnez un widget"}
-                  </option>
-                  {widgets.map((widget) => (
-                    <option key={widget.slug} value={widget.slug}>
-                      {widget.title?.trim() ? `${widget.title} (${widget.slug})` : widget.slug}
-                    </option>
-                  ))}
+                  <option value="library">Bibliothèque de widgets</option>
+                  <option value="variable">Expression JSON (variable)</option>
                 </select>
               </label>
-              {widgetsLoading ? (
-                <p style={{ color: "var(--text-muted)", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
-              ) : widgetsError ? (
-                <p style={{ color: "#b91c1c", margin: 0 }}>{widgetsError}</p>
-              ) : widgets.length === 0 ? (
-                <p style={{ color: "var(--text-muted)", margin: 0 }}>
-                  Créez un widget dans la bibliothèque dédiée pour l'utiliser ici.
-                </p>
-              ) : null}
-              {widgetValidationMessage ? (
-                <p
-                  id={`${widgetSelectId}-message`}
-                  style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}
-                >
-                  {widgetValidationMessage}
-                </p>
-              ) : null}
-              {responseWidgetSlug && !widgetsLoading && widgetsError && (
-                <p style={{ color: "var(--text-muted)", margin: "0.25rem 0 0" }}>
-                  Le widget sélectionné ({responseWidgetSlug}) sera conservé tant que la bibliothèque n'est
-                  pas disponible.
-                </p>
+
+              {responseWidgetSource === "library" ? (
+                <>
+                  <label style={inlineFieldStyle} htmlFor={`${widgetSelectId}-select`}>
+                    <span style={labelContentStyle}>
+                      Widget de sortie
+                      <HelpTooltip label="Sélectionnez un widget existant pour afficher la réponse dans ChatKit." />
+                    </span>
+                    <select
+                      id={`${widgetSelectId}-select`}
+                      value={widgetSelectValue}
+                      onChange={(event) =>
+                        onAgentResponseWidgetSlugChange(node.id, event.target.value)
+                      }
+                      disabled={widgetsLoading || !!widgetsError || widgets.length === 0}
+                      aria-describedby={
+                        widgetValidationMessage ? `${widgetSelectId}-message` : undefined
+                      }
+                    >
+                      <option value="">
+                        {widgets.length === 0
+                          ? "Aucun widget disponible"
+                          : "Sélectionnez un widget"}
+                      </option>
+                      {widgets.map((widget) => (
+                        <option key={widget.slug} value={widget.slug}>
+                          {widget.title?.trim() ? `${widget.title} (${widget.slug})` : widget.slug}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {widgetsLoading ? (
+                    <p style={{ color: "var(--text-muted)", margin: 0 }}>
+                      Chargement de la bibliothèque de widgets…
+                    </p>
+                  ) : widgetsError ? (
+                    <p style={{ color: "#b91c1c", margin: 0 }}>{widgetsError}</p>
+                  ) : widgets.length === 0 ? (
+                    <p style={{ color: "var(--text-muted)", margin: 0 }}>
+                      Créez un widget dans la bibliothèque dédiée pour l'utiliser ici.
+                    </p>
+                  ) : null}
+                  {widgetValidationMessage ? (
+                    <p
+                      id={`${widgetSelectId}-message`}
+                      style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}
+                    >
+                      {widgetValidationMessage}
+                    </p>
+                  ) : null}
+                  {responseWidgetSlug && !widgetsLoading && widgetsError && (
+                    <p style={{ color: "var(--text-muted)", margin: "0.25rem 0 0" }}>
+                      Le widget sélectionné ({responseWidgetSlug}) sera conservé tant que la bibliothèque n'est
+                      pas disponible.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <label style={fieldStyle}>
+                    <span style={labelContentStyle}>
+                      Expression JSON du widget
+                      <HelpTooltip label="Saisissez une expression (ex. state.widget_json) qui renvoie la définition JSON complète du widget." />
+                    </span>
+                    <input
+                      type="text"
+                      value={responseWidgetDefinitionExpression}
+                      onChange={(event) =>
+                        onAgentResponseWidgetDefinitionChange(node.id, event.target.value)
+                      }
+                      placeholder="Ex. state.widget_json"
+                    />
+                  </label>
+                  <p style={{ color: "var(--text-muted)", margin: "-0.35rem 0 0.35rem" }}>
+                    La valeur doit être un objet JSON valide conforme aux spécifications ChatKit Widget.
+                  </p>
+                  {widgetValidationMessage ? (
+                    <p
+                      id={`${widgetSelectId}-message`}
+                      style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}
+                    >
+                      {widgetValidationMessage}
+                    </p>
+                  ) : null}
+                </>
               )}
             </>
           )}
