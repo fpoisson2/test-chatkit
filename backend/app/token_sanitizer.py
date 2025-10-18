@@ -16,6 +16,11 @@ MAX_TOKEN_FIELD_NAMES = {
     "maxInputTokens",
 }
 
+UNSUPPORTED_REASONING_FIELDS = {
+    # L'API ne reconnaît pas encore le réglage de verbosité du raisonnement.
+    "verbosity",
+}
+
 
 def strip_max_token_fields(value: Any) -> tuple[Any, bool]:
     """Supprime récursivement les champs liés aux limites de jetons."""
@@ -44,11 +49,51 @@ def strip_max_token_fields(value: Any) -> tuple[Any, bool]:
     return value, False
 
 
+def strip_unsupported_reasoning_fields(value: Any) -> tuple[Any, bool]:
+    """Supprime récursivement les champs de raisonnement non pris en charge."""
+
+    if isinstance(value, dict):
+        sanitized: dict[Any, Any] = {}
+        removed_any = False
+        for key, item in value.items():
+            if key == "reasoning" and isinstance(item, dict):
+                sanitized_reasoning: dict[Any, Any] = {}
+                removed_reasoning = False
+                for field, field_value in item.items():
+                    if field in UNSUPPORTED_REASONING_FIELDS:
+                        removed_reasoning = True
+                        continue
+                    sanitized_value, removed_nested = strip_unsupported_reasoning_fields(
+                        field_value
+                    )
+                    sanitized_reasoning[field] = sanitized_value
+                    removed_reasoning = removed_reasoning or removed_nested
+                sanitized[key] = sanitized_reasoning
+                removed_any = removed_any or removed_reasoning
+            else:
+                sanitized_item, removed_item = strip_unsupported_reasoning_fields(item)
+                sanitized[key] = sanitized_item
+                removed_any = removed_any or removed_item
+        return sanitized, removed_any
+
+    if isinstance(value, list):
+        sanitized_list: list[Any] = []
+        removed_any = False
+        for element in value:
+            sanitized_element, removed = strip_unsupported_reasoning_fields(element)
+            sanitized_list.append(sanitized_element)
+            removed_any = removed_any or removed
+        return sanitized_list, removed_any
+
+    return value, False
+
+
 def sanitize_value(value: Any) -> tuple[Any, bool]:
     """Retourne une valeur nettoyée et un indicateur de suppression."""
 
-    sanitized, removed = strip_max_token_fields(value)
-    return sanitized, removed
+    sanitized, removed_tokens = strip_max_token_fields(value)
+    sanitized_reasoning, removed_reasoning = strip_unsupported_reasoning_fields(sanitized)
+    return sanitized_reasoning, removed_tokens or removed_reasoning
 
 
 def sanitize_model_like(settings: T) -> T:
