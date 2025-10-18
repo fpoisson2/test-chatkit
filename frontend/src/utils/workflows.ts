@@ -1018,11 +1018,24 @@ export const getWidgetNodeConfig = (
   if (!parameters) {
     return baseConfig;
   }
-  const rawWidget = (parameters as Record<string, unknown>).widget;
+  const paramsRecord = parameters as Record<string, unknown>;
+  const rawSourceOverride = paramsRecord.widget_source;
+  const normalizedSourceOverride =
+    typeof rawSourceOverride === "string" ? rawSourceOverride.trim().toLowerCase() : "";
+  const rawWidget = paramsRecord.widget;
   if (typeof rawWidget === "string") {
     return { ...baseConfig, slug: rawWidget.trim() };
   }
   if (!isPlainRecord(rawWidget)) {
+    if (normalizedSourceOverride === "variable") {
+      return {
+        source: "variable",
+        slug: "",
+        definitionExpression: "",
+        variables: [],
+        awaitAction: baseConfig.awaitAction,
+      };
+    }
     return baseConfig;
   }
   const rawSource = typeof rawWidget.source === "string" ? rawWidget.source.trim().toLowerCase() : "";
@@ -1106,6 +1119,20 @@ const mergeWidgetParameters = (
   return next as AgentParameters;
 };
 
+const applyWidgetSourceOverride = (
+  parameters: AgentParameters,
+  source: WidgetSource,
+  definitionExpression: string,
+): AgentParameters => {
+  const next = { ...(parameters as Record<string, unknown>) };
+  if (source === "variable" && !definitionExpression.trim()) {
+    next.widget_source = "variable";
+  } else {
+    delete next.widget_source;
+  }
+  return stripEmpty(next);
+};
+
 export const createWidgetNodeParameters = (
   options: {
     slug?: string;
@@ -1123,13 +1150,14 @@ export const createWidgetNodeParameters = (
     options.awaitAction === undefined
       ? DEFAULT_WIDGET_NODE_AWAIT_ACTION
       : !!options.awaitAction;
-  return mergeWidgetParameters({}, {
+  const merged = mergeWidgetParameters({}, {
     source,
     slug,
     definitionExpression,
     variables: assignments,
     awaitAction,
   });
+  return applyWidgetSourceOverride(merged, source, definitionExpression);
 };
 
 export const setWidgetNodeSlug = (
@@ -1140,13 +1168,14 @@ export const setWidgetNodeSlug = (
   if (current.source === "library" && current.slug === slug) {
     return parameters;
   }
-  return mergeWidgetParameters(parameters, {
+  const merged = mergeWidgetParameters(parameters, {
     source: "library",
     slug,
     definitionExpression: "",
     variables: current.source === "library" ? current.variables : [],
     awaitAction: current.awaitAction,
   });
+  return applyWidgetSourceOverride(merged, "library", "");
 };
 
 export const setWidgetNodeVariables = (
@@ -1157,20 +1186,22 @@ export const setWidgetNodeVariables = (
   if (current.source !== "library") {
     return parameters;
   }
-  return mergeWidgetParameters(parameters, {
+  const merged = mergeWidgetParameters(parameters, {
     source: "library",
     slug: current.slug,
     definitionExpression: "",
     variables: assignments,
     awaitAction: current.awaitAction,
   });
+  return applyWidgetSourceOverride(merged, "library", "");
 };
 
 export const resolveWidgetNodeParameters = (
   parameters: AgentParameters | null | undefined,
 ): AgentParameters => {
   const current = getWidgetNodeConfig(parameters ?? {});
-  return mergeWidgetParameters(parameters ?? {}, current);
+  const merged = mergeWidgetParameters(parameters ?? {}, current);
+  return applyWidgetSourceOverride(merged, current.source, current.definitionExpression);
 };
 
 export const setWidgetNodeAwaitAction = (
@@ -1181,13 +1212,18 @@ export const setWidgetNodeAwaitAction = (
   if (current.awaitAction === awaitAction) {
     return parameters;
   }
-  return mergeWidgetParameters(parameters, {
+  const merged = mergeWidgetParameters(parameters, {
     source: current.source,
     slug: current.slug,
     definitionExpression: current.definitionExpression,
     variables: current.variables,
     awaitAction,
   });
+  return applyWidgetSourceOverride(
+    merged,
+    current.source,
+    current.definitionExpression,
+  );
 };
 
 export const setWidgetNodeSource = (
@@ -1199,22 +1235,25 @@ export const setWidgetNodeSource = (
     return parameters;
   }
   if (source === "variable") {
-    return mergeWidgetParameters(parameters, {
+    const nextDefinition =
+      current.source === "variable" ? current.definitionExpression : "";
+    const merged = mergeWidgetParameters(parameters, {
       source: "variable",
       slug: "",
-      definitionExpression:
-        current.source === "variable" ? current.definitionExpression : "",
+      definitionExpression: nextDefinition,
       variables: [],
       awaitAction: current.awaitAction,
     });
+    return applyWidgetSourceOverride(merged, "variable", nextDefinition);
   }
-  return mergeWidgetParameters(parameters, {
+  const merged = mergeWidgetParameters(parameters, {
     source: "library",
     slug: current.source === "library" ? current.slug : "",
     definitionExpression: "",
     variables: current.source === "library" ? current.variables : [],
     awaitAction: current.awaitAction,
   });
+  return applyWidgetSourceOverride(merged, "library", "");
 };
 
 export const setWidgetNodeDefinitionExpression = (
@@ -1222,13 +1261,14 @@ export const setWidgetNodeDefinitionExpression = (
   expression: string,
 ): AgentParameters => {
   const current = getWidgetNodeConfig(parameters);
-  return mergeWidgetParameters(parameters, {
+  const merged = mergeWidgetParameters(parameters, {
     source: "variable",
     slug: "",
     definitionExpression: expression,
     variables: [],
     awaitAction: current.awaitAction,
   });
+  return applyWidgetSourceOverride(merged, "variable", expression);
 };
 
 export type StateAssignment = {
