@@ -21,6 +21,7 @@ import {
   getAgentMaxOutputTokens,
   getAgentMessage,
   getAgentModel,
+  getAssistantMessage,
   getAgentReasoningEffort,
   getAgentReasoningSummary,
   getAgentReasoningVerbosity,
@@ -174,6 +175,7 @@ export type NodeInspectorProps = {
     assignments: StateAssignment[],
   ) => void;
   onEndMessageChange: (nodeId: string, value: string) => void;
+  onAssistantMessageChange: (nodeId: string, value: string) => void;
   onRemove: (nodeId: string) => void;
 };
 
@@ -226,12 +228,15 @@ const NodeInspector = ({
   widgetsError,
   onStateAssignmentsChange,
   onEndMessageChange,
+  onAssistantMessageChange,
   onRemove,
 }: NodeInspectorProps) => {
   const { token } = useAuth();
   const { kind, displayName, parameters } = node.data;
   const isFixed = kind === "start";
   const endMessage = kind === "end" ? getEndMessage(parameters) : "";
+  const assistantMessage =
+    kind === "assistant_message" ? getAssistantMessage(parameters) : "";
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
   const reasoningEffort = getAgentReasoningEffort(parameters);
@@ -766,6 +771,25 @@ const NodeInspector = ({
             </div>
           </label>
         </>
+      )}
+
+      {kind === "assistant_message" && (
+        <label style={fieldStyle}>
+          <span style={labelContentStyle}>Texte du message assistant</span>
+          <textarea
+            value={assistantMessage}
+            onChange={(event) =>
+              onAssistantMessageChange(node.id, event.target.value)
+            }
+            rows={4}
+            placeholder="Texte affiché aux utilisateurs lorsque ce bloc est exécuté"
+            style={{ resize: "vertical", minHeight: "4.5rem" }}
+          />
+          <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+            Ce message est diffusé tel quel dans la conversation avant de passer au
+            bloc suivant.
+          </p>
+        </label>
       )}
 
       {kind === "end" && (

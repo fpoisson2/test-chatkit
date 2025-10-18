@@ -2792,7 +2792,7 @@ def _resolve_watch_payload(
     context: Any, steps: Sequence["WorkflowStepSummary"]
 ) -> Any:
     if isinstance(context, Mapping):
-        for key in ("output_parsed", "output_text", "output"):
+        for key in ("output_parsed", "output_text", "output", "assistant_message"):
             candidate = context.get(key)
             if candidate not in (None, "", {}):
                 return candidate
@@ -3008,6 +3008,22 @@ async def run_workflow(
             status_reason=status_reason,
             message=message,
         )
+
+    def _resolve_assistant_message(step: WorkflowStep) -> str:
+        raw_params = step.parameters or {}
+        params = raw_params if isinstance(raw_params, Mapping) else {}
+        message = params.get("message")
+        if isinstance(message, str):
+            return message
+        fallback_text = params.get("text")
+        if isinstance(fallback_text, str):
+            return fallback_text
+        status = params.get("status")
+        if isinstance(status, Mapping):
+            reason = status.get("reason")
+            if isinstance(reason, str):
+                return reason
+        return ""
 
     def _workflow_run_config() -> RunConfig:
         metadata: dict[str, str] = {"__trace_source__": "agent-builder"}
@@ -4050,6 +4066,39 @@ async def run_workflow(
                     "Configuration du workflow invalide",
                     RuntimeError(
                         f"Aucune transition disponible après le nœud watch {current_node.slug}"
+                    ),
+                    list(steps),
+                )
+            current_slug = transition.target_step.slug
+            continue
+
+        if current_node.kind == "assistant_message":
+            title = _node_title(current_node)
+            raw_message = _resolve_assistant_message(current_node)
+            sanitized_message = _normalize_user_text(raw_message)
+
+            await record_step(current_node.slug, title, sanitized_message or "")
+            last_step_context = {"assistant_message": sanitized_message}
+
+            if sanitized_message and on_stream_event is not None:
+                assistant_message = AssistantMessageItem(
+                    id=agent_context.generate_id("message"),
+                    thread_id=agent_context.thread.id,
+                    created_at=datetime.now(),
+                    content=[AssistantMessageContent(text=sanitized_message)],
+                )
+                await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
+
+            transition = _next_edge(current_slug)
+            if transition is None:
+                if not agent_steps_ordered:
+                    break
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError(
+                        "Aucune transition disponible après le bloc message assistant "
+                        f"{current_node.slug}"
                     ),
                     list(steps),
                 )

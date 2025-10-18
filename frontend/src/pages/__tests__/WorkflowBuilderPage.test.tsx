@@ -491,7 +491,50 @@ describe("WorkflowBuilderPage", () => {
       ),
     ).toBe(false);
 
-    await screen.findByText(/modifications enregistrées automatiquement/i);
+  await screen.findByText(/modifications enregistrées automatiquement/i);
+  });
+
+  test("permet d'ajouter un bloc message assistant", async () => {
+    const fetchMock = setupWorkflowApi();
+    const user = userEvent.setup();
+
+    renderWorkflowBuilder();
+
+    const addButton = await screen.findByRole("button", { name: /message assistant/i });
+    await user.click(addButton);
+
+    const assistantTextarea = await screen.findByLabelText(/texte du message assistant/i);
+    await user.clear(assistantTextarea);
+    await user.type(assistantTextarea, "Bienvenue !");
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            typeof input === "string" &&
+            input.endsWith(
+              `/api/workflows/${defaultWorkflowSummary.id}/versions/${draftVersionSummary.id}`,
+            ) &&
+            (init as RequestInit | undefined)?.method === "PUT",
+        ),
+      ).toBe(true);
+    });
+
+    const saveCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        typeof input === "string" &&
+        input.endsWith(
+          `/api/workflows/${defaultWorkflowSummary.id}/versions/${draftVersionSummary.id}`,
+        ) &&
+        (init as RequestInit | undefined)?.method === "PUT",
+    );
+    const body = JSON.parse(((saveCall?.[1] as RequestInit)?.body ?? "{}") as string);
+    expect(
+      body.graph.nodes.some(
+        (node: any) =>
+          node.kind === "assistant_message" && node.parameters?.message === "Bienvenue !",
+      ),
+    ).toBe(true);
   });
 
   test("permet d'activer le function tool météo Python", async () => {

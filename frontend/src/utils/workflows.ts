@@ -59,6 +59,31 @@ export const getEndMessage = (parameters: AgentParameters | null | undefined): s
   return typeof fallback === "string" ? fallback : "";
 };
 
+export const getAssistantMessage = (
+  parameters: AgentParameters | null | undefined,
+): string => {
+  if (!parameters) {
+    return "";
+  }
+  const params = parameters as Record<string, unknown>;
+  const message = params.message;
+  if (typeof message === "string") {
+    return message;
+  }
+  const text = params.text;
+  if (typeof text === "string") {
+    return text;
+  }
+  const status = params.status;
+  if (isPlainRecord(status)) {
+    const reason = (status as Record<string, unknown>).reason;
+    if (typeof reason === "string") {
+      return reason;
+    }
+  }
+  return "";
+};
+
 const truthyStrings = new Set(["true", "1", "yes", "on"]);
 const falsyStrings = new Set(["false", "0", "no", "off"]);
 
@@ -281,6 +306,32 @@ export const setEndMessage = (
   }
   next.status = status;
 
+  return stripEmpty(next as Record<string, unknown>);
+};
+
+export const setAssistantMessage = (
+  parameters: AgentParameters,
+  message: string,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const trimmed = message.trim();
+
+  if (!trimmed) {
+    delete (next as Record<string, unknown>).message;
+    delete (next as Record<string, unknown>).text;
+    if (isPlainRecord(next.status)) {
+      const status = { ...(next.status as Record<string, unknown>) };
+      delete status.reason;
+      if (Object.keys(status).length === 0) {
+        delete (next as Record<string, unknown>).status;
+      } else {
+        (next as Record<string, unknown>).status = status;
+      }
+    }
+    return stripEmpty(next as Record<string, unknown>);
+  }
+
+  (next as Record<string, unknown>).message = message;
   return stripEmpty(next as Record<string, unknown>);
 };
 
