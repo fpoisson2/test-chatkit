@@ -1966,6 +1966,8 @@ _STEP_TITLES: dict[str, str] = {
 
 class WorkflowInput(BaseModel):
     input_as_text: str
+    auto_start_was_triggered: bool = False
+    auto_start_assistant_message: str | None = None
 
 
 @dataclass

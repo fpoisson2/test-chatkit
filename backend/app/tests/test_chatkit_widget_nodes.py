@@ -1287,6 +1287,174 @@ def test_message_user_node_streams_event() -> None:
     assert "besoin d'aide" in user_events[0].item.content[0].text
 
 
+@pytest.mark.asyncio
+async def test_auto_start_sequence_with_message_and_widget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[ThreadStreamEvent] = []
+
+    async def _collect(event: ThreadStreamEvent) -> None:
+        events.append(event)
+
+    async def _fake_stream_widget(thread_metadata, widget, *, generate_id):  # type: ignore[no-untyped-def]
+        widget_item = chatkit_module.WidgetItem(
+            id=generate_id("widget"),
+            thread_id=thread_metadata.id,
+            created_at=datetime.now(),
+            widget=widget,
+        )
+        yield chatkit_module.ThreadItemDoneEvent(item=widget_item)
+
+    monkeypatch.setattr(chatkit_module, "_sdk_stream_widget", _fake_stream_widget)
+    monkeypatch.setattr(
+        chatkit_module,
+        "_load_widget_definition",
+        lambda slug, *, context: {
+            "type": "Card",
+            "children": [
+                {"type": "Text", "id": "title", "value": "Bienvenue"},
+                {"type": "Markdown", "id": "body", "value": ""},
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        chatkit_module.WidgetLibraryService,
+        "_validate_widget",
+        staticmethod(lambda definition: definition),
+    )
+
+    agent_context = SimpleNamespace(
+        generate_id=lambda item_type: f"{item_type}_1",
+        store=SimpleNamespace(
+            generate_item_id=lambda item_type, thread, request_context: f"{item_type}_1"
+        ),
+        thread=SimpleNamespace(id="thread-1"),
+        request_context=None,
+    )
+
+    start_step = SimpleNamespace(
+        slug="start",
+        kind="start",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=0,
+        id=1,
+        display_name="Début",
+    )
+    assistant_intro = SimpleNamespace(
+        slug="assistant-intro",
+        kind="message_assistant",
+        is_enabled=True,
+        parameters={"message": "Bonjour et bienvenue."},
+        agent_key=None,
+        position=1,
+        id=2,
+        display_name="Message d'accueil",
+    )
+    user_message = SimpleNamespace(
+        slug="user-question",
+        kind="message_user",
+        is_enabled=True,
+        parameters={"message": "Pouvez-vous me donner plus de détails ?"},
+        agent_key=None,
+        position=2,
+        id=3,
+        display_name="Message utilisateur",
+    )
+    assistant_followup = SimpleNamespace(
+        slug="assistant-followup",
+        kind="message_assistant",
+        is_enabled=True,
+        parameters={"message": "Bien sûr, voici la suite."},
+        agent_key=None,
+        position=3,
+        id=4,
+        display_name="Message de suivi",
+    )
+    widget_step = SimpleNamespace(
+        slug="welcome-widget",
+        kind="widget",
+        is_enabled=True,
+        parameters={"widget": {"slug": "welcome-card"}},
+        agent_key=None,
+        position=4,
+        id=5,
+        display_name="Widget",
+    )
+    wait_step = SimpleNamespace(
+        slug="wait",
+        kind="wait_for_user_input",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=5,
+        id=6,
+        display_name="Attente",
+    )
+    end_step = SimpleNamespace(
+        slug="end",
+        kind="end",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=6,
+        id=7,
+        display_name="Fin",
+    )
+
+    transitions = [
+        SimpleNamespace(id=1, source_step=start_step, target_step=assistant_intro, condition=None),
+        SimpleNamespace(id=2, source_step=assistant_intro, target_step=user_message, condition=None),
+        SimpleNamespace(id=3, source_step=user_message, target_step=assistant_followup, condition=None),
+        SimpleNamespace(id=4, source_step=assistant_followup, target_step=widget_step, condition=None),
+        SimpleNamespace(id=5, source_step=widget_step, target_step=wait_step, condition=None),
+        SimpleNamespace(id=6, source_step=wait_step, target_step=end_step, condition=None),
+    ]
+
+    definition = SimpleNamespace(
+        steps=[start_step, assistant_intro, user_message, assistant_followup, widget_step, wait_step, end_step],
+        transitions=transitions,
+        workflow_id=1,
+        workflow=SimpleNamespace(slug="demo", display_name="Démo"),
+    )
+
+    summary = await run_workflow(
+        chatkit_module.WorkflowInput(
+            input_as_text="",
+            auto_start_was_triggered=True,
+            auto_start_assistant_message="",
+        ),
+        agent_context=agent_context,
+        workflow_service=_DummyWorkflowService(definition),
+        on_stream_event=_collect,
+    )
+
+    user_events = [
+        event
+        for event in events
+        if isinstance(event, ThreadItemDoneEvent)
+        and isinstance(event.item, UserMessageItem)
+    ]
+    assistant_events = [
+        event
+        for event in events
+        if isinstance(event, ThreadItemDoneEvent)
+        and isinstance(event.item, AssistantMessageItem)
+    ]
+    widget_events = [
+        event
+        for event in events
+        if isinstance(event, ThreadItemDoneEvent)
+        and isinstance(event.item, chatkit_module.WidgetItem)
+    ]
+
+    assert summary.final_node_slug == "wait"
+    assert assistant_events and len(assistant_events) == 2
+    assert user_events and "plus de détails" in user_events[0].item.content[0].text
+    assert widget_events, "Le widget doit être diffusé dans la séquence"
+
+
 def test_wait_node_interrupts_workflow(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[Any] = []
 
