@@ -28,6 +28,10 @@ from openai.types.responses import (
     EasyInputMessageParam,
     ResponseFileSearchToolCall,
     ResponseFunctionWebSearch,
+    ResponseImageGenCallCompletedEvent,
+    ResponseImageGenCallGeneratingEvent,
+    ResponseImageGenCallInProgressEvent,
+    ResponseImageGenCallPartialImageEvent,
     ResponseInputContentParam,
     ResponseInputTextParam,
     ResponseOutputItemAddedEvent,
@@ -43,6 +47,7 @@ from openai.types.responses.response_function_web_search import (
     ActionSearch,
     ActionSearchSource,
 )
+from openai.types.responses.response_output_item import ImageGenerationCall
 from openai.types.responses.response_output_text import (
     AnnotationFileCitation as ResponsesAnnotationFileCitation,
 )
@@ -82,6 +87,7 @@ from chatkit.types import (
     DurationSummary,
     FileSource,
     InferenceOptions,
+    ImageTask,
     Page,
     SearchTask,
     TaskItem,
@@ -1277,6 +1283,135 @@ async def test_stream_agent_response_tracks_web_search_tasks():
         for source in search_task_completed.update.task.sources
     )
     assert mock_store.add_thread_item.await_count == 1
+
+
+async def test_image_generation_task_streaming():
+    mock_store.add_thread_item.reset_mock()
+    context = AgentContext(
+        previous_response_id=None, thread=thread, store=mock_store, request_context=None
+    )
+    result = make_result()
+
+    call = ImageGenerationCall(
+        id="img_call",
+        status="in_progress",
+        type="image_generation_call",
+    )
+
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseOutputItemAddedEvent(
+                type="response.output_item.added",
+                item=call,
+                output_index=0,
+                sequence_number=0,
+            ),
+        )
+    )
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseImageGenCallInProgressEvent(
+                type="response.image_generation_call.in_progress",
+                item_id=call.id,
+                output_index=0,
+                sequence_number=1,
+            ),
+        )
+    )
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseImageGenCallGeneratingEvent(
+                type="response.image_generation_call.generating",
+                item_id=call.id,
+                output_index=0,
+                sequence_number=2,
+            ),
+        )
+    )
+    partial_b64 = "cGFydGlhbA=="  # base64("partial")
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseImageGenCallPartialImageEvent(
+                type="response.image_generation_call.partial_image",
+                item_id=call.id,
+                output_index=0,
+                sequence_number=3,
+                partial_image_b64=partial_b64,
+                partial_image_index=0,
+            ),
+        )
+    )
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseImageGenCallCompletedEvent(
+                type="response.image_generation_call.completed",
+                item_id=call.id,
+                output_index=0,
+                sequence_number=4,
+            ),
+        )
+    )
+
+    final_b64 = "ZmluYWw="  # base64("final")
+    completed_call = ImageGenerationCall(
+        id=call.id,
+        status="completed",
+        type="image_generation_call",
+        result=final_b64,
+    )
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseOutputItemDoneEvent(
+                type="response.output_item.done",
+                item=completed_call,
+                output_index=0,
+                sequence_number=5,
+            ),
+        )
+    )
+
+    result.done()
+
+    events = await all_events(stream_agent_response(context, result))
+
+    image_task_added = next(
+        (
+            event
+            for event in events
+            if isinstance(event, ThreadItemUpdated)
+            and isinstance(event.update, WorkflowTaskAdded)
+            and isinstance(event.update.task, ImageTask)
+        ),
+        None,
+    )
+    assert image_task_added is not None
+    assert image_task_added.update.task.status_indicator == "loading"
+    assert image_task_added.update.task.images
+    assert image_task_added.update.task.images[0].partials[-1] == partial_b64
+
+    image_task_completed = next(
+        (
+            event
+            for event in events
+            if isinstance(event, ThreadItemUpdated)
+            and isinstance(event.update, WorkflowTaskUpdated)
+            and isinstance(event.update.task, ImageTask)
+            and event.update.task.status_indicator == "complete"
+        ),
+        None,
+    )
+    assert image_task_completed is not None
+    generated_image = image_task_completed.update.task.images[0]
+    assert generated_image.b64_json == final_b64
+    assert generated_image.data_url is not None
+    assert generated_image.data_url.startswith("data:image/")
+    assert mock_store.add_thread_item.await_count == 0
 
 
 async def test_workflow_ends_on_message():

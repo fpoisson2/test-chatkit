@@ -26,6 +26,10 @@ from openai.types.responses import (
     EasyInputMessageParam,
     ResponseFunctionToolCallParam,
     ResponseFunctionWebSearch,
+    ResponseImageGenCallCompletedEvent,
+    ResponseImageGenCallGeneratingEvent,
+    ResponseImageGenCallInProgressEvent,
+    ResponseImageGenCallPartialImageEvent,
     ResponseInputContentParam,
     ResponseInputMessageContentListParam,
     ResponseInputTextParam,
@@ -36,6 +40,7 @@ from openai.types.responses.response_input_item_param import (
     Message,
 )
 from openai.types.responses.response_output_message import Content
+from openai.types.responses.response_output_item import ImageGenerationCall
 from openai.types.responses.response_output_text import (
     Annotation as ResponsesAnnotation,
 )
@@ -55,11 +60,13 @@ from .types import (
     DurationSummary,
     EndOfTurnItem,
     FileSource,
+    GeneratedImage,
     HiddenContextItem,
     SearchTask,
     Task,
     TaskItem,
     ThoughtTask,
+    ImageTask,
     ThreadItem,
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
@@ -347,6 +354,29 @@ class SearchTaskTracker(BaseModel):
     task: SearchTask
 
 
+@dataclass
+class ImageTaskTracker:
+    item_id: str
+    output_index: int
+    task: ImageTask
+
+    def ensure_image(self) -> GeneratedImage:
+        if self.task.images:
+            return self.task.images[0]
+        image = GeneratedImage(id=f"{self.item_id}:{self.output_index}")
+        self.task.images.append(image)
+        return image
+
+
+def _image_data_url(b64_data: str, output_format: str | None) -> str:
+    """Format a base64 image payload as a data URL."""
+
+    fmt = (output_format or "png").lower()
+    if fmt == "auto":
+        fmt = "png"
+    return f"data:image/{fmt};base64,{b64_data}"
+
+
 async def stream_agent_response(
     context: AgentContext, result: RunResultStreaming
 ) -> AsyncIterator[ThreadStreamEvent]:
@@ -358,6 +388,7 @@ async def stream_agent_response(
     produced_items = set()
     streaming_thought: None | StreamingThoughtTracker = None
     search_tasks: dict[str, SearchTaskTracker] = {}
+    image_tasks: dict[tuple[str, int], ImageTaskTracker] = {}
 
     # check if the last item in the thread was a workflow or a client tool call
     # if it was a client tool call, check if the second last item was a workflow
@@ -379,7 +410,7 @@ async def stream_agent_response(
         ctx.workflow_item = second_last_item
 
     def end_workflow(item: WorkflowItem):
-        nonlocal search_tasks
+        nonlocal search_tasks, image_tasks
         if item == ctx.workflow_item:
             ctx.workflow_item = None
         delta = datetime.now() - item.created_at
@@ -391,6 +422,7 @@ async def stream_agent_response(
         # AgentContext.end_workflow(expanded=True)
         item.workflow.expanded = False
         search_tasks.clear()
+        image_tasks.clear()
         return ThreadItemDoneEvent(item=item)
 
     def ensure_workflow() -> list[ThreadStreamEvent]:
@@ -477,6 +509,63 @@ async def stream_agent_response(
                 if url not in existing_urls:
                     task.sources.append(URLSource(title=url, url=url))
                     updated = True
+        return updated
+
+    def ensure_image_task(
+        item_id: str, output_index: int
+    ) -> tuple[ImageTaskTracker, bool, list[ThreadStreamEvent]]:
+        events = ensure_workflow()
+        key = (item_id, output_index)
+        tracker = image_tasks.get(key)
+        if tracker is None:
+            tracker = ImageTaskTracker(
+                item_id=item_id,
+                output_index=output_index,
+                task=ImageTask(
+                    status_indicator="loading",
+                    call_id=item_id,
+                    output_index=output_index,
+                ),
+            )
+            tracker.ensure_image()
+            image_tasks[key] = tracker
+        else:
+            tracker.ensure_image()
+
+        task_added = False
+        if ctx.workflow_item and tracker.task not in ctx.workflow_item.workflow.tasks:
+            ctx.workflow_item.workflow.tasks.append(tracker.task)
+            task_added = True
+        return tracker, task_added, events
+
+    def apply_image_task_updates(
+        tracker: ImageTaskTracker,
+        *,
+        status: str | None = None,
+        final_b64: str | None = None,
+        partial_b64: str | None = None,
+    ) -> bool:
+        updated = False
+        task = tracker.task
+        image = tracker.ensure_image()
+
+        if status is not None and task.status_indicator != status:
+            task.status_indicator = status
+            updated = True
+
+        if partial_b64 is not None:
+            if not image.partials or image.partials[-1] != partial_b64:
+                image.partials.append(partial_b64)
+            if image.b64_json != partial_b64:
+                image.b64_json = partial_b64
+                image.data_url = _image_data_url(partial_b64, image.output_format)
+                updated = True
+
+        if final_b64 is not None and image.b64_json != final_b64:
+            image.b64_json = final_b64
+            image.data_url = _image_data_url(final_b64, image.output_format)
+            updated = True
+
         return updated
 
     def search_status_from_call(call: ResponseFunctionWebSearch) -> str:
@@ -574,6 +663,7 @@ async def stream_agent_response(
                     ):
                         ctx.workflow_item = event.item
                         search_tasks.clear()
+                        image_tasks.clear()
 
                     # track integration produced items so we can clean them up if
                     # there is a guardrail tripwire
@@ -664,6 +754,112 @@ async def stream_agent_response(
                         cast(ResponseFunctionWebSearch, item)
                     ):
                         yield search_event
+                elif item.type == "image_generation_call":
+                    tracker, task_added, workflow_events = ensure_image_task(
+                        item.id, event.output_index
+                    )
+                    tracker.task.title = tracker.task.title or "Image générée"
+                    tracker.task.call_id = item.id
+                    tracker.task.output_index = event.output_index
+                    status = "complete" if item.status == "completed" else "loading"
+                    updated = apply_image_task_updates(tracker, status=status)
+                    for workflow_event in workflow_events:
+                        yield workflow_event
+                    if ctx.workflow_item and (task_added or updated):
+                        task_index = ctx.workflow_item.workflow.tasks.index(
+                            tracker.task
+                        )
+                        update_cls = (
+                            WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                        )
+                        yield ThreadItemUpdated(
+                            item_id=ctx.workflow_item.id,
+                            update=update_cls(
+                                task=tracker.task,
+                                task_index=task_index,
+                            ),
+                        )
+                    produced_items.add(item.id)
+            elif event.type == "response.image_generation_call.in_progress":
+                tracker, task_added, workflow_events = ensure_image_task(
+                    event.item_id, event.output_index
+                )
+                updated = apply_image_task_updates(tracker, status="loading")
+                for workflow_event in workflow_events:
+                    yield workflow_event
+                if ctx.workflow_item and (task_added or updated):
+                    task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                    update_cls = (
+                        WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                    )
+                    yield ThreadItemUpdated(
+                        item_id=ctx.workflow_item.id,
+                        update=update_cls(
+                            task=tracker.task,
+                            task_index=task_index,
+                        ),
+                    )
+            elif event.type == "response.image_generation_call.generating":
+                tracker, task_added, workflow_events = ensure_image_task(
+                    event.item_id, event.output_index
+                )
+                updated = apply_image_task_updates(tracker, status="loading")
+                for workflow_event in workflow_events:
+                    yield workflow_event
+                if ctx.workflow_item and (task_added or updated):
+                    task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                    update_cls = (
+                        WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                    )
+                    yield ThreadItemUpdated(
+                        item_id=ctx.workflow_item.id,
+                        update=update_cls(
+                            task=tracker.task,
+                            task_index=task_index,
+                        ),
+                    )
+            elif event.type == "response.image_generation_call.partial_image":
+                tracker, task_added, workflow_events = ensure_image_task(
+                    event.item_id, event.output_index
+                )
+                updated = apply_image_task_updates(
+                    tracker,
+                    status="loading",
+                    partial_b64=event.partial_image_b64,
+                )
+                for workflow_event in workflow_events:
+                    yield workflow_event
+                if ctx.workflow_item and (task_added or updated):
+                    task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                    update_cls = (
+                        WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                    )
+                    yield ThreadItemUpdated(
+                        item_id=ctx.workflow_item.id,
+                        update=update_cls(
+                            task=tracker.task,
+                            task_index=task_index,
+                        ),
+                    )
+            elif event.type == "response.image_generation_call.completed":
+                tracker, task_added, workflow_events = ensure_image_task(
+                    event.item_id, event.output_index
+                )
+                updated = apply_image_task_updates(tracker, status="complete")
+                for workflow_event in workflow_events:
+                    yield workflow_event
+                if ctx.workflow_item and (task_added or updated):
+                    task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                    update_cls = (
+                        WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                    )
+                    yield ThreadItemUpdated(
+                        item_id=ctx.workflow_item.id,
+                        update=update_cls(
+                            task=tracker.task,
+                            task_index=task_index,
+                        ),
+                    )
             elif event.type == "response.reasoning_summary_text.delta":
                 if not ctx.workflow_item:
                     continue
@@ -746,6 +942,25 @@ async def stream_agent_response(
                         cast(ResponseFunctionWebSearch, item), status="complete"
                     ):
                         yield search_event
+                elif item.type == "image_generation_call":
+                    tracker = image_tasks.get((item.id, event.output_index))
+                    if tracker is not None:
+                        updated = apply_image_task_updates(
+                            tracker,
+                            status="complete",
+                            final_b64=item.result,
+                        )
+                        if ctx.workflow_item and updated:
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=WorkflowTaskUpdated(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
             elif event.type == "response.web_search_call.in_progress":
                 for search_event in update_search_task_status(
                     event.item_id, "loading"
@@ -769,6 +984,7 @@ async def stream_agent_response(
         # Drain remaining events without processing them
         context._complete()
         queue_iterator.drain_and_complete()
+        image_tasks.clear()
 
         raise
 

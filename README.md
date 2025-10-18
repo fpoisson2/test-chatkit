@@ -209,6 +209,28 @@ Une fois la bibliothèque alimentée, le workflow builder propose un **bloc widg
 
 Vous pouvez ainsi enchaîner plusieurs widgets (cartes, formulaires, listes…) pour enrichir la conversation, tout en gardant la possibilité d'utiliser les widgets comme format de sortie d'un agent classique si nécessaire.
 
+### Bloc image généré par l'agent
+
+Le workflow builder supporte désormais un bloc agent capable de générer une image en direct via l'outil OpenAI `image_generation`. Dès que le modèle déclenche cet outil, le backend sérialise automatiquement les évènements de streaming en un `ImageTask` : l'utilisateur voit l'aperçu basse définition, puis l'image finale une fois la génération terminée.
+
+1. Ajoutez un nœud agent (nouveau ou existant) dans votre workflow.
+2. Dans l'inspecteur, ajoutez un outil avec la configuration JSON suivante :
+
+   ```json
+   {
+     "type": "image_generation",
+     "image_generation": {
+       "model": "gpt-image-1-mini",
+       "size": "1024x1024",
+       "quality": "high"
+     }
+   }
+   ```
+
+3. Ajustez les instructions de l'agent pour l'inciter à appeler l'outil lorsque vous souhaitez illustrer la réponse.
+
+Le backend convertit les différents évènements (`in_progress`, `partial_image`, `completed`) en mises à jour de tâche : aucune manipulation supplémentaire n'est nécessaire côté client, l'image est restituée sous forme d'URL `data:` prête à être affichée.
+
 ### Outil météo exposé au workflow ChatKit
 
 Le backend expose également un point d'entrée `GET /api/tools/weather` qui interroge l'API libre [Open-Meteo](https://open-meteo.com/) pour fournir les conditions actuelles d'une ville donnée. Cette route est pensée pour être appelée depuis un outil de workflow ChatKit, mais elle reste publique afin de faciliter les tests manuels.
