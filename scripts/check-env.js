@@ -41,9 +41,20 @@ function logStatus(ok, label, advice) {
   }
 }
 
-function checkUrl(variable, value, { requiredPath } = {}) {
+function checkUrl(variable, value, { requiredPath, defaultInfo } = {}) {
   if (!value) {
-    logStatus(false, `${variable} n'est pas défini.`, "Ajoutez cette variable dans votre .env si vous exposez le composant correspondant.");
+    if (defaultInfo) {
+      logStatus(true, `${variable} non défini (utilisation par défaut de ${defaultInfo}).`);
+      console.log(
+        `   → Définissez ${variable} uniquement si votre frontend doit contacter une URL différente (reverse proxy, domaine public, etc.).`,
+      );
+    } else {
+      logStatus(
+        false,
+        `${variable} n'est pas défini.`,
+        "Ajoutez cette variable dans votre .env si vous exposez le composant correspondant.",
+      );
+    }
     return;
   }
 
@@ -93,7 +104,10 @@ function main() {
   }
 
   checkUrl("VITE_BACKEND_URL", env.VITE_BACKEND_URL, { requiredPath: "/api" });
-  checkUrl("VITE_CHATKIT_API_URL", env.VITE_CHATKIT_API_URL, { requiredPath: "/api/chatkit" });
+  checkUrl("VITE_CHATKIT_API_URL", env.VITE_CHATKIT_API_URL, {
+    requiredPath: "/api/chatkit",
+    defaultInfo: "'/api/chatkit'",
+  });
 
   const uploadStrategy = env.VITE_CHATKIT_UPLOAD_STRATEGY;
   if (uploadStrategy) {
@@ -113,7 +127,19 @@ function main() {
   if (env.VITE_CHATKIT_DOMAIN_KEY) {
     logStatus(true, "VITE_CHATKIT_DOMAIN_KEY détectée.");
   } else {
-    logStatus(false, "VITE_CHATKIT_DOMAIN_KEY non défini.", "Le widget utilisera la clé de domaine de développement. Ajoutez votre clé pour un domaine vérifié.");
+    logStatus(
+      false,
+      "VITE_CHATKIT_DOMAIN_KEY non défini.",
+      "Sur un domaine personnalisé, récupérez la clé dans la console OpenAI (section Domain keys) et ajoutez-la pour éviter que le widget ne se masque.",
+    );
+  }
+
+  if (env.VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION?.toLowerCase() === "true") {
+    logStatus(
+      true,
+      "VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION activé.",
+      "La vérification distante sera ignorée : conservez ce réglage uniquement en développement.",
+    );
   }
 
   if (env.VITE_CHATKIT_FORCE_HOSTED?.toLowerCase() === "true") {

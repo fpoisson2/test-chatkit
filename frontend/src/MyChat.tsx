@@ -3,7 +3,7 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState
+  useState,
 } from "react";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
 import type { ChatKitOptions } from "@openai/chatkit";
@@ -25,7 +25,20 @@ import {
 } from "./utils/chatkitThread";
 import type { WorkflowSummary } from "./types/workflows";
 import { ChatWorkflowSidebar } from "./features/workflows/ChatWorkflowSidebar";
-import { chatkitApi, type ChatKitWorkflowInfo } from "./utils/backend";
+import {
+  chatkitApi,
+  makeApiEndpointCandidates,
+  type ChatKitWorkflowInfo,
+} from "./utils/backend";
+
+type ChatConfigDebugSnapshot = {
+  hostedFlow: boolean;
+  apiUrl: string;
+  backendCandidates: string[];
+  attachments: "two_phase" | "direct" | "disabled";
+  skipDomainVerification: boolean;
+  domainKeySource: "custom" | "dev" | "none";
+};
 
 type WeatherToolCall = {
   name: "get_weather";
@@ -56,10 +69,33 @@ export function MyChat() {
   const [chatkitWorkflowInfo, setChatkitWorkflowInfo] =
     useState<ChatKitWorkflowInfo | null>(null);
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
+  const [hostedFlowEnabled, setHostedFlowEnabled] = useState(() => {
+    const raw = import.meta.env.VITE_CHATKIT_FORCE_HOSTED;
+    if (!raw) {
+      return false;
+    }
+    const normalized = raw.trim().toLowerCase();
+    if (normalized === "false" || normalized === "0" || normalized === "no") {
+      return false;
+    }
+    return normalized === "true" || normalized === "1" || normalized === "yes";
+  });
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const lastVisibilityRefreshRef = useRef(0);
   const previousSessionOwnerRef = useRef<string | null>(null);
   const autoStartAttemptRef = useRef(false);
+  const missingDomainKeyWarningShownRef = useRef(false);
+
+  const reportError = useCallback((message: string, detail?: unknown) => {
+    setError(message);
+    if (message) {
+      if (detail !== undefined) {
+        console.error(`[ChatKit] ${message}`, detail);
+      } else {
+        console.error(`[ChatKit] ${message}`);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -134,6 +170,27 @@ export function MyChat() {
     };
   }, [token, activeWorkflow?.id, activeWorkflow?.active_version_id, activeWorkflow?.updated_at]);
 
+  const disableHostedFlow = useCallback(
+    (reason: string | null = null) => {
+      if (!hostedFlowEnabled) {
+        return;
+      }
+
+      if (import.meta.env.DEV) {
+        const hint = reason ? ` (${reason})` : "";
+        console.info("[ChatKit] Désactivation du flux hébergé%s.", hint);
+      }
+
+      clearStoredChatKitSecret(sessionOwner);
+      clearStoredThreadId(sessionOwner);
+      lastThreadSnapshotRef.current = null;
+      setInitialThreadId(null);
+      setHostedFlowEnabled(false);
+      setChatInstanceKey((value) => value + 1);
+    },
+    [hostedFlowEnabled, sessionOwner],
+  );
+
   const getClientSecret = useCallback(async (currentSecret: string | null) => {
     const { session: storedSession, shouldRefresh } = readStoredChatKitSession(sessionOwner);
 
@@ -151,6 +208,13 @@ export function MyChat() {
 
     setIsLoading(true);
     setError(null);
+    if (import.meta.env.DEV) {
+      console.debug(
+        "[ChatKit] Demande d'un client_secret pour %s (flux hébergé activé: %s).",
+        sessionOwner,
+        hostedFlowEnabled ? "oui" : "non",
+      );
+    }
 
     try {
       const headers: Record<string, string> = {
@@ -168,16 +232,52 @@ export function MyChat() {
 
       if (!res.ok) {
         const message = await res.text();
-        const errorMessage = `Failed to fetch client secret: ${res.status} ${message}`;
-        setError(errorMessage);
+        const combinedMessage = `${res.status} ${message}`.trim();
+
+        const normalizedMessage = (() => {
+          try {
+            const parsed = JSON.parse(message);
+            if (parsed?.detail) {
+              if (typeof parsed.detail === "string") {
+                return parsed.detail;
+              }
+              if (typeof parsed.detail?.hint === "string") {
+                return parsed.detail.hint;
+              }
+              if (typeof parsed.detail?.error === "string") {
+                return parsed.detail.error;
+              }
+            }
+          } catch (err) {
+            if (import.meta.env.DEV) {
+              console.warn("[ChatKit] Impossible d'analyser la réponse de session", err);
+            }
+          }
+          return message;
+        })();
+
+        if (import.meta.env.DEV) {
+          console.error(
+            "[ChatKit] Échec lors de la récupération du client_secret (%s) : %s",
+            res.status,
+            normalizedMessage,
+          );
+        }
+
+        if (res.status === 500 && normalizedMessage.includes("CHATKIT_WORKFLOW_ID")) {
+          disableHostedFlow("CHATKIT_WORKFLOW_ID manquant");
+          throw new Error(
+            "Le flux hébergé a été désactivé car CHATKIT_WORKFLOW_ID n'est pas configuré côté serveur.",
+          );
+        }
+
+        const errorMessage = `Failed to fetch client secret: ${combinedMessage}`;
         throw new Error(errorMessage);
       }
 
       const data = await res.json();
       if (!data?.client_secret) {
-        const errorMessage = "Missing client_secret in ChatKit session response";
-        setError(errorMessage);
-        throw new Error(errorMessage);
+        throw new Error("Missing client_secret in ChatKit session response");
       }
 
       const expiresAt = inferChatKitSessionExpiration(data);
@@ -186,36 +286,73 @@ export function MyChat() {
       return data.client_secret;
     } catch (err) {
       if (err instanceof Error) {
-        setError(err.message);
+        reportError(err.message, err);
+      } else {
+        reportError("Erreur inconnue lors de la récupération du client_secret.");
       }
       clearStoredChatKitSecret(sessionOwner);
       throw err;
     } finally {
       setIsLoading(false);
     }
-  }, [sessionOwner, token]);
+  }, [disableHostedFlow, hostedFlowEnabled, reportError, sessionOwner, token]);
 
-  const { apiConfig, attachmentsEnabled } = useMemo<{
+  const { apiConfig, attachmentsEnabled, debugSnapshot } = useMemo<{
     apiConfig: ChatKitOptions["api"];
     attachmentsEnabled: boolean;
+    debugSnapshot: ChatConfigDebugSnapshot;
   }>(() => {
-    const forceHosted =
-      import.meta.env.VITE_CHATKIT_FORCE_HOSTED?.trim().toLowerCase() === "true";
+    const forceHosted = hostedFlowEnabled;
 
     const rawDomainKey = import.meta.env.VITE_CHATKIT_DOMAIN_KEY?.trim();
-    const domainKey = rawDomainKey || "domain_pk_localhost_dev";
     const skipDomainVerification =
       import.meta.env.VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION?.trim().toLowerCase() ===
       "true";
     const shouldBypassDomainCheck = skipDomainVerification || !rawDomainKey;
+    const host = typeof window !== "undefined" ? window.location.hostname : "";
+    const isLocalHost = host === "localhost" || host === "127.0.0.1" || host === "::1";
+
+    let domainKeySource: ChatConfigDebugSnapshot["domainKeySource"] = "none";
+    const domainKey = (() => {
+      if (rawDomainKey) {
+        domainKeySource = "custom";
+        return rawDomainKey;
+      }
+      if (isLocalHost) {
+        domainKeySource = "dev";
+        return "domain_pk_localhost_dev";
+      }
+      domainKeySource = "none";
+      return undefined;
+    })();
+
+    if (!rawDomainKey && !isLocalHost && !missingDomainKeyWarningShownRef.current) {
+      console.warn(
+        "[ChatKit] Domaine personnalisé '%s' détecté sans VITE_CHATKIT_DOMAIN_KEY. Ajoutez la clé fournie par la console OpenAI pour éviter la désactivation du widget.",
+        host || "inconnu",
+      );
+      missingDomainKeyWarningShownRef.current = true;
+    }
+
     const explicitCustomUrl = import.meta.env.VITE_CHATKIT_API_URL?.trim();
-    const customApiUrl = explicitCustomUrl || "/api/chatkit";
+    const backendUrl = import.meta.env.VITE_BACKEND_URL?.trim() ?? "";
+    const endpointCandidates = makeApiEndpointCandidates(backendUrl, "/api/chatkit");
+    const [defaultRelativeUrl] = endpointCandidates;
+    const customApiUrl = explicitCustomUrl || defaultRelativeUrl || "/api/chatkit";
     const useHostedFlow = forceHosted;
 
     if (useHostedFlow) {
       return {
         apiConfig: { getClientSecret },
         attachmentsEnabled: true,
+        debugSnapshot: {
+          hostedFlow: true,
+          apiUrl: "/api/chatkit/session",
+          backendCandidates: endpointCandidates,
+          attachments: "two_phase",
+          skipDomainVerification: shouldBypassDomainCheck,
+          domainKeySource,
+        },
       };
     }
 
@@ -230,9 +367,11 @@ export function MyChat() {
       | undefined;
 
     if (!normalizedStrategy) {
-      console.warn(
-        "[ChatKit] VITE_CHATKIT_API_URL détecté sans VITE_CHATKIT_UPLOAD_STRATEGY : les pièces jointes seront désactivées.",
-      );
+      if (explicitCustomUrl) {
+        console.warn(
+          "[ChatKit] VITE_CHATKIT_API_URL détecté sans VITE_CHATKIT_UPLOAD_STRATEGY : les pièces jointes seront désactivées.",
+        );
+      }
     } else if (normalizedStrategy === "two_phase" || normalizedStrategy === "two-phase") {
       uploadStrategy = { type: "two_phase" };
       attachmentsAreEnabled = true;
@@ -293,6 +432,8 @@ export function MyChat() {
       }
 
       const targetUrl = resolveResourceUrl(resource);
+      const isDomainVerificationRequest =
+        typeof targetUrl === "string" && targetUrl.includes("/domain_keys/verify");
 
       if (shouldBypassDomainCheck && targetUrl?.includes("/domain_keys/verify")) {
         console.info("[ChatKit] Vérification de domaine ignorée (mode développement).");
@@ -310,6 +451,23 @@ export function MyChat() {
           ...init,
           headers,
         });
+
+        if (
+          isDomainVerificationRequest &&
+          !response.ok &&
+          (response.status === 404 || response.status === 405 || response.status === 501)
+        ) {
+          if (import.meta.env.DEV) {
+            console.info(
+              "[ChatKit] Endpoint de vérification de domaine indisponible. Passage en mode ignoré.",
+            );
+          }
+
+          return new Response(JSON.stringify({ status: "skipped" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
 
         if (!response.ok) {
           let responseDetails: string | null = null;
@@ -336,6 +494,20 @@ export function MyChat() {
         return response;
       } catch (err) {
         if (err instanceof TypeError) {
+          if (isDomainVerificationRequest) {
+            if (import.meta.env.DEV) {
+              console.warn(
+                "[ChatKit] Impossible de joindre l'endpoint de vérification de domaine. Passage en mode ignoré.",
+                err,
+              );
+            }
+
+            return new Response(JSON.stringify({ status: "skipped" }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+
           const connectivityMessage = targetUrl
             ? `Impossible de contacter ${targetUrl}. Vérifiez votre connexion réseau ou la disponibilité du serveur ChatKit.`
             : "Impossible de joindre le serveur ChatKit. Vérifiez votre connexion réseau.";
@@ -345,12 +517,6 @@ export function MyChat() {
         throw err;
       }
     };
-
-    if (!rawDomainKey) {
-      console.info(
-        "[ChatKit] VITE_CHATKIT_DOMAIN_KEY non défini : utilisation du jeton de domaine de développement.",
-      );
-    }
 
     const customApiConfig = uploadStrategy
       ? ({
@@ -368,8 +534,27 @@ export function MyChat() {
     return {
       apiConfig: customApiConfig,
       attachmentsEnabled: attachmentsAreEnabled,
+      debugSnapshot: {
+        hostedFlow: false,
+        apiUrl: customApiUrl,
+        backendCandidates: endpointCandidates,
+        attachments: uploadStrategy?.type ?? "disabled",
+        skipDomainVerification: shouldBypassDomainCheck,
+        domainKeySource,
+      },
     };
-  }, [getClientSecret, token]);
+  }, [
+    getClientSecret,
+    hostedFlowEnabled,
+    missingDomainKeyWarningShownRef,
+    token,
+  ]);
+
+  const debugSignature = useMemo(() => JSON.stringify(debugSnapshot), [debugSnapshot]);
+
+  useEffect(() => {
+    console.info("[ChatKit] Configuration résolue pour le widget", debugSnapshot);
+  }, [debugSignature, debugSnapshot]);
 
   const attachmentsConfig = useMemo(
     () =>
@@ -463,7 +648,7 @@ export function MyChat() {
             console.log("thread snapshot:", lastThreadSnapshotRef.current);
           }
           console.groupEnd();
-          setError(error.message);
+          reportError(error.message, error);
         },
         onResponseStart: () => {
           setError(null);
@@ -504,6 +689,7 @@ export function MyChat() {
       activeWorkflow?.id,
       chatInstanceKey,
       preferredColorScheme,
+      reportError,
     ],
   );
 
@@ -530,8 +716,7 @@ export function MyChat() {
       ? configuredMessage
       : AUTO_START_TRIGGER_MESSAGE;
 
-    sendUserMessage({ text: payloadText, newThread: true }).catch(
-      (err: unknown) => {
+    sendUserMessage({ text: payloadText, newThread: true }).catch((err: unknown) => {
       autoStartAttemptRef.current = false;
       const message =
         err instanceof Error
@@ -540,13 +725,14 @@ export function MyChat() {
       if (import.meta.env.DEV) {
         console.warn("[ChatKit] Échec du démarrage automatique", err);
       }
-      setError(message);
+      reportError(message, err);
     });
   }, [
     chatkitWorkflowInfo?.auto_start,
     chatkitWorkflowInfo?.auto_start_user_message,
     sendUserMessage,
     initialThreadId,
+    reportError,
   ]);
 
   useEffect(() => {
