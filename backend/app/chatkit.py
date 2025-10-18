@@ -2059,6 +2059,7 @@ class _WidgetBinding:
     path: tuple[str | int, ...]
     component_type: str | None = None
     sample: str | list[str] | None = None
+    value_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -2398,50 +2399,54 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
             return
         if identifier in bindings:
             return
+        if not is_manual:
+            duplicate_match = re.match(r"(.+)_([0-9]+)$", identifier)
+            if duplicate_match:
+                base_identifier = duplicate_match.group(1)
+                existing_binding = bindings.get(base_identifier)
+                if existing_binding and existing_binding.path == path:
+                    return
         if not is_manual and path in manual_paths:
             return
         component_type = node.get("type") if isinstance(node.get("type"), str) else None
         sample: str | list[str] | None = None
-        candidate_keys: tuple[str, ...]
-        if value_key:
-            candidate_keys = (
-                value_key,
-                "value",
-                "text",
-                "label",
-                "src",
-                "url",
-                "href",
-                "icon",
-                "iconStart",
-                "iconEnd",
-            )
-        else:
-            candidate_keys = (
-                "value",
-                "text",
-                "label",
-                "src",
-                "url",
-                "href",
-                "icon",
-                "iconStart",
-                "iconEnd",
-            )
+        captured_key: str | None = None
+        preferred_keys: tuple[str, ...] = (value_key,) if value_key else ()
+        candidate_keys = preferred_keys + (
+            "value",
+            "text",
+            "label",
+            "title",
+            "body",
+            "content",
+            "heading",
+            "subtitle",
+            "description",
+            "caption",
+            "src",
+            "url",
+            "href",
+            "icon",
+            "iconStart",
+            "iconEnd",
+        )
         for candidate_key in candidate_keys:
             if candidate_key not in node:
                 continue
             raw_value = node.get(candidate_key)
             if isinstance(raw_value, list):
                 sample = [str(item) for item in raw_value]
+                captured_key = candidate_key
                 break
             if isinstance(raw_value, (str, int, float, bool)):
                 sample = str(raw_value)
+                captured_key = candidate_key
                 break
         bindings[identifier] = _WidgetBinding(
             path=path,
             component_type=component_type,
             sample=sample,
+            value_key=captured_key,
         )
         if is_manual:
             manual_paths.add(path)
@@ -2508,6 +2513,207 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
 
     _walk(definition, ())
     return bindings
+
+
+def _candidate_widget_keys(*, is_list: bool) -> list[str]:
+    base = [
+        "value",
+        "text",
+        "label",
+        "title",
+        "body",
+        "content",
+        "heading",
+        "subtitle",
+        "description",
+        "caption",
+    ]
+    if not is_list:
+        base.extend(["icon", "iconStart", "iconEnd"])
+    return base
+
+
+def _sync_button_text_fields(
+    node: dict[str, Any],
+    text: str,
+    *,
+    assigned_key: str | None,
+    preferred_key: str | None,
+    component_type: str | None,
+) -> None:
+    if not isinstance(text, str):
+        return
+
+    candidate_key = assigned_key or preferred_key
+    if not candidate_key or candidate_key not in {"label", "text", "title", "value", "content", "body"}:
+        return
+
+    normalized_type: str | None = None
+    for type_candidate in (component_type, node.get("type")):
+        if isinstance(type_candidate, str) and type_candidate.strip():
+            normalized_type = type_candidate.strip().lower()
+            break
+
+    if normalized_type != "button":
+        return
+
+    if "label" in node:
+        node["label"] = text
+    if "text" in node:
+        node["text"] = text
+
+
+def _update_widget_node_value(
+    node: dict[str, Any],
+    value: str | list[str],
+    preferred_key: str | None = None,
+    *,
+    component_type: str | None = None,
+) -> None:
+    def _assign(target_key: str, payload: str | list[str]) -> None:
+        node[target_key] = payload
+
+    assigned_key: str | None = None
+
+    if isinstance(value, list):
+        candidates: list[str | None] = [preferred_key] if preferred_key else []
+        candidates.extend(_candidate_widget_keys(is_list=True))
+        for key in candidates:
+            if key and key in node:
+                _assign(key, value)
+                return
+        _assign("value", value)
+        return
+
+    text = value
+    candidates = [preferred_key] if preferred_key else []
+    candidates.extend(_candidate_widget_keys(is_list=False))
+    for key in candidates:
+        if key and key in node:
+            _assign(key, text)
+            assigned_key = key
+            break
+    else:
+        _assign("value", text)
+        assigned_key = "value"
+
+    _sync_button_text_fields(
+        node,
+        text,
+        assigned_key=assigned_key,
+        preferred_key=preferred_key,
+        component_type=component_type,
+    )
+
+
+def _apply_widget_variable_values(
+    definition: Any,
+    values: dict[str, str | list[str]],
+    *,
+    bindings: Mapping[str, _WidgetBinding] | None = None,
+) -> set[str]:
+    matched: set[str] = set()
+
+    def _walk(node: Any, path: tuple[str | int, ...]) -> None:
+        if isinstance(node, dict):
+            identifier = node.get("id")
+            if isinstance(identifier, str) and identifier in values:
+                binding = bindings.get(identifier) if bindings else None
+                path_matches = (
+                    not binding or tuple(binding.path) == path
+                )
+                if path_matches:
+                    _update_widget_node_value(
+                        node,
+                        values[identifier],
+                        binding.value_key if binding else None,
+                        component_type=binding.component_type if binding else None,
+                    )
+                    matched.add(identifier)
+            editable = node.get("editable")
+            if isinstance(editable, dict):
+                editable_name = editable.get("name")
+                if (
+                    isinstance(editable_name, str)
+                    and editable_name in values
+                    and editable_name not in matched
+                ):
+                    binding = bindings.get(editable_name) if bindings else None
+                    _update_widget_node_value(
+                        node,
+                        values[editable_name],
+                        binding.value_key if binding else None,
+                        component_type=binding.component_type if binding else None,
+                    )
+                    matched.add(editable_name)
+                editable_names = editable.get("names")
+                if isinstance(editable_names, list):
+                    collected = [
+                        values[name]
+                        for name in editable_names
+                        if isinstance(name, str) and name in values
+                    ]
+                    if collected:
+                        _update_widget_node_value(node, collected)
+                        matched.update(
+                            name
+                            for name in editable_names
+                            if isinstance(name, str) and name in values
+                        )
+                elif (
+                    isinstance(editable_names, str)
+                    and editable_names in values
+                    and editable_names not in matched
+                ):
+                    binding = bindings.get(editable_names) if bindings else None
+                    _update_widget_node_value(
+                        node,
+                        values[editable_names],
+                        binding.value_key if binding else None,
+                        component_type=binding.component_type if binding else None,
+                    )
+                    matched.add(editable_names)
+            for key, child in node.items():
+                if isinstance(child, (dict, list)):
+                    _walk(child, (*path, key))
+        elif isinstance(node, list):
+            for index, entry in enumerate(node):
+                if isinstance(entry, (dict, list)):
+                    _walk(entry, (*path, index))
+
+    _walk(definition, ())
+
+    if bindings:
+        for identifier, binding in bindings.items():
+            if identifier in matched or identifier not in values:
+                continue
+
+            target: Any = definition
+            valid_path = True
+            for step in binding.path:
+                if isinstance(step, str):
+                    if not isinstance(target, dict) or step not in target:
+                        valid_path = False
+                        break
+                    target = target[step]
+                else:
+                    if not isinstance(target, list) or step < 0 or step >= len(target):
+                        valid_path = False
+                        break
+                    target = target[step]
+
+            if not valid_path or not isinstance(target, dict):
+                continue
+
+            _update_widget_node_value(
+                target,
+                values[identifier],
+                binding.value_key,
+                component_type=binding.component_type,
+            )
+            matched.add(identifier)
+
+    return matched
 
 
 _UNSET = object()
@@ -2637,10 +2843,16 @@ def _extract_widget_bindings_from_payload(
             sample = None
         else:
             sample = str(sample_value)
+        preferred_key = binding_mapping.get("value_key")
+        if not isinstance(preferred_key, str):
+            preferred_key = binding_mapping.get("valueKey")
+        value_key = preferred_key.strip() if isinstance(preferred_key, str) else None
+
         bindings[trimmed] = _WidgetBinding(
             path=tuple(normalized_path),
             component_type=component_type,
             sample=sample,
+            value_key=value_key or None,
         )
     return bindings
 
@@ -3553,105 +3765,6 @@ async def run_workflow(
         if raw_value is None:
             return None
         return _stringify_widget_value(raw_value)
-
-    def _update_widget_node_value(
-        node: dict[str, Any],
-        value: str | list[str],
-    ) -> None:
-        if isinstance(value, list):
-            node["value"] = value
-            return
-        text = value
-        if "value" in node:
-            node["value"] = text
-        elif "text" in node:
-            node["text"] = text
-        else:
-            node["value"] = text
-
-    def _apply_widget_variable_values(
-        definition: Any,
-        values: dict[str, str | list[str]],
-        *,
-        bindings: Mapping[str, _WidgetBinding] | None = None,
-    ) -> set[str]:
-        matched: set[str] = set()
-
-        def _walk(node: Any) -> None:
-            if isinstance(node, dict):
-                identifier = node.get("id")
-                if isinstance(identifier, str) and identifier in values:
-                    _update_widget_node_value(node, values[identifier])
-                    matched.add(identifier)
-                editable = node.get("editable")
-                if isinstance(editable, dict):
-                    editable_name = editable.get("name")
-                    if (
-                        isinstance(editable_name, str)
-                        and editable_name in values
-                        and editable_name not in matched
-                    ):
-                        _update_widget_node_value(node, values[editable_name])
-                        matched.add(editable_name)
-                    editable_names = editable.get("names")
-                    if isinstance(editable_names, list):
-                        collected = [
-                            values[name]
-                            for name in editable_names
-                            if isinstance(name, str) and name in values
-                        ]
-                        if collected:
-                            _update_widget_node_value(node, collected)
-                            matched.update(
-                                name
-                                for name in editable_names
-                                if isinstance(name, str) and name in values
-                            )
-                    elif (
-                        isinstance(editable_names, str)
-                        and editable_names in values
-                        and editable_names not in matched
-                    ):
-                        _update_widget_node_value(node, values[editable_names])
-                        matched.add(editable_names)
-                for child in node.values():
-                    if isinstance(child, (dict, list)):
-                        _walk(child)
-            elif isinstance(node, list):
-                for entry in node:
-                    _walk(entry)
-
-        _walk(definition)
-
-        if bindings:
-            for identifier, binding in bindings.items():
-                if identifier in matched:
-                    continue
-                if identifier not in values:
-                    continue
-
-                target: Any = definition
-                valid_path = True
-                for step in binding.path:
-                    if isinstance(step, str):
-                        if not isinstance(target, dict) or step not in target:
-                            valid_path = False
-                            break
-                        target = target[step]
-                    else:
-                        if not isinstance(target, list):
-                            valid_path = False
-                            break
-                        if step < 0 or step >= len(target):
-                            valid_path = False
-                            break
-                        target = target[step]
-
-                if not valid_path or not isinstance(target, dict):
-                    continue
-
-                _update_widget_node_value(target, values[identifier])
-                matched.add(identifier)
 
         return matched
 
