@@ -777,6 +777,9 @@ class GeneratedImage(BaseModel):
     data_url: str | None = None
     """Convenience field exposing the image as a ``data:`` URL."""
 
+    image_url: str | None = None
+    """Remote URL for the generated image when provided by the API."""
+
     output_format: Literal["png", "webp", "jpeg", "auto"] | None = None
     """Output format requested for the image."""
 

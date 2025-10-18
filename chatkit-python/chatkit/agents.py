@@ -1,9 +1,12 @@
 import asyncio
+import base64
 import json
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
 from inspect import cleandoc
+from urllib.parse import urlparse
 from typing import (
     Annotated,
     Any,
@@ -23,6 +26,7 @@ from agents import (
     StreamEvent,
     TResponseInputItem,
 )
+import httpx
 from openai.types.responses import (
     EasyInputMessageParam,
     ResponseFunctionToolCallParam,
@@ -87,6 +91,9 @@ from .types import (
     WorkflowTaskUpdated,
 )
 from .widgets import Markdown, Text, WidgetRoot
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class ClientToolCall(BaseModel):
@@ -360,6 +367,7 @@ class ImageTaskTracker:
     item_id: str
     output_index: int
     task: ImageTask
+    last_inlined_url: str | None = None
 
     def ensure_image(self) -> GeneratedImage:
         if self.task.images:
@@ -376,6 +384,186 @@ def _image_data_url(b64_data: str, output_format: str | None) -> str:
     if fmt == "auto":
         fmt = "png"
     return f"data:image/{fmt};base64,{b64_data}"
+
+
+def _coerce_optional_str(value: Any) -> str | None:
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            return stripped
+    return None
+
+
+def _guess_format_from_url(url: str) -> str | None:
+    try:
+        path = urlparse(url).path
+    except ValueError:
+        return None
+    if "." not in path:
+        return None
+    extension = path.rsplit(".", 1)[-1]
+    return _normalize_image_format(extension)
+
+
+def _inline_remote_image(
+    url: str,
+    *,
+    output_format: str | None,
+    timeout: httpx.Timeout | None = None,
+) -> tuple[str | None, str | None, str | None]:
+    """Télécharge une image distante pour produire une version inline base64."""
+
+    candidate = _coerce_optional_str(url)
+    if candidate is None or candidate.startswith("data:"):
+        return None, None, None
+
+    if timeout is None:
+        timeout = httpx.Timeout(15.0, connect=5.0)
+
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            response = client.get(candidate)
+        response.raise_for_status()
+    except Exception:  # pragma: no cover - dépend des conditions réseau
+        LOGGER.debug("Échec du téléchargement de l'image %s", candidate, exc_info=True)
+        return None, None, None
+
+    content_type = response.headers.get("content-type")
+    inferred_format = (
+        _normalize_image_format(content_type)
+        or _guess_format_from_url(candidate)
+        or output_format
+    )
+
+    try:
+        encoded = base64.b64encode(response.content).decode("ascii")
+    except Exception:  # pragma: no cover - dépend du contenu retourné
+        LOGGER.debug("Impossible d'encoder l'image %s en base64", candidate, exc_info=True)
+        return None, None, None
+
+    data_url = _image_data_url(encoded, inferred_format)
+    return encoded, data_url, inferred_format
+
+
+def _normalize_image_format(value: Any) -> str | None:
+    candidate = _coerce_optional_str(value)
+    if candidate is None:
+        return None
+    if candidate.startswith("image/"):
+        candidate = candidate.split("/", 1)[1]
+    if candidate == "jpg":
+        candidate = "jpeg"
+    if candidate in {"png", "jpeg", "webp", "auto"}:
+        return candidate
+    return None
+
+
+def _extract_url(candidate: Any) -> str | None:
+    if candidate is None:
+        return None
+    if hasattr(candidate, "model_dump"):
+        try:
+            candidate = candidate.model_dump()
+        except Exception:  # pragma: no cover - dépend du modèle fourni
+            pass
+    result = _coerce_optional_str(candidate)
+    if result is not None:
+        return result
+    if isinstance(candidate, dict):
+        for key in ("url", "href", "data", "value"):
+            nested = _extract_url(candidate.get(key))
+            if nested is not None:
+                return nested
+    return None
+
+
+def _extract_image_payload(value: Any, *, output_index: int = 0) -> tuple[str | None, str | None, str | None]:
+    """Returns (base64, url, format) from arbitrary image payloads."""
+
+    if value is None:
+        return None, None, None
+
+    if hasattr(value, "model_dump"):
+        try:
+            value = value.model_dump()
+        except Exception:  # pragma: no cover - dépend du modèle fourni
+            pass
+
+    if isinstance(value, str):
+        text = _coerce_optional_str(value)
+        if text is None:
+            return None, None, None
+        if text.startswith("data:") or "://" in text:
+            return None, text, None
+        return text, None, None
+
+    if isinstance(value, (list, tuple)):
+        if not value:
+            return None, None, None
+        index = output_index if 0 <= output_index < len(value) else 0
+        return _extract_image_payload(value[index], output_index=output_index)
+
+    if isinstance(value, dict):
+        for key in ("data", "images", "outputs", "items", "content"):
+            nested = value.get(key)
+            if isinstance(nested, (list, tuple)) and nested:
+                index = output_index if 0 <= output_index < len(nested) else 0
+                return _extract_image_payload(nested[index], output_index=output_index)
+
+        b64 = _coerce_optional_str(
+            value.get("b64_json")
+            or value.get("base64")
+            or value.get("image_base64")
+        )
+        url = _extract_url(value.get("image_url")) or _extract_url(value.get("url"))
+        fmt = _normalize_image_format(
+            value.get("output_format")
+            or value.get("format")
+            or value.get("mime_type")
+            or value.get("media_type")
+        )
+
+        image_entry = value.get("image")
+        if image_entry is not None:
+            nested_b64, nested_url, nested_fmt = _extract_image_payload(
+                image_entry, output_index=output_index
+            )
+            b64 = b64 or nested_b64
+            url = url or nested_url
+            fmt = fmt or nested_fmt
+
+        return b64, url, fmt
+
+    # Attribute-based objects (Pydantic models, SimpleNamespace, etc.)
+    for attr in ("data", "images", "outputs", "items", "content"):
+        nested = getattr(value, attr, None)
+        if isinstance(nested, (list, tuple)) and nested:
+            index = output_index if 0 <= output_index < len(nested) else 0
+            return _extract_image_payload(nested[index], output_index=output_index)
+
+    b64 = _coerce_optional_str(
+        getattr(value, "b64_json", None)
+        or getattr(value, "base64", None)
+        or getattr(value, "image_base64", None)
+    )
+    url = _extract_url(getattr(value, "image_url", None)) or _extract_url(
+        getattr(value, "url", None)
+    )
+    fmt = _normalize_image_format(
+        getattr(value, "output_format", None)
+        or getattr(value, "format", None)
+        or getattr(value, "mime_type", None)
+    )
+
+    return b64, url, fmt
+
+
+def _event_attr(event: Any, attribute: str) -> Any:
+    if hasattr(event, attribute):
+        return getattr(event, attribute)
+    if isinstance(event, dict):
+        return event.get(attribute)
+    return None
 
 
 async def stream_agent_response(
@@ -544,7 +732,10 @@ async def stream_agent_response(
         *,
         status: str | None = None,
         final_b64: str | None = None,
+        final_url: str | None = None,
         partial_b64: str | None = None,
+        partial_url: str | None = None,
+        output_format: str | None = None,
     ) -> bool:
         updated = False
         task = tracker.task
@@ -554,7 +745,37 @@ async def stream_agent_response(
             task.status_indicator = status
             updated = True
 
-        if partial_b64 is not None:
+        normalized_format = _normalize_image_format(output_format)
+        if normalized_format is not None and image.output_format != normalized_format:
+            image.output_format = normalized_format
+            updated = True
+
+        def _inline_from_url(url: str | None) -> bool:
+            candidate = _coerce_optional_str(url)
+            if candidate is None or candidate.startswith("data:"):
+                return False
+            if isinstance(image.b64_json, str):
+                return False
+            if tracker.last_inlined_url == candidate:
+                return False
+            tracker.last_inlined_url = candidate
+            inline_b64, inline_data_url, inline_format = _inline_remote_image(
+                candidate,
+                output_format=image.output_format or normalized_format,
+            )
+            changed = False
+            if inline_b64 and image.b64_json != inline_b64:
+                image.b64_json = inline_b64
+                changed = True
+            if inline_data_url and image.data_url != inline_data_url:
+                image.data_url = inline_data_url
+                changed = True
+            if inline_format and image.output_format != inline_format:
+                image.output_format = inline_format
+                changed = True
+            return changed
+
+        if isinstance(partial_b64, str):
             if not image.partials or image.partials[-1] != partial_b64:
                 image.partials.append(partial_b64)
             if image.b64_json != partial_b64:
@@ -562,10 +783,39 @@ async def stream_agent_response(
                 image.data_url = _image_data_url(partial_b64, image.output_format)
                 updated = True
 
-        if final_b64 is not None and image.b64_json != final_b64:
+        def _update_image_url(url: str | None) -> bool:
+            candidate = _coerce_optional_str(url)
+            if candidate is None:
+                return False
+            changed = False
+            if getattr(image, "image_url", None) != candidate:
+                image.image_url = candidate
+                changed = True
+            if (
+                candidate.startswith("data:")
+                or not isinstance(image.b64_json, str)
+                or not image.data_url
+            ) and image.data_url != candidate:
+                image.data_url = candidate
+                changed = True
+            return changed
+
+        if _update_image_url(partial_url):
+            updated = True
+
+        if isinstance(final_b64, str) and image.b64_json != final_b64:
             image.b64_json = final_b64
             image.data_url = _image_data_url(final_b64, image.output_format)
             updated = True
+
+        if _update_image_url(final_url):
+            updated = True
+
+        if not isinstance(image.b64_json, str):
+            if _inline_from_url(final_url):
+                updated = True
+            elif _inline_from_url(partial_url):
+                updated = True
 
         return updated
 
@@ -763,7 +1013,19 @@ async def stream_agent_response(
                     tracker.task.call_id = item.id
                     tracker.task.output_index = event.output_index
                     status = "complete" if item.status == "completed" else "loading"
-                    updated = apply_image_task_updates(tracker, status=status)
+                    payload_b64, payload_url, payload_format = _extract_image_payload(
+                        getattr(item, "result", None),
+                        output_index=event.output_index,
+                    )
+                    updated = apply_image_task_updates(
+                        tracker,
+                        status=status,
+                        final_b64=payload_b64 if status == "complete" else None,
+                        final_url=payload_url if status == "complete" else None,
+                        partial_b64=payload_b64 if status != "complete" else None,
+                        partial_url=payload_url if status != "complete" else None,
+                        output_format=payload_format,
+                    )
                     for workflow_event in workflow_events:
                         yield workflow_event
                     if ctx.workflow_item and (task_added or updated):
@@ -823,10 +1085,28 @@ async def stream_agent_response(
                 tracker, task_added, workflow_events = ensure_image_task(
                     event.item_id, event.output_index
                 )
+                raw_partial_b64 = _coerce_optional_str(
+                    _event_attr(event, "partial_image_b64")
+                )
+                raw_partial_url = _coerce_optional_str(
+                    _event_attr(event, "partial_image_url")
+                )
+                payload = _event_attr(event, "partial_image") or _event_attr(
+                    event, "image"
+                )
+                payload_b64, payload_url, payload_format = _extract_image_payload(
+                    payload, output_index=event.output_index
+                )
+                if raw_partial_b64 is None:
+                    raw_partial_b64 = payload_b64
+                if raw_partial_url is None:
+                    raw_partial_url = payload_url
                 updated = apply_image_task_updates(
                     tracker,
                     status="loading",
-                    partial_b64=event.partial_image_b64,
+                    partial_b64=raw_partial_b64,
+                    partial_url=raw_partial_url,
+                    output_format=payload_format,
                 )
                 for workflow_event in workflow_events:
                     yield workflow_event
@@ -846,7 +1126,17 @@ async def stream_agent_response(
                 tracker, task_added, workflow_events = ensure_image_task(
                     event.item_id, event.output_index
                 )
-                updated = apply_image_task_updates(tracker, status="complete")
+                complete_b64, complete_url, complete_format = _extract_image_payload(
+                    _event_attr(event, "image") or _event_attr(event, "result"),
+                    output_index=event.output_index,
+                )
+                updated = apply_image_task_updates(
+                    tracker,
+                    status="complete",
+                    final_b64=complete_b64,
+                    final_url=complete_url,
+                    output_format=complete_format,
+                )
                 for workflow_event in workflow_events:
                     yield workflow_event
                 if ctx.workflow_item and (task_added or updated):
@@ -946,10 +1236,28 @@ async def stream_agent_response(
                 elif item.type == "image_generation_call":
                     tracker = image_tasks.get((item.id, event.output_index))
                     if tracker is not None:
+                        final_b64: str | None = None
+                        final_url: str | None = None
+                        output_format: str | None = None
+                        raw_result = getattr(item, "result", None)
+                        if isinstance(raw_result, str):
+                            candidate = _coerce_optional_str(raw_result)
+                            if candidate:
+                                if candidate.startswith("data:") or "://" in candidate:
+                                    final_url = candidate
+                                else:
+                                    final_b64 = candidate
+                        else:
+                            final_b64, final_url, output_format = _extract_image_payload(
+                                raw_result,
+                                output_index=event.output_index,
+                            )
                         updated = apply_image_task_updates(
                             tracker,
                             status="complete",
-                            final_b64=item.result,
+                            final_b64=final_b64,
+                            final_url=final_url,
+                            output_format=output_format,
                         )
                         if ctx.workflow_item and updated:
                             task_index = ctx.workflow_item.workflow.tasks.index(
