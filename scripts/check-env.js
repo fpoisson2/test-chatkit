@@ -106,7 +106,7 @@ function main() {
   checkUrl("VITE_BACKEND_URL", env.VITE_BACKEND_URL, { requiredPath: "/api" });
   checkUrl("VITE_CHATKIT_API_URL", env.VITE_CHATKIT_API_URL, {
     requiredPath: "/api/chatkit",
-    defaultInfo: "'/api/chatkit' (ou l'URL dérivée de VITE_BACKEND_URL)",
+    defaultInfo: "'/api/chatkit'",
   });
 
   const uploadStrategy = env.VITE_CHATKIT_UPLOAD_STRATEGY;
