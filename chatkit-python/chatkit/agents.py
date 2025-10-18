@@ -487,7 +487,13 @@ def _inline_remote_image(
     """Télécharge une image distante pour produire une version inline base64."""
 
     candidate = _coerce_optional_str(url)
-    if candidate is None or candidate.startswith("data:"):
+    if candidate is None:
+        print("[ChatKit][inline_image] URL vide, aucun téléchargement", flush=True)
+        return None, None, None
+    if candidate.startswith("data:"):
+        print(
+            "[ChatKit][inline_image] URL déjà inline, aucun téléchargement", flush=True
+        )
         return None, None, None
 
     if timeout is None:
@@ -497,12 +503,32 @@ def _inline_remote_image(
     authorization = _resolve_inline_authorization(candidate)
     if authorization:
         headers = {"Authorization": authorization}
+        print(
+            f"[ChatKit][inline_image] Autorisation injectée pour {candidate}",
+            flush=True,
+        )
+    else:
+        print(
+            f"[ChatKit][inline_image] Téléchargement sans autorisation pour {candidate}",
+            flush=True,
+        )
 
     try:
         with httpx.Client(timeout=timeout, headers=headers) as client:
             response = client.get(candidate)
         response.raise_for_status()
-    except Exception:  # pragma: no cover - dépend des conditions réseau
+        print(
+            "[ChatKit][inline_image] Réponse %s reçue (%s octets)" % (
+                response.status_code,
+                len(response.content),
+            ),
+            flush=True,
+        )
+    except Exception as exc:  # pragma: no cover - dépend des conditions réseau
+        print(
+            f"[ChatKit][inline_image] Échec du téléchargement de {candidate}: {exc}",
+            flush=True,
+        )
         LOGGER.debug("Échec du téléchargement de l'image %s", candidate, exc_info=True)
         return None, None, None
 
@@ -515,9 +541,21 @@ def _inline_remote_image(
 
     try:
         encoded = base64.b64encode(response.content).decode("ascii")
-    except Exception:  # pragma: no cover - dépend du contenu retourné
+    except Exception as exc:  # pragma: no cover - dépend du contenu retourné
+        print(
+            f"[ChatKit][inline_image] Impossible d'encoder {candidate}: {exc}",
+            flush=True,
+        )
         LOGGER.debug("Impossible d'encoder l'image %s en base64", candidate, exc_info=True)
         return None, None, None
+
+    print(
+        "[ChatKit][inline_image] Image inline générée (%s, format=%s)" % (
+            len(encoded),
+            inferred_format or "inconnu",
+        ),
+        flush=True,
+    )
 
     data_url = _image_data_url(encoded, inferred_format)
     return encoded, data_url, inferred_format
