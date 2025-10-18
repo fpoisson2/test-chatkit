@@ -1,6 +1,7 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from datetime import datetime
 from inspect import cleandoc
 from typing import (
