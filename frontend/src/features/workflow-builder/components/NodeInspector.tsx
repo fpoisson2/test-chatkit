@@ -32,6 +32,7 @@ import {
   getAgentWeatherToolEnabled,
   getAgentWebSearchConfig,
   getVectorStoreNodeConfig,
+  getMessageNodeText,
   getStateAssignments,
   getEndMessage,
   getWidgetNodeConfig,
@@ -147,6 +148,8 @@ export type NodeInspectorProps = {
   onConditionPathChange: (nodeId: string, value: string) => void;
   onConditionModeChange: (nodeId: string, value: string) => void;
   onConditionValueChange: (nodeId: string, value: string) => void;
+  onAssistantMessageChange: (nodeId: string, value: string) => void;
+  onUserMessageChange: (nodeId: string, value: string) => void;
   availableModels: AvailableModel[];
   availableModelsLoading: boolean;
   availableModelsError: string | null;
@@ -199,6 +202,8 @@ const NodeInspector = ({
   onConditionPathChange,
   onConditionModeChange,
   onConditionValueChange,
+  onAssistantMessageChange,
+  onUserMessageChange,
   availableModels,
   availableModelsLoading,
   availableModelsError,
@@ -240,6 +245,10 @@ const NodeInspector = ({
     kind === "start" ? getStartAutoRunMessage(parameters) : "";
   const startAutoRunAssistantMessage =
     kind === "start" ? getStartAutoRunAssistantMessage(parameters) : "";
+  const assistantMessage =
+    kind === "message_assistant" ? getMessageNodeText(parameters) : "";
+  const userMessage =
+    kind === "message_user" ? getMessageNodeText(parameters) : "";
   const conditionPath = kind === "condition" ? getConditionPath(parameters) : "";
   const conditionMode = kind === "condition" ? getConditionMode(parameters) : "truthy";
   const conditionValue = kind === "condition" ? getConditionValue(parameters) : "";
@@ -506,6 +515,50 @@ const NodeInspector = ({
             utilisateur ci-dessus pour désactiver cette réponse.
           </p>
         </label>
+      )}
+
+      {kind === "message_assistant" && (
+        <label style={fieldStyle}>
+          <span style={labelContentStyle}>Texte du message assistant</span>
+          <textarea
+            value={assistantMessage}
+            onChange={(event) => onAssistantMessageChange(node.id, event.target.value)}
+            rows={4}
+            placeholder="Contenu envoyé par l'assistant à cette étape"
+            style={{ resize: "vertical", minHeight: "4.5rem" }}
+          />
+          <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+            Ce bloc permet d'envoyer un message sans exécuter d'agent. Utilisez-le pour
+            guider l'utilisateur avant la suite du workflow.
+          </p>
+        </label>
+      )}
+
+      {kind === "message_user" && (
+        <label style={fieldStyle}>
+          <span style={labelContentStyle}>Texte du message utilisateur</span>
+          <textarea
+            value={userMessage}
+            onChange={(event) => onUserMessageChange(node.id, event.target.value)}
+            rows={4}
+            placeholder="Contenu injecté comme message utilisateur"
+            style={{ resize: "vertical", minHeight: "4.5rem" }}
+          />
+          <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+            Le workflow ajoutera ce message au fil comme s'il provenait de
+            l'utilisateur.
+          </p>
+        </label>
+      )}
+
+      {kind === "wait_for_user_input" && (
+        <div style={{ ...fieldStyle, color: "var(--text-muted)" }}>
+          <p style={{ margin: 0 }}>
+            Ce bloc suspend l'exécution du workflow jusqu'à ce qu'un nouveau message
+            utilisateur soit reçu. Ajoutez des transitions sortantes pour déterminer la
+            suite lors de la reprise.
+          </p>
+        </div>
       )}
 
       {kind === "condition" && (

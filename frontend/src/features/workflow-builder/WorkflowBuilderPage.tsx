@@ -60,6 +60,7 @@ import {
   setAgentTopP,
   setAgentWeatherToolEnabled,
   setAgentWebSearchConfig,
+  setMessageNodeText,
   setStateAssignments,
   setStartAutoRun,
   setStartAutoRunMessage,
@@ -1764,6 +1765,42 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleAssistantMessageChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "message_assistant") {
+          return data;
+        }
+        const nextParameters = setMessageNodeText(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleUserMessageChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "message_user") {
+          return data;
+        }
+        const nextParameters = setMessageNodeText(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleWidgetNodeSlugChange = useCallback(
     (nodeId: string, slug: string) => {
       updateNodeData(nodeId, (data) => {
@@ -2125,6 +2162,87 @@ const WorkflowBuilderPage = () => {
     setSelectedNodeId(slug);
     setSelectedEdgeId(null);
   }, [setNodes, vectorStores]);
+
+  const handleAddAssistantMessageNode = useCallback(() => {
+    const slug = `assistant-message-${Date.now()}`;
+    const parameters: AgentParameters = {};
+    const displayName = "Message assistant";
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 360, y: 200 },
+      data: {
+        slug,
+        kind: "message_assistant",
+        displayName,
+        label: displayName,
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("message_assistant"),
+    } satisfies FlowNode;
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes]);
+
+  const handleAddUserMessageNode = useCallback(() => {
+    const slug = `user-message-${Date.now()}`;
+    const parameters: AgentParameters = {};
+    const displayName = "Message utilisateur";
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 400, y: 240 },
+      data: {
+        slug,
+        kind: "message_user",
+        displayName,
+        label: displayName,
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("message_user"),
+    } satisfies FlowNode;
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes]);
+
+  const handleAddWaitForUserNode = useCallback(() => {
+    const slug = `wait-for-user-${Date.now()}`;
+    const parameters: AgentParameters = {};
+    const displayName = "Attente utilisateur";
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 440, y: 280 },
+      data: {
+        slug,
+        kind: "wait_for_user_input",
+        displayName,
+        label: displayName,
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("wait_for_user_input"),
+    } satisfies FlowNode;
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes]);
 
   const handleAddWidgetNode = useCallback(() => {
     const slug = `widget-${Date.now()}`;
@@ -3030,6 +3148,27 @@ const WorkflowBuilderPage = () => {
         onClick: handleAddVectorStoreNode,
       },
       {
+        key: "message-assistant",
+        label: "Message assistant",
+        shortLabel: "MA",
+        color: NODE_COLORS.message_assistant,
+        onClick: handleAddAssistantMessageNode,
+      },
+      {
+        key: "message-user",
+        label: "Message utilisateur",
+        shortLabel: "MU",
+        color: NODE_COLORS.message_user,
+        onClick: handleAddUserMessageNode,
+      },
+      {
+        key: "wait-for-user-input",
+        label: "Attente utilisateur",
+        shortLabel: "AU",
+        color: NODE_COLORS.wait_for_user_input,
+        onClick: handleAddWaitForUserNode,
+      },
+      {
         key: "widget",
         label: "Bloc widget",
         shortLabel: "W",
@@ -3050,6 +3189,9 @@ const WorkflowBuilderPage = () => {
       handleAddStateNode,
       handleAddWatchNode,
       handleAddVectorStoreNode,
+      handleAddAssistantMessageNode,
+      handleAddUserMessageNode,
+      handleAddWaitForUserNode,
       handleAddWidgetNode,
       handleAddEndNode,
     ],
@@ -3597,6 +3739,8 @@ const WorkflowBuilderPage = () => {
             onConditionPathChange={handleConditionPathChange}
             onConditionModeChange={handleConditionModeChange}
             onConditionValueChange={handleConditionValueChange}
+            onAssistantMessageChange={handleAssistantMessageChange}
+            onUserMessageChange={handleUserMessageChange}
             availableModels={availableModels}
             availableModelsLoading={availableModelsLoading}
             availableModelsError={availableModelsError}

@@ -209,6 +209,16 @@ Une fois la bibliothèque alimentée, le workflow builder propose un **bloc widg
 
 Vous pouvez ainsi enchaîner plusieurs widgets (cartes, formulaires, listes…) pour enrichir la conversation, tout en gardant la possibilité d'utiliser les widgets comme format de sortie d'un agent classique si nécessaire.
 
+### Blocs message et attente dans le workflow builder
+
+Le builder inclut désormais trois blocs dédiés pour scénariser la conversation sans exécuter d'agent :
+
+- **Message assistant** — diffuse un texte écrit côté workflow comme s'il provenait de l'assistant. Le panneau d'inspection permet de saisir le contenu et, si besoin, de personnaliser l'étiquette visible dans le canvas.
+- **Message utilisateur** — injecte un message attribué à l'utilisateur courant. Cela permet de simuler une relance ou de préparer un contexte avant de repasser la main à un agent.
+- **Attendre une réponse** — suspend l'exécution du workflow et avertit le frontend que la prochaine action dépend d'une entrée utilisateur. Aucun autre nœud n'est évalué tant que l'utilisateur n'a pas envoyé un nouveau message.
+
+Ces blocs sont pris en charge côté backend (`backend/app/chatkit.py`) et déclenchent les événements SSE appropriés pour enrichir l'historique des fils. Ils servent également de points d'arrêt naturels lorsque vous souhaitez laisser l'utilisateur décider de la suite du scénario sans déployer immédiatement un agent.
+
 ### Outil météo exposé au workflow ChatKit
 
 Le backend expose également un point d'entrée `GET /api/tools/weather` qui interroge l'API libre [Open-Meteo](https://open-meteo.com/) pour fournir les conditions actuelles d'une ville donnée. Cette route est pensée pour être appelée depuis un outil de workflow ChatKit, mais elle reste publique afin de faciliter les tests manuels.

@@ -284,6 +284,30 @@ export const setEndMessage = (
   return stripEmpty(next as Record<string, unknown>);
 };
 
+export const getMessageNodeText = (
+  parameters: AgentParameters | null | undefined,
+): string => {
+  if (!parameters) {
+    return "";
+  }
+  const message = (parameters as Record<string, unknown>).message;
+  return typeof message === "string" ? message : "";
+};
+
+export const setMessageNodeText = (
+  parameters: AgentParameters,
+  message: string,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const trimmed = message.trim();
+  if (!trimmed) {
+    delete (next as Record<string, unknown>).message;
+    return stripEmpty(next as Record<string, unknown>);
+  }
+  (next as Record<string, unknown>).message = trimmed;
+  return stripEmpty(next as Record<string, unknown>);
+};
+
 export const getAgentMessage = (parameters: AgentParameters | null | undefined): string => {
   if (!parameters) {
     return "";

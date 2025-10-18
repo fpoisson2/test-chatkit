@@ -15,6 +15,9 @@ export type NodeKind =
   | "watch"
   | "json_vector_store"
   | "widget"
+  | "message_assistant"
+  | "message_user"
+  | "wait_for_user_input"
   | "end";
 
 export type ApiWorkflowNode = {

@@ -314,14 +314,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             assistant_stream_text = (
                 "" if user_text else _normalize_user_text(config.assistant_message)
             )
-            if not user_text and not assistant_stream_text:
-                yield ErrorEvent(
-                    code=ErrorCode.STREAM_ERROR,
-                    message="Aucun message automatique n'est configuré pour ce workflow.",
-                    allow_retry=False,
-                )
-                return
-
             if user_text:
                 workflow_input = WorkflowInput(
                     input_as_text=user_text,
@@ -333,6 +325,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     input_as_text="",
                     auto_start_was_triggered=True,
                     auto_start_assistant_message=assistant_stream_text,
+                )
+            else:
+                workflow_input = WorkflowInput(
+                    input_as_text="",
+                    auto_start_was_triggered=True,
+                    auto_start_assistant_message="",
                 )
 
             pre_stream_events = await self._prepare_auto_start_thread_items(
@@ -2858,6 +2856,29 @@ async def run_workflow(
         widget_configs_by_step[step.slug] = widget_config
         return widget_config
 
+    def _extract_message(parameters: Mapping[str, Any] | None) -> str:
+        if not isinstance(parameters, Mapping):
+            return ""
+        raw_value = parameters.get("message")
+        if isinstance(raw_value, str):
+            return raw_value.strip()
+        return ""
+
+    def _generate_item_id(item_type: str) -> str:
+        generator = getattr(agent_context, "generate_id", None)
+        if callable(generator):
+            try:
+                return generator(item_type)
+            except Exception:  # pragma: no cover - dépend du contexte d'exécution
+                logger.exception(
+                    "Impossible de générer un identifiant via le contexte agent", exc_info=True
+                )
+        return f"{item_type}_{uuid.uuid4().hex}"
+
+    def _current_thread_id() -> str | None:
+        thread_metadata = getattr(agent_context, "thread", None)
+        return getattr(thread_metadata, "id", None)
+
     for step in nodes_by_slug.values():
         if step.kind == "widget":
             _register_widget_config(step)
@@ -3918,6 +3939,120 @@ async def run_workflow(
                 )
             current_slug = transition.target_step.slug
             continue
+
+        if current_node.kind == "message_assistant":
+            title = _node_title(current_node)
+            message = _extract_message(current_node.parameters)
+            await record_step(current_node.slug, title, message)
+
+            if message:
+                conversation_history.append(
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": message,
+                            }
+                        ],
+                    }
+                )
+                if on_stream_event is not None:
+                    thread_id = _current_thread_id()
+                    if thread_id is not None:
+                        assistant_message = AssistantMessageItem(
+                            id=_generate_item_id("message"),
+                            thread_id=thread_id,
+                            created_at=datetime.now(),
+                            content=[AssistantMessageContent(text=message)],
+                        )
+                        await on_stream_event(
+                            ThreadItemDoneEvent(item=assistant_message)
+                        )
+                last_step_context = {
+                    "role": "assistant",
+                    "output_text": message,
+                    "message": message,
+                }
+            transition = _next_edge(current_slug)
+            if transition is None:
+                if not agent_steps_ordered:
+                    break
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError(
+                        f"Aucune transition disponible après le bloc message {current_node.slug}"
+                    ),
+                    list(steps),
+                )
+            current_slug = transition.target_step.slug
+            continue
+
+        if current_node.kind == "message_user":
+            title = _node_title(current_node)
+            message = _extract_message(current_node.parameters)
+            await record_step(current_node.slug, title, message)
+
+            if message:
+                conversation_history.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": message,
+                            }
+                        ],
+                    }
+                )
+                if on_stream_event is not None:
+                    thread_id = _current_thread_id()
+                    if thread_id is not None:
+                        user_message = UserMessageItem(
+                            id=_generate_item_id("message"),
+                            thread_id=thread_id,
+                            created_at=datetime.now(),
+                            content=[UserMessageTextContent(text=message)],
+                            attachments=[],
+                            quoted_text=None,
+                            inference_options=InferenceOptions(),
+                        )
+                        await on_stream_event(ThreadItemDoneEvent(item=user_message))
+                state["infos_manquantes"] = message
+                last_step_context = {
+                    "role": "user",
+                    "input_text": message,
+                    "message": message,
+                }
+            transition = _next_edge(current_slug)
+            if transition is None:
+                if not agent_steps_ordered:
+                    break
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError(
+                        f"Aucune transition disponible après le bloc message {current_node.slug}"
+                    ),
+                    list(steps),
+                )
+            current_slug = transition.target_step.slug
+            continue
+
+        if current_node.kind == "wait_for_user_input":
+            title = _node_title(current_node)
+            await record_step(
+                current_node.slug,
+                title,
+                "En attente d'un message utilisateur",
+            )
+            last_step_context = {
+                "role": "system",
+                "status": "waiting_for_user",
+                "message": "En attente d'un message utilisateur",
+            }
+            break
 
         if current_node.kind == "json_vector_store":
             title = _node_title(current_node)
