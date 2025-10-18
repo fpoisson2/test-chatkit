@@ -76,6 +76,8 @@ import {
   setVectorStoreNodeConfig,
   setEndMessage,
   setAssistantMessage,
+  setAssistantStreamingEnabled,
+  setAssistantStreamingDelay,
   DEFAULT_END_MESSAGE,
   createWidgetNodeParameters,
   resolveWidgetNodeParameters,
@@ -2041,6 +2043,42 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleAssistantStreamingEnabledChange = useCallback(
+    (nodeId: string, value: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "assistant_message") {
+          return data;
+        }
+        const nextParameters = setAssistantStreamingEnabled(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleAssistantStreamingDelayChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "assistant_message") {
+          return data;
+        }
+        const nextParameters = setAssistantStreamingDelay(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleConditionChange = useCallback(
     (edgeId: string, value: string) => {
       setEdges((current) =>
@@ -3751,6 +3789,12 @@ const WorkflowBuilderPage = () => {
             onStartAutoRunMessageChange={handleStartAutoRunMessageChange}
             onStartAutoRunAssistantMessageChange={
               handleStartAutoRunAssistantMessageChange
+            }
+            onAssistantStreamingEnabledChange={
+              handleAssistantStreamingEnabledChange
+            }
+            onAssistantStreamingDelayChange={
+              handleAssistantStreamingDelayChange
             }
             onConditionPathChange={handleConditionPathChange}
             onConditionModeChange={handleConditionModeChange}
