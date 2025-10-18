@@ -1039,6 +1039,9 @@ def _build_image_generation_tool(payload: Any) -> ImageGeneration | None:
         if value is not None:
             tool_kwargs[key] = value
 
+    if "name" in field_names and "name" not in tool_kwargs:
+        tool_kwargs["name"] = "image_generation"
+
     try:
         return ImageGeneration(**tool_kwargs)
     except Exception:  # pragma: no cover - dépend de la version du client

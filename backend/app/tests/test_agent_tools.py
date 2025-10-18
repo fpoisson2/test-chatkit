@@ -173,3 +173,37 @@ def test_coerce_agent_tools_from_image_generation_with_unknown_model() -> None:
     assert getattr(tool, "quality", None) == "high"
     assert getattr(tool, "background", None) == "transparent"
     assert getattr(tool, "output_format", None) == "auto"
+
+
+def test_build_image_generation_tool_sets_default_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Vérifie que le repli conserve un nom d'outil cohérent."""
+
+    from backend.app import chatkit as module
+
+    class _FailingImageGeneration:
+        model_fields = {"type": None, "name": None, "model": None}
+
+        def __init__(self, **_: object) -> None:  # pragma: no cover - simulé dans le test
+            raise ValueError("validation stricte refusée")
+
+        @classmethod
+        def model_construct(cls, **kwargs: object):
+            instance = cls.__new__(cls)
+            for key, value in kwargs.items():
+                setattr(instance, key, value)
+            return instance
+
+    monkeypatch.setattr(module, "ImageGeneration", _FailingImageGeneration)
+
+    tool = module._build_image_generation_tool(
+        {
+            "image_generation": {
+                "model": "fallback-model",
+            }
+        }
+    )
+
+    assert tool is not None
+    assert getattr(tool, "type", None) == "image_generation"
+    assert getattr(tool, "name", None) == "image_generation"
+    assert getattr(tool, "model", None) == "fallback-model"
