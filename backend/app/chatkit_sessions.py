@@ -69,6 +69,7 @@ def _sanitize_forward_headers(
     headers: Iterable[tuple[str, str]],
     *,
     include_chatkit_beta: bool,
+    authorization: str | None = None,
 ) -> list[tuple[str, str]]:
     sanitized: list[tuple[str, str]] = []
     seen_lower: set[str] = set()
@@ -76,11 +77,21 @@ def _sanitize_forward_headers(
         lower_key = key.lower()
         if lower_key in _HOP_BY_HOP_HEADERS or lower_key == "content-length":
             continue
+
+        if lower_key == "authorization" and authorization:
+            # On remplace l'en-tête Authorization utilisateur par la clé serveur.
+            continue
+
         sanitized.append((key, value))
         seen_lower.add(lower_key)
 
     if include_chatkit_beta and "openai-beta" not in seen_lower:
         sanitized.append(("OpenAI-Beta", "chatkit_beta=v1"))
+        seen_lower.add("openai-beta")
+
+    if authorization and "authorization" not in seen_lower:
+        sanitized.append(("Authorization", authorization))
+        seen_lower.add("authorization")
 
     return sanitized
 
@@ -173,6 +184,9 @@ async def proxy_chatkit_request(path: str, request: Request) -> Response:
     upstream_headers = _sanitize_forward_headers(
         request.headers.items(),
         include_chatkit_beta=True,
+        authorization=(
+            f"Bearer {settings.openai_api_key}" if settings.openai_api_key else None
+        ),
     )
 
     timeout = httpx.Timeout(60.0, read=None)
