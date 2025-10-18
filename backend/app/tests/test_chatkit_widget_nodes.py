@@ -27,6 +27,7 @@ from chatkit.types import (
     ActiveStatus,
     AssistantMessageContent,
     AssistantMessageItem,
+    ErrorEvent,
     NoticeEvent,
     Page,
     ThreadItemDoneEvent,
@@ -625,6 +626,85 @@ def test_auto_start_workflow_ignores_assistant_message_when_user_message_present
         "Le workflow auto-start doit ignorer le message assistant lorsque le bloc début "
         "fournit déjà un message utilisateur."
     )
+
+
+@pytest.mark.asyncio
+async def test_auto_start_server_runs_without_initial_messages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    settings = Settings(
+        allowed_origins=["*"],
+        openai_api_key="sk-test",
+        chatkit_workflow_id=None,
+        chatkit_api_base="https://api.openai.com",
+        chatkit_agent_model="gpt-5",
+        chatkit_agent_instructions="Assistant",
+        chatkit_realtime_model="gpt-realtime",
+        chatkit_realtime_instructions="Assistant vocal",
+        chatkit_realtime_voice="verse",
+        database_url="sqlite://",
+        auth_secret_key="secret",
+        access_token_expire_minutes=60,
+        admin_email=None,
+        admin_password=None,
+        database_connect_retries=1,
+        database_connect_delay=0.1,
+    )
+    server = DemoChatKitServer(settings)
+
+    class _FakeStore:
+        async def load_thread_items(
+            self, thread_id: str, after: str | None, limit: int, order: str, context
+        ) -> Page[UserMessageItem]:
+            return Page(data=[], has_more=False, after=None)
+
+        async def delete_thread_item(self, thread_id: str, item_id: str, context) -> None:
+            return None
+
+        async def add_thread_item(
+            self, thread_id: str, item, context
+        ) -> None:  # type: ignore[no-untyped-def]
+            return None
+
+        def generate_item_id(
+            self, prefix: str, thread, context
+        ) -> str:  # type: ignore[no-untyped-def]
+            return f"{prefix}-auto-start"
+
+    fake_store = _FakeStore()
+    server.store = fake_store  # type: ignore[assignment]
+
+    monkeypatch.setattr(
+        server,
+        "_resolve_auto_start_configuration",
+        lambda: AutoStartConfiguration(True, "", ""),
+    )
+
+    workflow_called = False
+
+    async def _fake_execute_workflow(**kwargs):  # type: ignore[no-untyped-def]
+        nonlocal workflow_called
+        workflow_called = True
+        await kwargs["event_queue"].put(_STREAM_DONE)
+
+    monkeypatch.setattr(server, "_execute_workflow", _fake_execute_workflow)
+
+    thread = ThreadMetadata(
+        id="thread-1",
+        created_at=datetime.now(),
+        status=ActiveStatus(),
+        metadata={},
+    )
+    context = ChatKitRequestContext(user_id="user-1", email="user@example.com")
+
+    events: list[Any] = []
+    async for event in server.respond(thread, None, context):
+        events.append(event)
+
+    assert workflow_called, "Le workflow doit être lancé même sans message initial"
+    assert not any(
+        isinstance(event, ErrorEvent) for event in events
+    ), "Le démarrage automatique ne doit pas échouer lorsque aucun message n'est configuré sur le bloc début"
 
 
 @pytest.mark.asyncio

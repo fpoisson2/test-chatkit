@@ -314,14 +314,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             assistant_stream_text = (
                 "" if user_text else _normalize_user_text(config.assistant_message)
             )
-            if not user_text and not assistant_stream_text:
-                yield ErrorEvent(
-                    code=ErrorCode.STREAM_ERROR,
-                    message="Aucun message automatique n'est configuré pour ce workflow.",
-                    allow_retry=False,
-                )
-                return
-
             if user_text:
                 workflow_input = WorkflowInput(
                     input_as_text=user_text,
@@ -333,6 +325,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     input_as_text="",
                     auto_start_was_triggered=True,
                     auto_start_assistant_message=assistant_stream_text,
+                )
+            else:
+                workflow_input = WorkflowInput(
+                    input_as_text="",
+                    auto_start_was_triggered=True,
+                    auto_start_assistant_message="",
                 )
 
             pre_stream_events = await self._prepare_auto_start_thread_items(
