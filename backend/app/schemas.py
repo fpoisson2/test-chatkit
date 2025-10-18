@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import datetime
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, EmailStr, Field, constr
-from typing import Any, Literal
 
 
 class SessionRequest(BaseModel):
@@ -163,18 +162,28 @@ class WeatherResponse(BaseModel):
     source: str = "open-meteo"
 
 
+KNOWN_WORKFLOW_NODE_KINDS = (
+    "start",
+    "agent",
+    "condition",
+    "state",
+    "watch",
+    "json_vector_store",
+    "widget",
+    "end",
+)
+
+
 class WorkflowNodeBase(BaseModel):
     slug: str
-    kind: Literal[
-        "start",
-        "agent",
-        "condition",
-        "state",
-        "watch",
-        "json_vector_store",
-        "widget",
-        "end",
-    ]
+    kind: str = Field(
+        description=(
+            "Type du nœud dans le graphe. Valeurs actuellement reconnues : "
+            + ", ".join(KNOWN_WORKFLOW_NODE_KINDS)
+            + ". Cette API accepte également d'autres valeurs afin de "
+            "rester compatible avec de futurs blocs personnalisés."
+        )
+    )
     display_name: str | None = None
     agent_key: str | None = None
     is_enabled: bool = True
