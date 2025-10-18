@@ -25,6 +25,7 @@ import {
   getAgentReasoningSummary,
   getAgentReasoningVerbosity,
   getAgentResponseFormat,
+  getAgentImageGenerationConfig,
   getAgentShowSearchSources,
   getAgentStorePreference,
   getAgentTemperature,
@@ -45,6 +46,7 @@ import {
 import type {
   FileSearchConfig,
   FlowNode,
+  ImageGenerationToolConfig,
   StateAssignment,
   StateAssignmentScope,
   VectorStoreNodeConfig,
@@ -99,12 +101,51 @@ const conditionModeOptions = [
 const DEFAULT_JSON_SCHEMA_OBJECT = { type: "object", properties: {} } as const;
 const DEFAULT_JSON_SCHEMA_TEXT = JSON.stringify(DEFAULT_JSON_SCHEMA_OBJECT, null, 2);
 const DEFAULT_WEB_SEARCH_CONFIG: WebSearchConfig = { search_context_size: "medium" };
+const DEFAULT_IMAGE_TOOL_CONFIG: ImageGenerationToolConfig = {
+  model: "gpt-image-1-mini",
+  size: "1024x1024",
+  quality: "high",
+  background: "auto",
+  output_format: "auto",
+};
 const WEB_SEARCH_LOCATION_LABELS = {
   city: "Ville",
   region: "Région",
   country: "Pays",
   type: "Type de précision",
 } as const;
+
+const IMAGE_TOOL_MODELS = [
+  { value: "gpt-image-1-mini", label: "gpt-image-1-mini" },
+  { value: "gpt-image-1", label: "gpt-image-1" },
+] as const;
+
+const IMAGE_TOOL_SIZES = [
+  { value: "1024x1024", label: "1024 × 1024" },
+  { value: "1024x1536", label: "1024 × 1536" },
+  { value: "1536x1024", label: "1536 × 1024" },
+  { value: "auto", label: "Automatique" },
+] as const;
+
+const IMAGE_TOOL_QUALITIES = [
+  { value: "high", label: "Haute" },
+  { value: "medium", label: "Moyenne" },
+  { value: "low", label: "Basse" },
+  { value: "auto", label: "Automatique" },
+] as const;
+
+const IMAGE_TOOL_BACKGROUNDS = [
+  { value: "auto", label: "Automatique" },
+  { value: "transparent", label: "Transparent" },
+  { value: "opaque", label: "Opaque" },
+] as const;
+
+const IMAGE_TOOL_OUTPUT_FORMATS = [
+  { value: "auto", label: "Automatique" },
+  { value: "png", label: "PNG" },
+  { value: "webp", label: "WebP" },
+  { value: "jpeg", label: "JPEG" },
+] as const;
 
 const isTestEnvironment =
   typeof process !== "undefined" && process.env && process.env.NODE_ENV === "test";
@@ -147,6 +188,10 @@ export type NodeInspectorProps = {
   onAgentStorePreferenceChange: (nodeId: string, value: boolean) => void;
   onAgentWebSearchChange: (nodeId: string, config: WebSearchConfig | null) => void;
   onAgentFileSearchChange: (nodeId: string, config: FileSearchConfig | null) => void;
+  onAgentImageGenerationChange: (
+    nodeId: string,
+    config: ImageGenerationToolConfig | null,
+  ) => void;
   onVectorStoreNodeConfigChange: (
     nodeId: string,
     updates: Partial<VectorStoreNodeConfig>,
@@ -206,6 +251,7 @@ const NodeInspector = ({
   onAgentStorePreferenceChange,
   onAgentWebSearchChange,
   onAgentFileSearchChange,
+  onAgentImageGenerationChange,
   onVectorStoreNodeConfigChange,
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
@@ -264,6 +310,42 @@ const NodeInspector = ({
   const webSearchEnabled = Boolean(webSearchConfig);
   const fileSearchConfig = getAgentFileSearchConfig(parameters);
   const fileSearchEnabled = Boolean(fileSearchConfig);
+  const imageGenerationConfig = getAgentImageGenerationConfig(parameters);
+  const imageGenerationEnabled = Boolean(imageGenerationConfig);
+  const imageModelValue = imageGenerationConfig?.model ?? DEFAULT_IMAGE_TOOL_CONFIG.model;
+  const imageSizeValue = imageGenerationConfig?.size ?? "";
+  const imageQualityValue = imageGenerationConfig?.quality ?? "";
+  const imageBackgroundValue = imageGenerationConfig?.background ?? "";
+  const imageOutputFormatValue = imageGenerationConfig?.output_format ?? "";
+  const updateImageTool = (updates: Partial<ImageGenerationToolConfig>) => {
+    const base = imageGenerationConfig ?? DEFAULT_IMAGE_TOOL_CONFIG;
+    const draft: Partial<ImageGenerationToolConfig> = { ...base, ...updates };
+    const normalized: ImageGenerationToolConfig = {
+      model: draft.model?.trim() || DEFAULT_IMAGE_TOOL_CONFIG.model,
+    };
+
+    const normalizedSize = draft.size?.trim();
+    if (normalizedSize) {
+      normalized.size = normalizedSize;
+    }
+
+    const normalizedQuality = draft.quality?.trim();
+    if (normalizedQuality) {
+      normalized.quality = normalizedQuality;
+    }
+
+    const normalizedBackground = draft.background?.trim();
+    if (normalizedBackground) {
+      normalized.background = normalizedBackground;
+    }
+
+    const normalizedOutput = draft.output_format?.trim();
+    if (normalizedOutput) {
+      normalized.output_format = normalizedOutput;
+    }
+
+    onAgentImageGenerationChange(node.id, normalized);
+  };
   const weatherFunctionEnabled = getAgentWeatherToolEnabled(parameters);
   const selectedVectorStoreSlug = fileSearchConfig?.vector_store_slug ?? "";
   const trimmedVectorStoreSlug = selectedVectorStoreSlug.trim();
@@ -1272,6 +1354,134 @@ const NodeInspector = ({
                   </label>
                 )}
               </>
+            )}
+            <ToggleRow
+              label="Activer la génération d'image"
+              checked={imageGenerationEnabled}
+              onChange={(next) =>
+                onAgentImageGenerationChange(
+                  node.id,
+                  next ? { ...DEFAULT_IMAGE_TOOL_CONFIG } : null,
+                )
+              }
+              help="Ajoute l'outil image_generation pour produire des visuels via l'API OpenAI."
+            />
+            {imageGenerationEnabled && (
+              <div
+                style={{
+                  display: "grid",
+                  gap: "0.75rem",
+                  border: "1px solid rgba(148, 163, 184, 0.35)",
+                  borderRadius: "0.65rem",
+                  padding: "0.75rem",
+                  backgroundColor: "rgba(226, 232, 240, 0.25)",
+                }}
+              >
+                <label style={inlineFieldStyle}>
+                  <span style={labelContentStyle}>
+                    Modèle de génération
+                    <HelpTooltip label="Sélectionnez le modèle image supporté par l'API OpenAI." />
+                  </span>
+                  <select
+                    value={imageModelValue}
+                    onChange={(event) =>
+                      updateImageTool({
+                        model: event.target.value || DEFAULT_IMAGE_TOOL_CONFIG.model,
+                      })
+                    }
+                  >
+                    {IMAGE_TOOL_MODELS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={inlineFieldStyle}>
+                  <span style={labelContentStyle}>
+                    Taille de sortie
+                    <HelpTooltip label="Définit la résolution retournée par l'API." />
+                  </span>
+                  <select
+                    value={imageSizeValue}
+                    onChange={(event) =>
+                      updateImageTool({
+                        size: event.target.value || undefined,
+                      })
+                    }
+                  >
+                    <option value="">(par défaut)</option>
+                    {IMAGE_TOOL_SIZES.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={inlineFieldStyle}>
+                  <span style={labelContentStyle}>
+                    Qualité de rendu
+                    <HelpTooltip label="Ajuste la fidélité des images générées." />
+                  </span>
+                  <select
+                    value={imageQualityValue}
+                    onChange={(event) =>
+                      updateImageTool({
+                        quality: event.target.value || undefined,
+                      })
+                    }
+                  >
+                    <option value="">(par défaut)</option>
+                    {IMAGE_TOOL_QUALITIES.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={inlineFieldStyle}>
+                  <span style={labelContentStyle}>
+                    Arrière-plan
+                    <HelpTooltip label="Choisissez la transparence de l'image finale." />
+                  </span>
+                  <select
+                    value={imageBackgroundValue}
+                    onChange={(event) =>
+                      updateImageTool({
+                        background: event.target.value || undefined,
+                      })
+                    }
+                  >
+                    <option value="">(par défaut)</option>
+                    {IMAGE_TOOL_BACKGROUNDS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={inlineFieldStyle}>
+                  <span style={labelContentStyle}>
+                    Format de sortie
+                    <HelpTooltip label="Détermine le format MIME restitué par l'outil." />
+                  </span>
+                  <select
+                    value={imageOutputFormatValue}
+                    onChange={(event) =>
+                      updateImageTool({
+                        output_format: event.target.value || undefined,
+                      })
+                    }
+                  >
+                    <option value="">(par défaut)</option>
+                    {IMAGE_TOOL_OUTPUT_FORMATS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
             )}
             <div
               style={{

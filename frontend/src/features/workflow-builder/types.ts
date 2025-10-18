@@ -2,6 +2,7 @@ import type { Edge, Node } from "reactflow";
 
 import type {
   AgentParameters,
+  ImageGenerationToolConfig,
   StateAssignment,
   StateAssignmentScope,
 } from "../../utils/workflows";
@@ -88,6 +89,7 @@ export type SaveState = "idle" | "saving" | "saved" | "error";
 export type {
   AgentParameters,
   AgentVectorStoreIngestionConfig,
+  ImageGenerationToolConfig,
   FileSearchConfig,
   VectorStoreNodeConfig,
   StateAssignment,

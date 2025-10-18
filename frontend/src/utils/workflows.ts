@@ -1,5 +1,13 @@
 export type AgentParameters = Record<string, unknown>;
 
+export type ImageGenerationToolConfig = {
+  model: string;
+  size?: string;
+  quality?: string;
+  background?: string;
+  output_format?: string;
+};
+
 export const DEFAULT_END_MESSAGE = "Workflow terminé";
 
 export const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
@@ -1514,6 +1522,58 @@ const sanitizeFileSearchConfig = (
   return sanitized;
 };
 
+const isImageGenerationTool = (tool: unknown): Record<string, unknown> | null => {
+  if (!isPlainRecord(tool)) {
+    return null;
+  }
+
+  const type = tool.type ?? tool.tool ?? tool.name;
+  if (typeof type !== "string" || type.trim().toLowerCase() !== "image_generation") {
+    return null;
+  }
+
+  return tool;
+};
+
+const sanitizeImageGenerationConfig = (
+  config: ImageGenerationToolConfig | null,
+): Record<string, unknown> | null => {
+  if (!config) {
+    return null;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+
+  const model = typeof config.model === "string" ? config.model.trim() : "";
+  if (!model) {
+    return null;
+  }
+  sanitized.model = model;
+
+  const size = typeof config.size === "string" ? config.size.trim() : "";
+  if (size) {
+    sanitized.size = size;
+  }
+
+  const quality = typeof config.quality === "string" ? config.quality.trim() : "";
+  if (quality) {
+    sanitized.quality = quality;
+  }
+
+  const background = typeof config.background === "string" ? config.background.trim() : "";
+  if (background) {
+    sanitized.background = background;
+  }
+
+  const outputFormat =
+    typeof config.output_format === "string" ? config.output_format.trim() : "";
+  if (outputFormat) {
+    sanitized.output_format = outputFormat;
+  }
+
+  return sanitized;
+};
+
 export const getAgentWebSearchConfig = (
   parameters: AgentParameters | null | undefined,
 ): WebSearchConfig | null => {
@@ -1573,6 +1633,52 @@ export const getAgentFileSearchConfig = (
   return null;
 };
 
+export const getAgentImageGenerationConfig = (
+  parameters: AgentParameters | null | undefined,
+): ImageGenerationToolConfig | null => {
+  if (!parameters) {
+    return null;
+  }
+  const tools = parameters.tools;
+  if (!Array.isArray(tools)) {
+    return null;
+  }
+
+  for (const tool of tools) {
+    const entry = isImageGenerationTool(tool);
+    if (!entry) {
+      continue;
+    }
+
+    const source = isPlainRecord(entry.image_generation)
+      ? (entry.image_generation as Record<string, unknown>)
+      : entry;
+
+    const config: Partial<ImageGenerationToolConfig> = {};
+    if (typeof source.model === "string" && source.model.trim()) {
+      config.model = source.model.trim();
+    }
+    if (typeof source.size === "string" && source.size.trim()) {
+      config.size = source.size.trim();
+    }
+    if (typeof source.quality === "string" && source.quality.trim()) {
+      config.quality = source.quality.trim();
+    }
+    if (typeof source.background === "string" && source.background.trim()) {
+      config.background = source.background.trim();
+    }
+    if (typeof source.output_format === "string" && source.output_format.trim()) {
+      config.output_format = source.output_format.trim();
+    }
+
+    if (config.model) {
+      return config as ImageGenerationToolConfig;
+    }
+  }
+
+  return null;
+};
+
 export const setAgentWebSearchConfig = (
   parameters: AgentParameters,
   config: WebSearchConfig | null,
@@ -1618,6 +1724,32 @@ export const setAgentFileSearchConfig = (
   }
 
   const toolEntry: Record<string, unknown> = { type: "file_search", file_search: sanitized };
+  return { ...next, tools: [...tools, toolEntry] };
+};
+
+export const setAgentImageGenerationConfig = (
+  parameters: AgentParameters,
+  config: ImageGenerationToolConfig | null,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const sanitized = sanitizeImageGenerationConfig(config);
+  const tools = Array.isArray(next.tools)
+    ? (next.tools as unknown[]).filter((tool) => !isImageGenerationTool(tool))
+    : [];
+
+  if (!sanitized) {
+    if (tools.length === 0) {
+      const { tools: _ignored, ...rest } = next;
+      return stripEmpty(rest);
+    }
+    return { ...next, tools };
+  }
+
+  const toolEntry: Record<string, unknown> = {
+    type: "image_generation",
+    image_generation: sanitized,
+  };
+
   return { ...next, tools: [...tools, toolEntry] };
 };
 

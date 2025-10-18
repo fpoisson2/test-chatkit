@@ -43,6 +43,7 @@ import {
   setAgentContinueOnError,
   setAgentDisplayResponseInChat,
   setAgentFileSearchConfig,
+  setAgentImageGenerationConfig,
   setAgentIncludeChatHistory,
   setAgentMaxOutputTokens,
   setAgentMessage,
@@ -88,6 +89,7 @@ import NodeInspector from "./components/NodeInspector";
 import type {
   AgentParameters,
   FileSearchConfig,
+  ImageGenerationToolConfig,
   FlowEdge,
   FlowEdgeData,
   FlowNode,
@@ -1930,6 +1932,24 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleAgentImageGenerationChange = useCallback(
+    (nodeId: string, config: ImageGenerationToolConfig | null) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "agent") {
+          return data;
+        }
+        const nextParameters = setAgentImageGenerationConfig(data.parameters, config);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleVectorStoreNodeConfigChange = useCallback(
     (nodeId: string, updates: Partial<VectorStoreNodeConfig>) => {
       updateNodeData(nodeId, (data) => {
@@ -3672,6 +3692,7 @@ const WorkflowBuilderPage = () => {
             onAgentStorePreferenceChange={handleAgentStorePreferenceChange}
             onAgentWebSearchChange={handleAgentWebSearchChange}
             onAgentFileSearchChange={handleAgentFileSearchChange}
+            onAgentImageGenerationChange={handleAgentImageGenerationChange}
             onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
             onStartAutoRunChange={handleStartAutoRunChange}
             onStartAutoRunMessageChange={handleStartAutoRunMessageChange}
