@@ -1604,6 +1604,94 @@ async def test_image_generation_handles_url_without_inline(
     assert generated_image.output_format == "png"
 
 
+def test_inline_remote_image_uses_authorization_for_allowed_host(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import chatkit.agents as agents_module
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("CHATKIT_API_BASE", "https://api.custom.test")
+
+    captured: dict[str, dict[str, str]] = {}
+
+    class _Response:
+        headers = {"content-type": "image/png"}
+        content = b"binary"
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            captured["headers"] = kwargs.get("headers") or {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def get(self, url: str) -> _Response:
+            captured["url"] = {"value": url}
+            return _Response()
+
+    monkeypatch.setattr(agents_module.httpx, "Client", _Client)
+
+    b64, data_url, fmt = agents_module._inline_remote_image(
+        "https://api.custom.test/v1/responses/resp/content/0",
+        output_format="png",
+    )
+
+    assert captured["headers"].get("Authorization") == "Bearer sk-test"
+    assert b64 is not None
+    assert data_url is not None
+    assert fmt == "png"
+
+
+def test_inline_remote_image_skips_authorization_for_untrusted_host(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    import chatkit.agents as agents_module
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+
+    captured: dict[str, dict[str, str]] = {}
+
+    class _Response:
+        headers = {"content-type": "image/png"}
+        content = b"binary"
+
+        def raise_for_status(self) -> None:
+            return None
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            captured["headers"] = kwargs.get("headers") or {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def get(self, url: str) -> _Response:
+            captured["url"] = {"value": url}
+            return _Response()
+
+    monkeypatch.setattr(agents_module.httpx, "Client", _Client)
+
+    b64, data_url, fmt = agents_module._inline_remote_image(
+        "https://example.test/path/image.png",
+        output_format="png",
+    )
+
+    assert "Authorization" not in captured.get("headers", {})
+    assert b64 is not None
+    assert data_url is not None
+    assert fmt == "png"
+
+
 async def test_workflow_ends_on_message():
     context = AgentContext(
         previous_response_id=None, thread=thread, store=mock_store, request_context=None
