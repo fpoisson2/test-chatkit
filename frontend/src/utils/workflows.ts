@@ -92,6 +92,55 @@ export const getAssistantMessage = (
   return "";
 };
 
+export const getAssistantMessageStreamEnabled = (
+  parameters: AgentParameters | null | undefined,
+): boolean => {
+  if (!parameters) {
+    return false;
+  }
+  const rawValue = (parameters as Record<string, unknown>).simulate_stream;
+  if (typeof rawValue === "boolean") {
+    return rawValue;
+  }
+  if (typeof rawValue === "number") {
+    return rawValue !== 0;
+  }
+  if (typeof rawValue === "string") {
+    const normalized = rawValue.trim().toLowerCase();
+    if (!normalized) {
+      return false;
+    }
+    if (truthyStrings.has(normalized)) {
+      return true;
+    }
+    if (falsyStrings.has(normalized)) {
+      return false;
+    }
+  }
+  return false;
+};
+
+const DEFAULT_ASSISTANT_STREAM_DELAY_MS = 30;
+
+export const getAssistantMessageStreamDelay = (
+  parameters: AgentParameters | null | undefined,
+): number => {
+  if (!parameters) {
+    return DEFAULT_ASSISTANT_STREAM_DELAY_MS;
+  }
+  const rawValue = (parameters as Record<string, unknown>).simulate_stream_delay_ms;
+  if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
+    return Math.max(0, Math.round(rawValue));
+  }
+  if (typeof rawValue === "string") {
+    const parsed = Number(rawValue.trim());
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.round(parsed));
+    }
+  }
+  return DEFAULT_ASSISTANT_STREAM_DELAY_MS;
+};
+
 export const getUserMessage = (
   parameters: AgentParameters | null | undefined,
 ): string => {
@@ -345,6 +394,8 @@ export const setAssistantMessage = (
   if (!trimmed) {
     delete (next as Record<string, unknown>).message;
     delete (next as Record<string, unknown>).text;
+    delete (next as Record<string, unknown>).simulate_stream;
+    delete (next as Record<string, unknown>).simulate_stream_delay_ms;
     if (isPlainRecord(next.status)) {
       const status = { ...(next.status as Record<string, unknown>) };
       delete status.reason;
@@ -358,6 +409,38 @@ export const setAssistantMessage = (
   }
 
   (next as Record<string, unknown>).message = message;
+  return stripEmpty(next as Record<string, unknown>);
+};
+
+export const setAssistantMessageStreamEnabled = (
+  parameters: AgentParameters,
+  enabled: boolean,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  if (enabled) {
+    (next as Record<string, unknown>).simulate_stream = true;
+    return stripEmpty(next as Record<string, unknown>);
+  }
+  delete (next as Record<string, unknown>).simulate_stream;
+  return stripEmpty(next as Record<string, unknown>);
+};
+
+export const setAssistantMessageStreamDelay = (
+  parameters: AgentParameters,
+  delayMs: string,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const normalized = delayMs.trim();
+  if (!normalized) {
+    delete (next as Record<string, unknown>).simulate_stream_delay_ms;
+    return stripEmpty(next as Record<string, unknown>);
+  }
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    delete (next as Record<string, unknown>).simulate_stream_delay_ms;
+    return stripEmpty(next as Record<string, unknown>);
+  }
+  (next as Record<string, unknown>).simulate_stream_delay_ms = Math.round(parsed);
   return stripEmpty(next as Record<string, unknown>);
 };
 

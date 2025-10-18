@@ -76,6 +76,8 @@ import {
   setVectorStoreNodeConfig,
   setEndMessage,
   setAssistantMessage,
+  setAssistantMessageStreamDelay,
+  setAssistantMessageStreamEnabled,
   setUserMessage,
   DEFAULT_END_MESSAGE,
   createWidgetNodeParameters,
@@ -2042,6 +2044,48 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleAssistantMessageStreamEnabledChange = useCallback(
+    (nodeId: string, enabled: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "assistant_message") {
+          return data;
+        }
+        const nextParameters = setAssistantMessageStreamEnabled(
+          data.parameters,
+          enabled,
+        );
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleAssistantMessageStreamDelayChange = useCallback(
+    (nodeId: string, delay: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "assistant_message") {
+          return data;
+        }
+        const nextParameters = setAssistantMessageStreamDelay(
+          data.parameters,
+          delay,
+        );
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleUserMessageChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
@@ -3822,6 +3866,12 @@ const WorkflowBuilderPage = () => {
             onStateAssignmentsChange={handleStateAssignmentsChange}
             onEndMessageChange={handleEndMessageChange}
             onAssistantMessageChange={handleAssistantMessageChange}
+            onAssistantMessageStreamEnabledChange={
+              handleAssistantMessageStreamEnabledChange
+            }
+            onAssistantMessageStreamDelayChange={
+              handleAssistantMessageStreamDelayChange
+            }
             onUserMessageChange={handleUserMessageChange}
             onRemove={handleRemoveNode}
           />
