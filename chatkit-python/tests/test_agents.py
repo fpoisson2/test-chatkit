@@ -164,6 +164,8 @@ def make_result() -> RunResult:
         final_output=None,
         input_guardrail_results=[],
         output_guardrail_results=[],
+        tool_input_guardrail_results=[],
+        tool_output_guardrail_results=[],
         current_agent=Agent(name="test"),
         current_turn=0,
         max_turns=10,
@@ -1414,7 +1416,7 @@ async def test_image_generation_task_streaming():
     assert generated_image.image_url is None
 
 
-async def test_image_generation_handles_url_payload():
+async def test_image_generation_handles_url_payload(monkeypatch: pytest.MonkeyPatch):
     mock_store.add_thread_item.reset_mock()
     context = AgentContext(
         previous_response_id=None, thread=thread, store=mock_store, request_context=None
@@ -1459,6 +1461,18 @@ async def test_image_generation_handles_url_payload():
     )
 
     final_url = "https://example.test/final.png"
+    inlined_b64 = "aW5saW5lZA=="
+    inlined_data_url = f"data:image/webp;base64,{inlined_b64}"
+
+    def fake_inline(
+        url: str,
+        *,
+        output_format: str | None,
+        timeout: object | None = None,
+    ) -> tuple[str | None, str | None, str | None]:
+        return inlined_b64, inlined_data_url, output_format or "webp"
+
+    monkeypatch.setattr("chatkit.agents._inline_remote_image", fake_inline)
     completed_call = ImageGenerationCall.model_construct(
         id=call.id,
         status="completed",
@@ -1502,10 +1516,92 @@ async def test_image_generation_handles_url_payload():
     )
     assert image_task_completed is not None
     generated_image = image_task_completed.update.task.images[0]
+    assert generated_image.b64_json == inlined_b64
+    assert generated_image.image_url == final_url
+    assert generated_image.data_url == inlined_data_url
+    assert generated_image.output_format == "webp"
+
+
+async def test_image_generation_handles_url_without_inline(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "chatkit.agents._inline_remote_image",
+        lambda *_, **__: (None, None, None),
+    )
+
+    mock_store.add_thread_item.reset_mock()
+    context = AgentContext(
+        previous_response_id=None, thread=thread, store=mock_store, request_context=None
+    )
+    result = make_result()
+
+    call = ImageGenerationCall(
+        id="img_url_call_no_inline",
+        status="in_progress",
+        type="image_generation_call",
+    )
+
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseOutputItemAddedEvent(
+                type="response.output_item.added",
+                item=call,
+                output_index=0,
+                sequence_number=0,
+            ),
+        )
+    )
+
+    final_url = "https://example.test/only-url.png"
+    completed_call = ImageGenerationCall.model_construct(
+        id=call.id,
+        status="completed",
+        type="image_generation_call",
+        result={
+            "data": [
+                {
+                    "image_url": {"url": final_url},
+                    "output_format": "png",
+                }
+            ]
+        },
+    )
+
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseOutputItemDoneEvent(
+                type="response.output_item.done",
+                item=completed_call,
+                output_index=0,
+                sequence_number=1,
+            ),
+        )
+    )
+
+    result.done()
+
+    events = await all_events(stream_agent_response(context, result))
+
+    image_task_completed = next(
+        (
+            event
+            for event in events
+            if isinstance(event, ThreadItemUpdated)
+            and isinstance(event.update, WorkflowTaskUpdated)
+            and isinstance(event.update.task, ImageTask)
+            and event.update.task.status_indicator == "complete"
+        ),
+        None,
+    )
+    assert image_task_completed is not None
+    generated_image = image_task_completed.update.task.images[0]
     assert generated_image.b64_json is None
     assert generated_image.image_url == final_url
     assert generated_image.data_url == final_url
-    assert generated_image.output_format == "webp"
+    assert generated_image.output_format == "png"
 
 
 async def test_workflow_ends_on_message():

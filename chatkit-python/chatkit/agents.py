@@ -1,9 +1,12 @@
 import asyncio
+import base64
 import json
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
 from inspect import cleandoc
+from urllib.parse import urlparse
 from typing import (
     Annotated,
     Any,
@@ -23,6 +26,7 @@ from agents import (
     StreamEvent,
     TResponseInputItem,
 )
+import httpx
 from openai.types.responses import (
     EasyInputMessageParam,
     ResponseFunctionToolCallParam,
@@ -87,6 +91,9 @@ from .types import (
     WorkflowTaskUpdated,
 )
 from .widgets import Markdown, Text, WidgetRoot
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class ClientToolCall(BaseModel):
@@ -360,6 +367,7 @@ class ImageTaskTracker:
     item_id: str
     output_index: int
     task: ImageTask
+    last_inlined_url: str | None = None
 
     def ensure_image(self) -> GeneratedImage:
         if self.task.images:
@@ -384,6 +392,57 @@ def _coerce_optional_str(value: Any) -> str | None:
         if stripped:
             return stripped
     return None
+
+
+def _guess_format_from_url(url: str) -> str | None:
+    try:
+        path = urlparse(url).path
+    except ValueError:
+        return None
+    if "." not in path:
+        return None
+    extension = path.rsplit(".", 1)[-1]
+    return _normalize_image_format(extension)
+
+
+def _inline_remote_image(
+    url: str,
+    *,
+    output_format: str | None,
+    timeout: httpx.Timeout | None = None,
+) -> tuple[str | None, str | None, str | None]:
+    """Télécharge une image distante pour produire une version inline base64."""
+
+    candidate = _coerce_optional_str(url)
+    if candidate is None or candidate.startswith("data:"):
+        return None, None, None
+
+    if timeout is None:
+        timeout = httpx.Timeout(15.0, connect=5.0)
+
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            response = client.get(candidate)
+        response.raise_for_status()
+    except Exception:  # pragma: no cover - dépend des conditions réseau
+        LOGGER.debug("Échec du téléchargement de l'image %s", candidate, exc_info=True)
+        return None, None, None
+
+    content_type = response.headers.get("content-type")
+    inferred_format = (
+        _normalize_image_format(content_type)
+        or _guess_format_from_url(candidate)
+        or output_format
+    )
+
+    try:
+        encoded = base64.b64encode(response.content).decode("ascii")
+    except Exception:  # pragma: no cover - dépend du contenu retourné
+        LOGGER.debug("Impossible d'encoder l'image %s en base64", candidate, exc_info=True)
+        return None, None, None
+
+    data_url = _image_data_url(encoded, inferred_format)
+    return encoded, data_url, inferred_format
 
 
 def _normalize_image_format(value: Any) -> str | None:
@@ -691,6 +750,31 @@ async def stream_agent_response(
             image.output_format = normalized_format
             updated = True
 
+        def _inline_from_url(url: str | None) -> bool:
+            candidate = _coerce_optional_str(url)
+            if candidate is None or candidate.startswith("data:"):
+                return False
+            if isinstance(image.b64_json, str):
+                return False
+            if tracker.last_inlined_url == candidate:
+                return False
+            tracker.last_inlined_url = candidate
+            inline_b64, inline_data_url, inline_format = _inline_remote_image(
+                candidate,
+                output_format=image.output_format or normalized_format,
+            )
+            changed = False
+            if inline_b64 and image.b64_json != inline_b64:
+                image.b64_json = inline_b64
+                changed = True
+            if inline_data_url and image.data_url != inline_data_url:
+                image.data_url = inline_data_url
+                changed = True
+            if inline_format and image.output_format != inline_format:
+                image.output_format = inline_format
+                changed = True
+            return changed
+
         if isinstance(partial_b64, str):
             if not image.partials or image.partials[-1] != partial_b64:
                 image.partials.append(partial_b64)
@@ -726,6 +810,12 @@ async def stream_agent_response(
 
         if _update_image_url(final_url):
             updated = True
+
+        if not isinstance(image.b64_json, str):
+            if _inline_from_url(final_url):
+                updated = True
+            elif _inline_from_url(partial_url):
+                updated = True
 
         return updated
 
