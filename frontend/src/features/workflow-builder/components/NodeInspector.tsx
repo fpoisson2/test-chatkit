@@ -277,6 +277,7 @@ const NodeInspector = ({
   onStateAssignmentsChange,
   onEndMessageChange,
   onAssistantMessageChange,
+  onUserMessageChange,
   onRemove,
 }: NodeInspectorProps) => {
   const { token } = useAuth();
