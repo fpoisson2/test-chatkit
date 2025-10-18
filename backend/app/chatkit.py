@@ -1045,6 +1045,21 @@ def _build_image_generation_tool(payload: Any) -> ImageGeneration | None:
         logger.warning(
             "Impossible de construire ImageGeneration avec la configuration %s", config
         )
+
+        construct = getattr(ImageGeneration, "model_construct", None)
+        if callable(construct):  # pragma: no branch - dépend de Pydantic v2
+            try:
+                return construct(**tool_kwargs)  # type: ignore[misc]
+            except Exception:  # pragma: no cover - garde-fou en dernier recours
+                pass
+
+        construct = getattr(ImageGeneration, "construct", None)
+        if callable(construct):  # pragma: no branch - compat Pydantic v1
+            try:
+                return construct(**tool_kwargs)  # type: ignore[misc]
+            except Exception:  # pragma: no cover - garde-fou en dernier recours
+                pass
+
         return None
 
 

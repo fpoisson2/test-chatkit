@@ -1,7 +1,10 @@
 """Tests liés à la conversion des outils Agents."""
 
+import pytest
+
 from backend.app.chatkit import (
     FunctionTool,
+    ImageGeneration,
     WebSearchTool,
     _coerce_agent_tools,
     web_search_preview,
@@ -142,3 +145,31 @@ def test_coerce_agent_tools_normalizes_none_value() -> None:
 
     assert isinstance(tools, list)
     assert tools == []
+
+
+@pytest.mark.skipif(ImageGeneration is None, reason="ImageGeneration n'est pas disponible")
+def test_coerce_agent_tools_from_image_generation_with_unknown_model() -> None:
+    tools = _coerce_agent_tools(
+        [
+            {
+                "type": "image_generation",
+                "image_generation": {
+                    "model": "gpt-image-1-mini",
+                    "size": "1024x1024",
+                    "quality": "high",
+                    "background": "transparent",
+                    "output_format": "auto",
+                },
+            }
+        ]
+    )
+
+    assert isinstance(tools, list)
+    assert len(tools) == 1
+    tool = tools[0]
+    assert isinstance(tool, ImageGeneration)
+    assert getattr(tool, "model", None) == "gpt-image-1-mini"
+    assert getattr(tool, "size", None) == "1024x1024"
+    assert getattr(tool, "quality", None) == "high"
+    assert getattr(tool, "background", None) == "transparent"
+    assert getattr(tool, "output_format", None) == "auto"
