@@ -22,6 +22,7 @@ import {
   getAgentMessage,
   getAgentModel,
   getAssistantMessage,
+  getUserMessage,
   getAgentReasoningEffort,
   getAgentReasoningSummary,
   getAgentReasoningVerbosity,
@@ -221,6 +222,7 @@ export type NodeInspectorProps = {
   ) => void;
   onEndMessageChange: (nodeId: string, value: string) => void;
   onAssistantMessageChange: (nodeId: string, value: string) => void;
+  onUserMessageChange: (nodeId: string, value: string) => void;
   onRemove: (nodeId: string) => void;
 };
 
@@ -283,6 +285,7 @@ const NodeInspector = ({
   const endMessage = kind === "end" ? getEndMessage(parameters) : "";
   const assistantMessage =
     kind === "assistant_message" ? getAssistantMessage(parameters) : "";
+  const userMessage = kind === "user_message" ? getUserMessage(parameters) : "";
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
   const reasoningEffort = getAgentReasoningEffort(parameters);
@@ -870,6 +873,25 @@ const NodeInspector = ({
           <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
             Ce message est diffusé tel quel dans la conversation avant de passer au
             bloc suivant.
+          </p>
+        </label>
+      )}
+
+      {kind === "user_message" && (
+        <label style={fieldStyle}>
+          <span style={labelContentStyle}>Texte du message utilisateur</span>
+          <textarea
+            value={userMessage}
+            onChange={(event) =>
+              onUserMessageChange(node.id, event.target.value)
+            }
+            rows={4}
+            placeholder="Texte injecté dans la conversation comme message utilisateur"
+            style={{ resize: "vertical", minHeight: "4.5rem" }}
+          />
+          <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+            Ce message est transmis à l'agent comme s'il provenait directement de
+            l'utilisateur avant de passer au bloc suivant.
           </p>
         </label>
       )}

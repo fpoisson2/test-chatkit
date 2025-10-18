@@ -537,6 +537,48 @@ describe("WorkflowBuilderPage", () => {
     ).toBe(true);
   });
 
+  test("permet d'ajouter un bloc message utilisateur", async () => {
+    const fetchMock = setupWorkflowApi();
+    const user = userEvent.setup();
+
+    renderWorkflowBuilder();
+
+    const addButton = await screen.findByRole("button", { name: /message utilisateur/i });
+    await user.click(addButton);
+
+    const userTextarea = await screen.findByLabelText(/texte du message utilisateur/i);
+    await user.clear(userTextarea);
+    await user.type(userTextarea, "Bonjour !");
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            typeof input === "string" &&
+            input.endsWith(
+              `/api/workflows/${defaultWorkflowSummary.id}/versions/${draftVersionSummary.id}`,
+            ) &&
+            (init as RequestInit | undefined)?.method === "PUT",
+        ),
+      ).toBe(true);
+    });
+
+    const saveCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        typeof input === "string" &&
+        input.endsWith(
+          `/api/workflows/${defaultWorkflowSummary.id}/versions/${draftVersionSummary.id}`,
+        ) &&
+        (init as RequestInit | undefined)?.method === "PUT",
+    );
+    const body = JSON.parse(((saveCall?.[1] as RequestInit)?.body ?? "{}") as string);
+    expect(
+      body.graph.nodes.some(
+        (node: any) => node.kind === "user_message" && node.parameters?.message === "Bonjour !",
+      ),
+    ).toBe(true);
+  });
+
   test("permet d'activer le function tool météo Python", async () => {
     const fetchMock = setupWorkflowApi();
 

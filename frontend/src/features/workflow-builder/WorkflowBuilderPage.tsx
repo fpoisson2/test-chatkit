@@ -76,6 +76,7 @@ import {
   setVectorStoreNodeConfig,
   setEndMessage,
   setAssistantMessage,
+  setUserMessage,
   DEFAULT_END_MESSAGE,
   createWidgetNodeParameters,
   resolveWidgetNodeParameters,
@@ -2041,6 +2042,24 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleUserMessageChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "user_message") {
+          return data;
+        }
+        const nextParameters = setUserMessage(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleConditionChange = useCallback(
     (edgeId: string, value: string) => {
       setEdges((current) =>
@@ -2234,6 +2253,32 @@ const WorkflowBuilderPage = () => {
       },
       draggable: true,
       style: buildNodeStyle("assistant_message"),
+    } satisfies FlowNode;
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes]);
+
+  const handleAddUserMessageNode = useCallback(() => {
+    const slug = `user-message-${Date.now()}`;
+    const parameters: AgentParameters = {};
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 440, y: 240 },
+      data: {
+        slug,
+        kind: "user_message",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("user_message"),
     } satisfies FlowNode;
     setNodes((current) => [...current, newNode]);
     setSelectedNodeId(slug);
@@ -3171,6 +3216,13 @@ const WorkflowBuilderPage = () => {
         onClick: handleAddAssistantMessageNode,
       },
       {
+        key: "user-message",
+        label: "Message utilisateur",
+        shortLabel: "MU",
+        color: NODE_COLORS.user_message,
+        onClick: handleAddUserMessageNode,
+      },
+      {
         key: "json-vector-store",
         label: "Stockage JSON",
         shortLabel: "VS",
@@ -3198,6 +3250,7 @@ const WorkflowBuilderPage = () => {
       handleAddStateNode,
       handleAddWatchNode,
       handleAddAssistantMessageNode,
+      handleAddUserMessageNode,
       handleAddVectorStoreNode,
       handleAddWidgetNode,
       handleAddEndNode,
@@ -3769,6 +3822,7 @@ const WorkflowBuilderPage = () => {
             onStateAssignmentsChange={handleStateAssignmentsChange}
             onEndMessageChange={handleEndMessageChange}
             onAssistantMessageChange={handleAssistantMessageChange}
+            onUserMessageChange={handleUserMessageChange}
             onRemove={handleRemoveNode}
           />
         ) : selectedEdge ? (

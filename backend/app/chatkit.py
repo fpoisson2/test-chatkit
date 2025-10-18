@@ -3025,6 +3025,17 @@ async def run_workflow(
                 return reason
         return ""
 
+    def _resolve_user_message(step: WorkflowStep) -> str:
+        raw_params = step.parameters or {}
+        params = raw_params if isinstance(raw_params, Mapping) else {}
+        message = params.get("message")
+        if isinstance(message, str):
+            return message
+        fallback_text = params.get("text")
+        if isinstance(fallback_text, str):
+            return fallback_text
+        return ""
+
     def _workflow_run_config() -> RunConfig:
         metadata: dict[str, str] = {"__trace_source__": "agent-builder"}
         if definition.workflow_id is not None:
@@ -4098,6 +4109,42 @@ async def run_workflow(
                     "Configuration du workflow invalide",
                     RuntimeError(
                         "Aucune transition disponible après le bloc message assistant "
+                        f"{current_node.slug}"
+                    ),
+                    list(steps),
+                )
+            current_slug = transition.target_step.slug
+            continue
+
+        if current_node.kind == "user_message":
+            title = _node_title(current_node)
+            raw_message = _resolve_user_message(current_node)
+            sanitized_message = _normalize_user_text(raw_message)
+
+            await record_step(current_node.slug, title, sanitized_message or "")
+            last_step_context = {"user_message": sanitized_message}
+
+            if sanitized_message and on_stream_event is not None:
+                user_item = UserMessageItem(
+                    id=agent_context.generate_id("message"),
+                    thread_id=agent_context.thread.id,
+                    created_at=datetime.now(),
+                    content=[UserMessageTextContent(text=sanitized_message)],
+                    attachments=[],
+                    quoted_text=None,
+                    inference_options=InferenceOptions(),
+                )
+                await on_stream_event(ThreadItemDoneEvent(item=user_item))
+
+            transition = _next_edge(current_slug)
+            if transition is None:
+                if not agent_steps_ordered:
+                    break
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError(
+                        "Aucune transition disponible après le bloc message utilisateur "
                         f"{current_node.slug}"
                     ),
                     list(steps),
