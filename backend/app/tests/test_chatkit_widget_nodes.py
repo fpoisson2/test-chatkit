@@ -29,6 +29,7 @@ from chatkit.types import (
     AssistantMessageItem,
     NoticeEvent,
     Page,
+    ThreadItemAddedEvent,
     ThreadItemDoneEvent,
     ThreadMetadata,
     UserMessageItem,
@@ -407,7 +408,14 @@ def test_user_message_node_streams_message() -> None:
 
     asyncio.run(_run())
 
-    user_events = [
+    added_events = [
+        event
+        for event in events
+        if isinstance(event, ThreadItemAddedEvent)
+        and isinstance(event.item, UserMessageItem)
+        and any("Je suis prêt" in part.text for part in event.item.content)
+    ]
+    done_events = [
         event
         for event in events
         if isinstance(event, ThreadItemDoneEvent)
@@ -415,7 +423,9 @@ def test_user_message_node_streams_message() -> None:
         and any("Je suis prêt" in part.text for part in event.item.content)
     ]
 
-    assert user_events, "Le bloc message utilisateur doit injecter un message utilisateur."
+    assert added_events, "Le bloc message utilisateur doit signaler l'ajout du message."
+    assert done_events, "Le bloc message utilisateur doit finaliser le message injecté."
+    assert events.index(done_events[0]) > events.index(added_events[0])
 
 
 def test_resolve_watch_payload_prefers_structured_output() -> None:
@@ -895,7 +905,13 @@ async def test_auto_start_server_streams_only_user_message_when_configured(
     async for event in server.respond(thread, None, context):
         events.append(event)
 
-    user_events = [
+    user_added = [
+        event
+        for event in events
+        if isinstance(event, ThreadItemAddedEvent)
+        and isinstance(event.item, UserMessageItem)
+    ]
+    user_done = [
         event
         for event in events
         if isinstance(event, ThreadItemDoneEvent)
@@ -904,12 +920,16 @@ async def test_auto_start_server_streams_only_user_message_when_configured(
     assistant_events = [
         event
         for event in events
-        if isinstance(event, ThreadItemDoneEvent)
+        if isinstance(event, (ThreadItemAddedEvent, ThreadItemDoneEvent))
         and isinstance(event.item, AssistantMessageItem)
     ]
 
-    assert user_events, "Le message utilisateur automatique doit être diffusé"
-    assert not assistant_events, "Aucun message assistant ne doit être diffusé lorsqu'un message utilisateur est configuré"
+    assert user_added, "Le message utilisateur automatique doit être signalé immédiatement"
+    assert user_done, "Le message utilisateur automatique doit être finalisé"
+    assert events.index(user_done[0]) > events.index(user_added[0])
+    assert not assistant_events, (
+        "Aucun message assistant ne doit être diffusé lorsqu'un message utilisateur est configuré"
+    )
 
 
 @pytest.mark.asyncio
