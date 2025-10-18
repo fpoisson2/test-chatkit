@@ -26,10 +26,14 @@ from backend.app.workflows.service import WorkflowService, WorkflowValidationErr
 from chatkit.types import (
     ActiveStatus,
     AssistantMessageContent,
+    AssistantMessageContentPartAdded,
+    AssistantMessageContentPartDone,
+    AssistantMessageContentPartTextDelta,
     AssistantMessageItem,
     NoticeEvent,
     Page,
     ThreadItemDoneEvent,
+    ThreadItemUpdated,
     ThreadMetadata,
     UserMessageItem,
 )
@@ -318,7 +322,101 @@ def test_assistant_message_node_streams_message() -> None:
     ]
 
     assert assistant_events, "Le bloc message assistant doit diffuser un message."
-    assert assistant_events[0].item.content[0].text.strip() == "Bienvenue à bord."
+
+
+def test_assistant_message_node_supports_streaming() -> None:
+    events: list[Any] = []
+
+    async def _collect(event):  # type: ignore[no-untyped-def]
+        events.append(event)
+
+    agent_context = SimpleNamespace(
+        store=None,
+        thread=SimpleNamespace(id="thread-demo"),
+        request_context=None,
+        generate_id=lambda prefix: f"{prefix}-stream",  # type: ignore[no-untyped-def]
+    )
+
+    start_step = SimpleNamespace(
+        slug="start",
+        kind="start",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=0,
+        id=1,
+        display_name="Début",
+    )
+    assistant_step = SimpleNamespace(
+        slug="message-stream",
+        kind="assistant_message",
+        is_enabled=True,
+        parameters={
+            "message": "Bienvenue à bord.",
+            "streaming": {"enabled": True, "delay": 0},
+        },
+        agent_key=None,
+        position=1,
+        id=2,
+        display_name="Message",
+    )
+    end_step = SimpleNamespace(
+        slug="end",
+        kind="end",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=2,
+        id=3,
+        display_name="Fin",
+    )
+
+    transitions = [
+        SimpleNamespace(id=1, source_step=start_step, target_step=assistant_step, condition=None),
+        SimpleNamespace(id=2, source_step=assistant_step, target_step=end_step, condition=None),
+    ]
+
+    definition = SimpleNamespace(
+        steps=[start_step, assistant_step, end_step],
+        transitions=transitions,
+        workflow_id=1,
+        workflow=SimpleNamespace(slug="demo", display_name="Démo"),
+    )
+
+    async def _run() -> None:
+        await run_workflow(
+            WorkflowInput(input_as_text="Bonjour"),
+            agent_context=agent_context,
+            workflow_service=_DummyWorkflowService(definition),
+            on_stream_event=_collect,
+        )
+
+    asyncio.run(_run())
+
+    updates = [event for event in events if isinstance(event, ThreadItemUpdated)]
+    assert updates, "Le streaming doit produire des mises à jour incrémentales."
+
+    assert any(
+        isinstance(update.update, AssistantMessageContentPartAdded) for update in updates
+    ), "Une partie de contenu doit être créée."
+    assert any(
+        isinstance(update.update, AssistantMessageContentPartTextDelta)
+        and bool(update.update.delta)
+        for update in updates
+    ), "Le texte doit être diffusé progressivement."
+    assert any(
+        isinstance(update.update, AssistantMessageContentPartDone) for update in updates
+    ), "La partie de contenu doit être marquée comme terminée."
+
+    done_events = [
+        event
+        for event in events
+        if isinstance(event, ThreadItemDoneEvent)
+        and isinstance(getattr(event, "item", None), AssistantMessageItem)
+        and any("Bienvenue" in part.text for part in event.item.content)
+    ]
+    assert done_events, "Un événement final doit être émis pour le message assistant."
+    assert done_events[0].item.content[0].text.strip() == "Bienvenue à bord."
 
 
 def test_resolve_watch_payload_prefers_structured_output() -> None:

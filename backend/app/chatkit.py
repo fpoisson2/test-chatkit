@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import json
 import logging
+import math
 import re
 import uuid
 from collections.abc import Collection, Mapping
@@ -50,6 +51,8 @@ from chatkit.store import NotFoundError
 from chatkit.types import (
     ActiveStatus,
     AssistantMessageContent,
+    AssistantMessageContentPartAdded,
+    AssistantMessageContentPartDone,
     AssistantMessageContentPartTextDelta,
     AssistantMessageItem,
     ClosedStatus,
@@ -91,6 +94,7 @@ from .widgets import WidgetLibraryService
 logger = logging.getLogger("chatkit.server")
 
 _ZERO_WIDTH_CHARACTERS = frozenset({"\u200b", "\u200c", "\u200d", "\ufeff"})
+_DEFAULT_ASSISTANT_STREAMING_DELAY_MS = 40
 
 
 def _normalize_user_text(value: str | None) -> str:
@@ -132,6 +136,18 @@ class AutoStartConfiguration:
     @classmethod
     def disabled(cls) -> "AutoStartConfiguration":
         return cls(False, "", "")
+
+
+@dataclass(frozen=True)
+class _AssistantStreamingConfig:
+    """Options de streaming associées à un bloc message assistant."""
+
+    enabled: bool = False
+    delay_ms: int = _DEFAULT_ASSISTANT_STREAMING_DELAY_MS
+
+    @property
+    def delay_seconds(self) -> float:
+        return max(0, self.delay_ms) / 1000
 
 
 @dataclass
@@ -3221,6 +3237,80 @@ async def run_workflow(
             message=message,
         )
 
+    def _coerce_streaming_delay(value: Any) -> int:
+        if isinstance(value, (int, float)):
+            if not math.isfinite(value):
+                return _DEFAULT_ASSISTANT_STREAMING_DELAY_MS
+            return max(0, int(round(value)))
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return _DEFAULT_ASSISTANT_STREAMING_DELAY_MS
+            try:
+                parsed = float(stripped)
+            except ValueError:
+                return _DEFAULT_ASSISTANT_STREAMING_DELAY_MS
+            if not math.isfinite(parsed):
+                return _DEFAULT_ASSISTANT_STREAMING_DELAY_MS
+            return max(0, int(round(parsed)))
+        return _DEFAULT_ASSISTANT_STREAMING_DELAY_MS
+
+    def _resolve_assistant_streaming_config(step: WorkflowStep) -> _AssistantStreamingConfig:
+        raw_params = step.parameters or {}
+        params = raw_params if isinstance(raw_params, Mapping) else {}
+        streaming = params.get("streaming")
+        if isinstance(streaming, Mapping):
+            enabled = bool(streaming.get("enabled"))
+            delay_value = streaming.get("delay")
+            if delay_value is None:
+                delay_value = streaming.get("delay_ms")
+            delay_ms = _coerce_streaming_delay(delay_value)
+            return _AssistantStreamingConfig(enabled=enabled, delay_ms=delay_ms)
+        if isinstance(streaming, bool):
+            return _AssistantStreamingConfig(enabled=bool(streaming))
+        return _AssistantStreamingConfig()
+
+    async def _stream_assistant_message(
+        *,
+        message_id: str,
+        text: str,
+        delay_ms: int,
+        on_stream_event: Callable[[ThreadStreamEvent], Awaitable[None]],
+    ) -> None:
+        if not text:
+            return
+        await on_stream_event(
+            ThreadItemUpdated(
+                item_id=message_id,
+                update=AssistantMessageContentPartAdded(
+                    content_index=0,
+                    content=AssistantMessageContent(text=""),
+                ),
+            )
+        )
+        delay_seconds = max(0, delay_ms) / 1000
+        for char in text:
+            if delay_seconds:
+                await asyncio.sleep(delay_seconds)
+            await on_stream_event(
+                ThreadItemUpdated(
+                    item_id=message_id,
+                    update=AssistantMessageContentPartTextDelta(
+                        content_index=0,
+                        delta=char,
+                    ),
+                )
+            )
+        await on_stream_event(
+            ThreadItemUpdated(
+                item_id=message_id,
+                update=AssistantMessageContentPartDone(
+                    content_index=0,
+                    content=AssistantMessageContent(text=text),
+                ),
+            )
+        )
+
     def _resolve_assistant_message(step: WorkflowStep) -> str:
         raw_params = step.parameters or {}
         params = raw_params if isinstance(raw_params, Mapping) else {}
@@ -4194,12 +4284,22 @@ async def run_workflow(
             last_step_context = {"assistant_message": sanitized_message}
 
             if sanitized_message and on_stream_event is not None:
+                streaming_config = _resolve_assistant_streaming_config(current_node)
+                message_id = agent_context.generate_id("message")
+                created_at = datetime.now()
                 assistant_message = AssistantMessageItem(
-                    id=agent_context.generate_id("message"),
+                    id=message_id,
                     thread_id=agent_context.thread.id,
-                    created_at=datetime.now(),
+                    created_at=created_at,
                     content=[AssistantMessageContent(text=sanitized_message)],
                 )
+                if streaming_config.enabled:
+                    await _stream_assistant_message(
+                        message_id=message_id,
+                        text=sanitized_message,
+                        delay_ms=streaming_config.delay_ms,
+                        on_stream_event=on_stream_event,
+                    )
                 await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
 
             transition = _next_edge(current_slug)

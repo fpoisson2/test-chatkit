@@ -9,6 +9,7 @@ export type ImageGenerationToolConfig = {
 };
 
 export const DEFAULT_END_MESSAGE = "Workflow terminé";
+export const DEFAULT_ASSISTANT_STREAMING_DELAY_MS = 40;
 
 export const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -90,6 +91,122 @@ export const getAssistantMessage = (
     }
   }
   return "";
+};
+
+const normalizeAssistantStreamingDelay = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return Math.round(value);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return Math.round(parsed);
+    }
+  }
+  return null;
+};
+
+export const getAssistantStreamingEnabled = (
+  parameters: AgentParameters | null | undefined,
+): boolean => {
+  if (!parameters) {
+    return false;
+  }
+  const streaming = (parameters as Record<string, unknown>).streaming;
+  if (typeof streaming === "boolean") {
+    return streaming;
+  }
+  if (isPlainRecord(streaming)) {
+    const enabled = (streaming as Record<string, unknown>).enabled;
+    return typeof enabled === "boolean" ? enabled : false;
+  }
+  return false;
+};
+
+export const getAssistantStreamingDelay = (
+  parameters: AgentParameters | null | undefined,
+): number => {
+  if (!parameters) {
+    return DEFAULT_ASSISTANT_STREAMING_DELAY_MS;
+  }
+  const streaming = (parameters as Record<string, unknown>).streaming;
+  if (isPlainRecord(streaming)) {
+    const config = streaming as Record<string, unknown>;
+    const normalized =
+      normalizeAssistantStreamingDelay(config.delay) ??
+      normalizeAssistantStreamingDelay(config.delay_ms);
+    if (normalized !== null) {
+      return normalized;
+    }
+  }
+  return DEFAULT_ASSISTANT_STREAMING_DELAY_MS;
+};
+
+export const setAssistantStreamingEnabled = (
+  parameters: AgentParameters,
+  value: boolean,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const rawStreaming = (next as Record<string, unknown>).streaming;
+  const streaming = isPlainRecord(rawStreaming)
+    ? { ...(rawStreaming as Record<string, unknown>) }
+    : typeof rawStreaming === "boolean"
+    ? { enabled: rawStreaming }
+    : {};
+
+  streaming.enabled = value;
+
+  const sanitizedDelay =
+    normalizeAssistantStreamingDelay(streaming.delay) ??
+    normalizeAssistantStreamingDelay((streaming as Record<string, unknown>).delay_ms) ??
+    getAssistantStreamingDelay(parameters);
+
+  streaming.delay = sanitizedDelay;
+  delete (streaming as Record<string, unknown>).delay_ms;
+
+  (next as Record<string, unknown>).streaming = streaming;
+  return stripEmpty(next as Record<string, unknown>);
+};
+
+export const setAssistantStreamingDelay = (
+  parameters: AgentParameters,
+  rawValue: string,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const rawStreaming = (next as Record<string, unknown>).streaming;
+  const streaming = isPlainRecord(rawStreaming)
+    ? { ...(rawStreaming as Record<string, unknown>) }
+    : typeof rawStreaming === "boolean"
+    ? { enabled: rawStreaming }
+    : {};
+
+  if (typeof streaming.enabled !== "boolean") {
+    streaming.enabled = getAssistantStreamingEnabled(parameters);
+  }
+
+  const normalized = normalizeAssistantStreamingDelay(rawValue);
+  if (normalized === null) {
+    delete (streaming as Record<string, unknown>).delay;
+  } else {
+    streaming.delay = normalized;
+  }
+  delete (streaming as Record<string, unknown>).delay_ms;
+
+  const streamingKeys = Object.keys(streaming);
+  if (
+    streamingKeys.length === 0 ||
+    (streamingKeys.length === 1 && streamingKeys[0] === "enabled" && streaming.enabled === false)
+  ) {
+    delete (next as Record<string, unknown>).streaming;
+  } else {
+    (next as Record<string, unknown>).streaming = streaming;
+  }
+
+  return stripEmpty(next as Record<string, unknown>);
 };
 
 const truthyStrings = new Set(["true", "1", "yes", "on"]);

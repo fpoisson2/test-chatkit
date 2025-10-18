@@ -22,6 +22,8 @@ import {
   getAgentMessage,
   getAgentModel,
   getAssistantMessage,
+  getAssistantStreamingDelay,
+  getAssistantStreamingEnabled,
   getAgentReasoningEffort,
   getAgentReasoningSummary,
   getAgentReasoningVerbosity,
@@ -43,6 +45,7 @@ import {
   getConditionMode,
   getConditionPath,
   getConditionValue,
+  DEFAULT_ASSISTANT_STREAMING_DELAY_MS,
 } from "../../../utils/workflows";
 import type {
   FileSearchConfig,
@@ -200,6 +203,8 @@ export type NodeInspectorProps = {
   onStartAutoRunChange: (nodeId: string, value: boolean) => void;
   onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
   onStartAutoRunAssistantMessageChange: (nodeId: string, value: string) => void;
+  onAssistantStreamingEnabledChange: (nodeId: string, value: boolean) => void;
+  onAssistantStreamingDelayChange: (nodeId: string, value: string) => void;
   onConditionPathChange: (nodeId: string, value: string) => void;
   onConditionModeChange: (nodeId: string, value: string) => void;
   onConditionValueChange: (nodeId: string, value: string) => void;
@@ -258,6 +263,8 @@ const NodeInspector = ({
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
   onStartAutoRunAssistantMessageChange,
+  onAssistantStreamingEnabledChange,
+  onAssistantStreamingDelayChange,
   onConditionPathChange,
   onConditionModeChange,
   onConditionValueChange,
@@ -283,6 +290,12 @@ const NodeInspector = ({
   const endMessage = kind === "end" ? getEndMessage(parameters) : "";
   const assistantMessage =
     kind === "assistant_message" ? getAssistantMessage(parameters) : "";
+  const assistantStreamingEnabled =
+    kind === "assistant_message" ? getAssistantStreamingEnabled(parameters) : false;
+  const assistantStreamingDelay =
+    kind === "assistant_message"
+      ? getAssistantStreamingDelay(parameters)
+      : DEFAULT_ASSISTANT_STREAMING_DELAY_MS;
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
   const reasoningEffort = getAgentReasoningEffort(parameters);
@@ -856,22 +869,63 @@ const NodeInspector = ({
       )}
 
       {kind === "assistant_message" && (
-        <label style={fieldStyle}>
-          <span style={labelContentStyle}>Texte du message assistant</span>
-          <textarea
-            value={assistantMessage}
-            onChange={(event) =>
-              onAssistantMessageChange(node.id, event.target.value)
-            }
-            rows={4}
-            placeholder="Texte affiché aux utilisateurs lorsque ce bloc est exécuté"
-            style={{ resize: "vertical", minHeight: "4.5rem" }}
-          />
-          <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
-            Ce message est diffusé tel quel dans la conversation avant de passer au
-            bloc suivant.
-          </p>
-        </label>
+        <>
+          <label style={fieldStyle}>
+            <span style={labelContentStyle}>Texte du message assistant</span>
+            <textarea
+              value={assistantMessage}
+              onChange={(event) =>
+                onAssistantMessageChange(node.id, event.target.value)
+              }
+              rows={4}
+              placeholder="Texte affiché aux utilisateurs lorsque ce bloc est exécuté"
+              style={{ resize: "vertical", minHeight: "4.5rem" }}
+            />
+            <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+              Ce message est diffusé tel quel dans la conversation avant de passer au
+              bloc suivant.
+            </p>
+          </label>
+
+          <label style={{ ...fieldStyle, marginTop: "0.75rem" }}>
+            <span style={labelContentStyle}>Effet de streaming</span>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
+              <input
+                type="checkbox"
+                checked={assistantStreamingEnabled}
+                onChange={(event) =>
+                  onAssistantStreamingEnabledChange(node.id, event.target.checked)
+                }
+              />
+              <div style={{ lineHeight: 1.4 }}>
+                <strong>Diffuser la réponse progressivement</strong>
+                <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+                  Lorsque cette option est activée, le message s'affiche caractère par
+                  caractère pour imiter la frappe de l'assistant.
+                </p>
+              </div>
+            </div>
+          </label>
+
+          <label style={{ ...fieldStyle, marginTop: "0.75rem" }}>
+            <span style={labelContentStyle}>Délai entre chaque caractère (ms)</span>
+            <input
+              type="number"
+              min={0}
+              step={10}
+              value={assistantStreamingDelay}
+              onChange={(event) =>
+                onAssistantStreamingDelayChange(node.id, event.target.value)
+              }
+              disabled={!assistantStreamingEnabled}
+              style={{ width: "8rem" }}
+            />
+            <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+              Définissez la pause entre deux caractères. Utilisez 0 pour diffuser le
+              texte sans attente.
+            </p>
+          </label>
+        </>
       )}
 
       {kind === "end" && (
