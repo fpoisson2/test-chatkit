@@ -1063,6 +1063,7 @@ class WorkflowService:
                 "state",
                 "watch",
                 "assistant_message",
+                "user_message",
                 "json_vector_store",
                 "widget",
                 "end",
@@ -1157,15 +1158,19 @@ class WorkflowService:
             node.kind == "assistant_message" and node.is_enabled
             for node in normalized_nodes
         )
+        has_enabled_user_message = any(
+            node.kind == "user_message" and node.is_enabled for node in normalized_nodes
+        )
         if not (
             enabled_agent_slugs
             or has_enabled_widget
             or has_enabled_assistant_message
+            or has_enabled_user_message
             or allow_empty
             or minimal_skeleton
         ):
             raise WorkflowValidationError(
-                "Le workflow doit activer au moins un agent, un message assistant ou un widget."
+                "Le workflow doit activer au moins un agent, un message (assistant ou utilisateur) ou un widget."
             )
         # Les anciens workflows imposaient la présence d'un rédacteur final, mais la
         # bibliothèque permet désormais de créer des workflows plus simples.

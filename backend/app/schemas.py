@@ -169,6 +169,7 @@ KNOWN_WORKFLOW_NODE_KINDS = (
     "state",
     "watch",
     "assistant_message",
+    "user_message",
     "json_vector_store",
     "widget",
     "end",

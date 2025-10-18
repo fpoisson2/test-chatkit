@@ -15,6 +15,7 @@ export type NodeKind =
   | "state"
   | "watch"
   | "assistant_message"
+  | "user_message"
   | "json_vector_store"
   | "widget"
   | "end";

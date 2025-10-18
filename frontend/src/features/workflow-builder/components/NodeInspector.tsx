@@ -22,6 +22,7 @@ import {
   getAgentMessage,
   getAgentModel,
   getAssistantMessage,
+  getUserMessage,
   getAgentReasoningEffort,
   getAgentReasoningSummary,
   getAgentReasoningVerbosity,
@@ -221,6 +222,7 @@ export type NodeInspectorProps = {
   ) => void;
   onEndMessageChange: (nodeId: string, value: string) => void;
   onAssistantMessageChange: (nodeId: string, value: string) => void;
+  onUserMessageChange: (nodeId: string, value: string) => void;
   onRemove: (nodeId: string) => void;
 };
 
@@ -275,6 +277,7 @@ const NodeInspector = ({
   onStateAssignmentsChange,
   onEndMessageChange,
   onAssistantMessageChange,
+  onUserMessageChange,
   onRemove,
 }: NodeInspectorProps) => {
   const { token } = useAuth();
@@ -283,6 +286,8 @@ const NodeInspector = ({
   const endMessage = kind === "end" ? getEndMessage(parameters) : "";
   const assistantMessage =
     kind === "assistant_message" ? getAssistantMessage(parameters) : "";
+  const userMessage = kind === "user_message" ? getUserMessage(parameters) : "";
+  const [userMessageDraft, setUserMessageDraft] = useState(userMessage);
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
   const reasoningEffort = getAgentReasoningEffort(parameters);
@@ -559,6 +564,13 @@ const NodeInspector = ({
     }
     setSchemaError(null);
   }, [node.id, responseFormat.kind, schemaSignature]);
+
+  useEffect(() => {
+    if (kind !== "user_message") {
+      return;
+    }
+    setUserMessageDraft(userMessage);
+  }, [kind, node.id, userMessage]);
 
   return (
     <>
@@ -870,6 +882,27 @@ const NodeInspector = ({
           <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
             Ce message est diffusé tel quel dans la conversation avant de passer au
             bloc suivant.
+          </p>
+        </label>
+      )}
+
+      {kind === "user_message" && (
+        <label style={fieldStyle}>
+          <span style={labelContentStyle}>Texte du message utilisateur</span>
+          <textarea
+            value={userMessageDraft}
+            onChange={(event) => {
+              const nextValue = event.target.value;
+              setUserMessageDraft(nextValue);
+              onUserMessageChange(node.id, nextValue);
+            }}
+            rows={4}
+            placeholder="Texte injecté dans la conversation comme message utilisateur"
+            style={{ resize: "vertical", minHeight: "4.5rem" }}
+          />
+          <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+            Ce message est transmis à l'agent comme s'il provenait directement de
+            l'utilisateur avant de passer au bloc suivant.
           </p>
         </label>
       )}

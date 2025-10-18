@@ -29,6 +29,7 @@ from chatkit.types import (
     AssistantMessageItem,
     NoticeEvent,
     Page,
+    ThreadItemAddedEvent,
     ThreadItemDoneEvent,
     ThreadMetadata,
     UserMessageItem,
@@ -118,6 +119,26 @@ def test_normalize_graph_accepts_assistant_message_node() -> None:
 
     assert any(node.kind == "assistant_message" for node in nodes)
     assert any(edge.source_slug == "assistant" for edge in edges)
+
+
+def test_normalize_graph_accepts_user_message_node() -> None:
+    service = WorkflowService(session_factory=lambda: None)
+    payload = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {"slug": "user", "kind": "user_message", "is_enabled": True},
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [
+            {"source": "start", "target": "user"},
+            {"source": "user", "target": "end"},
+        ],
+    }
+
+    nodes, edges = service._normalize_graph(payload)
+
+    assert any(node.kind == "user_message" for node in nodes)
+    assert any(edge.source_slug == "user" for edge in edges)
 
 
 def test_watch_node_requires_single_incoming_edge() -> None:
@@ -319,6 +340,92 @@ def test_assistant_message_node_streams_message() -> None:
 
     assert assistant_events, "Le bloc message assistant doit diffuser un message."
     assert assistant_events[0].item.content[0].text.strip() == "Bienvenue à bord."
+
+
+def test_user_message_node_streams_message() -> None:
+    events: list[Any] = []
+
+    async def _collect(event):  # type: ignore[no-untyped-def]
+        events.append(event)
+
+    agent_context = SimpleNamespace(
+        store=None,
+        thread=SimpleNamespace(id="thread-demo"),
+        request_context=None,
+        generate_id=lambda prefix: f"{prefix}-1",
+    )
+
+    start_step = SimpleNamespace(
+        slug="start",
+        kind="start",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=0,
+        id=1,
+        display_name="Début",
+    )
+    user_step = SimpleNamespace(
+        slug="message-utilisateur",
+        kind="user_message",
+        is_enabled=True,
+        parameters={"message": "Je suis prêt."},
+        agent_key=None,
+        position=1,
+        id=2,
+        display_name="Message utilisateur",
+    )
+    end_step = SimpleNamespace(
+        slug="end",
+        kind="end",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=2,
+        id=3,
+        display_name="Fin",
+    )
+
+    transitions = [
+        SimpleNamespace(id=1, source_step=start_step, target_step=user_step, condition=None),
+        SimpleNamespace(id=2, source_step=user_step, target_step=end_step, condition=None),
+    ]
+
+    definition = SimpleNamespace(
+        steps=[start_step, user_step, end_step],
+        transitions=transitions,
+        workflow_id=1,
+        workflow=SimpleNamespace(slug="demo", display_name="Démo"),
+    )
+
+    async def _run() -> None:
+        await run_workflow(
+            WorkflowInput(input_as_text="Bonjour"),
+            agent_context=agent_context,
+            workflow_service=_DummyWorkflowService(definition),
+            on_stream_event=_collect,
+        )
+
+    asyncio.run(_run())
+
+    added_events = [
+        event
+        for event in events
+        if isinstance(event, ThreadItemAddedEvent)
+        and isinstance(event.item, UserMessageItem)
+        and any("Je suis prêt" in part.text for part in event.item.content)
+    ]
+    done_events = [
+        event
+        for event in events
+        if isinstance(event, ThreadItemDoneEvent)
+        and isinstance(event.item, UserMessageItem)
+        and any("Je suis prêt" in part.text for part in event.item.content)
+    ]
+
+    assert added_events, "Le bloc message utilisateur doit signaler l'ajout du message."
+    assert done_events, "Le bloc message utilisateur doit finaliser le message injecté."
+    assert events.index(done_events[0]) > events.index(added_events[0])
 
 
 def test_resolve_watch_payload_prefers_structured_output() -> None:
@@ -798,7 +905,13 @@ async def test_auto_start_server_streams_only_user_message_when_configured(
     async for event in server.respond(thread, None, context):
         events.append(event)
 
-    user_events = [
+    user_added = [
+        event
+        for event in events
+        if isinstance(event, ThreadItemAddedEvent)
+        and isinstance(event.item, UserMessageItem)
+    ]
+    user_done = [
         event
         for event in events
         if isinstance(event, ThreadItemDoneEvent)
@@ -807,12 +920,16 @@ async def test_auto_start_server_streams_only_user_message_when_configured(
     assistant_events = [
         event
         for event in events
-        if isinstance(event, ThreadItemDoneEvent)
+        if isinstance(event, (ThreadItemAddedEvent, ThreadItemDoneEvent))
         and isinstance(event.item, AssistantMessageItem)
     ]
 
-    assert user_events, "Le message utilisateur automatique doit être diffusé"
-    assert not assistant_events, "Aucun message assistant ne doit être diffusé lorsqu'un message utilisateur est configuré"
+    assert user_added, "Le message utilisateur automatique doit être signalé immédiatement"
+    assert user_done, "Le message utilisateur automatique doit être finalisé"
+    assert events.index(user_done[0]) > events.index(user_added[0])
+    assert not assistant_events, (
+        "Aucun message assistant ne doit être diffusé lorsqu'un message utilisateur est configuré"
+    )
 
 
 @pytest.mark.asyncio

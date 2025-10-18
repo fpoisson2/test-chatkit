@@ -92,6 +92,24 @@ export const getAssistantMessage = (
   return "";
 };
 
+export const getUserMessage = (
+  parameters: AgentParameters | null | undefined,
+): string => {
+  if (!parameters) {
+    return "";
+  }
+  const params = parameters as Record<string, unknown>;
+  const message = params.message;
+  if (typeof message === "string") {
+    return message;
+  }
+  const text = params.text;
+  if (typeof text === "string") {
+    return text;
+  }
+  return "";
+};
+
 const truthyStrings = new Set(["true", "1", "yes", "on"]);
 const falsyStrings = new Set(["false", "0", "no", "off"]);
 
@@ -336,6 +354,23 @@ export const setAssistantMessage = (
         (next as Record<string, unknown>).status = status;
       }
     }
+    return stripEmpty(next as Record<string, unknown>);
+  }
+
+  (next as Record<string, unknown>).message = message;
+  return stripEmpty(next as Record<string, unknown>);
+};
+
+export const setUserMessage = (
+  parameters: AgentParameters,
+  message: string,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const trimmed = message.trim();
+
+  if (!trimmed) {
+    delete (next as Record<string, unknown>).message;
+    delete (next as Record<string, unknown>).text;
     return stripEmpty(next as Record<string, unknown>);
   }
 

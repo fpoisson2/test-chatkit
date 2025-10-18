@@ -12,6 +12,7 @@ export const NODE_COLORS: Record<NodeKind, string> = {
   state: "#0ea5e9",
   watch: "#facc15",
   assistant_message: "#ef4444",
+  user_message: "#14b8a6",
   json_vector_store: "#0891b2",
   widget: "#ec4899",
   end: "#7c3aed",
@@ -24,6 +25,7 @@ export const NODE_BACKGROUNDS: Record<NodeKind, string> = {
   state: "rgba(14, 165, 233, 0.14)",
   watch: "rgba(250, 204, 21, 0.18)",
   assistant_message: "rgba(239, 68, 68, 0.14)",
+  user_message: "rgba(20, 184, 166, 0.14)",
   json_vector_store: "rgba(8, 145, 178, 0.18)",
   widget: "rgba(236, 72, 153, 0.15)",
   end: "rgba(124, 58, 237, 0.12)",
@@ -135,6 +137,8 @@ export const labelForKind = (kind: NodeKind) => {
       return "Watch";
     case "assistant_message":
       return "Message assistant";
+    case "user_message":
+      return "Message utilisateur";
     case "json_vector_store":
       return "Stockage JSON";
     case "widget":
