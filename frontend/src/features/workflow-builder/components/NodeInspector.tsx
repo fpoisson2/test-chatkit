@@ -22,6 +22,8 @@ import {
   getAgentMessage,
   getAgentModel,
   getAssistantMessage,
+  getAssistantMessageStreamDelay,
+  getAssistantMessageStreamEnabled,
   getUserMessage,
   getAgentReasoningEffort,
   getAgentReasoningSummary,
@@ -222,6 +224,8 @@ export type NodeInspectorProps = {
   ) => void;
   onEndMessageChange: (nodeId: string, value: string) => void;
   onAssistantMessageChange: (nodeId: string, value: string) => void;
+  onAssistantMessageStreamEnabledChange: (nodeId: string, value: boolean) => void;
+  onAssistantMessageStreamDelayChange: (nodeId: string, value: string) => void;
   onUserMessageChange: (nodeId: string, value: string) => void;
   onRemove: (nodeId: string) => void;
 };
@@ -277,6 +281,8 @@ const NodeInspector = ({
   onStateAssignmentsChange,
   onEndMessageChange,
   onAssistantMessageChange,
+  onAssistantMessageStreamEnabledChange,
+  onAssistantMessageStreamDelayChange,
   onUserMessageChange,
   onRemove,
 }: NodeInspectorProps) => {
@@ -286,6 +292,14 @@ const NodeInspector = ({
   const endMessage = kind === "end" ? getEndMessage(parameters) : "";
   const assistantMessage =
     kind === "assistant_message" ? getAssistantMessage(parameters) : "";
+  const assistantMessageStreamEnabled =
+    kind === "assistant_message"
+      ? getAssistantMessageStreamEnabled(parameters)
+      : false;
+  const assistantMessageStreamDelay =
+    kind === "assistant_message"
+      ? getAssistantMessageStreamDelay(parameters)
+      : 30;
   const userMessage = kind === "user_message" ? getUserMessage(parameters) : "";
   const [userMessageDraft, setUserMessageDraft] = useState(userMessage);
   const agentMessage = getAgentMessage(parameters);
@@ -868,22 +882,69 @@ const NodeInspector = ({
       )}
 
       {kind === "assistant_message" && (
-        <label style={fieldStyle}>
-          <span style={labelContentStyle}>Texte du message assistant</span>
-          <textarea
-            value={assistantMessage}
-            onChange={(event) =>
-              onAssistantMessageChange(node.id, event.target.value)
-            }
-            rows={4}
-            placeholder="Texte affiché aux utilisateurs lorsque ce bloc est exécuté"
-            style={{ resize: "vertical", minHeight: "4.5rem" }}
-          />
-          <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
-            Ce message est diffusé tel quel dans la conversation avant de passer au
-            bloc suivant.
-          </p>
-        </label>
+        <>
+          <label style={fieldStyle}>
+            <span style={labelContentStyle}>Texte du message assistant</span>
+            <textarea
+              value={assistantMessage}
+              onChange={(event) =>
+                onAssistantMessageChange(node.id, event.target.value)
+              }
+              rows={4}
+              placeholder="Texte affiché aux utilisateurs lorsque ce bloc est exécuté"
+              style={{ resize: "vertical", minHeight: "4.5rem" }}
+            />
+            <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+              Ce message est diffusé tel quel dans la conversation avant de passer au
+              bloc suivant.
+            </p>
+          </label>
+
+          <label style={{ ...fieldStyle, marginTop: "0.75rem" }}>
+            <span style={labelContentStyle}>Effet de streaming</span>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
+              <input
+                type="checkbox"
+                checked={assistantMessageStreamEnabled}
+                onChange={(event) =>
+                  onAssistantMessageStreamEnabledChange(
+                    node.id,
+                    event.target.checked,
+                  )
+                }
+              />
+              <div style={{ lineHeight: 1.4 }}>
+                <strong>Simuler une réponse progressive</strong>
+                <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+                  Quand cette option est active, le texte est diffusé en plusieurs
+                  morceaux dans le chat afin d'imiter la frappe d'un agent.
+                </p>
+              </div>
+            </div>
+          </label>
+
+          {assistantMessageStreamEnabled && (
+            <label style={fieldStyle}>
+              <span style={labelContentStyle}>Délai entre les paquets (ms)</span>
+              <input
+                type="number"
+                min={0}
+                step={10}
+                value={String(assistantMessageStreamDelay)}
+                onChange={(event) =>
+                  onAssistantMessageStreamDelayChange(
+                    node.id,
+                    event.target.value,
+                  )
+                }
+              />
+              <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+                Ajustez le temps d'attente entre chaque mise à jour envoyée aux
+                utilisateurs.
+              </p>
+            </label>
+          )}
+        </>
       )}
 
       {kind === "user_message" && (

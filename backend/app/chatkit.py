@@ -4,6 +4,7 @@ import asyncio
 import inspect
 import json
 import logging
+import math
 import re
 import uuid
 from collections.abc import Collection, Mapping
@@ -15,6 +16,7 @@ from typing import (
     Awaitable,
     Callable,
     Coroutine,
+    Iterator,
     Sequence,
     Literal,
 )
@@ -3351,6 +3353,87 @@ async def run_workflow(
                 return reason
         return ""
 
+    @dataclass(frozen=True)
+    class _AssistantStreamConfig:
+        enabled: bool
+        delay_seconds: float
+
+    _DEFAULT_ASSISTANT_STREAM_DELAY_SECONDS = 0.03
+
+    def _coerce_bool(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return value != 0
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes", "on"}:
+                return True
+            if normalized in {"false", "0", "no", "off"}:
+                return False
+        return False
+
+    def _resolve_assistant_stream_config(step: WorkflowStep) -> _AssistantStreamConfig:
+        raw_params = step.parameters or {}
+        params = raw_params if isinstance(raw_params, Mapping) else {}
+        enabled = _coerce_bool(params.get("simulate_stream"))
+        delay_seconds = _DEFAULT_ASSISTANT_STREAM_DELAY_SECONDS
+        raw_delay = params.get("simulate_stream_delay_ms")
+        candidate: float | None = None
+        if isinstance(raw_delay, (int, float)) and not isinstance(raw_delay, bool):
+            candidate = float(raw_delay)
+        elif isinstance(raw_delay, str):
+            normalized = raw_delay.strip()
+            if normalized:
+                try:
+                    candidate = float(normalized)
+                except ValueError:
+                    candidate = None
+        if candidate is not None and math.isfinite(candidate) and candidate >= 0:
+            delay_seconds = candidate / 1000.0
+        return _AssistantStreamConfig(enabled=enabled, delay_seconds=delay_seconds)
+
+    def _iter_stream_chunks(text: str) -> Iterator[str]:
+        buffer = ""
+        for character in text:
+            buffer += character
+            if character in {" ", "\n", "\t"} or len(buffer) >= 8:
+                yield buffer
+                buffer = ""
+        if buffer:
+            yield buffer
+
+    async def _stream_assistant_message(
+        text: str, *, delay_seconds: float
+    ) -> None:
+        if on_stream_event is None:
+            return
+        assistant_item = AssistantMessageItem(
+            id=agent_context.generate_id("message"),
+            thread_id=agent_context.thread.id,
+            created_at=datetime.now(),
+            content=[AssistantMessageContent(text="")],
+        )
+        await on_stream_event(ThreadItemAddedEvent(item=assistant_item))
+        first_chunk = True
+        for chunk in _iter_stream_chunks(text):
+            if not first_chunk and delay_seconds > 0:
+                await asyncio.sleep(delay_seconds)
+            first_chunk = False
+            await on_stream_event(
+                ThreadItemUpdated(
+                    item_id=assistant_item.id,
+                    update=AssistantMessageContentPartTextDelta(delta=chunk),
+                )
+            )
+        final_item = AssistantMessageItem(
+            id=assistant_item.id,
+            thread_id=assistant_item.thread_id,
+            created_at=assistant_item.created_at,
+            content=[AssistantMessageContent(text=text)],
+        )
+        await on_stream_event(ThreadItemDoneEvent(item=final_item))
+
     def _resolve_user_message(step: WorkflowStep) -> str:
         raw_params = step.parameters or {}
         params = raw_params if isinstance(raw_params, Mapping) else {}
@@ -4314,19 +4397,26 @@ async def run_workflow(
             title = _node_title(current_node)
             raw_message = _resolve_assistant_message(current_node)
             sanitized_message = _normalize_user_text(raw_message)
+            stream_config = _resolve_assistant_stream_config(current_node)
 
             await record_step(current_node.slug, title, sanitized_message or "")
             last_step_context = {"assistant_message": sanitized_message}
 
             if sanitized_message and on_stream_event is not None:
-                assistant_message = AssistantMessageItem(
-                    id=agent_context.generate_id("message"),
-                    thread_id=agent_context.thread.id,
-                    created_at=datetime.now(),
-                    content=[AssistantMessageContent(text=sanitized_message)],
-                )
-                await on_stream_event(ThreadItemAddedEvent(item=assistant_message))
-                await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
+                if stream_config.enabled:
+                    await _stream_assistant_message(
+                        sanitized_message,
+                        delay_seconds=stream_config.delay_seconds,
+                    )
+                else:
+                    assistant_message = AssistantMessageItem(
+                        id=agent_context.generate_id("message"),
+                        thread_id=agent_context.thread.id,
+                        created_at=datetime.now(),
+                        content=[AssistantMessageContent(text=sanitized_message)],
+                    )
+                    await on_stream_event(ThreadItemAddedEvent(item=assistant_message))
+                    await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
 
             transition = _next_edge(current_slug)
             if transition is None:
