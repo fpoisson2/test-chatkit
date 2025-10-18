@@ -153,6 +153,16 @@ export const collectWidgetBindings = (definition: unknown): WidgetBindingMap => 
     if (bindings[trimmedId]) {
       return;
     }
+    if (!isManual) {
+      const duplicateMatch = trimmedId.match(/^(.*)_(\d+)$/);
+      if (duplicateMatch) {
+        const baseId = duplicateMatch[1];
+        const existing = bindings[baseId];
+        if (existing && getPathKey(existing.path) === getPathKey(path)) {
+          return;
+        }
+      }
+    }
     const pathKey = getPathKey(path);
     if (!isManual && manualPathKeys.has(pathKey)) {
       return;
@@ -351,6 +361,33 @@ const cloneDefinition = <T>(definition: T): T => {
   return JSON.parse(JSON.stringify(definition)) as T;
 };
 
+const syncButtonTextFields = (
+  node: Record<string, unknown>,
+  value: string,
+  assignedKey: string | null,
+  preferredKey: string | null,
+) => {
+  const candidateKey = assignedKey ?? preferredKey;
+  if (!candidateKey) {
+    return;
+  }
+  const normalizedKey = candidateKey.toLowerCase();
+  if (!["label", "text", "title", "value", "content", "body"].includes(normalizedKey)) {
+    return;
+  }
+  const componentType =
+    typeof node.type === "string" && node.type.trim().length > 0 ? node.type.trim().toLowerCase() : null;
+  if (componentType !== "button") {
+    return;
+  }
+  if ("label" in node) {
+    node["label"] = value;
+  }
+  if ("text" in node) {
+    node["text"] = value;
+  }
+};
+
 const updateNodeValue = (
   node: Record<string, unknown>,
   value: string | string[],
@@ -358,10 +395,14 @@ const updateNodeValue = (
 ): void => {
   const assign = (key: string, payload: string | string[]) => {
     node[key] = payload;
+    return key;
   };
 
   if (preferredKey && preferredKey in node) {
-    assign(preferredKey, value);
+    const assignedKey = assign(preferredKey, value);
+    if (typeof value === "string") {
+      syncButtonTextFields(node, value, assignedKey, preferredKey);
+    }
     return;
   }
 
@@ -388,12 +429,18 @@ const updateNodeValue = (
 
   for (const key of candidateKeys) {
     if (key in node) {
-      assign(key, value);
+      const assignedKey = assign(key, value);
+      if (typeof value === "string") {
+        syncButtonTextFields(node, value, assignedKey, preferredKey);
+      }
       return;
     }
   }
 
-  assign("value", value);
+  const assignedKey = assign("value", value);
+  if (typeof value === "string") {
+    syncButtonTextFields(node, value, assignedKey, preferredKey);
+  }
 };
 
 export const applyWidgetInputValues = (
