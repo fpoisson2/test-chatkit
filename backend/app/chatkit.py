@@ -4405,6 +4405,7 @@ async def run_workflow(
             raw_message = _resolve_wait_for_user_input_message(current_node)
             sanitized_message = _normalize_user_text(raw_message)
             display_payload = sanitized_message or "En attente d'une réponse utilisateur."
+            wait_reason = display_payload
 
             await record_step(current_node.slug, title, display_payload)
 
@@ -4424,6 +4425,12 @@ async def run_workflow(
                 await on_stream_event(ThreadItemAddedEvent(item=assistant_message))
                 await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
 
+            final_end_state = WorkflowEndState(
+                slug=current_node.slug,
+                status_type="locked",
+                status_reason=wait_reason,
+                message=wait_reason,
+            )
             break
 
         if current_node.kind == "assistant_message":

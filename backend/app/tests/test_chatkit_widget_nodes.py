@@ -477,6 +477,11 @@ def test_wait_for_user_input_node_streams_message_and_stops(monkeypatch: pytest.
 
     assert recorded_agents == ["Agent Triage"], "Le second agent ne doit pas être exécuté."
     assert summary.final_node_slug == "attente-utilisateur"
+    assert summary.end_state is not None, "Le résumé doit marquer le bloc d'attente comme état final."
+    assert summary.end_state.slug == "attente-utilisateur"
+    assert summary.end_state.status_type == "locked"
+    assert summary.end_state.status_reason is not None
+    assert "Merci de compléter" in summary.end_state.status_reason
 
     wait_step_summary = next(step for step in summary.steps if step.key == "attente-utilisateur")
     assert "Merci de compléter" in wait_step_summary.output
