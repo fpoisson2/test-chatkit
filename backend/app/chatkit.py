@@ -4788,9 +4788,15 @@ async def run_workflow(
                 await agent_context.stream(added_event)
                 await agent_context.stream(done_event)
 
-                if suppress_stream_events and on_stream_event is not None:
-                    await on_stream_event(added_event)
-                    await on_stream_event(done_event)
+                if on_stream_event is not None:
+                    if _should_forward_agent_event(
+                        added_event, suppress=suppress_stream_events
+                    ):
+                        await on_stream_event(added_event)
+                    if _should_forward_agent_event(
+                        done_event, suppress=suppress_stream_events
+                    ):
+                        await on_stream_event(done_event)
 
                 try:
                     await agent_context.store.add_thread_item(
@@ -4920,9 +4926,15 @@ async def run_workflow(
                         await agent_context.stream(added_event)
                         await agent_context.stream(done_event)
 
-                        if suppress_stream_events and on_stream_event is not None:
-                            await on_stream_event(added_event)
-                            await on_stream_event(done_event)
+                        if on_stream_event is not None:
+                            if _should_forward_agent_event(
+                                added_event, suppress=suppress_stream_events
+                            ):
+                                await on_stream_event(added_event)
+                            if _should_forward_agent_event(
+                                done_event, suppress=suppress_stream_events
+                            ):
+                                await on_stream_event(done_event)
 
                         image_widget_keys.add(widget_key)
 
@@ -4957,7 +4969,9 @@ async def run_workflow(
                                 ):
                                     streamed_widget_item = widget_event.item
                                 await agent_context.stream(widget_event)
-                                if suppress_stream_events and on_stream_event is not None:
+                                if on_stream_event is not None and _should_forward_agent_event(
+                                    widget_event, suppress=suppress_stream_events
+                                ):
                                     await on_stream_event(widget_event)
                         except Exception as exc:  # pragma: no cover - dépend du SDK Agents
                             logger.exception(
