@@ -1363,11 +1363,26 @@ def _build_web_search_tool(payload: Any) -> WebSearchTool | None:
 
 
 _SUPPORTED_IMAGE_OUTPUT_FORMATS = frozenset({"png", "jpeg", "webp"})
+_IMAGE_RESPONSE_FORMAT = "b64_json"
 
 
 def _normalize_image_generation_field(key: str, value: Any) -> Any:
     """Nettoie et normalise les attributs spécifiques à la génération d'image."""
 
+    if key == "response_format":
+        if isinstance(value, str) and value.strip().lower() == _IMAGE_RESPONSE_FORMAT:
+            return _IMAGE_RESPONSE_FORMAT
+        if isinstance(value, Mapping):
+            maybe_type = value.get("type") if "type" in value else value.get("format")
+            if isinstance(maybe_type, str) and maybe_type.strip().lower() == _IMAGE_RESPONSE_FORMAT:
+                return _IMAGE_RESPONSE_FORMAT
+        if value is not None:
+            logger.info(
+                "Format de réponse %r non supporté, repli sur '%s'",
+                value,
+                _IMAGE_RESPONSE_FORMAT,
+            )
+        return _IMAGE_RESPONSE_FORMAT
     if key == "output_format":
         if isinstance(value, str):
             normalized = value.strip().lower()
@@ -1421,6 +1436,7 @@ def _build_image_generation_tool(payload: Any) -> Any | None:
             "quality",
             "background",
             "output_format",
+            "response_format",
             "input_fidelity",
             "input_image_mask",
             "moderation",
@@ -1437,6 +1453,9 @@ def _build_image_generation_tool(payload: Any) -> Any | None:
             normalized = _normalize_image_generation_field(key, value)
             if normalized is not None:
                 config_kwargs[key] = normalized
+
+    if "response_format" in field_names:
+        config_kwargs["response_format"] = _IMAGE_RESPONSE_FORMAT
 
     def _construct_config() -> Any | None:
         try:
