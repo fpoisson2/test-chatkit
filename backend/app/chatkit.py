@@ -93,10 +93,12 @@ from chatkit.types import (
     WidgetItem,
     WidgetRootUpdated,
     WidgetStreamingTextValueDelta,
+    WorkflowTaskUpdated,
     UserMessageInput,
     UserMessageItem,
     UserMessageTextContent,
 )
+from chatkit.types import ImageTask
 
 from .config import Settings, get_settings
 from .chatkit_store import PostgresChatKitStore
@@ -4491,6 +4493,111 @@ async def run_workflow(
         suppress_stream_events: bool = False,
     ) -> _WorkflowStreamResult:
         step_index = len(steps) + 1
+        image_message_keys: set[tuple[str, str, str]] = set()
+
+        def _normalize_optional_str(value: Any) -> str | None:
+            if isinstance(value, str):
+                normalized = value.strip()
+                if normalized:
+                    return normalized
+            return None
+
+        def _resolve_generated_image_url(image: Any) -> str | None:
+            for attribute in ("data_url", "image_url"):
+                candidate = getattr(image, attribute, None)
+                if isinstance(candidate, str):
+                    normalized = candidate.strip()
+                    if normalized:
+                        return normalized
+            b64_data = getattr(image, "b64_json", None)
+            if isinstance(b64_data, str):
+                normalized_b64 = b64_data.strip()
+                if normalized_b64:
+                    fmt = _normalize_optional_str(getattr(image, "output_format", None))
+                    effective_fmt = (fmt or "png").lower()
+                    if effective_fmt == "auto":
+                        effective_fmt = "png"
+                    return f"data:image/{effective_fmt};base64,{normalized_b64}"
+            return None
+
+        def _escape_markdown_alt_text(text: str) -> str:
+            return text.replace("[", "\\[").replace("]", "\\]")
+
+        async def _maybe_emit_image_messages(event: ThreadStreamEvent) -> None:
+            if on_stream_event is None:
+                return
+            if not isinstance(event, ThreadItemUpdated):
+                return
+            update = event.update
+            if not isinstance(update, WorkflowTaskUpdated):
+                return
+            task = update.task
+            if not isinstance(task, ImageTask):
+                return
+            if getattr(task, "status_indicator", None) != "complete":
+                return
+            images = list(getattr(task, "images", []) or [])
+            if not images:
+                return
+
+            call_identifier = (
+                _normalize_optional_str(getattr(task, "call_id", None))
+                or _normalize_optional_str(getattr(event, "item_id", None))
+                or ""
+            )
+            emitted = 0
+            for index, image in enumerate(images):
+                url = _resolve_generated_image_url(image)
+                if not url:
+                    continue
+                raw_output_index = getattr(task, "output_index", None)
+                if raw_output_index is None:
+                    output_index = str(index)
+                else:
+                    output_index = (
+                        _normalize_optional_str(str(raw_output_index))
+                        or str(raw_output_index)
+                    )
+                image_identifier = (
+                    _normalize_optional_str(getattr(image, "id", None))
+                    or f"{call_identifier or 'image'}:{output_index}:{index}"
+                )
+                key = (call_identifier, output_index, image_identifier)
+                if key in image_message_keys:
+                    continue
+
+                title_text = _normalize_optional_str(getattr(task, "title", None))
+                heading = title_text or "Image générée"
+                markdown = f"![{_escape_markdown_alt_text(heading)}]({url})"
+                message_text = markdown if title_text is None else f"{heading}\n\n{markdown}"
+
+                assistant_message = AssistantMessageItem(
+                    id=agent_context.generate_id("message"),
+                    thread_id=agent_context.thread.id,
+                    created_at=datetime.now(),
+                    content=[AssistantMessageContent(text=message_text)],
+                )
+
+                logger.info(
+                    "Ajout d'un message image pour %s (image=%s)",
+                    call_identifier or image_identifier,
+                    key,
+                )
+
+                await on_stream_event(ThreadItemAddedEvent(item=assistant_message))
+                await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
+
+                conversation_history.append(assistant_message.to_input_item())
+                image_message_keys.add(key)
+                emitted += 1
+
+            if emitted:
+                logger.info(
+                    "%d message(s) image ajouté(s) à la conversation pour %s",
+                    emitted,
+                    call_identifier or getattr(task, "title", None) or "inconnu",
+                )
+
         if on_step_stream is not None:
             await on_step_stream(
                 WorkflowStepStreamUpdate(
@@ -4547,6 +4654,7 @@ async def run_workflow(
                             text=accumulated_text,
                         )
                     )
+                await _maybe_emit_image_messages(event)
         except Exception as exc:  # pragma: no cover
             raise_step_error(step_key, title, exc)
 
