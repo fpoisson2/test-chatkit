@@ -14,6 +14,7 @@ export type NodeKind =
   | "condition"
   | "state"
   | "watch"
+  | "wait_for_user_input"
   | "assistant_message"
   | "user_message"
   | "json_vector_store"
