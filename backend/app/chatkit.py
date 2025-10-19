@@ -4637,13 +4637,38 @@ async def run_workflow(
             if not isinstance(update, WorkflowTaskUpdated):
                 return
             task = update.task
-            if not isinstance(task, ImageTask):
+
+            task_type = getattr(task, "type", None)
+            if isinstance(task_type, str):
+                normalized_task_type = task_type.strip().lower()
+            else:
+                normalized_task_type = None
+
+            if not (
+                isinstance(task, ImageTask)
+                or normalized_task_type == "image"
+            ):
                 return
+
             if getattr(task, "status_indicator", None) != "complete":
                 return
-            images = list(getattr(task, "images", []) or [])
+
+            task_images = getattr(task, "images", None) or []
+            if isinstance(task_images, Mapping):
+                # Certaines versions du SDK renvoient un dict {"images": [...]}
+                task_images = task_images.get("images", [])
+
+            images = list(task_images or [])
             if not images:
                 return
+
+            def _image_attr(candidate: Any, attribute: str) -> Any:
+                value = getattr(candidate, attribute, None)
+                if value is not None:
+                    return value
+                if isinstance(candidate, Mapping):
+                    return candidate.get(attribute)
+                return None
 
             call_identifier = (
                 _normalize_optional_str(getattr(task, "call_id", None))
@@ -4664,7 +4689,7 @@ async def run_workflow(
                         or str(raw_output_index)
                     )
                 image_identifier = (
-                    _normalize_optional_str(getattr(image, "id", None))
+                    _normalize_optional_str(_image_attr(image, "id"))
                     or f"{call_identifier or 'image'}:{output_index}:{index}"
                 )
                 key = (call_identifier, output_index, image_identifier)
@@ -4688,6 +4713,8 @@ async def run_workflow(
                     call_identifier or image_identifier,
                     key,
                 )
+
+                image_message_keys.add(key)
 
                 await on_stream_event(ThreadItemAddedEvent(item=assistant_message))
                 await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
