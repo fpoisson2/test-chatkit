@@ -4661,6 +4661,24 @@ async def run_workflow(
                             copy_text=None,
                         )
                         await _emit_widget_events(widget_item)
+                        try:
+                            await agent_context.store.add_thread_item(
+                                agent_context.thread.id,
+                                widget_item,
+                                agent_context.request_context,
+                            )
+                        except Exception as exc:  # pragma: no cover - dépend du stockage
+                            logger.exception(
+                                "Impossible d'enregistrer le widget image %s pour %s",
+                                widget_item.id,
+                                call_identifier or image_identifier,
+                                exc_info=exc,
+                            )
+                        else:
+                            logger.info(
+                                "Widget image %s enregistré dans le store",
+                                widget_item.id,
+                            )
                         logger.info(
                             "Widget image diffusé manuellement pour %s",
                             call_identifier or image_identifier,
@@ -4682,6 +4700,24 @@ async def run_workflow(
                                 copy_text=None,
                             )
                             await _emit_widget_events(widget_item)
+                            try:
+                                await agent_context.store.add_thread_item(
+                                    agent_context.thread.id,
+                                    widget_item,
+                                    agent_context.request_context,
+                                )
+                            except Exception as exc:  # pragma: no cover - dépend du stockage
+                                logger.exception(
+                                    "Impossible d'enregistrer le widget image %s pour %s",
+                                    widget_item.id,
+                                    call_identifier or image_identifier,
+                                    exc_info=exc,
+                                )
+                            else:
+                                logger.info(
+                                    "Widget image %s enregistré dans le store",
+                                    widget_item.id,
+                                )
                         else:
                             image_widget_keys.add(widget_key)
                             logger.info(
