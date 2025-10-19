@@ -118,6 +118,10 @@ from .workflows import (
     resolve_start_auto_start_message,
     resolve_start_auto_start_assistant_message,
 )
+from .generated_images import (
+    persist_generated_image,
+    sanitize_generated_image_identifier,
+)
 from .vector_store import JsonVectorStoreService, SearchResult
 from .weather import fetch_weather
 from .widgets import WidgetLibraryService
@@ -4704,9 +4708,6 @@ async def run_workflow(
             )
             emitted = 0
             for index, image in enumerate(images):
-                url = _resolve_generated_image_url(image)
-                if not url:
-                    continue
                 raw_output_index = getattr(task, "output_index", None)
                 if raw_output_index is None:
                     output_index = str(index)
@@ -4725,9 +4726,6 @@ async def run_workflow(
 
                 title_text = _normalize_optional_str(getattr(task, "title", None))
                 heading = title_text or "Image générée"
-                markdown = f"![{_escape_markdown_alt_text(heading)}]({url})"
-                message_text = markdown if title_text is None else f"{heading}\n\n{markdown}"
-
                 image_b64 = _normalize_optional_str(_image_attr(image, "b64_json"))
                 image_format = (
                     _normalize_optional_str(_image_attr(image, "output_format"))
@@ -4737,6 +4735,37 @@ async def run_workflow(
                     image_format = "png"
                 image_size = _normalize_optional_str(_image_attr(image, "size"))
                 image_aspect_ratio = _resolve_generated_image_aspect_ratio(image)
+
+                storage_identifier = (
+                    f"{agent_context.thread.id}-{image_identifier}-{output_index}"
+                )
+                image_asset = None
+                if image_b64:
+                    image_asset = await persist_generated_image(
+                        storage_identifier, image_format, image_b64
+                    )
+                    if image_asset is not None:
+                        logger.info(
+                            "Image %s persistée pour %s (fichier=%s)",
+                            image_identifier,
+                            call_identifier or image_identifier,
+                            image_asset.filename,
+                        )
+
+                normalized_doc_id = (
+                    image_asset.identifier
+                    if image_asset is not None
+                    else sanitize_generated_image_identifier(storage_identifier)
+                )
+
+                url = image_asset.url if image_asset is not None else _resolve_generated_image_url(image)
+                if not url:
+                    continue
+
+                markdown = f"![{_escape_markdown_alt_text(heading)}]({url})"
+                message_text = (
+                    markdown if title_text is None else f"{heading}\n\n{markdown}"
+                )
 
                 assistant_message = AssistantMessageItem(
                     id=agent_context.generate_id("message"),
@@ -4784,20 +4813,16 @@ async def run_workflow(
                 async def _store_image_in_vector_store(
                     widget_item_id: str | None,
                 ) -> None:
-                    if not image_b64 and not url:
+                    if not image_b64 and image_asset is None:
                         logger.debug(
                             "Image %s ignorée pour l'indexation vectorielle : aucun contenu base64",
                             image_identifier,
                         )
                         return
 
-                    doc_id_base = f"{agent_context.thread.id}-{image_identifier}"
-                    normalized_doc_id = re.sub(r"[^0-9a-zA-Z_-]+", "-", doc_id_base)
-                    normalized_doc_id = re.sub(r"-+", "-", normalized_doc_id).strip("-")
-                    if not normalized_doc_id:
-                        normalized_doc_id = uuid.uuid4().hex
-
                     timestamp = datetime.now(timezone.utc).isoformat()
+                    serving_url = url
+                    data_url = url if isinstance(url, str) and url.startswith("data:") else None
 
                     document_payload = {
                         "id": image_identifier,
@@ -4806,7 +4831,10 @@ async def run_workflow(
                         "message_id": assistant_message.id,
                         "widget_id": widget_item_id,
                         "title": heading,
-                        "data_url": url,
+                        "url": serving_url,
+                        "data_url": data_url,
+                        "storage_filename": getattr(image_asset, "filename", None),
+                        "mime_type": getattr(image_asset, "mime_type", None),
                         "b64_json": image_b64,
                         "format": image_format,
                         "size": image_size,

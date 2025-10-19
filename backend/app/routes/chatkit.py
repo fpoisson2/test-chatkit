@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 try:  # pragma: no cover - dépendance optionnelle pour les tests
@@ -24,6 +25,7 @@ from ..chatkit_sessions import create_chatkit_session, proxy_chatkit_request
 from ..config import get_settings
 from ..database import get_session
 from ..dependencies import get_current_user
+from ..generated_images import ROUTE_PREFIX, resolve_generated_image_file
 from ..models import User
 from ..schemas import (
     ChatKitWorkflowResponse,
@@ -186,6 +188,21 @@ async def create_session(
         "client_secret": client_secret,
         "expires_after": session_payload.get("expires_after"),
     }
+
+
+@router.get(f"{ROUTE_PREFIX}/{{filename}}")
+async def get_generated_image(
+    filename: str,
+    current_user: User = Depends(get_current_user),
+):
+    resolved = resolve_generated_image_file(filename)
+    if resolved is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Image introuvable"},
+        )
+    path, mime_type = resolved
+    return FileResponse(path, media_type=mime_type)
 
 
 @router.post(
