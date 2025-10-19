@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import inspect
 import json
 import logging
 import math
 import re
 import uuid
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import (
@@ -17,7 +18,6 @@ from typing import (
     Callable,
     Coroutine,
     Iterator,
-    Sequence,
     Literal,
 )
 
@@ -150,6 +150,21 @@ def _set_wait_state_metadata(
         metadata.update(updated)
     else:
         setattr(thread, "metadata", updated)
+
+
+def _clone_conversation_history_snapshot(payload: Any) -> list[dict[str, Any]]:
+    """Nettoie et duplique un historique de conversation sérialisable."""
+
+    if isinstance(payload, (str, bytes, bytearray)):
+        return []
+    if not isinstance(payload, Sequence):
+        return []
+
+    cloned: list[dict[str, Any]] = []
+    for entry in payload:
+        if isinstance(entry, Mapping):
+            cloned.append(copy.deepcopy(dict(entry)))
+    return cloned
 
 
 _ZERO_WIDTH_CHARACTERS = frozenset({"\u200b", "\u200c", "\u200d", "\ufeff"})
@@ -3207,6 +3222,19 @@ async def run_workflow(
     workflow_payload["input_as_text"] = initial_user_text
     current_input_item_id = workflow_payload.get("source_item_id")
     conversation_history: list[TResponseInputItem] = []
+    thread = getattr(agent_context, "thread", None)
+    pending_wait_state = (
+        _get_wait_state_metadata(thread) if thread is not None else None
+    )
+    resume_from_wait_slug: str | None = None
+
+    if pending_wait_state:
+        restored_history = _clone_conversation_history_snapshot(
+            pending_wait_state.get("conversation_history")
+        )
+        if restored_history:
+            conversation_history.extend(restored_history)
+
     if initial_user_text.strip():
         conversation_history.append(
             {
@@ -3226,11 +3254,6 @@ async def run_workflow(
     }
     final_output: dict[str, Any] | None = None
     last_step_context: dict[str, Any] | None = None
-    thread = getattr(agent_context, "thread", None)
-    pending_wait_state = (
-        _get_wait_state_metadata(thread) if thread is not None else None
-    )
-    resume_from_wait_slug: str | None = None
 
     service = workflow_service or WorkflowService()
     definition = service.get_current()
@@ -4546,6 +4569,11 @@ async def run_workflow(
                 "slug": current_node.slug,
                 "input_item_id": current_input_item_id,
             }
+            conversation_snapshot = _clone_conversation_history_snapshot(
+                conversation_history
+            )
+            if conversation_snapshot:
+                wait_state_payload["conversation_history"] = conversation_snapshot
             if transition is not None:
                 wait_state_payload["next_step_slug"] = transition.target_step.slug
             if thread is not None:

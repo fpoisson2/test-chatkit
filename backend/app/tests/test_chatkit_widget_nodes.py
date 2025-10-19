@@ -367,13 +367,30 @@ def test_assistant_message_node_streams_message() -> None:
 def test_wait_for_user_input_node_streams_message_and_stops(monkeypatch: pytest.MonkeyPatch) -> None:
     events: list[Any] = []
     recorded_agents: list[str] = []
+    inputs_by_agent: list[list[Any]] = []
 
     async def _collect(event):  # type: ignore[no-untyped-def]
         events.append(event)
 
     def _capture_run(agent, *args, **kwargs):  # type: ignore[no-untyped-def]
         recorded_agents.append(getattr(agent, "name", "unknown"))
-        return _DummyRunnerResult({"status": "ok"})
+        inputs_by_agent.append(json.loads(json.dumps(kwargs.get("input", []))))
+        result = _DummyRunnerResult({"status": "ok"})
+        if getattr(agent, "name", "") == "Agent Triage":
+            result.new_items.append(
+                SimpleNamespace(
+                    to_input_item=lambda: {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "Réponse initiale",
+                            }
+                        ],
+                    }
+                )
+            )
+        return result
 
     async def _noop_stream(*args, **kwargs):  # type: ignore[no-untyped-def]
         if False:
@@ -507,13 +524,30 @@ def test_wait_for_user_input_node_resumes_after_new_message(
 ) -> None:
     events: list[Any] = []
     recorded_agents: list[str] = []
+    inputs_by_agent: list[list[Any]] = []
 
     async def _collect(event):  # type: ignore[no-untyped-def]
         events.append(event)
 
     def _capture_run(agent, *args, **kwargs):  # type: ignore[no-untyped-def]
         recorded_agents.append(getattr(agent, "name", "unknown"))
-        return _DummyRunnerResult({"status": "ok"})
+        inputs_by_agent.append(json.loads(json.dumps(kwargs.get("input", []))))
+        result = _DummyRunnerResult({"status": "ok"})
+        if getattr(agent, "name", "") == "Agent Triage":
+            result.new_items.append(
+                SimpleNamespace(
+                    to_input_item=lambda: {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "Réponse initiale",
+                            }
+                        ],
+                    }
+                )
+            )
+        return result
 
     async def _noop_stream(*args, **kwargs):  # type: ignore[no-untyped-def]
         if False:
@@ -617,14 +651,39 @@ def test_wait_for_user_input_node_resumes_after_new_message(
 
     assert summary_first.final_node_slug == "attente-utilisateur"
     assert recorded_agents == ["Agent Triage"]
+    assert inputs_by_agent == [
+        [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "Bonjour"},
+                ],
+            }
+        ]
+    ]
 
     wait_metadata_key = getattr(chatkit_module, "_WAIT_STATE_METADATA_KEY")
     wait_state = agent_context.thread.metadata.get(wait_metadata_key)
     assert wait_state is not None
     assert wait_state["input_item_id"] == "msg-1"
+    assert wait_state.get("conversation_history") == [
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": "Bonjour"},
+            ],
+        },
+        {
+            "role": "assistant",
+            "content": [
+                {"type": "output_text", "text": "Réponse initiale"},
+            ],
+        },
+    ]
 
     recorded_agents.clear()
     events.clear()
+    inputs_by_agent.clear()
 
     async def _run_second() -> "WorkflowRunSummary":
         return await run_workflow(
@@ -643,6 +702,31 @@ def test_wait_for_user_input_node_resumes_after_new_message(
     assert summary_second.final_node_slug == "end"
     assert summary_second.end_state is not None
     assert summary_second.end_state.slug == "end"
+    assert inputs_by_agent == [
+        [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": "Bonjour"},
+                ],
+            },
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "output_text", "text": "Réponse initiale"},
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": "Voici les informations manquantes",
+                    },
+                ],
+            },
+        ]
+    ]
     assert agent_context.thread.metadata.get(wait_metadata_key) is None
 
 
