@@ -4589,6 +4589,25 @@ async def run_workflow(
                 await on_stream_event(ThreadItemAddedEvent(item=assistant_message))
                 await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
 
+                try:
+                    await agent_context.store.add_thread_item(
+                        agent_context.thread.id,
+                        assistant_message,
+                        agent_context.request_context,
+                    )
+                except Exception as exc:  # pragma: no cover - dépend du stockage
+                    logger.exception(
+                        "Impossible d'enregistrer le message image %s pour %s",
+                        assistant_message.id,
+                        call_identifier or image_identifier,
+                        exc_info=exc,
+                    )
+                else:
+                    logger.info(
+                        "Message image %s enregistré dans le store",
+                        assistant_message.id,
+                    )
+
                 conversation_history.append(assistant_message.to_input_item())
                 image_message_keys.add(key)
                 emitted += 1
@@ -4615,42 +4634,88 @@ async def run_workflow(
                         )
                     )
 
-                    widget_item = WidgetItem(
-                        id=agent_context.generate_id("message"),
-                        thread_id=agent_context.thread.id,
-                        created_at=datetime.now(),
-                        widget=Card(children=widget_children, padding="md"),
-                        copy_text=None,
-                    )
+                    widget_root = Card(children=widget_children, padding="md")
 
                     logger.info(
-                        "Ajout d'un widget image pour %s (image=%s)",
+                        "Diffusion d'un widget image pour %s (image=%s)",
                         call_identifier or image_identifier,
                         key,
                     )
 
-                    try:
-                        await agent_context.store.add_thread_item(
-                            agent_context.thread.id,
-                            widget_item,
-                            agent_context.request_context,
-                        )
-                    except Exception as exc:  # pragma: no cover - dépend du stockage
-                        logger.exception(
-                            "Impossible d'enregistrer le widget image %s pour %s",
-                            widget_item.id,
-                            call_identifier or image_identifier,
-                            exc_info=exc,
-                        )
-                    else:
-                        logger.info(
-                            "Widget image %s enregistré dans le store",
-                            widget_item.id,
-                        )
+                    async def _stream_widget_events() -> None:
+                        if _sdk_stream_widget is None:
+                            widget_item = WidgetItem(
+                                id=agent_context.generate_id("message"),
+                                thread_id=agent_context.thread.id,
+                                created_at=datetime.now(),
+                                widget=widget_root,
+                                copy_text=None,
+                            )
 
-                    await on_stream_event(ThreadItemAddedEvent(item=widget_item))
-                    await on_stream_event(ThreadItemDoneEvent(item=widget_item))
-                    image_widget_keys.add(widget_key)
+                            await on_stream_event(ThreadItemAddedEvent(item=widget_item))
+                            await on_stream_event(ThreadItemDoneEvent(item=widget_item))
+
+                            try:
+                                await agent_context.store.add_thread_item(
+                                    agent_context.thread.id,
+                                    widget_item,
+                                    agent_context.request_context,
+                                )
+                            except Exception as exc:  # pragma: no cover - dépend du stockage
+                                logger.exception(
+                                    "Impossible d'enregistrer le widget image %s pour %s",
+                                    widget_item.id,
+                                    call_identifier or image_identifier,
+                                    exc_info=exc,
+                                )
+                            else:
+                                logger.info(
+                                    "Widget image %s enregistré dans le store",
+                                    widget_item.id,
+                                )
+
+                            image_widget_keys.add(widget_key)
+                            return
+
+                        async for widget_event in _sdk_stream_widget(
+                            agent_context.thread,
+                            widget_root,
+                            None,
+                            lambda item_type: agent_context.store.generate_item_id(
+                                item_type, agent_context.thread, agent_context.request_context
+                            ),
+                        ):
+                            logger.info(
+                                "Événement widget image pour %s : %s",
+                                call_identifier or image_identifier,
+                                _describe_stream_event(widget_event),
+                            )
+
+                            await on_stream_event(widget_event)
+
+                            if isinstance(widget_event, ThreadItemDoneEvent):
+                                widget_item = widget_event.item
+                                try:
+                                    await agent_context.store.add_thread_item(
+                                        agent_context.thread.id,
+                                        widget_item,
+                                        agent_context.request_context,
+                                    )
+                                except Exception as exc:  # pragma: no cover - dépend du stockage
+                                    logger.exception(
+                                        "Impossible d'enregistrer le widget image %s pour %s",
+                                        widget_item.id,
+                                        call_identifier or image_identifier,
+                                        exc_info=exc,
+                                    )
+                                else:
+                                    logger.info(
+                                        "Widget image %s enregistré dans le store",
+                                        widget_item.id,
+                                    )
+                                image_widget_keys.add(widget_key)
+
+                    await _stream_widget_events()
 
             if emitted:
                 logger.info(
