@@ -26,6 +26,8 @@ logger = logging.getLogger("chatkit.vector_store")
 DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
 DEFAULT_CHUNK_SIZE = 40
 DEFAULT_CHUNK_OVERLAP = 8
+MAX_LINEARIZED_ENTRY_LENGTH = 60_000
+MAX_LINEARIZED_TEXT_LENGTH = 900_000
 
 
 @lru_cache(maxsize=2)
@@ -65,6 +67,59 @@ def _flatten_json(document: Any, prefix: str = "") -> list[dict[str, str]]:
     path = prefix or "root"
     entries.append({"path": path, "value": _format_value(document)})
     return entries
+
+
+def _sanitize_entries_for_indexing(
+    entries: Sequence[dict[str, str]], *, max_value_length: int
+) -> tuple[list[dict[str, str]], list[str], list[dict[str, Any]]]:
+    sanitized: list[dict[str, str]] = []
+    lines: list[str] = []
+    redactions: list[dict[str, Any]] = []
+    total_length = 0
+
+    for entry in entries:
+        path = entry.get("path", "")
+        value = entry.get("value", "")
+        reasons: list[str] = []
+        sanitized_value = value
+
+        if len(value) > max_value_length:
+            sanitized_value = f"<valeur omise, longueur originale {len(value)}>"
+            reasons.append("max_value_length")
+
+        line = f"{path}: {sanitized_value}"
+        projected_total = total_length + len(line) + 1
+        if projected_total > MAX_LINEARIZED_TEXT_LENGTH:
+            sanitized_value = (
+                "<valeur omise pour respecter la limite globale de "
+                f"{MAX_LINEARIZED_TEXT_LENGTH} caractères (longueur originale {len(value)})>"
+            )
+            line = f"{path}: {sanitized_value}"
+            projected_total = total_length + len(line) + 1
+            if "max_text_length" not in reasons:
+                reasons.append("max_text_length")
+
+        sanitized_entry = {"path": path, "value": sanitized_value}
+        sanitized.append(sanitized_entry)
+
+        if reasons:
+            redactions.append(
+                {
+                    "path": path,
+                    "original_length": len(value),
+                    "strategy": "omitted",
+                    "reasons": reasons,
+                }
+            )
+
+        if projected_total > MAX_LINEARIZED_TEXT_LENGTH:
+            # On n'ajoute pas la ligne au texte linéarisé pour rester sous la limite.
+            continue
+
+        lines.append(line)
+        total_length = projected_total
+
+    return sanitized, lines, redactions
 
 
 def _chunk_entries(
@@ -273,8 +328,28 @@ class JsonVectorStoreService:
         if not entries:
             entries = [{"path": "root", "value": _format_value(payload)}]
 
-        linearized = "\n".join(f"{entry['path']}: {entry['value']}" for entry in entries)
+        sanitized_entries, linearized_lines, redactions = _sanitize_entries_for_indexing(
+            entries, max_value_length=MAX_LINEARIZED_ENTRY_LENGTH
+        )
+        if not sanitized_entries:
+            fallback_entry = {"path": "root", "value": _format_value(payload)}
+            sanitized_entries = [fallback_entry]
+            linearized_lines = ["root: " + fallback_entry["value"]]
+        elif not linearized_lines:
+            linearized_lines = [
+                "<contenu linéarisé omis pour respecter les limites de taille>"
+            ]
+
+        linearized = "\n".join(linearized_lines)
         merged_metadata = {"line_count": len(entries)}
+        if redactions:
+            merged_metadata["redactions"] = redactions
+            merged_metadata["redactions_count"] = len(redactions)
+            logger.info(
+                "Certaines valeurs ont été omises lors de l'indexation (doc_id=%s, chemins=%s)",
+                doc_id,
+                ", ".join(redaction["path"] for redaction in redactions),
+            )
         if document_metadata:
             merged_metadata.update(document_metadata)
 
@@ -290,7 +365,7 @@ class JsonVectorStoreService:
 
         chunk_entries = list(
             _chunk_entries(
-                entries,
+                sanitized_entries,
                 chunk_size=self.chunk_size,
                 overlap=self.chunk_overlap,
             )
