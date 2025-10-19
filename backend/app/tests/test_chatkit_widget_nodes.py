@@ -294,7 +294,7 @@ def test_assistant_message_node_streams_message() -> None:
 
     agent_context = SimpleNamespace(
         store=None,
-        thread=SimpleNamespace(id="thread-demo"),
+        thread=SimpleNamespace(id="thread-demo", metadata={}),
         request_context=None,
         generate_id=lambda prefix: f"{prefix}-1",
     )
@@ -395,7 +395,7 @@ def test_wait_for_user_input_node_streams_message_and_stops(monkeypatch: pytest.
 
     agent_context = SimpleNamespace(
         store=None,
-        thread=SimpleNamespace(id="thread-demo"),
+        thread=SimpleNamespace(id="thread-demo", metadata={}),
         request_context=None,
         generate_id=lambda prefix: f"{prefix}-1",
     )
@@ -479,12 +479,18 @@ def test_wait_for_user_input_node_streams_message_and_stops(monkeypatch: pytest.
     assert summary.final_node_slug == "attente-utilisateur"
     assert summary.end_state is not None, "Le résumé doit marquer le bloc d'attente comme état final."
     assert summary.end_state.slug == "attente-utilisateur"
-    assert summary.end_state.status_type == "locked"
+    assert summary.end_state.status_type == "waiting"
     assert summary.end_state.status_reason is not None
     assert "Merci de compléter" in summary.end_state.status_reason
 
     wait_step_summary = next(step for step in summary.steps if step.key == "attente-utilisateur")
     assert "Merci de compléter" in wait_step_summary.output
+
+    wait_metadata_key = getattr(chatkit_module, "_WAIT_STATE_METADATA_KEY")
+    wait_state = agent_context.thread.metadata.get(wait_metadata_key)
+    assert wait_state is not None
+    assert wait_state["slug"] == "attente-utilisateur"
+    assert wait_state["input_item_id"] is None
 
     assistant_events = [
         event
@@ -494,6 +500,150 @@ def test_wait_for_user_input_node_streams_message_and_stops(monkeypatch: pytest.
         and any("Merci de compléter" in part.text for part in event.item.content)
     ]
     assert assistant_events, "Le bloc d'attente doit diffuser un message assistant."
+
+
+def test_wait_for_user_input_node_resumes_after_new_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[Any] = []
+    recorded_agents: list[str] = []
+
+    async def _collect(event):  # type: ignore[no-untyped-def]
+        events.append(event)
+
+    def _capture_run(agent, *args, **kwargs):  # type: ignore[no-untyped-def]
+        recorded_agents.append(getattr(agent, "name", "unknown"))
+        return _DummyRunnerResult({"status": "ok"})
+
+    async def _noop_stream(*args, **kwargs):  # type: ignore[no-untyped-def]
+        if False:
+            yield None
+        return
+
+    monkeypatch.setattr(chatkit_module.Runner, "run_streamed", _capture_run)
+    monkeypatch.setattr(chatkit_module, "stream_agent_response", _noop_stream)
+    monkeypatch.setitem(
+        chatkit_module._AGENT_BUILDERS,  # type: ignore[attr-defined]
+        "triage",
+        lambda overrides: SimpleNamespace(name="Agent Triage"),
+    )
+    monkeypatch.setitem(
+        chatkit_module._AGENT_BUILDERS,  # type: ignore[attr-defined]
+        "triage_2",
+        lambda overrides: SimpleNamespace(name="Agent Secondaire"),
+    )
+
+    agent_context = SimpleNamespace(
+        store=None,
+        thread=SimpleNamespace(id="thread-demo", metadata={}),
+        request_context=None,
+        generate_id=lambda prefix: f"{prefix}-1",
+    )
+
+    start_step = SimpleNamespace(
+        slug="start",
+        kind="start",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=0,
+        id=1,
+        display_name="Début",
+    )
+    first_agent = SimpleNamespace(
+        slug="collecte-initiale",
+        kind="agent",
+        is_enabled=True,
+        parameters={},
+        agent_key="triage",
+        position=1,
+        id=2,
+        display_name="Collecte",
+    )
+    wait_step = SimpleNamespace(
+        slug="attente-utilisateur",
+        kind="wait_for_user_input",
+        is_enabled=True,
+        parameters={"message": "Merci de compléter les informations."},
+        agent_key=None,
+        position=2,
+        id=3,
+        display_name="Attente",
+    )
+    second_agent = SimpleNamespace(
+        slug="analyse-suite",
+        kind="agent",
+        is_enabled=True,
+        parameters={},
+        agent_key="triage_2",
+        position=3,
+        id=4,
+        display_name="Analyse finale",
+    )
+    end_step = SimpleNamespace(
+        slug="end",
+        kind="end",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=4,
+        id=5,
+        display_name="Fin",
+    )
+
+    transitions = [
+        SimpleNamespace(id=1, source_step=start_step, target_step=first_agent, condition=None),
+        SimpleNamespace(id=2, source_step=first_agent, target_step=wait_step, condition=None),
+        SimpleNamespace(id=3, source_step=wait_step, target_step=second_agent, condition=None),
+        SimpleNamespace(id=4, source_step=second_agent, target_step=end_step, condition=None),
+    ]
+
+    definition = SimpleNamespace(
+        steps=[start_step, first_agent, wait_step, second_agent, end_step],
+        transitions=transitions,
+        workflow_id=1,
+        workflow=SimpleNamespace(slug="demo", display_name="Démo"),
+    )
+
+    async def _run_first() -> "WorkflowRunSummary":
+        return await run_workflow(
+            WorkflowInput(input_as_text="Bonjour", source_item_id="msg-1"),
+            agent_context=agent_context,
+            workflow_service=_DummyWorkflowService(definition),
+            on_stream_event=_collect,
+        )
+
+    summary_first = asyncio.run(_run_first())
+
+    assert summary_first.final_node_slug == "attente-utilisateur"
+    assert recorded_agents == ["Agent Triage"]
+
+    wait_metadata_key = getattr(chatkit_module, "_WAIT_STATE_METADATA_KEY")
+    wait_state = agent_context.thread.metadata.get(wait_metadata_key)
+    assert wait_state is not None
+    assert wait_state["input_item_id"] == "msg-1"
+
+    recorded_agents.clear()
+    events.clear()
+
+    async def _run_second() -> "WorkflowRunSummary":
+        return await run_workflow(
+            WorkflowInput(
+                input_as_text="Voici les informations manquantes",
+                source_item_id="msg-2",
+            ),
+            agent_context=agent_context,
+            workflow_service=_DummyWorkflowService(definition),
+            on_stream_event=_collect,
+        )
+
+    summary_second = asyncio.run(_run_second())
+
+    assert recorded_agents == ["Agent Triage", "Agent Secondaire"]
+    assert summary_second.final_node_slug == "end"
+    assert summary_second.end_state is not None
+    assert summary_second.end_state.slug == "end"
+    assert agent_context.thread.metadata.get(wait_metadata_key) is None
 
 
 def test_assistant_message_node_streams_with_effect() -> None:

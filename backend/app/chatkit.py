@@ -107,6 +107,51 @@ from .widgets import WidgetLibraryService
 
 logger = logging.getLogger("chatkit.server")
 
+_WAIT_STATE_METADATA_KEY = "workflow_wait_for_user_input"
+
+
+def _get_wait_state_metadata(thread: Any) -> dict[str, Any] | None:
+    """Retourne l'état d'attente stocké dans les métadonnées du fil."""
+
+    metadata = getattr(thread, "metadata", None)
+    if not isinstance(metadata, dict):
+        return None
+    state = metadata.get(_WAIT_STATE_METADATA_KEY)
+    if isinstance(state, dict):
+        return dict(state)
+    return None
+
+
+def _set_wait_state_metadata(
+    thread: Any, state: Mapping[str, Any] | None
+) -> None:
+    """Met à jour l'état d'attente dans les métadonnées du fil."""
+
+    metadata = getattr(thread, "metadata", None)
+    if isinstance(metadata, dict):
+        updated = dict(metadata)
+    else:
+        updated = {}
+
+    if state is None:
+        updated.pop(_WAIT_STATE_METADATA_KEY, None)
+    else:
+        updated[_WAIT_STATE_METADATA_KEY] = dict(state)
+
+    if hasattr(thread, "metadata"):
+        try:
+            setattr(thread, "metadata", updated)
+            return
+        except Exception:  # pragma: no cover - dépend du type de l'objet
+            pass
+
+    if isinstance(metadata, dict):  # pragma: no cover - repli pour les mocks
+        metadata.clear()
+        metadata.update(updated)
+    else:
+        setattr(thread, "metadata", updated)
+
+
 _ZERO_WIDTH_CHARACTERS = frozenset({"\u200b", "\u200c", "\u200d", "\ufeff"})
 
 
@@ -349,12 +394,14 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     input_as_text=user_text,
                     auto_start_was_triggered=True,
                     auto_start_assistant_message=assistant_stream_text,
+                    source_item_id=getattr(input_user_message, "id", None),
                 )
             elif assistant_stream_text:
                 workflow_input = WorkflowInput(
                     input_as_text="",
                     auto_start_was_triggered=True,
                     auto_start_assistant_message=assistant_stream_text,
+                    source_item_id=getattr(input_user_message, "id", None),
                 )
 
             pre_stream_events = await self._prepare_auto_start_thread_items(
@@ -364,7 +411,10 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 assistant_text=assistant_stream_text,
             )
         else:
-            workflow_input = WorkflowInput(input_as_text=user_text)
+            workflow_input = WorkflowInput(
+                input_as_text=user_text,
+                source_item_id=getattr(input_user_message, "id", None),
+            )
             pre_stream_events = []
 
         agent_context = AgentContext(
@@ -672,6 +722,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     applied_status = True
                 elif status_type_raw == "locked":
                     thread.status = LockedStatus(reason=status_reason)
+                    applied_status = True
+                elif status_type_raw == "waiting":
+                    thread.status = ActiveStatus()
                     applied_status = True
                 elif status_type_raw == "active":
                     thread.status = ActiveStatus()
@@ -2136,6 +2189,9 @@ _STEP_TITLES: dict[str, str] = {
 
 class WorkflowInput(BaseModel):
     input_as_text: str
+    auto_start_was_triggered: bool | None = None
+    auto_start_assistant_message: str | None = None
+    source_item_id: str | None = None
 
 
 @dataclass
@@ -3149,6 +3205,7 @@ async def run_workflow(
     auto_started = bool(workflow_payload.get("auto_start_was_triggered"))
     initial_user_text = _normalize_user_text(workflow_payload["input_as_text"])
     workflow_payload["input_as_text"] = initial_user_text
+    current_input_item_id = workflow_payload.get("source_item_id")
     conversation_history: list[TResponseInputItem] = []
     if initial_user_text.strip():
         conversation_history.append(
@@ -3169,6 +3226,7 @@ async def run_workflow(
     }
     final_output: dict[str, Any] | None = None
     last_step_context: dict[str, Any] | None = None
+    thread = getattr(agent_context, "thread", None)
 
     service = workflow_service or WorkflowService()
     definition = service.get_current()
@@ -4401,6 +4459,45 @@ async def run_workflow(
             continue
 
         if current_node.kind == "wait_for_user_input":
+            transition = _next_edge(current_slug)
+            pending_wait_state = (
+                _get_wait_state_metadata(thread)
+                if thread is not None
+                else None
+            )
+            waiting_slug = (
+                pending_wait_state.get("slug") if pending_wait_state else None
+            )
+            waiting_input_id = (
+                pending_wait_state.get("input_item_id")
+                if pending_wait_state
+                else None
+            )
+            resumed = (
+                pending_wait_state is not None
+                and waiting_slug == current_node.slug
+                and current_input_item_id
+                and waiting_input_id != current_input_item_id
+            )
+
+            if resumed:
+                next_slug = pending_wait_state.get("next_step_slug")
+                if next_slug is None and transition is not None:
+                    next_slug = transition.target_step.slug
+                if thread is not None:
+                    _set_wait_state_metadata(thread, None)
+                last_step_context = {"user_message": initial_user_text}
+                if not next_slug:
+                    final_end_state = WorkflowEndState(
+                        slug=current_node.slug,
+                        status_type="closed",
+                        status_reason="Aucune transition disponible après le bloc d'attente.",
+                        message="Aucune transition disponible après le bloc d'attente.",
+                    )
+                    break
+                current_slug = next_slug
+                continue
+
             title = _node_title(current_node)
             raw_message = _resolve_wait_for_user_input_message(current_node)
             sanitized_message = _normalize_user_text(raw_message)
@@ -4425,9 +4522,18 @@ async def run_workflow(
                 await on_stream_event(ThreadItemAddedEvent(item=assistant_message))
                 await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
 
+            wait_state_payload: dict[str, Any] = {
+                "slug": current_node.slug,
+                "input_item_id": current_input_item_id,
+            }
+            if transition is not None:
+                wait_state_payload["next_step_slug"] = transition.target_step.slug
+            if thread is not None:
+                _set_wait_state_metadata(thread, wait_state_payload)
+
             final_end_state = WorkflowEndState(
                 slug=current_node.slug,
-                status_type="locked",
+                status_type="waiting",
                 status_reason=wait_reason,
                 message=wait_reason,
             )
