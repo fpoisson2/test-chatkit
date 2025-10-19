@@ -4642,8 +4642,38 @@ async def run_workflow(
                         key,
                     )
 
-                    async def _stream_widget_events() -> None:
-                        if _sdk_stream_widget is None:
+                    async def _emit_widget_events(widget_item: WidgetItem) -> None:
+                        await on_stream_event(ThreadItemAddedEvent(item=widget_item))
+                        await on_stream_event(ThreadItemDoneEvent(item=widget_item))
+                        image_widget_keys.add(widget_key)
+
+                    stream_widget_fn = getattr(agent_context, "stream_widget", None)
+                    if not callable(stream_widget_fn):
+                        logger.warning(
+                            "Contexte agent sans support stream_widget : diffusion manuelle pour %s",
+                            call_identifier or image_identifier,
+                        )
+                        widget_item = WidgetItem(
+                            id=agent_context.generate_id("message"),
+                            thread_id=agent_context.thread.id,
+                            created_at=datetime.now(),
+                            widget=widget_root,
+                            copy_text=None,
+                        )
+                        await _emit_widget_events(widget_item)
+                        logger.info(
+                            "Widget image diffusé manuellement pour %s",
+                            call_identifier or image_identifier,
+                        )
+                    else:
+                        try:
+                            await stream_widget_fn(widget_root)
+                        except Exception as exc:  # pragma: no cover - dépend du SDK Agents
+                            logger.exception(
+                                "Impossible de diffuser le widget image pour %s",
+                                call_identifier or image_identifier,
+                                exc_info=exc,
+                            )
                             widget_item = WidgetItem(
                                 id=agent_context.generate_id("message"),
                                 thread_id=agent_context.thread.id,
@@ -4651,89 +4681,13 @@ async def run_workflow(
                                 widget=widget_root,
                                 copy_text=None,
                             )
-
-                            await on_stream_event(ThreadItemAddedEvent(item=widget_item))
-                            await on_stream_event(ThreadItemDoneEvent(item=widget_item))
-
-                            try:
-                                await agent_context.store.add_thread_item(
-                                    agent_context.thread.id,
-                                    widget_item,
-                                    agent_context.request_context,
-                                )
-                            except Exception as exc:  # pragma: no cover - dépend du stockage
-                                logger.exception(
-                                    "Impossible d'enregistrer le widget image %s pour %s",
-                                    widget_item.id,
-                                    call_identifier or image_identifier,
-                                    exc_info=exc,
-                                )
-                            else:
-                                logger.info(
-                                    "Widget image %s enregistré dans le store",
-                                    widget_item.id,
-                                )
-
+                            await _emit_widget_events(widget_item)
+                        else:
                             image_widget_keys.add(widget_key)
-                            return
-
-                        added_event_seen = False
-
-                        async for widget_event in _sdk_stream_widget(
-                            agent_context.thread,
-                            widget_root,
-                            None,
-                            lambda item_type: agent_context.store.generate_item_id(
-                                item_type, agent_context.thread, agent_context.request_context
-                            ),
-                        ):
                             logger.info(
-                                "Événement widget image pour %s : %s",
+                                "Widget image diffusé via stream_widget pour %s",
                                 call_identifier or image_identifier,
-                                _describe_stream_event(widget_event),
                             )
-
-                            if isinstance(widget_event, ThreadItemAddedEvent):
-                                added_event_seen = True
-
-                            if (
-                                isinstance(widget_event, ThreadItemDoneEvent)
-                                and not added_event_seen
-                            ):
-                                added_event_seen = True
-                                logger.info(
-                                    "Émission manuelle de thread.item.added pour %s",
-                                    call_identifier or image_identifier,
-                                )
-                                await on_stream_event(
-                                    ThreadItemAddedEvent(item=widget_event.item)
-                                )
-
-                            await on_stream_event(widget_event)
-
-                            if isinstance(widget_event, ThreadItemDoneEvent):
-                                widget_item = widget_event.item
-                                try:
-                                    await agent_context.store.add_thread_item(
-                                        agent_context.thread.id,
-                                        widget_item,
-                                        agent_context.request_context,
-                                    )
-                                except Exception as exc:  # pragma: no cover - dépend du stockage
-                                    logger.exception(
-                                        "Impossible d'enregistrer le widget image %s pour %s",
-                                        widget_item.id,
-                                        call_identifier or image_identifier,
-                                        exc_info=exc,
-                                    )
-                                else:
-                                    logger.info(
-                                        "Widget image %s enregistré dans le store",
-                                        widget_item.id,
-                                    )
-                                image_widget_keys.add(widget_key)
-
-                    await _stream_widget_events()
 
             if emitted:
                 logger.info(
