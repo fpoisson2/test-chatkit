@@ -183,15 +183,15 @@ async def stream_widget(
     item_id = generate_id("message")
 
     if not isinstance(widget, AsyncGenerator):
-        yield ThreadItemDoneEvent(
-            item=WidgetItem(
-                id=item_id,
-                thread_id=thread.id,
-                created_at=datetime.now(),
-                widget=widget,
-                copy_text=copy_text,
-            ),
+        item = WidgetItem(
+            id=item_id,
+            thread_id=thread.id,
+            created_at=datetime.now(),
+            widget=widget,
+            copy_text=copy_text,
         )
+        yield ThreadItemAddedEvent(item=item)
+        yield ThreadItemDoneEvent(item=item)
         return
 
     initial_state = await widget.__anext__()

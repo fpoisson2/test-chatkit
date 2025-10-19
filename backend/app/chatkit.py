@@ -9,7 +9,7 @@ import re
 import uuid
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import (
     Any,
     AsyncIterator,
@@ -57,6 +57,11 @@ from pydantic import BaseModel, Field, create_model
 from chatkit.actions import Action
 from chatkit.agents import AgentContext, stream_agent_response
 
+try:  # pragma: no cover - compatibilité avec les anciennes versions du SDK
+    from chatkit.agents import simple_to_agent_input as _simple_to_agent_input
+except ImportError:  # pragma: no cover - versions antérieures sans conversion utilitaire
+    _simple_to_agent_input = None  # type: ignore[assignment]
+
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
     from chatkit.agents import stream_widget as _sdk_stream_widget
 except ImportError:  # pragma: no cover - compatibilité avec les anciennes versions
@@ -66,28 +71,40 @@ from chatkit.store import NotFoundError
 from chatkit.types import (
     ActiveStatus,
     AssistantMessageContent,
+    AssistantMessageContentPartAdded,
+    AssistantMessageContentPartAnnotationAdded,
+    AssistantMessageContentPartDone,
     AssistantMessageContentPartTextDelta,
     AssistantMessageItem,
+    ClientToolCallItem,
     ClosedStatus,
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
     InferenceOptions,
     LockedStatus,
+    NoticeEvent,
     ProgressUpdateEvent,
     ThreadItem,
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
     ThreadItemRemovedEvent,
+    ThreadItemReplacedEvent,
     ThreadItemUpdated,
     ThreadMetadata,
     ThreadStreamEvent,
+    ThreadUpdatedEvent,
+    WidgetComponentUpdated,
     WidgetItem,
     WidgetRootUpdated,
+    WidgetStreamingTextValueDelta,
+    WorkflowTaskUpdated,
     UserMessageInput,
     UserMessageItem,
     UserMessageTextContent,
 )
+from chatkit.types import ImageTask
+from chatkit.widgets import Card, Image as WidgetImage
 
 from .config import Settings, get_settings
 from .chatkit_store import PostgresChatKitStore
@@ -108,6 +125,325 @@ from .widgets import WidgetLibraryService
 logger = logging.getLogger("chatkit.server")
 
 _ZERO_WIDTH_CHARACTERS = frozenset({"\u200b", "\u200c", "\u200d", "\ufeff"})
+
+
+def _truncate_for_log(value: str, *, limit: int = 120) -> str:
+    """Abrège une chaîne pour les journaux en conservant l'essentiel."""
+
+    normalized = re.sub(r"\s+", " ", value.strip())
+    if len(normalized) > limit:
+        return f"{normalized[: limit - 1]}…"
+    return normalized
+
+
+def _summarize_structure_for_log(value: Any, *, limit: int = 300) -> str:
+    """Transforme une structure JSON-like en représentation compacte."""
+
+    try:
+        serialized = json.dumps(value, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        serialized = str(value)
+    return _truncate_for_log(serialized, limit=limit)
+
+
+def _summarize_widget_definition(definition: Any) -> str:
+    """Fournit un résumé lisible d'une définition de widget brute."""
+
+    if hasattr(definition, "model_dump"):
+        try:
+            dumped = definition.model_dump(mode="python")
+        except TypeError:
+            dumped = definition.model_dump()
+        except Exception:  # pragma: no cover - défense supplémentaire
+            dumped = definition.model_dump()
+        return _summarize_structure_for_log(dumped)
+
+    if isinstance(definition, (dict, list)):
+        return _summarize_structure_for_log(definition)
+
+    return _truncate_for_log(str(definition))
+
+
+def _extract_widget_children(component: Any) -> list[Any]:
+    """Retourne récursivement les enfants d'un composant de widget."""
+
+    children: Any = None
+    if hasattr(component, "children"):
+        children = getattr(component, "children")
+    elif isinstance(component, dict):
+        children = component.get("children")
+        if not isinstance(children, list):
+            items = component.get("items")
+            if isinstance(items, list):
+                children = items
+    if isinstance(children, list):
+        return list(children)
+    return []
+
+
+def _count_widget_components(component: Any, component_type: str) -> int:
+    """Compte les composants d'un type donné dans l'arbre d'un widget."""
+
+    target = component_type.lower()
+    count = 0
+    stack: list[Any] = _extract_widget_children(component)
+    while stack:
+        current = stack.pop()
+        comp_type = getattr(current, "type", None)
+        if comp_type is None and isinstance(current, dict):
+            comp_type = current.get("type")
+        if isinstance(comp_type, str) and comp_type.lower() == target:
+            count += 1
+        stack.extend(_extract_widget_children(current))
+    return count
+
+
+def _describe_widget_root(widget: Any) -> str:
+    """Construit une description synthétique d'un widget validé."""
+
+    if widget is None:
+        return "widget=None"
+
+    widget_type = getattr(widget, "type", None)
+    if widget_type is None and isinstance(widget, dict):
+        widget_type = widget.get("type")
+    widget_type = str(widget_type or type(widget).__name__)
+
+    summary_parts: list[str] = []
+
+    children = None
+    if hasattr(widget, "children"):
+        children = getattr(widget, "children")
+    elif isinstance(widget, dict):
+        children = widget.get("children")
+    if isinstance(children, list) and children:
+        summary_parts.append(f"enfants={len(children)}")
+
+    status = getattr(widget, "status", None)
+    if status is None and isinstance(widget, dict):
+        status = widget.get("status")
+    status_text = None
+    if isinstance(status, dict):
+        status_text = status.get("text") or status.get("title")
+    else:
+        status_text = getattr(status, "text", None)
+    if isinstance(status_text, str) and status_text.strip():
+        summary_parts.append(f"statut={_truncate_for_log(status_text)}")
+
+    theme = getattr(widget, "theme", None)
+    if theme is None and isinstance(widget, dict):
+        theme = widget.get("theme")
+    if theme:
+        summary_parts.append(f"thème={theme}")
+
+    image_count = _count_widget_components(widget, "image")
+    if image_count:
+        summary_parts.append(f"images={image_count}")
+
+    if hasattr(widget, "confirm") and getattr(widget, "confirm", None):
+        summary_parts.append("action_confirmer")
+    if hasattr(widget, "cancel") and getattr(widget, "cancel", None):
+        summary_parts.append("action_annuler")
+
+    if not summary_parts:
+        return widget_type
+
+    return f"{widget_type}({', '.join(summary_parts)})"
+
+
+def _describe_assistant_content(content: Any) -> str:
+    """Décrit brièvement un bloc de contenu assistant."""
+
+    part_type = getattr(content, "type", type(content).__name__)
+    details: list[str] = [str(part_type)]
+    text = getattr(content, "text", None)
+    if isinstance(text, str) and text.strip():
+        details.append(f"texte=\"{_truncate_for_log(text)}\"")
+    annotations = getattr(content, "annotations", None)
+    if annotations:
+        try:
+            count = len(annotations)  # type: ignore[arg-type]
+        except TypeError:
+            count = None
+        if count:
+            details.append(f"annotations={count}")
+    for attribute in ("image_url", "image", "mime_type", "asset_id", "name"):
+        value = getattr(content, attribute, None)
+        if value:
+            details.append(f"{attribute}={_truncate_for_log(str(value))}")
+    return ", ".join(details)
+
+
+def _describe_user_content(content: Any) -> str:
+    """Résumé textuel d'un contenu utilisateur."""
+
+    content_type = getattr(content, "type", type(content).__name__)
+    summary = [str(content_type)]
+    text = getattr(content, "text", None)
+    if isinstance(text, str) and text.strip():
+        summary.append(f"texte=\"{_truncate_for_log(text)}\"")
+    identifier = getattr(content, "id", None)
+    if identifier:
+        summary.append(f"id={identifier}")
+    return ", ".join(summary)
+
+
+def _describe_thread_item(item: ThreadItem | None) -> str:
+    """Retourne une description courte d'un item de fil."""
+
+    if item is None:
+        return "item=Ø"
+
+    if isinstance(item, AssistantMessageItem):
+        parts = "; ".join(_describe_assistant_content(part) for part in item.content)
+        return f"AssistantMessage(id={item.id}, {parts})"
+
+    if isinstance(item, UserMessageItem):
+        parts = "; ".join(_describe_user_content(part) for part in item.content)
+        return f"UserMessage(id={item.id}, {parts})"
+
+    if isinstance(item, ClientToolCallItem):
+        return (
+            f"ClientToolCall(id={item.id}, nom={item.name}, statut={item.status}, "
+            f"arguments={_summarize_structure_for_log(item.arguments, limit=120)})"
+        )
+
+    if isinstance(item, WidgetItem):
+        return f"Widget(id={item.id}, { _describe_widget_root(item.widget)})"
+
+    if isinstance(item, EndOfTurnItem):
+        return f"FinDeTour(id={item.id})"
+
+    return f"{type(item).__name__}(id={getattr(item, 'id', 'inconnu')})"
+
+
+def _describe_thread_item_update(update: Any) -> str:
+    """Décrit une mise à jour d'item pour les journaux de diagnostic."""
+
+    if isinstance(update, AssistantMessageContentPartAdded):
+        return (
+            "AssistantMessageContentPartAdded(index="
+            f"{update.content_index}, {_describe_assistant_content(update.content)})"
+        )
+    if isinstance(update, AssistantMessageContentPartTextDelta):
+        return (
+            "AssistantMessageContentPartTextDelta(index="
+            f"{update.content_index}, delta=\"{_truncate_for_log(update.delta)}\")"
+        )
+    if isinstance(update, AssistantMessageContentPartAnnotationAdded):
+        return (
+            "AssistantMessageContentPartAnnotationAdded(index="
+            f"{update.content_index}, annotation={_summarize_structure_for_log(update.annotation)})"
+        )
+    if isinstance(update, AssistantMessageContentPartDone):
+        return (
+            "AssistantMessageContentPartDone(index="
+            f"{update.content_index}, {_describe_assistant_content(update.content)})"
+        )
+    if isinstance(update, WidgetStreamingTextValueDelta):
+        return (
+            "WidgetStreamingTextValueDelta(component="
+            f"{update.component_id}, delta=\"{_truncate_for_log(update.delta)}\", "
+            f"terminé={update.done})"
+        )
+    if isinstance(update, WidgetComponentUpdated):
+        return (
+            "WidgetComponentUpdated(component="
+            f"{update.component_id}, composant={_summarize_widget_definition(update.component)})"
+        )
+    if isinstance(update, WidgetRootUpdated):
+        return f"WidgetRootUpdated({ _describe_widget_root(update.widget)})"
+    return _summarize_structure_for_log(update)
+
+
+async def _thread_item_to_agent_inputs(item: ThreadItem) -> list[TResponseInputItem]:
+    """Convertit un item de fil en historique compatible modèle."""
+
+    if _simple_to_agent_input is None:
+        logger.debug(
+            "Conversion d'items de fil indisponible : simple_to_agent_input absent",
+        )
+        return []
+
+    unsupported_types = {
+        "message_output",
+        "reasoning",
+        "tool_call",
+    }
+    item_type = getattr(item, "type", None)
+    if isinstance(item_type, str) and item_type in unsupported_types:
+        logger.debug(
+            "Conversion ignorée pour l'item %s (type %s non pris en charge)",
+            _describe_thread_item(item),
+            item_type,
+        )
+        return []
+
+    unsupported_names = {
+        "MessageOutputItem",
+        "ReasoningItem",
+        "ToolCallItem",
+    }
+    if type(item).__name__ in unsupported_names:
+        logger.debug(
+            "Conversion ignorée pour l'item %s (classe %s non prise en charge)",
+            _describe_thread_item(item),
+            type(item).__name__,
+        )
+        return []
+
+    try:
+        converted = _simple_to_agent_input(item)  # type: ignore[operator]
+        if inspect.isawaitable(converted):
+            converted = await converted
+    except Exception as exc:  # pragma: no cover - dépend du SDK installé
+        logger.exception(
+            "Impossible de convertir l'item %s pour l'historique agent",
+            _describe_thread_item(item),
+            exc_info=exc,
+        )
+        return []
+
+    if not converted:
+        return []
+
+    if isinstance(converted, list):
+        return [entry for entry in converted if entry is not None]
+
+    return [converted]
+
+
+def _describe_stream_event(event: ThreadStreamEvent | Any) -> str:
+    """Génère un message lisible décrivant un évènement de streaming."""
+
+    if isinstance(event, ThreadItemAddedEvent):
+        return f"thread.item.added -> {_describe_thread_item(event.item)}"
+    if isinstance(event, ThreadItemDoneEvent):
+        return f"thread.item.done -> {_describe_thread_item(event.item)}"
+    if isinstance(event, ThreadItemRemovedEvent):
+        return f"thread.item.removed -> item_id={event.item_id}"
+    if isinstance(event, ThreadItemReplacedEvent):
+        return f"thread.item.replaced -> {_describe_thread_item(event.item)}"
+    if isinstance(event, ThreadItemUpdated):
+        return (
+            "thread.item.updated -> "
+            f"item_id={event.item_id}, {_describe_thread_item_update(event.update)}"
+        )
+    if isinstance(event, ProgressUpdateEvent):
+        return f"progress_update -> texte=\"{_truncate_for_log(event.text)}\""
+    if isinstance(event, ErrorEvent):
+        message = event.message or "aucun message"
+        return f"error -> code={event.code}, message=\"{_truncate_for_log(message)}\""
+    if isinstance(event, NoticeEvent):
+        return (
+            f"notice -> niveau={event.level}, titre={event.title or '∅'}, "
+            f"message=\"{_truncate_for_log(event.message)}\""
+        )
+    if isinstance(event, ThreadUpdatedEvent):
+        return "thread.updated"
+    if isinstance(event, EndOfTurnItem):  # type: ignore[arg-type]
+        return f"end_of_turn -> {_describe_thread_item(event)}"
+    return getattr(event, "type", type(event).__name__)
 
 
 def _normalize_user_text(value: str | None) -> str:
@@ -1027,11 +1363,29 @@ def _build_web_search_tool(payload: Any) -> WebSearchTool | None:
 
 
 _SUPPORTED_IMAGE_OUTPUT_FORMATS = frozenset({"png", "jpeg", "webp"})
+_IMAGE_RESPONSE_FORMAT = "b64_json"
+_GENERATED_IMAGE_VECTOR_STORE_SLUG = "chatkit-generated-images"
+_GENERATED_IMAGE_VECTOR_STORE_TITLE = "Galerie d'images générées"
+_GENERATED_IMAGE_VECTOR_STORE_METADATA = {"scope": "generated_images"}
 
 
 def _normalize_image_generation_field(key: str, value: Any) -> Any:
     """Nettoie et normalise les attributs spécifiques à la génération d'image."""
 
+    if key == "response_format":
+        if isinstance(value, str) and value.strip().lower() == _IMAGE_RESPONSE_FORMAT:
+            return _IMAGE_RESPONSE_FORMAT
+        if isinstance(value, Mapping):
+            maybe_type = value.get("type") if "type" in value else value.get("format")
+            if isinstance(maybe_type, str) and maybe_type.strip().lower() == _IMAGE_RESPONSE_FORMAT:
+                return _IMAGE_RESPONSE_FORMAT
+        if value is not None:
+            logger.info(
+                "Format de réponse %r non supporté, repli sur '%s'",
+                value,
+                _IMAGE_RESPONSE_FORMAT,
+            )
+        return _IMAGE_RESPONSE_FORMAT
     if key == "output_format":
         if isinstance(value, str):
             normalized = value.strip().lower()
@@ -1085,6 +1439,7 @@ def _build_image_generation_tool(payload: Any) -> Any | None:
             "quality",
             "background",
             "output_format",
+            "response_format",
             "input_fidelity",
             "input_image_mask",
             "moderation",
@@ -1101,6 +1456,9 @@ def _build_image_generation_tool(payload: Any) -> Any | None:
             normalized = _normalize_image_generation_field(key, value)
             if normalized is not None:
                 config_kwargs[key] = normalized
+
+    if "response_format" in field_names:
+        config_kwargs["response_format"] = _IMAGE_RESPONSE_FORMAT
 
     def _construct_config() -> Any | None:
         try:
@@ -3730,6 +4088,9 @@ async def run_workflow(
         doc_id: str,
         document: dict[str, Any],
         metadata: dict[str, Any],
+        *,
+        store_title: str | None = None,
+        store_metadata: dict[str, Any] | None = None,
     ) -> None:
         def _ingest_sync() -> None:
             with SessionLocal() as session:
@@ -3739,6 +4100,8 @@ async def run_workflow(
                         slug,
                         doc_id,
                         document,
+                        store_title=store_title,
+                        store_metadata=store_metadata,
                         document_metadata=metadata,
                     )
                     session.commit()
@@ -3989,6 +4352,19 @@ async def run_workflow(
     ) -> dict[str, Any] | None:
         widget_label = config.slug or config.definition_expression or step_slug
 
+        logger.info(
+            "Préparation du widget pour l'étape %s (source=%s, slug=%s)",
+            step_slug,
+            config.source,
+            config.slug or "<aucun>",
+        )
+        if config.variables:
+            logger.info(
+                "Variables configurées pour %s : %s",
+                widget_label,
+                ", ".join(sorted(config.variables)),
+            )
+
         definition: Any
         bindings = config.bindings
 
@@ -4038,6 +4414,12 @@ async def run_workflow(
                 return None
             if not bindings:
                 bindings = _collect_widget_bindings(definition)
+            logger.info(
+                "Définition calculée pour %s via l'expression %s : %s",
+                widget_label,
+                expression,
+                _summarize_widget_definition(definition),
+            )
         else:
             if not config.slug:
                 logger.warning(
@@ -4054,6 +4436,12 @@ async def run_workflow(
                     step_slug,
                 )
                 return None
+            logger.info(
+                "Définition de widget %s chargée pour l'étape %s : %s",
+                config.slug,
+                step_slug,
+                _summarize_widget_definition(definition),
+            )
 
         resolved: dict[str, str | list[str]] = {}
         for variable_id, expression in config.variables.items():
@@ -4075,6 +4463,19 @@ async def run_workflow(
                     resolved.setdefault(identifier, value)
 
         if resolved:
+            summarized_values: dict[str, Any] = {}
+            for key, value in resolved.items():
+                if isinstance(value, list):
+                    summarized_values[key] = [
+                        _truncate_for_log(str(entry)) for entry in value
+                    ]
+                else:
+                    summarized_values[key] = _truncate_for_log(str(value))
+            logger.info(
+                "Valeurs calculées pour le widget %s : %s",
+                widget_label,
+                summarized_values,
+            )
             matched = _apply_widget_variable_values(
                 definition, resolved, bindings=bindings
             )
@@ -4085,6 +4486,15 @@ async def run_workflow(
                     ", ".join(sorted(missing)),
                     widget_label,
                 )
+            logger.info(
+                "Variables effectivement appliquées pour %s : %s",
+                widget_label,
+                ", ".join(sorted(matched)) if matched else "aucune",
+            )
+        else:
+            logger.info(
+                "Aucune variable à interpoler pour le widget %s", widget_label
+            )
 
         try:
             widget = WidgetLibraryService._validate_widget(definition)
@@ -4093,6 +4503,12 @@ async def run_workflow(
                 "Le widget %s est invalide après interpolation", widget_label, exc_info=exc
             )
             return None
+
+        logger.info(
+            "Widget %s validé par la bibliothèque : %s",
+            widget_label,
+            _describe_widget_root(widget),
+        )
 
         if _sdk_stream_widget is None:
             logger.warning(
@@ -4127,12 +4543,24 @@ async def run_workflow(
                 )
                 raise
 
+        streamed_widget: WidgetItem | None = None
+
         try:
             async for event in _sdk_stream_widget(
                 thread_metadata,
                 widget,
                 generate_id=_generate_item_id,
             ):
+                logger.info(
+                    "Flux widget %s -> %s",
+                    widget_label,
+                    _describe_stream_event(event),
+                )
+                if (
+                    isinstance(event, ThreadItemAddedEvent)
+                    and isinstance(getattr(event, "item", None), WidgetItem)
+                ):
+                    streamed_widget = event.item
                 await on_stream_event(event)
         except Exception as exc:  # pragma: no cover - dépend du SDK Agents
             logger.exception(
@@ -4143,6 +4571,27 @@ async def run_workflow(
             )
             return None
 
+        if streamed_widget is not None:
+            try:
+                await store.add_thread_item(
+                    thread_metadata.id,
+                    streamed_widget,
+                    request_context,
+                )
+            except Exception as exc:  # pragma: no cover - dépend du stockage
+                logger.exception(
+                    "Impossible d'enregistrer le widget %s dans le store",
+                    streamed_widget.id,
+                    exc_info=exc,
+                )
+            else:
+                logger.info(
+                    "Widget %s enregistré dans le store pour %s",
+                    streamed_widget.id,
+                    widget_label,
+                )
+
+        logger.info("Diffusion terminée pour le widget %s", widget_label)
         return widget
     def _should_forward_agent_event(
         event: ThreadStreamEvent, *, suppress: bool
@@ -4161,6 +4610,395 @@ async def run_workflow(
         suppress_stream_events: bool = False,
     ) -> _WorkflowStreamResult:
         step_index = len(steps) + 1
+        image_message_keys: set[tuple[str, str, str]] = set()
+        image_widget_keys: set[tuple[str, str, str]] = set()
+
+        def _normalize_optional_str(value: Any) -> str | None:
+            if isinstance(value, str):
+                normalized = value.strip()
+                if normalized:
+                    return normalized
+            return None
+
+        def _resolve_generated_image_url(image: Any) -> str | None:
+            for attribute in ("data_url", "image_url"):
+                candidate = getattr(image, attribute, None)
+                if isinstance(candidate, str):
+                    normalized = candidate.strip()
+                    if normalized:
+                        return normalized
+            b64_data = getattr(image, "b64_json", None)
+            if isinstance(b64_data, str):
+                normalized_b64 = b64_data.strip()
+                if normalized_b64:
+                    fmt = _normalize_optional_str(getattr(image, "output_format", None))
+                    effective_fmt = (fmt or "png").lower()
+                    if effective_fmt == "auto":
+                        effective_fmt = "png"
+                    return f"data:image/{effective_fmt};base64,{normalized_b64}"
+            return None
+
+        def _resolve_generated_image_aspect_ratio(image: Any) -> float | None:
+            size_value = _normalize_optional_str(getattr(image, "size", None))
+            if not size_value:
+                return None
+            match = re.fullmatch(r"(?P<width>\d+)x(?P<height>\d+)", size_value)
+            if not match:
+                return None
+            width = int(match.group("width"))
+            height = int(match.group("height"))
+            if width <= 0 or height <= 0:
+                return None
+            aspect_ratio = width / height
+            return round(aspect_ratio, 2)
+
+        def _escape_markdown_alt_text(text: str) -> str:
+            return text.replace("[", "\\[").replace("]", "\\]")
+
+        async def _maybe_emit_image_messages(event: ThreadStreamEvent) -> None:
+            if on_stream_event is None:
+                return
+            if not isinstance(event, ThreadItemUpdated):
+                return
+            update = event.update
+            if not isinstance(update, WorkflowTaskUpdated):
+                return
+            task = update.task
+
+            task_type = getattr(task, "type", None)
+            if isinstance(task_type, str):
+                normalized_task_type = task_type.strip().lower()
+            else:
+                normalized_task_type = None
+
+            if not (
+                isinstance(task, ImageTask)
+                or normalized_task_type == "image"
+            ):
+                return
+
+            if getattr(task, "status_indicator", None) != "complete":
+                return
+
+            task_images = getattr(task, "images", None) or []
+            if isinstance(task_images, Mapping):
+                # Certaines versions du SDK renvoient un dict {"images": [...]}
+                task_images = task_images.get("images", [])
+
+            images = list(task_images or [])
+            if not images:
+                return
+
+            def _image_attr(candidate: Any, attribute: str) -> Any:
+                value = getattr(candidate, attribute, None)
+                if value is not None:
+                    return value
+                if isinstance(candidate, Mapping):
+                    return candidate.get(attribute)
+                return None
+
+            call_identifier = (
+                _normalize_optional_str(getattr(task, "call_id", None))
+                or _normalize_optional_str(getattr(event, "item_id", None))
+                or ""
+            )
+            emitted = 0
+            for index, image in enumerate(images):
+                url = _resolve_generated_image_url(image)
+                if not url:
+                    continue
+                raw_output_index = getattr(task, "output_index", None)
+                if raw_output_index is None:
+                    output_index = str(index)
+                else:
+                    output_index = (
+                        _normalize_optional_str(str(raw_output_index))
+                        or str(raw_output_index)
+                    )
+                image_identifier = (
+                    _normalize_optional_str(_image_attr(image, "id"))
+                    or f"{call_identifier or 'image'}:{output_index}:{index}"
+                )
+                key = (call_identifier, output_index, image_identifier)
+                if key in image_message_keys:
+                    continue
+
+                title_text = _normalize_optional_str(getattr(task, "title", None))
+                heading = title_text or "Image générée"
+                markdown = f"![{_escape_markdown_alt_text(heading)}]({url})"
+                message_text = markdown if title_text is None else f"{heading}\n\n{markdown}"
+
+                image_b64 = _normalize_optional_str(_image_attr(image, "b64_json"))
+                image_format = (
+                    _normalize_optional_str(_image_attr(image, "output_format"))
+                    or "png"
+                ).lower()
+                if image_format == "auto":
+                    image_format = "png"
+                image_size = _normalize_optional_str(_image_attr(image, "size"))
+                image_aspect_ratio = _resolve_generated_image_aspect_ratio(image)
+
+                assistant_message = AssistantMessageItem(
+                    id=agent_context.generate_id("message"),
+                    thread_id=agent_context.thread.id,
+                    created_at=datetime.now(),
+                    content=[AssistantMessageContent(text=message_text)],
+                )
+
+                logger.info(
+                    "Ajout d'un message image pour %s (image=%s)",
+                    call_identifier or image_identifier,
+                    key,
+                )
+
+                image_message_keys.add(key)
+
+                await on_stream_event(ThreadItemAddedEvent(item=assistant_message))
+                await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
+
+                try:
+                    await agent_context.store.add_thread_item(
+                        agent_context.thread.id,
+                        assistant_message,
+                        agent_context.request_context,
+                    )
+                except Exception as exc:  # pragma: no cover - dépend du stockage
+                    logger.exception(
+                        "Impossible d'enregistrer le message image %s pour %s",
+                        assistant_message.id,
+                        call_identifier or image_identifier,
+                        exc_info=exc,
+                    )
+                else:
+                    logger.info(
+                        "Message image %s enregistré dans le store",
+                        assistant_message.id,
+                    )
+
+                converted_inputs = await _thread_item_to_agent_inputs(assistant_message)
+                if converted_inputs:
+                    conversation_history.extend(converted_inputs)
+                image_message_keys.add(key)
+                emitted += 1
+
+                async def _store_image_in_vector_store(
+                    widget_item_id: str | None,
+                ) -> None:
+                    if not image_b64 and not url:
+                        logger.debug(
+                            "Image %s ignorée pour l'indexation vectorielle : aucun contenu base64",
+                            image_identifier,
+                        )
+                        return
+
+                    doc_id_base = f"{agent_context.thread.id}-{image_identifier}"
+                    normalized_doc_id = re.sub(r"[^0-9a-zA-Z_-]+", "-", doc_id_base)
+                    normalized_doc_id = re.sub(r"-+", "-", normalized_doc_id).strip("-")
+                    if not normalized_doc_id:
+                        normalized_doc_id = uuid.uuid4().hex
+
+                    timestamp = datetime.now(timezone.utc).isoformat()
+
+                    document_payload = {
+                        "id": image_identifier,
+                        "thread_id": agent_context.thread.id,
+                        "call_id": call_identifier or None,
+                        "message_id": assistant_message.id,
+                        "widget_id": widget_item_id,
+                        "title": heading,
+                        "data_url": url,
+                        "b64_json": image_b64,
+                        "format": image_format,
+                        "size": image_size,
+                        "aspect_ratio": image_aspect_ratio,
+                        "output_index": output_index,
+                        "step_key": step_key,
+                        "step_title": title,
+                        "captured_at": timestamp,
+                    }
+                    metadata_payload = {
+                        "thread_id": agent_context.thread.id,
+                        "call_id": call_identifier or None,
+                        "message_id": assistant_message.id,
+                        "widget_id": widget_item_id,
+                        "image_identifier": image_identifier,
+                        "output_index": output_index,
+                        "step_key": step_key,
+                        "step_title": title,
+                        "captured_at": timestamp,
+                    }
+
+                    document_cleaned = {
+                        key: value for key, value in document_payload.items() if value is not None
+                    }
+                    metadata_cleaned = {
+                        key: value for key, value in metadata_payload.items() if value is not None
+                    }
+
+                    logger.info(
+                        "Indexation de l'image %s dans le vector store %s (doc_id=%s)",
+                        image_identifier,
+                        _GENERATED_IMAGE_VECTOR_STORE_SLUG,
+                        normalized_doc_id,
+                    )
+                    await _ingest_vector_store_document(
+                        _GENERATED_IMAGE_VECTOR_STORE_SLUG,
+                        normalized_doc_id,
+                        document_cleaned,
+                        metadata_cleaned,
+                        store_title=_GENERATED_IMAGE_VECTOR_STORE_TITLE,
+                        store_metadata=_GENERATED_IMAGE_VECTOR_STORE_METADATA,
+                    )
+
+                await _store_image_in_vector_store(None)
+
+                widget_key = (*key, "widget")
+                if widget_key not in image_widget_keys:
+                    aspect_ratio = image_aspect_ratio
+                    image_kwargs: dict[str, Any] = {
+                        "key": f"image-{image_identifier}",
+                        "src": url,
+                        "alt": heading,
+                        "fit": "cover",
+                        "flush": True,
+                    }
+                    if aspect_ratio is not None:
+                        image_kwargs["aspectRatio"] = aspect_ratio
+
+                    widget_root = Card(
+                        key=f"image-card-{image_identifier}",
+                        children=[WidgetImage(**image_kwargs)],
+                        padding=0,
+                        size="sm",
+                    )
+
+                    logger.info(
+                        "Diffusion d'un widget image pour %s (image=%s)",
+                        call_identifier or image_identifier,
+                        key,
+                    )
+
+                    async def _emit_widget_events(widget_item: WidgetItem) -> None:
+                        await on_stream_event(ThreadItemAddedEvent(item=widget_item))
+                        await on_stream_event(ThreadItemDoneEvent(item=widget_item))
+                        image_widget_keys.add(widget_key)
+
+                    async def _stream_and_store_widget() -> bool:
+                        if _sdk_stream_widget is None:
+                            return False
+                        store_ref = getattr(agent_context, "store", None)
+                        thread_ref = getattr(agent_context, "thread", None)
+                        if store_ref is None or thread_ref is None:
+                            return False
+                        request_context = getattr(
+                            agent_context, "request_context", None
+                        )
+                        streamed_widget_item: WidgetItem | None = None
+                        try:
+                            async for widget_event in _sdk_stream_widget(
+                                thread_ref,
+                                widget_root,
+                                generate_id=lambda item_type: agent_context.generate_id(
+                                    item_type
+                                ),
+                            ):
+                                logger.info(
+                                    "Flux widget image -> %s",
+                                    _describe_stream_event(widget_event),
+                                )
+                                if (
+                                    isinstance(widget_event, ThreadItemAddedEvent)
+                                    and isinstance(
+                                        getattr(widget_event, "item", None), WidgetItem
+                                    )
+                                ):
+                                    streamed_widget_item = widget_event.item
+                                await on_stream_event(widget_event)
+                        except Exception as exc:  # pragma: no cover - dépend du SDK Agents
+                            logger.exception(
+                                "Impossible de diffuser le widget image pour %s",
+                                call_identifier or image_identifier,
+                                exc_info=exc,
+                            )
+                            return False
+
+                        if streamed_widget_item is not None:
+                            try:
+                                await store_ref.add_thread_item(
+                                    thread_ref.id,
+                                    streamed_widget_item,
+                                    request_context,
+                                )
+                            except Exception as exc:  # pragma: no cover - dépend du stockage
+                                logger.exception(
+                                    "Impossible d'enregistrer le widget image %s pour %s",
+                                    streamed_widget_item.id,
+                                    call_identifier or image_identifier,
+                                    exc_info=exc,
+                                )
+                            else:
+                                logger.info(
+                                    "Widget image %s enregistré dans le store",
+                                    streamed_widget_item.id,
+                                )
+
+                            await _store_image_in_vector_store(
+                                streamed_widget_item.id
+                            )
+
+                        return streamed_widget_item is not None
+
+                    stream_widget_fn = getattr(agent_context, "stream_widget", None)
+                    if not callable(stream_widget_fn) or not await _stream_and_store_widget():
+                        logger.warning(
+                            "Contexte agent sans support stream_widget : diffusion manuelle pour %s",
+                            call_identifier or image_identifier,
+                        )
+                        widget_item = WidgetItem(
+                            id=agent_context.generate_id("message"),
+                            thread_id=agent_context.thread.id,
+                            created_at=datetime.now(),
+                            widget=widget_root,
+                            copy_text=None,
+                        )
+                        await _emit_widget_events(widget_item)
+                        try:
+                            await agent_context.store.add_thread_item(
+                                agent_context.thread.id,
+                                widget_item,
+                                agent_context.request_context,
+                            )
+                        except Exception as exc:  # pragma: no cover - dépend du stockage
+                            logger.exception(
+                                "Impossible d'enregistrer le widget image %s pour %s",
+                                widget_item.id,
+                                call_identifier or image_identifier,
+                                exc_info=exc,
+                            )
+                        else:
+                            logger.info(
+                                "Widget image %s enregistré dans le store",
+                                widget_item.id,
+                            )
+                        await _store_image_in_vector_store(widget_item.id)
+                        logger.info(
+                            "Widget image diffusé manuellement pour %s",
+                            call_identifier or image_identifier,
+                        )
+                    else:
+                        image_widget_keys.add(widget_key)
+                        logger.info(
+                            "Widget image diffusé via stream_widget pour %s",
+                            call_identifier or image_identifier,
+                        )
+
+            if emitted:
+                logger.info(
+                    "%d message(s) image ajouté(s) à la conversation pour %s",
+                    emitted,
+                    call_identifier or getattr(task, "title", None) or "inconnu",
+                )
+
         if on_step_stream is not None:
             await on_step_stream(
                 WorkflowStepStreamUpdate(
@@ -4180,12 +5018,28 @@ async def run_workflow(
         )
         try:
             async for event in stream_agent_response(agent_context, result):
-                if (
+                event_summary = _describe_stream_event(event)
+                logger.info(
+                    "Événement agent reçu pour %s : %s",
+                    step_key,
+                    event_summary,
+                )
+                should_forward = (
                     on_stream_event is not None
                     and _should_forward_agent_event(
                         event, suppress=suppress_stream_events
                     )
-                ):
+                )
+                if not should_forward and suppress_stream_events:
+                    logger.info(
+                        "Événement conservé côté serveur pour %s (suppression active)",
+                        step_key,
+                    )
+                if should_forward:
+                    logger.info(
+                        "Transmission de l'événement vers le client pour %s",
+                        step_key,
+                    )
                     await on_stream_event(event)
                 if on_step_stream is not None:
                     delta_text = _extract_delta(event)
@@ -4201,10 +5055,31 @@ async def run_workflow(
                             text=accumulated_text,
                         )
                     )
+                await _maybe_emit_image_messages(event)
         except Exception as exc:  # pragma: no cover
             raise_step_error(step_key, title, exc)
 
-        conversation_history.extend([item.to_input_item() for item in result.new_items])
+        generated_items = list(getattr(result, "new_items", []) or [])
+        if generated_items:
+            logger.info(
+                "Items finaux générés par %s : %s",
+                step_key,
+                '; '.join(_describe_thread_item(item) for item in generated_items),
+            )
+        else:
+            logger.info("Aucun nouvel item généré par %s", step_key)
+
+        for generated_item in generated_items:
+            converted_inputs = await _thread_item_to_agent_inputs(generated_item)
+            if converted_inputs:
+                conversation_history.extend(converted_inputs)
+        if generated_items:
+            logger.info(
+                "Historique du fil enrichi de %d élément(s) après %s",
+                len(generated_items),
+                step_key,
+            )
+
         return result
 
     def _node_title(step: WorkflowStep) -> str:
