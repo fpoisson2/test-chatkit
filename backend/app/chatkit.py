@@ -99,6 +99,7 @@ from chatkit.types import (
     UserMessageTextContent,
 )
 from chatkit.types import ImageTask
+from chatkit.widgets import Card, Image as WidgetImage, Text as WidgetText
 
 from .config import Settings, get_settings
 from .chatkit_store import PostgresChatKitStore
@@ -4494,6 +4495,7 @@ async def run_workflow(
     ) -> _WorkflowStreamResult:
         step_index = len(steps) + 1
         image_message_keys: set[tuple[str, str, str]] = set()
+        image_widget_keys: set[tuple[str, str, str]] = set()
 
         def _normalize_optional_str(value: Any) -> str | None:
             if isinstance(value, str):
@@ -4590,6 +4592,46 @@ async def run_workflow(
                 conversation_history.append(assistant_message.to_input_item())
                 image_message_keys.add(key)
                 emitted += 1
+
+                widget_key = (*key, "widget")
+                if widget_key not in image_widget_keys:
+                    widget_children: list[Any] = []
+                    if title_text:
+                        widget_children.append(
+                            WidgetText(
+                                key=f"image-title-{image_identifier}",
+                                value=title_text,
+                                weight="semibold",
+                                size="md",
+                            )
+                        )
+                    widget_children.append(
+                        WidgetImage(
+                            key=f"image-{image_identifier}",
+                            src=url,
+                            alt=heading,
+                            radius="lg",
+                            maxWidth="100%",
+                        )
+                    )
+
+                    widget_item = WidgetItem(
+                        id=agent_context.generate_id("widget"),
+                        thread_id=agent_context.thread.id,
+                        created_at=datetime.now(),
+                        widget=Card(children=widget_children, padding="md"),
+                        copy_text=None,
+                    )
+
+                    logger.info(
+                        "Ajout d'un widget image pour %s (image=%s)",
+                        call_identifier or image_identifier,
+                        key,
+                    )
+
+                    await on_stream_event(ThreadItemAddedEvent(item=widget_item))
+                    await on_stream_event(ThreadItemDoneEvent(item=widget_item))
+                    image_widget_keys.add(widget_key)
 
             if emitted:
                 logger.info(
