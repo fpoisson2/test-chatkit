@@ -57,6 +57,11 @@ from pydantic import BaseModel, Field, create_model
 from chatkit.actions import Action
 from chatkit.agents import AgentContext, stream_agent_response
 
+try:  # pragma: no cover - compatibilité avec les anciennes versions du SDK
+    from chatkit.agents import simple_to_agent_input as _simple_to_agent_input
+except ImportError:  # pragma: no cover - versions antérieures sans conversion utilitaire
+    _simple_to_agent_input = None  # type: ignore[assignment]
+
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
     from chatkit.agents import stream_widget as _sdk_stream_widget
 except ImportError:  # pragma: no cover - compatibilité avec les anciennes versions
@@ -349,6 +354,34 @@ def _describe_thread_item_update(update: Any) -> str:
     if isinstance(update, WidgetRootUpdated):
         return f"WidgetRootUpdated({ _describe_widget_root(update.widget)})"
     return _summarize_structure_for_log(update)
+
+
+def _thread_item_to_agent_inputs(item: ThreadItem) -> list[TResponseInputItem]:
+    """Convertit un item de fil en historique compatible modèle."""
+
+    if _simple_to_agent_input is None:
+        logger.debug(
+            "Conversion d'items de fil indisponible : simple_to_agent_input absent",
+        )
+        return []
+
+    try:
+        converted = _simple_to_agent_input(item)  # type: ignore[operator]
+    except Exception as exc:  # pragma: no cover - dépend du SDK installé
+        logger.exception(
+            "Impossible de convertir l'item %s pour l'historique agent",
+            _describe_thread_item(item),
+            exc_info=exc,
+        )
+        return []
+
+    if not converted:
+        return []
+
+    if isinstance(converted, list):
+        return [entry for entry in converted if entry is not None]
+
+    return [converted]
 
 
 def _describe_stream_event(event: ThreadStreamEvent | Any) -> str:
@@ -4635,7 +4668,9 @@ async def run_workflow(
                         assistant_message.id,
                     )
 
-                conversation_history.append(assistant_message.to_input_item())
+                converted_inputs = _thread_item_to_agent_inputs(assistant_message)
+                if converted_inputs:
+                    conversation_history.extend(converted_inputs)
                 image_message_keys.add(key)
                 emitted += 1
 
@@ -4855,7 +4890,10 @@ async def run_workflow(
         else:
             logger.info("Aucun nouvel item généré par %s", step_key)
 
-        conversation_history.extend(item.to_input_item() for item in generated_items)
+        for generated_item in generated_items:
+            converted_inputs = _thread_item_to_agent_inputs(generated_item)
+            if converted_inputs:
+                conversation_history.extend(converted_inputs)
         if generated_items:
             logger.info(
                 "Historique du fil enrichi de %d élément(s) après %s",
