@@ -141,6 +141,24 @@ export const getAssistantMessageStreamDelay = (
   return DEFAULT_ASSISTANT_STREAM_DELAY_MS;
 };
 
+export const getWaitForUserInputMessage = (
+  parameters: AgentParameters | null | undefined,
+): string => {
+  if (!parameters) {
+    return "";
+  }
+  const params = parameters as Record<string, unknown>;
+  const message = params.message;
+  if (typeof message === "string") {
+    return message;
+  }
+  const text = params.text;
+  if (typeof text === "string") {
+    return text;
+  }
+  return "";
+};
+
 export const getUserMessage = (
   parameters: AgentParameters | null | undefined,
 ): string => {
@@ -458,6 +476,23 @@ export const setUserMessage = (
   }
 
   (next as Record<string, unknown>).message = message;
+  return stripEmpty(next as Record<string, unknown>);
+};
+
+export const setWaitForUserInputMessage = (
+  parameters: AgentParameters,
+  message: string,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const trimmed = message.trim();
+
+  if (!trimmed) {
+    delete (next as Record<string, unknown>).message;
+    delete (next as Record<string, unknown>).text;
+    return stripEmpty(next as Record<string, unknown>);
+  }
+
+  (next as Record<string, unknown>).message = trimmed;
   return stripEmpty(next as Record<string, unknown>);
 };
 

@@ -78,6 +78,7 @@ import {
   setAssistantMessage,
   setAssistantMessageStreamDelay,
   setAssistantMessageStreamEnabled,
+  setWaitForUserInputMessage,
   setUserMessage,
   DEFAULT_END_MESSAGE,
   createWidgetNodeParameters,
@@ -2086,6 +2087,24 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleWaitForUserInputMessageChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "wait_for_user_input") {
+          return data;
+        }
+        const nextParameters = setWaitForUserInputMessage(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleUserMessageChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
@@ -2271,6 +2290,32 @@ const WorkflowBuilderPage = () => {
       },
       draggable: true,
       style: buildNodeStyle("watch"),
+    } satisfies FlowNode;
+    setNodes((current) => [...current, newNode]);
+    setSelectedNodeId(slug);
+    setSelectedEdgeId(null);
+  }, [setNodes]);
+
+  const handleAddWaitForUserInputNode = useCallback(() => {
+    const slug = `wait-${Date.now()}`;
+    const parameters: AgentParameters = {};
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 400, y: 260 },
+      data: {
+        slug,
+        kind: "wait_for_user_input",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("wait_for_user_input"),
     } satisfies FlowNode;
     setNodes((current) => [...current, newNode]);
     setSelectedNodeId(slug);
@@ -3253,6 +3298,13 @@ const WorkflowBuilderPage = () => {
         onClick: handleAddWatchNode,
       },
       {
+        key: "wait-for-user-input",
+        label: "Wait for user input",
+        shortLabel: "AU",
+        color: NODE_COLORS.wait_for_user_input,
+        onClick: handleAddWaitForUserInputNode,
+      },
+      {
         key: "assistant-message",
         label: "Message assistant",
         shortLabel: "MA",
@@ -3293,6 +3345,7 @@ const WorkflowBuilderPage = () => {
       handleAddConditionNode,
       handleAddStateNode,
       handleAddWatchNode,
+      handleAddWaitForUserInputNode,
       handleAddAssistantMessageNode,
       handleAddUserMessageNode,
       handleAddVectorStoreNode,
@@ -3871,6 +3924,9 @@ const WorkflowBuilderPage = () => {
             }
             onAssistantMessageStreamDelayChange={
               handleAssistantMessageStreamDelayChange
+            }
+            onWaitForUserInputMessageChange={
+              handleWaitForUserInputMessageChange
             }
             onUserMessageChange={handleUserMessageChange}
             onRemove={handleRemoveNode}

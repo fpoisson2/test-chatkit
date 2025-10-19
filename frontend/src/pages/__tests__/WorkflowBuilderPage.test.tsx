@@ -579,6 +579,45 @@ describe("WorkflowBuilderPage", () => {
     ).toBe(true);
   });
 
+  test("permet d'ajouter un bloc Wait for user input", async () => {
+    const fetchMock = setupWorkflowApi();
+    const user = userEvent.setup();
+
+    renderWorkflowBuilder();
+
+    const addButton = await screen.findByRole("button", { name: /wait for user input/i });
+    await user.click(addButton);
+
+    const waitTextarea = await screen.findByLabelText(/message diffusé avant l'attente/i);
+    await user.type(waitTextarea, "Merci de compléter les champs manquants.");
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            typeof input === "string" &&
+            input.endsWith(
+              `/api/workflows/${defaultWorkflowSummary.id}/versions/${draftVersionSummary.id}`,
+            ) &&
+            (init as RequestInit | undefined)?.method === "PUT",
+        ),
+      ).toBe(true);
+    });
+
+    const saveCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        typeof input === "string" &&
+        input.endsWith(
+          `/api/workflows/${defaultWorkflowSummary.id}/versions/${draftVersionSummary.id}`,
+        ) &&
+        (init as RequestInit | undefined)?.method === "PUT",
+    );
+    const body = JSON.parse(((saveCall?.[1] as RequestInit)?.body ?? "{}") as string);
+    const waitNode = body.graph.nodes.find((node: any) => node.kind === "wait_for_user_input");
+    expect(waitNode).toBeTruthy();
+    expect(waitNode.parameters).toEqual({ message: "Merci de compléter les champs manquants." });
+  });
+
   test("permet d'activer le function tool météo Python", async () => {
     const fetchMock = setupWorkflowApi();
 

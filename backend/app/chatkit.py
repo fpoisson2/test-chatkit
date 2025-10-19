@@ -3449,6 +3449,9 @@ async def run_workflow(
             return fallback_text
         return ""
 
+    def _resolve_wait_for_user_input_message(step: WorkflowStep) -> str:
+        return _resolve_user_message(step)
+
     def _workflow_run_config() -> RunConfig:
         metadata: dict[str, str] = {"__trace_source__": "agent-builder"}
         if definition.workflow_id is not None:
@@ -4396,6 +4399,32 @@ async def run_workflow(
                 )
             current_slug = transition.target_step.slug
             continue
+
+        if current_node.kind == "wait_for_user_input":
+            title = _node_title(current_node)
+            raw_message = _resolve_wait_for_user_input_message(current_node)
+            sanitized_message = _normalize_user_text(raw_message)
+            display_payload = sanitized_message or "En attente d'une réponse utilisateur."
+
+            await record_step(current_node.slug, title, display_payload)
+
+            context_payload: dict[str, Any] = {"wait_for_user_input": True}
+            if sanitized_message:
+                context_payload["assistant_message"] = sanitized_message
+
+            last_step_context = context_payload
+
+            if sanitized_message and on_stream_event is not None:
+                assistant_message = AssistantMessageItem(
+                    id=agent_context.generate_id("message"),
+                    thread_id=agent_context.thread.id,
+                    created_at=datetime.now(),
+                    content=[AssistantMessageContent(text=sanitized_message)],
+                )
+                await on_stream_event(ThreadItemAddedEvent(item=assistant_message))
+                await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
+
+            break
 
         if current_node.kind == "assistant_message":
             title = _node_title(current_node)

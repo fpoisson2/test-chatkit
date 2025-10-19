@@ -25,6 +25,7 @@ import {
   getAssistantMessageStreamDelay,
   getAssistantMessageStreamEnabled,
   getUserMessage,
+  getWaitForUserInputMessage,
   getAgentReasoningEffort,
   getAgentReasoningSummary,
   getAgentReasoningVerbosity,
@@ -226,6 +227,7 @@ export type NodeInspectorProps = {
   onAssistantMessageChange: (nodeId: string, value: string) => void;
   onAssistantMessageStreamEnabledChange: (nodeId: string, value: boolean) => void;
   onAssistantMessageStreamDelayChange: (nodeId: string, value: string) => void;
+  onWaitForUserInputMessageChange: (nodeId: string, value: string) => void;
   onUserMessageChange: (nodeId: string, value: string) => void;
   onRemove: (nodeId: string) => void;
 };
@@ -283,6 +285,7 @@ const NodeInspector = ({
   onAssistantMessageChange,
   onAssistantMessageStreamEnabledChange,
   onAssistantMessageStreamDelayChange,
+  onWaitForUserInputMessageChange,
   onUserMessageChange,
   onRemove,
 }: NodeInspectorProps) => {
@@ -301,6 +304,8 @@ const NodeInspector = ({
       ? getAssistantMessageStreamDelay(parameters)
       : 30;
   const userMessage = kind === "user_message" ? getUserMessage(parameters) : "";
+  const waitForUserInputMessage =
+    kind === "wait_for_user_input" ? getWaitForUserInputMessage(parameters) : "";
   const [userMessageDraft, setUserMessageDraft] = useState(userMessage);
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
@@ -945,6 +950,44 @@ const NodeInspector = ({
             </label>
           )}
         </>
+      )}
+
+      {kind === "wait_for_user_input" && (
+        <section
+          aria-label="Configuration de l'attente utilisateur"
+          style={{
+            marginTop: "1rem",
+            border: "1px solid rgba(15, 23, 42, 0.12)",
+            borderRadius: "0.75rem",
+            padding: "0.9rem",
+            display: "grid",
+            gap: "0.75rem",
+          }}
+        >
+          <header>
+            <h3 style={{ margin: 0, fontSize: "1rem" }}>Attendre une réponse</h3>
+            <p style={{ margin: "0.25rem 0 0", color: "#475569", fontSize: "0.95rem" }}>
+              Utilisez ce bloc pour suspendre le workflow jusqu'à la prochaine saisie utilisateur.
+              Un message assistant optionnel peut préparer la relance.
+            </p>
+          </header>
+          <label style={fieldStyle}>
+            <span style={labelContentStyle}>Message diffusé avant l'attente</span>
+            <textarea
+              value={waitForUserInputMessage}
+              onChange={(event) =>
+                onWaitForUserInputMessageChange(node.id, event.target.value)
+              }
+              rows={4}
+              placeholder="Ex. Prenez le temps de me transmettre les informations manquantes."
+              style={{ resize: "vertical", minHeight: "4.5rem" }}
+            />
+            <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+              Laisser le champ vide n'enverra aucun nouveau message avant l'attente :
+              seule la pause sera appliquée.
+            </p>
+          </label>
+        </section>
       )}
 
       {kind === "user_message" && (
