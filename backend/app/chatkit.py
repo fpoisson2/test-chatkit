@@ -4782,8 +4782,15 @@ async def run_workflow(
 
                 image_message_keys.add(key)
 
-                await on_stream_event(ThreadItemAddedEvent(item=assistant_message))
-                await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
+                added_event = ThreadItemAddedEvent(item=assistant_message)
+                done_event = ThreadItemDoneEvent(item=assistant_message)
+
+                await agent_context.stream(added_event)
+                await agent_context.stream(done_event)
+
+                if suppress_stream_events and on_stream_event is not None:
+                    await on_stream_event(added_event)
+                    await on_stream_event(done_event)
 
                 try:
                     await agent_context.store.add_thread_item(
@@ -4907,8 +4914,16 @@ async def run_workflow(
                     )
 
                     async def _emit_widget_events(widget_item: WidgetItem) -> None:
-                        await on_stream_event(ThreadItemAddedEvent(item=widget_item))
-                        await on_stream_event(ThreadItemDoneEvent(item=widget_item))
+                        added_event = ThreadItemAddedEvent(item=widget_item)
+                        done_event = ThreadItemDoneEvent(item=widget_item)
+
+                        await agent_context.stream(added_event)
+                        await agent_context.stream(done_event)
+
+                        if suppress_stream_events and on_stream_event is not None:
+                            await on_stream_event(added_event)
+                            await on_stream_event(done_event)
+
                         image_widget_keys.add(widget_key)
 
                     async def _stream_and_store_widget() -> bool:
@@ -4941,7 +4956,9 @@ async def run_workflow(
                                     )
                                 ):
                                     streamed_widget_item = widget_event.item
-                                await on_stream_event(widget_event)
+                                await agent_context.stream(widget_event)
+                                if suppress_stream_events and on_stream_event is not None:
+                                    await on_stream_event(widget_event)
                         except Exception as exc:  # pragma: no cover - dépend du SDK Agents
                             logger.exception(
                                 "Impossible de diffuser le widget image pour %s",
