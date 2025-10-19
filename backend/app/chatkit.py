@@ -4616,7 +4616,7 @@ async def run_workflow(
                     )
 
                     widget_item = WidgetItem(
-                        id=agent_context.generate_id("widget"),
+                        id=agent_context.generate_id("message"),
                         thread_id=agent_context.thread.id,
                         created_at=datetime.now(),
                         widget=Card(children=widget_children, padding="md"),
@@ -4628,6 +4628,25 @@ async def run_workflow(
                         call_identifier or image_identifier,
                         key,
                     )
+
+                    try:
+                        await agent_context.store.add_thread_item(
+                            agent_context.thread.id,
+                            widget_item,
+                            agent_context.request_context,
+                        )
+                    except Exception as exc:  # pragma: no cover - dépend du stockage
+                        logger.exception(
+                            "Impossible d'enregistrer le widget image %s pour %s",
+                            widget_item.id,
+                            call_identifier or image_identifier,
+                            exc_info=exc,
+                        )
+                    else:
+                        logger.info(
+                            "Widget image %s enregistré dans le store",
+                            widget_item.id,
+                        )
 
                     await on_stream_event(ThreadItemAddedEvent(item=widget_item))
                     await on_stream_event(ThreadItemDoneEvent(item=widget_item))
