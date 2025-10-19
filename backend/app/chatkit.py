@@ -365,6 +365,33 @@ async def _thread_item_to_agent_inputs(item: ThreadItem) -> list[TResponseInputI
         )
         return []
 
+    unsupported_types = {
+        "message_output",
+        "reasoning",
+        "tool_call",
+    }
+    item_type = getattr(item, "type", None)
+    if isinstance(item_type, str) and item_type in unsupported_types:
+        logger.debug(
+            "Conversion ignorée pour l'item %s (type %s non pris en charge)",
+            _describe_thread_item(item),
+            item_type,
+        )
+        return []
+
+    unsupported_names = {
+        "MessageOutputItem",
+        "ReasoningItem",
+        "ToolCallItem",
+    }
+    if type(item).__name__ in unsupported_names:
+        logger.debug(
+            "Conversion ignorée pour l'item %s (classe %s non prise en charge)",
+            _describe_thread_item(item),
+            type(item).__name__,
+        )
+        return []
+
     try:
         converted = _simple_to_agent_input(item)  # type: ignore[operator]
         if inspect.isawaitable(converted):
