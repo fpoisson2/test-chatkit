@@ -873,13 +873,23 @@ async def stream_agent_response(
             if isinstance(image.b64_json, str):
                 return False
             if tracker.last_inlined_url == candidate:
+                print(
+                    f"[ChatKit][inline_image] URL {candidate} déjà inlinée, on ignore",
+                    flush=True,
+                )
                 return False
-            tracker.last_inlined_url = candidate
             inline_b64, inline_data_url, inline_format = _inline_remote_image(
                 candidate,
                 output_format=image.output_format or normalized_format,
             )
             changed = False
+            if not any((inline_b64, inline_data_url, inline_format)):
+                print(
+                    f"[ChatKit][inline_image] Aucun contenu récupéré depuis {candidate}, nouvelle tentative possible",
+                    flush=True,
+                )
+                return False
+            tracker.last_inlined_url = candidate
             if inline_b64 and image.b64_json != inline_b64:
                 image.b64_json = inline_b64
                 changed = True

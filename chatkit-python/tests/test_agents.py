@@ -1692,6 +1692,127 @@ def test_inline_remote_image_skips_authorization_for_untrusted_host(
     assert fmt == "png"
 
 
+@pytest.mark.asyncio
+async def test_inline_remote_image_retries_after_failure(monkeypatch: pytest.MonkeyPatch):
+    import chatkit.agents as agents_module
+
+    mock_store.add_thread_item.reset_mock()
+    context = AgentContext(
+        previous_response_id=None,
+        thread=thread,
+        store=mock_store,
+        request_context=None,
+    )
+
+    result = make_result()
+
+    call = ImageGenerationCall(
+        id="img_retry_call",
+        status="in_progress",
+        type="image_generation_call",
+    )
+
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseOutputItemAddedEvent(
+                type="response.output_item.added",
+                item=call,
+                output_index=0,
+                sequence_number=0,
+            ),
+        )
+    )
+
+    shared_url = "https://example.test/retry.png"
+
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=SimpleNamespace(
+                type="response.image_generation_call.partial_image",
+                item_id=call.id,
+                output_index=0,
+                sequence_number=1,
+                partial_image_index=0,
+                partial_image={
+                    "image_url": {"url": shared_url},
+                    "output_format": "png",
+                },
+            ),
+        )
+    )
+
+    completed_call = ImageGenerationCall.model_construct(
+        id=call.id,
+        status="completed",
+        type="image_generation_call",
+        result={
+            "data": [
+                {
+                    "image_url": {"url": shared_url},
+                    "output_format": "png",
+                }
+            ]
+        },
+    )
+
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseOutputItemDoneEvent(
+                type="response.output_item.done",
+                item=completed_call,
+                output_index=0,
+                sequence_number=2,
+            ),
+        )
+    )
+
+    result.done()
+
+    calls: list[tuple[str | None, str | None, str | None]] = []
+
+    def fake_inline(
+        url: str,
+        *,
+        output_format: str | None,
+        timeout: object | None = None,
+    ) -> tuple[str | None, str | None, str | None]:
+        if not calls:
+            calls.append((None, None, None))
+            return None, None, None
+        payload = (
+            "aW1hZ2U=",
+            "data:image/png;base64,aW1hZ2U=",
+            output_format or "png",
+        )
+        calls.append(payload)
+        return payload
+
+    monkeypatch.setattr("chatkit.agents._inline_remote_image", fake_inline)
+
+    events = await all_events(stream_agent_response(context, result))
+
+    assert len(calls) == 2
+
+    image_task_completed = next(
+        (
+            event
+            for event in events
+            if isinstance(event, ThreadItemUpdated)
+            and isinstance(event.update, WorkflowTaskUpdated)
+            and isinstance(event.update.task, ImageTask)
+            and event.update.task.status_indicator == "complete"
+        ),
+        None,
+    )
+    assert image_task_completed is not None
+    generated_image = image_task_completed.update.task.images[0]
+    assert generated_image.data_url is not None
+    assert generated_image.data_url.startswith("data:image/")
+
+
 async def test_workflow_ends_on_message():
     context = AgentContext(
         previous_response_id=None, thread=thread, store=mock_store, request_context=None
