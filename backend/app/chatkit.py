@@ -4677,6 +4677,8 @@ async def run_workflow(
                             image_widget_keys.add(widget_key)
                             return
 
+                        added_event_seen = False
+
                         async for widget_event in _sdk_stream_widget(
                             agent_context.thread,
                             widget_root,
@@ -4690,6 +4692,22 @@ async def run_workflow(
                                 call_identifier or image_identifier,
                                 _describe_stream_event(widget_event),
                             )
+
+                            if isinstance(widget_event, ThreadItemAddedEvent):
+                                added_event_seen = True
+
+                            if (
+                                isinstance(widget_event, ThreadItemDoneEvent)
+                                and not added_event_seen
+                            ):
+                                added_event_seen = True
+                                logger.info(
+                                    "Émission manuelle de thread.item.added pour %s",
+                                    call_identifier or image_identifier,
+                                )
+                                await on_stream_event(
+                                    ThreadItemAddedEvent(item=widget_event.item)
+                                )
 
                             await on_stream_event(widget_event)
 
