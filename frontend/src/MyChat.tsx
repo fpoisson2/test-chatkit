@@ -81,6 +81,7 @@ export function MyChat() {
     return normalized === "true" || normalized === "1" || normalized === "yes";
   });
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
+  const fetchUpdatesRef = useRef<(() => Promise<void>) | null>(null);
   const lastVisibilityRefreshRef = useRef(0);
   const previousSessionOwnerRef = useRef<string | null>(null);
   const autoStartAttemptRef = useRef(false);
@@ -655,6 +656,15 @@ export function MyChat() {
         },
         onResponseEnd: () => {
           console.debug("[ChatKit] response end");
+          const refresh = fetchUpdatesRef.current;
+          if (!refresh) {
+            return;
+          }
+          refresh().catch((err) => {
+            if (import.meta.env.DEV) {
+              console.warn("[ChatKit] Échec de la synchronisation après la réponse", err);
+            }
+          });
         },
         onThreadChange: ({ threadId }: { threadId: string | null }) => {
           console.debug("[ChatKit] thread change", { threadId });
@@ -696,6 +706,13 @@ export function MyChat() {
   const { control, fetchUpdates, sendUserMessage } = useChatKit(chatkitOptions);
 
   useEffect(() => {
+    fetchUpdatesRef.current = fetchUpdates;
+    return () => {
+      fetchUpdatesRef.current = null;
+    };
+  }, [fetchUpdates]);
+
+  useEffect(() => {
     if (!chatkitWorkflowInfo || !chatkitWorkflowInfo.auto_start) {
       autoStartAttemptRef.current = false;
       return;
@@ -716,17 +733,29 @@ export function MyChat() {
       ? configuredMessage
       : AUTO_START_TRIGGER_MESSAGE;
 
-    sendUserMessage({ text: payloadText, newThread: true }).catch((err: unknown) => {
-      autoStartAttemptRef.current = false;
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Impossible de démarrer automatiquement le workflow.";
-      if (import.meta.env.DEV) {
-        console.warn("[ChatKit] Échec du démarrage automatique", err);
-      }
-      reportError(message, err);
-    });
+    sendUserMessage({ text: payloadText, newThread: true })
+      .then(() => {
+        const refresh = fetchUpdatesRef.current;
+        if (!refresh) {
+          return;
+        }
+        return refresh().catch((err: unknown) => {
+          if (import.meta.env.DEV) {
+            console.warn("[ChatKit] Rafraîchissement après démarrage automatique impossible", err);
+          }
+        });
+      })
+      .catch((err: unknown) => {
+        autoStartAttemptRef.current = false;
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Impossible de démarrer automatiquement le workflow.";
+        if (import.meta.env.DEV) {
+          console.warn("[ChatKit] Échec du démarrage automatique", err);
+        }
+        reportError(message, err);
+      });
   }, [
     chatkitWorkflowInfo?.auto_start,
     chatkitWorkflowInfo?.auto_start_user_message,
