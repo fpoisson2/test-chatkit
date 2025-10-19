@@ -639,7 +639,7 @@ def test_wait_for_user_input_node_resumes_after_new_message(
 
     summary_second = asyncio.run(_run_second())
 
-    assert recorded_agents == ["Agent Triage", "Agent Secondaire"]
+    assert recorded_agents == ["Agent Secondaire"]
     assert summary_second.final_node_slug == "end"
     assert summary_second.end_state is not None
     assert summary_second.end_state.slug == "end"

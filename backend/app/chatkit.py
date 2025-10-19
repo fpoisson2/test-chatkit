@@ -3227,6 +3227,10 @@ async def run_workflow(
     final_output: dict[str, Any] | None = None
     last_step_context: dict[str, Any] | None = None
     thread = getattr(agent_context, "thread", None)
+    pending_wait_state = (
+        _get_wait_state_metadata(thread) if thread is not None else None
+    )
+    resume_from_wait_slug: str | None = None
 
     service = workflow_service or WorkflowService()
     definition = service.get_current()
@@ -3281,6 +3285,22 @@ async def run_workflow(
             RuntimeError("Aucun nœud actif disponible"),
             [],
         )
+
+    if pending_wait_state:
+        waiting_slug = pending_wait_state.get("slug")
+        waiting_input_id = pending_wait_state.get("input_item_id")
+        stored_input_id = waiting_input_id if isinstance(waiting_input_id, str) else None
+        current_input_id = (
+            current_input_item_id if isinstance(current_input_item_id, str) else None
+        )
+        if (
+            isinstance(waiting_slug, str)
+            and waiting_slug in nodes_by_slug
+            and stored_input_id
+            and current_input_id
+            and stored_input_id != current_input_id
+        ):
+            resume_from_wait_slug = waiting_slug
 
     transitions = [
         transition
@@ -4341,7 +4361,7 @@ async def run_workflow(
                 return edge
         return candidates[0]
 
-    current_slug = start_step.slug
+    current_slug = resume_from_wait_slug or start_step.slug
     final_node_slug: str | None = None
     final_end_state: WorkflowEndState | None = None
     guard = 0
