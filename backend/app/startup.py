@@ -42,10 +42,10 @@ def _run_ad_hoc_migrations() -> None:
         if "json_chunks" in table_names:
             dialect = connection.dialect.name
             if dialect == "postgresql":
-                # Vérifier la dimension actuelle de la colonne embedding
+                # Vérifier la dimension actuelle de la colonne embedding en interrogeant directement le type
                 result = connection.execute(
                     text(
-                        "SELECT atttypmod "
+                        "SELECT format_type(atttypid, atttypmod) "
                         "FROM pg_attribute "
                         "JOIN pg_class ON pg_attribute.attrelid = pg_class.oid "
                         "WHERE pg_class.relname = 'json_chunks' "
@@ -53,11 +53,16 @@ def _run_ad_hoc_migrations() -> None:
                     )
                 ).scalar()
 
-                # atttypmod contient la dimension + 4 pour les types vector
-                # Si result est None, la colonne n'existe pas encore
+                # result est de la forme 'vector(1536)' ou None si la colonne n'existe pas
+                current_dimension = None
                 if result is not None:
-                    current_dimension = result - 4
-                    if current_dimension != EMBEDDING_DIMENSION:
+                    # Extraire la dimension du format 'vector(1536)'
+                    import re
+                    match = re.match(r'vector\((\d+)\)', result)
+                    if match:
+                        current_dimension = int(match.group(1))
+
+                if current_dimension is not None and current_dimension != EMBEDDING_DIMENSION:
                         logger.info(
                             "Migration de la dimension des vecteurs : %d -> %d dimensions. "
                             "Suppression des données vectorielles existantes.",
