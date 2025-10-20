@@ -2265,8 +2265,23 @@ def _build_agent_kwargs(
                 merged.pop("output_type", None)
         else:
             merged.pop("output_type", None)
-        merged["response_format"] = response_format
+        merged["_response_format_override"] = response_format
     return merged
+
+
+def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
+    response_format = kwargs.pop("_response_format_override", None)
+    agent = Agent(**kwargs)
+    if response_format is not None:
+        try:
+            setattr(agent, "response_format", response_format)
+        except Exception:
+            logger.debug(
+                "Impossible d'attacher response_format directement à l'agent %s",
+                getattr(agent, "name", "<inconnu>"),
+            )
+        setattr(agent, "_chatkit_response_format", response_format)
+    return agent
 
 
 web_search_preview = WebSearchTool(
@@ -2319,7 +2334,7 @@ Une idée générale de ce qui devrait se retrouver dans le cours."""
             ),
         ),
     }
-    return Agent(**_build_agent_kwargs(base_kwargs, overrides))
+    return _instantiate_agent(_build_agent_kwargs(base_kwargs, overrides))
 
 
 def _build_thread_title_agent() -> Agent:
@@ -2339,7 +2354,7 @@ Si le message ne contient pas d'information, réponds «Nouvelle conversation».
             ),
         ),
     }
-    return Agent(**_build_agent_kwargs(base_kwargs, None))
+    return _instantiate_agent(_build_agent_kwargs(base_kwargs, None))
 
 
 R_DACTEUR_INSTRUCTIONS = (
@@ -2516,7 +2531,7 @@ def _build_r_dacteur_agent(overrides: dict[str, Any] | None = None) -> Agent:
             store=True,
         ),
     }
-    return Agent(**_build_agent_kwargs(base_kwargs, overrides))
+    return _instantiate_agent(_build_agent_kwargs(base_kwargs, overrides))
 
 
 class GetDataFromWebContext:
@@ -2567,7 +2582,7 @@ def _build_get_data_from_web_agent(overrides: dict[str, Any] | None = None) -> A
             ),
         ),
     }
-    return Agent(**_build_agent_kwargs(base_kwargs, overrides))
+    return _instantiate_agent(_build_agent_kwargs(base_kwargs, overrides))
 
 
 class Triage2Context:
@@ -2620,7 +2635,7 @@ def _build_triage_2_agent(overrides: dict[str, Any] | None = None) -> Agent:
             ),
         ),
     }
-    return Agent(**_build_agent_kwargs(base_kwargs, overrides))
+    return _instantiate_agent(_build_agent_kwargs(base_kwargs, overrides))
 
 
 class GetDataFromUserContext:
@@ -2654,7 +2669,7 @@ def _build_get_data_from_user_agent(overrides: dict[str, Any] | None = None) -> 
             ),
         ),
     }
-    return Agent(**_build_agent_kwargs(base_kwargs, overrides))
+    return _instantiate_agent(_build_agent_kwargs(base_kwargs, overrides))
 
 
 _CUSTOM_AGENT_FALLBACK_NAME = "Agent personnalisé"
@@ -2666,7 +2681,7 @@ def _build_custom_agent(overrides: dict[str, Any] | None = None) -> Agent:
     name = merged.get("name")
     if not isinstance(name, str) or not name.strip():
         merged["name"] = _CUSTOM_AGENT_FALLBACK_NAME
-    return Agent(**merged)
+    return _instantiate_agent(merged)
 
 
 _AGENT_BUILDERS: dict[str, Callable[[dict[str, Any] | None], Agent]] = {
