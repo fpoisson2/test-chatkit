@@ -1694,24 +1694,38 @@ def _build_output_type_from_response_format(response_format: Any, *, fallback: A
         )
         return fallback
 
+    schema_payload: Any | None = None
+    schema_name_raw: str | None = None
+
     json_schema = response_format.get("json_schema")
-    if not isinstance(json_schema, dict):
+    if isinstance(json_schema, Mapping):
+        schema_name_raw = json_schema.get("name") if isinstance(json_schema.get("name"), str) else None
+        schema_payload = json_schema.get("schema") if isinstance(json_schema.get("schema"), Mapping) else json_schema.get("schema")
+    elif json_schema is not None:
         logger.warning(
-            "Format JSON Schema invalide pour la configuration agent : %s. Utilisation du type existant.",
+            "Format JSON Schema invalide (clé 'json_schema' inattendue) pour la configuration agent : %s. Utilisation du type existant.",
             response_format,
         )
         return fallback
 
-    schema_name_raw = json_schema.get("name")
+    if schema_name_raw is None:
+        alt_name = response_format.get("name")
+        if isinstance(alt_name, str) and alt_name.strip():
+            schema_name_raw = alt_name
+
     original_name = schema_name_raw if isinstance(schema_name_raw, str) and schema_name_raw.strip() else None
     schema_name = _sanitize_model_name(original_name)
-    schema_payload = json_schema.get("schema")
-    if not isinstance(schema_payload, dict):
+
+    if schema_payload is None:
+        schema_payload = response_format.get("schema")
+
+    if not isinstance(schema_payload, Mapping):
         logger.warning(
             "Format JSON Schema sans contenu pour %s, utilisation du type existant.",
             schema_name,
         )
         return fallback
+    schema_payload = dict(schema_payload)
 
     known = None
     if original_name:
@@ -1917,15 +1931,15 @@ def _build_response_format_from_widget(
 
         # Construire le response_format
         widget_name = widget_entry.title or slug
-        response_format = {
+        response_format: dict[str, Any] = {
             "type": "json_schema",
-            "json_schema": {
-                "name": f"widget_{slug.replace('-', '_')}",
-                "description": widget_entry.description or f"Widget {widget_name}",
-                "schema": schema,
-                "strict": True,
-            },
+            "name": f"widget_{slug.replace('-', '_')}",
+            "schema": schema,
+            "strict": True,
         }
+        description = widget_entry.description or f"Widget {widget_name}"
+        if description:
+            response_format["description"] = description
 
         logger.info(
             "response_format généré depuis le widget de bibliothèque '%s' (variables: %s)",

@@ -542,12 +542,11 @@ describe("WorkflowBuilderPage", () => {
       },
       response_format: {
         type: "json_schema",
-        json_schema: {
-          name: "TriageSchema",
-          schema: expect.objectContaining({
-            properties: expect.objectContaining({ has_all_details: expect.any(Object) }),
-          }),
-        },
+        name: "TriageSchema",
+        schema: expect.objectContaining({
+          properties: expect.objectContaining({ has_all_details: expect.any(Object) }),
+        }),
+        strict: true,
       },
     });
 
@@ -1198,10 +1197,9 @@ describe("WorkflowBuilderPage", () => {
     const writerPayload = body.graph.nodes.find((node: any) => node.slug === "writer");
     expect(writerPayload.parameters.response_format).toEqual({
       type: "json_schema",
-      json_schema: {
-        name: "planCadre",
-        schema,
-      },
+      name: "planCadre",
+      schema,
+      strict: true,
     });
     expect(writerPayload.parameters.tools).toEqual([
       {

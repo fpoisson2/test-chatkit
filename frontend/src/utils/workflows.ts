@@ -911,12 +911,11 @@ const sanitizeSchemaName = (value: string): string => {
 const buildJsonSchemaFormat = (
   name: string,
   schema: unknown,
-): { type: string; json_schema: { name: string; schema: unknown } } => ({
+): { type: "json_schema"; name: string; schema: unknown; strict: true } => ({
   type: "json_schema",
-  json_schema: {
-    name: sanitizeSchemaName(name),
-    schema: schema ?? {},
-  },
+  name: sanitizeSchemaName(name),
+  schema: schema ?? {},
+  strict: true,
 });
 
 const sanitizeWidgetVariables = (
@@ -1007,12 +1006,26 @@ export const getAgentResponseFormat = (
   if (type !== "json_schema") {
     return { kind: "text" };
   }
-  const jsonSchema = responseFormat.json_schema;
-  if (!isPlainRecord(jsonSchema)) {
-    return { kind: "json_schema", name: DEFAULT_SCHEMA_NAME, schema: {} };
+  let name = DEFAULT_SCHEMA_NAME;
+  let schema: unknown = {};
+
+  const legacyJsonSchema = responseFormat.json_schema;
+  if (isPlainRecord(legacyJsonSchema)) {
+    if (typeof legacyJsonSchema.name === "string") {
+      name = legacyJsonSchema.name;
+    }
+    if ("schema" in legacyJsonSchema) {
+      schema = (legacyJsonSchema as Record<string, unknown>).schema;
+    }
   }
-  const name = typeof jsonSchema.name === "string" ? jsonSchema.name : DEFAULT_SCHEMA_NAME;
-  const schema = "schema" in jsonSchema ? (jsonSchema as Record<string, unknown>).schema : {};
+
+  if (typeof responseFormat.name === "string" && responseFormat.name.trim()) {
+    name = responseFormat.name;
+  }
+  if ("schema" in responseFormat) {
+    schema = (responseFormat as Record<string, unknown>).schema;
+  }
+
   return { kind: "json_schema", name, schema };
 };
 

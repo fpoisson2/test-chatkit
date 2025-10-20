@@ -687,7 +687,9 @@ const LEGACY_AGENT_DEFAULTS: Record<string, AgentParameters> = {
     },
     response_format: {
       type: "json_schema",
-      json_schema: { name: "TriageSchema", schema: TRIAGE_RESPONSE_SCHEMA },
+      name: "TriageSchema",
+      schema: TRIAGE_RESPONSE_SCHEMA,
+      strict: true,
     },
   },
   r_dacteur: {
@@ -700,7 +702,9 @@ const LEGACY_AGENT_DEFAULTS: Record<string, AgentParameters> = {
     },
     response_format: {
       type: "json_schema",
-      json_schema: { name: "RDacteurSchema", schema: R_DACTEUR_RESPONSE_SCHEMA },
+      name: "RDacteurSchema",
+      schema: R_DACTEUR_RESPONSE_SCHEMA,
+      strict: true,
     },
   },
   get_data_from_web: {
@@ -729,7 +733,9 @@ const LEGACY_AGENT_DEFAULTS: Record<string, AgentParameters> = {
     },
     response_format: {
       type: "json_schema",
-      json_schema: { name: "Triage2Schema", schema: TRIAGE_2_RESPONSE_SCHEMA },
+      name: "Triage2Schema",
+      schema: TRIAGE_2_RESPONSE_SCHEMA,
+      strict: true,
     },
   },
   get_data_from_user: {
