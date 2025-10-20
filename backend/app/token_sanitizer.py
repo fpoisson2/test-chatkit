@@ -55,6 +55,8 @@ def strip_unsupported_reasoning_fields(value: Any) -> tuple[Any, bool]:
     if isinstance(value, dict):
         sanitized: dict[Any, Any] = {}
         removed_any = False
+        pending_text_verbosity: str | None = None
+
         for key, item in value.items():
             if key == "reasoning" and isinstance(item, dict):
                 sanitized_reasoning: dict[Any, Any] = {}
@@ -62,19 +64,37 @@ def strip_unsupported_reasoning_fields(value: Any) -> tuple[Any, bool]:
                 for field, field_value in item.items():
                     if field in UNSUPPORTED_REASONING_FIELDS:
                         removed_reasoning = True
+                        if (
+                            field == "verbosity"
+                            and isinstance(field_value, str)
+                            and field_value.strip()
+                        ):
+                            pending_text_verbosity = field_value.strip()
                         continue
                     sanitized_value, removed_nested = strip_unsupported_reasoning_fields(
                         field_value
                     )
                     sanitized_reasoning[field] = sanitized_value
                     removed_reasoning = removed_reasoning or removed_nested
-                sanitized[key] = sanitized_reasoning
+
+                if sanitized_reasoning:
+                    sanitized[key] = sanitized_reasoning
                 removed_any = removed_any or removed_reasoning
             else:
                 sanitized_item, removed_item = strip_unsupported_reasoning_fields(item)
                 sanitized[key] = sanitized_item
                 removed_any = removed_any or removed_item
-        return sanitized, removed_any
+
+        if pending_text_verbosity:
+            current_text = sanitized.get("text")
+            if isinstance(current_text, dict):
+                current_verbosity = current_text.get("verbosity")
+                if not isinstance(current_verbosity, str) or not current_verbosity.strip():
+                    current_text["verbosity"] = pending_text_verbosity
+            else:
+                sanitized["text"] = {"verbosity": pending_text_verbosity}
+
+        return sanitized, removed_any or pending_text_verbosity is not None
 
     if isinstance(value, list):
         sanitized_list: list[Any] = []
