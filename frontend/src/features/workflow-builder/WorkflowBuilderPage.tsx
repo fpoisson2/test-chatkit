@@ -51,7 +51,6 @@ import {
   setAgentModel,
   setAgentReasoningEffort,
   setAgentReasoningSummary,
-  setAgentReasoningVerbosity,
   setAgentResponseFormatKind,
   setAgentResponseFormatName,
   setAgentResponseFormatSchema,
@@ -1446,7 +1445,6 @@ const WorkflowBuilderPage = () => {
         let nextParameters = setAgentModel(data.parameters, value);
         if (!isReasoningModel(value)) {
           nextParameters = setAgentReasoningEffort(nextParameters, "");
-          nextParameters = setAgentReasoningVerbosity(nextParameters, "");
           nextParameters = setAgentReasoningSummary(nextParameters, "");
         }
         return {
@@ -1467,24 +1465,6 @@ const WorkflowBuilderPage = () => {
           return data;
         }
         const nextParameters = setAgentReasoningEffort(data.parameters, value);
-        return {
-          ...data,
-          parameters: nextParameters,
-          parametersText: stringifyAgentParameters(nextParameters),
-          parametersError: null,
-        } satisfies FlowNodeData;
-      });
-    },
-    [updateNodeData],
-  );
-
-  const handleAgentReasoningVerbosityChange = useCallback(
-    (nodeId: string, value: string) => {
-      updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
-          return data;
-        }
-        const nextParameters = setAgentReasoningVerbosity(data.parameters, value);
         return {
           ...data,
           parameters: nextParameters,
@@ -3893,7 +3873,6 @@ const WorkflowBuilderPage = () => {
             onAgentMessageChange={handleAgentMessageChange}
             onAgentModelChange={handleAgentModelChange}
             onAgentReasoningChange={handleAgentReasoningChange}
-            onAgentReasoningVerbosityChange={handleAgentReasoningVerbosityChange}
             onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}
             onAgentTemperatureChange={handleAgentTemperatureChange}
             onAgentTopPChange={handleAgentTopPChange}

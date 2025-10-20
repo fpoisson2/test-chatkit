@@ -599,41 +599,6 @@ const updateReasoningSettings = (
     return { ...current, reasoning: updated };
   });
 
-export const getAgentReasoningVerbosity = (
-  parameters: AgentParameters | null | undefined,
-): string => {
-  if (!parameters) {
-    return "";
-  }
-  const modelSettings = parameters.model_settings;
-  if (!isPlainRecord(modelSettings)) {
-    return "";
-  }
-  const reasoning = modelSettings.reasoning;
-  if (!isPlainRecord(reasoning)) {
-    return "";
-  }
-  const verbosity = reasoning.verbosity;
-  return typeof verbosity === "string" ? verbosity : "";
-};
-
-export const setAgentReasoningVerbosity = (
-  parameters: AgentParameters,
-  value: string,
-): AgentParameters => {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return updateReasoningSettings(parameters, (current) => {
-      const { verbosity: _ignored, ...rest } = current;
-      return rest;
-    });
-  }
-  return updateReasoningSettings(parameters, (current) => ({
-    ...current,
-    verbosity: trimmed,
-  }));
-};
-
 export const getAgentReasoningSummary = (
   parameters: AgentParameters | null | undefined,
 ): string => {

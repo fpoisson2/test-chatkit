@@ -28,7 +28,6 @@ import {
   getWaitForUserInputMessage,
   getAgentReasoningEffort,
   getAgentReasoningSummary,
-  getAgentReasoningVerbosity,
   getAgentResponseFormat,
   getAgentImageGenerationConfig,
   getAgentShowSearchSources,
@@ -65,13 +64,6 @@ const reasoningEffortOptions = [
   { value: "minimal", label: "Effort minimal" },
   { value: "medium", label: "Effort moyen" },
   { value: "high", label: "Effort élevé" },
-];
-
-const reasoningVerbosityOptions = [
-  { value: "", label: "Verbosité par défaut" },
-  { value: "low", label: "Verbosité faible" },
-  { value: "medium", label: "Verbosité moyenne" },
-  { value: "high", label: "Verbosité élevée" },
 ];
 
 const reasoningSummaryOptions = [
@@ -161,7 +153,6 @@ export type NodeInspectorProps = {
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onAgentModelChange: (nodeId: string, value: string) => void;
   onAgentReasoningChange: (nodeId: string, value: string) => void;
-  onAgentReasoningVerbosityChange: (nodeId: string, value: string) => void;
   onAgentReasoningSummaryChange: (nodeId: string, value: string) => void;
   onAgentTemperatureChange: (nodeId: string, value: string) => void;
   onAgentTopPChange: (nodeId: string, value: string) => void;
@@ -238,7 +229,6 @@ const NodeInspector = ({
   onAgentMessageChange,
   onAgentModelChange,
   onAgentReasoningChange,
-  onAgentReasoningVerbosityChange,
   onAgentReasoningSummaryChange,
   onAgentTemperatureChange,
   onAgentTopPChange,
@@ -313,7 +303,6 @@ const NodeInspector = ({
   const responseFormat = getAgentResponseFormat(parameters);
   const temperature = getAgentTemperature(parameters);
   const topP = getAgentTopP(parameters);
-  const reasoningVerbosity = getAgentReasoningVerbosity(parameters);
   const rawReasoningSummary = getAgentReasoningSummary(parameters);
   const reasoningSummaryValue = rawReasoningSummary.trim() ? rawReasoningSummary : "none";
   const maxOutputTokens = getAgentMaxOutputTokens(parameters);
@@ -1085,23 +1074,6 @@ const NodeInspector = ({
                   onChange={(event) => onAgentReasoningChange(node.id, event.target.value)}
                 >
                   {reasoningEffortOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label style={inlineFieldStyle}>
-                <span style={labelContentStyle}>
-                  Verbosité du raisonnement
-                  <HelpTooltip label="Contrôle la quantité de texte générée pendant les étapes de raisonnement." />
-                </span>
-                <select
-                  value={reasoningVerbosity}
-                  onChange={(event) => onAgentReasoningVerbosityChange(node.id, event.target.value)}
-                >
-                  {reasoningVerbosityOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
