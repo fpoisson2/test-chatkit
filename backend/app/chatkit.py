@@ -6088,6 +6088,9 @@ async def run_workflow(
                 "output_text": (text or "").rstrip(),
             }
 
+        if normalized_image_urls:
+            last_step_context["generated_image_urls"] = normalized_image_urls
+
         # Mémoriser la dernière sortie d'agent dans l'état global pour les transitions suivantes.
         state["last_agent_key"] = agent_key
         state["last_agent_output"] = last_step_context.get("output")
@@ -6121,9 +6124,6 @@ async def run_workflow(
             agent_key,
             json.dumps(state, ensure_ascii=False, default=str),
         )
-
-        if normalized_image_urls:
-            last_step_context["generated_image_urls"] = normalized_image_urls
 
         await _apply_vector_store_ingestion(
             config=(current_node.parameters or {}).get("vector_store_ingestion"),
