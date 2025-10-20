@@ -110,6 +110,7 @@ from .image_utils import (
     append_generated_image_links,
     build_agent_image_absolute_url,
     format_generated_image_links,
+    merge_generated_image_urls_into_payload,
     save_agent_image_file,
 )
 from .vector_store import JsonVectorStoreService, SearchResult
@@ -5148,7 +5149,11 @@ async def run_workflow(
             state["has_all_details"] = bool(parsed.get("has_all_details")) if isinstance(parsed, dict) else False
             state["infos_manquantes"] = text
             state["should_finalize"] = state["has_all_details"]
-            await record_step(step_identifier, title, parsed)
+            await record_step(
+                step_identifier,
+                title,
+                merge_generated_image_urls_into_payload(parsed, image_urls),
+            )
             last_step_context = {
                 "agent_key": agent_key,
                 "output": result_stream.final_output,
@@ -5170,7 +5175,11 @@ async def run_workflow(
             state["has_all_details"] = bool(parsed.get("has_all_details")) if isinstance(parsed, dict) else False
             state["infos_manquantes"] = text
             state["should_finalize"] = state["has_all_details"]
-            await record_step(step_identifier, title, parsed)
+            await record_step(
+                step_identifier,
+                title,
+                merge_generated_image_urls_into_payload(parsed, image_urls),
+            )
             last_step_context = {
                 "agent_key": agent_key,
                 "output": result_stream.final_output,
@@ -5201,7 +5210,13 @@ async def run_workflow(
             }
         else:
             parsed, text = _structured_output_as_json(result_stream.final_output)
-            await record_step(step_identifier, title, result_stream.final_output)
+            await record_step(
+                step_identifier,
+                title,
+                merge_generated_image_urls_into_payload(
+                    result_stream.final_output, image_urls
+                ),
+            )
             last_step_context = {
                 "agent_key": agent_key,
                 "output": result_stream.final_output,

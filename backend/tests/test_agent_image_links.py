@@ -58,3 +58,35 @@ def test_build_agent_image_absolute_url_with_token() -> None:
 
     assert absolute.startswith("https://example.test/api/chatkit/images/demo.png")
     assert "token=tok%20en" in absolute
+
+
+def test_merge_generated_image_urls_into_payload_with_mapping() -> None:
+    payload = {"message": "bonjour"}
+    merged = image_utils.merge_generated_image_urls_into_payload(
+        payload,
+        ["https://example.test/demo.png", ""],
+    )
+
+    assert merged is not payload
+    assert merged["message"] == "bonjour"
+    assert merged["generated_image_urls"] == ["https://example.test/demo.png"]
+
+
+def test_merge_generated_image_urls_into_payload_with_string() -> None:
+    merged = image_utils.merge_generated_image_urls_into_payload(
+        "Bonjour",
+        ["https://example.test/demo.png"],
+    )
+
+    assert "Bonjour" in merged
+    assert "https://example.test/demo.png" in merged
+
+
+def test_merge_generated_image_urls_into_payload_with_none() -> None:
+    merged = image_utils.merge_generated_image_urls_into_payload(
+        None,
+        ["https://example.test/demo.png"],
+    )
+
+    assert merged.startswith("Images générées :")
+    assert "https://example.test/demo.png" in merged

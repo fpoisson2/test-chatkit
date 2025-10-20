@@ -3,8 +3,9 @@ from __future__ import annotations
 import base64
 import imghdr
 import logging
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Sequence
+from typing import Any
 from urllib.parse import quote, urljoin
 
 logger = logging.getLogger("chatkit.image_utils")
@@ -80,10 +81,14 @@ def build_agent_image_absolute_url(
     return absolute
 
 
+def _filter_valid_urls(urls: Sequence[str]) -> list[str]:
+    return [url.strip() for url in urls if isinstance(url, str) and url.strip()]
+
+
 def format_generated_image_links(urls: Sequence[str]) -> str:
     """Formate la liste des URL d'images générées pour affichage utilisateur."""
 
-    valid_urls = [url.strip() for url in urls if isinstance(url, str) and url.strip()]
+    valid_urls = _filter_valid_urls(urls)
     if not valid_urls:
         return ""
 
@@ -101,3 +106,37 @@ def append_generated_image_links(text: str | None, urls: Sequence[str]) -> str:
     if base_text:
         return f"{base_text}\n\n{formatted_links}"
     return formatted_links
+
+
+def merge_generated_image_urls_into_payload(payload: Any, urls: Sequence[str]) -> Any:
+    """Fusionne la liste d'URL d'images générées dans un payload structuré."""
+
+    valid_urls = _filter_valid_urls(urls)
+    if not valid_urls:
+        return payload
+
+    if payload is None:
+        return format_generated_image_links(valid_urls)
+
+    if isinstance(payload, str):
+        return append_generated_image_links(payload, valid_urls)
+
+    if hasattr(payload, "model_dump"):
+        try:
+            dumped = payload.model_dump()
+        except TypeError:
+            dumped = payload.model_dump(by_alias=True)
+        return merge_generated_image_urls_into_payload(dumped, valid_urls)
+
+    if isinstance(payload, Mapping):
+        merged: dict[str, Any] = dict(payload)
+        merged.setdefault("generated_image_urls", valid_urls)
+        return merged
+
+    if isinstance(payload, Sequence) and not isinstance(payload, (bytes, bytearray, str)):
+        return {
+            "output": list(payload),
+            "generated_image_urls": valid_urls,
+        }
+
+    return payload
