@@ -780,7 +780,7 @@ const NodeInspector = ({
                   id={`${widgetNodeSlugSuggestionsId}-select`}
                   value={widgetNodeSelectValue}
                   onChange={(event) => onWidgetNodeSlugChange(node.id, event.target.value)}
-                  disabled={widgetsLoading || !!widgetsError || widgets.length === 0}
+                  disabled={widgetsLoading || widgets.length === 0}
                 >
                   <option value="">Sélectionnez un widget</option>
                   {widgets.map((widget) => (
@@ -798,7 +798,16 @@ const NodeInspector = ({
                 <p style={{ color: "#b91c1c", margin: 0 }}>
                   {widgetsError}
                   <br />
-                  Vous pouvez saisir le slug du widget manuellement ci-dessus.
+                  {widgets.length > 0 ? (
+                    <span style={{ color: "var(--text-muted)" }}>
+                      La dernière liste chargée reste disponible ci-dessus. Vous pouvez aussi saisir le slug manuellement si
+                      nécessaire.
+                    </span>
+                  ) : (
+                    <span style={{ color: "var(--text-muted)" }}>
+                      Vous pouvez saisir le slug du widget manuellement ci-dessus.
+                    </span>
+                  )}
                 </p>
               ) : widgets.length === 0 ? (
                 <p style={{ color: "var(--text-muted)", margin: 0 }}>
@@ -1297,7 +1306,7 @@ const NodeInspector = ({
                       onChange={(event) =>
                         onAgentResponseWidgetSlugChange(node.id, event.target.value)
                       }
-                      disabled={widgetsLoading || !!widgetsError || widgets.length === 0}
+                      disabled={widgetsLoading || widgets.length === 0}
                       aria-describedby={
                         widgetValidationMessage ? `${widgetSelectId}-message` : undefined
                       }
@@ -1319,7 +1328,17 @@ const NodeInspector = ({
                       Chargement de la bibliothèque de widgets…
                     </p>
                   ) : widgetsError ? (
-                    <p style={{ color: "#b91c1c", margin: 0 }}>{widgetsError}</p>
+                    <p style={{ color: "#b91c1c", margin: 0 }}>
+                      {widgetsError}
+                      {widgets.length > 0 ? (
+                        <>
+                          <br />
+                          <span style={{ color: "var(--text-muted)" }}>
+                            La dernière liste chargée reste disponible ci-dessus.
+                          </span>
+                        </>
+                      ) : null}
+                    </p>
                   ) : widgets.length === 0 ? (
                     <p style={{ color: "var(--text-muted)", margin: 0 }}>
                       Créez un widget dans la bibliothèque dédiée pour l'utiliser ici.
