@@ -3710,6 +3710,13 @@ async def run_workflow(
         overrides_raw = step.parameters or {}
         overrides = dict(overrides_raw)
 
+        logger.debug(
+            "Construction de l'agent pour l'étape %s. widget_config: %s, output_model: %s",
+            step.slug,
+            widget_config is not None,
+            widget_config.output_model if widget_config else None
+        )
+
         if widget_config is not None and widget_config.output_model is not None:
             # Retirer les anciens paramètres de widget pour éviter les conflits
             overrides.pop("response_format", None)
