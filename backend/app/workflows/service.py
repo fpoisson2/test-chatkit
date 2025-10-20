@@ -398,6 +398,16 @@ class WorkflowService:
             transition.source_step  # noqa: B018 - charge le nœud source
             transition.target_step  # noqa: B018 - charge le nœud cible
         definition.workflow  # noqa: B018 - charge le workflow parent
+
+        # Sanitize model_settings in all loaded steps
+        for step in definition.steps:
+            if step.parameters and isinstance(step.parameters, dict):
+                model_settings = step.parameters.get("model_settings")
+                if model_settings:
+                    sanitized, _removed = sanitize_value(model_settings)
+                    if isinstance(sanitized, dict):
+                        step.parameters["model_settings"] = sanitized
+
         return definition
 
     def _get_session(self, session: Session | None) -> tuple[Session, bool]:
