@@ -208,7 +208,8 @@ class WidgetLibraryService:
 
     @staticmethod
     def _normalize_definition(definition: dict[str, Any] | str) -> dict[str, Any]:
-        widget = WidgetLibraryService._validate_widget(definition)
+        payload = WidgetLibraryService._coerce_definition_payload(definition)
+        widget = WidgetLibraryService._validate_widget(payload)
         dumped = WidgetLibraryService._dump_widget(widget)
         return json.loads(json.dumps(dumped, ensure_ascii=False))
 
@@ -249,6 +250,8 @@ class WidgetLibraryService:
                 "Installez le SDK ChatKit pour utiliser la bibliothèque de widgets."
             )
         try:
+            payload = WidgetLibraryService._coerce_definition_payload(definition)
+
             adapter = None
             if TypeAdapter is not None:
                 try:
@@ -257,24 +260,14 @@ class WidgetLibraryService:
                     logger.debug(
                         "Impossible de construire un TypeAdapter pour %s", WidgetRoot
                     )
-            if isinstance(definition, str):
-                if adapter is not None:
-                    widget = adapter.validate_json(definition)
-                else:
-                    if parse_obj_as is None:
-                        raise RuntimeError(
-                            "Aucun validateur Pydantic disponible pour les widgets"
-                        )
-                    widget = parse_obj_as(WidgetRoot, json.loads(definition))
+            if adapter is not None:
+                widget = adapter.validate_python(payload)
             else:
-                if adapter is not None:
-                    widget = adapter.validate_python(definition)
-                else:
-                    if parse_obj_as is None:
-                        raise RuntimeError(
-                            "Aucun validateur Pydantic disponible pour les widgets"
-                        )
-                    widget = parse_obj_as(WidgetRoot, definition)
+                if parse_obj_as is None:
+                    raise RuntimeError(
+                        "Aucun validateur Pydantic disponible pour les widgets"
+                    )
+                widget = parse_obj_as(WidgetRoot, payload)
         except ValidationError as exc:  # pragma: no cover - dépendant de la structure exacte
             logger.debug("Widget invalide: %s", exc, exc_info=exc)
             messages = []
@@ -286,6 +279,57 @@ class WidgetLibraryService:
                 errors=messages,
             ) from exc
         return widget
+
+    @staticmethod
+    def _coerce_definition_payload(
+        definition: dict[str, Any] | str,
+    ) -> dict[str, Any]:
+        if isinstance(definition, dict):
+            return definition
+        if isinstance(definition, str):
+            return WidgetLibraryService._parse_definition_string(definition)
+        raise WidgetValidationError(
+            "Définition de widget invalide",
+            errors=["La définition du widget doit être un objet JSON."],
+        )
+
+    @staticmethod
+    def _parse_definition_string(definition: str) -> dict[str, Any]:
+        stripped = definition.strip()
+        if not stripped:
+            raise WidgetValidationError(
+                "Définition de widget invalide",
+                errors=["La définition du widget ne peut pas être vide."],
+            )
+
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            parsed = WidgetLibraryService._extract_json_object(stripped)
+            if parsed is None:
+                raise WidgetValidationError(
+                    "Définition de widget invalide",
+                    errors=["La définition du widget contient une chaîne JSON invalide."],
+                ) from exc
+        if not isinstance(parsed, dict):
+            raise WidgetValidationError(
+                "Définition de widget invalide",
+                errors=["La définition du widget doit être un objet JSON."],
+            )
+        return parsed
+
+    @staticmethod
+    def _extract_json_object(definition: str) -> dict[str, Any] | None:
+        decoder = json.JSONDecoder()
+        for index, char in enumerate(definition):
+            if char == "{":
+                try:
+                    parsed, _end = decoder.raw_decode(definition[index:])
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(parsed, dict):
+                    return parsed
+        return None
 
     # -- Intégration vector store -------------------------------------------
 
@@ -307,6 +351,8 @@ class WidgetLibraryService:
             )
 
         definition = raw.get("definition")
+        if isinstance(definition, str):
+            definition = WidgetLibraryService._parse_definition_string(definition)
         if not isinstance(definition, dict):
             raise WidgetValidationError(
                 "Définition de widget invalide",
