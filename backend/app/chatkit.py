@@ -3714,6 +3714,8 @@ async def run_workflow(
 
     agent_instances: dict[str, Agent] = {}
     for step in agent_steps_ordered:
+        logger.debug("Paramètres bruts du step %s: %s", step.slug, json.dumps(step.parameters, ensure_ascii=False) if step.parameters else "{}")
+
         widget_config = _register_widget_config(step)
 
         agent_key = (step.agent_key or "").strip()
