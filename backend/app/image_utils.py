@@ -92,8 +92,7 @@ def format_generated_image_links(urls: Sequence[str]) -> str:
     if not valid_urls:
         return ""
 
-    bullet_list = "\n".join(f"- {url}" for url in valid_urls)
-    return f"Images générées :\n{bullet_list}"
+    return "\n".join(valid_urls)
 
 
 def append_generated_image_links(text: str | None, urls: Sequence[str]) -> str:

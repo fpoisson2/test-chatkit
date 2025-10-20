@@ -38,12 +38,10 @@ def test_format_and_append_generated_image_links() -> None:
     urls = ["/api/chatkit/images/demo.png", " "]
     formatted = image_utils.format_generated_image_links(urls)
 
-    assert formatted.startswith("Images générées :")
-    assert "demo.png" in formatted
+    assert formatted == "/api/chatkit/images/demo.png"
 
     appended = image_utils.append_generated_image_links("Bonjour", urls)
-    assert "Bonjour" in appended
-    assert formatted in appended
+    assert appended == "Bonjour\n\n/api/chatkit/images/demo.png"
 
     appended_only = image_utils.append_generated_image_links("", urls)
     assert appended_only == formatted
@@ -88,5 +86,4 @@ def test_merge_generated_image_urls_into_payload_with_none() -> None:
         ["https://example.test/demo.png"],
     )
 
-    assert merged.startswith("Images générées :")
-    assert "https://example.test/demo.png" in merged
+    assert merged == "https://example.test/demo.png"
