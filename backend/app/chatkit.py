@@ -22,6 +22,7 @@ from typing import (
     Coroutine,
     Iterator,
     Literal,
+    Union,
 )
 
 from agents import (
@@ -1801,6 +1802,51 @@ class _JsonSchemaOutputBuilder:
     def _resolve(self, schema: dict[str, Any], name: str) -> tuple[Any, bool]:
         nullable = False
         schema_type = schema.get("type")
+
+        for combination_key in ("anyOf", "oneOf"):
+            options = schema.get(combination_key)
+            if not isinstance(options, list) or not options:
+                continue
+
+            option_types: list[Any] = []
+            option_nullable = False
+
+            for index, option_schema in enumerate(options, start=1):
+                if not isinstance(option_schema, dict):
+                    return Any, True
+
+                resolved_type, resolved_nullable = self._resolve(
+                    option_schema,
+                    f"{name}_{combination_key}_{index}",
+                )
+
+                if resolved_type is None or resolved_type is Any:
+                    return Any, True
+
+                option_types.append(resolved_type)
+                if resolved_nullable:
+                    option_nullable = True
+
+            if not option_types:
+                return Any, True
+
+            unique_types: list[Any] = []
+            for candidate in option_types:
+                if not any(existing == candidate for existing in unique_types):
+                    unique_types.append(candidate)
+
+            if len(unique_types) == 1:
+                return unique_types[0], nullable or option_nullable
+
+            union_type: Any = unique_types[0]
+            for candidate in unique_types[1:]:
+                try:
+                    union_type = union_type | candidate  # type: ignore[operator]
+                except TypeError:
+                    union_type = Union.__getitem__(tuple(unique_types))
+                    break
+
+            return union_type, nullable or option_nullable
 
         if isinstance(schema_type, list):
             normalized = [value for value in schema_type if isinstance(value, str)]
