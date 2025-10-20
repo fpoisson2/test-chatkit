@@ -33,6 +33,20 @@ export const NODE_BACKGROUNDS: Record<NodeKind, string> = {
   end: "rgba(124, 58, 237, 0.12)",
 };
 
+const NODE_GLOW_COLORS: Record<NodeKind, string> = {
+  start: "rgba(37, 99, 235, 0.45)",
+  agent: "rgba(22, 163, 74, 0.45)",
+  condition: "rgba(249, 115, 22, 0.45)",
+  state: "rgba(14, 165, 233, 0.45)",
+  watch: "rgba(250, 204, 21, 0.5)",
+  wait_for_user_input: "rgba(34, 211, 238, 0.5)",
+  assistant_message: "rgba(239, 68, 68, 0.45)",
+  user_message: "rgba(20, 184, 166, 0.45)",
+  json_vector_store: "rgba(8, 145, 178, 0.5)",
+  widget: "rgba(236, 72, 153, 0.45)",
+  end: "rgba(124, 58, 237, 0.45)",
+};
+
 export const buildEdgeStyle = (options: { isSelected?: boolean } = {}) => {
   const { isSelected = false } = options;
   return {
@@ -136,7 +150,9 @@ export const buildNodeStyle = (
     fontWeight: 600,
     minWidth: 160,
     textAlign: "center",
-    boxShadow: isSelected ? `${baseShadow}, 0 0 0 2px ${NODE_COLORS[kind]}` : baseShadow,
+    outline: isSelected ? `2px solid ${NODE_COLORS[kind]}` : "none",
+    outlineOffset: isSelected ? 4 : 0,
+    boxShadow: isSelected ? `${baseShadow}, 0 0 0 6px ${NODE_GLOW_COLORS[kind]}` : baseShadow,
   };
 };
 
