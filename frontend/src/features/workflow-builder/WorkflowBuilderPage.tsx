@@ -414,9 +414,28 @@ const WorkflowBuilderPage = () => {
     }) => {
       const nodeArray = Array.from(nodeIds);
       const edgeArray = Array.from(edgeIds);
+      const nodeIdSet = new Set(nodeArray);
 
-      selectedNodeIdsRef.current = new Set(nodeArray);
+      selectedNodeIdsRef.current = nodeIdSet;
       selectedEdgeIdsRef.current = new Set(edgeArray);
+
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => {
+          const isSelected = nodeIdSet.has(node.id);
+          if ((node.selected ?? false) === isSelected) {
+            const currentStyle = node.style ?? {};
+            const nextBorder = `${isSelected ? 4 : 2}px solid ${NODE_COLORS[node.data.kind]}`;
+            if (currentStyle.border === nextBorder) {
+              return node;
+            }
+          }
+          return {
+            ...node,
+            selected: isSelected,
+            style: buildNodeStyle(node.data.kind, { isSelected }),
+          } satisfies FlowNode;
+        })
+      );
 
       const resolvedNodeId =
         nodeArray.length > 0
@@ -435,7 +454,7 @@ const WorkflowBuilderPage = () => {
       setSelectedNodeId(resolvedNodeId);
       setSelectedEdgeId(resolvedNodeId ? null : resolvedEdgeId);
     },
-    [setSelectedEdgeId, setSelectedNodeId],
+    [setNodes, setSelectedEdgeId, setSelectedNodeId],
   );
 
   const renderWorkflowDescription = (className?: string) =>
@@ -908,7 +927,8 @@ const WorkflowBuilderPage = () => {
                 metadata: node.metadata ?? {},
               },
               draggable: true,
-              style: buildNodeStyle(node.kind),
+              selected: false,
+              style: buildNodeStyle(node.kind, { isSelected: false }),
             } satisfies FlowNode;
           });
           const flowEdges = data.graph.edges.map<FlowEdge>((edge) => ({
@@ -1387,7 +1407,7 @@ const WorkflowBuilderPage = () => {
           return {
             ...node,
             data: nextData,
-            style: buildNodeStyle(nextData.kind),
+            style: buildNodeStyle(nextData.kind, { isSelected: node.selected ?? false }),
           } satisfies FlowNode;
         })
       );
@@ -2332,8 +2352,16 @@ const WorkflowBuilderPage = () => {
   const addNodeToGraph = useCallback(
     (node: FlowNode) => {
       setNodes((current) => [
-        ...current.map((existing) => ({ ...existing, selected: false })),
-        { ...node, selected: true },
+        ...current.map((existing) => ({
+          ...existing,
+          selected: false,
+          style: buildNodeStyle(existing.data.kind, { isSelected: false }),
+        })),
+        {
+          ...node,
+          selected: true,
+          style: buildNodeStyle(node.data.kind, { isSelected: true }),
+        },
       ]);
       applySelection({ nodeIds: [node.id], primaryNodeId: node.id });
     },
@@ -2359,7 +2387,7 @@ const WorkflowBuilderPage = () => {
         label: humanizeSlug(slug),
       },
       draggable: true,
-      style: buildNodeStyle("agent"),
+      style: buildNodeStyle("agent", { isSelected: true }),
     };
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -2383,7 +2411,7 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("condition"),
+      style: buildNodeStyle("condition", { isSelected: true }),
     };
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -2412,7 +2440,7 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("state"),
+      style: buildNodeStyle("state", { isSelected: true }),
     };
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -2436,7 +2464,7 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("watch"),
+      style: buildNodeStyle("watch", { isSelected: true }),
     } satisfies FlowNode;
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -2460,7 +2488,7 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("wait_for_user_input"),
+      style: buildNodeStyle("wait_for_user_input", { isSelected: true }),
     } satisfies FlowNode;
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -2484,7 +2512,7 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("assistant_message"),
+      style: buildNodeStyle("assistant_message", { isSelected: true }),
     } satisfies FlowNode;
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -2508,7 +2536,7 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("user_message"),
+      style: buildNodeStyle("user_message", { isSelected: true }),
     } satisfies FlowNode;
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -2533,7 +2561,7 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("json_vector_store"),
+      style: buildNodeStyle("json_vector_store", { isSelected: true }),
     };
     addNodeToGraph(newNode);
   }, [addNodeToGraph, vectorStores]);
@@ -2557,7 +2585,7 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("widget"),
+      style: buildNodeStyle("widget", { isSelected: true }),
     } satisfies FlowNode;
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -2581,7 +2609,7 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("end"),
+      style: buildNodeStyle("end", { isSelected: true }),
     };
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);

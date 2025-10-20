@@ -113,17 +113,24 @@ export const prepareNodeParametersForSave = (
   return Object.keys(sanitized).length === 0 ? {} : (sanitized as AgentParameters);
 };
 
-export const buildNodeStyle = (kind: NodeKind): CSSProperties => ({
-  padding: "0.75rem 1rem",
-  borderRadius: "0.75rem",
-  border: `2px solid ${NODE_COLORS[kind]}`,
-  color: "var(--text-color)",
-  background: NODE_BACKGROUNDS[kind],
-  fontWeight: 600,
-  minWidth: 160,
-  textAlign: "center",
-  boxShadow: "var(--shadow-soft)",
-});
+export const buildNodeStyle = (
+  kind: NodeKind,
+  options: { isSelected?: boolean } = {},
+): CSSProperties => {
+  const { isSelected = false } = options;
+  const borderWidth = isSelected ? 4 : 2;
+  return {
+    padding: "0.75rem 1rem",
+    borderRadius: "0.75rem",
+    border: `${borderWidth}px solid ${NODE_COLORS[kind]}`,
+    color: "var(--text-color)",
+    background: NODE_BACKGROUNDS[kind],
+    fontWeight: 600,
+    minWidth: 160,
+    textAlign: "center",
+    boxShadow: "var(--shadow-soft)",
+  };
+};
 
 export const labelForKind = (kind: NodeKind) => {
   switch (kind) {
