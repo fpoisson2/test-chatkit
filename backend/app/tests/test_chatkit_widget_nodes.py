@@ -163,6 +163,71 @@ def test_normalize_graph_accepts_wait_for_user_input_node() -> None:
     assert any(edge.source_slug == "pause" for edge in edges)
 
 
+def test_normalize_graph_redirects_reasoning_verbosity_to_text() -> None:
+    service = WorkflowService(session_factory=lambda: None)
+    payload = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {
+                "slug": "analyse",
+                "kind": "agent",
+                "is_enabled": True,
+                "parameters": {
+                    "model_settings": {
+                        "reasoning": {"effort": "minimal", "verbosity": "low"},
+                    }
+                },
+            },
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [
+            {"source": "start", "target": "analyse"},
+            {"source": "analyse", "target": "end"},
+        ],
+    }
+
+    nodes, _ = service._normalize_graph(payload)
+    agent_node = next(node for node in nodes if node.slug == "analyse")
+    model_settings = agent_node.parameters.get("model_settings")
+
+    assert isinstance(model_settings, dict)
+    assert model_settings.get("text") == {"verbosity": "low"}
+    assert model_settings.get("reasoning") == {"effort": "minimal"}
+
+
+def test_normalize_graph_preserves_existing_text_verbosity() -> None:
+    service = WorkflowService(session_factory=lambda: None)
+    payload = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {
+                "slug": "analyse",
+                "kind": "agent",
+                "is_enabled": True,
+                "parameters": {
+                    "model_settings": {
+                        "text": {"verbosity": "medium"},
+                        "reasoning": {"effort": "low", "verbosity": "high"},
+                    }
+                },
+            },
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [
+            {"source": "start", "target": "analyse"},
+            {"source": "analyse", "target": "end"},
+        ],
+    }
+
+    nodes, _ = service._normalize_graph(payload)
+    agent_node = next(node for node in nodes if node.slug == "analyse")
+    model_settings = agent_node.parameters.get("model_settings")
+
+    assert isinstance(model_settings, dict)
+    assert model_settings.get("text") == {"verbosity": "medium"}
+    assert model_settings.get("reasoning") == {"effort": "low"}
+
+
 def test_watch_node_requires_single_incoming_edge() -> None:
     service = WorkflowService(session_factory=lambda: None)
     payload = {
