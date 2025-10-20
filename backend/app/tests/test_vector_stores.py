@@ -74,41 +74,37 @@ def _auth_headers(token: str | None = None) -> dict[str, str]:
 atexit.register(_cleanup)
 
 
-class DummyVector(list):
-    """Vecteur minimaliste imitant l'API numpy utilisée par le service."""
+class DummyEmbedding:
+    """Simule un embedding retourné par OpenAI."""
 
-    def __init__(self, data: list[float]):
-        super().__init__(data)
-
-    def tolist(self) -> list[float]:  # pragma: no cover - compatibilité numpy
-        return list(self)
+    def __init__(self, embedding: list[float]):
+        self.embedding = embedding
 
 
-class DummyMatrix(list):
-    """Matrice renvoyée par le modèle factice."""
+class DummyEmbeddingsResponse:
+    """Simule la réponse de l'API OpenAI embeddings."""
 
-    def __init__(self, rows: list[list[float]]):
-        super().__init__([DummyVector(row) for row in rows])
-
-    def __getitem__(self, index: int) -> DummyVector:  # pragma: no cover - compatibilité numpy
-        return super().__getitem__(index)
-
-    def tolist(self) -> list[list[float]]:  # pragma: no cover - compatibilité numpy
-        return [list(row) for row in self]
+    def __init__(self, embeddings: list[list[float]]):
+        self.data = [DummyEmbedding(emb) for emb in embeddings]
 
 
-class DummyModel:
-    """Faux modèle d'embedding qui renvoie des vecteurs déterministes."""
+class DummyOpenAIClient:
+    """Faux client OpenAI qui renvoie des embeddings déterministes."""
 
-    def encode(self, inputs: list[str], **_: object) -> DummyMatrix:
-        rows: list[list[float]] = []
-        for idx, text in enumerate(inputs):
-            vector = [0.0] * EMBEDDING_DIMENSION
-            position = idx % EMBEDDING_DIMENSION
-            value = float(len(text) + idx + 1)
-            vector[position] = value
-            rows.append(vector)
-        return DummyMatrix(rows)
+    class Embeddings:
+        def create(self, input: list[str] | str, model: str, **_: object) -> DummyEmbeddingsResponse:
+            texts = [input] if isinstance(input, str) else input
+            embeddings = []
+            for idx, text in enumerate(texts):
+                vector = [0.0] * EMBEDDING_DIMENSION
+                position = idx % EMBEDDING_DIMENSION
+                value = float(len(text) + idx + 1)
+                vector[position] = value
+                embeddings.append(vector)
+            return DummyEmbeddingsResponse(embeddings)
+
+    def __init__(self, **_: object):
+        self.embeddings = self.Embeddings()
 
 
 def test_admin_can_create_vector_store() -> None:
@@ -153,8 +149,7 @@ def test_ingest_search_and_retrieve_document() -> None:
     )
     assert create_response.status_code == 201
 
-    vector_service._load_model.cache_clear()
-    with patch("backend.app.vector_store.service._load_model", new=lambda _: DummyModel()):
+    with patch("backend.app.vector_store.service._get_openai_client", return_value=DummyOpenAIClient()):
         ingest_payload = {
             "doc_id": "paris-guide",
             "document": {
@@ -195,8 +190,7 @@ def test_ingest_search_and_retrieve_document() -> None:
         )
         assert response.status_code == 201
 
-    vector_service._load_model.cache_clear()
-    with patch("backend.app.vector_store.service._load_model", new=lambda _: DummyModel()):
+    with patch("backend.app.vector_store.service._get_openai_client", return_value=DummyOpenAIClient()):
         search_response = client.post(
             "/api/vector-stores/guides/search_json",
             headers=_auth_headers(agent_token),
@@ -240,8 +234,7 @@ def test_admin_can_delete_document() -> None:
     )
     assert create_response.status_code == 201
 
-    vector_service._load_model.cache_clear()
-    with patch("backend.app.vector_store.service._load_model", new=lambda _: DummyModel()):
+    with patch("backend.app.vector_store.service._get_openai_client", return_value=DummyOpenAIClient()):
         ingest_payload = {
             "doc_id": "obsolete-doc",
             "document": {"title": "Ancien guide"},

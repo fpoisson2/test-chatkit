@@ -5,17 +5,14 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import re
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Any
 
-try:  # pragma: no cover - dépendance optionnelle pour les tests rapides
-    from sentence_transformers import SentenceTransformer
-except ModuleNotFoundError:  # pragma: no cover - utilisée lorsque la dépendance est absente
-    SentenceTransformer = None  # type: ignore[assignment]
+from openai import OpenAI
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -23,22 +20,21 @@ from ..models import EMBEDDING_DIMENSION, JsonChunk, JsonDocument, JsonVectorSto
 
 logger = logging.getLogger("chatkit.vector_store")
 
-DEFAULT_EMBEDDING_MODEL = "intfloat/multilingual-e5-small"
+DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_CHUNK_SIZE = 40
 DEFAULT_CHUNK_OVERLAP = 8
 MAX_LINEARIZED_ENTRY_LENGTH = 60_000
 MAX_LINEARIZED_TEXT_LENGTH = 900_000
 
 
-@lru_cache(maxsize=2)
-def _load_model(model_name: str) -> Any:
-    if SentenceTransformer is None:
+def _get_openai_client() -> OpenAI:
+    """Retourne le client OpenAI configuré."""
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
         raise RuntimeError(
-            "Le paquet sentence-transformers est requis pour charger le modèle '%s'. "
-            "Installez-le ou fournissez un modèle factice dans les tests." % model_name
+            "La variable d'environnement OPENAI_API_KEY est requise pour générer des embeddings."
         )
-    logger.info("Chargement du modèle d'embedding %s", model_name)
-    return SentenceTransformer(model_name)
+    return OpenAI(api_key=api_key)
 
 
 def _format_value(value: Any) -> str:
@@ -377,16 +373,16 @@ class JsonVectorStoreService:
             for chunk in chunk_entries
         ]
 
-        model = _load_model(self.model_name)
-        embeddings = model.encode(
-            [f"passage: {text}" for text in chunk_texts],
-            convert_to_numpy=True,
-            normalize_embeddings=True,
+        # Générer les embeddings avec OpenAI
+        client = _get_openai_client()
+        response = client.embeddings.create(
+            input=chunk_texts,
+            model=self.model_name,
         )
 
         json_chunks: list[JsonChunk] = []
         for index, (chunk, text) in enumerate(zip(chunk_entries, chunk_texts)):
-            vector = embeddings[index].tolist()
+            vector = response.data[index].embedding
             if len(vector) != EMBEDDING_DIMENSION:
                 raise ValueError(
                     "La dimension de l'embedding généré "
@@ -508,13 +504,13 @@ class JsonVectorStoreService:
         if not chunks:
             return []
 
-        model = _load_model(self.model_name)
-        query_embedding = model.encode(
-            [f"query: {query}"],
-            convert_to_numpy=True,
-            normalize_embeddings=True,
+        # Générer l'embedding de la requête avec OpenAI
+        client = _get_openai_client()
+        response = client.embeddings.create(
+            input=[query],
+            model=self.model_name,
         )
-        query_vector = _normalize(query_embedding[0].tolist())
+        query_vector = _normalize(response.data[0].embedding)
 
         token_pattern = re.compile(r"\w+", re.UNICODE)
         query_tokens = [token.lower() for token in token_pattern.findall(query)]

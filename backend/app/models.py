@@ -18,7 +18,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from pgvector.sqlalchemy import Vector
 
-EMBEDDING_DIMENSION = 384
+# Dimension pour text-embedding-3-small d'OpenAI
+EMBEDDING_DIMENSION = 1536
 
 
 class Base(DeclarativeBase):
