@@ -8,6 +8,7 @@ import logging
 import math
 import re
 import uuid
+import weakref
 from pathlib import Path
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -2269,6 +2270,9 @@ def _build_agent_kwargs(
     return merged
 
 
+_AGENT_RESPONSE_FORMATS: "weakref.WeakKeyDictionary[Agent, dict[str, Any]]" = weakref.WeakKeyDictionary()
+
+
 def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
     response_format = kwargs.pop("_response_format_override", None)
     agent = Agent(**kwargs)
@@ -2280,7 +2284,20 @@ def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
                 "Impossible d'attacher response_format directement à l'agent %s",
                 getattr(agent, "name", "<inconnu>"),
             )
-        setattr(agent, "_chatkit_response_format", response_format)
+        try:
+            setattr(agent, "_chatkit_response_format", response_format)
+        except Exception:
+            logger.debug(
+                "Impossible de stocker _chatkit_response_format pour l'agent %s",
+                getattr(agent, "name", "<inconnu>"),
+            )
+        try:
+            _AGENT_RESPONSE_FORMATS[agent] = response_format
+        except Exception:
+            logger.debug(
+                "Impossible de mémoriser le response_format pour l'agent %s",
+                getattr(agent, "name", "<inconnu>"),
+            )
     return agent
 
 
@@ -4131,7 +4148,9 @@ async def run_workflow(
     def _resolve_wait_for_user_input_message(step: WorkflowStep) -> str:
         return _resolve_user_message(step)
 
-    def _workflow_run_config() -> RunConfig:
+    def _workflow_run_config(
+        response_format: dict[str, Any] | None = None,
+    ) -> RunConfig:
         metadata: dict[str, str] = {"__trace_source__": "agent-builder"}
         if definition.workflow_id is not None:
             metadata["workflow_db_id"] = str(definition.workflow_id)
@@ -4139,6 +4158,11 @@ async def run_workflow(
             metadata["workflow_slug"] = definition.workflow.slug
         if definition.workflow and definition.workflow.display_name:
             metadata["workflow_name"] = definition.workflow.display_name
+        try:
+            if response_format is not None:
+                return RunConfig(trace_metadata=metadata, response_format=response_format)
+        except TypeError:
+            logger.debug("RunConfig ne supporte pas response_format, utilisation de la configuration par défaut")
         return RunConfig(trace_metadata=metadata)
 
     async def record_step(step_key: str, title: str, payload: Any) -> None:
@@ -5154,10 +5178,13 @@ async def run_workflow(
                 )
             )
         accumulated_text = ""
+        response_format_override = getattr(agent, "_chatkit_response_format", None)
+        if response_format_override is None:
+            response_format_override = _AGENT_RESPONSE_FORMATS.get(agent)
         result = Runner.run_streamed(
             agent,
             input=[*conversation_history],
-            run_config=_workflow_run_config(),
+            run_config=_workflow_run_config(response_format_override),
             context=run_context,
         )
         try:
