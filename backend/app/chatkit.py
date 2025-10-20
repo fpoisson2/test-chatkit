@@ -5335,8 +5335,39 @@ async def run_workflow(
             context_text_parts: list[str] = []
 
             # Ajouter le texte de sortie si disponible
-            if "output_text" in last_step_context:
-                context_text_parts.append(str(last_step_context["output_text"]))
+            output_text_value = last_step_context.get("output_text")
+            if isinstance(output_text_value, str) and output_text_value.strip():
+                context_text_parts.append(output_text_value.strip())
+
+            # Ajouter une représentation structurée si disponible
+            structured_payload = last_step_context.get("output_structured")
+            if structured_payload is None:
+                structured_payload = last_step_context.get("output_parsed")
+            if structured_payload is None:
+                structured_payload = last_step_context.get("output")
+            if structured_payload is not None:
+                if isinstance(structured_payload, (dict, list)):
+                    try:
+                        serialized_structured = json.dumps(
+                            structured_payload,
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+                    except TypeError:
+                        serialized_structured = str(structured_payload)
+                else:
+                    serialized_structured = str(structured_payload)
+                if serialized_structured.strip():
+                    should_append = True
+                    if context_text_parts:
+                        normalized_structured = serialized_structured.strip()
+                        if any(
+                            normalized_structured == part.strip()
+                            for part in context_text_parts
+                        ):
+                            should_append = False
+                    if should_append:
+                        context_text_parts.append(serialized_structured.strip())
 
             # Ajouter les URLs d'images générées si disponibles
             if "generated_image_urls" in last_step_context:
