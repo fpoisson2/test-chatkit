@@ -1849,55 +1849,90 @@ def _build_response_format_from_widget(
             )
             return None
 
-        # Extraire le schéma JSON du widget
-        # Le widget est déjà validé, on peut générer son schéma
-        try:
-            from chatkit.widgets import WidgetRoot
-        except ImportError:
-            logger.warning(
-                "Impossible d'importer WidgetRoot pour générer le schéma du widget"
-            )
-            return None
+        # Extraire les variables du widget depuis response_widget
+        widget_variables = response_widget.get("variables", {})
 
-        # Générer le schéma JSON à partir du modèle Pydantic
-        try:
-            # Pydantic v2
-            if hasattr(WidgetRoot, "model_json_schema"):
-                schema = WidgetRoot.model_json_schema()
-            # Pydantic v1
-            elif hasattr(WidgetRoot, "schema"):
-                schema = WidgetRoot.schema()
-            else:
+        # Créer un schéma JSON basé sur les variables du widget
+        # Le schéma doit représenter un objet avec les propriétés correspondant aux variables
+        properties = {}
+        required = []
+
+        # Pour chaque variable du widget (ex: "image.alt", "image.src")
+        # On crée une propriété dans le schéma
+        for var_path in widget_variables.keys():
+            # Normaliser le chemin (remplacer les points par des underscores pour le schéma)
+            # mais garder la structure hiérarchique si nécessaire
+            parts = var_path.split(".")
+
+            # Pour simplifier, on crée une structure plate avec des underscores
+            # Ex: "image.alt" devient "image_alt"
+            safe_key = var_path.replace(".", "_")
+
+            properties[safe_key] = {
+                "type": "string",
+                "description": f"Valeur pour {var_path}"
+            }
+            required.append(safe_key)
+
+        # Si aucune variable n'est définie, créer un schéma pour le widget complet
+        if not properties:
+            # Utiliser la définition du widget elle-même comme schéma
+            # Le LLM devra générer un JSON conforme à la structure du widget
+            try:
+                from chatkit.widgets import WidgetRoot
+            except ImportError:
                 logger.warning(
-                    "Impossible de générer le schéma JSON pour WidgetRoot"
+                    "Impossible d'importer WidgetRoot pour générer le schéma du widget"
                 )
                 return None
 
-            # Construire le response_format
-            widget_name = widget_entry.title or slug
-            response_format = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": f"widget_{slug.replace('-', '_')}",
-                    "description": widget_entry.description or f"Widget {widget_name}",
-                    "schema": schema,
-                    "strict": True,
-                },
+            # Générer le schéma JSON à partir du modèle Pydantic
+            try:
+                # Pydantic v2
+                if hasattr(WidgetRoot, "model_json_schema"):
+                    schema = WidgetRoot.model_json_schema()
+                # Pydantic v1
+                elif hasattr(WidgetRoot, "schema"):
+                    schema = WidgetRoot.schema()
+                else:
+                    logger.warning(
+                        "Impossible de générer le schéma JSON pour WidgetRoot"
+                    )
+                    return None
+            except Exception as exc:
+                logger.exception(
+                    "Erreur lors de la génération du schéma JSON pour le widget '%s'",
+                    slug,
+                    exc_info=exc,
+                )
+                return None
+        else:
+            # Créer un schéma personnalisé basé sur les variables
+            schema = {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+                "additionalProperties": False
             }
 
-            logger.info(
-                "response_format généré depuis le widget de bibliothèque '%s'",
-                slug,
-            )
-            return response_format
+        # Construire le response_format
+        widget_name = widget_entry.title or slug
+        response_format = {
+            "type": "json_schema",
+            "json_schema": {
+                "name": f"widget_{slug.replace('-', '_')}",
+                "description": widget_entry.description or f"Widget {widget_name}",
+                "schema": schema,
+                "strict": True,
+            },
+        }
 
-        except Exception as exc:
-            logger.exception(
-                "Erreur lors de la génération du schéma JSON pour le widget '%s'",
-                slug,
-                exc_info=exc,
-            )
-            return None
+        logger.info(
+            "response_format généré depuis le widget de bibliothèque '%s' (variables: %s)",
+            slug,
+            list(widget_variables.keys()) if widget_variables else "aucune",
+        )
+        return response_format
 
     except Exception as exc:
         logger.exception(
