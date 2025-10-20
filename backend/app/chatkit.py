@@ -2804,6 +2804,13 @@ def _load_widget_definition(slug: str, *, context: str) -> Any | None:
         return None
 
 
+def _extract_template_variables(value: str) -> list[str]:
+    """Extrait les variables de template au format {{variable}} d'une chaîne."""
+    pattern = r'\{\{([^}]+)\}\}'
+    matches = re.findall(pattern, value)
+    return [match.strip() for match in matches if match.strip()]
+
+
 def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
     """Recense les identifiants dynamiques d'un widget et leur position."""
 
@@ -2889,9 +2896,10 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
                 "caption": "caption",
                 "markdown": "markdown",
                 "badge": "badge",
+                "image": "image",
             }
             alias = alias_map.get(normalized_type)
-            if alias and value_key in {"value", "text", "title", "label", "content", "body"}:
+            if alias and value_key in {"value", "text", "title", "label", "content", "body", "src", "alt", "url"}:
                 return _ensure_unique(alias)
 
         name_attr = node.get("name")
@@ -3450,6 +3458,12 @@ def _ensure_widget_output_model(
         variable_ids.extend(config.bindings.keys())
 
     logger.debug("_ensure_widget_output_model: variable_ids finaux pour %s: %s", config.slug, variable_ids)
+
+    # Si aucune variable n'est trouvée, le widget n'a pas besoin d'output_model
+    # (il utilise des valeurs hardcodées directement dans sa définition)
+    if not variable_ids:
+        logger.debug("_ensure_widget_output_model: Aucune variable trouvée pour %s, pas besoin d'output_model", config.slug)
+        return config
 
     model = _build_widget_output_model(
         config.slug, variable_ids, bindings=config.bindings
