@@ -33,9 +33,31 @@ export const NODE_BACKGROUNDS: Record<NodeKind, string> = {
   end: "rgba(124, 58, 237, 0.12)",
 };
 
+const NODE_GLOW_COLORS: Record<NodeKind, string> = {
+  start: "rgba(37, 99, 235, 0.45)",
+  agent: "rgba(22, 163, 74, 0.45)",
+  condition: "rgba(249, 115, 22, 0.45)",
+  state: "rgba(14, 165, 233, 0.45)",
+  watch: "rgba(250, 204, 21, 0.5)",
+  wait_for_user_input: "rgba(34, 211, 238, 0.5)",
+  assistant_message: "rgba(239, 68, 68, 0.45)",
+  user_message: "rgba(20, 184, 166, 0.45)",
+  json_vector_store: "rgba(8, 145, 178, 0.5)",
+  widget: "rgba(236, 72, 153, 0.45)",
+  end: "rgba(124, 58, 237, 0.45)",
+};
+
+export const buildEdgeStyle = (options: { isSelected?: boolean } = {}) => {
+  const { isSelected = false } = options;
+  return {
+    stroke: "var(--text-color)",
+    strokeWidth: isSelected ? 3 : 2,
+  } satisfies CSSProperties;
+};
+
 export const defaultEdgeOptions: EdgeOptions = {
   markerEnd: { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
-  style: { stroke: "var(--text-color)", strokeWidth: 2 },
+  style: buildEdgeStyle(),
   labelStyle: { fill: "var(--text-color)", fontWeight: 600 },
   labelShowBg: true,
   labelBgPadding: [8, 4],
@@ -43,7 +65,7 @@ export const defaultEdgeOptions: EdgeOptions = {
   labelBgStyle: { fill: "var(--color-surface-subtle)", stroke: "var(--surface-border)" },
 };
 
-export const connectionLineStyle = { stroke: "var(--text-color)", strokeWidth: 2 };
+export const connectionLineStyle = buildEdgeStyle();
 
 const NON_REASONING_MODEL_PATTERN = /^gpt-4\.1/i;
 
@@ -113,17 +135,30 @@ export const prepareNodeParametersForSave = (
   return Object.keys(sanitized).length === 0 ? {} : (sanitized as AgentParameters);
 };
 
-export const buildNodeStyle = (kind: NodeKind): CSSProperties => ({
-  padding: "0.75rem 1rem",
-  borderRadius: "0.75rem",
-  border: `2px solid ${NODE_COLORS[kind]}`,
-  color: "var(--text-color)",
-  background: NODE_BACKGROUNDS[kind],
-  fontWeight: 600,
-  minWidth: 160,
-  textAlign: "center",
-  boxShadow: "var(--shadow-soft)",
-});
+export const buildNodeStyle = (
+  kind: NodeKind,
+  options: { isSelected?: boolean } = {},
+): CSSProperties => {
+  const { isSelected = false } = options;
+  const baseShadow = "var(--shadow-soft)";
+  const selectionRingColor = "rgba(255, 255, 255, 0.92)";
+  const haloShadow = `0 0 0 6px ${NODE_GLOW_COLORS[kind]}`;
+  const ringShadow = `0 0 0 2px ${selectionRingColor}`;
+  return {
+    padding: "0.75rem 1rem",
+    borderRadius: "0.75rem",
+    border: `2px solid ${NODE_COLORS[kind]}`,
+    color: "var(--text-color)",
+    background: NODE_BACKGROUNDS[kind],
+    fontWeight: 600,
+    minWidth: 160,
+    textAlign: "center",
+    overflow: "visible",
+    boxShadow: isSelected
+      ? `${baseShadow}, ${ringShadow}, ${haloShadow}`
+      : baseShadow,
+  };
+};
 
 export const labelForKind = (kind: NodeKind) => {
   switch (kind) {

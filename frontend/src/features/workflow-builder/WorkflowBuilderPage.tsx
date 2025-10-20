@@ -113,6 +113,7 @@ import type {
 } from "./types";
 import {
   AUTO_SAVE_DELAY_MS,
+  buildEdgeStyle,
   buildGraphPayloadFrom,
   buildNodeStyle,
   connectionLineStyle,
@@ -315,6 +316,12 @@ const WorkflowBuilderPage = () => {
   const previousSelectedElementRef = useRef<string | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);
   const selectedEdgeIdRef = useRef<string | null>(null);
+  const selectedNodeIdsRef = useRef<Set<string>>(new Set());
+  const selectedEdgeIdsRef = useRef<Set<string>>(new Set());
+  const copySequenceRef = useRef<{ count: number; lastTimestamp: number }>({
+    count: 0,
+    lastTimestamp: 0,
+  });
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
   const blockLibraryId = "workflow-builder-block-library";
@@ -404,6 +411,93 @@ const WorkflowBuilderPage = () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [openWorkflowMenuId]);
+
+  const applySelection = useCallback(
+    ({
+      nodeIds = [],
+      edgeIds = [],
+      primaryNodeId,
+      primaryEdgeId,
+    }: {
+      nodeIds?: Iterable<string>;
+      edgeIds?: Iterable<string>;
+      primaryNodeId?: string | null;
+      primaryEdgeId?: string | null;
+    }) => {
+      const nodeArray = Array.from(nodeIds);
+      const edgeArray = Array.from(edgeIds);
+      const nodeIdSet = new Set(nodeArray);
+      const edgeIdSet = new Set(edgeArray);
+
+      selectedNodeIdsRef.current = nodeIdSet;
+      selectedEdgeIdsRef.current = edgeIdSet;
+
+      setNodes((currentNodes) =>
+        currentNodes.map((node) => {
+          const isSelected = nodeIdSet.has(node.id);
+          const nextStyle = buildNodeStyle(node.data.kind, { isSelected });
+          const currentStyle = node.style ?? {};
+          const hasSameSelection = (node.selected ?? false) === isSelected;
+          const hasSameStyle =
+            Object.keys(nextStyle).length === Object.keys(currentStyle).length &&
+            Object.entries(nextStyle).every(
+              ([key, value]) =>
+                Object.prototype.hasOwnProperty.call(currentStyle, key) &&
+                (currentStyle as Record<string, unknown>)[key] === value,
+            );
+
+          if (hasSameSelection && hasSameStyle) {
+            return node;
+          }
+
+          return {
+            ...node,
+            selected: isSelected,
+            style: nextStyle,
+          } satisfies FlowNode;
+        })
+      );
+
+      setEdges((currentEdges) =>
+        currentEdges.map((edge) => {
+          const isSelected = edgeIdSet.has(edge.id);
+          if ((edge.selected ?? false) === isSelected) {
+            const currentStyle = edge.style ?? {};
+            const nextStyle = buildEdgeStyle({ isSelected });
+            if (
+              currentStyle.stroke === nextStyle.stroke &&
+              currentStyle.strokeWidth === nextStyle.strokeWidth
+            ) {
+              return edge;
+            }
+          }
+          return {
+            ...edge,
+            selected: isSelected,
+            style: { ...edge.style, ...buildEdgeStyle({ isSelected }) },
+          } satisfies FlowEdge;
+        })
+      );
+
+      const resolvedNodeId =
+        nodeArray.length > 0
+          ? primaryNodeId && nodeArray.includes(primaryNodeId)
+            ? primaryNodeId
+            : nodeArray[0]
+          : null;
+
+      const resolvedEdgeId =
+        nodeArray.length === 0 && edgeArray.length > 0
+          ? primaryEdgeId && edgeArray.includes(primaryEdgeId)
+            ? primaryEdgeId
+            : edgeArray[0]
+          : null;
+
+      setSelectedNodeId(resolvedNodeId);
+      setSelectedEdgeId(resolvedNodeId ? null : resolvedEdgeId);
+    },
+    [setEdges, setNodes, setSelectedEdgeId, setSelectedNodeId],
+  );
 
   const renderWorkflowDescription = (className?: string) =>
     selectedWorkflow?.description ? (
@@ -875,7 +969,8 @@ const WorkflowBuilderPage = () => {
                 metadata: node.metadata ?? {},
               },
               draggable: true,
-              style: buildNodeStyle(node.kind),
+              selected: false,
+              style: buildNodeStyle(node.kind, { isSelected: false }),
             } satisfies FlowNode;
           });
           const flowEdges = data.graph.edges.map<FlowEdge>((edge) => ({
@@ -887,7 +982,10 @@ const WorkflowBuilderPage = () => {
               condition: edge.condition,
               metadata: edge.metadata ?? {},
             },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "#1e293b" },
+            markerEnd: defaultEdgeOptions.markerEnd
+              ? { ...defaultEdgeOptions.markerEnd }
+              : { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
+            style: buildEdgeStyle({ isSelected: false }),
           }));
           const nextSnapshot = JSON.stringify(buildGraphPayloadFrom(flowNodes, flowEdges));
           isHydratingRef.current = true;
@@ -925,8 +1023,12 @@ const WorkflowBuilderPage = () => {
               nodes: flowNodes,
               edges: flowEdges,
             });
-          setSelectedNodeId(nextSelectedNodeId);
-          setSelectedEdgeId(nextSelectedEdgeId);
+          applySelection({
+            nodeIds: nextSelectedNodeId ? [nextSelectedNodeId] : [],
+            edgeIds: nextSelectedEdgeId ? [nextSelectedEdgeId] : [],
+            primaryNodeId: previousSelectedNodeId,
+            primaryEdgeId: previousSelectedEdgeId,
+          });
           setSaveState("idle");
           setSaveMessage(null);
           if (!background) {
@@ -948,7 +1050,7 @@ const WorkflowBuilderPage = () => {
       }
       return false;
     },
-    [authHeader, restoreViewport, setEdges, setHasPendingChanges, setNodes],
+    [authHeader, applySelection, restoreViewport, setEdges, setHasPendingChanges, setNodes],
   );
 
   const loadVersions = useCallback(
@@ -1219,7 +1321,10 @@ const WorkflowBuilderPage = () => {
             id: `edge-${Date.now()}`,
             label: "",
             data: { condition: "", metadata: {} },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "#1e293b" },
+            markerEnd: defaultEdgeOptions.markerEnd
+              ? { ...defaultEdgeOptions.markerEnd }
+              : { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
+            style: buildEdgeStyle({ isSelected: false }),
           },
           current
         )
@@ -1250,9 +1355,20 @@ const WorkflowBuilderPage = () => {
   }, []);
 
   const handleClearSelection = useCallback(() => {
-    setSelectedNodeId(null);
-    setSelectedEdgeId(null);
-  }, []);
+    applySelection({ nodeIds: [], edgeIds: [] });
+  }, [applySelection]);
+
+  const handleSelectionChange = useCallback(
+    ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: FlowNode[]; edges: FlowEdge[] }) => {
+      applySelection({
+        nodeIds: selectedNodes.map((node) => node.id),
+        edgeIds: selectedEdges.map((edge) => edge.id),
+        primaryNodeId: selectedNodeIdRef.current,
+        primaryEdgeId: selectedEdgeIdRef.current,
+      });
+    },
+    [applySelection]
+  );
 
   const handleClosePropertiesPanel = useCallback(() => {
     if (isMobileLayout) {
@@ -1340,7 +1456,7 @@ const WorkflowBuilderPage = () => {
           return {
             ...node,
             data: nextData,
-            style: buildNodeStyle(nextData.kind),
+            style: buildNodeStyle(nextData.kind, { isSelected: node.selected ?? false }),
           } satisfies FlowNode;
         })
       );
@@ -2174,16 +2290,107 @@ const WorkflowBuilderPage = () => {
     [setEdges, setHasPendingChanges]
   );
 
-  const handleRemoveNode = useCallback(
-    (nodeId: string) => {
-      const nodeToRemove = nodes.find((node) => node.id === nodeId);
-      if (!nodeToRemove || nodeToRemove.data.kind === "start") {
+  const removeElements = useCallback(
+    ({
+      nodeIds = [],
+      edgeIds = [],
+    }: {
+      nodeIds?: Iterable<string>;
+      edgeIds?: Iterable<string>;
+    }) => {
+      const nodeIdSet = new Set(nodeIds);
+      const edgeIdSet = new Set(edgeIds);
+
+      if (nodeIdSet.size === 0 && edgeIdSet.size === 0) {
         return;
       }
-      setNodes((currentNodes) => currentNodes.filter((node) => node.id !== nodeId));
-      setEdges((currentEdges) =>
-        currentEdges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId)
+
+      const removedNodeIds: string[] = [];
+      const protectedNodeIds: string[] = [];
+
+      if (nodeIdSet.size > 0) {
+        setNodes((currentNodes) => {
+          let hasChanges = false;
+          const nextNodes: FlowNode[] = [];
+          for (const node of currentNodes) {
+            if (nodeIdSet.has(node.id)) {
+              if (node.data.kind === "start") {
+                protectedNodeIds.push(node.id);
+                nextNodes.push(node);
+              } else {
+                removedNodeIds.push(node.id);
+                hasChanges = true;
+              }
+            } else {
+              nextNodes.push(node);
+            }
+          }
+          return hasChanges ? nextNodes : currentNodes;
+        });
+      }
+
+      const removedNodeIdSet = new Set(removedNodeIds);
+      const removedEdgeIds: string[] = [];
+
+      setEdges((currentEdges) => {
+        if (removedNodeIdSet.size === 0 && edgeIdSet.size === 0) {
+          return currentEdges;
+        }
+        let hasChanges = false;
+        const nextEdges: FlowEdge[] = [];
+        for (const edge of currentEdges) {
+          if (
+            removedNodeIdSet.has(edge.source) ||
+            removedNodeIdSet.has(edge.target) ||
+            edgeIdSet.has(edge.id)
+          ) {
+            removedEdgeIds.push(edge.id);
+            hasChanges = true;
+          } else {
+            nextEdges.push(edge);
+          }
+        }
+        return hasChanges ? nextEdges : currentEdges;
+      });
+
+      if (removedNodeIds.length === 0 && removedEdgeIds.length === 0 && protectedNodeIds.length === 0) {
+        return;
+      }
+
+      const removedEdgeIdSet = new Set(removedEdgeIds);
+      const remainingNodeIds = Array.from(selectedNodeIdsRef.current).filter(
+        (id) => !removedNodeIdSet.has(id) && !protectedNodeIds.includes(id),
       );
+      const remainingEdgeIds = Array.from(selectedEdgeIdsRef.current).filter(
+        (id) => !removedEdgeIdSet.has(id),
+      );
+
+      applySelection({
+        nodeIds: remainingNodeIds,
+        edgeIds: remainingEdgeIds,
+        primaryNodeId: selectedNodeIdRef.current,
+        primaryEdgeId: selectedEdgeIdRef.current,
+      });
+
+      if (protectedNodeIds.length > 0) {
+        setSaveState("error");
+        setSaveMessage("Le bloc de démarrage ne peut pas être supprimé.");
+        const clearState = () => setSaveState("idle");
+        if (typeof window !== "undefined") {
+          window.setTimeout(clearState, 1500);
+        } else {
+          setTimeout(clearState, 1500);
+        }
+      }
+    },
+    [applySelection, setEdges, setNodes, setSaveMessage, setSaveState]
+  );
+
+  const handleRemoveNode = useCallback(
+    (nodeId: string) => {
+      removeElements({ nodeIds: [nodeId] });
+    },
+    [removeElements]
       setHasPendingChanges(true);
       if (selectedNodeId === nodeId) {
         setSelectedNodeId(null);
@@ -2194,6 +2401,28 @@ const WorkflowBuilderPage = () => {
 
   const handleRemoveEdge = useCallback(
     (edgeId: string) => {
+      removeElements({ edgeIds: [edgeId] });
+    },
+    [removeElements]
+  );
+
+  const addNodeToGraph = useCallback(
+    (node: FlowNode) => {
+      setNodes((current) => [
+        ...current.map((existing) => ({
+          ...existing,
+          selected: false,
+          style: buildNodeStyle(existing.data.kind, { isSelected: false }),
+        })),
+        {
+          ...node,
+          selected: true,
+          style: buildNodeStyle(node.data.kind, { isSelected: true }),
+        },
+      ]);
+      applySelection({ nodeIds: [node.id], primaryNodeId: node.id });
+    },
+    [applySelection, setNodes]
       setEdges((currentEdges) => currentEdges.filter((edge) => edge.id !== edgeId));
       setHasPendingChanges(true);
       if (selectedEdgeId === edgeId) {
@@ -2222,12 +2451,10 @@ const WorkflowBuilderPage = () => {
         label: humanizeSlug(slug),
       },
       draggable: true,
-      style: buildNodeStyle("agent"),
+      style: buildNodeStyle("agent", { isSelected: true }),
     };
-    setNodes((current) => [...current, newNode]);
-    setSelectedNodeId(slug);
-    setSelectedEdgeId(null);
-  }, [setNodes]);
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
 
   const handleAddConditionNode = useCallback(() => {
     const slug = `condition-${Date.now()}`;
@@ -2248,12 +2475,10 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("condition"),
+      style: buildNodeStyle("condition", { isSelected: true }),
     };
-    setNodes((current) => [...current, newNode]);
-    setSelectedNodeId(slug);
-    setSelectedEdgeId(null);
-  }, [setNodes]);
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
 
   const handleAddStateNode = useCallback(() => {
     const slug = `state-${Date.now()}`;
@@ -2279,12 +2504,10 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("state"),
+      style: buildNodeStyle("state", { isSelected: true }),
     };
-    setNodes((current) => [...current, newNode]);
-    setSelectedNodeId(slug);
-    setSelectedEdgeId(null);
-  }, [setNodes]);
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
 
   const handleAddWatchNode = useCallback(() => {
     const slug = `watch-${Date.now()}`;
@@ -2305,12 +2528,10 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("watch"),
+      style: buildNodeStyle("watch", { isSelected: true }),
     } satisfies FlowNode;
-    setNodes((current) => [...current, newNode]);
-    setSelectedNodeId(slug);
-    setSelectedEdgeId(null);
-  }, [setNodes]);
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
 
   const handleAddWaitForUserInputNode = useCallback(() => {
     const slug = `wait-${Date.now()}`;
@@ -2331,12 +2552,10 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("wait_for_user_input"),
+      style: buildNodeStyle("wait_for_user_input", { isSelected: true }),
     } satisfies FlowNode;
-    setNodes((current) => [...current, newNode]);
-    setSelectedNodeId(slug);
-    setSelectedEdgeId(null);
-  }, [setNodes]);
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
 
   const handleAddAssistantMessageNode = useCallback(() => {
     const slug = `assistant-message-${Date.now()}`;
@@ -2357,12 +2576,10 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("assistant_message"),
+      style: buildNodeStyle("assistant_message", { isSelected: true }),
     } satisfies FlowNode;
-    setNodes((current) => [...current, newNode]);
-    setSelectedNodeId(slug);
-    setSelectedEdgeId(null);
-  }, [setNodes]);
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
 
   const handleAddUserMessageNode = useCallback(() => {
     const slug = `user-message-${Date.now()}`;
@@ -2383,12 +2600,10 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("user_message"),
+      style: buildNodeStyle("user_message", { isSelected: true }),
     } satisfies FlowNode;
-    setNodes((current) => [...current, newNode]);
-    setSelectedNodeId(slug);
-    setSelectedEdgeId(null);
-  }, [setNodes]);
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
 
   const handleAddVectorStoreNode = useCallback(() => {
     const slug = `json-vector-store-${Date.now()}`;
@@ -2410,12 +2625,10 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("json_vector_store"),
+      style: buildNodeStyle("json_vector_store", { isSelected: true }),
     };
-    setNodes((current) => [...current, newNode]);
-    setSelectedNodeId(slug);
-    setSelectedEdgeId(null);
-  }, [setNodes, vectorStores]);
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph, vectorStores]);
 
   const handleAddWidgetNode = useCallback(() => {
     const slug = `widget-${Date.now()}`;
@@ -2436,12 +2649,10 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("widget"),
+      style: buildNodeStyle("widget", { isSelected: true }),
     } satisfies FlowNode;
-    setNodes((current) => [...current, newNode]);
-    setSelectedNodeId(slug);
-    setSelectedEdgeId(null);
-  }, [setNodes]);
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
 
   const handleAddEndNode = useCallback(() => {
     const slug = `end-${Date.now()}`;
@@ -2462,12 +2673,82 @@ const WorkflowBuilderPage = () => {
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("end"),
+      style: buildNodeStyle("end", { isSelected: true }),
     };
-    setNodes((current) => [...current, newNode]);
-    setSelectedNodeId(slug);
-    setSelectedEdgeId(null);
-  }, [setNodes]);
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const resetCopySequence = () => {
+      copySequenceRef.current.count = 0;
+      copySequenceRef.current.lastTimestamp = 0;
+    };
+
+    const isEditableTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+      if (target.isContentEditable) {
+        return true;
+      }
+      const tagName = target.tagName;
+      if (tagName === "INPUT" || tagName === "TEXTAREA") {
+        return true;
+      }
+      return target.closest("input, textarea, [contenteditable=\"true\"]") !== null;
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isCopy = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c";
+      if (isCopy) {
+        const now = Date.now();
+        const { lastTimestamp, count } = copySequenceRef.current;
+        copySequenceRef.current.count = now - lastTimestamp <= 600 ? count + 1 : 1;
+        copySequenceRef.current.lastTimestamp = now;
+        return;
+      }
+
+      const now = Date.now();
+      const triggeredBySequence =
+        copySequenceRef.current.count >= 2 && now - copySequenceRef.current.lastTimestamp <= 800;
+
+      if (isEditableTarget(event.target) && !triggeredBySequence) {
+        if (!event.ctrlKey && !event.metaKey) {
+          resetCopySequence();
+        }
+        return;
+      }
+
+      if (event.key === "Delete") {
+        const hasSelection =
+          selectedNodeIdsRef.current.size > 0 || selectedEdgeIdsRef.current.size > 0;
+        if (!hasSelection) {
+          resetCopySequence();
+          return;
+        }
+        event.preventDefault();
+        removeElements({
+          nodeIds: selectedNodeIdsRef.current,
+          edgeIds: selectedEdgeIdsRef.current,
+        });
+        resetCopySequence();
+        return;
+      }
+
+      if (!event.ctrlKey && !event.metaKey) {
+        resetCopySequence();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [removeElements]);
 
   const handleSelectWorkflow = useCallback(
     (workflowId: number) => {
@@ -2578,8 +2859,7 @@ const WorkflowBuilderPage = () => {
             },
           });
           if (response.status === 204) {
-            setSelectedNodeId(null);
-            setSelectedEdgeId(null);
+            applySelection({ nodeIds: [], edgeIds: [] });
             const nextSelection = targetId === selectedWorkflowId ? null : selectedWorkflowId;
             await loadWorkflows({
               excludeWorkflowId: current.id,
@@ -2619,10 +2899,9 @@ const WorkflowBuilderPage = () => {
     [
       authHeader,
       backendUrl,
+      applySelection,
       loadWorkflows,
       selectedWorkflowId,
-      setSelectedEdgeId,
-      setSelectedNodeId,
       workflows,
     ],
   );
@@ -4130,6 +4409,10 @@ const WorkflowBuilderPage = () => {
                   onConnect={onConnect}
                   defaultEdgeOptions={defaultEdgeOptions}
                   connectionLineStyle={connectionLineStyle}
+                  selectionOnDrag={!isMobileLayout}
+                  panOnDrag={isMobileLayout ? true : [1, 2]}
+                  multiSelectionKeyCode={['Meta', 'Control']}
+                  onSelectionChange={handleSelectionChange}
                   style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
                   minZoom={minViewportZoom}
                   onInit={(instance) => {
