@@ -788,7 +788,6 @@ const WorkflowBuilderPage = () => {
         const message =
           error instanceof Error ? error.message : "Impossible de charger la bibliothèque de widgets.";
         setWidgetsError(message);
-        setWidgets([]);
       })
       .finally(() => {
         if (isMounted) {
