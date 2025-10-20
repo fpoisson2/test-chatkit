@@ -27,21 +27,25 @@ class ThemeColor(TypedDict):
     """Color to use when the theme is light."""
 
 
+Number = float | int
+"""Convenience alias for numeric widget values (integer or decimal)."""
+
+
 class Spacing(TypedDict):
     """Shorthand spacing values applied to a widget."""
 
-    top: NotRequired[float | str]
-    """Top spacing; accepts a spacing unit or CSS string."""
-    right: NotRequired[float | str]
-    """Right spacing; accepts a spacing unit or CSS string."""
-    bottom: NotRequired[float | str]
-    """Bottom spacing; accepts a spacing unit or CSS string."""
-    left: NotRequired[float | str]
-    """Left spacing; accepts a spacing unit or CSS string."""
-    x: NotRequired[float | str]
-    """Horizontal spacing; accepts a spacing unit or CSS string."""
-    y: NotRequired[float | str]
-    """Vertical spacing; accepts a spacing unit or CSS string."""
+    top: NotRequired[Number | str]
+    """Top spacing; accepts a spacing unit, integer, decimal, or CSS string."""
+    right: NotRequired[Number | str]
+    """Right spacing; accepts a spacing unit, integer, decimal, or CSS string."""
+    bottom: NotRequired[Number | str]
+    """Bottom spacing; accepts a spacing unit, integer, decimal, or CSS string."""
+    left: NotRequired[Number | str]
+    """Left spacing; accepts a spacing unit, integer, decimal, or CSS string."""
+    x: NotRequired[Number | str]
+    """Horizontal spacing; accepts a spacing unit, integer, decimal, or CSS string."""
+    y: NotRequired[Number | str]
+    """Vertical spacing; accepts a spacing unit, integer, decimal, or CSS string."""
 
 
 class Border(TypedDict):
@@ -257,8 +261,8 @@ class Card(WidgetComponentBase):
     """
     size: Literal["sm", "md", "lg", "full"] | None = None
     """Visual size of the card; accepts a size token. No preset default is documented."""
-    padding: float | str | Spacing | None = None
-    """Inner spacing of the card; spacing unit, CSS string, or padding object."""
+    padding: Number | str | Spacing | None = None
+    """Inner spacing of the card; spacing unit, integer/decimal, CSS string, or padding object."""
     status: WidgetStatus | None = None
     """Optional status header displayed above the card."""
     collapsed: bool | None = None
@@ -303,8 +307,8 @@ class Text(WidgetComponentBase):
     """
     weight: Literal["normal", "medium", "semibold", "bold"] | None = None
     """Font weight; accepts a font weight token."""
-    width: float | str | None = None
-    """Constrain the text container width; px or CSS string."""
+    width: Number | str | None = None
+    """Constrain the text container width; px value, integer/decimal, or CSS string."""
     size: TextSize | None = None
     """Size of the text; accepts a text size token."""
     textAlign: TextAlign | None = None
@@ -404,12 +408,12 @@ class BoxBase(BaseModel):
     """Flex growth/shrink factor."""
     gap: int | str | None = None
     """Gap between direct children; spacing unit or CSS string."""
-    height: float | str | None = None
-    """Explicit height; px or CSS string."""
-    width: float | str | None = None
-    """Explicit width; px or CSS string."""
-    size: float | str | None = None
-    """Shorthand to set both width and height; px or CSS string."""
+    height: Number | str | None = None
+    """Explicit height; px value, integer/decimal, or CSS string."""
+    width: Number | str | None = None
+    """Explicit width; px value, integer/decimal, or CSS string."""
+    size: Number | str | None = None
+    """Shorthand to set both width and height; px value, integer/decimal, or CSS string."""
     minHeight: int | str | None = None
     """Minimum height; px or CSS string."""
     minWidth: int | str | None = None
@@ -422,10 +426,10 @@ class BoxBase(BaseModel):
     """Maximum width; px or CSS string."""
     maxSize: int | str | None = None
     """Shorthand to set both maxWidth and maxHeight; px or CSS string."""
-    padding: float | str | Spacing | None = None
-    """Inner padding; spacing unit, CSS string, or padding object."""
-    margin: float | str | Spacing | None = None
-    """Outer margin; spacing unit, CSS string, or margin object."""
+    padding: Number | str | Spacing | None = None
+    """Inner padding; spacing unit, integer/decimal, CSS string, or padding object."""
+    margin: Number | str | Spacing | None = None
+    """Outer margin; spacing unit, integer/decimal, CSS string, or margin object."""
     border: int | Border | Borders | None = None
     """Border applied to the container; px or border object/shorthand."""
     radius: RadiusValue | None = None
@@ -437,8 +441,8 @@ class BoxBase(BaseModel):
 
     Primitive color token: e.g. `red-100`, `blue-900`, `gray-500`
     """
-    aspectRatio: float | str | None = None
-    """Aspect ratio of the box (e.g., 16/9); number or CSS string."""
+    aspectRatio: Number | str | None = None
+    """Aspect ratio of the box (e.g., 16/9); integer/decimal or CSS string."""
 
 
 class Box(WidgetComponentBase, BoxBase):
@@ -557,8 +561,8 @@ class Image(WidgetComponentBase):
     """Maximum width; px or CSS string."""
     maxSize: int | str | None = None
     """Shorthand to set both maxWidth and maxHeight; px or CSS string."""
-    margin: int | str | Spacing | None = None
-    """Outer margin; spacing unit, CSS string, or margin object."""
+    margin: Number | str | Spacing | None = None
+    """Outer margin; spacing unit, integer/decimal, CSS string, or margin object."""
     background: str | ThemeColor | None = None
     """Background color; accepts background color token, a primitive color token, a CSS string, or theme-aware `{ light, dark }`.
 
@@ -566,8 +570,8 @@ class Image(WidgetComponentBase):
 
     Primitive color token: e.g. `red-100`, `blue-900`, `gray-500`
     """
-    aspectRatio: float | str | None = None
-    """Aspect ratio of the box (e.g., 16/9); number or CSS string."""
+    aspectRatio: Number | str | None = None
+    """Aspect ratio of the box (e.g., 16/9); integer/decimal or CSS string."""
     flex: int | str | None = None
     """Flex growth/shrink factor."""
 
@@ -896,8 +900,8 @@ class Chart(WidgetComponentBase):
     """Maximum width; px or CSS string."""
     maxSize: int | str | None = None
     """Shorthand to set both maxWidth and maxHeight; px or CSS string."""
-    aspectRatio: float | str | None = None
-    """Aspect ratio of the chart area (e.g., 16/9); number or CSS string."""
+    aspectRatio: Number | str | None = None
+    """Aspect ratio of the chart area (e.g., 16/9); integer/decimal or CSS string."""
 
 
 class XAxisConfig(TypedDict):

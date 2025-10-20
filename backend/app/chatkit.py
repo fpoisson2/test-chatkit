@@ -116,6 +116,7 @@ from .image_utils import (
 from .vector_store import JsonVectorStoreService, SearchResult
 from .weather import fetch_weather
 from .widgets import WidgetLibraryService
+from .widgets.response_schema import build_widget_variables_schema
 
 logger = logging.getLogger("chatkit.server")
 
@@ -1866,30 +1867,12 @@ def _build_response_format_from_widget(
         # Extraire les variables du widget depuis response_widget
         widget_variables = response_widget.get("variables", {})
 
-        # Créer un schéma JSON basé sur les variables du widget
-        # Le schéma doit représenter un objet avec les propriétés correspondant aux variables
-        properties = {}
-        required = []
-
-        # Pour chaque variable du widget (ex: "image.alt", "image.src")
-        # On crée une propriété dans le schéma
-        for var_path in widget_variables.keys():
-            # Normaliser le chemin (remplacer les points par des underscores pour le schéma)
-            # mais garder la structure hiérarchique si nécessaire
-            parts = var_path.split(".")
-
-            # Pour simplifier, on crée une structure plate avec des underscores
-            # Ex: "image.alt" devient "image_alt"
-            safe_key = var_path.replace(".", "_")
-
-            properties[safe_key] = {
-                "type": "string",
-                "description": f"Valeur pour {var_path}"
-            }
-            required.append(safe_key)
+        schema: dict[str, Any] | None = None
+        if isinstance(widget_variables, Mapping):
+            schema = build_widget_variables_schema(widget_variables)
 
         # Si aucune variable n'est définie, créer un schéma pour le widget complet
-        if not properties:
+        if not schema:
             # Utiliser la définition du widget elle-même comme schéma
             # Le LLM devra générer un JSON conforme à la structure du widget
             try:
@@ -1920,14 +1903,7 @@ def _build_response_format_from_widget(
                     exc_info=exc,
                 )
                 return None
-        else:
-            # Créer un schéma personnalisé basé sur les variables
-            schema = {
-                "type": "object",
-                "properties": properties,
-                "required": required,
-                "additionalProperties": False
-            }
+        # Sinon, `schema` contient le schéma personnalisé basé sur les variables
 
         # Construire le response_format
         widget_name = widget_entry.title or slug
