@@ -3229,6 +3229,14 @@ const WorkflowBuilderPage = () => {
   }, [conditionGraphError]);
 
   useEffect(() => {
+    if (isPropertiesPanelOpen) {
+      if (autoSaveTimeoutRef.current !== null) {
+        clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = null;
+      }
+      return;
+    }
+
     if (
       !hasPendingChanges ||
       disableSave ||
@@ -3262,6 +3270,7 @@ const WorkflowBuilderPage = () => {
     disableSave,
     handleSave,
     hasPendingChanges,
+    isPropertiesPanelOpen,
     loading,
     saveState,
     selectedWorkflowId,

@@ -491,7 +491,11 @@ describe("WorkflowBuilderPage", () => {
       ),
     ).toBe(false);
 
-  await screen.findByText(/modifications enregistrées automatiquement/i);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /fermer le panneau de propriétés/i }),
+    );
+
+    await screen.findByText(/modifications enregistrées automatiquement/i);
   });
 
   test("permet d'ajouter un bloc message assistant", async () => {
@@ -715,6 +719,10 @@ describe("WorkflowBuilderPage", () => {
       expect(screen.queryByRole("region", { name: /variables du widget/i })).not.toBeInTheDocument();
     });
 
+    fireEvent.click(
+      await screen.findByRole("button", { name: /fermer le panneau de propriétés/i }),
+    );
+
     await screen.findByText(/modifications enregistrées automatiquement/i, { timeout: 4000 });
 
     const putCall = fetchMock.mock.calls.find(
@@ -788,6 +796,10 @@ describe("WorkflowBuilderPage", () => {
         ),
       ).toBe(true);
     });
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /fermer le panneau de propriétés/i }),
+    );
 
     const putCall = fetchMock.mock.calls.find(
       ([input, init]) =>
