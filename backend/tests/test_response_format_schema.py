@@ -5,6 +5,7 @@ BaseModel = pydantic.BaseModel
 
 from backend.app.chatkit import (
     _build_output_type_from_response_format,
+    _collect_widget_bindings,
     _create_response_format_from_pydantic,
 )
 
@@ -118,3 +119,38 @@ def test_response_format_with_anyof_schema():
     assert "type" in property_schema or "anyOf" in property_schema
     if "anyOf" in property_schema:
         assert all("type" in option for option in property_schema["anyOf"])
+
+
+def test_collect_widget_bindings_keeps_link_and_media_fields():
+    definition = {
+        "type": "container",
+        "children": [
+            {
+                "type": "card",
+                "children": [
+                    {
+                        "type": "image",
+                        "src": "https://example.org/sample.png",
+                        "alt": "Illustration",
+                    },
+                    {
+                        "type": "link",
+                        "label": "Télécharger",
+                        "href": "https://example.org/download",
+                    },
+                ],
+            },
+            {
+                "type": "button",
+                "label": "Visiter",
+                "url": "https://example.org",
+            },
+        ],
+    }
+
+    bindings = _collect_widget_bindings(definition)
+
+    assert "image" in bindings
+    assert bindings["image"].value_key == "src"
+    assert "children.0.children.1.href" in bindings
+    assert "children.1.url" in bindings
