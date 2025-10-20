@@ -4809,6 +4809,22 @@ async def run_workflow(
             raise_step_error(step_key, title, exc)
 
         conversation_history.extend([item.to_input_item() for item in result.new_items])
+        if result.new_items:
+            try:
+                logger.debug(
+                    "Éléments ajoutés par l'agent %s : %s",
+                    agent_key,
+                    json.dumps(
+                        [item.to_input_item() for item in result.new_items],
+                        ensure_ascii=False,
+                        default=str,
+                    ),
+                )
+            except TypeError:
+                logger.debug(
+                    "Éléments ajoutés par l'agent %s non sérialisables en JSON",
+                    agent_key,
+                )
         logger.info(
             "Fin de l'exécution de l'agent %s (étape=%s)",
             metadata_for_images.get("agent_key")
@@ -5329,6 +5345,8 @@ async def run_workflow(
             run_context = Triage2Context(input_output_text=state["infos_manquantes"])
         elif agent_key == "get_data_from_user":
             run_context = GetDataFromUserContext(state_infos_manquantes=state["infos_manquantes"])
+        elif last_step_context is not None:
+            run_context = dict(last_step_context)
 
         # Injecter le contexte du bloc précédent dans l'historique de conversation
         if last_step_context is not None:
@@ -5390,6 +5408,32 @@ async def run_workflow(
                         ],
                     }
                 )
+
+        if last_step_context is not None:
+            logger.debug(
+                "Contexte transmis à l'agent %s (étape=%s) : %s",
+                agent_key,
+                current_node.slug,
+                json.dumps(last_step_context, ensure_ascii=False, default=str),
+            )
+
+        if conversation_history:
+            try:
+                logger.debug(
+                    "Historique envoyé à l'agent %s : %s",
+                    agent_key,
+                    json.dumps(conversation_history[-1], ensure_ascii=False, default=str),
+                )
+            except TypeError:
+                logger.debug(
+                    "Historique envoyé à l'agent %s (non sérialisable JSON)",
+                    agent_key,
+                )
+        logger.debug(
+            "État courant avant l'agent %s : %s",
+            agent_key,
+            json.dumps(state, ensure_ascii=False, default=str),
+        )
 
         result_stream = await run_agent_step(
             step_identifier,
@@ -5522,6 +5566,12 @@ async def run_workflow(
             ]
         else:
             state.pop("last_generated_image_urls", None)
+
+        logger.debug(
+            "État mis à jour après l'agent %s : %s",
+            agent_key,
+            json.dumps(state, ensure_ascii=False, default=str),
+        )
 
         if image_urls:
             last_step_context["generated_image_urls"] = image_urls
