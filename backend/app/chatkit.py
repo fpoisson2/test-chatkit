@@ -1656,46 +1656,23 @@ def _remove_additional_properties_from_schema(schema: dict[str, Any]) -> dict[st
     return schema
 
 
-class _StrictSchemaBase(BaseModel):
-    """
-    Classe de base garantissant la suppression d'additionalProperties dans
-    tous les schémas JSON générés (compatibilité Agents strict mode).
-    """
+if hasattr(BaseModel, "model_config"):
+    class _StrictSchemaBase(BaseModel):
+        """
+        Classe de base configurée avec extra=\"forbid\" pour Pydantic v2+.
+        """
 
-    model_config = {
-        "extra": "forbid",
-    }
+        model_config = {
+            "extra": "forbid",
+        }
+else:  # pragma: no cover - compatibilité Pydantic v1
+    class _StrictSchemaBase(BaseModel):  # type: ignore[no-redef]
+        """
+        Variante Pydantic v1 configurée pour refuser les champs supplémentaires.
+        """
 
-    class Config:  # pragma: no cover - compatibilité Pydantic v1
-        extra = "forbid"
-
-    @classmethod
-    def model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
-        base_method = getattr(BaseModel, "model_json_schema", None)  # pragma: no cover - dépend de Pydantic
-        if base_method is not None:
-            schema = base_method.__get__(cls, BaseModel)(*args, **kwargs)
-        else:  # pragma: no cover - compatibilité Pydantic v1
-            schema = BaseModel.schema.__get__(cls, BaseModel)(*args, **kwargs)
-        return _remove_additional_properties_from_schema(schema)
-
-    @classmethod
-    def schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
-        base_schema = BaseModel.schema.__get__(cls, BaseModel)
-        schema = base_schema(*args, **kwargs)
-        return _remove_additional_properties_from_schema(schema)
-
-    @classmethod
-    def __get_pydantic_json_schema__(  # type: ignore[override]
-        cls,
-        core_schema: Any,
-        handler: Any,
-    ) -> dict[str, Any]:
-        base_method = getattr(BaseModel, "__get_pydantic_json_schema__", None)  # pragma: no cover - dépend des versions
-        if base_method is not None:
-            schema = base_method.__get__(cls, BaseModel)(core_schema, handler)
-        else:  # pragma: no cover - compatibilité Pydantic v1
-            schema = handler(core_schema)
-        return _remove_additional_properties_from_schema(schema)
+        class Config:
+            extra = "forbid"
 
 
 def _patch_model_json_schema(model: type[BaseModel]) -> None:
@@ -2897,14 +2874,16 @@ def _build_widget_output_model(
     # Créer une classe de base avec la bonne configuration pour Pydantic v2
     # Cela garantit que le schéma JSON généré sera strict-compatible
     class StrictWidgetBase(_StrictSchemaBase):
-        model_config = {
-            **_StrictSchemaBase.model_config,
-            "populate_by_name": True,
-        }
+        if hasattr(_StrictSchemaBase, "model_config"):
+            model_config = {
+                **getattr(_StrictSchemaBase, "model_config", {}),
+                "populate_by_name": True,
+            }
 
-        class Config(_StrictSchemaBase.Config):  # pragma: no cover - Pydantic v1
-            allow_population_by_field_name = True
-            allow_population_by_alias = True
+        if hasattr(_StrictSchemaBase, "Config"):  # pragma: no cover - Pydantic v1
+            class Config(_StrictSchemaBase.Config):  # type: ignore[misc]
+                allow_population_by_field_name = True
+                allow_population_by_alias = True
 
     try:
         widget_model = create_model(
