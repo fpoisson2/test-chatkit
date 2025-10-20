@@ -154,7 +154,6 @@ export const buildNodeStyle = (
     minWidth: 160,
     textAlign: "center",
     overflow: "visible",
-    position: "relative",
     boxShadow: isSelected
       ? `${baseShadow}, ${ringShadow}, ${haloShadow}`
       : baseShadow,
