@@ -4457,6 +4457,28 @@ async def run_workflow(
                 return str(value)
         return str(value)
 
+    def _coerce_widget_binding_sequence_value(
+        items: Sequence[str], binding: _WidgetBinding
+    ) -> str | list[str]:
+        normalized_items = [item for item in items if isinstance(item, str)]
+        if not normalized_items:
+            return [] if isinstance(binding.sample, list) else ""
+
+        if isinstance(binding.sample, list):
+            return normalized_items
+
+        preferred_key = (binding.value_key or "").lower()
+        component_type = (binding.component_type or "").lower()
+
+        if preferred_key in {"src", "url", "href"} or component_type in {"image", "link"}:
+            return normalized_items[0]
+
+        if isinstance(binding.sample, str):
+            return "\n".join(normalized_items)
+
+        return normalized_items
+
+
     def _collect_widget_values_from_output(
         output: Any,
         *,
@@ -4520,7 +4542,10 @@ async def run_workflow(
             for suffix in ("value", "text", "src", "url", "href"):
                 key = f"{base_path}.{suffix}" if base_path else suffix
                 if key in collected:
-                    enriched[identifier] = collected[key]
+                    value: str | list[str] = collected[key]
+                    if isinstance(value, list):
+                        value = _coerce_widget_binding_sequence_value(value, binding)
+                    enriched[identifier] = value
                     if identifier != key:
                         consumed_keys.add(key)
                     break
