@@ -111,9 +111,7 @@ from .workflows import (
     resolve_start_auto_start_assistant_message,
 )
 from .image_utils import (
-    append_generated_image_links,
     build_agent_image_absolute_url,
-    format_generated_image_links,
     merge_generated_image_urls_into_payload,
     save_agent_image_file,
 )
@@ -5945,13 +5943,6 @@ async def run_workflow(
                     if should_append:
                         context_text_parts.append(serialized_structured.strip())
 
-            # Ajouter les URLs d'images générées si disponibles
-            if "generated_image_urls" in last_step_context:
-                image_urls_list = last_step_context["generated_image_urls"]
-                if isinstance(image_urls_list, list) and image_urls_list:
-                    for url in image_urls_list:
-                        context_text_parts.append(f"Image générée : {url}")
-
             # Ajouter un message assistant avec le contexte si on a du contenu
             if context_text_parts:
                 context_message = "\n\n".join(context_text_parts)
@@ -6007,7 +5998,7 @@ async def run_workflow(
             },
         )
         image_urls = _consume_generated_image_urls(step_identifier)
-        links_text = format_generated_image_links(image_urls)
+        normalized_image_urls = [url for url in image_urls if isinstance(url, str) and url.strip()]
 
         if agent_key == "triage":
             parsed, text = _structured_output_as_json(result_stream.final_output)
@@ -6017,18 +6008,18 @@ async def run_workflow(
             await record_step(
                 step_identifier,
                 title,
-                merge_generated_image_urls_into_payload(parsed, image_urls),
+                merge_generated_image_urls_into_payload(parsed, normalized_image_urls),
             )
             last_step_context = {
                 "agent_key": agent_key,
                 "output": result_stream.final_output,
                 "output_parsed": parsed,
                 "output_structured": parsed,
-                "output_text": append_generated_image_links(text, image_urls),
+                "output_text": (text or "").rstrip(),
             }
         elif agent_key == "get_data_from_web":
             text = result_stream.final_output_as(str)
-            display_text = append_generated_image_links(text, image_urls)
+            display_text = (text or "").rstrip()
             state["infos_manquantes"] = text
             await record_step(step_identifier, title, display_text)
             last_step_context = {
@@ -6044,18 +6035,18 @@ async def run_workflow(
             await record_step(
                 step_identifier,
                 title,
-                merge_generated_image_urls_into_payload(parsed, image_urls),
+                merge_generated_image_urls_into_payload(parsed, normalized_image_urls),
             )
             last_step_context = {
                 "agent_key": agent_key,
                 "output": result_stream.final_output,
                 "output_parsed": parsed,
                 "output_structured": parsed,
-                "output_text": append_generated_image_links(text, image_urls),
+                "output_text": (text or "").rstrip(),
             }
         elif agent_key == "get_data_from_user":
             text = result_stream.final_output_as(str)
-            display_text = append_generated_image_links(text, image_urls)
+            display_text = (text or "").rstrip()
             state["infos_manquantes"] = text
             state["should_finalize"] = True
             await record_step(step_identifier, title, display_text)
@@ -6066,7 +6057,7 @@ async def run_workflow(
             }
         elif agent_key == "r_dacteur":
             parsed, text = _structured_output_as_json(result_stream.final_output)
-            display_text = append_generated_image_links(text, image_urls)
+            display_text = (text or "").rstrip()
             final_output = {
                 "output_text": display_text,
                 "output_parsed": parsed,
@@ -6086,7 +6077,7 @@ async def run_workflow(
                 step_identifier,
                 title,
                 merge_generated_image_urls_into_payload(
-                    result_stream.final_output, image_urls
+                    result_stream.final_output, normalized_image_urls
                 ),
             )
             last_step_context = {
@@ -6094,7 +6085,7 @@ async def run_workflow(
                 "output": result_stream.final_output,
                 "output_parsed": parsed,
                 "output_structured": parsed,
-                "output_text": append_generated_image_links(text, image_urls),
+                "output_text": (text or "").rstrip(),
             }
 
         # Mémoriser la dernière sortie d'agent dans l'état global pour les transitions suivantes.
@@ -6131,17 +6122,8 @@ async def run_workflow(
             json.dumps(state, ensure_ascii=False, default=str),
         )
 
-        if image_urls:
-            last_step_context["generated_image_urls"] = image_urls
-            if links_text and on_stream_event is not None:
-                links_message = AssistantMessageItem(
-                    id=agent_context.generate_id("message"),
-                    thread_id=agent_context.thread.id,
-                    created_at=datetime.now(),
-                    content=[AssistantMessageContent(text=links_text)],
-                )
-                await on_stream_event(ThreadItemAddedEvent(item=links_message))
-                await on_stream_event(ThreadItemDoneEvent(item=links_message))
+        if normalized_image_urls:
+            last_step_context["generated_image_urls"] = normalized_image_urls
 
         await _apply_vector_store_ingestion(
             config=(current_node.parameters or {}).get("vector_store_ingestion"),
