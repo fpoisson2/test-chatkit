@@ -1656,6 +1656,48 @@ def _remove_additional_properties_from_schema(schema: dict[str, Any]) -> dict[st
     return schema
 
 
+class _StrictSchemaBase(BaseModel):
+    """
+    Classe de base garantissant la suppression d'additionalProperties dans
+    tous les schémas JSON générés (compatibilité Agents strict mode).
+    """
+
+    model_config = {
+        "extra": "forbid",
+    }
+
+    class Config:  # pragma: no cover - compatibilité Pydantic v1
+        extra = "forbid"
+
+    @classmethod
+    def model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
+        base_method = getattr(BaseModel, "model_json_schema", None)  # pragma: no cover - dépend de Pydantic
+        if base_method is not None:
+            schema = base_method.__get__(cls, BaseModel)(*args, **kwargs)
+        else:  # pragma: no cover - compatibilité Pydantic v1
+            schema = BaseModel.schema.__get__(cls, BaseModel)(*args, **kwargs)
+        return _remove_additional_properties_from_schema(schema)
+
+    @classmethod
+    def schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:  # type: ignore[override]
+        base_schema = BaseModel.schema.__get__(cls, BaseModel)
+        schema = base_schema(*args, **kwargs)
+        return _remove_additional_properties_from_schema(schema)
+
+    @classmethod
+    def __get_pydantic_json_schema__(  # type: ignore[override]
+        cls,
+        core_schema: Any,
+        handler: Any,
+    ) -> dict[str, Any]:
+        base_method = getattr(BaseModel, "__get_pydantic_json_schema__", None)  # pragma: no cover - dépend des versions
+        if base_method is not None:
+            schema = base_method.__get__(cls, BaseModel)(core_schema, handler)
+        else:  # pragma: no cover - compatibilité Pydantic v1
+            schema = handler(core_schema)
+        return _remove_additional_properties_from_schema(schema)
+
+
 def _patch_model_json_schema(model: type[BaseModel]) -> None:
     """
     Patcher les méthodes de génération de schéma Pydantic pour garantir
@@ -1674,7 +1716,7 @@ def _patch_model_json_schema(model: type[BaseModel]) -> None:
             schema = original_model_json_schema(*args, **kwargs)
             return _remove_additional_properties_from_schema(schema)
 
-        model.model_json_schema = patched_model_json_schema
+        model.model_json_schema = patched_model_json_schema  # type: ignore[assignment]
         patched = True
 
     if hasattr(model, "schema"):
@@ -1685,7 +1727,18 @@ def _patch_model_json_schema(model: type[BaseModel]) -> None:
             schema = original_schema(*args, **kwargs)
             return _remove_additional_properties_from_schema(schema)
 
-        model.schema = patched_schema
+        model.schema = patched_schema  # type: ignore[assignment]
+        patched = True
+
+    if hasattr(model, "__get_pydantic_json_schema__"):
+        original_get_schema = model.__get_pydantic_json_schema__
+
+        @classmethod
+        def patched_get_schema(cls, core_schema: Any, handler: Any) -> dict[str, Any]:
+            schema = original_get_schema(core_schema, handler)
+            return _remove_additional_properties_from_schema(schema)
+
+        model.__get_pydantic_json_schema__ = patched_get_schema  # type: ignore[assignment]
         patched = True
 
     if patched:
@@ -1822,13 +1875,13 @@ class _JsonSchemaOutputBuilder:
                 return dict[str, value_type]
             if additional:
                 return dict[str, Any]
-            model = create_model(sanitized, __module__=__name__)
+            model = create_model(sanitized, __module__=__name__, __base__=_StrictSchemaBase)
             _patch_model_json_schema(model)
             self._models[sanitized] = model
             return model
 
         if not properties:
-            model = create_model(sanitized, __module__=__name__)
+            model = create_model(sanitized, __module__=__name__, __base__=_StrictSchemaBase)
             _patch_model_json_schema(model)
             self._models[sanitized] = model
             return model
@@ -1863,7 +1916,12 @@ class _JsonSchemaOutputBuilder:
             else:
                 field_definitions[prop_name] = (field_type, Field(...))
 
-        model = create_model(sanitized, __module__=__name__, **field_definitions)
+        model = create_model(
+            sanitized,
+            __module__=__name__,
+            __base__=_StrictSchemaBase,
+            **field_definitions,
+        )
         _patch_model_json_schema(model)
         self._models[sanitized] = model
         return model
@@ -2838,11 +2896,15 @@ def _build_widget_output_model(
 
     # Créer une classe de base avec la bonne configuration pour Pydantic v2
     # Cela garantit que le schéma JSON généré sera strict-compatible
-    class StrictWidgetBase(BaseModel):
+    class StrictWidgetBase(_StrictSchemaBase):
         model_config = {
+            **_StrictSchemaBase.model_config,
             "populate_by_name": True,
-            "extra": "forbid",
         }
+
+        class Config(_StrictSchemaBase.Config):  # pragma: no cover - Pydantic v1
+            allow_population_by_field_name = True
+            allow_population_by_alias = True
 
     try:
         widget_model = create_model(
