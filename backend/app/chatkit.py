@@ -1609,6 +1609,53 @@ def _sanitize_model_name(name: str | None) -> str:
     return sanitized
 
 
+def _remove_additional_properties_from_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """
+    Supprime récursivement 'additionalProperties' d'un schéma JSON.
+
+    En mode strict, OpenAI Agents SDK interdit 'additionalProperties' -
+    le mode strict gère cela automatiquement.
+
+    Args:
+        schema: Le schéma JSON à nettoyer
+
+    Returns:
+        Le schéma nettoyé (modifié en place)
+    """
+    if not isinstance(schema, dict):
+        return schema
+
+    # Supprimer additionalProperties à ce niveau
+    schema.pop("additionalProperties", None)
+
+    # Traiter récursivement les propriétés
+    if "properties" in schema and isinstance(schema["properties"], dict):
+        for prop_schema in schema["properties"].values():
+            if isinstance(prop_schema, dict):
+                _remove_additional_properties_from_schema(prop_schema)
+
+    # Traiter récursivement les items (pour les tableaux)
+    if "items" in schema and isinstance(schema["items"], dict):
+        _remove_additional_properties_from_schema(schema["items"])
+
+    # Traiter récursivement les définitions
+    if "definitions" in schema or "$defs" in schema:
+        defs = schema.get("definitions") or schema.get("$defs")
+        if isinstance(defs, dict):
+            for def_schema in defs.values():
+                if isinstance(def_schema, dict):
+                    _remove_additional_properties_from_schema(def_schema)
+
+    # Traiter allOf, anyOf, oneOf
+    for key in ["allOf", "anyOf", "oneOf"]:
+        if key in schema and isinstance(schema[key], list):
+            for sub_schema in schema[key]:
+                if isinstance(sub_schema, dict):
+                    _remove_additional_properties_from_schema(sub_schema)
+
+    return schema
+
+
 def _create_response_format_from_pydantic(model: type[BaseModel]) -> dict[str, Any]:
     """
     Crée un response_format compatible OpenAI depuis un modèle Pydantic.
@@ -1628,6 +1675,9 @@ def _create_response_format_from_pydantic(model: type[BaseModel]) -> dict[str, A
         schema = model.schema()
     else:
         raise ValueError(f"Cannot generate JSON schema from model {model}")
+
+    # Nettoyer le schéma pour le mode strict (supprimer additionalProperties)
+    schema = _remove_additional_properties_from_schema(schema)
 
     # Extraire le nom du modèle
     model_name = getattr(model, "__name__", "Response")
@@ -2031,6 +2081,9 @@ def _build_response_format_from_widget(
                         "Impossible de générer le schéma JSON pour WidgetRoot"
                     )
                     return None
+
+                # Nettoyer le schéma pour le mode strict
+                schema = _remove_additional_properties_from_schema(schema)
             except Exception as exc:
                 logger.exception(
                     "Erreur lors de la génération du schéma JSON pour le widget '%s'",
@@ -2040,11 +2093,11 @@ def _build_response_format_from_widget(
                 return None
         else:
             # Créer un schéma personnalisé basé sur les variables
+            # Note: on ne met pas additionalProperties en mode strict
             schema = {
                 "type": "object",
                 "properties": properties,
                 "required": required,
-                "additionalProperties": False
             }
 
         # Construire le response_format
