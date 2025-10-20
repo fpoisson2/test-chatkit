@@ -24,6 +24,7 @@ from typing import (
 
 from agents import (
     Agent,
+    AgentOutputSchema,
     FunctionTool,
     ModelSettings,
     RunConfig,
@@ -2758,17 +2759,20 @@ def _build_widget_output_model(
 
     if hasattr(widget_model, "model_config"):
         widget_model.model_config["populate_by_name"] = True
+        widget_model.model_config["extra"] = "forbid"
     else:  # pragma: no cover - compatibilité Pydantic v1
         config = getattr(widget_model, "Config", None)
         if config is None:
             class Config:
                 allow_population_by_field_name = True
                 allow_population_by_alias = True
+                extra = "forbid"
 
             widget_model.Config = Config
         else:
             setattr(config, "allow_population_by_field_name", True)
             setattr(config, "allow_population_by_alias", True)
+            setattr(config, "extra", "forbid")
 
     return widget_model
 
@@ -3751,7 +3755,11 @@ async def run_workflow(
             overrides.pop("widget", None)
 
             # Définir le output_type depuis le modèle du widget
-            overrides["output_type"] = widget_config.output_model
+            # Wrapper le modèle avec AgentOutputSchema pour désactiver strict_json_schema
+            # car les modèles dynamiques créés avec create_model peuvent avoir additionalProperties
+            overrides["output_type"] = AgentOutputSchema(
+                widget_config.output_model, strict_json_schema=False
+            )
 
             # Créer aussi le response_format pour que l'API OpenAI utilise json_schema
             try:
