@@ -5275,7 +5275,13 @@ async def run_workflow(
         accumulated_text = ""
         response_format_override = getattr(agent, "_chatkit_response_format", None)
         if response_format_override is None:
-            response_format_override = _AGENT_RESPONSE_FORMATS.get(agent)
+            try:
+                response_format_override = _AGENT_RESPONSE_FORMATS.get(agent)
+            except TypeError:
+                logger.debug(
+                    "Agent %s non hachable, impossible de récupérer le response_format mémorisé.",
+                    getattr(agent, "name", "<inconnu>"),
+                )
         result = Runner.run_streamed(
             agent,
             input=[*conversation_history],
