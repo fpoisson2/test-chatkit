@@ -150,6 +150,8 @@ export const buildNodeStyle = (
     fontWeight: 600,
     minWidth: 160,
     textAlign: "center",
+    overflow: "visible",
+    position: "relative",
     outline: isSelected ? `2px solid ${NODE_COLORS[kind]}` : "none",
     outlineOffset: isSelected ? 4 : 0,
     boxShadow: isSelected ? `${baseShadow}, 0 0 0 6px ${NODE_GLOW_COLORS[kind]}` : baseShadow,
