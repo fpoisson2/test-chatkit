@@ -67,6 +67,33 @@ def test_validate_widget_prefers_type_adapter(monkeypatch: pytest.MonkeyPatch) -
     assert isinstance(result, _WidgetV2)
 
 
+def test_validate_widget_extracts_embedded_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.widgets import service as service_module
+
+    class _Adapter:
+        def __init__(self, annotation: object) -> None:
+            self.annotation = annotation
+
+        def validate_python(self, value: dict[str, object]) -> _WidgetV2:
+            assert value == {"type": "Text", "value": "Bonjour"}
+            return _WidgetV2(value)
+
+    monkeypatch.setattr(service_module, "TypeAdapter", lambda annotation: _Adapter(annotation))
+    monkeypatch.setattr(service_module, "parse_obj_as", None)
+    monkeypatch.setattr(service_module, "WidgetRoot", dict)
+
+    payload = (
+        "Widget description:\n\n"
+        "```json\n"
+        '{ "type": "Text", "value": "Bonjour" }\n'
+        "```"
+    )
+
+    result = WidgetLibraryService._validate_widget(payload)
+
+    assert isinstance(result, _WidgetV2)
+
+
 def test_validate_widget_falls_back_to_parse_obj_as(monkeypatch: pytest.MonkeyPatch) -> None:
     from backend.app.widgets import service as service_module
 
@@ -100,6 +127,25 @@ def test_from_document_accepts_json_string_definition() -> None:
 
     assert entry.slug == "etat-ampoule-schema"
     assert entry.definition == {"type": "Text", "value": "allumée"}
+
+
+def test_from_document_extracts_json_definition_from_text_block() -> None:
+    document = SimpleNamespace(
+        raw_document={
+            "slug": "etat-lumiere",
+            "definition": (
+                "Carte UI décrite en texte.\n\n"
+                "{\n  \"type\": \"Text\", \"value\": \"salon\"\n}\n"
+            ),
+        },
+        doc_id="etat-lumiere",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+
+    entry = WidgetLibraryService._from_document(document)
+
+    assert entry.definition == {"type": "Text", "value": "salon"}
 
 
 def test_from_document_rejects_invalid_json_string_definition() -> None:
