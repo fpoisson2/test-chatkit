@@ -3706,12 +3706,22 @@ async def run_workflow(
         overrides = dict(overrides_raw)
 
         if widget_config is not None and widget_config.output_model is not None:
+            # Retirer les anciens paramètres de widget pour éviter les conflits
             overrides.pop("response_format", None)
+            overrides.pop("response_widget", None)
+            overrides.pop("widget", None)
+
+            # Définir le output_type depuis le modèle du widget
             overrides["output_type"] = widget_config.output_model
+
             # Créer aussi le response_format pour que l'API OpenAI utilise json_schema
             try:
                 overrides["response_format"] = _create_response_format_from_pydantic(
                     widget_config.output_model
+                )
+                logger.debug(
+                    "response_format généré depuis le modèle widget pour l'étape %s",
+                    step.slug
                 )
             except Exception as exc:
                 logger.warning(
