@@ -477,6 +477,57 @@ const NodeInspector = ({
       isCancelled = true;
     };
   }, [kind, token, widgetNodeSource, trimmedWidgetNodeSlug]);
+
+  // État pour charger la définition du response_widget du bloc agent
+  const [responseWidgetDefinition, setResponseWidgetDefinition] = useState<Record<string, unknown> | null>(null);
+  const [responseWidgetDefinitionLoading, setResponseWidgetDefinitionLoading] = useState(false);
+  const [responseWidgetDefinitionError, setResponseWidgetDefinitionError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (kind !== "agent" || responseFormat.kind !== "widget" || responseWidgetSource !== "library") {
+      setResponseWidgetDefinition(null);
+      setResponseWidgetDefinitionError(null);
+      setResponseWidgetDefinitionLoading(false);
+      return;
+    }
+    if (!trimmedWidgetSlug || isTestEnvironment) {
+      setResponseWidgetDefinition(null);
+      setResponseWidgetDefinitionError(null);
+      setResponseWidgetDefinitionLoading(false);
+      return;
+    }
+    let isCancelled = false;
+    setResponseWidgetDefinitionLoading(true);
+    setResponseWidgetDefinitionError(null);
+    widgetLibraryApi
+      .getWidget(token, trimmedWidgetSlug)
+      .then((widget) => {
+        if (isCancelled) {
+          return;
+        }
+        setResponseWidgetDefinition(widget.definition);
+      })
+      .catch((error) => {
+        if (isCancelled) {
+          return;
+        }
+        setResponseWidgetDefinition(null);
+        setResponseWidgetDefinitionError(
+          error instanceof Error
+            ? error.message
+            : "Impossible de charger le widget sélectionné.",
+        );
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setResponseWidgetDefinitionLoading(false);
+        }
+      });
+    return () => {
+      isCancelled = true;
+    };
+  }, [kind, token, responseFormat.kind, responseWidgetSource, trimmedWidgetSlug]);
+
   const widgetSelectId = useId();
   const widgetNodeSlugSuggestionsId = useId();
   let fileSearchValidationMessage: string | null = null;
@@ -1339,6 +1390,13 @@ const NodeInspector = ({
                       Le widget sélectionné ({responseWidgetSlug}) sera conservé tant que la bibliothèque n'est
                       pas disponible.
                     </p>
+                  )}
+                  {trimmedWidgetSlug && !widgetsLoading && !widgetsError && (
+                    <WidgetJsonFormatInfo
+                      definition={responseWidgetDefinition}
+                      loading={responseWidgetDefinitionLoading}
+                      error={responseWidgetDefinitionError}
+                    />
                   )}
                 </>
               ) : (
@@ -2543,6 +2601,180 @@ const ToggleRow = ({ label, checked, onChange, disabled, help }: ToggleRowProps)
         ariaLabel={label}
         ariaDescribedBy={describedById}
       />
+    </div>
+  );
+};
+
+type WidgetJsonFormatInfoProps = {
+  definition: Record<string, unknown> | null;
+  loading: boolean;
+  error: string | null;
+};
+
+const WidgetJsonFormatInfo = ({ definition, loading, error }: WidgetJsonFormatInfoProps) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  if (loading) {
+    return (
+      <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "0.5rem" }}>
+        Chargement du format JSON…
+      </div>
+    );
+  }
+
+  if (error) {
+    return null; // Ne pas afficher d'erreur, c'est juste une aide optionnelle
+  }
+
+  if (!definition) {
+    return null;
+  }
+
+  const bindings = collectWidgetBindings(definition);
+  const bindingKeys = Object.keys(bindings);
+
+  if (bindingKeys.length === 0) {
+    return (
+      <div style={{
+        backgroundColor: "var(--bg-surface-secondary, #f8fafc)",
+        border: "1px solid var(--border-secondary, #e2e8f0)",
+        borderRadius: "0.5rem",
+        padding: "0.75rem",
+        marginTop: "0.5rem",
+        fontSize: "0.85rem"
+      }}>
+        <div style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
+          Ce widget n'a pas de champs dynamiques configurables.
+        </div>
+      </div>
+    );
+  }
+
+  // Construire l'exemple de JSON attendu
+  const jsonExample: Record<string, string> = {};
+  bindingKeys.forEach(key => {
+    const sanitizedKey = key.replace(/[^0-9a-zA-Z_]+/g, "_").replace(/^_+|_+$/g, "");
+    if (sanitizedKey) {
+      jsonExample[sanitizedKey] = `"valeur pour ${key}"`;
+    }
+  });
+
+  const jsonString = JSON.stringify(jsonExample, null, 2)
+    .replace(/"valeur pour ([^"]+)"/g, '"valeur pour $1"');
+
+  return (
+    <div style={{
+      backgroundColor: "var(--bg-surface-secondary, #f8fafc)",
+      border: "1px solid var(--border-secondary, #e2e8f0)",
+      borderRadius: "0.5rem",
+      padding: "0.75rem",
+      marginTop: "0.5rem",
+    }}>
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          width: "100%",
+          background: "none",
+          border: "none",
+          padding: 0,
+          cursor: "pointer",
+          fontSize: "0.85rem",
+          fontWeight: 500,
+          color: "var(--text-primary, #0f172a)",
+        }}
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <span style={{
+            transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
+            transition: "transform 0.2s",
+            display: "inline-block"
+          }}>
+            ▶
+          </span>
+          Format JSON attendu
+        </span>
+        <span style={{
+          backgroundColor: "var(--bg-primary, #3b82f6)",
+          color: "white",
+          fontSize: "0.75rem",
+          padding: "0.125rem 0.375rem",
+          borderRadius: "0.25rem",
+          fontWeight: 600
+        }}>
+          {bindingKeys.length}
+        </span>
+      </button>
+
+      {isExpanded && (
+        <div style={{ marginTop: "0.75rem" }}>
+          <div style={{
+            fontSize: "0.8rem",
+            color: "var(--text-muted)",
+            marginBottom: "0.5rem"
+          }}>
+            Champs dynamiques disponibles :
+          </div>
+          <ul style={{
+            margin: "0 0 0.75rem 0",
+            paddingLeft: "1.5rem",
+            fontSize: "0.85rem",
+            color: "var(--text-secondary, #475569)"
+          }}>
+            {bindingKeys.sort().map(key => {
+              const sanitizedKey = key.replace(/[^0-9a-zA-Z_]+/g, "_").replace(/^_+|_+$/g, "");
+              return (
+                <li key={key} style={{ marginBottom: "0.25rem" }}>
+                  <code style={{
+                    backgroundColor: "var(--bg-code, #f1f5f9)",
+                    padding: "0.125rem 0.375rem",
+                    borderRadius: "0.25rem",
+                    fontSize: "0.8rem",
+                    fontFamily: "monospace"
+                  }}>
+                    {sanitizedKey}
+                  </code>
+                  {sanitizedKey !== key && (
+                    <span style={{ color: "var(--text-muted)", fontSize: "0.75rem", marginLeft: "0.25rem" }}>
+                      (pour {key})
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          <div style={{
+            fontSize: "0.8rem",
+            color: "var(--text-muted)",
+            marginBottom: "0.5rem"
+          }}>
+            Exemple de JSON à générer par l'agent :
+          </div>
+          <pre style={{
+            backgroundColor: "var(--bg-code, #1e293b)",
+            color: "var(--text-code, #e2e8f0)",
+            padding: "0.75rem",
+            borderRadius: "0.375rem",
+            fontSize: "0.8rem",
+            fontFamily: "monospace",
+            overflowX: "auto",
+            margin: 0,
+          }}>
+            {jsonString}
+          </pre>
+          <div style={{
+            fontSize: "0.75rem",
+            color: "var(--text-muted)",
+            marginTop: "0.5rem",
+            fontStyle: "italic"
+          }}>
+            Note : Les clés avec des caractères spéciaux sont normalisées (points remplacés par underscores).
+          </div>
+        </div>
+      )}
     </div>
   );
 };
