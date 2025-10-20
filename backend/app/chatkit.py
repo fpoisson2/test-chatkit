@@ -200,6 +200,7 @@ class ChatKitRequestContext:
     user_id: str | None
     email: str | None
     authorization: str | None = None
+    public_base_url: str | None = None
 
     def trace_metadata(self) -> dict[str, str]:
         """Retourne des métadonnées de trace compatibles avec l'Agents SDK."""
@@ -4112,6 +4113,7 @@ async def run_workflow(
             "thread_id": metadata.get("thread_id"),
             "step_key": metadata.get("step_key"),
             "user_id": metadata.get("user_id"),
+            "backend_public_base_url": metadata.get("backend_public_base_url"),
         }
         if context is None:
             context = dict(base_context)
@@ -4176,9 +4178,13 @@ async def run_workflow(
                 user_id=str(token_user) if token_user else None,
                 thread_id=raw_thread_id,
             )
+            base_url = (
+                context.get("backend_public_base_url")
+                or get_settings().backend_public_base_url
+            )
             absolute_file_url = build_agent_image_absolute_url(
                 local_file_url,
-                base_url=get_settings().backend_public_base_url,
+                base_url=base_url,
                 token=token,
             )
         payload = {
@@ -4482,6 +4488,15 @@ async def run_workflow(
         if request_context is not None:
             metadata_for_images.setdefault(
                 "user_id", getattr(request_context, "user_id", None)
+            )
+            metadata_for_images.setdefault(
+                "backend_public_base_url",
+                getattr(request_context, "public_base_url", None),
+            )
+
+        if not metadata_for_images.get("backend_public_base_url"):
+            metadata_for_images["backend_public_base_url"] = (
+                self._settings.backend_public_base_url
             )
 
         logger.info(

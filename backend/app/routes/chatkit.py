@@ -317,10 +317,14 @@ async def chatkit_endpoint(
 
     server = get_chatkit_server()
     payload = await request.body()
+    base_url = str(request.base_url).rstrip("/")
+    if not base_url:
+        base_url = get_settings().backend_public_base_url
     context = ChatKitRequestContext(
         user_id=str(current_user.id),
         email=current_user.email,
         authorization=request.headers.get("Authorization"),
+        public_base_url=base_url,
     )
 
     result = await server.process(payload, context)
