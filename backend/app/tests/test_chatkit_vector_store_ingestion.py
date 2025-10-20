@@ -936,6 +936,31 @@ def test_json_vector_store_node_uses_structured_output_by_default(
     assert sessions and sessions[0].committed is True
 
 
+def test_json_vector_store_node_accepts_structured_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls, sessions = _execute_json_vector_store_workflow(
+        monkeypatch,
+        storage_parameters={
+            "vector_store_slug": "demo-store",
+            "doc_id_expression": "input.output_structured.doc_id",
+            "document_expression": "input.output_structured.record",
+        },
+        runner_payload={
+            "doc_id": "alias-doc",
+            "record": {"title": "Nouvelle fiche"},
+        },
+    )
+
+    assert len(calls) == 1
+    slug, doc_id, payload, metadata = calls[0]
+    assert slug == "demo-store"
+    assert doc_id == "alias-doc"
+    assert payload == {"title": "Nouvelle fiche"}
+    assert metadata["workflow_step"] == "store-json"
+    assert metadata["workflow_step_title"] == "Sauvegarde"
+
+    assert sessions and sessions[0].committed is True
+
+
 def test_json_vector_store_node_generates_identifier_when_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

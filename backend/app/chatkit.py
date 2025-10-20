@@ -3380,7 +3380,13 @@ def _resolve_watch_payload(
     context: Any, steps: Sequence["WorkflowStepSummary"]
 ) -> Any:
     if isinstance(context, Mapping):
-        for key in ("output_parsed", "output_text", "output", "assistant_message"):
+        for key in (
+            "output_structured",
+            "output_parsed",
+            "output_text",
+            "output",
+            "assistant_message",
+        ):
             candidate = context.get(key)
             if candidate not in (None, "", {}):
                 return candidate
@@ -4151,7 +4157,9 @@ async def run_workflow(
 
         doc_id = str(doc_id_value).strip() if doc_id_value is not None else ""
         if not doc_id:
-            parsed_context = step_context.get("output_parsed")
+            parsed_context = step_context.get("output_structured")
+            if not isinstance(parsed_context, dict):
+                parsed_context = step_context.get("output_parsed")
             if isinstance(parsed_context, dict):
                 for key in ("doc_id", "id", "slug", "reference", "uid"):
                     candidate = parsed_context.get(key)
@@ -4193,7 +4201,7 @@ async def run_workflow(
                 )
 
         if document_value is None:
-            for candidate_key in ("output_parsed", "output", "output_text"):
+            for candidate_key in ("output_structured", "output_parsed", "output", "output_text"):
                 candidate_value = step_context.get(candidate_key)
                 mapping = _to_mapping(candidate_value, purpose="document")
                 if mapping is not None:
@@ -4568,7 +4576,7 @@ async def run_workflow(
             resolved[variable_id] = value
 
         if step_context:
-            for key in ("output_parsed", "output"):
+            for key in ("output_structured", "output_parsed", "output"):
                 if key not in step_context:
                     continue
                 auto_values = _collect_widget_values_from_output(
@@ -5382,6 +5390,7 @@ async def run_workflow(
                 "agent_key": agent_key,
                 "output": result_stream.final_output,
                 "output_parsed": parsed,
+                "output_structured": parsed,
                 "output_text": append_generated_image_links(text, image_urls),
             }
         elif agent_key == "get_data_from_web":
@@ -5408,6 +5417,7 @@ async def run_workflow(
                 "agent_key": agent_key,
                 "output": result_stream.final_output,
                 "output_parsed": parsed,
+                "output_structured": parsed,
                 "output_text": append_generated_image_links(text, image_urls),
             }
         elif agent_key == "get_data_from_user":
@@ -5424,12 +5434,17 @@ async def run_workflow(
         elif agent_key == "r_dacteur":
             parsed, text = _structured_output_as_json(result_stream.final_output)
             display_text = append_generated_image_links(text, image_urls)
-            final_output = {"output_text": display_text, "output_parsed": parsed}
+            final_output = {
+                "output_text": display_text,
+                "output_parsed": parsed,
+                "output_structured": parsed,
+            }
             await record_step(step_identifier, title, final_output["output_text"])
             last_step_context = {
                 "agent_key": agent_key,
                 "output": result_stream.final_output,
                 "output_parsed": parsed,
+                "output_structured": parsed,
                 "output_text": display_text,
             }
         else:
@@ -5445,6 +5460,7 @@ async def run_workflow(
                 "agent_key": agent_key,
                 "output": result_stream.final_output,
                 "output_parsed": parsed,
+                "output_structured": parsed,
                 "output_text": append_generated_image_links(text, image_urls),
             }
 
