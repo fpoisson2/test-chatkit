@@ -1656,6 +1656,42 @@ def _remove_additional_properties_from_schema(schema: dict[str, Any]) -> dict[st
     return schema
 
 
+def _patch_model_json_schema(model: type[BaseModel]) -> None:
+    """
+    Patcher les méthodes de génération de schéma Pydantic pour garantir
+    la compatibilité avec le mode strict de l'Agents SDK.
+    """
+    if getattr(model, "__chatkit_schema_patched__", False):
+        return
+
+    patched = False
+
+    if hasattr(model, "model_json_schema"):
+        original_model_json_schema = model.model_json_schema
+
+        @classmethod
+        def patched_model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            schema = original_model_json_schema(*args, **kwargs)
+            return _remove_additional_properties_from_schema(schema)
+
+        model.model_json_schema = patched_model_json_schema
+        patched = True
+
+    if hasattr(model, "schema"):
+        original_schema = model.schema
+
+        @classmethod
+        def patched_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:
+            schema = original_schema(*args, **kwargs)
+            return _remove_additional_properties_from_schema(schema)
+
+        model.schema = patched_schema
+        patched = True
+
+    if patched:
+        setattr(model, "__chatkit_schema_patched__", True)
+
+
 def _create_response_format_from_pydantic(model: type[BaseModel]) -> dict[str, Any]:
     """
     Crée un response_format compatible OpenAI depuis un modèle Pydantic.
@@ -1787,13 +1823,13 @@ class _JsonSchemaOutputBuilder:
             if additional:
                 return dict[str, Any]
             model = create_model(sanitized, __module__=__name__)
-            self._patch_model_json_schema(model)
+            _patch_model_json_schema(model)
             self._models[sanitized] = model
             return model
 
         if not properties:
             model = create_model(sanitized, __module__=__name__)
-            self._patch_model_json_schema(model)
+            _patch_model_json_schema(model)
             self._models[sanitized] = model
             return model
 
@@ -1828,7 +1864,7 @@ class _JsonSchemaOutputBuilder:
                 field_definitions[prop_name] = (field_type, Field(...))
 
         model = create_model(sanitized, __module__=__name__, **field_definitions)
-        self._patch_model_json_schema(model)
+        _patch_model_json_schema(model)
         self._models[sanitized] = model
         return model
 
@@ -2821,17 +2857,8 @@ def _build_widget_output_model(
         )
         return None
 
-    # Patcher la méthode model_json_schema pour supprimer additionalProperties
-    # afin de rendre le modèle compatible avec le mode strict de l'OpenAI Agents SDK
-    if hasattr(widget_model, "model_json_schema"):
-        original_model_json_schema = widget_model.model_json_schema
-
-        @classmethod
-        def patched_model_json_schema(cls, **kwargs):
-            schema = original_model_json_schema(**kwargs)
-            return _remove_additional_properties_from_schema(schema)
-
-        widget_model.model_json_schema = patched_model_json_schema
+    # Patcher la génération de schéma pour supprimer additionalProperties
+    _patch_model_json_schema(widget_model)
 
     # Pour Pydantic v1, ajouter la configuration compatible
     if not hasattr(widget_model, "model_config"):  # pragma: no cover - compatibilité Pydantic v1
