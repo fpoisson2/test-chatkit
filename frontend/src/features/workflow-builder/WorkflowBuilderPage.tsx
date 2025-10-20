@@ -4309,6 +4309,7 @@ const WorkflowBuilderPage = () => {
                   defaultEdgeOptions={defaultEdgeOptions}
                   connectionLineStyle={connectionLineStyle}
                   selectionOnDrag={!isMobileLayout}
+                  panOnDrag={isMobileLayout ? true : [1, 2]}
                   multiSelectionKeyCode={['Meta', 'Control']}
                   onSelectionChange={handleSelectionChange}
                   style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
