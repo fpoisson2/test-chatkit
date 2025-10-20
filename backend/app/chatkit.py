@@ -3760,12 +3760,10 @@ async def run_workflow(
             overrides.pop("response_widget", None)
             overrides.pop("widget", None)
 
-            # Définir le output_type depuis le modèle du widget
-            # Le modèle est maintenant créé avec une base StrictWidgetBase qui configure
-            # extra="forbid" pour être compatible avec le strict JSON schema d'OpenAI
-            overrides["output_type"] = widget_config.output_model
+            # NE PAS définir output_type car cela cause des problèmes de double-wrapping
+            # avec AgentOutputSchema dans le SDK. À la place, utiliser seulement response_format.
 
-            # Créer aussi le response_format pour que l'API OpenAI utilise json_schema
+            # Créer le response_format pour que l'API OpenAI utilise json_schema
             try:
                 overrides["response_format"] = _create_response_format_from_pydantic(
                     widget_config.output_model
