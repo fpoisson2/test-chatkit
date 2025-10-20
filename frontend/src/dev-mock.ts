@@ -406,10 +406,15 @@ export const setupMockApi = () => {
 
 // Active les mocks en mode développement
 export const enableDevMocks = () => {
-  if (import.meta.env.DEV) {
+  // Vérifier si les mocks doivent être activés
+  const useMockApi = import.meta.env.VITE_USE_MOCK_API?.toLowerCase() === 'true';
+
+  if (import.meta.env.DEV && useMockApi) {
     setupMockAuth();
     setupMockApi();
     console.log('🚀 Dev mocks enabled - Workflow Builder ready for testing!');
     console.log('📍 Navigate to: http://localhost:5183/workflows');
+  } else if (import.meta.env.DEV) {
+    console.log('ℹ️  Dev mocks disabled - Using real backend API');
   }
 };
