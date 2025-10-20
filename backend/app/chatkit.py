@@ -1791,6 +1791,123 @@ def _coerce_agent_tools(
     return []
 
 
+def _build_response_format_from_widget(
+    response_widget: dict[str, Any]
+) -> dict[str, Any] | None:
+    """
+    Construit un response_format à partir d'une configuration response_widget.
+
+    Args:
+        response_widget: Configuration du widget (avec 'source', 'slug', etc.)
+
+    Returns:
+        Un dictionnaire response_format compatible ou None si impossible
+    """
+    if not isinstance(response_widget, dict):
+        return None
+
+    source = response_widget.get("source")
+    if source != "library":
+        # Pour l'instant, on ne gère que les widgets de bibliothèque
+        logger.debug(
+            "response_widget avec source '%s' non géré, seule 'library' est supportée",
+            source,
+        )
+        return None
+
+    slug = response_widget.get("slug")
+    if not isinstance(slug, str) or not slug.strip():
+        logger.warning(
+            "response_widget de type 'library' sans slug valide : %s",
+            response_widget,
+        )
+        return None
+
+    # Importer le service de widgets
+    try:
+        from .widgets.service import WidgetLibraryService
+    except ImportError:
+        logger.warning(
+            "Impossible d'importer WidgetLibraryService pour traiter response_widget"
+        )
+        return None
+
+    # Récupérer le widget depuis la bibliothèque
+    try:
+        # Créer une session pour accéder à la base de données
+        session = SessionLocal()
+        try:
+            widget_service = WidgetLibraryService(session)
+            widget_entry = widget_service.get_widget(slug)
+        finally:
+            session.close()
+
+        if widget_entry is None:
+            logger.warning(
+                "Widget '%s' introuvable dans la bibliothèque",
+                slug,
+            )
+            return None
+
+        # Extraire le schéma JSON du widget
+        # Le widget est déjà validé, on peut générer son schéma
+        try:
+            from chatkit.widgets import WidgetRoot
+        except ImportError:
+            logger.warning(
+                "Impossible d'importer WidgetRoot pour générer le schéma du widget"
+            )
+            return None
+
+        # Générer le schéma JSON à partir du modèle Pydantic
+        try:
+            # Pydantic v2
+            if hasattr(WidgetRoot, "model_json_schema"):
+                schema = WidgetRoot.model_json_schema()
+            # Pydantic v1
+            elif hasattr(WidgetRoot, "schema"):
+                schema = WidgetRoot.schema()
+            else:
+                logger.warning(
+                    "Impossible de générer le schéma JSON pour WidgetRoot"
+                )
+                return None
+
+            # Construire le response_format
+            widget_name = widget_entry.title or slug
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": f"widget_{slug.replace('-', '_')}",
+                    "description": widget_entry.description or f"Widget {widget_name}",
+                    "schema": schema,
+                    "strict": True,
+                },
+            }
+
+            logger.info(
+                "response_format généré depuis le widget de bibliothèque '%s'",
+                slug,
+            )
+            return response_format
+
+        except Exception as exc:
+            logger.exception(
+                "Erreur lors de la génération du schéma JSON pour le widget '%s'",
+                slug,
+                exc_info=exc,
+            )
+            return None
+
+    except Exception as exc:
+        logger.exception(
+            "Erreur lors de la récupération du widget '%s' depuis la bibliothèque",
+            slug,
+            exc_info=exc,
+        )
+        return None
+
+
 def _build_agent_kwargs(
     base_kwargs: dict[str, Any], overrides: dict[str, Any] | None
 ) -> dict[str, Any]:
@@ -1799,11 +1916,13 @@ def _build_agent_kwargs(
         for key, value in overrides.items():
             merged[key] = value
 
-    # Les paramètres orientés interface utilisateur ne sont pas reconnus par
-    # l'Agents SDK. Ils proviennent du concepteur de workflow et doivent être
-    # retirés avant l'instanciation de l'agent afin d'éviter les erreurs de
-    # type lors de la création du modèle (ex. response_widget).
-    merged.pop("response_widget", None)
+    # Traiter response_widget et le convertir en response_format si nécessaire
+    response_widget = merged.pop("response_widget", None)
+    if response_widget is not None and "response_format" not in merged:
+        # Tenter de générer un response_format depuis le widget
+        generated_format = _build_response_format_from_widget(response_widget)
+        if generated_format is not None:
+            merged["response_format"] = generated_format
     if "model_settings" in merged:
         merged["model_settings"] = _coerce_model_settings(merged["model_settings"])
     if "tools" in merged:
