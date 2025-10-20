@@ -4496,6 +4496,22 @@ async def run_workflow(
                     return candidate.model_dump()
             return candidate
 
+        def _normalize_sequence_fields(
+            mapping: dict[str, str | list[str]]
+        ) -> dict[str, str | list[str]]:
+            if not mapping:
+                return mapping
+
+            normalized: dict[str, str | list[str]] = {}
+            for key, value in mapping.items():
+                if isinstance(value, list):
+                    suffix = key.rsplit(".", 1)[-1].lower()
+                    if suffix in {"src", "url", "href"}:
+                        normalized[key] = value[0] if value else ""
+                        continue
+                normalized[key] = value
+            return normalized
+
         def _walk(current: Any, path: str) -> None:
             current = _normalize(current)
             if isinstance(current, dict):
@@ -4526,6 +4542,8 @@ async def run_workflow(
 
         _walk(output, "")
 
+        collected = _normalize_sequence_fields(collected)
+
         if not bindings:
             return collected
 
@@ -4553,7 +4571,7 @@ async def run_workflow(
         for key in consumed_keys:
             enriched.pop(key, None)
 
-        return enriched
+        return _normalize_sequence_fields(enriched)
 
     async def _ingest_vector_store_document(
         slug: str,
