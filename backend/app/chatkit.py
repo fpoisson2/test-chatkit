@@ -4237,7 +4237,7 @@ async def run_workflow(
         )
         await _ingest_vector_store_document(slug, doc_id, document_mapping, metadata)
 
-    agent_image_tasks: dict[tuple[str, int], dict[str, Any]] = {}
+    agent_image_tasks: dict[tuple[str, int, str], dict[str, Any]] = {}
     agent_step_generated_images: dict[str, list[dict[str, Any]]] = {}
 
     def _sanitize_identifier(value: str, fallback: str) -> str:
@@ -4252,7 +4252,7 @@ async def run_workflow(
         task: ImageTask,
         *,
         metadata: dict[str, Any],
-    ) -> tuple[dict[str, Any], tuple[str, int]] | None:
+    ) -> tuple[dict[str, Any], tuple[str, int, str]] | None:
         call_identifier = getattr(task, "call_id", None)
         if not isinstance(call_identifier, str) or not call_identifier.strip():
             return None
@@ -4262,7 +4262,25 @@ async def run_workflow(
             output_index = int(output_index_raw)
         except (TypeError, ValueError):
             output_index = 0
-        key = (call_id, output_index)
+        raw_step_key = metadata.get("step_key")
+        if isinstance(raw_step_key, str):
+            canonical_step_key = raw_step_key.strip() or None
+        else:
+            canonical_step_key = None
+
+        step_identifier_meta = canonical_step_key or metadata.get("step_slug")
+        if isinstance(step_identifier_meta, str):
+            step_identifier_meta = step_identifier_meta.strip()
+        else:
+            step_identifier_meta = None
+        if not step_identifier_meta:
+            fallback_identifier = getattr(task, "id", None)
+            if isinstance(fallback_identifier, str):
+                step_identifier_meta = fallback_identifier.strip() or None
+        if not step_identifier_meta:
+            step_identifier_meta = f"{call_id}:{output_index}"
+
+        key = (call_id, output_index, step_identifier_meta)
         context = agent_image_tasks.get(key)
         base_context = {
             "call_id": call_id,
@@ -4272,7 +4290,7 @@ async def run_workflow(
             "agent_key": metadata.get("agent_key"),
             "agent_label": metadata.get("agent_label"),
             "thread_id": metadata.get("thread_id"),
-            "step_key": metadata.get("step_key"),
+            "step_key": canonical_step_key,
             "user_id": metadata.get("user_id"),
             "backend_public_base_url": metadata.get("backend_public_base_url"),
         }
@@ -4310,13 +4328,15 @@ async def run_workflow(
 
     async def _persist_agent_image(
         context: dict[str, Any],
-        key: tuple[str, int],
+        key: tuple[str, int, str],
         task: ImageTask,
         image: GeneratedImage,
     ) -> None:
         raw_thread_id = str(context.get("thread_id") or "unknown-thread")
         normalized_thread = _sanitize_identifier(raw_thread_id, "thread")
-        raw_doc_id = f"{normalized_thread}-{key[0]}-{key[1]}"
+        step_identifier_for_doc = context.get("step_key") or context.get("step_slug") or "step"
+        normalized_step_identifier = _sanitize_identifier(str(step_identifier_for_doc), "step")
+        raw_doc_id = f"{normalized_thread}-{key[0]}-{key[1]}-{normalized_step_identifier}"
         doc_id = _sanitize_identifier(raw_doc_id, f"{normalized_thread}-{uuid.uuid4().hex[:8]}")
         b64_payload = image.b64_json or ""
         partials = list(image.partials or [])
