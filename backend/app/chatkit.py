@@ -1608,6 +1608,43 @@ def _sanitize_model_name(name: str | None) -> str:
     return sanitized
 
 
+def _create_response_format_from_pydantic(model: type[BaseModel]) -> dict[str, Any]:
+    """
+    Crée un response_format compatible OpenAI depuis un modèle Pydantic.
+
+    Args:
+        model: Le modèle Pydantic à convertir
+
+    Returns:
+        Un dictionnaire response_format avec type='json_schema'
+    """
+    # Générer le schéma JSON depuis le modèle Pydantic
+    if hasattr(model, "model_json_schema"):
+        # Pydantic v2
+        schema = model.model_json_schema()
+    elif hasattr(model, "schema"):
+        # Pydantic v1
+        schema = model.schema()
+    else:
+        raise ValueError(f"Cannot generate JSON schema from model {model}")
+
+    # Extraire le nom du modèle
+    model_name = getattr(model, "__name__", "Response")
+    sanitized_name = _sanitize_model_name(model_name)
+
+    # Construire le response_format
+    response_format = {
+        "type": "json_schema",
+        "json_schema": {
+            "name": sanitized_name,
+            "schema": schema,
+            "strict": True,
+        }
+    }
+
+    return response_format
+
+
 def _lookup_known_output_type(name: str) -> type[BaseModel] | None:
     obj = globals().get(name)
     if isinstance(obj, type) and issubclass(obj, BaseModel):
@@ -3658,6 +3695,16 @@ async def run_workflow(
         if widget_config is not None and widget_config.output_model is not None:
             overrides.pop("response_format", None)
             overrides["output_type"] = widget_config.output_model
+            # Créer aussi le response_format pour que l'API OpenAI utilise json_schema
+            try:
+                overrides["response_format"] = _create_response_format_from_pydantic(
+                    widget_config.output_model
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Impossible de générer response_format depuis le modèle widget : %s",
+                    exc,
+                )
 
         if builder is None:
             if agent_key:
