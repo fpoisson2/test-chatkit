@@ -1,10 +1,78 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { MemoryRouter } from "react-router-dom";
 
+import type { ReactFlowInstance } from "reactflow";
+
+import { AUTO_SAVE_DELAY_MS } from "../../features/workflow-builder/utils";
 import WorkflowBuilderPage from "../WorkflowBuilderPage";
+
+const reactFlowMock = vi.hoisted(() => ({ latestProps: { current: null as any } }));
+
+vi.mock("reactflow", () => {
+  const React = require("react");
+  const { latestProps } = reactFlowMock;
+  const ReactFlowMock = (props: any) => {
+    latestProps.current = props;
+    React.useEffect(() => {
+      const instance = {
+        fitView: () => undefined,
+        project: (point: { x: number; y: number }) => point,
+        setViewport: () => undefined,
+        getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
+        getNodes: () => props.nodes ?? [],
+      } satisfies ReactFlowInstance;
+      props.onInit?.(instance);
+    }, [props.nodes, props.onInit]);
+    return <div data-testid="react-flow-canvas">{props.children}</div>;
+  };
+
+  return {
+    __esModule: true,
+    default: ReactFlowMock,
+    ReactFlowProvider: ({ children }: any) => <>{children}</>,
+    Background: () => null,
+    Controls: () => null,
+    MiniMap: () => null,
+    MarkerType: { ArrowClosed: "arrow-closed" },
+    addEdge: (edge: any, edges: any[]) => [...edges, { ...edge }],
+    useNodesState: (initial: any) => {
+      const [nodes, setNodes] = React.useState(initial);
+      const onNodesChange = React.useCallback((changes: any[]) => {
+        setNodes((current: any[]) =>
+          changes.reduce((acc, change) => {
+            if (change.type === "remove") {
+              return acc.filter((node) => node.id !== change.id);
+            }
+            if (change.type === "position" && change.position) {
+              return acc.map((node) =>
+                node.id === change.id ? { ...node, position: change.position } : node,
+              );
+            }
+            return acc;
+          }, current),
+        );
+      }, []);
+      return [nodes, setNodes, onNodesChange] as const;
+    },
+    useEdgesState: (initial: any) => {
+      const [edges, setEdges] = React.useState(initial);
+      const onEdgesChange = React.useCallback((changes: any[]) => {
+        setEdges((current: any[]) =>
+          changes.reduce((acc, change) => {
+            if (change.type === "remove") {
+              return acc.filter((edge) => edge.id !== change.id);
+            }
+            return acc;
+          }, current),
+        );
+      }, []);
+      return [edges, setEdges, onEdgesChange] as const;
+    },
+  };
+});
 
 const logoutMock = vi.hoisted(() => vi.fn());
 
@@ -308,6 +376,7 @@ describe("WorkflowBuilderPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     listWorkflowWidgetsMock.mockResolvedValue([]);
+    reactFlowMock.latestProps.current = null;
   });
 
   afterEach(() => {
@@ -539,6 +608,84 @@ describe("WorkflowBuilderPage", () => {
           node.kind === "assistant_message" && node.parameters?.message === "Bienvenue !",
       ),
     ).toBe(true);
+  });
+
+  test("déclenche l'auto-sauvegarde après la création d'une connexion", async () => {
+    const fetchMock = setupWorkflowApi();
+
+    renderWorkflowBuilder();
+
+    await waitFor(() => {
+      expect(reactFlowMock.latestProps.current).not.toBeNull();
+    });
+
+    const countSaveCalls = () =>
+      fetchMock.mock.calls.filter(
+        ([input, init]) =>
+          typeof input === "string" &&
+          input.endsWith(
+            `/api/workflows/${defaultWorkflowSummary.id}/versions/${draftVersionSummary.id}`,
+          ) &&
+          (init as RequestInit | undefined)?.method === "PUT",
+      ).length;
+
+    const initialSaves = countSaveCalls();
+
+    act(() => {
+      reactFlowMock.latestProps.current?.onConnect?.({
+        source: "agent-triage",
+        target: "end",
+      } as any);
+    });
+
+    await waitFor(
+      () => {
+        expect(countSaveCalls()).toBeGreaterThan(initialSaves);
+      },
+      { timeout: AUTO_SAVE_DELAY_MS + 1500 },
+    );
+  });
+
+  test("déclenche l'auto-sauvegarde après la suppression d'une connexion", async () => {
+    const fetchMock = setupWorkflowApi();
+    const user = userEvent.setup();
+
+    renderWorkflowBuilder();
+
+    await waitFor(() => {
+      expect(reactFlowMock.latestProps.current?.edges?.length ?? 0).toBeGreaterThan(0);
+    });
+
+    const getLatestProps = () => reactFlowMock.latestProps.current;
+
+    const countSaveCalls = () =>
+      fetchMock.mock.calls.filter(
+        ([input, init]) =>
+          typeof input === "string" &&
+          input.endsWith(
+            `/api/workflows/${defaultWorkflowSummary.id}/versions/${draftVersionSummary.id}`,
+          ) &&
+          (init as RequestInit | undefined)?.method === "PUT",
+      ).length;
+
+    const initialSaves = countSaveCalls();
+
+    const edgeToRemove = getLatestProps()?.edges?.[0];
+    expect(edgeToRemove).toBeDefined();
+
+    act(() => {
+      getLatestProps()?.onEdgeClick?.(null, edgeToRemove);
+    });
+
+    const removeButton = await screen.findByRole("button", { name: /supprimer cette connexion/i });
+    await user.click(removeButton);
+
+    await waitFor(
+      () => {
+        expect(countSaveCalls()).toBeGreaterThan(initialSaves);
+      },
+      { timeout: AUTO_SAVE_DELAY_MS + 1500 },
+    );
   });
 
   test("permet d'ajouter un bloc message utilisateur", async () => {
