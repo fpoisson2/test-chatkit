@@ -2235,12 +2235,15 @@ def _build_agent_kwargs(
 
     # Traiter response_widget et le convertir en response_format si nécessaire
     response_widget = merged.pop("response_widget", None)
+    sync_output_type = True
 
     if response_widget is not None and "response_format" not in merged:
         # Tenter de générer un response_format depuis le widget
         generated_format = _build_response_format_from_widget(response_widget)
         if generated_format is not None:
             merged["response_format"] = generated_format
+            merged.pop("output_type", None)
+            sync_output_type = False
     if "model_settings" in merged:
         merged["model_settings"] = _coerce_model_settings(merged["model_settings"])
     if "tools" in merged:
@@ -2249,16 +2252,20 @@ def _build_agent_kwargs(
         )
     if "response_format" in merged:
         response_format = merged.pop("response_format")
-        output_type = merged.get("output_type")
-        resolved = _build_output_type_from_response_format(
-            response_format,
-            fallback=output_type,
-        )
-        if resolved is not None:
-            merged["output_type"] = resolved
-        elif "output_type" not in base_kwargs and "output_type" in merged:
-            # Aucun type exploitable fourni, on retire la clé pour éviter les incohérences.
+        if sync_output_type:
+            output_type = merged.get("output_type")
+            resolved = _build_output_type_from_response_format(
+                response_format,
+                fallback=output_type,
+            )
+            if resolved is not None:
+                merged["output_type"] = resolved
+            elif "output_type" not in base_kwargs and "output_type" in merged:
+                # Aucun type exploitable fourni, on retire la clé pour éviter les incohérences.
+                merged.pop("output_type", None)
+        else:
             merged.pop("output_type", None)
+        merged["response_format"] = response_format
     return merged
 
 
