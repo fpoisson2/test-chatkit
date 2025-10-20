@@ -5134,6 +5134,36 @@ async def run_workflow(
         elif agent_key == "get_data_from_user":
             run_context = GetDataFromUserContext(state_infos_manquantes=state["infos_manquantes"])
 
+        # Injecter le contexte du bloc précédent dans l'historique de conversation
+        if last_step_context is not None:
+            context_text_parts: list[str] = []
+
+            # Ajouter le texte de sortie si disponible
+            if "output_text" in last_step_context:
+                context_text_parts.append(str(last_step_context["output_text"]))
+
+            # Ajouter les URLs d'images générées si disponibles
+            if "generated_image_urls" in last_step_context:
+                image_urls_list = last_step_context["generated_image_urls"]
+                if isinstance(image_urls_list, list) and image_urls_list:
+                    for url in image_urls_list:
+                        context_text_parts.append(f"Image générée : {url}")
+
+            # Ajouter un message assistant avec le contexte si on a du contenu
+            if context_text_parts:
+                context_message = "\n\n".join(context_text_parts)
+                conversation_history.append(
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": context_message,
+                            }
+                        ],
+                    }
+                )
+
         result_stream = await run_agent_step(
             step_identifier,
             title,
