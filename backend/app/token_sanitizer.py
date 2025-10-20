@@ -113,7 +113,7 @@ def sanitize_model_like(settings: T) -> T:
         return settings
 
     data = model_dump(mode="python", exclude_none=False, round_trip=True)
-    sanitized_data, removed = strip_max_token_fields(data)
+    sanitized_data, removed = sanitize_value(data)
     if not removed:
         return settings
 
