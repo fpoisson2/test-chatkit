@@ -10,7 +10,7 @@ import re
 import uuid
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import (
     Any,
     AsyncIterator,
@@ -72,6 +72,8 @@ from chatkit.types import (
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
+    GeneratedImage,
+    ImageTask,
     InferenceOptions,
     LockedStatus,
     ProgressUpdateEvent,
@@ -84,6 +86,8 @@ from chatkit.types import (
     ThreadStreamEvent,
     WidgetItem,
     WidgetRootUpdated,
+    WorkflowTaskAdded,
+    WorkflowTaskUpdated,
     UserMessageInput,
     UserMessageItem,
     UserMessageTextContent,
@@ -106,6 +110,8 @@ from .weather import fetch_weather
 from .widgets import WidgetLibraryService
 
 logger = logging.getLogger("chatkit.server")
+
+AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
 
 _WAIT_STATE_METADATA_KEY = "workflow_wait_for_user_input"
 
@@ -4062,6 +4068,121 @@ async def run_workflow(
         )
         await _ingest_vector_store_document(slug, doc_id, document_mapping, metadata)
 
+    agent_image_tasks: dict[tuple[str, int], dict[str, Any]] = {}
+
+    def _sanitize_identifier(value: str, fallback: str) -> str:
+        candidate = value.strip()
+        if not candidate:
+            return fallback
+        sanitized = re.sub(r"[^0-9A-Za-z_.-]", "-", candidate)
+        sanitized = sanitized.strip("-") or fallback
+        return sanitized[:190]
+
+    def _register_image_generation_task(
+        task: ImageTask,
+        *,
+        metadata: dict[str, Any],
+    ) -> tuple[dict[str, Any], tuple[str, int]] | None:
+        call_identifier = getattr(task, "call_id", None)
+        if not isinstance(call_identifier, str) or not call_identifier.strip():
+            return None
+        call_id = call_identifier.strip()
+        output_index_raw = getattr(task, "output_index", 0) or 0
+        try:
+            output_index = int(output_index_raw)
+        except (TypeError, ValueError):
+            output_index = 0
+        key = (call_id, output_index)
+        context = agent_image_tasks.get(key)
+        base_context = {
+            "call_id": call_id,
+            "output_index": output_index,
+            "step_slug": metadata.get("step_slug"),
+            "step_title": metadata.get("step_title"),
+            "agent_key": metadata.get("agent_key"),
+            "agent_label": metadata.get("agent_label"),
+            "thread_id": metadata.get("thread_id"),
+        }
+        if context is None:
+            context = dict(base_context)
+            context["created_at"] = datetime.now(timezone.utc).isoformat()
+            agent_image_tasks[key] = context
+            logger.info(
+                "Suivi d'une génération d'image (call_id=%s, index=%s, étape=%s)",
+                call_id,
+                output_index,
+                context.get("step_slug") or "inconnue",
+            )
+        else:
+            for entry_key, entry_value in base_context.items():
+                if entry_value is not None:
+                    context[entry_key] = entry_value
+        return context, key
+
+    async def _persist_agent_image(
+        context: dict[str, Any],
+        key: tuple[str, int],
+        task: ImageTask,
+        image: GeneratedImage,
+    ) -> None:
+        raw_thread_id = str(context.get("thread_id") or "unknown-thread")
+        normalized_thread = _sanitize_identifier(raw_thread_id, "thread")
+        raw_doc_id = f"{normalized_thread}-{key[0]}-{key[1]}"
+        doc_id = _sanitize_identifier(raw_doc_id, f"{normalized_thread}-{uuid.uuid4().hex[:8]}")
+        b64_payload = image.b64_json or ""
+        partials = list(image.partials or [])
+        payload = {
+            "thread_id": raw_thread_id,
+            "call_id": key[0],
+            "output_index": key[1],
+            "status": getattr(task, "status_indicator", None),
+            "step_slug": context.get("step_slug"),
+            "step_title": context.get("step_title"),
+            "agent_key": context.get("agent_key"),
+            "agent_label": context.get("agent_label"),
+            "image": {
+                "id": image.id,
+                "b64_json": b64_payload,
+                "data_url": image.data_url,
+                "image_url": image.image_url,
+                "output_format": image.output_format,
+                "background": image.background,
+                "quality": image.quality,
+                "size": image.size,
+                "partials": partials,
+            },
+        }
+        metadata = {
+            "thread_id": raw_thread_id,
+            "call_id": key[0],
+            "output_index": key[1],
+            "step_slug": context.get("step_slug"),
+            "step_title": context.get("step_title"),
+            "agent_key": context.get("agent_key"),
+            "agent_label": context.get("agent_label"),
+            "stored_at": datetime.now(timezone.utc).isoformat(),
+            "b64_length": len(b64_payload),
+            "partials_count": len(partials),
+        }
+        logger.info(
+            "Enregistrement de l'image générée dans %s (doc_id=%s, longueur_b64=%d)",
+            AGENT_IMAGE_VECTOR_STORE_SLUG,
+            doc_id,
+            len(b64_payload),
+        )
+        await _ingest_vector_store_document(
+            AGENT_IMAGE_VECTOR_STORE_SLUG,
+            doc_id,
+            payload,
+            metadata,
+        )
+        logger.info(
+            "Image %s enregistrée pour l'étape %s (call_id=%s)",
+            doc_id,
+            context.get("step_slug") or "inconnue",
+            key[0],
+        )
+
     def _evaluate_widget_variable_expression(
         expression: str, *, input_context: dict[str, Any] | None
     ) -> str | None:
@@ -4263,8 +4384,80 @@ async def run_workflow(
         agent_context: AgentContext[Any],
         run_context: Any | None = None,
         suppress_stream_events: bool = False,
+        step_metadata: dict[str, Any] | None = None,
     ) -> _WorkflowStreamResult:
         step_index = len(steps) + 1
+        metadata_for_images = dict(step_metadata or {})
+        metadata_for_images["step_slug"] = metadata_for_images.get("step_slug") or step_key
+        metadata_for_images["step_title"] = metadata_for_images.get("step_title") or title
+        if not metadata_for_images.get("agent_key"):
+            metadata_for_images["agent_key"] = getattr(agent, "name", None)
+        if not metadata_for_images.get("agent_label"):
+            metadata_for_images["agent_label"] = (
+                getattr(agent, "name", None) or getattr(agent, "model", None)
+            )
+        thread_meta = getattr(agent_context, "thread", None)
+        if not metadata_for_images.get("thread_id") and thread_meta is not None:
+            metadata_for_images["thread_id"] = getattr(thread_meta, "id", None)
+
+        logger.info(
+            "Démarrage de l'exécution de l'agent %s (étape=%s, index=%s)",
+            metadata_for_images.get("agent_key")
+            or metadata_for_images.get("agent_label")
+            or step_key,
+            metadata_for_images.get("step_slug"),
+            step_index,
+        )
+
+        async def _inspect_event_for_images(event: ThreadStreamEvent) -> None:
+            update = getattr(event, "update", None)
+            if not isinstance(update, (WorkflowTaskAdded, WorkflowTaskUpdated)):
+                return
+            task = getattr(update, "task", None)
+            if not isinstance(task, ImageTask):
+                return
+            registration = _register_image_generation_task(
+                task, metadata=metadata_for_images
+            )
+            if registration is None:
+                logger.debug(
+                    "Impossible de suivre la génération d'image pour %s : identifiant absent.",
+                    metadata_for_images.get("step_slug"),
+                )
+                return
+            context, key = registration
+            image = task.images[0] if task.images else None
+            status = getattr(task, "status_indicator", None) or "none"
+            partial_count = len(image.partials) if image and image.partials else 0
+            logger.info(
+                "Progression image (étape=%s, call_id=%s, statut=%s, partiels=%d)",
+                context.get("step_slug") or metadata_for_images.get("step_slug"),
+                context.get("call_id"),
+                status,
+                partial_count,
+            )
+            if (
+                status == "complete"
+                and image
+                and isinstance(image.b64_json, str)
+                and image.b64_json
+            ):
+                if context.get("last_stored_b64") == image.b64_json:
+                    logger.debug(
+                        "Image finale déjà enregistrée pour l'appel %s.",
+                        context.get("call_id"),
+                    )
+                    return
+                await _persist_agent_image(context, key, task, image)
+                context["last_stored_b64"] = image.b64_json
+                agent_image_tasks.pop(key, None)
+            elif status == "loading" and image and image.partials:
+                logger.debug(
+                    "Image partielle capturée pour l'appel %s (taille=%d).",
+                    context.get("call_id"),
+                    len(image.partials[-1]),
+                )
+
         if on_step_stream is not None:
             await on_step_stream(
                 WorkflowStepStreamUpdate(
@@ -4284,6 +4477,11 @@ async def run_workflow(
         )
         try:
             async for event in stream_agent_response(agent_context, result):
+                logger.debug(
+                    "Évènement %s reçu pour l'étape %s",
+                    getattr(event, "type", type(event).__name__),
+                    metadata_for_images.get("step_slug"),
+                )
                 if (
                     on_stream_event is not None
                     and _should_forward_agent_event(
@@ -4293,22 +4491,29 @@ async def run_workflow(
                     await on_stream_event(event)
                 if on_step_stream is not None:
                     delta_text = _extract_delta(event)
-                    if not delta_text:
-                        continue
-                    accumulated_text += delta_text
-                    await on_step_stream(
-                        WorkflowStepStreamUpdate(
-                            key=step_key,
-                            title=title,
-                            index=step_index,
-                            delta=delta_text,
-                            text=accumulated_text,
+                    if delta_text:
+                        accumulated_text += delta_text
+                        await on_step_stream(
+                            WorkflowStepStreamUpdate(
+                                key=step_key,
+                                title=title,
+                                index=step_index,
+                                delta=delta_text,
+                                text=accumulated_text,
+                            )
                         )
-                    )
+                await _inspect_event_for_images(event)
         except Exception as exc:  # pragma: no cover
             raise_step_error(step_key, title, exc)
 
         conversation_history.extend([item.to_input_item() for item in result.new_items])
+        logger.info(
+            "Fin de l'exécution de l'agent %s (étape=%s)",
+            metadata_for_images.get("agent_key")
+            or metadata_for_images.get("agent_label")
+            or step_key,
+            metadata_for_images.get("step_slug"),
+        )
         return result
 
     def _node_title(step: WorkflowStep) -> str:
@@ -4830,6 +5035,11 @@ async def run_workflow(
             agent_context=agent_context,
             run_context=run_context,
             suppress_stream_events=widget_config is not None,
+            step_metadata={
+                "agent_key": agent_key,
+                "step_slug": current_node.slug,
+                "step_title": title,
+            },
         )
 
         if agent_key == "triage":
