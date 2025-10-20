@@ -17,7 +17,7 @@ MAX_TOKEN_FIELD_NAMES = {
 }
 
 UNSUPPORTED_REASONING_FIELDS = {
-    # L'API ne reconnaît pas encore le réglage de verbosité du raisonnement.
+    # L'API attend la verbosité dans l'objet « text », pas sous « reasoning ».
     "verbosity",
 }
 

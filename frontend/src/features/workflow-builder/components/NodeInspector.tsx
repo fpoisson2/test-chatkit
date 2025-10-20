@@ -28,6 +28,7 @@ import {
   getWaitForUserInputMessage,
   getAgentReasoningEffort,
   getAgentReasoningSummary,
+  getAgentTextVerbosity,
   getAgentResponseFormat,
   getAgentImageGenerationConfig,
   getAgentShowSearchSources,
@@ -70,6 +71,13 @@ const reasoningSummaryOptions = [
   { value: "none", label: "Pas de résumé" },
   { value: "auto", label: "Résumé automatique" },
   { value: "detailed", label: "Résumé détaillé" },
+];
+
+const textVerbosityOptions = [
+  { value: "", label: "Comportement par défaut" },
+  { value: "low", label: "Verbosité faible" },
+  { value: "medium", label: "Verbosité moyenne" },
+  { value: "high", label: "Verbosité élevée" },
 ];
 
 const conditionModeOptions = [
@@ -154,6 +162,7 @@ export type NodeInspectorProps = {
   onAgentModelChange: (nodeId: string, value: string) => void;
   onAgentReasoningChange: (nodeId: string, value: string) => void;
   onAgentReasoningSummaryChange: (nodeId: string, value: string) => void;
+  onAgentTextVerbosityChange: (nodeId: string, value: string) => void;
   onAgentTemperatureChange: (nodeId: string, value: string) => void;
   onAgentTopPChange: (nodeId: string, value: string) => void;
   onAgentMaxOutputTokensChange: (nodeId: string, value: string) => void;
@@ -230,6 +239,7 @@ const NodeInspector = ({
   onAgentModelChange,
   onAgentReasoningChange,
   onAgentReasoningSummaryChange,
+  onAgentTextVerbosityChange,
   onAgentTemperatureChange,
   onAgentTopPChange,
   onAgentMaxOutputTokensChange,
@@ -300,11 +310,13 @@ const NodeInspector = ({
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
   const reasoningEffort = getAgentReasoningEffort(parameters);
+  const textVerbosity = getAgentTextVerbosity(parameters).trim();
   const responseFormat = getAgentResponseFormat(parameters);
   const temperature = getAgentTemperature(parameters);
   const topP = getAgentTopP(parameters);
   const rawReasoningSummary = getAgentReasoningSummary(parameters);
   const reasoningSummaryValue = rawReasoningSummary.trim() ? rawReasoningSummary : "none";
+  const textVerbosityValue = textVerbosity || "";
   const maxOutputTokens = getAgentMaxOutputTokens(parameters);
   const maxOutputTokensValue =
     typeof maxOutputTokens === "number" ? String(maxOutputTokens) : "";
@@ -1074,6 +1086,23 @@ const NodeInspector = ({
                   onChange={(event) => onAgentReasoningChange(node.id, event.target.value)}
                 >
                   {reasoningEffortOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={inlineFieldStyle}>
+                <span style={labelContentStyle}>
+                  Verbosité de la réponse
+                  <HelpTooltip label="Contrôle la quantité de texte renvoyée par le modèle (laisser vide pour appliquer le paramétrage par défaut)." />
+                </span>
+                <select
+                  value={textVerbosityValue}
+                  onChange={(event) => onAgentTextVerbosityChange(node.id, event.target.value)}
+                >
+                  {textVerbosityOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>

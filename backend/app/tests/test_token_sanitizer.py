@@ -70,3 +70,14 @@ def test_sanitize_model_like_returns_original_when_unchanged():
     sanitized = sanitize_model_like(settings)
 
     assert sanitized is settings
+
+
+def test_sanitize_value_keeps_text_verbosity():
+    """S'assure que la verbosité textuelle reste transmise."""
+
+    payload = {"text": {"verbosity": "low"}}
+
+    sanitized, removed = sanitize_value(payload)
+
+    assert sanitized == payload
+    assert removed is False
