@@ -1759,6 +1759,18 @@ def _create_response_format_from_pydantic(model: type[BaseModel]) -> dict[str, A
         }
     }
 
+    try:
+        logger.debug(
+            "response_format demandé (modèle=%s): %s",
+            sanitized_name,
+            json.dumps(response_format, ensure_ascii=False),
+        )
+    except Exception:  # pragma: no cover - sérialisation best effort
+        logger.debug(
+            "response_format demandé (modèle=%s) - impossible de sérialiser pour les logs",
+            sanitized_name,
+        )
+
     return response_format
 
 
@@ -2191,6 +2203,17 @@ def _build_response_format_from_widget(
             slug,
             list(widget_variables.keys()) if widget_variables else "aucune",
         )
+        try:
+            logger.debug(
+                "response_format demandé pour le widget '%s': %s",
+                slug,
+                json.dumps(response_format, ensure_ascii=False),
+            )
+        except Exception:  # pragma: no cover - sérialisation best effort
+            logger.debug(
+                "response_format demandé pour le widget '%s' - impossible de sérialiser pour les logs",
+                slug,
+            )
         return response_format
 
     except Exception as exc:
@@ -2212,14 +2235,12 @@ def _build_agent_kwargs(
 
     # Traiter response_widget et le convertir en response_format si nécessaire
     response_widget = merged.pop("response_widget", None)
-    drop_output_type = merged.pop("__drop_output_type__", False)
 
     if response_widget is not None and "response_format" not in merged:
         # Tenter de générer un response_format depuis le widget
         generated_format = _build_response_format_from_widget(response_widget)
         if generated_format is not None:
             merged["response_format"] = generated_format
-            drop_output_type = True
     if "model_settings" in merged:
         merged["model_settings"] = _coerce_model_settings(merged["model_settings"])
     if "tools" in merged:
@@ -2238,11 +2259,6 @@ def _build_agent_kwargs(
         elif "output_type" not in base_kwargs and "output_type" in merged:
             # Aucun type exploitable fourni, on retire la clé pour éviter les incohérences.
             merged.pop("output_type", None)
-        # Réinsérer response_format dans les kwargs transmis à l'Agent
-        merged["response_format"] = response_format
-
-    if drop_output_type:
-        merged.pop("output_type", None)
     return merged
 
 
@@ -3912,7 +3928,6 @@ async def run_workflow(
                 overrides["response_format"] = _create_response_format_from_pydantic(
                     widget_config.output_model
                 )
-                overrides["__drop_output_type__"] = True
                 logger.info(
                     "response_format généré depuis le modèle widget pour l'étape %s",
                     step.slug
