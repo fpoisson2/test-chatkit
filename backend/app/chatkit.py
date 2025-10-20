@@ -2122,6 +2122,9 @@ Si le message ne contient pas d'information, réponds «Nouvelle conversation».
         ),
         "model_settings": _model_settings(
             store=False,
+            reasoning=Reasoning(
+                effort="minimal",
+            ),
         ),
     }
     return Agent(**_build_agent_kwargs(base_kwargs, None))
