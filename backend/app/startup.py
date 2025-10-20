@@ -15,7 +15,7 @@ from .database import (
     engine,
     wait_for_database,
 )
-from .models import AvailableModel, Base, User, VoiceSettings, Workflow
+from .models import EMBEDDING_DIMENSION, AvailableModel, Base, User, VoiceSettings, Workflow
 from .security import hash_password
 
 logger = logging.getLogger("chatkit.server")
@@ -37,6 +37,49 @@ def _run_ad_hoc_migrations() -> None:
             logger.info("Création de la table voice_settings manquante")
             VoiceSettings.__table__.create(bind=connection)
             table_names.add("voice_settings")
+
+        # Migration de la dimension des vecteurs dans json_chunks
+        if "json_chunks" in table_names:
+            dialect = connection.dialect.name
+            if dialect == "postgresql":
+                # Vérifier la dimension actuelle de la colonne embedding
+                result = connection.execute(
+                    text(
+                        "SELECT atttypmod "
+                        "FROM pg_attribute "
+                        "JOIN pg_class ON pg_attribute.attrelid = pg_class.oid "
+                        "WHERE pg_class.relname = 'json_chunks' "
+                        "AND pg_attribute.attname = 'embedding'"
+                    )
+                ).scalar()
+
+                # atttypmod contient la dimension + 4 pour les types vector
+                # Si result est None, la colonne n'existe pas encore
+                if result is not None:
+                    current_dimension = result - 4
+                    if current_dimension != EMBEDDING_DIMENSION:
+                        logger.info(
+                            "Migration de la dimension des vecteurs : %d -> %d dimensions. "
+                            "Suppression des données vectorielles existantes.",
+                            current_dimension,
+                            EMBEDDING_DIMENSION,
+                        )
+                        # Supprimer l'index vectoriel s'il existe
+                        connection.execute(
+                            text("DROP INDEX IF EXISTS ix_json_chunks_embedding")
+                        )
+                        # Supprimer toutes les données de la table json_chunks
+                        # car les embeddings existants ne sont plus compatibles
+                        connection.execute(text("TRUNCATE TABLE json_chunks CASCADE"))
+                        connection.execute(text("TRUNCATE TABLE json_documents CASCADE"))
+                        # Recréer la colonne avec la nouvelle dimension
+                        connection.execute(text("ALTER TABLE json_chunks DROP COLUMN embedding"))
+                        connection.execute(
+                            text(
+                                f"ALTER TABLE json_chunks "
+                                f"ADD COLUMN embedding vector({EMBEDDING_DIMENSION}) NOT NULL"
+                            )
+                        )
 
         if "workflows" in table_names:
             workflow_columns = {
