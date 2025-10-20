@@ -3134,6 +3134,10 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
         "icon",
         "iconStart",
         "iconEnd",
+        "src",
+        "alt",
+        "href",
+        "url",
     }
 
     manual_paths: set[tuple[str | int, ...]] = set()
