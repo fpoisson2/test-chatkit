@@ -56,7 +56,7 @@ except ImportError:  # pragma: no cover - compatibilité avec les anciennes vers
 from pydantic import BaseModel, Field, create_model
 
 from chatkit.actions import Action
-from chatkit.agents import AgentContext, stream_agent_response
+from chatkit.agents import AgentContext, simple_to_agent_input, stream_agent_response
 
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
     from chatkit.agents import stream_widget as _sdk_stream_widget
@@ -243,6 +243,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         self._workflow_service = WorkflowService()
         self._widget_action_waiters: dict[str, _WidgetActionWaiter] = {}
         self._widget_waiters_lock = asyncio.Lock()
+        self._title_agent = _build_thread_title_agent(settings.chatkit_agent_model)
 
     async def _wait_for_widget_action(
         self,
@@ -360,6 +361,10 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         input_user_message: UserMessageItem | None,
         context: ChatKitRequestContext,
     ) -> AsyncIterator[ThreadStreamEvent]:
+        if input_user_message is not None:
+            await self._maybe_update_thread_title(
+                thread, input_user_message, context
+            )
         try:
             history = await self.store.load_thread_items(
                 thread.id,
@@ -480,6 +485,65 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 thread.id,
             )
             return
+
+    async def _maybe_update_thread_title(
+        self,
+        thread: ThreadMetadata,
+        input_item: UserMessageItem,
+        context: ChatKitRequestContext,
+    ) -> None:
+        if thread.title:
+            return
+
+        try:
+            agent_input = await simple_to_agent_input(input_item)
+        except Exception as exc:  # pragma: no cover - dépend des conversions SDK
+            logger.warning(
+                "Impossible de convertir le message utilisateur en entrée agent pour titrage (thread=%s)",
+                thread.id,
+                exc_info=exc,
+            )
+            return
+
+        if not agent_input:
+            return
+
+        metadata = {"__trace_source__": "thread-title", "thread_id": thread.id}
+        try:
+            metadata.update(context.trace_metadata())
+        except Exception:  # pragma: no cover - robustesse best effort
+            pass
+
+        try:
+            run = await Runner.run(
+                self._title_agent,
+                input=agent_input,
+                run_config=RunConfig(trace_metadata=metadata),
+            )
+        except Exception as exc:  # pragma: no cover - la génération de titre ne doit pas bloquer
+            logger.warning(
+                "Échec de la génération automatique du titre pour le fil %s",
+                thread.id,
+                exc_info=exc,
+            )
+            return
+
+        raw_title = getattr(run, "final_output", "")
+        if isinstance(raw_title, str):
+            normalized_title = re.sub(r"\s+", " ", raw_title).strip().strip('\"\'`”’“«»')
+        else:
+            try:
+                normalized_title = str(raw_title).strip()
+            except Exception:  # pragma: no cover - conversion sécuritaire
+                normalized_title = ""
+
+        if not normalized_title:
+            normalized_title = "Nouvelle conversation"
+
+        if len(normalized_title) > 120:
+            normalized_title = normalized_title[:117].rstrip() + "..."
+
+        thread.title = normalized_title
 
     async def action(
         self,
@@ -2044,6 +2108,25 @@ Une idée générale de ce qui devrait se retrouver dans le cours."""
         ),
     }
     return Agent(**_build_agent_kwargs(base_kwargs, overrides))
+
+
+def _build_thread_title_agent(model: str) -> Agent:
+    base_kwargs: dict[str, Any] = {
+        "name": "TitreFil",
+        "model": model,
+        "instructions": (
+            """Propose un titre court et descriptif en français pour un nouveau fil de discussion.
+Utilise au maximum 6 mots.
+N'inclus ni guillemets ni ponctuation finale.
+Si le message ne contient pas d'information, réponds «Nouvelle conversation»."""
+        ),
+        "model_settings": _model_settings(
+            temperature=0.4,
+            top_p=1,
+            store=False,
+        ),
+    }
+    return Agent(**_build_agent_kwargs(base_kwargs, None))
 
 
 R_DACTEUR_INSTRUCTIONS = (
