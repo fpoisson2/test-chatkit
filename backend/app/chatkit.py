@@ -4,6 +4,7 @@ import asyncio
 import copy
 import inspect
 import json
+import keyword
 import logging
 import math
 import re
@@ -1665,6 +1666,7 @@ if hasattr(BaseModel, "model_config"):
 
         model_config = {
             "extra": "forbid",
+            "populate_by_name": True,
         }
 else:  # pragma: no cover - compatibilité Pydantic v1
     class _StrictSchemaBase(BaseModel):  # type: ignore[no-redef]
@@ -1674,6 +1676,8 @@ else:  # pragma: no cover - compatibilité Pydantic v1
 
         class Config:
             extra = "forbid"
+            allow_population_by_field_name = True
+            allow_population_by_alias = True
 
 
 def _patch_model_json_schema(model: type[BaseModel]) -> None:
@@ -1876,8 +1880,27 @@ class _JsonSchemaOutputBuilder:
             self._models[sanitized] = model
             return model
 
-        if any((not isinstance(prop, str) or not prop.isidentifier()) for prop in properties):
-            return dict[str, Any]
+        sanitized_fields: dict[str, str] = {}
+        used_names: set[str] = set()
+        for index, prop in enumerate(properties, start=1):
+            if not isinstance(prop, str):
+                return dict[str, Any]
+            if prop.isidentifier() and not keyword.iskeyword(prop) and prop not in used_names:
+                sanitized_fields[prop] = prop
+                used_names.add(prop)
+                continue
+
+            field_name = _sanitize_widget_field_name(prop, fallback=f"field_{index}")
+            if keyword.iskeyword(field_name):
+                field_name = f"{field_name}_"
+            if field_name in used_names:
+                suffix = 1
+                base_name = field_name
+                while f"{base_name}_{suffix}" in used_names:
+                    suffix += 1
+                field_name = f"{base_name}_{suffix}"
+            used_names.add(field_name)
+            sanitized_fields[prop] = field_name
 
         required_raw = schema.get("required")
         required: set[str] = set()
@@ -1898,13 +1921,39 @@ class _JsonSchemaOutputBuilder:
             field_type = prop_type
             is_required = prop_name in required
             if prop_nullable:
-                field_type = field_type | None
+                field_type = field_type | None if field_type is not Any else Any
+            field_name = sanitized_fields.get(prop_name)
+            if field_name is None:
+                return dict[str, Any]
+
+            def _build_field(default: Any) -> Any:
+                try:
+                    return Field(
+                        default,
+                        alias=prop_name,
+                        serialization_alias=prop_name,
+                    )
+                except TypeError:  # pragma: no cover - compatibilité Pydantic v1
+                    field = Field(default, alias=prop_name)
+                    if hasattr(field, "serialization_alias"):
+                        try:
+                            setattr(field, "serialization_alias", prop_name)
+                        except Exception:
+                            pass
+                    return field
+
             if not is_required:
                 if not prop_nullable:
                     field_type = field_type | None if field_type is not Any else Any
-                field_definitions[prop_name] = (field_type, Field(default=None))
+                field_definitions[field_name] = (
+                    field_type,
+                    _build_field(default=None),
+                )
             else:
-                field_definitions[prop_name] = (field_type, Field(...))
+                field_definitions[field_name] = (
+                    field_type,
+                    _build_field(default=Ellipsis),
+                )
 
         model = create_model(
             sanitized,
