@@ -112,6 +112,8 @@ La prévisualisation en direct évite de propager des définitions invalides dan
   - Optionnel : `ACCESS_TOKEN_EXPIRE_MINUTES` pour ajuster la durée de validité du token (par défaut 120 min)
   - Optionnel : `ADMIN_EMAIL` et `ADMIN_PASSWORD` pour provisionner automatiquement un compte administrateur au démarrage. Sans ces deux variables définies dans votre fichier `.env`, aucun compte n'est créé.
   - Optionnel : `DATABASE_CONNECT_RETRIES` / `DATABASE_CONNECT_DELAY` pour ajuster la stratégie d'attente au démarrage
+  - Optionnel : `BACKEND_PUBLIC_BASE_URL` pour indiquer l'URL publique du backend (utilisée pour générer les liens absolus des images, par défaut `http://localhost:8000`).
+  - Optionnel : `AGENT_IMAGE_TOKEN_TTL_SECONDS` pour contrôler la durée de validité des liens d'images signés (par défaut 3600 s).
 - Start the dev server from the `backend/` directory: `uv run uvicorn server:app --reload` (ou `npm run backend:dev` à la racine)
 
 > 🔁 **Environnements virtuels** — sans fichier `uv.lock`, c'est l'index PyPI qui fait foi. En CI/CD, épinglez vos versions en générant un lockfile temporaire (`uv pip compile backend/requirements.txt`) si vous avez besoin de reproductibilité stricte.

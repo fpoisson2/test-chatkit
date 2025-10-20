@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 try:  # pragma: no cover - dépendance optionnelle pour les tests
@@ -19,11 +20,12 @@ except ModuleNotFoundError:  # pragma: no cover - utilisé uniquement quand Chat
 if TYPE_CHECKING:  # pragma: no cover - uniquement pour l'auto-complétion
     from ..chatkit import ChatKitRequestContext
 
+from ..image_utils import AGENT_IMAGE_STORAGE_DIR
 from ..chatkit_realtime import create_realtime_voice_session
 from ..chatkit_sessions import create_chatkit_session, proxy_chatkit_request
 from ..config import get_settings
 from ..database import get_session
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, get_optional_user
 from ..models import User
 from ..schemas import (
     ChatKitWorkflowResponse,
@@ -32,6 +34,7 @@ from ..schemas import (
     VoiceSessionResponse,
 )
 from ..voice_settings import get_or_create_voice_settings
+from ..security import decode_agent_image_token
 from ..workflows import (
     WorkflowService,
     resolve_start_auto_start,
@@ -43,6 +46,28 @@ router = APIRouter()
 
 
 logger = logging.getLogger("chatkit.voice")
+
+
+def _resolve_public_base_url_from_request(request: Request) -> str | None:
+    """Détermine l'URL publique à partir des en-têtes de la requête."""
+
+    def _first_header(name: str) -> str | None:
+        raw_value = request.headers.get(name)
+        if not raw_value:
+            return None
+        return raw_value.split(",")[0].strip() or None
+
+    forwarded_host = _first_header("x-forwarded-host")
+    if forwarded_host:
+        scheme = _first_header("x-forwarded-proto") or request.url.scheme
+        forwarded_port = _first_header("x-forwarded-port")
+        host = forwarded_host
+        if forwarded_port and ":" not in host:
+            host = f"{host}:{forwarded_port}"
+        return f"{scheme}://{host}".rstrip("/")
+
+    base_url = str(request.base_url).rstrip("/")
+    return base_url or None
 
 
 @router.get("/api/chatkit/workflow", response_model=ChatKitWorkflowResponse)
@@ -188,6 +213,44 @@ async def create_session(
     }
 
 
+@router.get("/api/chatkit/images/{image_name}")
+async def get_generated_image(
+    image_name: str,
+    token: str | None = None,
+    current_user: User | None = Depends(get_optional_user),
+):
+    safe_name = Path(image_name).name
+    file_path = AGENT_IMAGE_STORAGE_DIR / safe_name
+    if not file_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Image introuvable",
+        )
+    if current_user is None:
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentification requise",
+            )
+        payload = decode_agent_image_token(token)
+        if payload.get("img") != safe_name:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Accès à l'image refusé",
+            )
+    elif token:
+        payload = decode_agent_image_token(token)
+        token_user = payload.get("sub")
+        if payload.get("img") != safe_name or (
+            token_user is not None and str(token_user) != str(current_user.id)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Accès à l'image refusé",
+            )
+    return FileResponse(file_path)
+
+
 @router.post(
     "/api/chatkit/voice/session",
     response_model=VoiceSessionResponse,
@@ -276,10 +339,16 @@ async def chatkit_endpoint(
 
     server = get_chatkit_server()
     payload = await request.body()
+    settings = get_settings()
+    base_url = settings.backend_public_base_url
+    resolved_from_request = _resolve_public_base_url_from_request(request)
+    if resolved_from_request and not settings.backend_public_base_url_from_env:
+        base_url = resolved_from_request
     context = ChatKitRequestContext(
         user_id=str(current_user.id),
         email=current_user.email,
         authorization=request.headers.get("Authorization"),
+        public_base_url=base_url,
     )
 
     result = await server.process(payload, context)

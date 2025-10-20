@@ -27,6 +27,8 @@ async def test_action_updates_existing_widget(monkeypatch: pytest.MonkeyPatch) -
         chatkit_realtime_model="gpt-realtime",
         chatkit_realtime_instructions="Assistant vocal",
         chatkit_realtime_voice="verse",
+        backend_public_base_url="http://localhost:8000",
+        backend_public_base_url_from_env=False,
         database_url="sqlite://",
         auth_secret_key="secret",
         access_token_expire_minutes=60,
@@ -34,6 +36,7 @@ async def test_action_updates_existing_widget(monkeypatch: pytest.MonkeyPatch) -
         admin_password=None,
         database_connect_retries=1,
         database_connect_delay=0.1,
+        agent_image_token_ttl_seconds=3600,
     )
     class _Store:
         def __init__(self) -> None:
@@ -132,6 +135,8 @@ async def test_action_falls_back_to_sender_widget(monkeypatch: pytest.MonkeyPatc
         chatkit_realtime_model="gpt-realtime",
         chatkit_realtime_instructions="Assistant vocal",
         chatkit_realtime_voice="verse",
+        backend_public_base_url="http://localhost:8000",
+        backend_public_base_url_from_env=False,
         database_url="sqlite://",
         auth_secret_key="secret",
         access_token_expire_minutes=60,
@@ -139,6 +144,7 @@ async def test_action_falls_back_to_sender_widget(monkeypatch: pytest.MonkeyPatc
         admin_password=None,
         database_connect_retries=1,
         database_connect_delay=0.1,
+        agent_image_token_ttl_seconds=3600,
     )
     class _Store:
         def __init__(self) -> None:
@@ -291,6 +297,8 @@ async def test_wait_for_widget_action_released_by_signal() -> None:
         chatkit_realtime_model="gpt-realtime",
         chatkit_realtime_instructions="Assistant vocal",
         chatkit_realtime_voice="verse",
+        backend_public_base_url="http://localhost:8000",
+        backend_public_base_url_from_env=False,
         database_url="sqlite://",
         auth_secret_key="secret",
         access_token_expire_minutes=60,
@@ -298,6 +306,7 @@ async def test_wait_for_widget_action_released_by_signal() -> None:
         admin_password=None,
         database_connect_retries=1,
         database_connect_delay=0.1,
+        agent_image_token_ttl_seconds=3600,
     )
     server = DemoChatKitServer(settings)
 

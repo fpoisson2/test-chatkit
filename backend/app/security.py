@@ -4,6 +4,7 @@ import datetime
 import hashlib
 import os
 import secrets
+from typing import Any
 
 import jwt
 from fastapi import HTTPException, status
@@ -66,3 +67,34 @@ def decode_access_token(token: str) -> dict:
         return jwt.decode(token, settings.auth_secret_key, algorithms=["HS256"])
     except jwt.PyJWTError as exc:  # type: ignore[attr-defined]
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide") from exc
+
+
+def create_agent_image_token(
+    image_name: str,
+    *,
+    user_id: str | None,
+    thread_id: str | None,
+) -> str:
+    """Génère un jeton signé permettant d'accéder à une image générée."""
+
+    expire = datetime.datetime.utcnow() + datetime.timedelta(
+        seconds=settings.agent_image_token_ttl_seconds
+    )
+    payload: dict[str, Any] = {"img": image_name, "exp": expire}
+    if user_id:
+        payload["sub"] = str(user_id)
+    if thread_id:
+        payload["thr"] = thread_id
+    return jwt.encode(payload, settings.auth_secret_key, algorithm="HS256")
+
+
+def decode_agent_image_token(token: str) -> dict[str, Any]:
+    """Vérifie et retourne le contenu d'un jeton d'accès image."""
+
+    try:
+        return jwt.decode(token, settings.auth_secret_key, algorithms=["HS256"])
+    except jwt.PyJWTError as exc:  # type: ignore[attr-defined]
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token d'image invalide",
+        ) from exc

@@ -8,6 +8,7 @@ import logging
 import math
 import re
 import uuid
+from pathlib import Path
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -105,6 +106,13 @@ from .workflows import (
     resolve_start_auto_start_message,
     resolve_start_auto_start_assistant_message,
 )
+from .image_utils import (
+    append_generated_image_links,
+    build_agent_image_absolute_url,
+    format_generated_image_links,
+    merge_generated_image_urls_into_payload,
+    save_agent_image_file,
+)
 from .vector_store import JsonVectorStoreService, SearchResult
 from .weather import fetch_weather
 from .widgets import WidgetLibraryService
@@ -193,6 +201,7 @@ class ChatKitRequestContext:
     user_id: str | None
     email: str | None
     authorization: str | None = None
+    public_base_url: str | None = None
 
     def trace_metadata(self) -> dict[str, str]:
         """Retourne des métadonnées de trace compatibles avec l'Agents SDK."""
@@ -4069,6 +4078,7 @@ async def run_workflow(
         await _ingest_vector_store_document(slug, doc_id, document_mapping, metadata)
 
     agent_image_tasks: dict[tuple[str, int], dict[str, Any]] = {}
+    agent_step_generated_images: dict[str, list[dict[str, Any]]] = {}
 
     def _sanitize_identifier(value: str, fallback: str) -> str:
         candidate = value.strip()
@@ -4102,6 +4112,9 @@ async def run_workflow(
             "agent_key": metadata.get("agent_key"),
             "agent_label": metadata.get("agent_label"),
             "thread_id": metadata.get("thread_id"),
+            "step_key": metadata.get("step_key"),
+            "user_id": metadata.get("user_id"),
+            "backend_public_base_url": metadata.get("backend_public_base_url"),
         }
         if context is None:
             context = dict(base_context)
@@ -4119,6 +4132,22 @@ async def run_workflow(
                     context[entry_key] = entry_value
         return context, key
 
+    def _register_generated_image_for_step(
+        step_key: str | None, image_record: dict[str, Any]
+    ) -> None:
+        if not step_key:
+            return
+        agent_step_generated_images.setdefault(step_key, []).append(image_record)
+
+    def _consume_generated_image_urls(step_key: str) -> list[str]:
+        records = agent_step_generated_images.pop(step_key, [])
+        urls: list[str] = []
+        for record in records:
+            url = record.get("local_file_url")
+            if isinstance(url, str) and url:
+                urls.append(url)
+        return urls
+
     async def _persist_agent_image(
         context: dict[str, Any],
         key: tuple[str, int],
@@ -4131,6 +4160,34 @@ async def run_workflow(
         doc_id = _sanitize_identifier(raw_doc_id, f"{normalized_thread}-{uuid.uuid4().hex[:8]}")
         b64_payload = image.b64_json or ""
         partials = list(image.partials or [])
+        local_file_path: str | None = None
+        local_file_url: str | None = None
+        absolute_file_url: str | None = None
+        if b64_payload:
+            local_file_path, local_file_url = save_agent_image_file(
+                doc_id,
+                b64_payload,
+                output_format=getattr(image, "output_format", None),
+            )
+        if local_file_url:
+            from .security import create_agent_image_token  # lazy import pour éviter les dépendances globales
+
+            file_name = Path(local_file_url).name
+            token_user = context.get("user_id")
+            token = create_agent_image_token(
+                file_name,
+                user_id=str(token_user) if token_user else None,
+                thread_id=raw_thread_id,
+            )
+            base_url = (
+                context.get("backend_public_base_url")
+                or get_settings().backend_public_base_url
+            )
+            absolute_file_url = build_agent_image_absolute_url(
+                local_file_url,
+                base_url=base_url,
+                token=token,
+            )
         payload = {
             "thread_id": raw_thread_id,
             "call_id": key[0],
@@ -4152,6 +4209,12 @@ async def run_workflow(
                 "partials": partials,
             },
         }
+        if local_file_url:
+            payload["image"]["local_file_relative_url"] = local_file_url
+        if absolute_file_url:
+            payload["image"]["local_file_url"] = absolute_file_url
+        if local_file_path:
+            payload["image"]["local_file_path"] = local_file_path
         metadata = {
             "thread_id": raw_thread_id,
             "call_id": key[0],
@@ -4164,6 +4227,11 @@ async def run_workflow(
             "b64_length": len(b64_payload),
             "partials_count": len(partials),
         }
+        if local_file_url:
+            metadata["local_file_url"] = absolute_file_url or local_file_url
+            metadata["local_file_relative_url"] = local_file_url
+        if local_file_path:
+            metadata["local_file_path"] = local_file_path
         logger.info(
             "Enregistrement de l'image générée dans %s (doc_id=%s, longueur_b64=%d)",
             AGENT_IMAGE_VECTOR_STORE_SLUG,
@@ -4176,6 +4244,22 @@ async def run_workflow(
             payload,
             metadata,
         )
+        image_record = {
+            "doc_id": doc_id,
+            "call_id": key[0],
+            "output_index": key[1],
+        }
+        if local_file_url:
+            image_record["local_file_url"] = absolute_file_url or local_file_url
+            image_record["local_file_relative_url"] = local_file_url
+        if local_file_path:
+            image_record["local_file_path"] = local_file_path
+        step_identifier = context.get("step_key") or context.get("step_slug")
+        if isinstance(step_identifier, str):
+            _register_generated_image_for_step(step_identifier, image_record)
+        elif step_identifier is not None:
+            _register_generated_image_for_step(str(step_identifier), image_record)
+        context.setdefault("generated_images", []).append(image_record)
         logger.info(
             "Image %s enregistrée pour l'étape %s (call_id=%s)",
             doc_id,
@@ -4388,6 +4472,7 @@ async def run_workflow(
     ) -> _WorkflowStreamResult:
         step_index = len(steps) + 1
         metadata_for_images = dict(step_metadata or {})
+        metadata_for_images["step_key"] = step_key
         metadata_for_images["step_slug"] = metadata_for_images.get("step_slug") or step_key
         metadata_for_images["step_title"] = metadata_for_images.get("step_title") or title
         if not metadata_for_images.get("agent_key"):
@@ -4399,6 +4484,21 @@ async def run_workflow(
         thread_meta = getattr(agent_context, "thread", None)
         if not metadata_for_images.get("thread_id") and thread_meta is not None:
             metadata_for_images["thread_id"] = getattr(thread_meta, "id", None)
+
+        request_context = getattr(agent_context, "request_context", None)
+        if request_context is not None:
+            metadata_for_images.setdefault(
+                "user_id", getattr(request_context, "user_id", None)
+            )
+            metadata_for_images.setdefault(
+                "backend_public_base_url",
+                getattr(request_context, "public_base_url", None),
+            )
+
+        if not metadata_for_images.get("backend_public_base_url"):
+            metadata_for_images["backend_public_base_url"] = (
+                self._settings.backend_public_base_url
+            )
 
         logger.info(
             "Démarrage de l'exécution de l'agent %s (étape=%s, index=%s)",
@@ -5041,69 +5141,100 @@ async def run_workflow(
                 "step_title": title,
             },
         )
+        image_urls = _consume_generated_image_urls(step_identifier)
+        links_text = format_generated_image_links(image_urls)
 
         if agent_key == "triage":
             parsed, text = _structured_output_as_json(result_stream.final_output)
             state["has_all_details"] = bool(parsed.get("has_all_details")) if isinstance(parsed, dict) else False
             state["infos_manquantes"] = text
             state["should_finalize"] = state["has_all_details"]
-            await record_step(step_identifier, title, parsed)
+            await record_step(
+                step_identifier,
+                title,
+                merge_generated_image_urls_into_payload(parsed, image_urls),
+            )
             last_step_context = {
                 "agent_key": agent_key,
                 "output": result_stream.final_output,
                 "output_parsed": parsed,
-                "output_text": text,
+                "output_text": append_generated_image_links(text, image_urls),
             }
         elif agent_key == "get_data_from_web":
             text = result_stream.final_output_as(str)
+            display_text = append_generated_image_links(text, image_urls)
             state["infos_manquantes"] = text
-            await record_step(step_identifier, title, text)
+            await record_step(step_identifier, title, display_text)
             last_step_context = {
                 "agent_key": agent_key,
                 "output": text,
-                "output_text": text,
+                "output_text": display_text,
             }
         elif agent_key == "triage_2":
             parsed, text = _structured_output_as_json(result_stream.final_output)
             state["has_all_details"] = bool(parsed.get("has_all_details")) if isinstance(parsed, dict) else False
             state["infos_manquantes"] = text
             state["should_finalize"] = state["has_all_details"]
-            await record_step(step_identifier, title, parsed)
+            await record_step(
+                step_identifier,
+                title,
+                merge_generated_image_urls_into_payload(parsed, image_urls),
+            )
             last_step_context = {
                 "agent_key": agent_key,
                 "output": result_stream.final_output,
                 "output_parsed": parsed,
-                "output_text": text,
+                "output_text": append_generated_image_links(text, image_urls),
             }
         elif agent_key == "get_data_from_user":
             text = result_stream.final_output_as(str)
+            display_text = append_generated_image_links(text, image_urls)
             state["infos_manquantes"] = text
             state["should_finalize"] = True
-            await record_step(step_identifier, title, text)
+            await record_step(step_identifier, title, display_text)
             last_step_context = {
                 "agent_key": agent_key,
                 "output": text,
-                "output_text": text,
+                "output_text": display_text,
             }
         elif agent_key == "r_dacteur":
             parsed, text = _structured_output_as_json(result_stream.final_output)
-            final_output = {"output_text": text, "output_parsed": parsed}
+            display_text = append_generated_image_links(text, image_urls)
+            final_output = {"output_text": display_text, "output_parsed": parsed}
             await record_step(step_identifier, title, final_output["output_text"])
             last_step_context = {
                 "agent_key": agent_key,
                 "output": result_stream.final_output,
                 "output_parsed": parsed,
-                "output_text": text,
+                "output_text": display_text,
             }
         else:
             parsed, text = _structured_output_as_json(result_stream.final_output)
-            await record_step(step_identifier, title, result_stream.final_output)
+            await record_step(
+                step_identifier,
+                title,
+                merge_generated_image_urls_into_payload(
+                    result_stream.final_output, image_urls
+                ),
+            )
             last_step_context = {
                 "agent_key": agent_key,
                 "output": result_stream.final_output,
                 "output_parsed": parsed,
-                "output_text": text,
+                "output_text": append_generated_image_links(text, image_urls),
             }
+
+        if image_urls:
+            last_step_context["generated_image_urls"] = image_urls
+            if links_text and on_stream_event is not None:
+                links_message = AssistantMessageItem(
+                    id=agent_context.generate_id("message"),
+                    thread_id=agent_context.thread.id,
+                    created_at=datetime.now(),
+                    content=[AssistantMessageContent(text=links_text)],
+                )
+                await on_stream_event(ThreadItemAddedEvent(item=links_message))
+                await on_stream_event(ThreadItemDoneEvent(item=links_message))
 
         await _apply_vector_store_ingestion(
             config=(current_node.parameters or {}).get("vector_store_ingestion"),
