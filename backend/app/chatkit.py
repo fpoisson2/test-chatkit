@@ -1787,11 +1787,13 @@ class _JsonSchemaOutputBuilder:
             if additional:
                 return dict[str, Any]
             model = create_model(sanitized, __module__=__name__)
+            self._patch_model_json_schema(model)
             self._models[sanitized] = model
             return model
 
         if not properties:
             model = create_model(sanitized, __module__=__name__)
+            self._patch_model_json_schema(model)
             self._models[sanitized] = model
             return model
 
@@ -1826,6 +1828,7 @@ class _JsonSchemaOutputBuilder:
                 field_definitions[prop_name] = (field_type, Field(...))
 
         model = create_model(sanitized, __module__=__name__, **field_definitions)
+        self._patch_model_json_schema(model)
         self._models[sanitized] = model
         return model
 
@@ -2817,6 +2820,18 @@ def _build_widget_output_model(
             "Impossible de créer le modèle structuré pour le widget %s: %s", slug, exc
         )
         return None
+
+    # Patcher la méthode model_json_schema pour supprimer additionalProperties
+    # afin de rendre le modèle compatible avec le mode strict de l'OpenAI Agents SDK
+    if hasattr(widget_model, "model_json_schema"):
+        original_model_json_schema = widget_model.model_json_schema
+
+        @classmethod
+        def patched_model_json_schema(cls, **kwargs):
+            schema = original_model_json_schema(**kwargs)
+            return _remove_additional_properties_from_schema(schema)
+
+        widget_model.model_json_schema = patched_model_json_schema
 
     # Pour Pydantic v1, ajouter la configuration compatible
     if not hasattr(widget_model, "model_config"):  # pragma: no cover - compatibilité Pydantic v1
