@@ -4457,6 +4457,28 @@ async def run_workflow(
                 return str(value)
         return str(value)
 
+    def _coerce_widget_binding_sequence_value(
+        items: Sequence[str], binding: _WidgetBinding
+    ) -> str | list[str]:
+        normalized_items = [item for item in items if isinstance(item, str)]
+        if not normalized_items:
+            return [] if isinstance(binding.sample, list) else ""
+
+        if isinstance(binding.sample, list):
+            return normalized_items
+
+        preferred_key = (binding.value_key or "").lower()
+        component_type = (binding.component_type or "").lower()
+
+        if preferred_key in {"src", "url", "href"} or component_type in {"image", "link"}:
+            return normalized_items[0]
+
+        if isinstance(binding.sample, str):
+            return "\n".join(normalized_items)
+
+        return normalized_items
+
+
     def _collect_widget_values_from_output(
         output: Any,
         *,
@@ -4473,6 +4495,22 @@ async def run_workflow(
                 except TypeError:
                     return candidate.model_dump()
             return candidate
+
+        def _normalize_sequence_fields(
+            mapping: dict[str, str | list[str]]
+        ) -> dict[str, str | list[str]]:
+            if not mapping:
+                return mapping
+
+            normalized: dict[str, str | list[str]] = {}
+            for key, value in mapping.items():
+                if isinstance(value, list):
+                    suffix = key.rsplit(".", 1)[-1].lower()
+                    if suffix in {"src", "url", "href"}:
+                        normalized[key] = value[0] if value else ""
+                        continue
+                normalized[key] = value
+            return normalized
 
         def _walk(current: Any, path: str) -> None:
             current = _normalize(current)
@@ -4504,6 +4542,8 @@ async def run_workflow(
 
         _walk(output, "")
 
+        collected = _normalize_sequence_fields(collected)
+
         if not bindings:
             return collected
 
@@ -4520,7 +4560,10 @@ async def run_workflow(
             for suffix in ("value", "text", "src", "url", "href"):
                 key = f"{base_path}.{suffix}" if base_path else suffix
                 if key in collected:
-                    enriched[identifier] = collected[key]
+                    value: str | list[str] = collected[key]
+                    if isinstance(value, list):
+                        value = _coerce_widget_binding_sequence_value(value, binding)
+                    enriched[identifier] = value
                     if identifier != key:
                         consumed_keys.add(key)
                     break
@@ -4528,7 +4571,7 @@ async def run_workflow(
         for key in consumed_keys:
             enriched.pop(key, None)
 
-        return enriched
+        return _normalize_sequence_fields(enriched)
 
     async def _ingest_vector_store_document(
         slug: str,
