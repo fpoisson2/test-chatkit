@@ -3438,6 +3438,7 @@ def _ensure_widget_output_model(
             config.slug,
         )
     else:
+        logger.debug("_ensure_widget_output_model: définition chargée pour %s: %s", config.slug, json.dumps(definition, ensure_ascii=False)[:500])
         bindings = _collect_widget_bindings(definition)
         logger.debug("_ensure_widget_output_model: bindings collectés pour %s: %s", config.slug, list(bindings.keys()) if bindings else [])
         for identifier in bindings:
