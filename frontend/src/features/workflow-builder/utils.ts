@@ -141,6 +141,9 @@ export const buildNodeStyle = (
 ): CSSProperties => {
   const { isSelected = false } = options;
   const baseShadow = "var(--shadow-soft)";
+  const selectionRingColor = "rgba(255, 255, 255, 0.92)";
+  const haloShadow = `0 0 0 6px ${NODE_GLOW_COLORS[kind]}`;
+  const ringShadow = `0 0 0 2px ${selectionRingColor}`;
   return {
     padding: "0.75rem 1rem",
     borderRadius: "0.75rem",
@@ -152,9 +155,9 @@ export const buildNodeStyle = (
     textAlign: "center",
     overflow: "visible",
     position: "relative",
-    outline: isSelected ? `2px solid ${NODE_COLORS[kind]}` : "none",
-    outlineOffset: isSelected ? 4 : 0,
-    boxShadow: isSelected ? `${baseShadow}, 0 0 0 6px ${NODE_GLOW_COLORS[kind]}` : baseShadow,
+    boxShadow: isSelected
+      ? `${baseShadow}, ${ringShadow}, ${haloShadow}`
+      : baseShadow,
   };
 };
 
