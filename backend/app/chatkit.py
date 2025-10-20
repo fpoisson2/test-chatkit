@@ -1967,6 +1967,13 @@ def _build_response_format_from_widget(
         # Extraire les variables du widget depuis response_widget
         widget_variables = response_widget.get("variables", {})
 
+        logger.debug(
+            "Variables extraites du widget '%s': %s (type: %s)",
+            slug,
+            widget_variables,
+            type(widget_variables).__name__
+        )
+
         # Créer un schéma JSON basé sur les variables du widget
         # Le schéma doit représenter un objet avec les propriétés correspondant aux variables
         properties = {}
@@ -1986,6 +1993,12 @@ def _build_response_format_from_widget(
                 "description": f"Valeur pour {var_path}"
             }
             required.append(safe_key)
+
+        logger.debug(
+            "Propriétés générées pour le widget '%s': %s",
+            slug,
+            list(properties.keys())
+        )
 
         # Si aucune variable n'est définie, créer un schéma pour le widget complet
         if not properties:
