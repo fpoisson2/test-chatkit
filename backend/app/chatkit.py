@@ -2744,10 +2744,18 @@ def _build_widget_output_model(
     model_name = "".join(model_name_parts) or "Widget"
     model_name = f"{model_name}Response"
 
+    # Créer une classe de base avec la bonne configuration pour Pydantic v2
+    # Cela garantit que le schéma JSON généré sera strict-compatible
+    class StrictWidgetBase(BaseModel):
+        model_config = {
+            "populate_by_name": True,
+            "extra": "forbid",
+        }
+
     try:
         widget_model = create_model(
             model_name,
-            __base__=BaseModel,
+            __base__=StrictWidgetBase,
             __module__=__name__,
             **field_definitions,
         )
@@ -2757,10 +2765,8 @@ def _build_widget_output_model(
         )
         return None
 
-    if hasattr(widget_model, "model_config"):
-        widget_model.model_config["populate_by_name"] = True
-        widget_model.model_config["extra"] = "forbid"
-    else:  # pragma: no cover - compatibilité Pydantic v1
+    # Pour Pydantic v1, ajouter la configuration compatible
+    if not hasattr(widget_model, "model_config"):  # pragma: no cover - compatibilité Pydantic v1
         config = getattr(widget_model, "Config", None)
         if config is None:
             class Config:
@@ -3755,11 +3761,9 @@ async def run_workflow(
             overrides.pop("widget", None)
 
             # Définir le output_type depuis le modèle du widget
-            # Wrapper le modèle avec AgentOutputSchema pour désactiver strict_json_schema
-            # car les modèles dynamiques créés avec create_model peuvent avoir additionalProperties
-            overrides["output_type"] = AgentOutputSchema(
-                widget_config.output_model, strict_json_schema=False
-            )
+            # Le modèle est maintenant créé avec une base StrictWidgetBase qui configure
+            # extra="forbid" pour être compatible avec le strict JSON schema d'OpenAI
+            overrides["output_type"] = widget_config.output_model
 
             # Créer aussi le response_format pour que l'API OpenAI utilise json_schema
             try:
