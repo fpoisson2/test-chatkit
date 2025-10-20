@@ -2389,21 +2389,24 @@ const WorkflowBuilderPage = () => {
   const handleRemoveNode = useCallback(
     (nodeId: string) => {
       removeElements({ nodeIds: [nodeId] });
-    },
-    [removeElements]
       setHasPendingChanges(true);
       if (selectedNodeId === nodeId) {
         setSelectedNodeId(null);
       }
     },
-    [nodes, selectedNodeId, setEdges, setHasPendingChanges, setNodes]
+    [removeElements, selectedNodeId, setHasPendingChanges]
   );
 
   const handleRemoveEdge = useCallback(
     (edgeId: string) => {
       removeElements({ edgeIds: [edgeId] });
+      setEdges((currentEdges) => currentEdges.filter((edge) => edge.id !== edgeId));
+      setHasPendingChanges(true);
+      if (selectedEdgeId === edgeId) {
+        setSelectedEdgeId(null);
+      }
     },
-    [removeElements]
+    [removeElements, selectedEdgeId, setEdges, setHasPendingChanges]
   );
 
   const addNodeToGraph = useCallback(
@@ -2423,13 +2426,6 @@ const WorkflowBuilderPage = () => {
       applySelection({ nodeIds: [node.id], primaryNodeId: node.id });
     },
     [applySelection, setNodes]
-      setEdges((currentEdges) => currentEdges.filter((edge) => edge.id !== edgeId));
-      setHasPendingChanges(true);
-      if (selectedEdgeId === edgeId) {
-        setSelectedEdgeId(null);
-      }
-    },
-    [selectedEdgeId, setEdges, setHasPendingChanges]
   );
 
   const handleAddAgentNode = useCallback(() => {
