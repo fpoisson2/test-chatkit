@@ -1918,6 +1918,11 @@ def _build_response_format_from_widget(
     Returns:
         Un dictionnaire response_format compatible ou None si impossible
     """
+    logger.debug(
+        "_build_response_format_from_widget appelée avec: %s",
+        response_widget
+    )
+
     if not isinstance(response_widget, dict):
         return None
 
