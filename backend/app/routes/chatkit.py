@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 try:  # pragma: no cover - dépendance optionnelle pour les tests
@@ -19,6 +20,7 @@ except ModuleNotFoundError:  # pragma: no cover - utilisé uniquement quand Chat
 if TYPE_CHECKING:  # pragma: no cover - uniquement pour l'auto-complétion
     from ..chatkit import ChatKitRequestContext
 
+from ..image_utils import AGENT_IMAGE_STORAGE_DIR
 from ..chatkit_realtime import create_realtime_voice_session
 from ..chatkit_sessions import create_chatkit_session, proxy_chatkit_request
 from ..config import get_settings
@@ -186,6 +188,21 @@ async def create_session(
         "client_secret": client_secret,
         "expires_after": session_payload.get("expires_after"),
     }
+
+
+@router.get("/api/chatkit/images/{image_name}")
+async def get_generated_image(
+    image_name: str,
+    current_user: User = Depends(get_current_user),
+):
+    safe_name = Path(image_name).name
+    file_path = AGENT_IMAGE_STORAGE_DIR / safe_name
+    if not file_path.is_file():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Image introuvable",
+        )
+    return FileResponse(file_path)
 
 
 @router.post(
