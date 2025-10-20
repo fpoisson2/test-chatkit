@@ -112,6 +112,7 @@ import type {
 } from "./types";
 import {
   AUTO_SAVE_DELAY_MS,
+  buildEdgeStyle,
   buildGraphPayloadFrom,
   buildNodeStyle,
   connectionLineStyle,
@@ -415,25 +416,43 @@ const WorkflowBuilderPage = () => {
       const nodeArray = Array.from(nodeIds);
       const edgeArray = Array.from(edgeIds);
       const nodeIdSet = new Set(nodeArray);
+      const edgeIdSet = new Set(edgeArray);
 
       selectedNodeIdsRef.current = nodeIdSet;
-      selectedEdgeIdsRef.current = new Set(edgeArray);
+      selectedEdgeIdsRef.current = edgeIdSet;
 
       setNodes((currentNodes) =>
         currentNodes.map((node) => {
           const isSelected = nodeIdSet.has(node.id);
           if ((node.selected ?? false) === isSelected) {
-            const currentStyle = node.style ?? {};
-            const nextBorder = `${isSelected ? 4 : 2}px solid ${NODE_COLORS[node.data.kind]}`;
-            if (currentStyle.border === nextBorder) {
-              return node;
-            }
+            return node;
           }
           return {
             ...node,
             selected: isSelected,
             style: buildNodeStyle(node.data.kind, { isSelected }),
           } satisfies FlowNode;
+        })
+      );
+
+      setEdges((currentEdges) =>
+        currentEdges.map((edge) => {
+          const isSelected = edgeIdSet.has(edge.id);
+          if ((edge.selected ?? false) === isSelected) {
+            const currentStyle = edge.style ?? {};
+            const nextStyle = buildEdgeStyle({ isSelected });
+            if (
+              currentStyle.stroke === nextStyle.stroke &&
+              currentStyle.strokeWidth === nextStyle.strokeWidth
+            ) {
+              return edge;
+            }
+          }
+          return {
+            ...edge,
+            selected: isSelected,
+            style: { ...edge.style, ...buildEdgeStyle({ isSelected }) },
+          } satisfies FlowEdge;
         })
       );
 
@@ -454,7 +473,7 @@ const WorkflowBuilderPage = () => {
       setSelectedNodeId(resolvedNodeId);
       setSelectedEdgeId(resolvedNodeId ? null : resolvedEdgeId);
     },
-    [setNodes, setSelectedEdgeId, setSelectedNodeId],
+    [setEdges, setNodes, setSelectedEdgeId, setSelectedNodeId],
   );
 
   const renderWorkflowDescription = (className?: string) =>
@@ -940,7 +959,10 @@ const WorkflowBuilderPage = () => {
               condition: edge.condition,
               metadata: edge.metadata ?? {},
             },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "#1e293b" },
+            markerEnd: defaultEdgeOptions.markerEnd
+              ? { ...defaultEdgeOptions.markerEnd }
+              : { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
+            style: buildEdgeStyle({ isSelected: false }),
           }));
           const nextSnapshot = JSON.stringify(buildGraphPayloadFrom(flowNodes, flowEdges));
           isHydratingRef.current = true;
@@ -1276,7 +1298,10 @@ const WorkflowBuilderPage = () => {
             id: `edge-${Date.now()}`,
             label: "",
             data: { condition: "", metadata: {} },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "#1e293b" },
+            markerEnd: defaultEdgeOptions.markerEnd
+              ? { ...defaultEdgeOptions.markerEnd }
+              : { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
+            style: buildEdgeStyle({ isSelected: false }),
           },
           current
         )

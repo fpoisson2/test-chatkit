@@ -33,9 +33,17 @@ export const NODE_BACKGROUNDS: Record<NodeKind, string> = {
   end: "rgba(124, 58, 237, 0.12)",
 };
 
+export const buildEdgeStyle = (options: { isSelected?: boolean } = {}) => {
+  const { isSelected = false } = options;
+  return {
+    stroke: "var(--text-color)",
+    strokeWidth: isSelected ? 3 : 2,
+  } satisfies CSSProperties;
+};
+
 export const defaultEdgeOptions: EdgeOptions = {
   markerEnd: { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
-  style: { stroke: "var(--text-color)", strokeWidth: 2 },
+  style: buildEdgeStyle(),
   labelStyle: { fill: "var(--text-color)", fontWeight: 600 },
   labelShowBg: true,
   labelBgPadding: [8, 4],
@@ -43,7 +51,7 @@ export const defaultEdgeOptions: EdgeOptions = {
   labelBgStyle: { fill: "var(--color-surface-subtle)", stroke: "var(--surface-border)" },
 };
 
-export const connectionLineStyle = { stroke: "var(--text-color)", strokeWidth: 2 };
+export const connectionLineStyle = buildEdgeStyle();
 
 const NON_REASONING_MODEL_PATTERN = /^gpt-4\.1/i;
 
@@ -118,17 +126,17 @@ export const buildNodeStyle = (
   options: { isSelected?: boolean } = {},
 ): CSSProperties => {
   const { isSelected = false } = options;
-  const borderWidth = isSelected ? 4 : 2;
+  const baseShadow = "var(--shadow-soft)";
   return {
     padding: "0.75rem 1rem",
     borderRadius: "0.75rem",
-    border: `${borderWidth}px solid ${NODE_COLORS[kind]}`,
+    border: `2px solid ${NODE_COLORS[kind]}`,
     color: "var(--text-color)",
     background: NODE_BACKGROUNDS[kind],
     fontWeight: 600,
     minWidth: 160,
     textAlign: "center",
-    boxShadow: "var(--shadow-soft)",
+    boxShadow: isSelected ? `${baseShadow}, 0 0 0 2px ${NODE_COLORS[kind]}` : baseShadow,
   };
 };
 
