@@ -1937,14 +1937,12 @@ def _build_response_format_from_widget(
 
         # Pour chaque variable du widget (ex: "image.alt", "image.src")
         # On crée une propriété dans le schéma
+        # IMPORTANT: Utiliser les noms de champs sanitisés (sans points) pour OpenAI strict mode
+        # Le modèle Pydantic gère la conversion via les aliases
         for var_path in widget_variables.keys():
             # Normaliser le chemin (remplacer les points par des underscores pour le schéma)
-            # mais garder la structure hiérarchique si nécessaire
-            parts = var_path.split(".")
-
-            # Pour simplifier, on crée une structure plate avec des underscores
-            # Ex: "image.alt" devient "image_alt"
-            safe_key = var_path.replace(".", "_")
+            # car OpenAI strict mode peut avoir des problèmes avec les points dans les clés
+            safe_key = _sanitize_widget_field_name(var_path, fallback=var_path.replace(".", "_"))
 
             properties[safe_key] = {
                 "type": "string",
