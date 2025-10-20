@@ -243,7 +243,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         self._workflow_service = WorkflowService()
         self._widget_action_waiters: dict[str, _WidgetActionWaiter] = {}
         self._widget_waiters_lock = asyncio.Lock()
-        self._title_agent = _build_thread_title_agent(settings.chatkit_agent_model)
+        self._title_agent = _build_thread_title_agent()
 
     async def _wait_for_widget_action(
         self,
@@ -2110,10 +2110,10 @@ Une idée générale de ce qui devrait se retrouver dans le cours."""
     return Agent(**_build_agent_kwargs(base_kwargs, overrides))
 
 
-def _build_thread_title_agent(model: str) -> Agent:
+def _build_thread_title_agent() -> Agent:
     base_kwargs: dict[str, Any] = {
         "name": "TitreFil",
-        "model": model,
+        "model": "gpt-5-nano",
         "instructions": (
             """Propose un titre court et descriptif en français pour un nouveau fil de discussion.
 Utilise au maximum 6 mots.
@@ -2121,8 +2121,6 @@ N'inclus ni guillemets ni ponctuation finale.
 Si le message ne contient pas d'information, réponds «Nouvelle conversation»."""
         ),
         "model_settings": _model_settings(
-            temperature=0.4,
-            top_p=1,
             store=False,
         ),
     }
