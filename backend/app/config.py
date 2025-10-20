@@ -21,6 +21,7 @@ class Settings:
         chatkit_workflow_id: Identifiant du workflow hébergé (optionnel).
         chatkit_api_base: URL de base de l'API OpenAI/ChatKit.
         backend_public_base_url: URL publique du backend utilisée pour construire les liens absolus.
+        backend_public_base_url_from_env: Indique si l'URL publique provient explicitement de l'environnement.
         chatkit_agent_model: Modèle utilisé pour les agents classiques.
         chatkit_agent_instructions: Instructions de l'agent historique.
         chatkit_realtime_model: Modèle Realtime par défaut pour les sessions vocales.
@@ -46,6 +47,7 @@ class Settings:
     chatkit_realtime_instructions: str
     chatkit_realtime_voice: str
     backend_public_base_url: str
+    backend_public_base_url_from_env: bool
     database_url: str
     auth_secret_key: str
     access_token_expire_minutes: int
@@ -79,6 +81,14 @@ class Settings:
                 )
             raise RuntimeError(error)
 
+        raw_backend_public_base_url = env.get("BACKEND_PUBLIC_BASE_URL")
+        sanitized_public_base_url = (
+            raw_backend_public_base_url.strip()
+            if raw_backend_public_base_url is not None
+            else None
+        )
+        backend_public_base_url = (sanitized_public_base_url or "http://localhost:8000").rstrip("/")
+
         return cls(
             allowed_origins=cls._parse_allowed_origins(env.get("ALLOWED_ORIGINS")),
             openai_api_key=require("OPENAI_API_KEY"),
@@ -104,10 +114,8 @@ class Settings:
                 "CHATKIT_REALTIME_VOICE",
                 "verse",
             ),
-            backend_public_base_url=env.get(
-                "BACKEND_PUBLIC_BASE_URL",
-                "http://localhost:8000",
-            ).rstrip("/"),
+            backend_public_base_url=backend_public_base_url,
+            backend_public_base_url_from_env=bool(sanitized_public_base_url),
             database_url=require(
                 "DATABASE_URL",
                 message="DATABASE_URL environment variable is required for PostgreSQL access",

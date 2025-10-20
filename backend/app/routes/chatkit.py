@@ -48,6 +48,28 @@ router = APIRouter()
 logger = logging.getLogger("chatkit.voice")
 
 
+def _resolve_public_base_url_from_request(request: Request) -> str | None:
+    """Détermine l'URL publique à partir des en-têtes de la requête."""
+
+    def _first_header(name: str) -> str | None:
+        raw_value = request.headers.get(name)
+        if not raw_value:
+            return None
+        return raw_value.split(",")[0].strip() or None
+
+    forwarded_host = _first_header("x-forwarded-host")
+    if forwarded_host:
+        scheme = _first_header("x-forwarded-proto") or request.url.scheme
+        forwarded_port = _first_header("x-forwarded-port")
+        host = forwarded_host
+        if forwarded_port and ":" not in host:
+            host = f"{host}:{forwarded_port}"
+        return f"{scheme}://{host}".rstrip("/")
+
+    base_url = str(request.base_url).rstrip("/")
+    return base_url or None
+
+
 @router.get("/api/chatkit/workflow", response_model=ChatKitWorkflowResponse)
 async def get_chatkit_workflow(
     current_user: User = Depends(get_current_user),
@@ -317,9 +339,11 @@ async def chatkit_endpoint(
 
     server = get_chatkit_server()
     payload = await request.body()
-    base_url = str(request.base_url).rstrip("/")
-    if not base_url:
-        base_url = get_settings().backend_public_base_url
+    settings = get_settings()
+    base_url = settings.backend_public_base_url
+    resolved_from_request = _resolve_public_base_url_from_request(request)
+    if resolved_from_request and not settings.backend_public_base_url_from_env:
+        base_url = resolved_from_request
     context = ChatKitRequestContext(
         user_id=str(current_user.id),
         email=current_user.email,
