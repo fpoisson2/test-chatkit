@@ -424,13 +424,25 @@ const WorkflowBuilderPage = () => {
       setNodes((currentNodes) =>
         currentNodes.map((node) => {
           const isSelected = nodeIdSet.has(node.id);
-          if ((node.selected ?? false) === isSelected) {
+          const nextStyle = buildNodeStyle(node.data.kind, { isSelected });
+          const currentStyle = node.style ?? {};
+          const hasSameSelection = (node.selected ?? false) === isSelected;
+          const hasSameStyle =
+            Object.keys(nextStyle).length === Object.keys(currentStyle).length &&
+            Object.entries(nextStyle).every(
+              ([key, value]) =>
+                Object.prototype.hasOwnProperty.call(currentStyle, key) &&
+                (currentStyle as Record<string, unknown>)[key] === value,
+            );
+
+          if (hasSameSelection && hasSameStyle) {
             return node;
           }
+
           return {
             ...node,
             selected: isSelected,
-            style: buildNodeStyle(node.data.kind, { isSelected }),
+            style: nextStyle,
           } satisfies FlowNode;
         })
       );
