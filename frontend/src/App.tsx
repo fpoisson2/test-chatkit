@@ -127,6 +127,13 @@ export const App = () => (
     <Route path="/admin/vector-stores" element={<Navigate to="/vector-stores" replace />} />
     <Route path="/admin/widgets" element={<Navigate to="/widgets" replace />} />
     <Route path="/admin/workflows" element={<Navigate to="/workflows" replace />} />
-    <Route path="*" element={<Navigate to="/" replace />} />
+    <Route
+      path="*"
+      element={
+        <RequireUser>
+          <Navigate to="/" replace />
+        </RequireUser>
+      }
+    />
   </Routes>
 );
