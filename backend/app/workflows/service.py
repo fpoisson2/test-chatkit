@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..database import SessionLocal
 from ..models import Workflow, WorkflowDefinition, WorkflowStep, WorkflowTransition
+from ..token_sanitizer import sanitize_value
 
 logger = logging.getLogger(__name__)
 
@@ -1237,6 +1238,10 @@ class WorkflowService:
         if value is None:
             return {}
         if isinstance(value, dict):
+            sanitized, _removed = sanitize_value(value)
+            if isinstance(sanitized, dict):
+                return sanitized
+            # Par sécurité, revenir à l'objet d'origine si la structure change.
             return value
         raise WorkflowValidationError(f"Les {label} doivent être un objet JSON.")
 

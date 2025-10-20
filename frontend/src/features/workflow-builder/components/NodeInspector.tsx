@@ -28,7 +28,7 @@ import {
   getWaitForUserInputMessage,
   getAgentReasoningEffort,
   getAgentReasoningSummary,
-  getAgentReasoningVerbosity,
+  getAgentTextVerbosity,
   getAgentResponseFormat,
   getAgentImageGenerationConfig,
   getAgentShowSearchSources,
@@ -67,17 +67,17 @@ const reasoningEffortOptions = [
   { value: "high", label: "Effort élevé" },
 ];
 
-const reasoningVerbosityOptions = [
-  { value: "", label: "Verbosité par défaut" },
-  { value: "low", label: "Verbosité faible" },
-  { value: "medium", label: "Verbosité moyenne" },
-  { value: "high", label: "Verbosité élevée" },
-];
-
 const reasoningSummaryOptions = [
   { value: "none", label: "Pas de résumé" },
   { value: "auto", label: "Résumé automatique" },
   { value: "detailed", label: "Résumé détaillé" },
+];
+
+const textVerbosityOptions = [
+  { value: "", label: "Comportement par défaut" },
+  { value: "low", label: "Verbosité faible" },
+  { value: "medium", label: "Verbosité moyenne" },
+  { value: "high", label: "Verbosité élevée" },
 ];
 
 const conditionModeOptions = [
@@ -161,8 +161,8 @@ export type NodeInspectorProps = {
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onAgentModelChange: (nodeId: string, value: string) => void;
   onAgentReasoningChange: (nodeId: string, value: string) => void;
-  onAgentReasoningVerbosityChange: (nodeId: string, value: string) => void;
   onAgentReasoningSummaryChange: (nodeId: string, value: string) => void;
+  onAgentTextVerbosityChange: (nodeId: string, value: string) => void;
   onAgentTemperatureChange: (nodeId: string, value: string) => void;
   onAgentTopPChange: (nodeId: string, value: string) => void;
   onAgentMaxOutputTokensChange: (nodeId: string, value: string) => void;
@@ -238,8 +238,8 @@ const NodeInspector = ({
   onAgentMessageChange,
   onAgentModelChange,
   onAgentReasoningChange,
-  onAgentReasoningVerbosityChange,
   onAgentReasoningSummaryChange,
+  onAgentTextVerbosityChange,
   onAgentTemperatureChange,
   onAgentTopPChange,
   onAgentMaxOutputTokensChange,
@@ -310,12 +310,13 @@ const NodeInspector = ({
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
   const reasoningEffort = getAgentReasoningEffort(parameters);
+  const textVerbosity = getAgentTextVerbosity(parameters).trim();
   const responseFormat = getAgentResponseFormat(parameters);
   const temperature = getAgentTemperature(parameters);
   const topP = getAgentTopP(parameters);
-  const reasoningVerbosity = getAgentReasoningVerbosity(parameters);
   const rawReasoningSummary = getAgentReasoningSummary(parameters);
   const reasoningSummaryValue = rawReasoningSummary.trim() ? rawReasoningSummary : "none";
+  const textVerbosityValue = textVerbosity || "";
   const maxOutputTokens = getAgentMaxOutputTokens(parameters);
   const maxOutputTokensValue =
     typeof maxOutputTokens === "number" ? String(maxOutputTokens) : "";
@@ -1094,14 +1095,14 @@ const NodeInspector = ({
 
               <label style={inlineFieldStyle}>
                 <span style={labelContentStyle}>
-                  Verbosité du raisonnement
-                  <HelpTooltip label="Contrôle la quantité de texte générée pendant les étapes de raisonnement." />
+                  Verbosité de la réponse
+                  <HelpTooltip label="Contrôle la quantité de texte renvoyée par le modèle (laisser vide pour appliquer le paramétrage par défaut)." />
                 </span>
                 <select
-                  value={reasoningVerbosity}
-                  onChange={(event) => onAgentReasoningVerbosityChange(node.id, event.target.value)}
+                  value={textVerbosityValue}
+                  onChange={(event) => onAgentTextVerbosityChange(node.id, event.target.value)}
                 >
-                  {reasoningVerbosityOptions.map((option) => (
+                  {textVerbosityOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>

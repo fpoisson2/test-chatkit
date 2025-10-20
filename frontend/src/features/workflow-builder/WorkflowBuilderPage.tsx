@@ -51,7 +51,7 @@ import {
   setAgentModel,
   setAgentReasoningEffort,
   setAgentReasoningSummary,
-  setAgentReasoningVerbosity,
+  setAgentTextVerbosity,
   setAgentResponseFormatKind,
   setAgentResponseFormatName,
   setAgentResponseFormatSchema,
@@ -1562,8 +1562,8 @@ const WorkflowBuilderPage = () => {
         let nextParameters = setAgentModel(data.parameters, value);
         if (!isReasoningModel(value)) {
           nextParameters = setAgentReasoningEffort(nextParameters, "");
-          nextParameters = setAgentReasoningVerbosity(nextParameters, "");
           nextParameters = setAgentReasoningSummary(nextParameters, "");
+          nextParameters = setAgentTextVerbosity(nextParameters, "");
         }
         return {
           ...data,
@@ -1594,13 +1594,13 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
-  const handleAgentReasoningVerbosityChange = useCallback(
+  const handleAgentReasoningSummaryChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
         if (data.kind !== "agent") {
           return data;
         }
-        const nextParameters = setAgentReasoningVerbosity(data.parameters, value);
+        const nextParameters = setAgentReasoningSummary(data.parameters, value);
         return {
           ...data,
           parameters: nextParameters,
@@ -1612,13 +1612,13 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
-  const handleAgentReasoningSummaryChange = useCallback(
+  const handleAgentTextVerbosityChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
         if (data.kind !== "agent") {
           return data;
         }
-        const nextParameters = setAgentReasoningSummary(data.parameters, value);
+        const nextParameters = setAgentTextVerbosity(data.parameters, value);
         return {
           ...data,
           parameters: nextParameters,
@@ -4172,8 +4172,8 @@ const WorkflowBuilderPage = () => {
             onAgentMessageChange={handleAgentMessageChange}
             onAgentModelChange={handleAgentModelChange}
             onAgentReasoningChange={handleAgentReasoningChange}
-            onAgentReasoningVerbosityChange={handleAgentReasoningVerbosityChange}
             onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}
+            onAgentTextVerbosityChange={handleAgentTextVerbosityChange}
             onAgentTemperatureChange={handleAgentTemperatureChange}
             onAgentTopPChange={handleAgentTopPChange}
             onAgentMaxOutputTokensChange={handleAgentMaxOutputTokensChange}

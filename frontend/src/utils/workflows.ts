@@ -530,6 +530,24 @@ export const getAgentReasoningEffort = (
   return typeof effort === "string" ? effort : "";
 };
 
+export const getAgentTextVerbosity = (
+  parameters: AgentParameters | null | undefined,
+): string => {
+  if (!parameters) {
+    return "";
+  }
+  const modelSettings = parameters.model_settings;
+  if (!isPlainRecord(modelSettings)) {
+    return "";
+  }
+  const text = modelSettings.text;
+  if (!isPlainRecord(text)) {
+    return "";
+  }
+  const verbosity = text.verbosity;
+  return typeof verbosity === "string" ? verbosity : "";
+};
+
 export const setAgentMessage = (
   parameters: AgentParameters,
   message: string,
@@ -599,41 +617,6 @@ const updateReasoningSettings = (
     return { ...current, reasoning: updated };
   });
 
-export const getAgentReasoningVerbosity = (
-  parameters: AgentParameters | null | undefined,
-): string => {
-  if (!parameters) {
-    return "";
-  }
-  const modelSettings = parameters.model_settings;
-  if (!isPlainRecord(modelSettings)) {
-    return "";
-  }
-  const reasoning = modelSettings.reasoning;
-  if (!isPlainRecord(reasoning)) {
-    return "";
-  }
-  const verbosity = reasoning.verbosity;
-  return typeof verbosity === "string" ? verbosity : "";
-};
-
-export const setAgentReasoningVerbosity = (
-  parameters: AgentParameters,
-  value: string,
-): AgentParameters => {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return updateReasoningSettings(parameters, (current) => {
-      const { verbosity: _ignored, ...rest } = current;
-      return rest;
-    });
-  }
-  return updateReasoningSettings(parameters, (current) => ({
-    ...current,
-    verbosity: trimmed,
-  }));
-};
-
 export const getAgentReasoningSummary = (
   parameters: AgentParameters | null | undefined,
 ): string => {
@@ -690,6 +673,46 @@ const updateModelSettings = (
     return stripEmpty(rest);
   }
   return { ...next, model_settings: updated };
+};
+
+const cloneTextSettings = (
+  textSettings: unknown,
+): Record<string, unknown> => {
+  if (!isPlainRecord(textSettings)) {
+    return {};
+  }
+  return { ...(textSettings as Record<string, unknown>) };
+};
+
+const updateTextSettings = (
+  parameters: AgentParameters,
+  updater: (current: Record<string, unknown>) => Record<string, unknown>,
+): AgentParameters =>
+  updateModelSettings(parameters, (current) => {
+    const updated = updater(cloneTextSettings(current.text));
+    if (Object.keys(updated).length === 0) {
+      const { text: _ignored, ...rest } = current;
+      return rest;
+    }
+    return { ...current, text: updated };
+  });
+
+export const setAgentTextVerbosity = (
+  parameters: AgentParameters,
+  value: string,
+): AgentParameters => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return updateTextSettings(parameters, (current) => {
+      const { verbosity: _ignored, ...rest } = current;
+      return rest;
+    });
+  }
+
+  return updateTextSettings(parameters, (current) => ({
+    ...current,
+    verbosity: trimmed,
+  }));
 };
 
 const parseNumericSetting = (value: string): number | null => {
