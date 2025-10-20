@@ -25,7 +25,7 @@ from ..chatkit_realtime import create_realtime_voice_session
 from ..chatkit_sessions import create_chatkit_session, proxy_chatkit_request
 from ..config import get_settings
 from ..database import get_session
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, get_optional_user
 from ..models import User
 from ..schemas import (
     ChatKitWorkflowResponse,
@@ -34,6 +34,7 @@ from ..schemas import (
     VoiceSessionResponse,
 )
 from ..voice_settings import get_or_create_voice_settings
+from ..security import decode_agent_image_token
 from ..workflows import (
     WorkflowService,
     resolve_start_auto_start,
@@ -193,7 +194,8 @@ async def create_session(
 @router.get("/api/chatkit/images/{image_name}")
 async def get_generated_image(
     image_name: str,
-    current_user: User = Depends(get_current_user),
+    token: str | None = None,
+    current_user: User | None = Depends(get_optional_user),
 ):
     safe_name = Path(image_name).name
     file_path = AGENT_IMAGE_STORAGE_DIR / safe_name
@@ -202,6 +204,28 @@ async def get_generated_image(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Image introuvable",
         )
+    if current_user is None:
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentification requise",
+            )
+        payload = decode_agent_image_token(token)
+        if payload.get("img") != safe_name:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Accès à l'image refusé",
+            )
+    elif token:
+        payload = decode_agent_image_token(token)
+        token_user = payload.get("sub")
+        if payload.get("img") != safe_name or (
+            token_user is not None and str(token_user) != str(current_user.id)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Accès à l'image refusé",
+            )
     return FileResponse(file_path)
 
 

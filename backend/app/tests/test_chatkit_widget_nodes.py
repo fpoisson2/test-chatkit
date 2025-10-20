@@ -1337,6 +1337,7 @@ async def test_auto_start_server_streams_only_user_message_when_configured(
         chatkit_realtime_model="gpt-realtime",
         chatkit_realtime_instructions="Assistant vocal",
         chatkit_realtime_voice="verse",
+        backend_public_base_url="http://localhost:8000",
         database_url="sqlite://",
         auth_secret_key="secret",
         access_token_expire_minutes=60,
@@ -1344,6 +1345,7 @@ async def test_auto_start_server_streams_only_user_message_when_configured(
         admin_password=None,
         database_connect_retries=1,
         database_connect_delay=0.1,
+        agent_image_token_ttl_seconds=3600,
     )
     server = DemoChatKitServer(settings)
 
@@ -1438,6 +1440,7 @@ async def test_auto_start_server_streams_assistant_message_and_runs_workflow(
         chatkit_realtime_model="gpt-realtime",
         chatkit_realtime_instructions="Assistant vocal",
         chatkit_realtime_voice="verse",
+        backend_public_base_url="http://localhost:8000",
         database_url="sqlite://",
         auth_secret_key="secret",
         access_token_expire_minutes=60,
@@ -1445,6 +1448,7 @@ async def test_auto_start_server_streams_assistant_message_and_runs_workflow(
         admin_password=None,
         database_connect_retries=1,
         database_connect_delay=0.1,
+        agent_image_token_ttl_seconds=3600,
     )
     server = DemoChatKitServer(settings)
 
@@ -1546,6 +1550,7 @@ async def test_auto_start_messages_are_persisted_once(
         chatkit_realtime_model="gpt-realtime",
         chatkit_realtime_instructions="Assistant vocal",
         chatkit_realtime_voice="verse",
+        backend_public_base_url="http://localhost:8000",
         database_url="sqlite://",
         auth_secret_key="secret",
         access_token_expire_minutes=60,
@@ -1553,6 +1558,7 @@ async def test_auto_start_messages_are_persisted_once(
         admin_password=None,
         database_connect_retries=1,
         database_connect_delay=0.1,
+        agent_image_token_ttl_seconds=3600,
     )
     server = DemoChatKitServer(settings)
 
@@ -1642,6 +1648,7 @@ async def test_auto_start_assistant_message_is_persisted_once(
         chatkit_realtime_model="gpt-realtime",
         chatkit_realtime_instructions="Assistant vocal",
         chatkit_realtime_voice="verse",
+        backend_public_base_url="http://localhost:8000",
         database_url="sqlite://",
         auth_secret_key="secret",
         access_token_expire_minutes=60,
@@ -1649,6 +1656,7 @@ async def test_auto_start_assistant_message_is_persisted_once(
         admin_password=None,
         database_connect_retries=1,
         database_connect_delay=0.1,
+        agent_image_token_ttl_seconds=3600,
     )
     server = DemoChatKitServer(settings)
 

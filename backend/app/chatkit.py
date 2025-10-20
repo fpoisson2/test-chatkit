@@ -8,6 +8,7 @@ import logging
 import math
 import re
 import uuid
+from pathlib import Path
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -107,6 +108,7 @@ from .workflows import (
 )
 from .image_utils import (
     append_generated_image_links,
+    build_agent_image_absolute_url,
     format_generated_image_links,
     save_agent_image_file,
 )
@@ -4109,6 +4111,7 @@ async def run_workflow(
             "agent_label": metadata.get("agent_label"),
             "thread_id": metadata.get("thread_id"),
             "step_key": metadata.get("step_key"),
+            "user_id": metadata.get("user_id"),
         }
         if context is None:
             context = dict(base_context)
@@ -4156,11 +4159,27 @@ async def run_workflow(
         partials = list(image.partials or [])
         local_file_path: str | None = None
         local_file_url: str | None = None
+        absolute_file_url: str | None = None
         if b64_payload:
             local_file_path, local_file_url = save_agent_image_file(
                 doc_id,
                 b64_payload,
                 output_format=getattr(image, "output_format", None),
+            )
+        if local_file_url:
+            from .security import create_agent_image_token  # lazy import pour éviter les dépendances globales
+
+            file_name = Path(local_file_url).name
+            token_user = context.get("user_id")
+            token = create_agent_image_token(
+                file_name,
+                user_id=str(token_user) if token_user else None,
+                thread_id=raw_thread_id,
+            )
+            absolute_file_url = build_agent_image_absolute_url(
+                local_file_url,
+                base_url=get_settings().backend_public_base_url,
+                token=token,
             )
         payload = {
             "thread_id": raw_thread_id,
@@ -4184,7 +4203,9 @@ async def run_workflow(
             },
         }
         if local_file_url:
-            payload["image"]["local_file_url"] = local_file_url
+            payload["image"]["local_file_relative_url"] = local_file_url
+        if absolute_file_url:
+            payload["image"]["local_file_url"] = absolute_file_url
         if local_file_path:
             payload["image"]["local_file_path"] = local_file_path
         metadata = {
@@ -4200,7 +4221,8 @@ async def run_workflow(
             "partials_count": len(partials),
         }
         if local_file_url:
-            metadata["local_file_url"] = local_file_url
+            metadata["local_file_url"] = absolute_file_url or local_file_url
+            metadata["local_file_relative_url"] = local_file_url
         if local_file_path:
             metadata["local_file_path"] = local_file_path
         logger.info(
@@ -4221,7 +4243,8 @@ async def run_workflow(
             "output_index": key[1],
         }
         if local_file_url:
-            image_record["local_file_url"] = local_file_url
+            image_record["local_file_url"] = absolute_file_url or local_file_url
+            image_record["local_file_relative_url"] = local_file_url
         if local_file_path:
             image_record["local_file_path"] = local_file_path
         step_identifier = context.get("step_key") or context.get("step_slug")
@@ -4454,6 +4477,12 @@ async def run_workflow(
         thread_meta = getattr(agent_context, "thread", None)
         if not metadata_for_images.get("thread_id") and thread_meta is not None:
             metadata_for_images["thread_id"] = getattr(thread_meta, "id", None)
+
+        request_context = getattr(agent_context, "request_context", None)
+        if request_context is not None:
+            metadata_for_images.setdefault(
+                "user_id", getattr(request_context, "user_id", None)
+            )
 
         logger.info(
             "Démarrage de l'exécution de l'agent %s (étape=%s, index=%s)",

@@ -47,3 +47,14 @@ def test_format_and_append_generated_image_links() -> None:
 
     appended_only = image_utils.append_generated_image_links("", urls)
     assert appended_only == formatted
+
+
+def test_build_agent_image_absolute_url_with_token() -> None:
+    absolute = image_utils.build_agent_image_absolute_url(
+        "/api/chatkit/images/demo.png",
+        base_url="https://example.test",
+        token="tok en",
+    )
+
+    assert absolute.startswith("https://example.test/api/chatkit/images/demo.png")
+    assert "token=tok%20en" in absolute

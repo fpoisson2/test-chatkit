@@ -20,6 +20,7 @@ class Settings:
         openai_api_key: Jeton API OpenAI utilisé pour contacter ChatKit.
         chatkit_workflow_id: Identifiant du workflow hébergé (optionnel).
         chatkit_api_base: URL de base de l'API OpenAI/ChatKit.
+        backend_public_base_url: URL publique du backend utilisée pour construire les liens absolus.
         chatkit_agent_model: Modèle utilisé pour les agents classiques.
         chatkit_agent_instructions: Instructions de l'agent historique.
         chatkit_realtime_model: Modèle Realtime par défaut pour les sessions vocales.
@@ -32,6 +33,7 @@ class Settings:
         admin_password: Mot de passe administrateur initial (optionnel).
         database_connect_retries: Nombre de tentatives de connexion à la base.
         database_connect_delay: Délai entre deux tentatives (en secondes).
+        agent_image_token_ttl_seconds: Durée de validité (en secondes) des liens d'images générées.
     """
 
     allowed_origins: list[str]
@@ -43,6 +45,7 @@ class Settings:
     chatkit_realtime_model: str
     chatkit_realtime_instructions: str
     chatkit_realtime_voice: str
+    backend_public_base_url: str
     database_url: str
     auth_secret_key: str
     access_token_expire_minutes: int
@@ -50,6 +53,7 @@ class Settings:
     admin_password: str | None
     database_connect_retries: int
     database_connect_delay: float
+    agent_image_token_ttl_seconds: int
 
     @staticmethod
     def _parse_allowed_origins(raw_value: str | None) -> list[str]:
@@ -100,6 +104,10 @@ class Settings:
                 "CHATKIT_REALTIME_VOICE",
                 "verse",
             ),
+            backend_public_base_url=env.get(
+                "BACKEND_PUBLIC_BASE_URL",
+                "http://localhost:8000",
+            ).rstrip("/"),
             database_url=require(
                 "DATABASE_URL",
                 message="DATABASE_URL environment variable is required for PostgreSQL access",
@@ -113,6 +121,9 @@ class Settings:
             admin_password=env.get("ADMIN_PASSWORD"),
             database_connect_retries=int(env.get("DATABASE_CONNECT_RETRIES", "10")),
             database_connect_delay=float(env.get("DATABASE_CONNECT_DELAY", "1.0")),
+            agent_image_token_ttl_seconds=int(
+                env.get("AGENT_IMAGE_TOKEN_TTL_SECONDS", "3600")
+            ),
         )
 
 

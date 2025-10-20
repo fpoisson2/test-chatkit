@@ -5,6 +5,7 @@ import imghdr
 import logging
 from pathlib import Path
 from typing import Sequence
+from urllib.parse import quote, urljoin
 
 logger = logging.getLogger("chatkit.image_utils")
 
@@ -58,6 +59,25 @@ def save_agent_image_file(
 
     url = f"{AGENT_IMAGE_URL_PREFIX}/{file_name}"
     return str(file_path), url
+
+
+def build_agent_image_absolute_url(
+    relative_url: str,
+    *,
+    base_url: str,
+    token: str | None = None,
+) -> str:
+    """Construit une URL absolue optionnellement signée pour une image générée."""
+
+    if not isinstance(relative_url, str) or not relative_url.strip():
+        return ""
+
+    normalized_base = base_url.rstrip("/") + "/"
+    absolute = urljoin(normalized_base, relative_url.lstrip("/"))
+    if token:
+        separator = "&" if "?" in absolute else "?"
+        absolute = f"{absolute}{separator}token={quote(token)}"
+    return absolute
 
 
 def format_generated_image_links(urls: Sequence[str]) -> str:
