@@ -5495,6 +5495,34 @@ async def run_workflow(
                 "output_text": append_generated_image_links(text, image_urls),
             }
 
+        # Mémoriser la dernière sortie d'agent dans l'état global pour les transitions suivantes.
+        state["last_agent_key"] = agent_key
+        state["last_agent_output"] = last_step_context.get("output")
+        state["last_agent_output_text"] = last_step_context.get("output_text")
+        structured_candidate = last_step_context.get("output_structured")
+        if hasattr(structured_candidate, "model_dump"):
+            try:
+                structured_candidate = structured_candidate.model_dump(by_alias=True)
+            except TypeError:
+                structured_candidate = structured_candidate.model_dump()
+        elif hasattr(structured_candidate, "dict"):
+            try:
+                structured_candidate = structured_candidate.dict(by_alias=True)
+            except TypeError:
+                structured_candidate = structured_candidate.dict()
+        elif structured_candidate is not None and not isinstance(
+            structured_candidate, (dict, list, str)
+        ):
+            structured_candidate = str(structured_candidate)
+        state["last_agent_output_structured"] = structured_candidate
+        generated_urls = last_step_context.get("generated_image_urls")
+        if isinstance(generated_urls, list):
+            state["last_generated_image_urls"] = [
+                url for url in generated_urls if isinstance(url, str)
+            ]
+        else:
+            state.pop("last_generated_image_urls", None)
+
         if image_urls:
             last_step_context["generated_image_urls"] = image_urls
             if links_text and on_stream_event is not None:
