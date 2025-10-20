@@ -3421,10 +3421,14 @@ def _ensure_widget_output_model(
     config: _ResponseWidgetConfig,
 ) -> _ResponseWidgetConfig:
     if config.source != "library" or not config.slug:
+        logger.debug("_ensure_widget_output_model: config source=%s, slug=%s - retour sans modèle", config.source, config.slug)
         return config
 
     if config.output_model is not None:
+        logger.debug("_ensure_widget_output_model: output_model déjà défini pour %s", config.slug)
         return config
+
+    logger.debug("_ensure_widget_output_model: Début pour widget '%s', variables=%s", config.slug, config.variables)
 
     variable_ids = list(config.variables.keys())
     definition = _load_widget_definition(config.slug, context="configuration")
@@ -3435,6 +3439,7 @@ def _ensure_widget_output_model(
         )
     else:
         bindings = _collect_widget_bindings(definition)
+        logger.debug("_ensure_widget_output_model: bindings collectés pour %s: %s", config.slug, list(bindings.keys()) if bindings else [])
         for identifier in bindings:
             if identifier not in variable_ids:
                 variable_ids.append(identifier)
@@ -3443,11 +3448,16 @@ def _ensure_widget_output_model(
     if config.bindings and not variable_ids:
         variable_ids.extend(config.bindings.keys())
 
+    logger.debug("_ensure_widget_output_model: variable_ids finaux pour %s: %s", config.slug, variable_ids)
+
     model = _build_widget_output_model(
         config.slug, variable_ids, bindings=config.bindings
     )
     if model is None:
+        logger.warning("_ensure_widget_output_model: Impossible de construire le modèle pour %s", config.slug)
         return config
+
+    logger.debug("_ensure_widget_output_model: Modèle construit avec succès pour %s: %s", config.slug, model.__name__)
     return replace(config, output_model=model)
 
 
