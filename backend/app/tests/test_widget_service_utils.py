@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -80,3 +82,40 @@ def test_validate_widget_falls_back_to_parse_obj_as(monkeypatch: pytest.MonkeyPa
     result = WidgetLibraryService._validate_widget(json.dumps(payload))
 
     assert isinstance(result, _WidgetV1)
+
+
+def test_from_document_accepts_json_string_definition() -> None:
+    document = SimpleNamespace(
+        raw_document={
+            "slug": "etat-ampoule-schema",
+            "title": "État d'une ampoule",
+            "definition": json.dumps({"type": "Text", "value": "allumée"}),
+        },
+        doc_id="etat-ampoule-schema",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+
+    entry = WidgetLibraryService._from_document(document)
+
+    assert entry.slug == "etat-ampoule-schema"
+    assert entry.definition == {"type": "Text", "value": "allumée"}
+
+
+def test_from_document_rejects_invalid_json_string_definition() -> None:
+    document = SimpleNamespace(
+        raw_document={
+            "definition": "{not-json}",
+        },
+        doc_id="invalid-json",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+
+    with pytest.raises(WidgetValidationError) as exc:
+        WidgetLibraryService._from_document(document)
+
+    assert (
+        "La définition du widget contient une chaîne JSON invalide."
+        in exc.value.errors
+    )

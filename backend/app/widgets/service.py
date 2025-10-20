@@ -307,6 +307,16 @@ class WidgetLibraryService:
             )
 
         definition = raw.get("definition")
+        if isinstance(definition, str):
+            try:
+                definition = json.loads(definition)
+            except json.JSONDecodeError as exc:  # pragma: no cover - dépend du contenu exact
+                raise WidgetValidationError(
+                    "Définition de widget invalide",
+                    errors=[
+                        "La définition du widget contient une chaîne JSON invalide.",
+                    ],
+                ) from exc
         if not isinstance(definition, dict):
             raise WidgetValidationError(
                 "Définition de widget invalide",
