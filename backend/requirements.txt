@@ -7,11 +7,13 @@ uvicorn[standard]
 python-dotenv
 httpx
 sqlalchemy
-psycopg
+psycopg[binary]
 PyJWT
 email-validator
 
-# Vector store (optional - only needed for semantic search features)
-# Uncomment the lines below if you need vector store functionality
-# pgvector
+# Vector store - uses OpenAI Embeddings API (no heavy ML dependencies needed)
+pgvector
+
+# Alternative: Local embeddings (heavy - ~500MB with PyTorch)
+# Uncomment if you prefer local embeddings instead of OpenAI API
 # sentence-transformers
