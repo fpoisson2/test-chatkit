@@ -477,6 +477,7 @@ const NodeInspector = ({
     };
   }, [kind, token, widgetNodeSource, trimmedWidgetNodeSlug]);
   const widgetSelectId = useId();
+  const widgetSlugSuggestionsId = useId();
   const widgetNodeSlugSuggestionsId = useId();
   let fileSearchValidationMessage: string | null = null;
   if (fileSearchMissingVectorStore && !vectorStoresLoading) {
@@ -1295,6 +1296,21 @@ const NodeInspector = ({
 
               {responseWidgetSource === "library" ? (
                 <>
+                  <label style={fieldStyle} htmlFor={`${widgetSlugSuggestionsId}-input`}>
+                    <span style={labelContentStyle}>
+                      Slug du widget
+                      <HelpTooltip label="Correspond au slug défini lors de l'enregistrement du widget dans la bibliothèque." />
+                    </span>
+                    <input
+                      id={`${widgetSlugSuggestionsId}-input`}
+                      type="text"
+                      value={responseWidgetSlug}
+                      onChange={(event) => onAgentResponseWidgetSlugChange(node.id, event.target.value)}
+                      placeholder="Ex. widget-rapport"
+                      list={widgets.length > 0 ? `${widgetSlugSuggestionsId}-list` : undefined}
+                    />
+                  </label>
+
                   <label style={inlineFieldStyle} htmlFor={`${widgetSelectId}-select`}>
                     <span style={labelContentStyle}>
                       Widget de sortie
@@ -1330,18 +1346,16 @@ const NodeInspector = ({
                   ) : widgetsError ? (
                     <p style={{ color: "#b91c1c", margin: 0 }}>
                       {widgetsError}
-                      {widgets.length > 0 ? (
-                        <>
-                          <br />
-                          <span style={{ color: "var(--text-muted)" }}>
-                            La dernière liste chargée reste disponible ci-dessus.
-                          </span>
-                        </>
-                      ) : null}
+                      <br />
+                      <span style={{ color: "var(--text-muted)" }}>
+                        {widgets.length > 0
+                          ? "La dernière liste chargée reste disponible ci-dessus."
+                          : "Vous pouvez saisir le slug manuellement ci-dessus."}
+                      </span>
                     </p>
                   ) : widgets.length === 0 ? (
                     <p style={{ color: "var(--text-muted)", margin: 0 }}>
-                      Créez un widget dans la bibliothèque dédiée pour l'utiliser ici.
+                      Créez un widget dans la bibliothèque dédiée ou saisissez son slug manuellement ci-dessus.
                     </p>
                   ) : null}
                   {widgetValidationMessage ? (
@@ -1357,6 +1371,16 @@ const NodeInspector = ({
                       Le widget sélectionné ({responseWidgetSlug}) sera conservé tant que la bibliothèque n'est
                       pas disponible.
                     </p>
+                  )}
+
+                  {widgets.length > 0 && (
+                    <datalist id={`${widgetSlugSuggestionsId}-list`}>
+                      {widgets.map((widget) => (
+                        <option key={widget.slug} value={widget.slug}>
+                          {widget.title?.trim() ? widget.title : widget.slug}
+                        </option>
+                      ))}
+                    </datalist>
                   )}
                 </>
               ) : (
