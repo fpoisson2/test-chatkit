@@ -62,6 +62,46 @@ describe("widgetPreview helpers", () => {
     expect(bindings["opt2.icon"].sample).toBe("bolt");
   });
 
+  it("collects bindings for image sources and alt text", () => {
+    const imageWidget: Record<string, unknown> = {
+      type: "Card",
+      size: "sm",
+      padding: 0,
+      children: [
+        {
+          type: "Image",
+          src: "https://upload.wikimedia.org/wikipedia/commons/6/63/Aurora_Borealis.jpg",
+          alt: "Aurore boréale vue de l'ISS (NASA)",
+          fit: "cover",
+          aspectRatio: 1.5,
+          flush: true,
+        },
+      ],
+    };
+
+    const bindings = collectWidgetBindings(imageWidget);
+    expect(Object.keys(bindings).sort()).toEqual(["image.alt", "image.src"]);
+    expect(bindings["image.src"].sample).toBe(
+      "https://upload.wikimedia.org/wikipedia/commons/6/63/Aurora_Borealis.jpg",
+    );
+    expect(bindings["image.alt"].sample).toBe("Aurore boréale vue de l'ISS (NASA)");
+    expect(bindings["image.src"].valueKey).toBe("src");
+    expect(bindings["image.alt"].valueKey).toBe("alt");
+
+    const updated = applyWidgetInputValues(
+      imageWidget,
+      {
+        "image.src": "https://example.com/new-image.jpg",
+        "image.alt": "Nouvelle image",
+      },
+      bindings,
+    );
+
+    const [image] = (updated.children as Array<Record<string, unknown>>);
+    expect(image.src).toBe("https://example.com/new-image.jpg");
+    expect(image.alt).toBe("Nouvelle image");
+  });
+
   it("collects bindings from component ids and editable fields", () => {
     const bindings = collectWidgetBindings(definition);
     expect(Object.keys(bindings).sort()).toEqual([

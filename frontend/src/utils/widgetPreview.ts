@@ -20,6 +20,10 @@ const valueKeys = new Set<keyof Widgets.WidgetRoot | string>([
   "content",
   "heading",
   "subtitle",
+  "alt",
+  "src",
+  "href",
+  "url",
   "icon",
   "iconStart",
   "iconEnd",
@@ -111,6 +115,7 @@ const formatComponentIdentifier = (
   }
 
   if (componentType) {
+    const normalizedType = componentType.toLowerCase();
     const aliasMap: Record<string, string> = {
       title: "title",
       subtitle: "subtitle",
@@ -120,9 +125,14 @@ const formatComponentIdentifier = (
       markdown: "markdown",
       badge: "badge",
     };
-    const alias = aliasMap[componentType.toLowerCase()];
+    const alias = aliasMap[normalizedType];
     if (alias && ["value", "text", "title", "label", "content", "body"].includes(valueKey)) {
       return ensureUnique(alias);
+    }
+    const base = alias ?? (normalizedType.length > 0 ? normalizedType : null);
+    if (base && ["src", "href", "url", "alt"].includes(valueKey)) {
+      const suffix = valueKey === "url" ? "url" : valueKey;
+      return ensureUnique(`${base}.${suffix}`);
     }
   }
 
@@ -176,6 +186,7 @@ export const collectWidgetBindings = (definition: unknown): WidgetBindingMap => 
       "value",
       "text",
       "label",
+      "alt",
       "src",
       "url",
       "href",
@@ -422,6 +433,10 @@ const updateNodeValue = (
     "subtitle",
     "description",
     "caption",
+    "alt",
+    "src",
+    "href",
+    "url",
     "icon",
     "iconStart",
     "iconEnd",

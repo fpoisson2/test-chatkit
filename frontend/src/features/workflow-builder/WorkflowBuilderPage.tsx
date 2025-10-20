@@ -14,6 +14,7 @@ import ReactFlow, {
   MiniMap,
   addEdge,
   type Connection,
+  type EdgeChange,
   type ReactFlowInstance,
   ReactFlowProvider,
   type Viewport,
@@ -252,7 +253,7 @@ const WorkflowBuilderPage = () => {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<FlowEdgeData>([]);
+  const [edges, setEdges, applyEdgesChange] = useEdgesState<FlowEdgeData>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
@@ -289,6 +290,16 @@ const WorkflowBuilderPage = () => {
   const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
+
+  const handleEdgesChange = useCallback(
+    (changes: EdgeChange<FlowEdgeData>[]) => {
+      if (changes.some((change) => change.type !== "select")) {
+        setHasPendingChanges(true);
+      }
+      applyEdgesChange(changes);
+    },
+    [applyEdgesChange, setHasPendingChanges],
+  );
 
   const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
@@ -1318,8 +1329,9 @@ const WorkflowBuilderPage = () => {
           current
         )
       );
+      setHasPendingChanges(true);
     },
-    [setEdges]
+    [setEdges, setHasPendingChanges]
   );
 
   const selectedNode = useMemo(
@@ -2252,8 +2264,9 @@ const WorkflowBuilderPage = () => {
             : edge
         )
       );
+      setHasPendingChanges(true);
     },
-    [setEdges]
+    [setEdges, setHasPendingChanges]
   );
 
   const handleEdgeLabelChange = useCallback(
@@ -2272,8 +2285,9 @@ const WorkflowBuilderPage = () => {
             : edge
         )
       );
+      setHasPendingChanges(true);
     },
-    [setEdges]
+    [setEdges, setHasPendingChanges]
   );
 
   const removeElements = useCallback(
@@ -2377,6 +2391,12 @@ const WorkflowBuilderPage = () => {
       removeElements({ nodeIds: [nodeId] });
     },
     [removeElements]
+      setHasPendingChanges(true);
+      if (selectedNodeId === nodeId) {
+        setSelectedNodeId(null);
+      }
+    },
+    [nodes, selectedNodeId, setEdges, setHasPendingChanges, setNodes]
   );
 
   const handleRemoveEdge = useCallback(
@@ -2403,6 +2423,13 @@ const WorkflowBuilderPage = () => {
       applySelection({ nodeIds: [node.id], primaryNodeId: node.id });
     },
     [applySelection, setNodes]
+      setEdges((currentEdges) => currentEdges.filter((edge) => edge.id !== edgeId));
+      setHasPendingChanges(true);
+      if (selectedEdgeId === edgeId) {
+        setSelectedEdgeId(null);
+      }
+    },
+    [selectedEdgeId, setEdges, setHasPendingChanges]
   );
 
   const handleAddAgentNode = useCallback(() => {
@@ -3497,6 +3524,14 @@ const WorkflowBuilderPage = () => {
   }, [conditionGraphError]);
 
   useEffect(() => {
+    if (isPropertiesPanelOpen) {
+      if (autoSaveTimeoutRef.current !== null) {
+        clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = null;
+      }
+      return;
+    }
+
     if (
       !hasPendingChanges ||
       disableSave ||
@@ -3530,6 +3565,7 @@ const WorkflowBuilderPage = () => {
     disableSave,
     handleSave,
     hasPendingChanges,
+    isPropertiesPanelOpen,
     loading,
     saveState,
     selectedWorkflowId,
@@ -4366,7 +4402,7 @@ const WorkflowBuilderPage = () => {
                   nodes={nodes}
                   edges={edges}
                   onNodesChange={onNodesChange}
-                  onEdgesChange={onEdgesChange}
+                  onEdgesChange={handleEdgesChange}
                   onNodeClick={handleNodeClick}
                   onEdgeClick={handleEdgeClick}
                   onPaneClick={handleClearSelection}
