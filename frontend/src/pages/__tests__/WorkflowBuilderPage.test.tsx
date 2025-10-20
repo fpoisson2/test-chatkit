@@ -697,7 +697,7 @@ describe("WorkflowBuilderPage", () => {
     expect(triageNode).not.toBeNull();
     fireEvent.click(triageNode!);
 
-    const outputTypeSelect = await screen.findByLabelText(/type de sortie/i);
+    const outputTypeSelect = await screen.findByLabelText(/type de sortie/i, { selector: "select" });
     await user.selectOptions(outputTypeSelect, "widget");
 
     await waitFor(() => {
@@ -1157,7 +1157,7 @@ describe("WorkflowBuilderPage", () => {
     expect(widgetNode).not.toBeNull();
     fireEvent.click(widgetNode!);
 
-    const widgetSlugInput = await screen.findByLabelText(/^slug du widget$/i);
+    const widgetSlugInput = await screen.findByPlaceholderText(/mon-widget-personnalise/i);
     fireEvent.change(widgetSlugInput, { target: { value: "resume" } });
 
     await waitFor(
@@ -1177,4 +1177,5 @@ describe("WorkflowBuilderPage", () => {
       widget: { source: "library", slug: "resume" },
     });
   });
+
 });
