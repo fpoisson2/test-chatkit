@@ -1061,8 +1061,14 @@ def _model_settings(**kwargs: Any) -> ModelSettings:
 
 def _coerce_model_settings(value: Any) -> Any:
     if isinstance(value, dict):
-        return _model_settings(**value)
-    return sanitize_model_like(value)
+        logger.debug("Nettoyage model_settings dict: %s", value)
+        result = _model_settings(**value)
+        logger.debug("Résultat après nettoyage: %s", getattr(result, "model_dump", lambda **_: result)() if hasattr(result, "model_dump") else result)
+        return result
+    logger.debug("Nettoyage model_settings objet: %s", value)
+    result = sanitize_model_like(value)
+    logger.debug("Résultat après nettoyage: %s", getattr(result, "model_dump", lambda **_: result)() if hasattr(result, "model_dump") else result)
+    return result
 
 
 def _sanitize_web_search_user_location(payload: Any) -> dict[str, str] | None:
