@@ -18,6 +18,7 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5183}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     ports:
       - "0.0.0.0:8000:8000"
     depends_on:

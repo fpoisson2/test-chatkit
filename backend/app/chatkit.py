@@ -1918,7 +1918,7 @@ def _build_response_format_from_widget(
     Returns:
         Un dictionnaire response_format compatible ou None si impossible
     """
-    logger.debug(
+    logger.info(
         "_build_response_format_from_widget appelée avec: %s",
         response_widget
     )
@@ -3710,7 +3710,7 @@ async def run_workflow(
         overrides_raw = step.parameters or {}
         overrides = dict(overrides_raw)
 
-        logger.debug(
+        logger.info(
             "Construction de l'agent pour l'étape %s. widget_config: %s, output_model: %s",
             step.slug,
             widget_config is not None,
@@ -3731,7 +3731,7 @@ async def run_workflow(
                 overrides["response_format"] = _create_response_format_from_pydantic(
                     widget_config.output_model
                 )
-                logger.debug(
+                logger.info(
                     "response_format généré depuis le modèle widget pour l'étape %s",
                     step.slug
                 )
