@@ -935,7 +935,9 @@ export const getAgentResponseFormat = (
     const definitionExpressionRaw = widget.definition_expression;
     const definitionExpression =
       typeof definitionExpressionRaw === "string" ? definitionExpressionRaw.trim() : "";
-    if (rawSource === "variable" || (!widget.slug && definitionExpression)) {
+
+    // Si la source est explicitement définie, la respecter
+    if (rawSource === "variable") {
       if (definitionExpression) {
         return {
           kind: "widget",
@@ -943,6 +945,26 @@ export const getAgentResponseFormat = (
           definitionExpression,
         };
       }
+    } else if (rawSource === "library") {
+      // Source explicitement "library"
+      if (typeof widget.slug === "string") {
+        const slug = widget.slug.trim();
+        if (slug) {
+          const variables = sanitizeWidgetVariables(widget.variables);
+          return { kind: "widget", source: "library", slug, variables };
+        }
+      }
+      // Même sans slug, retourner library si c'est explicitement demandé
+      return { kind: "widget", source: "library", slug: "", variables: {} };
+    }
+
+    // Fallback pour compatibilité avec ancien format (pas de source explicite)
+    if (!widget.slug && definitionExpression) {
+      return {
+        kind: "widget",
+        source: "variable",
+        definitionExpression,
+      };
     }
 
     if (typeof widget.slug === "string") {
