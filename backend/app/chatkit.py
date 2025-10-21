@@ -119,7 +119,7 @@ from .image_utils import (
     merge_generated_image_urls_into_payload,
     save_agent_image_file,
 )
-from backend.app.chatkit_server.actions import (
+from .chatkit_server.actions import (
     _UNSET,
     _apply_widget_variable_values,
     _candidate_widget_keys,
@@ -144,7 +144,7 @@ from backend.app.chatkit_server.actions import (
     _StrictSchemaBase,
     _patch_model_json_schema,
 )
-from backend.app.chatkit_server.context import (
+from .chatkit_server.context import (
     AutoStartConfiguration,
     ChatKitRequestContext,
     _WAIT_STATE_METADATA_KEY,
@@ -155,7 +155,7 @@ from backend.app.chatkit_server.context import (
     _resolve_user_input_text,
     _set_wait_state_metadata,
 )
-from backend.app.chatkit_server.workflow_runner import (
+from .chatkit_server.workflow_runner import (
     _STREAM_DONE,
     _WorkflowStreamResult,
     _log_background_exceptions,
@@ -4611,7 +4611,7 @@ async def run_workflow(
         final_node_slug=final_node_slug,
         end_state=final_end_state,
     )
-from backend.app.chatkit_server.server import (
+from .chatkit_server.server import (
     DemoChatKitServer,
     ImageAwareThreadItemConverter,
 )

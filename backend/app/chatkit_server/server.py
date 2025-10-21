@@ -52,19 +52,19 @@ from chatkit.types import (
 from openai.types.responses import ResponseInputImageParam, ResponseInputTextParam
 from openai.types.responses.response_input_item_param import Message
 
-from backend.app.attachment_store import LocalAttachmentStore
-from backend.app.chatkit_store import PostgresChatKitStore
-from backend.app.config import Settings
-from backend.app.database import SessionLocal
-from backend.app.workflows import (
+from ..attachment_store import LocalAttachmentStore
+from ..chatkit_store import PostgresChatKitStore
+from ..config import Settings
+from ..database import SessionLocal
+from ..workflows import (
     WorkflowService,
     resolve_start_auto_start,
     resolve_start_auto_start_assistant_message,
     resolve_start_auto_start_message,
 )
-from backend.app.widgets import WidgetLibraryService
+from ..widgets import WidgetLibraryService
 
-from backend.app.chatkit_server.actions import (
+from .actions import (
     _UNSET,
     _apply_widget_variable_values,
     _clone_widget_definition,
@@ -74,21 +74,21 @@ from backend.app.chatkit_server.actions import (
     _load_widget_definition,
     _resolve_widget_action_payload,
 )
-from backend.app.chatkit_server.context import (
+from .context import (
     AutoStartConfiguration,
     ChatKitRequestContext,
     _normalize_user_text,
     _resolve_user_input_text,
 )
-from backend.app.chatkit_server.widget_waiters import WidgetWaiterRegistry
-from backend.app.chatkit_server.workflow_runner import (
+from .widget_waiters import WidgetWaiterRegistry
+from .workflow_runner import (
     _STREAM_DONE,
     _WorkflowStreamResult,
     _log_background_exceptions,
 )
 
 try:
-    from backend.app.chatkit import (
+    from ..chatkit import (
         WorkflowExecutionError,
         WorkflowInput,
         WorkflowStepStreamUpdate,
@@ -105,13 +105,13 @@ logger = logging.getLogger("chatkit.server")
 
 
 def _get_thread_title_agent() -> Agent:
-    from backend.app import chatkit as chatkit_module
+    from .. import chatkit as chatkit_module
 
     return chatkit_module._build_thread_title_agent()
 
 
 def _get_run_workflow():
-    from backend.app import chatkit as chatkit_module
+    from .. import chatkit as chatkit_module
 
     return chatkit_module.run_workflow
 
