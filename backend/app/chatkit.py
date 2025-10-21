@@ -4946,6 +4946,7 @@ async def run_workflow(
 
     agent_image_tasks: dict[tuple[str, int, str], dict[str, Any]] = {}
     agent_step_generated_images: dict[str, list[dict[str, Any]]] = {}
+    steps_with_immediate_image_link: set[str] = set()
 
     def _sanitize_identifier(value: str, fallback: str) -> str:
         candidate = value.strip()
@@ -5038,7 +5039,7 @@ async def run_workflow(
         key: tuple[str, int, str],
         task: ImageTask,
         image: GeneratedImage,
-    ) -> None:
+    ) -> dict[str, Any] | None:
         raw_thread_id = str(context.get("thread_id") or "unknown-thread")
         normalized_thread = _sanitize_identifier(raw_thread_id, "thread")
         step_identifier_for_doc = context.get("step_key") or context.get("step_slug") or "step"
@@ -5131,7 +5132,7 @@ async def run_workflow(
             payload,
             metadata,
         )
-        image_record = {
+        image_record: dict[str, Any] = {
             "doc_id": doc_id,
             "call_id": key[0],
             "output_index": key[1],
@@ -5142,6 +5143,8 @@ async def run_workflow(
         if local_file_path:
             image_record["local_file_path"] = local_file_path
         step_identifier = context.get("step_key") or context.get("step_slug")
+        if isinstance(step_identifier, str) and step_identifier:
+            image_record["step_key"] = step_identifier
         if isinstance(step_identifier, str):
             _register_generated_image_for_step(step_identifier, image_record)
         elif step_identifier is not None:
@@ -5153,6 +5156,7 @@ async def run_workflow(
             context.get("step_slug") or "inconnue",
             key[0],
         )
+        return image_record
 
     def _evaluate_widget_variable_expression(
         expression: str, *, input_context: dict[str, Any] | None
@@ -5435,9 +5439,33 @@ async def run_workflow(
                         context.get("call_id"),
                     )
                     return
-                await _persist_agent_image(context, key, task, image)
+                stored_record = await _persist_agent_image(context, key, task, image)
                 context["last_stored_b64"] = image.b64_json
                 agent_image_tasks.pop(key, None)
+                if stored_record and on_stream_event is not None:
+                    url = stored_record.get("local_file_url") or stored_record.get(
+                        "local_file_relative_url"
+                    )
+                    formatted = (
+                        format_generated_image_links([url]) if isinstance(url, str) else ""
+                    )
+                    if formatted:
+                        assistant_message = AssistantMessageItem(
+                            id=agent_context.generate_id("message"),
+                            thread_id=agent_context.thread.id,
+                            created_at=datetime.now(),
+                            content=[AssistantMessageContent(text=formatted)],
+                        )
+                        await on_stream_event(ThreadItemAddedEvent(item=assistant_message))
+                        await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
+                    step_identifier = (
+                        context.get("step_key")
+                        or context.get("step_slug")
+                        or stored_record.get("step_key")
+                    )
+                    if isinstance(step_identifier, str) and step_identifier:
+                        steps_with_immediate_image_link.add(step_identifier)
+                    stored_record["notified"] = True
             elif status == "loading" and image and image.partials:
                 logger.debug(
                     "Image partielle capturée pour l'appel %s (taille=%d).",
@@ -6269,7 +6297,11 @@ async def run_workflow(
 
         if image_urls:
             last_step_context["generated_image_urls"] = image_urls
-            if links_text and on_stream_event is not None:
+            skip_links_event = (
+                isinstance(step_identifier, str)
+                and step_identifier in steps_with_immediate_image_link
+            )
+            if links_text and on_stream_event is not None and not skip_links_event:
                 links_message = AssistantMessageItem(
                     id=agent_context.generate_id("message"),
                     thread_id=agent_context.thread.id,
@@ -6278,6 +6310,8 @@ async def run_workflow(
                 )
                 await on_stream_event(ThreadItemAddedEvent(item=links_message))
                 await on_stream_event(ThreadItemDoneEvent(item=links_message))
+            if isinstance(step_identifier, str):
+                steps_with_immediate_image_link.discard(step_identifier)
 
         await _apply_vector_store_ingestion(
             config=(current_node.parameters or {}).get("vector_store_ingestion"),
