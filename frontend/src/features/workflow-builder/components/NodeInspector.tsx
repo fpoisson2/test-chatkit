@@ -1,4 +1,12 @@
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 
 import { useAuth } from "../../../auth";
 import {
@@ -417,10 +425,12 @@ const NodeInspector = ({
   );
   const [transformExpressionsError, setTransformExpressionsError] = useState<string | null>(null);
   const transformExpressionsSnapshotRef = useRef<string | null>(null);
+  const transformDraftRef = useRef<string>("");
 
   useEffect(() => {
     if (kind !== "transform") {
       transformExpressionsSnapshotRef.current = null;
+      transformDraftRef.current = "";
       setTransformExpressionsText("");
       setTransformExpressionsError(null);
       return;
@@ -428,34 +438,59 @@ const NodeInspector = ({
     const serialized = JSON.stringify(transformExpressions, null, 2);
     if (transformExpressionsSnapshotRef.current !== serialized) {
       transformExpressionsSnapshotRef.current = serialized;
+      transformDraftRef.current = serialized;
       setTransformExpressionsText(serialized);
       setTransformExpressionsError(null);
     }
   }, [kind, transformExpressions]);
 
-  const handleTransformExpressionsCommit = () => {
+  useEffect(() => {
+    transformDraftRef.current = transformExpressionsText;
+  }, [transformExpressionsText]);
+
+  const commitTransformExpressions = useCallback(
+    (rawValue?: string) => {
+      if (kind !== "transform") {
+        return;
+      }
+      const candidate = rawValue ?? transformDraftRef.current ?? "";
+      const trimmed = candidate.trim();
+      if (!trimmed) {
+        transformExpressionsSnapshotRef.current = "";
+        setTransformExpressionsError(null);
+        onTransformExpressionsChange(node.id, {});
+        return;
+      }
+      try {
+        const parsed = JSON.parse(candidate);
+        if (!isPlainRecord(parsed)) {
+          throw new Error("La structure doit être un objet JSON.");
+        }
+        setTransformExpressionsError(null);
+        const normalized = JSON.stringify(parsed, null, 2);
+        transformExpressionsSnapshotRef.current = normalized;
+        onTransformExpressionsChange(node.id, parsed as Record<string, unknown>);
+        if (normalized !== transformExpressionsText) {
+          setTransformExpressionsText(normalized);
+        }
+        transformDraftRef.current = normalized;
+      } catch (error) {
+        setTransformExpressionsError(
+          error instanceof Error ? error.message : "Expressions JSON invalides.",
+        );
+      }
+    },
+    [kind, node.id, onTransformExpressionsChange, transformExpressionsText],
+  );
+
+  useEffect(() => {
     if (kind !== "transform") {
       return;
     }
-    const trimmed = transformExpressionsText.trim();
-    if (!trimmed) {
-      setTransformExpressionsError(null);
-      onTransformExpressionsChange(node.id, {});
-      return;
-    }
-    try {
-      const parsed = JSON.parse(trimmed);
-      if (!isPlainRecord(parsed)) {
-        throw new Error("La structure doit être un objet JSON.");
-      }
-      setTransformExpressionsError(null);
-      onTransformExpressionsChange(node.id, parsed as Record<string, unknown>);
-    } catch (error) {
-      setTransformExpressionsError(
-        error instanceof Error ? error.message : "Expressions JSON invalides.",
-      );
-    }
-  };
+    return () => {
+      commitTransformExpressions(transformDraftRef.current);
+    };
+  }, [commitTransformExpressions, kind]);
   const responseWidgetSource =
     responseFormat.kind === "widget" ? responseFormat.source : "library";
   const responseWidgetSlug =
@@ -1946,8 +1981,9 @@ const NodeInspector = ({
                 if (transformExpressionsError) {
                   setTransformExpressionsError(null);
                 }
+                transformDraftRef.current = event.target.value;
               }}
-              onBlur={handleTransformExpressionsCommit}
+              onBlur={(event) => commitTransformExpressions(event.target.value)}
               rows={10}
               spellCheck={false}
               placeholder={`{\n  "doc_id": "{{ input.output_structured.id }}",\n  "record": {\n    "slug": "{{ input.output_structured.widget }}"\n  }\n}`}
