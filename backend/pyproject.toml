@@ -7,7 +7,7 @@ dependencies = [
     "agents",
     "fastapi",
     "openai",
-    "openai-chatkit @ file:../chatkit-python",
+    "openai-chatkit",
     "uvicorn[standard]",
     "python-dotenv",
     "httpx",
@@ -19,8 +19,54 @@ dependencies = [
     "sentence-transformers",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "black>=24.4.0",
+    "isort>=5.13.0",
+    "mypy>=1.10.0",
+    "ruff>=0.4.0",
+]
+
 [tool.uv]
 package = false
+dev-dependencies = [
+    "black>=24.4.0",
+    "isort>=5.13.0",
+    "mypy>=1.10.0",
+    "ruff>=0.4.0",
+]
+
+[tool.uv.sources]
+openai-chatkit = { path = "../chatkit-python" }
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+include = "\\.(py|pyi)$"
+
+[tool.isort]
+profile = "black"
+line_length = 88
+known_first_party = ["app"]
+src_paths = ["app", "tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+ignore_missing_imports = true
+show_error_codes = true
+strict_optional = true
+exclude = "tests/fixtures"
+files = ["app", "tests", "server.py"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
