@@ -52,6 +52,7 @@ from chatkit.types import (
 from openai.types.responses import ResponseInputImageParam, ResponseInputTextParam
 from openai.types.responses.response_input_item_param import Message
 
+from backend.app.attachment_store import LocalAttachmentStore
 from backend.app.chatkit_store import PostgresChatKitStore
 from backend.app.config import Settings
 from backend.app.database import SessionLocal
@@ -249,7 +250,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     """Serveur ChatKit piloté par un workflow local."""
 
     def __init__(self, settings: Settings) -> None:
-        super().__init__(PostgresChatKitStore(SessionLocal))
+        store = PostgresChatKitStore(SessionLocal)
+        attachment_store = LocalAttachmentStore(
+            store, default_base_url=settings.backend_public_base_url
+        )
+        super().__init__(store, attachment_store=attachment_store)
         self._settings = settings
         self._workflow_service = WorkflowService(settings=settings)
         self._widget_waiters = WidgetWaiterRegistry()
@@ -258,6 +263,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         self._thread_item_converter = ImageAwareThreadItemConverter(
             backend_public_base_url=settings.backend_public_base_url
         )
+        self.attachment_store = attachment_store
 
     async def _wait_for_widget_action(
         self,

@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,9 @@ except ModuleNotFoundError:  # pragma: no cover - utilisé uniquement quand Chat
 if TYPE_CHECKING:  # pragma: no cover - uniquement pour l'auto-complétion
     from ..chatkit import ChatKitRequestContext
 
+from chatkit.store import NotFoundError
+
+from ..attachment_store import AttachmentUploadError
 from ..image_utils import AGENT_IMAGE_STORAGE_DIR
 from ..chatkit_realtime import create_realtime_voice_session
 from ..chatkit_sessions import (
@@ -51,6 +54,34 @@ router = APIRouter()
 
 
 logger = logging.getLogger("chatkit.voice")
+
+
+def get_chatkit_server():
+    from ..chatkit import get_chatkit_server as _get_chatkit_server
+
+    return _get_chatkit_server()
+
+
+def _build_request_context(
+    current_user: User,
+    request: Request | None,
+    *,
+    public_base_url: str | None = None,
+) -> "ChatKitRequestContext":
+    from ..chatkit import ChatKitRequestContext
+
+    base_url = (
+        public_base_url
+        if public_base_url is not None
+        else (_resolve_public_base_url_from_request(request) if request else None)
+    )
+    authorization = request.headers.get("Authorization") if request else None
+    return ChatKitRequestContext(
+        user_id=str(current_user.id),
+        email=current_user.email,
+        authorization=authorization,
+        public_base_url=base_url,
+    )
 
 
 def _resolve_public_base_url_from_request(request: Request) -> str | None:
@@ -155,6 +186,106 @@ async def get_generated_image(
     return FileResponse(file_path)
 
 
+@router.post("/api/chatkit/attachments/{attachment_id}/upload")
+async def upload_chatkit_attachment(
+    attachment_id: str,
+    request: Request,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        server = get_chatkit_server()
+    except ModuleNotFoundError as exc:  # pragma: no cover - dépendance optionnelle absente
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Le serveur ChatKit n'est pas disponible.",
+        ) from exc
+    except ImportError as exc:  # pragma: no cover - dépendances du SDK incompatibles
+        logger.exception(
+            "Erreur lors de l'import du SDK ChatKit : %s", exc, exc_info=exc
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Le serveur ChatKit n'est pas disponible (dépendances incompatibles).",
+        ) from exc
+
+    attachment_store = getattr(server, "attachment_store", None)
+    if attachment_store is None or not hasattr(attachment_store, "finalize_upload"):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="L'upload de pièces jointes n'est pas configuré sur ce serveur.",
+        )
+
+    context = _build_request_context(current_user, request)
+
+    try:
+        await attachment_store.finalize_upload(attachment_id, file, context)
+    except AttachmentUploadError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pièce jointe introuvable",
+        ) from exc
+    except Exception as exc:  # pragma: no cover - erreurs inattendues
+        logger.exception(
+            "Erreur lors de l'upload de la pièce jointe %s", attachment_id, exc_info=exc
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Erreur lors de l'upload de la pièce jointe",
+        ) from exc
+
+    return {"id": attachment_id}
+
+
+@router.get("/api/chatkit/attachments/{attachment_id}")
+async def download_chatkit_attachment(
+    attachment_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        server = get_chatkit_server()
+    except ModuleNotFoundError as exc:  # pragma: no cover - dépendance optionnelle absente
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pièce jointe introuvable",
+        ) from exc
+    except ImportError as exc:  # pragma: no cover - dépendances du SDK incompatibles
+        logger.exception(
+            "Erreur lors de l'import du SDK ChatKit : %s", exc, exc_info=exc
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pièce jointe introuvable",
+        ) from exc
+
+    attachment_store = getattr(server, "attachment_store", None)
+    if attachment_store is None or not hasattr(attachment_store, "open_attachment"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pièce jointe introuvable",
+        )
+
+    context = _build_request_context(current_user, request)
+
+    try:
+        file_path, mime_type, filename = await attachment_store.open_attachment(
+            attachment_id, context
+        )
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pièce jointe introuvable",
+        ) from exc
+
+    return FileResponse(file_path, media_type=mime_type, filename=filename)
+
+
 @router.post(
     "/api/chatkit/voice/session",
     response_model=VoiceSessionResponse,
@@ -232,7 +363,7 @@ async def chatkit_endpoint(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        from ..chatkit import ChatKitRequestContext, get_chatkit_server
+        server = get_chatkit_server()
     except ModuleNotFoundError as exc:  # pragma: no cover - dépendance optionnelle absente
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -241,18 +372,29 @@ async def chatkit_endpoint(
                 "hint": "Installez le paquet `chatkit` ou configurez CHATKIT_WORKFLOW_ID pour utiliser cette route.",
             },
         ) from exc
+    except ImportError as exc:  # pragma: no cover - dépendances du SDK incompatibles
+        logger.exception(
+            "Erreur lors de l'import du SDK ChatKit : %s", exc, exc_info=exc
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "Import du SDK ChatKit impossible",
+                "hint": "Mettez à jour le paquet `chatkit` afin de disposer d'une version compatible.",
+                "details": str(exc),
+            },
+        ) from exc
 
-    server = get_chatkit_server()
     payload = await request.body()
     settings = get_settings()
-    base_url = settings.backend_public_base_url
     resolved_from_request = _resolve_public_base_url_from_request(request)
     if resolved_from_request and not settings.backend_public_base_url_from_env:
         base_url = resolved_from_request
-    context = ChatKitRequestContext(
-        user_id=str(current_user.id),
-        email=current_user.email,
-        authorization=request.headers.get("Authorization"),
+    else:
+        base_url = settings.backend_public_base_url
+    context = _build_request_context(
+        current_user,
+        request,
         public_base_url=base_url,
     )
 
