@@ -10,8 +10,8 @@ from typing import Any, Mapping, Sequence, Literal
 
 from pydantic import BaseModel, Field, create_model
 
-from backend.app.database import SessionLocal
-from backend.app.widgets import WidgetLibraryService
+from ..database import SessionLocal
+from ..widgets import WidgetLibraryService
 
 logger = logging.getLogger("chatkit.server")
 def _remove_additional_properties_from_schema(schema: dict[str, Any]) -> dict[str, Any]:
