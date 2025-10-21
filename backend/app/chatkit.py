@@ -37,6 +37,7 @@ from agents import (
     WebSearchTool,
     function_tool,
 )
+from openai.types.responses import ResponseInputTextParam
 
 try:  # pragma: no cover - dépend des versions du SDK Agents
     from agents.tool import ImageGeneration as _AgentImageGenerationConfig
@@ -60,7 +61,7 @@ except ImportError:  # pragma: no cover - compatibilité avec les anciennes vers
 from pydantic import BaseModel, Field, create_model
 
 from chatkit.actions import Action
-from chatkit.agents import AgentContext, simple_to_agent_input, stream_agent_response
+from chatkit.agents import AgentContext, simple_to_agent_input, stream_agent_response, ThreadItemConverter
 
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
     from chatkit.agents import stream_widget as _sdk_stream_widget
@@ -82,6 +83,7 @@ from chatkit.types import (
     InferenceOptions,
     LockedStatus,
     ProgressUpdateEvent,
+    TaskItem,
     ThreadItem,
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
@@ -91,6 +93,7 @@ from chatkit.types import (
     ThreadStreamEvent,
     WidgetItem,
     WidgetRootUpdated,
+    WorkflowItem,
     WorkflowTaskAdded,
     WorkflowTaskUpdated,
     UserMessageInput,
@@ -238,6 +241,115 @@ class _WidgetActionWaiter:
     payload: Mapping[str, Any] | None = None
 
 
+class ImageAwareThreadItemConverter(ThreadItemConverter):
+    """
+    Converter personnalisé qui intercepte les ImageTask pour retourner
+    les URLs des images générées à l'agent dans l'historique de conversation.
+    """
+
+    def __init__(self, backend_public_base_url: str | None = None):
+        super().__init__()
+        self.backend_public_base_url = backend_public_base_url
+
+    def task_to_input(
+        self, item: TaskItem
+    ) -> TResponseInputItem | list[TResponseInputItem] | None:
+        """
+        Convertit un TaskItem en input pour l'agent.
+        Pour les ImageTask, retourne l'URL de l'image générée.
+        """
+        # Si ce n'est pas une tâche d'image, utiliser la conversion par défaut
+        if not isinstance(item.task, ImageTask):
+            return super().task_to_input(item)
+
+        task = item.task
+
+        # Extraire l'URL de l'image générée
+        image_urls = []
+        if task.images:
+            for image in task.images:
+                # Récupérer l'URL de l'image
+                image_url = getattr(image, "image_url", None)
+                if not image_url and hasattr(image, "data_url"):
+                    # Si pas d'URL directe, vérifier data_url
+                    data_url = getattr(image, "data_url", None)
+                    if data_url and not data_url.startswith("data:"):
+                        image_url = data_url
+
+                if image_url:
+                    image_urls.append(image_url)
+
+        # Si on n'a pas d'URL, utiliser la conversion par défaut
+        if not image_urls:
+            return super().task_to_input(item)
+
+        # Construire le message pour l'agent avec les URLs
+        image_links = "\n".join(image_urls)
+        text = f"Une image a été générée avec succès. Voici le(s) lien(s) :\n{image_links}"
+
+        from openai.types.responses.response_input_item_param import Message
+
+        return Message(
+            type="message",
+            content=[
+                ResponseInputTextParam(
+                    type="input_text",
+                    text=text,
+                )
+            ],
+            role="user",
+        )
+
+    def workflow_to_input(
+        self, item: WorkflowItem
+    ) -> TResponseInputItem | list[TResponseInputItem] | None:
+        """
+        Convertit un WorkflowItem en input pour l'agent.
+        Extrait les ImageTask et retourne les URLs des images.
+        """
+        messages = []
+
+        for task in item.workflow.tasks:
+            # Si c'est une ImageTask, utiliser notre conversion personnalisée
+            if isinstance(task, ImageTask):
+                # Créer un TaskItem temporaire pour utiliser task_to_input
+                temp_task_item = TaskItem(
+                    id=item.id,
+                    created_at=item.created_at,
+                    task=task,
+                    thread_id=item.thread_id,
+                )
+                converted = self.task_to_input(temp_task_item)
+                if converted:
+                    if isinstance(converted, list):
+                        messages.extend(converted)
+                    else:
+                        messages.append(converted)
+            # Pour les autres tâches, utiliser la conversion par défaut
+            elif task.type == "custom" and (task.title or task.content):
+                title = f"{task.title}" if task.title else ""
+                content = f"{task.content}" if task.content else ""
+                task_text = f"{title}: {content}" if title and content else title or content
+                text = f"A message was displayed to the user that the following task was performed:\n<Task>\n{task_text}\n</Task>"
+
+                from openai.types.responses.response_input_item_param import Message
+
+                messages.append(
+                    Message(
+                        type="message",
+                        content=[
+                            ResponseInputTextParam(
+                                type="input_text",
+                                text=text,
+                            )
+                        ],
+                        role="user",
+                    )
+                )
+
+        return messages if messages else None
+
+
 class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     """Serveur ChatKit piloté par un workflow local."""
 
@@ -248,6 +360,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         self._widget_action_waiters: dict[str, _WidgetActionWaiter] = {}
         self._widget_waiters_lock = asyncio.Lock()
         self._title_agent = _build_thread_title_agent()
+        self._thread_item_converter = ImageAwareThreadItemConverter(
+            backend_public_base_url=settings.backend_public_url
+        )
 
     async def _wait_for_widget_action(
         self,
@@ -476,6 +591,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 agent_context=agent_context,
                 workflow_input=workflow_input,
                 event_queue=event_queue,
+                thread_items_history=history.data,
             ),
             event_queue=event_queue,
         )
@@ -736,6 +852,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         agent_context: AgentContext[ChatKitRequestContext],
         workflow_input: WorkflowInput,
         event_queue: asyncio.Queue[Any],
+        thread_items_history: list[ThreadItem] | None = None,
     ) -> None:
         streamed_step_keys: set[str] = set()
         step_progress_text: dict[str, str] = {}
@@ -802,6 +919,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 on_stream_event=on_stream_event,
                 on_widget_step=on_widget_step,
                 workflow_service=self._workflow_service,
+                thread_item_converter=self._thread_item_converter,
+                thread_items_history=thread_items_history,
             )
 
             end_state = summary.end_state
@@ -4015,6 +4134,8 @@ async def run_workflow(
     ]
     | None = None,
     workflow_service: WorkflowService | None = None,
+    thread_item_converter: ThreadItemConverter | None = None,
+    thread_items_history: list[ThreadItem] | None = None,
 ) -> WorkflowRunSummary:
     workflow_payload = workflow_input.model_dump()
     steps: list[WorkflowStepSummary] = []
@@ -4035,6 +4156,18 @@ async def run_workflow(
         )
         if restored_history:
             conversation_history.extend(restored_history)
+
+    # Convertir l'historique des thread items si fourni
+    if thread_items_history and thread_item_converter:
+        try:
+            converted_history = await thread_item_converter.to_agent_input(thread_items_history)
+            if converted_history:
+                conversation_history.extend(converted_history)
+        except Exception as exc:
+            logger.warning(
+                "Impossible de convertir l'historique des thread items, poursuite sans historique",
+                exc_info=exc,
+            )
 
     if initial_user_text.strip():
         conversation_history.append(
