@@ -386,19 +386,47 @@ async def chatkit_endpoint(
         ) from exc
 
     payload = await request.body()
+    payload_length = len(payload)
+    content_type = request.headers.get("content-type") or "<inconnu>"
+
     settings = get_settings()
     resolved_from_request = _resolve_public_base_url_from_request(request)
     if resolved_from_request and not settings.backend_public_base_url_from_env:
         base_url = resolved_from_request
     else:
         base_url = settings.backend_public_base_url
+
+    logger.info(
+        "Requête ChatKit reçue (user=%s, base_url=%s, content_type=%s, payload=%d o)",
+        current_user.id,
+        base_url or "<non défini>",
+        content_type,
+        payload_length,
+    )
+
     context = _build_request_context(
         current_user,
         request,
         public_base_url=base_url,
     )
 
-    result = await server.process(payload, context)
+    try:
+        result = await server.process(payload, context)
+    except Exception as exc:
+        logger.exception(
+            "Erreur lors du traitement ChatKit (user=%s, payload=%d o)",
+            current_user.id,
+            payload_length,
+            exc_info=exc,
+        )
+        raise
+
+    logger.info(
+        "Réponse ChatKit générée (user=%s, streaming=%s)",
+        current_user.id,
+        isinstance(result, StreamingResult),
+    )
+
     if isinstance(result, StreamingResult):
         return StreamingResponse(result, media_type="text/event-stream")
     return Response(content=result.json, media_type="application/json")
