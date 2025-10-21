@@ -13,6 +13,7 @@ export type NodeKind =
   | "agent"
   | "condition"
   | "state"
+  | "transform"
   | "watch"
   | "wait_for_user_input"
   | "assistant_message"

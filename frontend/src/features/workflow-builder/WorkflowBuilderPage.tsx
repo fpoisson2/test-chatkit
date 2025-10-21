@@ -38,7 +38,6 @@ import {
 } from "../../utils/backend";
 import { resolveAgentParameters, resolveStateParameters } from "../../utils/agentPresets";
 import {
-  isPlainRecord,
   getAgentFileSearchConfig,
   getAgentResponseFormat,
   setAgentContinueOnError,
@@ -2102,6 +2101,29 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleTransformExpressionsChange = useCallback(
+    (nodeId: string, expressions: Record<string, unknown>) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "transform") {
+          return data;
+        }
+        const nextParameters: AgentParameters = { ...(data.parameters ?? {}) };
+        if (Object.keys(expressions).length > 0) {
+          (nextParameters as Record<string, unknown>).expressions = expressions;
+        } else {
+          delete (nextParameters as Record<string, unknown>).expressions;
+        }
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleAgentWeatherToolChange = useCallback(
     (nodeId: string, enabled: boolean) => {
       updateNodeData(nodeId, (data) => {
@@ -2548,6 +2570,30 @@ const WorkflowBuilderPage = () => {
       draggable: true,
       style: buildNodeStyle("watch", { isSelected: true }),
     } satisfies FlowNode;
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
+
+  const handleAddTransformNode = useCallback(() => {
+    const slug = `transform-${Date.now()}`;
+    const parameters: AgentParameters = { expressions: {} };
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 380, y: 260 },
+      data: {
+        slug,
+        kind: "transform",
+        displayName: humanizeSlug(slug),
+        label: humanizeSlug(slug),
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("transform", { isSelected: true }),
+    };
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
 
@@ -3620,6 +3666,13 @@ const WorkflowBuilderPage = () => {
         onClick: handleAddWatchNode,
       },
       {
+        key: "transform",
+        label: "Bloc transform",
+        shortLabel: "T",
+        color: NODE_COLORS.transform,
+        onClick: handleAddTransformNode,
+      },
+      {
         key: "wait-for-user-input",
         label: "Wait for user input",
         shortLabel: "AU",
@@ -3667,6 +3720,7 @@ const WorkflowBuilderPage = () => {
       handleAddConditionNode,
       handleAddStateNode,
       handleAddWatchNode,
+      handleAddTransformNode,
       handleAddWaitForUserInputNode,
       handleAddAssistantMessageNode,
       handleAddUserMessageNode,
@@ -4219,6 +4273,7 @@ const WorkflowBuilderPage = () => {
             onAgentFileSearchChange={handleAgentFileSearchChange}
             onAgentImageGenerationChange={handleAgentImageGenerationChange}
             onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
+            onTransformExpressionsChange={handleTransformExpressionsChange}
             onStartAutoRunChange={handleStartAutoRunChange}
             onStartAutoRunMessageChange={handleStartAutoRunMessageChange}
             onStartAutoRunAssistantMessageChange={

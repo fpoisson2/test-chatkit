@@ -10,6 +10,7 @@ export const NODE_COLORS: Record<NodeKind, string> = {
   agent: "#16a34a",
   condition: "#f97316",
   state: "#0ea5e9",
+  transform: "#8b5cf6",
   watch: "#facc15",
   wait_for_user_input: "#22d3ee",
   assistant_message: "#ef4444",
@@ -24,6 +25,7 @@ export const NODE_BACKGROUNDS: Record<NodeKind, string> = {
   agent: "rgba(22, 163, 74, 0.12)",
   condition: "rgba(249, 115, 22, 0.14)",
   state: "rgba(14, 165, 233, 0.14)",
+  transform: "rgba(139, 92, 246, 0.16)",
   watch: "rgba(250, 204, 21, 0.18)",
   wait_for_user_input: "rgba(34, 211, 238, 0.18)",
   assistant_message: "rgba(239, 68, 68, 0.14)",
@@ -38,6 +40,7 @@ const NODE_GLOW_COLORS: Record<NodeKind, string> = {
   agent: "rgba(22, 163, 74, 0.45)",
   condition: "rgba(249, 115, 22, 0.45)",
   state: "rgba(14, 165, 233, 0.45)",
+  transform: "rgba(139, 92, 246, 0.45)",
   watch: "rgba(250, 204, 21, 0.5)",
   wait_for_user_input: "rgba(34, 211, 238, 0.5)",
   assistant_message: "rgba(239, 68, 68, 0.45)",
@@ -170,6 +173,8 @@ export const labelForKind = (kind: NodeKind) => {
       return "Condition";
     case "state":
       return "État";
+    case "transform":
+      return "Transformation";
     case "watch":
       return "Watch";
     case "wait_for_user_input":
