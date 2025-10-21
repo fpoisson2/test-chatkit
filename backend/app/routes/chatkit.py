@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse, StreamingResponse
@@ -22,7 +22,12 @@ if TYPE_CHECKING:  # pragma: no cover - uniquement pour l'auto-complétion
 
 from ..image_utils import AGENT_IMAGE_STORAGE_DIR
 from ..chatkit_realtime import create_realtime_voice_session
-from ..chatkit_sessions import create_chatkit_session, proxy_chatkit_request
+from ..chatkit_sessions import (
+    SessionSecretParser,
+    create_chatkit_session,
+    proxy_chatkit_request,
+    summarize_payload_shape,
+)
 from ..config import get_settings
 from ..database import get_session
 from ..dependencies import get_current_user, get_optional_user
@@ -98,98 +103,6 @@ async def get_chatkit_workflow(
     )
 
 
-def _normalize_expiration(value: Any) -> str | None:
-    """Convertit une valeur d'expiration en chaîne lorsque c'est possible."""
-
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (int, float)):
-        return str(value)
-    return None
-
-
-def _extract_secret_from_container(container: Any) -> tuple[Any | None, str | None]:
-    """Retourne un éventuel secret client et son expiration depuis un conteneur."""
-
-    if not isinstance(container, dict):
-        return None, None
-
-    secret = container.get("client_secret") or container.get("clientSecret")
-    if not secret and "value" in container:
-        secret = container["value"]
-    if not secret:
-        return None, None
-
-    expires = (
-        _normalize_expiration(container.get("expires_at"))
-        or _normalize_expiration(container.get("expires_after"))
-    )
-
-    if isinstance(secret, dict):
-        expires = (
-            expires
-            or _normalize_expiration(secret.get("expires_at"))
-            or _normalize_expiration(secret.get("expires_after"))
-        )
-
-    return secret, expires
-
-
-def _resolve_voice_client_secret(payload: dict[str, Any]) -> tuple[Any | None, str | None]:
-    """Tente d'extraire un client_secret exploitable de la réponse OpenAI."""
-
-    direct_secret, direct_expiration = _extract_secret_from_container(payload)
-    if direct_secret is not None:
-        expires = (
-            direct_expiration
-            or _normalize_expiration(payload.get("expires_at"))
-            or _normalize_expiration(payload.get("expires_after"))
-        )
-        return direct_secret, expires
-
-    for key in ("data", "session"):
-        nested_secret, nested_expiration = _extract_secret_from_container(
-            payload.get(key)
-        )
-        if nested_secret is not None:
-            expires = (
-                nested_expiration
-                or _normalize_expiration(payload.get("expires_at"))
-                or _normalize_expiration(payload.get("expires_after"))
-            )
-            return nested_secret, expires
-
-    fallback_expiration = (
-        _normalize_expiration(payload.get("expires_at"))
-        or _normalize_expiration(payload.get("expires_after"))
-    )
-    return None, fallback_expiration
-
-
-def _summarize_payload_shape(payload: Any) -> dict[str, Any] | str:
-    """Fournit un résumé non sensible de la réponse pour le débogage."""
-
-    if not isinstance(payload, dict):
-        return str(type(payload))
-
-    summary: dict[str, Any] = {}
-    for key, value in payload.items():
-        if key in {"client_secret", "value"}:
-            summary[key] = "***"
-            continue
-        if isinstance(value, dict):
-            summary[key] = {
-                sub_key: type(sub_value).__name__ for sub_key, sub_value in value.items()
-            }
-        elif isinstance(value, list):
-            summary[key] = f"list(len={len(value)})"
-        else:
-            summary[key] = type(value).__name__
-    return summary
-
-
 @router.post("/api/chatkit/session")
 async def create_session(
     req: SessionRequest,
@@ -197,19 +110,10 @@ async def create_session(
 ):
     user_id = req.user or f"user:{current_user.id}"
 
-    session_payload = await create_chatkit_session(user_id)
-    client_secret = session_payload.get("client_secret")
-    if not client_secret:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "error": "ChatKit response missing client_secret",
-                "details": session_payload,
-            },
-        )
+    session_secret = await create_chatkit_session(user_id)
     return {
-        "client_secret": client_secret,
-        "expires_after": session_payload.get("expires_after"),
+        "client_secret": session_secret["client_secret"],
+        "expires_at": session_secret.get("expires_at"),
     }
 
 
@@ -286,9 +190,10 @@ async def create_voice_session(
         instructions=resolved_instructions,
     )
 
-    client_secret, expires_at = _resolve_voice_client_secret(secret_payload)
-    if client_secret is None:
-        summary = _summarize_payload_shape(secret_payload)
+    parser = SessionSecretParser()
+    parsed_secret = parser.parse(secret_payload)
+    if parsed_secret.raw is None:
+        summary = summarize_payload_shape(secret_payload)
         logger.error(
             "Client secret introuvable dans la réponse Realtime : %s",
             summary,
@@ -302,8 +207,8 @@ async def create_voice_session(
         )
 
     return VoiceSessionResponse(
-        client_secret=client_secret,
-        expires_at=expires_at,
+        client_secret=parsed_secret.raw,
+        expires_at=parsed_secret.expires_at_isoformat(),
         model=resolved_model,
         instructions=resolved_instructions,
         voice=resolved_voice,

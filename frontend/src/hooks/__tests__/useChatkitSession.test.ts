@@ -13,19 +13,19 @@ const {
   mockReadStoredChatKitSession,
   mockPersistChatKitSecret,
   mockClearStoredChatKitSecret,
-  mockInferChatKitSessionExpiration,
+  mockNormalizeSessionExpiration,
 } = vi.hoisted(() => ({
   mockReadStoredChatKitSession: vi.fn(),
   mockPersistChatKitSecret: vi.fn(),
   mockClearStoredChatKitSecret: vi.fn(),
-  mockInferChatKitSessionExpiration: vi.fn(),
+  mockNormalizeSessionExpiration: vi.fn(),
 }));
 
 vi.mock("../../utils/chatkitSession", () => ({
   readStoredChatKitSession: mockReadStoredChatKitSession,
   persistChatKitSecret: mockPersistChatKitSecret,
   clearStoredChatKitSecret: mockClearStoredChatKitSecret,
-  inferChatKitSessionExpiration: mockInferChatKitSessionExpiration,
+  normalizeSessionExpiration: mockNormalizeSessionExpiration,
 }));
 
 const setupHook = (overrides: Partial<Parameters<typeof useChatkitSession>[0]> = {}) => {
@@ -48,7 +48,7 @@ describe("useChatkitSession", () => {
     mockReadStoredChatKitSession.mockReset();
     mockPersistChatKitSecret.mockReset();
     mockClearStoredChatKitSecret.mockReset();
-    mockInferChatKitSessionExpiration.mockReset();
+    mockNormalizeSessionExpiration.mockReset();
     global.fetch = vi.fn();
   });
 
@@ -88,11 +88,11 @@ describe("useChatkitSession", () => {
 
   it("récupère un nouveau client_secret et le persiste", async () => {
     mockReadStoredChatKitSession.mockReturnValue({ session: null, shouldRefresh: false });
-    mockInferChatKitSessionExpiration.mockReturnValue("2024-01-01T00:00:00Z");
+    mockNormalizeSessionExpiration.mockReturnValue(1_704_067_200_000);
 
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
-      json: async () => ({ client_secret: "fresh-secret" }),
+      json: async () => ({ client_secret: "fresh-secret", expires_at: "2024-01-01T00:00:00Z" }),
     });
 
     const { result } = setupHook();
@@ -104,10 +104,11 @@ describe("useChatkitSession", () => {
 
     expect(secret).toBe("fresh-secret");
     expect(global.fetch).toHaveBeenCalledWith("/api/chatkit/session", expect.any(Object));
+    expect(mockNormalizeSessionExpiration).toHaveBeenCalledWith("2024-01-01T00:00:00Z");
     expect(mockPersistChatKitSecret).toHaveBeenCalledWith(
       "user@example.com",
       "fresh-secret",
-      "2024-01-01T00:00:00Z",
+      1_704_067_200_000,
     );
     expect(result.current.isLoading).toBe(false);
   });
