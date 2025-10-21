@@ -5866,6 +5866,19 @@ async def run_workflow(
                 return edge
         return candidates[0]
 
+    def _fallback_to_start(node_kind: str, node_slug: str) -> bool:
+        nonlocal current_slug
+        if not agent_steps_ordered:
+            return False
+        logger.debug(
+            "Absence de transition apres le bloc %s %s, retour au debut %s",
+            node_kind,
+            node_slug,
+            start_step.slug,
+        )
+        current_slug = start_step.slug
+        return True
+
     current_slug = resume_from_wait_slug or start_step.slug
     final_node_slug: str | None = None
     final_end_state: WorkflowEndState | None = None
@@ -5923,16 +5936,9 @@ async def run_workflow(
 
             transition = _next_edge(current_slug)
             if transition is None:
-                if not agent_steps_ordered:
-                    break
-                raise WorkflowExecutionError(
-                    "configuration",
-                    "Configuration du workflow invalide",
-                    RuntimeError(
-                        f"Aucune transition disponible après le nœud d'état {current_node.slug}"
-                    ),
-                    list(steps),
-                )
+                if _fallback_to_start("state", current_node.slug):
+                    continue
+                break
             current_slug = transition.target_step.slug
             continue
 
@@ -5970,16 +5976,9 @@ async def run_workflow(
 
             transition = _next_edge(current_slug)
             if transition is None:
-                if not agent_steps_ordered:
-                    break
-                raise WorkflowExecutionError(
-                    "configuration",
-                    "Configuration du workflow invalide",
-                    RuntimeError(
-                        f"Aucune transition disponible après le nœud watch {current_node.slug}"
-                    ),
-                    list(steps),
-                )
+                if _fallback_to_start("watch", current_node.slug):
+                    continue
+                break
             current_slug = transition.target_step.slug
             continue
 
@@ -6022,16 +6021,9 @@ async def run_workflow(
 
             transition = _next_edge(current_slug)
             if transition is None:
-                if not agent_steps_ordered:
-                    break
-                raise WorkflowExecutionError(
-                    "configuration",
-                    "Configuration du workflow invalide",
-                    RuntimeError(
-                        f"Aucune transition disponible après le nœud transform {current_node.slug}"
-                    ),
-                    list(steps),
-                )
+                if _fallback_to_start("transform", current_node.slug):
+                    continue
+                break
             current_slug = transition.target_step.slug
             continue
 
@@ -6150,17 +6142,9 @@ async def run_workflow(
 
             transition = _next_edge(current_slug)
             if transition is None:
-                if not agent_steps_ordered:
-                    break
-                raise WorkflowExecutionError(
-                    "configuration",
-                    "Configuration du workflow invalide",
-                    RuntimeError(
-                        "Aucune transition disponible après le bloc message assistant "
-                        f"{current_node.slug}"
-                    ),
-                    list(steps),
-                )
+                if _fallback_to_start("assistant_message", current_node.slug):
+                    continue
+                break
             current_slug = transition.target_step.slug
             continue
 
@@ -6187,17 +6171,9 @@ async def run_workflow(
 
             transition = _next_edge(current_slug)
             if transition is None:
-                if not agent_steps_ordered:
-                    break
-                raise WorkflowExecutionError(
-                    "configuration",
-                    "Configuration du workflow invalide",
-                    RuntimeError(
-                        "Aucune transition disponible après le bloc message utilisateur "
-                        f"{current_node.slug}"
-                    ),
-                    list(steps),
-                )
+                if _fallback_to_start("user_message", current_node.slug):
+                    continue
+                break
             current_slug = transition.target_step.slug
             continue
 
@@ -6211,16 +6187,9 @@ async def run_workflow(
             )
             transition = _next_edge(current_slug)
             if transition is None:
-                if not agent_steps_ordered:
-                    break
-                raise WorkflowExecutionError(
-                    "configuration",
-                    "Configuration du workflow invalide",
-                    RuntimeError(
-                        f"Aucune transition disponible après le nœud {current_node.slug}"
-                    ),
-                    list(steps),
-                )
+                if _fallback_to_start("json_vector_store", current_node.slug):
+                    continue
+                break
             current_slug = transition.target_step.slug
             continue
 
@@ -6292,16 +6261,9 @@ async def run_workflow(
                 last_step_context = context_payload
             transition = _next_edge(current_slug)
             if transition is None:
-                if not agent_steps_ordered:
-                    break
-                raise WorkflowExecutionError(
-                    "configuration",
-                    "Configuration du workflow invalide",
-                    RuntimeError(
-                        f"Aucune transition disponible après le nœud {current_node.slug}"
-                    ),
-                    list(steps),
-                )
+                if _fallback_to_start(current_node.kind, current_node.slug):
+                    continue
+                break
             current_slug = transition.target_step.slug
             continue
 
@@ -6326,12 +6288,9 @@ async def run_workflow(
         ):
             transition = _next_edge(current_slug)
             if transition is None:
-                raise WorkflowExecutionError(
-                    "configuration",
-                    "Configuration du workflow invalide",
-                    RuntimeError(f"Aucune transition disponible après {current_slug}"),
-                    list(steps),
-                )
+                if _fallback_to_start("agent", current_node.slug):
+                    continue
+                break
             current_slug = transition.target_step.slug
             continue
 
@@ -6340,14 +6299,9 @@ async def run_workflow(
             if not should_run:
                 transition = _next_edge(current_slug)
                 if transition is None:
-                    raise WorkflowExecutionError(
-                        "configuration",
-                        "Configuration du workflow invalide",
-                        RuntimeError(
-                            "Impossible de continuer : aucune transition depuis r_dacteur"
-                        ),
-                        list(steps),
-                    )
+                    if _fallback_to_start("agent", current_node.slug):
+                        continue
+                    break
                 current_slug = transition.target_step.slug
                 continue
 
