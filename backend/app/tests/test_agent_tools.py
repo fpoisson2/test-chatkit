@@ -19,7 +19,7 @@ def test_coerce_agent_tools_from_serialized_web_search() -> None:
             {
                 "type": "web_search",
                 "web_search": {
-                    "search_context_size": "large",
+                    "search_context_size": "high",
                     "user_location": {
                         "city": "Montréal ",
                         "country": "",
@@ -35,7 +35,7 @@ def test_coerce_agent_tools_from_serialized_web_search() -> None:
     tool = tools[0]
     assert isinstance(tool, WebSearchTool)
     if hasattr(tool, "search_context_size"):
-        assert getattr(tool, "search_context_size") == "large"
+        assert getattr(tool, "search_context_size") == "high"
     if hasattr(tool, "user_location") and tool.user_location is not None:
         assert tool.user_location.get("city") == "Montréal"
         assert "country" not in tool.user_location

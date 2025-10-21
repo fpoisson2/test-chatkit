@@ -1478,9 +1478,9 @@ const NodeInspector = ({
                     }}
                   >
                     <option value="">(par défaut)</option>
-                    <option value="small">Petit contexte</option>
+                    <option value="low">Petit contexte</option>
                     <option value="medium">Contexte moyen</option>
-                    <option value="large">Grand contexte</option>
+                    <option value="high">Grand contexte</option>
                   </select>
                 </label>
 
