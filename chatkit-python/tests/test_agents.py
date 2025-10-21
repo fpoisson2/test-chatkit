@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import json
 from collections.abc import AsyncIterator
 from datetime import datetime
@@ -44,6 +45,18 @@ from openai.types.responses.response_content_part_added_event import (
     ResponseContentPartAddedEvent,
 )
 from openai.types.responses.response_file_search_tool_call import Result
+from openai.types.responses.response_function_call_arguments_delta_event import (
+    ResponseFunctionCallArgumentsDeltaEvent,
+)
+from openai.types.responses.response_function_call_arguments_done_event import (
+    ResponseFunctionCallArgumentsDoneEvent,
+)
+from openai.types.responses.response_function_tool_call_item import (
+    ResponseFunctionToolCallItem,
+)
+from openai.types.responses.response_function_tool_call_output_item import (
+    ResponseFunctionToolCallOutputItem,
+)
 from openai.types.responses.response_function_web_search import (
     ActionSearch,
     ActionSearchSource,
@@ -156,29 +169,33 @@ class RunResult(RunResultStreaming):
 
 
 def make_result() -> RunResult:
-    return RunResult(
-        context_wrapper=Mock(spec=RunContextWrapper),
-        input=[],
-        new_items=[],
-        raw_responses=[],
-        final_output=None,
-        input_guardrail_results=[],
-        output_guardrail_results=[],
-        tool_input_guardrail_results=[],
-        tool_output_guardrail_results=[],
-        current_agent=Agent(name="test"),
-        current_turn=0,
-        max_turns=10,
-        _current_agent_output_schema=None,
-        trace=None,
-        is_complete=False,
-        _event_queue=asyncio.Queue(),
-        _input_guardrail_queue=asyncio.Queue(),
-        _run_impl_task=None,
-        _input_guardrails_task=None,
-        _output_guardrails_task=None,
-        _stored_exception=None,
-    )
+    kwargs = {
+        "context_wrapper": Mock(spec=RunContextWrapper),
+        "input": [],
+        "new_items": [],
+        "raw_responses": [],
+        "final_output": None,
+        "input_guardrail_results": [],
+        "output_guardrail_results": [],
+        "tool_input_guardrail_results": [],
+        "tool_output_guardrail_results": [],
+        "current_agent": Agent(name="test"),
+        "current_turn": 0,
+        "max_turns": 10,
+        "_current_agent_output_schema": None,
+        "trace": None,
+        "is_complete": False,
+        "_event_queue": asyncio.Queue(),
+        "_input_guardrail_queue": asyncio.Queue(),
+        "_run_impl_task": None,
+        "_input_guardrails_task": None,
+        "_output_guardrails_task": None,
+        "_stored_exception": None,
+    }
+    signature = inspect.signature(RunResultStreaming.__init__)
+    accepted = {name for name in signature.parameters if name != "self"}
+    filtered_kwargs = {key: value for key, value in kwargs.items() if key in accepted}
+    return RunResult(**filtered_kwargs)
 
 
 async def all_events(
@@ -1285,6 +1302,208 @@ async def test_stream_agent_response_tracks_web_search_tasks():
         for source in search_task_completed.update.task.sources
     )
     assert mock_store.add_thread_item.await_count == 1
+
+
+async def test_stream_agent_response_streams_function_calls_with_reasoning():
+    mock_store.add_thread_item.reset_mock()
+    context = AgentContext(
+        previous_response_id=None, thread=thread, store=mock_store, request_context=None
+    )
+    result = make_result()
+
+    reasoning_item = ResponseReasoningItem(id="resp_reasoning", summary=[], type="reasoning")
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseOutputItemAddedEvent(
+                type="response.output_item.added",
+                item=reasoning_item,
+                output_index=0,
+                sequence_number=0,
+            ),
+        )
+    )
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=Mock(
+                type="response.reasoning_summary_text.delta",
+                item_id=reasoning_item.id,
+                summary_index=0,
+                delta="Réflexion",
+            ),
+        )
+    )
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=Mock(
+                type="response.reasoning_summary_text.done",
+                item_id=reasoning_item.id,
+                summary_index=0,
+                text="Réflexion",
+            ),
+        )
+    )
+
+    call_item = ResponseFunctionToolCallItem(
+        id="call_item",
+        call_id="call_1",
+        name="lookup_weather",
+        arguments="",
+        status="in_progress",
+        type="function_call",
+    )
+    result.add_event(
+        RunItemStreamEvent(
+            name="tool_called",
+            item=ToolCallItem(agent=Agent(name="Assistant"), raw_item=call_item),
+        )
+    )
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseOutputItemAddedEvent(
+                type="response.output_item.added",
+                item=call_item,
+                output_index=0,
+                sequence_number=1,
+            ),
+        )
+    )
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseFunctionCallArgumentsDeltaEvent(
+                type="response.function_call_arguments.delta",
+                item_id=call_item.id,
+                output_index=0,
+                sequence_number=2,
+                delta='{"city": ',
+            ),
+        )
+    )
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseFunctionCallArgumentsDeltaEvent(
+                type="response.function_call_arguments.delta",
+                item_id=call_item.id,
+                output_index=0,
+                sequence_number=3,
+                delta='"Paris"}',
+            ),
+        )
+    )
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseFunctionCallArgumentsDoneEvent(
+                type="response.function_call_arguments.done",
+                item_id=call_item.id,
+                output_index=0,
+                sequence_number=4,
+                name="lookup_weather",
+                arguments='{"city": "Paris"}',
+            ),
+        )
+    )
+
+    completed_call = ResponseFunctionToolCallItem(
+        id=call_item.id,
+        call_id=call_item.call_id,
+        name=call_item.name,
+        arguments='{"city": "Paris"}',
+        status="completed",
+        type="function_call",
+    )
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=ResponseOutputItemDoneEvent(
+                type="response.output_item.done",
+                item=completed_call,
+                output_index=0,
+                sequence_number=5,
+            ),
+        )
+    )
+
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=SimpleNamespace(
+                type="response.output_item.added",
+                item=SimpleNamespace(
+                    type="function_call_output",
+                    call_id=call_item.call_id,
+                    output='{"forecast": "sunny"}',
+                    status="in_progress",
+                ),
+                output_index=0,
+                sequence_number=6,
+            ),
+        )
+    )
+    result.add_event(
+        RawResponsesStreamEvent(
+            type="raw_response_event",
+            data=SimpleNamespace(
+                type="response.output_item.done",
+                item=SimpleNamespace(
+                    type="function_call_output",
+                    call_id=call_item.call_id,
+                    output='{"forecast": "sunny"}',
+                    status="completed",
+                ),
+                output_index=0,
+                sequence_number=7,
+            ),
+        )
+    )
+
+    result.done()
+
+    events = await all_events(stream_agent_response(context, result))
+
+    thought_added = next(
+        (
+            event
+            for event in events
+            if isinstance(event, ThreadItemUpdated)
+            and isinstance(event.update, WorkflowTaskAdded)
+            and isinstance(event.update.task, ThoughtTask)
+        ),
+        None,
+    )
+    assert thought_added is not None
+
+    function_events = [
+        event
+        for event in events
+        if isinstance(event, ThreadItemUpdated)
+        and isinstance(getattr(event.update, "task", None), CustomTask)
+        and getattr(event.update.task, "title", None) == "lookup_weather"
+    ]
+    assert function_events, "Expected function call task events"
+
+    assert any(
+        isinstance(event.update, WorkflowTaskAdded) for event in function_events
+    )
+
+    final_update = next(
+        (
+            event
+            for event in reversed(function_events)
+            if isinstance(event.update, WorkflowTaskUpdated)
+        ),
+        None,
+    )
+    assert final_update is not None
+    assert final_update.update.task.status_indicator == "complete"
+    assert final_update.update.task.content is not None
+    assert "Paris" in final_update.update.task.content
+    assert "sunny" in final_update.update.task.content
 
 
 async def test_image_generation_task_streaming():

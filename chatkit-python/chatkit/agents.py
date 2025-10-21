@@ -40,6 +40,18 @@ from openai.types.responses import (
     ResponseInputTextParam,
     ResponseOutputText,
 )
+from openai.types.responses.response_function_call_arguments_delta_event import (
+    ResponseFunctionCallArgumentsDeltaEvent,
+)
+from openai.types.responses.response_function_call_arguments_done_event import (
+    ResponseFunctionCallArgumentsDoneEvent,
+)
+from openai.types.responses.response_function_tool_call import (
+    ResponseFunctionToolCall,
+)
+from openai.types.responses.response_function_tool_call_output_item import (
+    ResponseFunctionToolCallOutputItem,
+)
 from openai.types.responses.response_input_item_param import (
     FunctionCallOutput,
     Message,
@@ -62,6 +74,7 @@ from .types import (
     AssistantMessageItem,
     Attachment,
     ClientToolCallItem,
+    CustomTask,
     DurationSummary,
     EndOfTurnItem,
     FileSource,
@@ -357,6 +370,58 @@ class StreamingThoughtTracker(BaseModel):
     task: ThoughtTask
 
 
+class FunctionTaskTracker(BaseModel):
+    item_id: str
+    task: CustomTask
+    call_id: str | None = None
+    arguments_text: str = ""
+    output_value: Any | None = None
+
+    def update_name(self, name: str | None) -> bool:
+        if not name or self.task.title == name:
+            return False
+        self.task.title = name
+        return True
+
+    def set_status(self, status: str | None) -> bool:
+        if not status or self.task.status_indicator == status:
+            return False
+        if status not in {"none", "loading", "complete"}:
+            return False
+        self.task.status_indicator = status
+        return True
+
+    def append_arguments(self, delta: str) -> bool:
+        if not delta:
+            return False
+        self.arguments_text += delta
+        return self._sync_content()
+
+    def set_arguments(self, arguments: str) -> bool:
+        if arguments == self.arguments_text:
+            return False
+        self.arguments_text = arguments
+        return self._sync_content()
+
+    def set_output(self, output: Any) -> bool:
+        normalized = _normalize_for_json(output) if output is not None else None
+        if self.output_value == normalized:
+            return False
+        self.output_value = normalized
+        return self._sync_content()
+
+    def _sync_content(self) -> bool:
+        previous = self.task.content
+        sections: list[str] = []
+        if self.arguments_text:
+            sections.append(_format_markdown_section("Arguments", self.arguments_text))
+        if self.output_value is not None:
+            sections.append(_format_markdown_section("Résultat", self.output_value))
+        content = "\n\n".join(sections).strip()
+        self.task.content = content or None
+        return self.task.content != previous
+
+
 class SearchTaskTracker(BaseModel):
     item_id: str
     task: SearchTask
@@ -566,6 +631,44 @@ def _event_attr(event: Any, attribute: str) -> Any:
     return None
 
 
+def _normalize_for_json(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _normalize_for_json(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [_normalize_for_json(item) for item in value]
+    if hasattr(value, "model_dump"):
+        try:
+            return value.model_dump(mode="json")
+        except TypeError:
+            return value.model_dump()
+    return value
+
+
+def _format_string_content(value: str) -> str:
+    stripped = value.strip()
+    if not stripped:
+        return value
+    try:
+        parsed = json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return value
+    return json.dumps(parsed, ensure_ascii=False, indent=2)
+
+
+def _format_markdown_section(label: str, value: Any) -> str:
+    if isinstance(value, str):
+        text = _format_string_content(value)
+    else:
+        normalized = _normalize_for_json(value)
+        try:
+            text = json.dumps(normalized, ensure_ascii=False, indent=2)
+        except (TypeError, ValueError):
+            text = str(normalized)
+    if "\n" in text:
+        return f"{label} :\n```\n{text}\n```"
+    return f"{label} : {text}"
+
+
 async def stream_agent_response(
     context: AgentContext, result: RunResultStreaming
 ) -> AsyncIterator[ThreadStreamEvent]:
@@ -578,6 +681,8 @@ async def stream_agent_response(
     streaming_thought: None | StreamingThoughtTracker = None
     search_tasks: dict[str, SearchTaskTracker] = {}
     image_tasks: dict[tuple[str, int], ImageTaskTracker] = {}
+    function_tasks: dict[str, FunctionTaskTracker] = {}
+    function_tasks_by_call_id: dict[str, FunctionTaskTracker] = {}
 
     # check if the last item in the thread was a workflow or a client tool call
     # if it was a client tool call, check if the second last item was a workflow
@@ -612,6 +717,8 @@ async def stream_agent_response(
         item.workflow.expanded = False
         search_tasks.clear()
         image_tasks.clear()
+        function_tasks.clear()
+        function_tasks_by_call_id.clear()
         return ThreadItemDoneEvent(item=item)
 
     def ensure_workflow() -> list[ThreadStreamEvent]:
@@ -819,6 +926,80 @@ async def stream_agent_response(
 
         return updated
 
+    def ensure_function_task(
+        item_id: str,
+        *,
+        name: str | None = None,
+        call_id: str | None = None,
+    ) -> tuple[FunctionTaskTracker, bool, list[ThreadStreamEvent]]:
+        events = ensure_workflow()
+        tracker = function_tasks.get(item_id)
+        task_added = False
+
+        if tracker is None:
+            tracker = FunctionTaskTracker(
+                item_id=item_id,
+                task=CustomTask(status_indicator="loading", title=name, content=None),
+                call_id=call_id,
+            )
+            function_tasks[item_id] = tracker
+            if ctx.workflow_item and tracker.task not in ctx.workflow_item.workflow.tasks:
+                ctx.workflow_item.workflow.tasks.append(tracker.task)
+                task_added = True
+
+        if call_id:
+            previous_call_id = tracker.call_id
+            if previous_call_id and previous_call_id != call_id:
+                existing = function_tasks_by_call_id.get(previous_call_id)
+                if existing is tracker:
+                    del function_tasks_by_call_id[previous_call_id]
+            tracker.call_id = call_id
+            function_tasks_by_call_id[call_id] = tracker
+        elif tracker.call_id:
+            function_tasks_by_call_id.setdefault(tracker.call_id, tracker)
+
+        if name:
+            tracker.update_name(name)
+
+        return tracker, task_added, events
+
+    def get_function_task_by_call_id(
+        call_id: str | None,
+    ) -> FunctionTaskTracker | None:
+        if not call_id:
+            return None
+        tracker = function_tasks_by_call_id.get(call_id)
+        if tracker:
+            return tracker
+        for candidate in function_tasks.values():
+            if candidate.call_id == call_id:
+                function_tasks_by_call_id[call_id] = candidate
+                return candidate
+        return None
+
+    def apply_function_task_updates(
+        tracker: FunctionTaskTracker,
+        *,
+        status: str | None = None,
+        arguments: str | None = None,
+        arguments_delta: str | None = None,
+        output: Any | None = None,
+        name: str | None = None,
+    ) -> bool:
+        updated = False
+        if name:
+            updated |= tracker.update_name(name)
+        if arguments_delta:
+            updated |= tracker.append_arguments(arguments_delta)
+        if arguments is not None:
+            updated |= tracker.set_arguments(arguments)
+        if status is not None:
+            indicator = "complete" if status == "completed" else "loading"
+            updated |= tracker.set_status(indicator)
+        if output is not None:
+            updated |= tracker.set_output(output)
+        return updated
+
     def search_status_from_call(call: ResponseFunctionWebSearch) -> str:
         if call.status == "completed":
             return "complete"
@@ -915,6 +1096,8 @@ async def stream_agent_response(
                         ctx.workflow_item = event.item
                         search_tasks.clear()
                         image_tasks.clear()
+                        function_tasks.clear()
+                        function_tasks_by_call_id.clear()
 
                     # track integration produced items so we can clean them up if
                     # there is a guardrail tripwire
@@ -1000,6 +1183,56 @@ async def stream_agent_response(
                             created_at=datetime.now(),
                         ),
                     )
+                elif item.type == "function_call":
+                    tracker, task_added, workflow_events = ensure_function_task(
+                        item.id,
+                        name=getattr(item, "name", None),
+                        call_id=getattr(item, "call_id", None),
+                    )
+                    updated = apply_function_task_updates(
+                        tracker,
+                        status=getattr(item, "status", None),
+                        arguments=getattr(item, "arguments", None),
+                        name=getattr(item, "name", None),
+                    )
+                    for workflow_event in workflow_events:
+                        yield workflow_event
+                    if ctx.workflow_item and (task_added or updated):
+                        task_index = ctx.workflow_item.workflow.tasks.index(
+                            tracker.task
+                        )
+                        update_cls = (
+                            WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                        )
+                        yield ThreadItemUpdated(
+                            item_id=ctx.workflow_item.id,
+                            update=update_cls(
+                                task=tracker.task,
+                                task_index=task_index,
+                            ),
+                        )
+                    produced_items.add(item.id)
+                elif item.type == "function_call_output":
+                    tracker = get_function_task_by_call_id(
+                        getattr(item, "call_id", None)
+                    )
+                    if tracker:
+                        updated = apply_function_task_updates(
+                            tracker,
+                            output=getattr(item, "output", None),
+                            status=getattr(item, "status", None),
+                        )
+                        if ctx.workflow_item and updated:
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=WorkflowTaskUpdated(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
                 elif item.type == "web_search_call":
                     for search_event in upsert_search_task(
                         cast(ResponseFunctionWebSearch, item)
@@ -1215,6 +1448,50 @@ async def stream_agent_response(
                         item_id=ctx.workflow_item.id,
                         update=update,
                     )
+            elif event.type == "response.function_call_arguments.delta":
+                tracker, task_added, workflow_events = ensure_function_task(event.item_id)
+                for workflow_event in workflow_events:
+                    yield workflow_event
+                updated = apply_function_task_updates(
+                    tracker,
+                    arguments_delta=event.delta,
+                )
+                if ctx.workflow_item and (task_added or updated):
+                    task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                    update_cls = (
+                        WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                    )
+                    yield ThreadItemUpdated(
+                        item_id=ctx.workflow_item.id,
+                        update=update_cls(
+                            task=tracker.task,
+                            task_index=task_index,
+                        ),
+                    )
+            elif event.type == "response.function_call_arguments.done":
+                tracker, task_added, workflow_events = ensure_function_task(
+                    event.item_id,
+                    name=getattr(event, "name", None),
+                )
+                for workflow_event in workflow_events:
+                    yield workflow_event
+                updated = apply_function_task_updates(
+                    tracker,
+                    arguments=event.arguments,
+                    name=getattr(event, "name", None),
+                )
+                if ctx.workflow_item and (task_added or updated):
+                    task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                    update_cls = (
+                        WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                    )
+                    yield ThreadItemUpdated(
+                        item_id=ctx.workflow_item.id,
+                        update=update_cls(
+                            task=tracker.task,
+                            task_index=task_index,
+                        ),
+                    )
             elif event.type == "response.output_item.done":
                 item = event.item
                 if item.type == "message":
@@ -1228,6 +1505,53 @@ async def stream_agent_response(
                             created_at=datetime.now(),
                         ),
                     )
+                elif item.type == "function_call":
+                    tracker, task_added, workflow_events = ensure_function_task(
+                        item.id,
+                        name=getattr(item, "name", None),
+                        call_id=getattr(item, "call_id", None),
+                    )
+                    for workflow_event in workflow_events:
+                        yield workflow_event
+                    updated = apply_function_task_updates(
+                        tracker,
+                        status=getattr(item, "status", None),
+                        arguments=getattr(item, "arguments", None),
+                        name=getattr(item, "name", None),
+                    )
+                    if ctx.workflow_item and (task_added or updated):
+                        task_index = ctx.workflow_item.workflow.tasks.index(tracker.task)
+                        update_cls = (
+                            WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                        )
+                        yield ThreadItemUpdated(
+                            item_id=ctx.workflow_item.id,
+                            update=update_cls(
+                                task=tracker.task,
+                                task_index=task_index,
+                            ),
+                        )
+                elif item.type == "function_call_output":
+                    tracker = get_function_task_by_call_id(
+                        getattr(item, "call_id", None)
+                    )
+                    if tracker:
+                        updated = apply_function_task_updates(
+                            tracker,
+                            output=getattr(item, "output", None),
+                            status=getattr(item, "status", None),
+                        )
+                        if ctx.workflow_item and updated:
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=WorkflowTaskUpdated(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
                 elif item.type == "web_search_call":
                     for search_event in upsert_search_task(
                         cast(ResponseFunctionWebSearch, item), status="complete"
@@ -1294,6 +1618,9 @@ async def stream_agent_response(
         context._complete()
         queue_iterator.drain_and_complete()
         image_tasks.clear()
+        search_tasks.clear()
+        function_tasks.clear()
+        function_tasks_by_call_id.clear()
 
         raise
 
