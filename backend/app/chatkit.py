@@ -4199,6 +4199,12 @@ async def run_workflow(
             )
 
     # Ajouter le message utilisateur actuel
+    restored_state: dict[str, Any] | None = None
+    if pending_wait_state:
+        stored_state = pending_wait_state.get("state")
+        if isinstance(stored_state, Mapping):
+            restored_state = copy.deepcopy(dict(stored_state))
+
     if initial_user_text.strip():
         conversation_history.append(
             {
@@ -4216,6 +4222,9 @@ async def run_workflow(
         "infos_manquantes": initial_user_text,
         "should_finalize": False,
     }
+    if restored_state:
+        state.update(restored_state)
+        state["infos_manquantes"] = initial_user_text
     final_output: dict[str, Any] | None = None
     last_step_context: dict[str, Any] | None = None
 
@@ -5978,6 +5987,8 @@ async def run_workflow(
                 wait_state_payload["conversation_history"] = conversation_snapshot
             if transition is not None:
                 wait_state_payload["next_step_slug"] = transition.target_step.slug
+            if state:
+                wait_state_payload["state"] = _json_safe_copy(state)
             if thread is not None:
                 _set_wait_state_metadata(thread, wait_state_payload)
 
