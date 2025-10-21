@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import importlib.util
+import importlib
 import json
 import os
 import sys
@@ -80,6 +80,7 @@ agents_stub.Runner = _DummyRunner
 agents_stub.TResponseInputItem = dict
 agents_stub.WebSearchTool = _DummyWebSearchTool
 agents_stub.function_tool = _function_tool
+agents_stub.AgentOutputSchema = type("AgentOutputSchema", (), {})
 
 sys.modules.setdefault("agents", agents_stub)
 
@@ -99,6 +100,7 @@ openai_reasoning.Reasoning = _DummyReasoning
 openai_shared.reasoning = openai_reasoning
 openai_types.shared = openai_shared
 openai_stub.types = openai_types
+openai_stub.OpenAI = type("OpenAI", (), {})
 
 sys.modules.setdefault("openai", openai_stub)
 sys.modules.setdefault("openai.types", openai_types)
@@ -326,6 +328,12 @@ async def _stream_widget(*_args, **_kwargs):  # type: ignore[no-untyped-def]
 
 
 chatkit_agents_stub.AgentContext = _DummyAgentContext
+chatkit_agents_stub.ThreadItemConverter = type(
+    "ThreadItemConverter", (object,), {"convert": lambda self, *_args, **_kwargs: []}
+)
+chatkit_agents_stub.simple_to_agent_input = (
+    lambda *_args, **_kwargs: []
+)
 chatkit_agents_stub.stream_agent_response = _stream_agent_response
 chatkit_agents_stub.stream_widget = _stream_widget
 
@@ -450,6 +458,32 @@ chatkit_types_stub.ThreadItemUpdated = _ThreadItemUpdated
 chatkit_types_stub.ThreadMetadata = _ThreadMetadata
 chatkit_types_stub.ThreadStreamEvent = _ThreadStreamEvent
 chatkit_types_stub.UserMessageItem = _UserMessageItem
+
+for _type_name in [
+    "ActiveStatus",
+    "AssistantMessageContent",
+    "AssistantMessageItem",
+    "ClosedStatus",
+    "GeneratedImage",
+    "ImageTask",
+    "InferenceOptions",
+    "LockedStatus",
+    "TaskItem",
+    "ThreadItemAddedEvent",
+    "ThreadItemDoneEvent",
+    "ThreadItemRemovedEvent",
+    "WidgetItem",
+    "WidgetRootUpdated",
+    "WorkflowItem",
+    "WorkflowTaskAdded",
+    "WorkflowTaskUpdated",
+    "UserMessageInput",
+    "UserMessageTextContent",
+]:
+    chatkit_types_stub.__dict__.setdefault(
+        _type_name,
+        type(_type_name, (SimpleNamespace,), {}),
+    )
 
 sys.modules.setdefault("chatkit.types", chatkit_types_stub)
 
@@ -675,15 +709,7 @@ def _load_dotenv(*_args, **_kwargs):  # type: ignore[no-untyped-def]
 dotenv_stub.load_dotenv = _load_dotenv
 sys.modules.setdefault("dotenv", dotenv_stub)
 
-chatkit_spec = importlib.util.spec_from_file_location(
-    "backend.app.chatkit",
-    Path(__file__).resolve().parents[1] / "chatkit.py",
-    submodule_search_locations=[str(Path(__file__).resolve().parents[1])],
-)
-assert chatkit_spec and chatkit_spec.loader
-chatkit_module = importlib.util.module_from_spec(chatkit_spec)
-sys.modules["backend.app.chatkit"] = chatkit_module
-chatkit_spec.loader.exec_module(chatkit_module)  # type: ignore[union-attr]
+chatkit_module = importlib.import_module("backend.app.chatkit")
 
 from backend.app.chatkit import WorkflowInput, run_workflow
 from backend.app.workflows.service import WorkflowService
@@ -720,6 +746,7 @@ def _execute_json_vector_store_workflow(
 ]:
     calls: list[tuple[str, str, dict[str, object], dict[str, object]]] = []
     sessions: list[SimpleNamespace] = []
+    ingestion_module = importlib.import_module("backend.app.vector_store.ingestion")
 
     class _TrackingSession:
         def __init__(self) -> None:
@@ -766,8 +793,9 @@ def _execute_json_vector_store_workflow(
         return
 
     monkeypatch.setattr(chatkit_module, "SessionLocal", _fake_session)
-    monkeypatch.setattr(chatkit_module, "JsonVectorStoreService", _VectorStoreRecorder)
+    monkeypatch.setattr(ingestion_module, "JsonVectorStoreService", _VectorStoreRecorder)
     monkeypatch.setattr(chatkit_module.asyncio, "to_thread", _immediate_to_thread)
+    monkeypatch.setattr(ingestion_module.asyncio, "to_thread", _immediate_to_thread)
     monkeypatch.setattr(
         chatkit_module.Runner,
         "run_streamed",
