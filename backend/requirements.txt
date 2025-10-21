@@ -17,3 +17,9 @@ pgvector
 # Alternative: Local embeddings (heavy - ~500MB with PyTorch)
 # Uncomment if you prefer local embeddings instead of OpenAI API
 # sentence-transformers
+
+# Outils de qualité de code
+black>=24.4.0
+isort>=5.13.0
+mypy>=1.10.0
+ruff>=0.4.0
