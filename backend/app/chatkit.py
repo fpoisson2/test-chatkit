@@ -292,20 +292,33 @@ class ImageAwareThreadItemConverter(ThreadItemConverter):
         if not image_urls:
             return super().task_to_input(item)
 
-        # Construire le message pour l'agent avec les URLs
-        image_links = "\n".join(image_urls)
-        text = f"Une image a été générée avec succès. Voici le(s) lien(s) :\n{image_links}"
-
+        # Construire le contenu du message avec les images
         from openai.types.responses.response_input_item_param import Message
+        from openai.types.responses import ResponseInputImageParam
+
+        content = []
+
+        # Ajouter un texte descriptif
+        content.append(
+            ResponseInputTextParam(
+                type="input_text",
+                text="Image(s) générée(s) avec succès :",
+            )
+        )
+
+        # Ajouter chaque image comme input visuel
+        for image_url in image_urls:
+            content.append(
+                ResponseInputImageParam(
+                    type="input_image",
+                    image_url=image_url,
+                    detail="auto",
+                )
+            )
 
         return Message(
             type="message",
-            content=[
-                ResponseInputTextParam(
-                    type="input_text",
-                    text=text,
-                )
-            ],
+            content=content,
             role="user",
         )
 
@@ -4186,6 +4199,12 @@ async def run_workflow(
             )
 
     # Ajouter le message utilisateur actuel
+    restored_state: dict[str, Any] | None = None
+    if pending_wait_state:
+        stored_state = pending_wait_state.get("state")
+        if isinstance(stored_state, Mapping):
+            restored_state = copy.deepcopy(dict(stored_state))
+
     if initial_user_text.strip():
         conversation_history.append(
             {
@@ -4203,6 +4222,9 @@ async def run_workflow(
         "infos_manquantes": initial_user_text,
         "should_finalize": False,
     }
+    if restored_state:
+        state.update(restored_state)
+        state["infos_manquantes"] = initial_user_text
     final_output: dict[str, Any] | None = None
     last_step_context: dict[str, Any] | None = None
 
@@ -4719,6 +4741,12 @@ async def run_workflow(
                     "Chaque opération doit préciser une cible 'target'."
                 )
             value = _evaluate_state_expression(entry.get("expression"))
+            logger.debug(
+                "set_state: stockage de %s = %s (type: %s)",
+                target,
+                str(value)[:200] if value else "None",
+                type(value).__name__,
+            )
             _assign_state_value(target, value)
 
     def _extract_delta(event: ThreadStreamEvent) -> str:
@@ -4937,18 +4965,27 @@ async def run_workflow(
                 trimmed = candidate.strip()
                 if not trimmed:
                     return None
+                # Log pour déboguer le JSON parsing
+                logger.debug(
+                    "Tentative de parsing JSON pour %s (taille: %d, début: %s...)",
+                    step_slug,
+                    len(trimmed),
+                    trimmed[:100],
+                )
                 try:
                     decoded = json.loads(trimmed)
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
                     if purpose == "document":
                         logger.warning(
-                            "Le document produit par %s n'est pas un JSON valide pour l'ingestion.",
+                            "Le document produit par %s n'est pas un JSON valide pour l'ingestion. Erreur: %s",
                             step_slug,
+                            str(e),
                         )
                     else:
                         logger.warning(
-                            "Les métadonnées calculées pour %s ne sont pas un JSON valide.",
+                            "Les métadonnées calculées pour %s ne sont pas un JSON valide. Erreur: %s",
                             step_slug,
+                            str(e),
                         )
                     return None
                 if isinstance(decoded, dict):
@@ -5026,6 +5063,13 @@ async def run_workflow(
             try:
                 document_value = _evaluate_state_expression(
                     document_expression, input_context=step_context
+                )
+                logger.debug(
+                    "Expression de document '%s' évaluée pour %s: type=%s, valeur=%s",
+                    document_expression,
+                    step_slug,
+                    type(document_value).__name__,
+                    str(document_value)[:200] if document_value else "None",
                 )
             except Exception as exc:  # pragma: no cover - dépend des expressions fournies
                 logger.exception(
@@ -5943,6 +5987,8 @@ async def run_workflow(
                 wait_state_payload["conversation_history"] = conversation_snapshot
             if transition is not None:
                 wait_state_payload["next_step_slug"] = transition.target_step.slug
+            if state:
+                wait_state_payload["state"] = _json_safe_copy(state)
             if thread is not None:
                 _set_wait_state_metadata(thread, wait_state_payload)
 

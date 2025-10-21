@@ -795,6 +795,160 @@ def test_wait_for_user_input_node_resumes_after_new_message(
     assert agent_context.thread.metadata.get(wait_metadata_key) is None
 
 
+def test_wait_for_user_input_persists_state_across_pause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contexts: list[Any] = []
+
+    async def _noop_stream(*args, **kwargs):  # type: ignore[no-untyped-def]
+        if False:
+            yield None
+        return
+
+    def _capture_run(agent, *args, **kwargs):  # type: ignore[no-untyped-def]
+        context = kwargs.get("context")
+        contexts.append(context)
+        return _DummyRunnerResult({"status": "ok"})
+
+    monkeypatch.setattr(chatkit_module, "stream_agent_response", _noop_stream)
+    monkeypatch.setattr(chatkit_module.Runner, "run_streamed", _capture_run)
+    monkeypatch.setitem(
+        chatkit_module._AGENT_BUILDERS,  # type: ignore[attr-defined]
+        "get_data_from_user",
+        lambda overrides: SimpleNamespace(name="Agent Collecte"),
+    )
+
+    agent_context = SimpleNamespace(
+        store=None,
+        thread=SimpleNamespace(id="thread-demo", metadata={}),
+        request_context=None,
+        generate_id=lambda prefix: f"{prefix}-1",
+    )
+
+    start_step = SimpleNamespace(
+        slug="start",
+        kind="start",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=0,
+        id=1,
+        display_name="Début",
+    )
+    state_before_wait = SimpleNamespace(
+        slug="etat-initial",
+        kind="state",
+        is_enabled=True,
+        parameters={
+            "state": [
+                {"target": "state.saved_value", "expression": '"persist-me"'},
+                {"target": "state.infos_manquantes", "expression": '"avant-attente"'},
+            ]
+        },
+        agent_key=None,
+        position=1,
+        id=2,
+        display_name="Initialisation état",
+    )
+    wait_step = SimpleNamespace(
+        slug="pause-utilisateur",
+        kind="wait_for_user_input",
+        is_enabled=True,
+        parameters={"message": "Merci de continuer."},
+        agent_key=None,
+        position=2,
+        id=3,
+        display_name="Attente",
+    )
+    state_after_wait = SimpleNamespace(
+        slug="restaure",
+        kind="state",
+        is_enabled=True,
+        parameters={
+            "state": [
+                {
+                    "target": "state.infos_manquantes",
+                    "expression": "state.saved_value",
+                }
+            ]
+        },
+        agent_key=None,
+        position=3,
+        id=4,
+        display_name="Restauration",
+    )
+    agent_after_wait = SimpleNamespace(
+        slug="collecte",
+        kind="agent",
+        is_enabled=True,
+        parameters={},
+        agent_key="get_data_from_user",
+        position=4,
+        id=5,
+        display_name="Collecte utilisateur",
+    )
+    end_step = SimpleNamespace(
+        slug="end",
+        kind="end",
+        is_enabled=True,
+        parameters={},
+        agent_key=None,
+        position=5,
+        id=6,
+        display_name="Fin",
+    )
+
+    transitions = [
+        SimpleNamespace(id=1, source_step=start_step, target_step=state_before_wait, condition=None),
+        SimpleNamespace(id=2, source_step=state_before_wait, target_step=wait_step, condition=None),
+        SimpleNamespace(id=3, source_step=wait_step, target_step=state_after_wait, condition=None),
+        SimpleNamespace(id=4, source_step=state_after_wait, target_step=agent_after_wait, condition=None),
+        SimpleNamespace(id=5, source_step=agent_after_wait, target_step=end_step, condition=None),
+    ]
+
+    definition = SimpleNamespace(
+        steps=[start_step, state_before_wait, wait_step, state_after_wait, agent_after_wait, end_step],
+        transitions=transitions,
+        workflow_id=1,
+        workflow=SimpleNamespace(slug="demo", display_name="Démo"),
+    )
+
+    async def _run_first() -> "WorkflowRunSummary":
+        return await run_workflow(
+            WorkflowInput(input_as_text="Bonjour", source_item_id="msg-1"),
+            agent_context=agent_context,
+            workflow_service=_DummyWorkflowService(definition),
+        )
+
+    summary_first = asyncio.run(_run_first())
+
+    wait_metadata_key = getattr(chatkit_module, "_WAIT_STATE_METADATA_KEY")
+    wait_state = agent_context.thread.metadata.get(wait_metadata_key)
+    assert summary_first.final_node_slug == "pause-utilisateur"
+    assert wait_state is not None
+    assert wait_state.get("state") is not None
+    assert wait_state["state"]["saved_value"] == "persist-me"
+
+    contexts.clear()
+
+    async def _run_second() -> "WorkflowRunSummary":
+        return await run_workflow(
+            WorkflowInput(input_as_text="Voici la suite", source_item_id="msg-2"),
+            agent_context=agent_context,
+            workflow_service=_DummyWorkflowService(definition),
+        )
+
+    summary_second = asyncio.run(_run_second())
+
+    assert summary_second.final_node_slug == "end"
+    assert agent_context.thread.metadata.get(wait_metadata_key) is None
+    assert len(contexts) == 1
+    context_wrapper = contexts[0]
+    assert context_wrapper is not None
+    assert hasattr(context_wrapper, "state_infos_manquantes")
+    assert context_wrapper.state_infos_manquantes == "persist-me"
+
+
 def test_assistant_message_node_streams_with_effect() -> None:
     events: list[Any] = []
 
