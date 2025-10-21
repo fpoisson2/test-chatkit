@@ -2,15 +2,18 @@
 
 import pytest
 
+from agents import FunctionTool, WebSearchTool
+
 from backend.app.chatkit import (
-    FunctionTool,
-    ImageGeneration,
-    ImageGenerationTool,
-    WebSearchTool,
     _coerce_agent_tools,
-    validate_widget_definition,
     web_search_preview,
 )
+from backend.app.tool_factory import (
+    ImageGeneration,
+    ImageGenerationTool,
+    validate_widget_definition,
+)
+import backend.app.tool_factory as tool_factory_module
 
 
 def test_coerce_agent_tools_from_serialized_web_search() -> None:
@@ -162,7 +165,7 @@ def test_validate_widget_definition_success(monkeypatch: pytest.MonkeyPatch) -> 
         return {"normalized": True, "definition": dict(definition)}
 
     monkeypatch.setattr(
-        module.WidgetLibraryService,
+        tool_factory_module.WidgetLibraryService,
         "_normalize_definition",
         staticmethod(_fake_normalize),
     )
@@ -187,7 +190,7 @@ def test_validate_widget_definition_returns_errors(monkeypatch: pytest.MonkeyPat
         )
 
     monkeypatch.setattr(
-        module.WidgetLibraryService,
+        tool_factory_module.WidgetLibraryService,
         "_normalize_definition",
         staticmethod(_raise_validation),
     )
@@ -208,7 +211,7 @@ def test_validate_widget_definition_accepts_json_string(monkeypatch: pytest.Monk
         return {"normalized": True}
 
     monkeypatch.setattr(
-        module.WidgetLibraryService,
+        tool_factory_module.WidgetLibraryService,
         "_normalize_definition",
         staticmethod(_capture),
     )
@@ -240,7 +243,7 @@ def test_validate_widget_definition_handles_unexpected_exception(monkeypatch: py
         raise RuntimeError("boom")
 
     monkeypatch.setattr(
-        module.WidgetLibraryService,
+        tool_factory_module.WidgetLibraryService,
         "_normalize_definition",
         staticmethod(_crash),
     )
@@ -355,8 +358,6 @@ def test_coerce_agent_tools_normalizes_unknown_output_format() -> None:
 def test_build_image_generation_tool_sets_default_name(monkeypatch: pytest.MonkeyPatch) -> None:
     """Vérifie que le repli conserve un nom d'outil cohérent."""
 
-    from backend.app import chatkit as module
-
     class _FailingImageGeneration:
         model_fields = {"type": None, "name": None, "model": None}
 
@@ -370,10 +371,10 @@ def test_build_image_generation_tool_sets_default_name(monkeypatch: pytest.Monke
                 setattr(instance, key, value)
             return instance
 
-    monkeypatch.setattr(module, "_AgentImageGenerationConfig", None)
-    monkeypatch.setattr(module, "ImageGeneration", _FailingImageGeneration)
+    monkeypatch.setattr(tool_factory_module, "_AgentImageGenerationConfig", None)
+    monkeypatch.setattr(tool_factory_module, "ImageGeneration", _FailingImageGeneration)
 
-    tool = module._build_image_generation_tool(
+    tool = tool_factory_module.build_image_generation_tool(
         {
             "image_generation": {
                 "model": "fallback-model",
@@ -397,8 +398,6 @@ def test_build_image_generation_tool_sets_default_name(monkeypatch: pytest.Monke
 def test_build_image_generation_tool_restores_missing_name(monkeypatch: pytest.MonkeyPatch) -> None:
     """Le repli doit imposer un nom même lorsque le modèle ne le déclare pas."""
 
-    from backend.app import chatkit as module
-
     class _PartialImageGeneration:
         model_fields = {"type": None, "model": None}
 
@@ -412,10 +411,10 @@ def test_build_image_generation_tool_restores_missing_name(monkeypatch: pytest.M
                 setattr(instance, key, value)
             return instance
 
-    monkeypatch.setattr(module, "_AgentImageGenerationConfig", None)
-    monkeypatch.setattr(module, "ImageGeneration", _PartialImageGeneration)
+    monkeypatch.setattr(tool_factory_module, "_AgentImageGenerationConfig", None)
+    monkeypatch.setattr(tool_factory_module, "ImageGeneration", _PartialImageGeneration)
 
-    tool = module._build_image_generation_tool(
+    tool = tool_factory_module.build_image_generation_tool(
         {
             "image_generation": {
                 "model": "fallback-model",
