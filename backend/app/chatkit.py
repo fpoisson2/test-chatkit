@@ -292,20 +292,33 @@ class ImageAwareThreadItemConverter(ThreadItemConverter):
         if not image_urls:
             return super().task_to_input(item)
 
-        # Construire le message pour l'agent avec les URLs
-        image_links = "\n".join(image_urls)
-        text = f"Une image a été générée avec succès. Voici le(s) lien(s) :\n{image_links}"
-
+        # Construire le contenu du message avec les images
         from openai.types.responses.response_input_item_param import Message
+        from openai.types.responses import ResponseInputImageParam
+
+        content = []
+
+        # Ajouter un texte descriptif
+        content.append(
+            ResponseInputTextParam(
+                type="input_text",
+                text="Image(s) générée(s) avec succès :",
+            )
+        )
+
+        # Ajouter chaque image comme input visuel
+        for image_url in image_urls:
+            content.append(
+                ResponseInputImageParam(
+                    type="input_image",
+                    image_url=image_url,
+                    detail="auto",
+                )
+            )
 
         return Message(
             type="message",
-            content=[
-                ResponseInputTextParam(
-                    type="input_text",
-                    text=text,
-                )
-            ],
+            content=content,
             role="user",
         )
 
