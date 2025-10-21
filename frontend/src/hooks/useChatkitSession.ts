@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 
 import {
   clearStoredChatKitSecret,
-  inferChatKitSessionExpiration,
+  normalizeSessionExpiration,
   persistChatKitSecret,
   readStoredChatKitSession,
 } from "../utils/chatkitSession";
@@ -137,7 +137,7 @@ export const useChatkitSession = ({
           throw new Error("Missing client_secret in ChatKit session response");
         }
 
-        const expiresAt = inferChatKitSessionExpiration(data);
+        const expiresAt = normalizeSessionExpiration(data.expires_at ?? data);
         persistChatKitSecret(sessionOwner, data.client_secret, expiresAt);
 
         return data.client_secret;

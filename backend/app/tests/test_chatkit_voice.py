@@ -1,12 +1,17 @@
 from __future__ import annotations
 
+import datetime
+
 from fastapi import HTTPException
 import pytest
 
+from backend.app.chatkit_sessions import SessionSecretParser
 from backend.app.config import get_settings
 from backend.app.security import create_access_token
-from backend.app.routes.chatkit import _resolve_voice_client_secret
 from backend.app.tests.test_workflows import _auth_headers, _make_user, _reset_db, client
+
+
+FIXED_NOW = datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc)
 
 
 def test_create_voice_session_requires_authentication() -> None:
@@ -54,6 +59,10 @@ def test_create_voice_session_success(monkeypatch) -> None:
         "backend.app.routes.chatkit.create_realtime_voice_session",
         _fake_helper,
     )
+    monkeypatch.setattr(
+        "backend.app.routes.chatkit.SessionSecretParser",
+        lambda: SessionSecretParser(clock=lambda: FIXED_NOW),
+    )
 
     response = client.post(
         "/api/chatkit/voice/session",
@@ -66,9 +75,10 @@ def test_create_voice_session_success(monkeypatch) -> None:
 
     assert response.status_code == 200
     payload = response.json()
+    expected_expiration = (FIXED_NOW + datetime.timedelta(seconds=900)).isoformat().replace("+00:00", "Z")
     assert payload == {
         "client_secret": {"value": "secret-token", "expires_after": 900},
-        "expires_at": "900",
+        "expires_at": expected_expiration,
         "model": "gpt-custom",
         "instructions": "Réponds avec empathie",
         "voice": settings.chatkit_realtime_voice,
@@ -90,6 +100,10 @@ def test_create_voice_session_success_with_string_secret(monkeypatch) -> None:
         "backend.app.routes.chatkit.create_realtime_voice_session",
         _fake_helper,
     )
+    monkeypatch.setattr(
+        "backend.app.routes.chatkit.SessionSecretParser",
+        lambda: SessionSecretParser(clock=lambda: FIXED_NOW),
+    )
 
     response = client.post(
         "/api/chatkit/voice/session",
@@ -100,7 +114,8 @@ def test_create_voice_session_success_with_string_secret(monkeypatch) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["client_secret"] == "plain-secret"
-    assert payload["expires_at"] == "321"
+    expected_expiration = (FIXED_NOW + datetime.timedelta(seconds=321)).isoformat().replace("+00:00", "Z")
+    assert payload["expires_at"] == expected_expiration
     assert payload["prompt_variables"] == {}
 
 
@@ -180,12 +195,13 @@ def test_admin_can_update_voice_settings(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize(
-    "payload,expected_secret,expected_expiration",
+    "payload,expected_secret,expected_delta,expected_iso",
     [
-        ({"client_secret": "raw-token"}, "raw-token", None),
+        ({"client_secret": "raw-token"}, "raw-token", datetime.timedelta(minutes=9), None),
         (
             {"client_secret": {"value": "abc", "expires_at": "2024-01-01T00:00:00Z"}},
             {"value": "abc", "expires_at": "2024-01-01T00:00:00Z"},
+            None,
             "2024-01-01T00:00:00Z",
         ),
         (
@@ -196,7 +212,8 @@ def test_admin_can_update_voice_settings(monkeypatch) -> None:
                 }
             },
             {"value": "def"},
-            "600",
+            datetime.timedelta(seconds=600),
+            None,
         ),
         (
             {
@@ -205,21 +222,31 @@ def test_admin_can_update_voice_settings(monkeypatch) -> None:
                 }
             },
             {"value": "ghi", "expires_after": 120},
-            "120",
+            datetime.timedelta(seconds=120),
+            None,
         ),
     ],
 )
-def test_resolve_voice_client_secret_handles_various_shapes(
+def test_session_secret_parser_handles_various_shapes(
     payload: dict[str, object],
     expected_secret: object,
-    expected_expiration: str | None,
+    expected_delta: datetime.timedelta | None,
+    expected_iso: str | None,
 ) -> None:
-    secret, expires = _resolve_voice_client_secret(payload)
-    assert secret == expected_secret
-    assert expires == expected_expiration
+    parser = SessionSecretParser(clock=lambda: FIXED_NOW)
+    result = parser.parse(payload)
+    assert result.raw == expected_secret
+    if expected_iso is not None:
+        assert result.expires_at_isoformat() == expected_iso
+    elif expected_delta is not None:
+        target_iso = (FIXED_NOW + expected_delta).isoformat().replace("+00:00", "Z")
+        assert result.expires_at_isoformat() == target_iso
+    else:
+        assert result.expires_at is None
 
 
-def test_resolve_voice_client_secret_missing_secret() -> None:
-    secret, expires = _resolve_voice_client_secret({"foo": "bar", "expires_at": "soon"})
-    assert secret is None
-    assert expires == "soon"
+def test_session_secret_parser_missing_secret() -> None:
+    parser = SessionSecretParser(clock=lambda: FIXED_NOW)
+    result = parser.parse({"foo": "bar", "expires_at": "soon"})
+    assert result.raw is None
+    assert result.expires_at is None
