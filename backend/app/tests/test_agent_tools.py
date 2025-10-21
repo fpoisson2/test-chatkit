@@ -199,6 +199,59 @@ def test_validate_widget_definition_returns_errors(monkeypatch: pytest.MonkeyPat
     assert result["valid"] is False
     assert result["errors"] == ["name: champ requis"]
 
+
+def test_validate_widget_definition_accepts_json_string(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app import chatkit as module
+
+    captured: dict[str, object] = {}
+
+    def _capture(definition: dict[str, object]) -> dict[str, object]:
+        captured.update(definition)
+        return {"normalized": True}
+
+    monkeypatch.setattr(
+        module.WidgetLibraryService,
+        "_normalize_definition",
+        staticmethod(_capture),
+    )
+
+    result = validate_widget_definition("{\n  \"type\": \"Card\"\n}")
+
+    assert result["valid"] is True
+    assert captured == {"type": "Card"}
+
+
+def test_validate_widget_definition_rejects_invalid_json() -> None:
+    result = validate_widget_definition("{type: 'Card'")
+
+    assert result["valid"] is False
+    assert any("JSON invalide" in message for message in result["errors"])
+
+
+def test_validate_widget_definition_requires_json_object() -> None:
+    result = validate_widget_definition("[]")
+
+    assert result["valid"] is False
+    assert result["errors"] == ["La définition de widget doit être un objet JSON."]
+
+
+def test_validate_widget_definition_handles_unexpected_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app import chatkit as module
+
+    def _crash(_: dict[str, object]) -> dict[str, object]:  # pragma: no cover - comportement simulé
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        module.WidgetLibraryService,
+        "_normalize_definition",
+        staticmethod(_crash),
+    )
+
+    result = validate_widget_definition({"type": "Card"})
+
+    assert result["valid"] is False
+    assert any("Erreur interne" in message for message in result["errors"])
+
 def test_coerce_agent_tools_accepts_empty_list() -> None:
     tools = _coerce_agent_tools([], [web_search_preview])
     assert isinstance(tools, list)

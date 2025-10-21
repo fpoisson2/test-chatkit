@@ -1566,16 +1566,70 @@ def validate_widget_definition(
 ) -> dict[str, Any]:
     """Valide une définition de widget et retourne un rapport structuré."""
 
-    if isinstance(definition, Mapping) and not isinstance(definition, dict):
-        definition = dict(definition)
+    parsed_definition: Any = definition
 
-    try:
-        normalized = WidgetLibraryService._normalize_definition(definition)
-    except WidgetValidationError as exc:
-        errors = exc.errors or [str(exc)]
+    if isinstance(definition, Mapping):
+        parsed_definition = dict(definition)
+    elif isinstance(definition, str):
+        candidate = definition.strip()
+        if not candidate:
+            return {
+                "valid": False,
+                "errors": ["La définition de widget fournie est vide."],
+            }
+        try:
+            parsed_definition = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            location = f" (ligne {exc.lineno}, colonne {exc.colno})" if exc.lineno else ""
+            return {
+                "valid": False,
+                "errors": [f"JSON invalide : {exc.msg}{location}"],
+            }
+        except Exception as exc:  # pragma: no cover - garde-fou
+            logger.exception(
+                "Erreur lors du décodage JSON de la définition de widget",
+                exc_info=exc,
+            )
+            return {
+                "valid": False,
+                "errors": [f"JSON invalide : {exc}"],
+            }
+    else:
         return {
             "valid": False,
-            "errors": list(errors),
+            "errors": [
+                "La définition de widget doit être un objet JSON ou une chaîne JSON.",
+            ],
+        }
+
+    if not isinstance(parsed_definition, Mapping):
+        return {
+            "valid": False,
+            "errors": ["La définition de widget doit être un objet JSON."],
+        }
+
+    try:
+        normalized = WidgetLibraryService._normalize_definition(parsed_definition)
+    except WidgetValidationError as exc:
+        raw_errors = exc.errors
+        if isinstance(raw_errors, str):
+            messages = [raw_errors]
+        elif raw_errors:
+            messages = [str(entry) for entry in raw_errors]
+        else:
+            messages = [str(exc)]
+        return {
+            "valid": False,
+            "errors": messages,
+        }
+    except Exception as exc:  # pragma: no cover - garde-fou
+        logger.exception(
+            "Erreur inattendue lors de la validation de widget",
+            exc_info=exc,
+        )
+        return {
+            "valid": False,
+            "errors": [f"Erreur interne lors de la validation : {exc}"],
         }
 
     return {
