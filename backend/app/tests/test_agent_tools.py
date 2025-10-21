@@ -8,6 +8,7 @@ from backend.app.chatkit import (
     ImageGenerationTool,
     WebSearchTool,
     _coerce_agent_tools,
+    validate_widget_definition,
     web_search_preview,
 )
 
@@ -111,6 +112,143 @@ def test_coerce_agent_tools_accepts_weather_alias() -> None:
     assert isinstance(tool, FunctionTool)
     assert tool.name == "get_weather"
 
+
+def test_coerce_agent_tools_from_widget_validation_function() -> None:
+    tools = _coerce_agent_tools(
+        [
+            {
+                "type": "function",
+                "function": {
+                    "name": "validate_widget",
+                    "description": "Valide un widget.",
+                },
+            }
+        ]
+    )
+
+    assert isinstance(tools, list)
+    assert len(tools) == 1
+    tool = tools[0]
+    assert isinstance(tool, FunctionTool)
+    assert tool.name == "validate_widget"
+    if hasattr(tool, "description"):
+        description = getattr(tool, "description") or ""
+        assert "widget" in description.lower()
+
+
+def test_coerce_agent_tools_accepts_widget_validation_alias() -> None:
+    tools = _coerce_agent_tools(
+        [
+            {
+                "type": "function",
+                "function": {
+                    "name": "widget_validation",
+                },
+            }
+        ]
+    )
+
+    assert isinstance(tools, list)
+    assert len(tools) == 1
+    tool = tools[0]
+    assert isinstance(tool, FunctionTool)
+    assert tool.name == "widget_validation"
+
+
+def test_validate_widget_definition_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app import chatkit as module
+
+    def _fake_normalize(definition: dict[str, object]) -> dict[str, object]:
+        return {"normalized": True, "definition": dict(definition)}
+
+    monkeypatch.setattr(
+        module.WidgetLibraryService,
+        "_normalize_definition",
+        staticmethod(_fake_normalize),
+    )
+
+    result = validate_widget_definition({"type": "Card", "value": "Hello"})
+
+    assert result.valid is True
+    assert result.errors == []
+    assert result.normalized_definition == {
+        "normalized": True,
+        "definition": {"type": "Card", "value": "Hello"},
+    }
+
+
+def test_validate_widget_definition_returns_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app import chatkit as module
+
+    def _raise_validation(_: dict[str, object]) -> dict[str, object]:
+        raise module.WidgetValidationError(
+            "Définition invalide",
+            errors=["name: champ requis"],
+        )
+
+    monkeypatch.setattr(
+        module.WidgetLibraryService,
+        "_normalize_definition",
+        staticmethod(_raise_validation),
+    )
+
+    result = validate_widget_definition({})
+
+    assert result.valid is False
+    assert result.errors == ["name: champ requis"]
+
+
+def test_validate_widget_definition_accepts_json_string(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app import chatkit as module
+
+    captured: dict[str, object] = {}
+
+    def _capture(definition: dict[str, object]) -> dict[str, object]:
+        captured.update(definition)
+        return {"normalized": True}
+
+    monkeypatch.setattr(
+        module.WidgetLibraryService,
+        "_normalize_definition",
+        staticmethod(_capture),
+    )
+
+    result = validate_widget_definition("{\n  \"type\": \"Card\"\n}")
+
+    assert result.valid is True
+    assert captured == {"type": "Card"}
+
+
+def test_validate_widget_definition_rejects_invalid_json() -> None:
+    result = validate_widget_definition("{type: 'Card'")
+
+    assert result.valid is False
+    assert any("JSON invalide" in message for message in result.errors)
+
+
+def test_validate_widget_definition_requires_json_object() -> None:
+    result = validate_widget_definition("[]")
+
+    assert result.valid is False
+    assert result.errors == ["La définition de widget doit être un objet JSON."]
+
+
+def test_validate_widget_definition_handles_unexpected_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app import chatkit as module
+
+    def _crash(_: dict[str, object]) -> dict[str, object]:  # pragma: no cover - comportement simulé
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(
+        module.WidgetLibraryService,
+        "_normalize_definition",
+        staticmethod(_crash),
+    )
+
+    result = validate_widget_definition({"type": "Card"})
+
+    assert result.valid is False
+    assert any("Erreur interne" in message for message in result.errors)
 
 def test_coerce_agent_tools_accepts_empty_list() -> None:
     tools = _coerce_agent_tools([], [web_search_preview])
