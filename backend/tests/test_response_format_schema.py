@@ -3,9 +3,9 @@ import pytest
 pydantic = pytest.importorskip("pydantic")
 BaseModel = pydantic.BaseModel
 
-from backend.app.chatkit import (
+from backend.app.chatkit import _collect_widget_bindings
+from backend.app.chatkit.agent_registry import (
     _build_output_type_from_response_format,
-    _collect_widget_bindings,
     _create_response_format_from_pydantic,
 )
 

@@ -105,9 +105,9 @@ logger = logging.getLogger("chatkit.server")
 
 
 def _get_thread_title_agent() -> Agent:
-    from .. import chatkit as chatkit_module
+    from ..chatkit.agent_registry import _build_thread_title_agent
 
-    return chatkit_module._build_thread_title_agent()
+    return _build_thread_title_agent()
 
 
 def _get_run_workflow():
