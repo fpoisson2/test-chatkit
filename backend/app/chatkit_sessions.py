@@ -10,6 +10,7 @@ from fastapi import HTTPException, Request, Response, status
 from starlette.responses import StreamingResponse
 
 from .config import get_settings
+from .secret_settings import MissingOpenAIAPIKeyError, resolve_openai_api_key
 from .token_sanitizer import MAX_TOKEN_FIELD_NAMES, sanitize_value
 
 settings = get_settings()
@@ -110,12 +111,24 @@ async def create_chatkit_session(user_id: str) -> dict:
         "rate_limits": {"max_requests_per_1_minute": 50},
     }
 
+    try:
+        api_key = resolve_openai_api_key()
+    except MissingOpenAIAPIKeyError as exc:
+        logger.error("Clé OpenAI absente pour la création d'une session ChatKit")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "OPENAI_API_KEY non configurée",
+                "hint": "Ajoutez la clé dans l'administration ou via l'environnement.",
+            },
+        ) from exc
+
     async with httpx.AsyncClient(base_url=settings.chatkit_api_base, timeout=30) as client:
         response = await client.post(
             "/v1/chatkit/sessions",
             headers={
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {settings.openai_api_key}",
+                "Authorization": f"Bearer {api_key}",
                 "OpenAI-Beta": "chatkit_beta=v1",
             },
             json=payload,

@@ -178,6 +178,18 @@ export const setupMockApi = () => {
       });
     }
 
+    if (url.includes('/api/admin/openai-api-key')) {
+      console.log('🔧 Mock API: /api/admin/openai-api-key');
+      const payload = {
+        is_configured: true,
+        updated_at: new Date().toISOString(),
+      };
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // Mock des endpoints API
     if (url.includes('/api/models')) {
       console.log('🔧 Mock API: /api/models');

@@ -156,6 +156,11 @@ export type VoiceSettingsUpdatePayload = {
   prompt_variables?: Record<string, string>;
 };
 
+export type OpenAIApiKeyStatus = {
+  is_configured: boolean;
+  updated_at: string | null;
+};
+
 export type ChatKitWorkflowInfo = {
   workflow_id: number;
   workflow_slug: string | null;
@@ -243,6 +248,27 @@ export const voiceSettingsApi = {
       method: "PATCH",
       headers: withAuthHeaders(token),
       body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+};
+
+export const openaiApiKeyApi = {
+  async get(token: string | null): Promise<OpenAIApiKeyStatus> {
+    const response = await requestWithFallback("/api/admin/openai-api-key", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async update(
+    token: string | null,
+    apiKey: string,
+  ): Promise<OpenAIApiKeyStatus> {
+    const response = await requestWithFallback("/api/admin/openai-api-key", {
+      method: "PUT",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify({ api_key: apiKey }),
     });
     return response.json();
   },

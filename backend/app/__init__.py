@@ -9,6 +9,7 @@ from .routes import (
     admin,
     auth,
     model_registry,
+    openai_api_key,
     tools,
     users,
     vector_stores,
@@ -41,6 +42,7 @@ app.include_router(admin.router)
 app.include_router(model_registry.router)
 if chatkit and hasattr(chatkit, "router"):
     app.include_router(chatkit.router)
+app.include_router(openai_api_key.router)
 app.include_router(tools.router)
 app.include_router(vector_stores.router)
 app.include_router(voice_settings.router)

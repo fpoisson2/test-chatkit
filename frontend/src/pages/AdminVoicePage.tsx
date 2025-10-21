@@ -4,8 +4,10 @@ import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import {
+  OpenAIApiKeyStatus,
   VoiceSettings,
   isUnauthorizedError,
+  openaiApiKeyApi,
   voiceSettingsApi,
 } from "../utils/backend";
 
@@ -47,6 +49,12 @@ const EMPTY_VOICE_FORM = buildVoiceForm(null);
 
 export const AdminVoicePage = () => {
   const { token, logout } = useAuth();
+  const [apiKeyStatus, setApiKeyStatus] =
+    useState<OpenAIApiKeyStatus | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [isApiKeyLoading, setApiKeyLoading] = useState(true);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+  const [apiKeySuccess, setApiKeySuccess] = useState<string | null>(null);
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettings | null>(
     null,
   );
@@ -55,6 +63,34 @@ export const AdminVoicePage = () => {
   const [isVoiceLoading, setVoiceLoading] = useState(true);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [voiceSuccess, setVoiceSuccess] = useState<string | null>(null);
+
+  const fetchApiKeyStatus = useCallback(async () => {
+    if (!token) {
+      setApiKeyStatus(null);
+      setApiKeyLoading(false);
+      return;
+    }
+    setApiKeyLoading(true);
+    setApiKeyError(null);
+    setApiKeySuccess(null);
+    try {
+      const data = await openaiApiKeyApi.get(token);
+      setApiKeyStatus(data);
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        logout();
+        setApiKeyError("Session expirée, veuillez vous reconnecter.");
+        return;
+      }
+      setApiKeyError(
+        err instanceof Error
+          ? err.message
+          : "Impossible de récupérer le statut de la clé API.",
+      );
+    } finally {
+      setApiKeyLoading(false);
+    }
+  }, [logout, token]);
 
   const fetchVoiceSettings = useCallback(async () => {
     if (!token) {
@@ -87,8 +123,54 @@ export const AdminVoicePage = () => {
   }, [logout, token]);
 
   useEffect(() => {
+    void fetchApiKeyStatus();
     void fetchVoiceSettings();
-  }, [fetchVoiceSettings]);
+  }, [fetchApiKeyStatus, fetchVoiceSettings]);
+
+  const handleApiKeySubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setApiKeyError(null);
+    setApiKeySuccess(null);
+    if (!token) {
+      setApiKeyError(
+        "Authentification requise pour enregistrer la clé OpenAI.",
+      );
+      return;
+    }
+
+    const nextValue = apiKeyInput.trim();
+    if (!nextValue) {
+      setApiKeyError("Renseignez une clé OpenAI valide.");
+      return;
+    }
+
+    setApiKeyLoading(true);
+    try {
+      await openaiApiKeyApi.update(token, nextValue);
+      setApiKeySuccess("Clé OpenAI mise à jour.");
+      setApiKeyInput("");
+      await fetchApiKeyStatus();
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        logout();
+        setApiKeyError("Session expirée, veuillez vous reconnecter.");
+        return;
+      }
+      setApiKeyError(
+        err instanceof Error
+          ? err.message
+          : "Impossible d'enregistrer la clé API.",
+      );
+    } finally {
+      setApiKeyLoading(false);
+    }
+  };
+
+  const handleApiKeyReset = () => {
+    setApiKeyInput("");
+    setApiKeyError(null);
+    setApiKeySuccess(null);
+  };
 
   const handleVoiceSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -202,6 +284,82 @@ export const AdminVoicePage = () => {
           <div className="alert alert--success">{voiceSuccess}</div>
         )}
         <div className="admin-grid">
+          <section className="admin-card">
+            <div>
+              <h2 className="admin-card__title">Clé API OpenAI</h2>
+              <p className="admin-card__subtitle">
+                Enregistrez la clé utilisée pour authentifier les requêtes vers
+                l'API ChatKit. La valeur n'est jamais affichée après
+                enregistrement.
+              </p>
+              {apiKeyStatus ? (
+                <p className="admin-card__subtitle">
+                  {apiKeyStatus.is_configured ? (
+                    apiKeyStatus.updated_at ? (
+                      <>
+                        Dernière mise à jour :
+                        {" "}
+                        {new Date(
+                          apiKeyStatus.updated_at,
+                        ).toLocaleString()}
+                      </>
+                    ) : (
+                      "Clé fournie via les variables d'environnement."
+                    )
+                  ) : (
+                    "Aucune clé enregistrée pour le moment."
+                  )}
+                </p>
+              ) : null}
+            </div>
+            {apiKeyError && (
+              <div className="alert alert--danger">{apiKeyError}</div>
+            )}
+            {apiKeySuccess && (
+              <div className="alert alert--success">{apiKeySuccess}</div>
+            )}
+            {isApiKeyLoading ? (
+              <p className="admin-card__subtitle">
+                Chargement du statut de la clé API…
+              </p>
+            ) : (
+              <form className="admin-form" onSubmit={handleApiKeySubmit}>
+                <label className="label">
+                  Nouvelle clé OpenAI*
+                  <input
+                    className="input"
+                    type="password"
+                    value={apiKeyInput}
+                    onChange={(event) => setApiKeyInput(event.target.value)}
+                    placeholder="sk-..."
+                    autoComplete="new-password"
+                  />
+                </label>
+                <p className="admin-card__subtitle">
+                  Utilisez une clé dotée des permissions Realtime et ChatKit.
+                </p>
+                <div className="admin-form__actions" style={{ gap: "12px" }}>
+                  <button
+                    className="button button--ghost"
+                    type="button"
+                    onClick={handleApiKeyReset}
+                    disabled={isApiKeyLoading}
+                  >
+                    Effacer
+                  </button>
+                  <button
+                    className="button"
+                    type="submit"
+                    disabled={
+                      isApiKeyLoading || apiKeyInput.trim().length === 0
+                    }
+                  >
+                    Enregistrer
+                  </button>
+                </div>
+              </form>
+            )}
+          </section>
           <section className="admin-card">
             <div>
               <h2 className="admin-card__title">Configuration Realtime</h2>

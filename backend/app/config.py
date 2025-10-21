@@ -11,13 +11,30 @@ from dotenv import load_dotenv
 logger = logging.getLogger("chatkit.settings")
 
 
+def _normalize_api_key(value: str | None) -> str | None:
+    if value is None:
+        logger.warning(
+            "OPENAI_API_KEY non configurée : ajoutez-la via l'interface d'administration ou l'environnement."
+        )
+        return None
+
+    sanitized = value.strip()
+    if not sanitized:
+        logger.warning(
+            "OPENAI_API_KEY vide ignorée : fournissez une valeur valide ou configurez-la depuis l'administration."
+        )
+        return None
+
+    return sanitized
+
+
 @dataclass(frozen=True)
 class Settings:
     """Paramètres de configuration centralisés pour le backend.
 
     Attributes:
         allowed_origins: Liste d'origines autorisées pour le CORS.
-        openai_api_key: Jeton API OpenAI utilisé pour contacter ChatKit.
+        openai_api_key: Jeton API OpenAI utilisé pour contacter ChatKit (optionnel).
         chatkit_workflow_id: Identifiant du workflow hébergé (optionnel).
         chatkit_api_base: URL de base de l'API OpenAI/ChatKit.
         backend_public_base_url: URL publique du backend utilisée pour construire les liens absolus.
@@ -38,7 +55,7 @@ class Settings:
     """
 
     allowed_origins: list[str]
-    openai_api_key: str
+    openai_api_key: str | None
     chatkit_workflow_id: str | None
     chatkit_api_base: str
     chatkit_agent_model: str
@@ -91,7 +108,7 @@ class Settings:
 
         return cls(
             allowed_origins=cls._parse_allowed_origins(env.get("ALLOWED_ORIGINS")),
-            openai_api_key=require("OPENAI_API_KEY"),
+            openai_api_key=_normalize_api_key(env.get("OPENAI_API_KEY")),
             chatkit_workflow_id=env.get("CHATKIT_WORKFLOW_ID"),
             chatkit_api_base=env.get("CHATKIT_API_BASE", "https://api.openai.com"),
             chatkit_agent_model=env.get(

@@ -52,6 +52,10 @@ async def test_create_realtime_voice_session_uses_realtime_type(monkeypatch) -> 
         "backend.app.chatkit_realtime.get_settings", lambda: _DummySettings()
     )
     monkeypatch.setattr(
+        "backend.app.chatkit_realtime.resolve_openai_api_key",
+        lambda: "sk-test",
+    )
+    monkeypatch.setattr(
         "backend.app.chatkit_realtime.httpx.AsyncClient", _DummyAsyncClient
     )
 

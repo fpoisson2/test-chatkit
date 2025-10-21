@@ -5,6 +5,7 @@ __all__ = [
     "auth",
     "chatkit",
     "model_registry",
+    "openai_api_key",
     "tools",
     "users",
     "vector_stores",

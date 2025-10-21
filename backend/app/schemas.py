@@ -92,6 +92,15 @@ class VoiceSettingsUpdateRequest(BaseModel):
     )
 
 
+class ApiKeyStatusResponse(BaseModel):
+    is_configured: bool
+    updated_at: datetime.datetime | None = None
+
+
+class ApiKeyUpdateRequest(BaseModel):
+    api_key: constr(strip_whitespace=True, min_length=1, max_length=512)
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str

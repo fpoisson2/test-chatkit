@@ -7,6 +7,7 @@ import httpx
 from fastapi import HTTPException, status
 
 from .config import get_settings
+from .secret_settings import MissingOpenAIAPIKeyError, resolve_openai_api_key
 from .token_sanitizer import sanitize_value
 
 logger = logging.getLogger("chatkit.realtime")
@@ -21,6 +22,17 @@ async def create_realtime_voice_session(
     """Crée un client_secret Realtime pour une session vocale."""
 
     settings = get_settings()
+    try:
+        api_key = resolve_openai_api_key()
+    except MissingOpenAIAPIKeyError as exc:
+        logger.error("Clé OpenAI absente pour la création d'une session Realtime")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "OPENAI_API_KEY non configurée",
+                "hint": "Définissez la clé dans l'administration ou via l'environnement.",
+            },
+        ) from exc
     payload = {
         "session": {
             "type": "realtime",
@@ -41,7 +53,7 @@ async def create_realtime_voice_session(
         )
 
     headers = {
-        "Authorization": f"Bearer {settings.openai_api_key}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "OpenAI-Beta": "realtime=v1",
     }
