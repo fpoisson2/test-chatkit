@@ -2,19 +2,19 @@
 
 import pytest
 
-from backend.app.chatkit import (
+from backend.app.chatkit_core import (
     FunctionTool,
     ImageGeneration,
     ImageGenerationTool,
     WebSearchTool,
-    _coerce_agent_tools,
+    coerce_agent_tools,
     validate_widget_definition,
     web_search_preview,
 )
 
 
-def test_coerce_agent_tools_from_serialized_web_search() -> None:
-    tools = _coerce_agent_tools(
+def testcoerce_agent_tools_from_serialized_web_search() -> None:
+    tools = coerce_agent_tools(
         [
             {
                 "type": "web_search",
@@ -41,17 +41,17 @@ def test_coerce_agent_tools_from_serialized_web_search() -> None:
         assert "country" not in tool.user_location
 
 
-def test_coerce_agent_tools_uses_fallback_on_unknown_entries() -> None:
+def testcoerce_agent_tools_uses_fallback_on_unknown_entries() -> None:
     fallback = [web_search_preview]
-    tools = _coerce_agent_tools([{"type": "unknown"}], fallback)
+    tools = coerce_agent_tools([{"type": "unknown"}], fallback)
 
     assert isinstance(tools, list)
     assert tools is not fallback
     assert tools == fallback
 
 
-def test_coerce_agent_tools_from_serialized_file_search() -> None:
-    tools = _coerce_agent_tools(
+def testcoerce_agent_tools_from_serialized_file_search() -> None:
+    tools = coerce_agent_tools(
         [
             {
                 "type": "file_search",
@@ -71,8 +71,8 @@ def test_coerce_agent_tools_from_serialized_file_search() -> None:
     assert tool.name == "file_search_plan_cadre"
 
 
-def test_coerce_agent_tools_from_weather_function() -> None:
-    tools = _coerce_agent_tools(
+def testcoerce_agent_tools_from_weather_function() -> None:
+    tools = coerce_agent_tools(
         [
             {
                 "type": "function",
@@ -94,8 +94,8 @@ def test_coerce_agent_tools_from_weather_function() -> None:
         assert "météo" in (tool.description or "")
 
 
-def test_coerce_agent_tools_accepts_weather_alias() -> None:
-    tools = _coerce_agent_tools(
+def testcoerce_agent_tools_accepts_weather_alias() -> None:
+    tools = coerce_agent_tools(
         [
             {
                 "type": "function",
@@ -113,8 +113,8 @@ def test_coerce_agent_tools_accepts_weather_alias() -> None:
     assert tool.name == "get_weather"
 
 
-def test_coerce_agent_tools_from_widget_validation_function() -> None:
-    tools = _coerce_agent_tools(
+def testcoerce_agent_tools_from_widget_validation_function() -> None:
+    tools = coerce_agent_tools(
         [
             {
                 "type": "function",
@@ -136,8 +136,8 @@ def test_coerce_agent_tools_from_widget_validation_function() -> None:
         assert "widget" in description.lower()
 
 
-def test_coerce_agent_tools_accepts_widget_validation_alias() -> None:
-    tools = _coerce_agent_tools(
+def testcoerce_agent_tools_accepts_widget_validation_alias() -> None:
+    tools = coerce_agent_tools(
         [
             {
                 "type": "function",
@@ -250,22 +250,22 @@ def test_validate_widget_definition_handles_unexpected_exception(monkeypatch: py
     assert result.valid is False
     assert any("Erreur interne" in message for message in result.errors)
 
-def test_coerce_agent_tools_accepts_empty_list() -> None:
-    tools = _coerce_agent_tools([], [web_search_preview])
+def testcoerce_agent_tools_accepts_empty_list() -> None:
+    tools = coerce_agent_tools([], [web_search_preview])
     assert isinstance(tools, list)
     assert tools == []
 
 
-def test_coerce_agent_tools_returns_empty_when_no_fallback() -> None:
-    tools = _coerce_agent_tools([{"type": "file_search"}])
+def testcoerce_agent_tools_returns_empty_when_no_fallback() -> None:
+    tools = coerce_agent_tools([{"type": "file_search"}])
 
     assert isinstance(tools, list)
     assert tools == []
 
 
-def test_coerce_agent_tools_skips_file_search_without_slug() -> None:
+def testcoerce_agent_tools_skips_file_search_without_slug() -> None:
     fallback = [web_search_preview]
-    tools = _coerce_agent_tools(
+    tools = coerce_agent_tools(
         [
             {
                 "type": "file_search",
@@ -279,16 +279,16 @@ def test_coerce_agent_tools_skips_file_search_without_slug() -> None:
     assert tools == fallback
 
 
-def test_coerce_agent_tools_normalizes_none_value() -> None:
-    tools = _coerce_agent_tools(None)
+def testcoerce_agent_tools_normalizes_none_value() -> None:
+    tools = coerce_agent_tools(None)
 
     assert isinstance(tools, list)
     assert tools == []
 
 
 @pytest.mark.skipif(ImageGeneration is None, reason="ImageGeneration n'est pas disponible")
-def test_coerce_agent_tools_from_image_generation_with_unknown_model() -> None:
-    tools = _coerce_agent_tools(
+def testcoerce_agent_tools_from_image_generation_with_unknown_model() -> None:
+    tools = coerce_agent_tools(
         [
             {
                 "type": "image_generation",
@@ -323,8 +323,8 @@ def test_coerce_agent_tools_from_image_generation_with_unknown_model() -> None:
 
 
 @pytest.mark.skipif(ImageGeneration is None, reason="ImageGeneration n'est pas disponible")
-def test_coerce_agent_tools_normalizes_unknown_output_format() -> None:
-    tools = _coerce_agent_tools(
+def testcoerce_agent_tools_normalizes_unknown_output_format() -> None:
+    tools = coerce_agent_tools(
         [
             {
                 "type": "image_generation",

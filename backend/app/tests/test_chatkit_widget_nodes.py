@@ -13,14 +13,13 @@ from typing import Any, Callable
 
 import pytest
 
-from backend.app.chatkit import (
+from backend.app.chatkit_core import WorkflowInput, run_workflow
+from backend.app.chatkit_server.context import (
     AutoStartConfiguration,
     ChatKitRequestContext,
-    DemoChatKitServer,
-    WorkflowInput,
-    _STREAM_DONE,
-    run_workflow,
 )
+from backend.app.chatkit_server.server import DemoChatKitServer
+from backend.app.chatkit_server.workflow_runner import _STREAM_DONE
 from backend.app.config import Settings
 from backend.app.workflows.service import WorkflowService, WorkflowValidationError
 from chatkit.types import (

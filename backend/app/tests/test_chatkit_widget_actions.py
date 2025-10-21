@@ -6,10 +6,8 @@ from datetime import datetime
 
 import pytest
 
-from backend.app.chatkit import (
-    ChatKitRequestContext,
-    DemoChatKitServer,
-)
+from backend.app.chatkit_server.context import ChatKitRequestContext
+from backend.app.chatkit_server.server import DemoChatKitServer
 from backend.app.config import Settings
 from chatkit.actions import Action
 from chatkit.types import ActiveStatus, ThreadItemUpdated, ThreadMetadata, WidgetItem

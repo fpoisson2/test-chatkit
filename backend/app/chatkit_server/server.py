@@ -87,33 +87,25 @@ from backend.app.chatkit_server.workflow_runner import (
     _log_background_exceptions,
 )
 
-try:
-    from backend.app.chatkit import (
-        WorkflowExecutionError,
-        WorkflowInput,
-        WorkflowStepStreamUpdate,
-        WorkflowStepSummary,
-    )
-except Exception:  # pragma: no cover - module non initialisé
-    WorkflowExecutionError = RuntimeError  # type: ignore[assignment]
-    WorkflowInput = Any  # type: ignore[assignment]
-    WorkflowStepStreamUpdate = Any  # type: ignore[assignment]
-    WorkflowStepSummary = Any  # type: ignore[assignment]
+from backend.app.chatkit_core import (
+    WorkflowExecutionError,
+    WorkflowInput,
+    WorkflowStepStreamUpdate,
+    WorkflowStepSummary,
+    run_workflow,
+)
+from backend.app.chatkit_core.workflow_runner import _build_thread_title_agent
 
 
 logger = logging.getLogger("chatkit.server")
 
 
 def _get_thread_title_agent() -> Agent:
-    from backend.app import chatkit as chatkit_module
-
-    return chatkit_module._build_thread_title_agent()
+    return _build_thread_title_agent()
 
 
 def _get_run_workflow():
-    from backend.app import chatkit as chatkit_module
-
-    return chatkit_module.run_workflow
+    return run_workflow
 
 
 class ImageAwareThreadItemConverter(ThreadItemConverter):

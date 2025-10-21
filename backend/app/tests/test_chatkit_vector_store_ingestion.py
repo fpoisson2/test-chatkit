@@ -685,7 +685,7 @@ chatkit_module = importlib.util.module_from_spec(chatkit_spec)
 sys.modules["backend.app.chatkit"] = chatkit_module
 chatkit_spec.loader.exec_module(chatkit_module)  # type: ignore[union-attr]
 
-from backend.app.chatkit import WorkflowInput, run_workflow
+from backend.app.chatkit_core import WorkflowInput, run_workflow
 from backend.app.workflows.service import WorkflowService
 
 

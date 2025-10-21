@@ -3,11 +3,11 @@ import pytest
 pydantic = pytest.importorskip("pydantic")
 BaseModel = pydantic.BaseModel
 
-from backend.app.chatkit import (
-    _build_output_type_from_response_format,
-    _collect_widget_bindings,
-    _create_response_format_from_pydantic,
+from backend.app.chatkit_core.outputs import (
+    build_output_type_from_response_format,
+    create_response_format_from_pydantic,
 )
+from backend.app.chatkit_server.actions import _collect_widget_bindings
 
 
 def _dump_instance(model_cls, payload):
@@ -42,7 +42,7 @@ def _model_schema(model_cls):
     ],
 )
 def test_response_format_with_non_identifier_properties(response_format):
-    output_type = _build_output_type_from_response_format(response_format, fallback=None)
+    output_type = build_output_type_from_response_format(response_format, fallback=None)
     assert output_type is not None
     assert issubclass(output_type, BaseModel)
 
@@ -90,7 +90,7 @@ def test_response_format_with_anyof_schema():
         },
     }
 
-    output_type = _build_output_type_from_response_format(response_format, fallback=None)
+    output_type = build_output_type_from_response_format(response_format, fallback=None)
     assert output_type is not None
     assert issubclass(output_type, BaseModel)
 
@@ -112,7 +112,7 @@ def test_response_format_with_anyof_schema():
     )
     assert dumped_list["children.0.children.1.label"] == ["Télécharger", "Maintenant"]
 
-    response_format_schema = _create_response_format_from_pydantic(output_type)
+    response_format_schema = create_response_format_from_pydantic(output_type)
     schema = response_format_schema["json_schema"]["schema"]
     property_schema = schema["properties"]["children.0.children.1.label"]
 
