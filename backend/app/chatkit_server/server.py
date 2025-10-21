@@ -56,7 +56,6 @@ from backend.app.chatkit_store import PostgresChatKitStore
 from backend.app.config import Settings
 from backend.app.database import SessionLocal
 from backend.app.workflows import (
-    DEFAULT_END_MESSAGE,
     WorkflowService,
     resolve_start_auto_start,
     resolve_start_auto_start_assistant_message,
@@ -252,7 +251,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     def __init__(self, settings: Settings) -> None:
         super().__init__(PostgresChatKitStore(SessionLocal))
         self._settings = settings
-        self._workflow_service = WorkflowService()
+        self._workflow_service = WorkflowService(settings=settings)
         self._widget_waiters = WidgetWaiterRegistry()
         self._run_workflow = _get_run_workflow()
         self._title_agent = _get_thread_title_agent()
@@ -778,12 +777,17 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             applied_status = False
             cleaned_reason: str | None = None
             if end_state is not None:
+                end_message = self._settings.workflow_defaults.default_end_message
                 status_type_raw = (end_state.status_type or "closed").strip().lower()
                 cleaned_reason = (
-                    (end_state.status_reason or end_state.message or DEFAULT_END_MESSAGE)
+                    (
+                        end_state.status_reason
+                        or end_state.message
+                        or end_message
+                    )
                     or ""
                 ).strip() or None
-                status_reason = cleaned_reason or DEFAULT_END_MESSAGE
+                status_reason = cleaned_reason or end_message
 
                 if status_type_raw in {"", "closed"}:
                     thread.status = ClosedStatus(reason=status_reason)
@@ -821,7 +825,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     thread.id,
                     end_state.slug,
                     getattr(thread.status, "type", "inconnu") if applied_status else "inconnu",
-                    cleaned_reason or DEFAULT_END_MESSAGE,
+                    cleaned_reason or end_message,
                 )
             else:
                 logger.info(

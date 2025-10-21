@@ -11,10 +11,9 @@ from sqlalchemy.orm import Session, selectinload
 from ..database import SessionLocal
 from ..models import Workflow, WorkflowDefinition, WorkflowStep, WorkflowTransition
 from ..token_sanitizer import sanitize_value
+from ..config import Settings, WorkflowDefaults, get_settings
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_END_MESSAGE = "Workflow terminé"
 
 _TRUTHY_AUTO_START_VALUES = {"true", "1", "yes", "on"}
 _FALSY_AUTO_START_VALUES = {"false", "0", "no", "off"}
@@ -98,244 +97,6 @@ def resolve_start_auto_start_assistant_message(
     return ""
 
 
-SUPPORTED_AGENT_KEYS: set[str] = {
-    "triage",
-    "get_data_from_web",
-    "triage_2",
-    "get_data_from_user",
-    "r_dacteur",
-}
-
-EXPECTED_STATE_SLUGS: set[str] = {
-    "maj-etat-triage",
-    "maj-etat-validation",
-}
-
-DEFAULT_AGENT_SLUGS: set[str] = {
-    "analyse",
-    "collecte-web",
-    "validation",
-    "collecte-utilisateur",
-    "finalisation",
-}
-
-DEFAULT_WORKFLOW_GRAPH: dict[str, Any] = {
-    "nodes": [
-        {
-            "slug": "start",
-            "kind": "start",
-            "display_name": "Début",
-            "is_enabled": True,
-            "parameters": {},
-            "metadata": {"position": {"x": 0, "y": 0}},
-        },
-        {
-            "slug": "analyse",
-            "kind": "agent",
-            "agent_key": "triage",
-            "display_name": "Analyse des informations",
-            "is_enabled": True,
-            "parameters": {},
-            "metadata": {"position": {"x": 240, "y": 0}},
-        },
-        {
-            "slug": "maj-etat-triage",
-            "kind": "state",
-            "display_name": "Mise à jour de l'état (analyse)",
-            "is_enabled": True,
-            "parameters": {
-                "state": [
-                    {
-                        "target": "state.has_all_details",
-                        "expression": "input.output_parsed.has_all_details",
-                    },
-                    {
-                        "target": "state.infos_manquantes",
-                        "expression": "input.output_text",
-                    },
-                    {
-                        "target": "state.should_finalize",
-                        "expression": "input.output_parsed.has_all_details",
-                    },
-                ]
-            },
-            "metadata": {"position": {"x": 370, "y": -80}},
-        },
-        {
-            "slug": "infos-completes",
-            "kind": "condition",
-            "display_name": "Toutes les informations?",
-            "is_enabled": True,
-            "parameters": {
-                "mode": "truthy",
-                "path": "has_all_details",
-            },
-            "metadata": {"position": {"x": 500, "y": 0}},
-        },
-        {
-            "slug": "collecte-web",
-            "kind": "agent",
-            "agent_key": "get_data_from_web",
-            "display_name": "Collecte web",
-            "is_enabled": True,
-            "parameters": {},
-            "metadata": {"position": {"x": 500, "y": 180}},
-        },
-        {
-            "slug": "validation",
-            "kind": "agent",
-            "agent_key": "triage_2",
-            "display_name": "Validation",
-            "is_enabled": True,
-            "parameters": {},
-            "metadata": {"position": {"x": 760, "y": 180}},
-        },
-        {
-            "slug": "maj-etat-validation",
-            "kind": "state",
-            "display_name": "Mise à jour de l'état (validation)",
-            "is_enabled": True,
-            "parameters": {
-                "state": [
-                    {
-                        "target": "state.has_all_details",
-                        "expression": "input.output_parsed.has_all_details",
-                    },
-                    {
-                        "target": "state.infos_manquantes",
-                        "expression": "input.output_text",
-                    },
-                    {
-                        "target": "state.should_finalize",
-                        "expression": "input.output_parsed.has_all_details",
-                    },
-                ]
-            },
-            "metadata": {"position": {"x": 900, "y": 120}},
-        },
-        {
-            "slug": "pret-final",
-            "kind": "condition",
-            "display_name": "Prêt pour finalisation?",
-            "is_enabled": True,
-            "parameters": {
-                "mode": "truthy",
-                "path": "should_finalize",
-            },
-            "metadata": {"position": {"x": 1020, "y": 180}},
-        },
-        {
-            "slug": "collecte-utilisateur",
-            "kind": "agent",
-            "agent_key": "get_data_from_user",
-            "display_name": "Collecte utilisateur",
-            "is_enabled": True,
-            "parameters": {},
-            "metadata": {"position": {"x": 1020, "y": 340}},
-        },
-        {
-            "slug": "finalisation",
-            "kind": "agent",
-            "agent_key": "r_dacteur",
-            "display_name": "Rédaction",
-            "is_enabled": True,
-            "parameters": {},
-            "metadata": {"position": {"x": 1300, "y": 0}},
-        },
-        {
-            "slug": "end",
-            "kind": "end",
-            "display_name": "Fin",
-            "is_enabled": True,
-            "parameters": {
-                "message": DEFAULT_END_MESSAGE,
-                "status": {"type": "closed", "reason": DEFAULT_END_MESSAGE},
-            },
-            "metadata": {"position": {"x": 1550, "y": 0}},
-        },
-    ],
-    "edges": [
-        {"source": "start", "target": "analyse", "metadata": {"label": ""}},
-        {"source": "analyse", "target": "maj-etat-triage", "metadata": {"label": ""}},
-        {
-            "source": "maj-etat-triage",
-            "target": "infos-completes",
-            "metadata": {"label": ""},
-        },
-        {
-            "source": "infos-completes",
-            "target": "finalisation",
-            "condition": "true",
-            "metadata": {"label": "Oui"},
-        },
-        {
-            "source": "infos-completes",
-            "target": "collecte-web",
-            "condition": "false",
-            "metadata": {"label": "Non"},
-        },
-        {"source": "collecte-web", "target": "validation", "metadata": {"label": ""}},
-        {
-            "source": "validation",
-            "target": "maj-etat-validation",
-            "metadata": {"label": ""},
-        },
-        {
-            "source": "maj-etat-validation",
-            "target": "pret-final",
-            "metadata": {"label": ""},
-        },
-        {
-            "source": "pret-final",
-            "target": "finalisation",
-            "condition": "true",
-            "metadata": {"label": "Oui"},
-        },
-        {
-            "source": "pret-final",
-            "target": "collecte-utilisateur",
-            "condition": "false",
-            "metadata": {"label": "Non"},
-        },
-        {
-            "source": "collecte-utilisateur",
-            "target": "finalisation",
-            "metadata": {"label": ""},
-        },
-        {"source": "finalisation", "target": "end", "metadata": {"label": ""}},
-    ],
-}
-
-MINIMAL_WORKFLOW_GRAPH: dict[str, Any] = {
-    "nodes": [
-        {
-            "slug": "start",
-            "kind": "start",
-            "display_name": "Début",
-            "is_enabled": True,
-            "parameters": {},
-            "metadata": {"position": {"x": 0, "y": 0}},
-        },
-        {
-            "slug": "end",
-            "kind": "end",
-            "display_name": "Fin",
-            "is_enabled": True,
-            "parameters": {
-                "message": DEFAULT_END_MESSAGE,
-                "status": {"type": "closed", "reason": DEFAULT_END_MESSAGE},
-            },
-            "metadata": {"position": {"x": 320, "y": 0}},
-        },
-    ],
-    "edges": [
-        {"source": "start", "target": "end", "metadata": {"label": ""}},
-    ],
-}
-
-DEFAULT_WORKFLOW_SLUG = "workflow-par-defaut"
-DEFAULT_WORKFLOW_DISPLAY_NAME = "Workflow par défaut"
-
 
 @dataclass(slots=True, frozen=True)
 class NormalizedNode:
@@ -384,8 +145,25 @@ class WorkflowVersionNotFoundError(LookupError):
 class WorkflowService:
     """Gestionnaire de persistance pour la configuration du workflow."""
 
-    def __init__(self, session_factory: Callable[[], Session] | None = None) -> None:
+    def __init__(
+        self,
+        session_factory: Callable[[], Session] | None = None,
+        *,
+        settings: Settings | None = None,
+        workflow_defaults: WorkflowDefaults | None = None,
+    ) -> None:
+        if settings is None and workflow_defaults is None:
+            settings = get_settings()
+
         self._session_factory = session_factory or SessionLocal
+        self._settings = settings
+        if workflow_defaults is None:
+            if settings is None:
+                raise RuntimeError(
+                    "Impossible de déterminer la configuration du workflow par défaut."
+                )
+            workflow_defaults = settings.workflow_defaults
+        self._workflow_defaults = workflow_defaults
 
     def _fully_load_definition(
         self, definition: WorkflowDefinition
@@ -416,19 +194,23 @@ class WorkflowService:
         return self._session_factory(), True
 
     def _get_or_create_default_workflow(self, session: Session) -> Workflow:
+        defaults = self._workflow_defaults
         workflow = session.scalar(
-            select(Workflow).where(Workflow.slug == DEFAULT_WORKFLOW_SLUG)
+            select(Workflow).where(Workflow.slug == defaults.default_workflow_slug)
         )
         if workflow is None:
             existing = session.scalar(select(Workflow).order_by(Workflow.created_at.asc()))
             if existing is not None:
                 workflow = existing
-                workflow.slug = DEFAULT_WORKFLOW_SLUG
+                workflow.slug = defaults.default_workflow_slug
                 if not workflow.display_name:
-                    workflow.display_name = DEFAULT_WORKFLOW_DISPLAY_NAME
+                    workflow.display_name = defaults.default_workflow_display_name
                 session.flush()
             else:
-                workflow = Workflow(slug=DEFAULT_WORKFLOW_SLUG, display_name=DEFAULT_WORKFLOW_DISPLAY_NAME)
+                workflow = Workflow(
+                    slug=defaults.default_workflow_slug,
+                    display_name=defaults.default_workflow_display_name,
+                )
                 session.add(workflow)
                 session.flush()
         return workflow
@@ -618,7 +400,9 @@ class WorkflowService:
                 db.close()
 
     def _create_default_definition(self, session: Session, workflow: Workflow) -> WorkflowDefinition:
-        nodes, edges = self._normalize_graph(DEFAULT_WORKFLOW_GRAPH)
+        nodes, edges = self._normalize_graph(
+            self._workflow_defaults.clone_workflow_graph()
+        )
         definition = self._create_definition_from_graph(
             workflow=workflow,
             nodes=nodes,
@@ -794,7 +578,11 @@ class WorkflowService:
                 slug = str(slug_raw).strip()
                 if not slug:
                     raise WorkflowValidationError("Le slug du workflow ne peut pas être vide.")
-                if workflow.slug == DEFAULT_WORKFLOW_SLUG and slug != DEFAULT_WORKFLOW_SLUG:
+                defaults = self._workflow_defaults
+                if (
+                    workflow.slug == defaults.default_workflow_slug
+                    and slug != defaults.default_workflow_slug
+                ):
                     raise WorkflowValidationError(
                         "Le slug du workflow par défaut ne peut pas être modifié."
                     )
@@ -832,7 +620,11 @@ class WorkflowService:
             workflow = db.get(Workflow, workflow_id)
             if workflow is None:
                 raise WorkflowNotFoundError(workflow_id)
-            if workflow.slug == DEFAULT_WORKFLOW_SLUG or workflow.is_chatkit_default:
+            defaults = self._workflow_defaults
+            if (
+                workflow.slug == defaults.default_workflow_slug
+                or workflow.is_chatkit_default
+            ):
                 raise WorkflowValidationError(
                     "Le workflow sélectionné pour ChatKit ne peut pas être supprimé."
                 )
@@ -961,10 +753,11 @@ class WorkflowService:
             return True
 
         existing_slugs = {step.slug for step in definition.steps}
-        if EXPECTED_STATE_SLUGS.issubset(existing_slugs):
+        defaults = self._workflow_defaults
+        if defaults.expected_state_slugs.issubset(existing_slugs):
             return False
 
-        if DEFAULT_AGENT_SLUGS.issubset(existing_slugs):
+        if defaults.default_agent_slugs.issubset(existing_slugs):
             return True
 
         return False
@@ -981,7 +774,9 @@ class WorkflowService:
         definition.steps.clear()
         session.flush()
 
-        nodes, edges = self._normalize_graph(DEFAULT_WORKFLOW_GRAPH)
+        nodes, edges = self._normalize_graph(
+            self._workflow_defaults.clone_workflow_graph()
+        )
         slug_to_step: dict[str, WorkflowStep] = {}
 
         for index, node in enumerate(nodes, start=1):
@@ -1050,6 +845,8 @@ class WorkflowService:
                 return self._build_minimal_graph()
             raise WorkflowValidationError("Le workflow doit contenir au moins un nœud.")
 
+        defaults = self._workflow_defaults
+
         normalized_nodes: list[NormalizedNode] = []
         slugs: set[str] = set()
         enabled_agent_slugs: set[str] = set()
@@ -1091,7 +888,7 @@ class WorkflowService:
                 elif isinstance(raw_agent_key, str):
                     trimmed_key = raw_agent_key.strip()
                     if trimmed_key:
-                        if trimmed_key not in SUPPORTED_AGENT_KEYS:
+                        if trimmed_key not in defaults.supported_agent_keys:
                             raise WorkflowValidationError(
                                 f"Agent inconnu : {trimmed_key}"
                             )
@@ -1193,26 +990,37 @@ class WorkflowService:
         return normalized_nodes, normalized_edges
 
     def _build_minimal_graph(self) -> tuple[list[NormalizedNode], list[NormalizedEdge]]:
+        end_message = self._workflow_defaults.default_end_message
         nodes = [
             NormalizedNode(
-                slug=str(entry["slug"]),
-                kind=str(entry["kind"]),
-                display_name=str(entry.get("display_name") or "") or None,
+                slug="start",
+                kind="start",
+                display_name="Début",
                 agent_key=None,
-                is_enabled=bool(entry.get("is_enabled", True)),
-                parameters=dict(entry.get("parameters") or {}),
-                metadata=dict(entry.get("metadata") or {}),
-            )
-            for entry in MINIMAL_WORKFLOW_GRAPH["nodes"]
+                is_enabled=True,
+                parameters={},
+                metadata={"position": {"x": 0, "y": 0}},
+            ),
+            NormalizedNode(
+                slug="end",
+                kind="end",
+                display_name="Fin",
+                agent_key=None,
+                is_enabled=True,
+                parameters={
+                    "message": end_message,
+                    "status": {"type": "closed", "reason": end_message},
+                },
+                metadata={"position": {"x": 320, "y": 0}},
+            ),
         ]
         edges = [
             NormalizedEdge(
-                source_slug=str(entry.get("source", "")),
-                target_slug=str(entry.get("target", "")),
+                source_slug="start",
+                target_slug="end",
                 condition=None,
-                metadata=dict(entry.get("metadata") or {}),
+                metadata={"label": ""},
             )
-            for entry in MINIMAL_WORKFLOW_GRAPH["edges"]
         ]
         return nodes, edges
 
