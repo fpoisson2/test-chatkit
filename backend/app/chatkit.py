@@ -361,7 +361,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         self._widget_waiters_lock = asyncio.Lock()
         self._title_agent = _build_thread_title_agent()
         self._thread_item_converter = ImageAwareThreadItemConverter(
-            backend_public_base_url=settings.backend_public_url
+            backend_public_base_url=settings.backend_public_base_url
         )
 
     async def _wait_for_widget_action(
