@@ -3255,7 +3255,8 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
 
     bindings: dict[str, _WidgetBinding] = {}
 
-    value_keys = {
+    # L'ordre est significatif pour choisir la clé source lors de l'échantillonnage.
+    value_keys = (
         "value",
         "text",
         "title",
@@ -3273,7 +3274,7 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
         "alt",
         "href",
         "url",
-    }
+    )
 
     manual_paths: set[tuple[str | int, ...]] = set()
 

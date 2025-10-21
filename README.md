@@ -25,10 +25,13 @@ Pour les environnements de test, vous pouvez temporairement définir `VITE_CHATK
 
 - `npm run backend:sync` — installe les dépendances Python (utilise `uv` si présent, sinon bascule sur `python3 -m pip install -r backend/requirements.txt`)
 - `npm run backend:dev` — lance le serveur FastAPI (`uv run …` si disponible, sinon `python3 -m uvicorn server:app --reload --app-dir backend`)
+- `npm run backend:test` — exécute la batterie Pytest légère (`backend/tests`) via `uv` si disponible, sinon `python3 -m pytest`
 - `npm run frontend:install` — installe les dépendances npm de `frontend/`
 - `npm run frontend:dev` — lance le serveur Vite
 - `npm run frontend:build` — construit le bundle de production
 - `npm run frontend:preview` — aperçu local du bundle
+
+La suite ciblée par `npm run backend:test` s'appuie sur `backend/tests/conftest.py`, qui injecte des variables d'environnement fictives (`DATABASE_URL`, `OPENAI_API_KEY`, `AUTH_SECRET_KEY`). Vous pouvez ainsi exécuter ces tests unitaires sans provisionner PostgreSQL ni clé API réelle.
 
 Le backend référence désormais la copie locale du package `openai-chatkit` située dans `chatkit-python/`, ce qui garantit que `npm run backend:sync` synchronise la version embarquée avec le reste du dépôt.
 
