@@ -4950,18 +4950,27 @@ async def run_workflow(
                 trimmed = candidate.strip()
                 if not trimmed:
                     return None
+                # Log pour déboguer le JSON parsing
+                logger.debug(
+                    "Tentative de parsing JSON pour %s (taille: %d, début: %s...)",
+                    step_slug,
+                    len(trimmed),
+                    trimmed[:100],
+                )
                 try:
                     decoded = json.loads(trimmed)
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
                     if purpose == "document":
                         logger.warning(
-                            "Le document produit par %s n'est pas un JSON valide pour l'ingestion.",
+                            "Le document produit par %s n'est pas un JSON valide pour l'ingestion. Erreur: %s",
                             step_slug,
+                            str(e),
                         )
                     else:
                         logger.warning(
-                            "Les métadonnées calculées pour %s ne sont pas un JSON valide.",
+                            "Les métadonnées calculées pour %s ne sont pas un JSON valide. Erreur: %s",
                             step_slug,
+                            str(e),
                         )
                     return None
                 if isinstance(decoded, dict):
@@ -5039,6 +5048,13 @@ async def run_workflow(
             try:
                 document_value = _evaluate_state_expression(
                     document_expression, input_context=step_context
+                )
+                logger.debug(
+                    "Expression de document '%s' évaluée pour %s: type=%s, valeur=%s",
+                    document_expression,
+                    step_slug,
+                    type(document_value).__name__,
+                    str(document_value)[:200] if document_value else "None",
                 )
             except Exception as exc:  # pragma: no cover - dépend des expressions fournies
                 logger.exception(
