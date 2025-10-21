@@ -768,6 +768,54 @@ describe("WorkflowBuilderPage", () => {
     expect(waitNode.parameters).toEqual({ message: "Merci de compléter les champs manquants." });
   });
 
+  test("permet d'ajouter un bloc transform", async () => {
+    const fetchMock = setupWorkflowApi();
+    const user = userEvent.setup();
+
+    renderWorkflowBuilder();
+
+    const addButton = await screen.findByRole("button", { name: /bloc transform/i });
+    await user.click(addButton);
+
+    const transformTextarea = await screen.findByRole("textbox", {
+      name: /expressions json/i,
+    });
+    await user.clear(transformTextarea);
+    await user.type(
+      transformTextarea,
+      '{\n  "doc_id": "{{ input.output_structured.doc_id }}"\n}',
+    );
+    fireEvent.blur(transformTextarea);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            typeof input === "string" &&
+            input.endsWith(
+              `/api/workflows/${defaultWorkflowSummary.id}/versions/${draftVersionSummary.id}`,
+            ) &&
+            (init as RequestInit | undefined)?.method === "PUT",
+        ),
+      ).toBe(true);
+    });
+
+    const saveCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        typeof input === "string" &&
+        input.endsWith(
+          `/api/workflows/${defaultWorkflowSummary.id}/versions/${draftVersionSummary.id}`,
+        ) &&
+        (init as RequestInit | undefined)?.method === "PUT",
+    );
+    const body = JSON.parse(((saveCall?.[1] as RequestInit)?.body ?? "{}") as string);
+    const transformNode = body.graph.nodes.find((node: any) => node.kind === "transform");
+    expect(transformNode).toBeTruthy();
+    expect(transformNode.parameters).toEqual({
+      expressions: { doc_id: "{{ input.output_structured.doc_id }}" },
+    });
+  });
+
   test("permet d'activer le function tool météo Python", async () => {
     const fetchMock = setupWorkflowApi();
 

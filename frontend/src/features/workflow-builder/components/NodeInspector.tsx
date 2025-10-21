@@ -1,4 +1,12 @@
-import { useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 
 import { useAuth } from "../../../auth";
 import {
@@ -48,6 +56,7 @@ import {
   getConditionMode,
   getConditionPath,
   getConditionValue,
+  isPlainRecord,
 } from "../../../utils/workflows";
 import type {
   FileSearchConfig,
@@ -156,6 +165,8 @@ const IMAGE_TOOL_OUTPUT_FORMATS = [
 const isTestEnvironment =
   typeof process !== "undefined" && process.env && process.env.NODE_ENV === "test";
 
+const EMPTY_TRANSFORM_EXPRESSIONS: Record<string, unknown> = Object.freeze({});
+
 export type NodeInspectorProps = {
   node: FlowNode;
   onDisplayNameChange: (nodeId: string, value: string) => void;
@@ -201,6 +212,10 @@ export type NodeInspectorProps = {
   onVectorStoreNodeConfigChange: (
     nodeId: string,
     updates: Partial<VectorStoreNodeConfig>,
+  ) => void;
+  onTransformExpressionsChange: (
+    nodeId: string,
+    expressions: Record<string, unknown>,
   ) => void;
   onStartAutoRunChange: (nodeId: string, value: boolean) => void;
   onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
@@ -265,6 +280,7 @@ const NodeInspector = ({
   onAgentFileSearchChange,
   onAgentImageGenerationChange,
   onVectorStoreNodeConfigChange,
+  onTransformExpressionsChange,
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
   onStartAutoRunAssistantMessageChange,
@@ -394,6 +410,87 @@ const NodeInspector = ({
   const vectorStoreNodeDocIdExpression = vectorStoreNodeConfig.doc_id_expression.trim();
   const vectorStoreNodeDocumentExpression = vectorStoreNodeConfig.document_expression.trim();
   const vectorStoreNodeMetadataExpression = vectorStoreNodeConfig.metadata_expression.trim();
+  const transformExpressions = useMemo(() => {
+    if (kind !== "transform" || !parameters) {
+      return EMPTY_TRANSFORM_EXPRESSIONS;
+    }
+    const raw = (parameters as Record<string, unknown>).expressions;
+    if (isPlainRecord(raw)) {
+      return raw as Record<string, unknown>;
+    }
+    return EMPTY_TRANSFORM_EXPRESSIONS;
+  }, [kind, parameters]);
+  const [transformExpressionsText, setTransformExpressionsText] = useState(() =>
+    kind === "transform" ? JSON.stringify(transformExpressions, null, 2) : "",
+  );
+  const [transformExpressionsError, setTransformExpressionsError] = useState<string | null>(null);
+  const transformExpressionsSnapshotRef = useRef<string | null>(null);
+  const transformDraftRef = useRef<string>("");
+
+  useEffect(() => {
+    if (kind !== "transform") {
+      transformExpressionsSnapshotRef.current = null;
+      transformDraftRef.current = "";
+      setTransformExpressionsText("");
+      setTransformExpressionsError(null);
+      return;
+    }
+    const serialized = JSON.stringify(transformExpressions, null, 2);
+    if (transformExpressionsSnapshotRef.current !== serialized) {
+      transformExpressionsSnapshotRef.current = serialized;
+      transformDraftRef.current = serialized;
+      setTransformExpressionsText(serialized);
+      setTransformExpressionsError(null);
+    }
+  }, [kind, transformExpressions]);
+
+  useEffect(() => {
+    transformDraftRef.current = transformExpressionsText;
+  }, [transformExpressionsText]);
+
+  const commitTransformExpressions = useCallback(
+    (rawValue?: string) => {
+      if (kind !== "transform") {
+        return;
+      }
+      const candidate = rawValue ?? transformDraftRef.current ?? "";
+      const trimmed = candidate.trim();
+      if (!trimmed) {
+        transformExpressionsSnapshotRef.current = "";
+        setTransformExpressionsError(null);
+        onTransformExpressionsChange(node.id, {});
+        return;
+      }
+      try {
+        const parsed = JSON.parse(candidate);
+        if (!isPlainRecord(parsed)) {
+          throw new Error("La structure doit être un objet JSON.");
+        }
+        setTransformExpressionsError(null);
+        const normalized = JSON.stringify(parsed, null, 2);
+        transformExpressionsSnapshotRef.current = normalized;
+        onTransformExpressionsChange(node.id, parsed as Record<string, unknown>);
+        if (normalized !== transformExpressionsText) {
+          setTransformExpressionsText(normalized);
+        }
+        transformDraftRef.current = normalized;
+      } catch (error) {
+        setTransformExpressionsError(
+          error instanceof Error ? error.message : "Expressions JSON invalides.",
+        );
+      }
+    },
+    [kind, node.id, onTransformExpressionsChange, transformExpressionsText],
+  );
+
+  useEffect(() => {
+    if (kind !== "transform") {
+      return;
+    }
+    return () => {
+      commitTransformExpressions(transformDraftRef.current);
+    };
+  }, [commitTransformExpressions, kind]);
   const responseWidgetSource =
     responseFormat.kind === "widget" ? responseFormat.source : "library";
   const responseWidgetSlug =
@@ -1853,6 +1950,54 @@ const NodeInspector = ({
             emptyLabel="Aucune variable d'état n'est configurée pour ce nœud."
           />
         </>
+      )}
+
+      {kind === "transform" && (
+        <section
+          aria-label="Configuration du bloc transform"
+          style={{
+            marginTop: "1rem",
+            border: "1px solid rgba(15, 23, 42, 0.12)",
+            borderRadius: "0.75rem",
+            padding: "0.9rem",
+            display: "grid",
+            gap: "0.75rem",
+          }}
+        >
+          <header>
+            <h3 style={{ margin: 0, fontSize: "1rem" }}>Restructuration des données</h3>
+            <p style={{ margin: "0.25rem 0 0", color: "#475569", fontSize: "0.95rem" }}>
+              Définissez la forme JSON qui doit être transmise au bloc suivant. Les expressions
+              <code style={{ padding: "0 0.2rem" }}>{"{{ }}"}</code> sont évaluées à partir du
+              contexte du bloc précédent (par exemple <code>{"{{ input.output_structured }}"}</code>).
+            </p>
+          </header>
+          <label style={{ display: "grid", gap: "0.5rem" }}>
+            <span style={{ ...labelContentStyle, fontWeight: 600 }}>Expressions JSON</span>
+            <textarea
+              value={transformExpressionsText}
+              onChange={(event) => {
+                setTransformExpressionsText(event.target.value);
+                if (transformExpressionsError) {
+                  setTransformExpressionsError(null);
+                }
+                transformDraftRef.current = event.target.value;
+              }}
+              onBlur={(event) => commitTransformExpressions(event.target.value)}
+              rows={10}
+              spellCheck={false}
+              placeholder={`{\n  "doc_id": "{{ input.output_structured.id }}",\n  "record": {\n    "slug": "{{ input.output_structured.widget }}"\n  }\n}`}
+              style={{ resize: "vertical", fontFamily: "var(--font-mono)", minHeight: "12rem" }}
+            />
+          </label>
+          <p style={{ color: "var(--text-muted)", margin: "-0.35rem 0 0.35rem" }}>
+            Le JSON final doit être un objet. Utilisez <code>state.</code> ou <code>input.</code>
+            pour accéder aux variables du workflow.
+          </p>
+          {transformExpressionsError ? (
+            <p style={{ color: "#b91c1c", margin: 0 }}>{transformExpressionsError}</p>
+          ) : null}
+        </section>
       )}
 
       {kind === "watch" && (

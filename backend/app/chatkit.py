@@ -4720,6 +4720,77 @@ async def run_workflow(
                 return expr
         return expression
 
+    _MUSTACHE_PATTERN = re.compile(r"\{\{\s*(.+?)\s*\}\}")
+    _MUSTACHE_FULL_PATTERN = re.compile(r"^\s*\{\{\s*(.+?)\s*\}\}\s*$")
+
+    def _render_template_string(
+        template: str, *, input_context: dict[str, Any] | None = None
+    ) -> Any:
+        full_match = _MUSTACHE_FULL_PATTERN.match(template)
+        if full_match:
+            expression = full_match.group(1).strip()
+            try:
+                return _evaluate_state_expression(expression, input_context=input_context)
+            except Exception:
+                logger.debug(
+                    "Impossible d'évaluer l'expression de template '%s'.",
+                    expression,
+                    exc_info=True,
+                )
+                return None
+
+        def _replacement(match: re.Match[str]) -> str:
+            expression = match.group(1).strip()
+            try:
+                value = _evaluate_state_expression(expression, input_context=input_context)
+            except Exception:
+                logger.debug(
+                    "Impossible d'évaluer l'expression de template '%s'.",
+                    expression,
+                    exc_info=True,
+                )
+                return ""
+            if value is None:
+                return ""
+            if isinstance(value, (dict, list)):
+                try:
+                    return json.dumps(value, ensure_ascii=False)
+                except TypeError:
+                    return str(value)
+            return str(value)
+
+        return _MUSTACHE_PATTERN.sub(_replacement, template)
+
+    def _resolve_transform_value(
+        value: Any, *, input_context: dict[str, Any] | None = None
+    ) -> Any:
+        if isinstance(value, dict):
+            return {
+                key: _resolve_transform_value(entry, input_context=input_context)
+                for key, entry in value.items()
+            }
+        if isinstance(value, list):
+            return [
+                _resolve_transform_value(entry, input_context=input_context)
+                for entry in value
+            ]
+        if isinstance(value, str):
+            if "{{" in value and "}}" in value:
+                return _render_template_string(value, input_context=input_context)
+            trimmed = value.strip()
+            if trimmed in {"state", "input"} or trimmed.startswith(("state.", "input.")):
+                try:
+                    return _evaluate_state_expression(trimmed, input_context=input_context)
+                except Exception:
+                    logger.debug(
+                        "Impossible d'évaluer l'expression '%s' dans le bloc transform.",
+                        trimmed,
+                        exc_info=True,
+                    )
+                    return value
+            return value
+        return value
+
     def _apply_state_node(step: WorkflowStep) -> None:
         params = step.parameters or {}
         operations = params.get("state")
@@ -5906,6 +5977,58 @@ async def run_workflow(
                     "Configuration du workflow invalide",
                     RuntimeError(
                         f"Aucune transition disponible après le nœud watch {current_node.slug}"
+                    ),
+                    list(steps),
+                )
+            current_slug = transition.target_step.slug
+            continue
+
+        if current_node.kind == "transform":
+            title = _node_title(current_node)
+            expressions_payload = current_node.parameters.get("expressions")
+            if expressions_payload is None:
+                transform_source: Any = {}
+            elif isinstance(expressions_payload, (dict, list)):
+                transform_source = copy.deepcopy(expressions_payload)
+            else:
+                raise WorkflowExecutionError(
+                    current_node.slug,
+                    title or current_node.slug,
+                    ValueError("Le paramètre 'expressions' doit être un objet ou une liste."),
+                    list(steps),
+                )
+
+            try:
+                transform_output = _resolve_transform_value(
+                    transform_source,
+                    input_context=last_step_context,
+                )
+            except Exception as exc:  # pragma: no cover - dépend des expressions
+                raise_step_error(current_node.slug, title or current_node.slug, exc)
+
+            await record_step(current_node.slug, title, transform_output)
+            try:
+                output_text = json.dumps(transform_output, ensure_ascii=False)
+            except TypeError:
+                output_text = str(transform_output)
+
+            last_step_context = {
+                "transform": transform_output,
+                "output": transform_output,
+                "output_parsed": transform_output,
+                "output_structured": transform_output,
+                "output_text": output_text,
+            }
+
+            transition = _next_edge(current_slug)
+            if transition is None:
+                if not agent_steps_ordered:
+                    break
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Configuration du workflow invalide",
+                    RuntimeError(
+                        f"Aucune transition disponible après le nœud transform {current_node.slug}"
                     ),
                     list(steps),
                 )
