@@ -4,7 +4,7 @@ import pytest
 
 from agents import FunctionTool, WebSearchTool
 
-from backend.app.chatkit import (
+from backend.app.chatkit.agent_registry import (
     _coerce_agent_tools,
     web_search_preview,
 )

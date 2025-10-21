@@ -465,12 +465,12 @@ def test_wait_for_user_input_node_streams_message_and_stops(monkeypatch: pytest.
     monkeypatch.setattr(chatkit_module.Runner, "run_streamed", _capture_run)
     monkeypatch.setattr(chatkit_module, "stream_agent_response", _noop_stream)
     monkeypatch.setitem(
-        chatkit_module._AGENT_BUILDERS,  # type: ignore[attr-defined]
+        chatkit_module.AGENT_BUILDERS,  # type: ignore[attr-defined]
         "triage",
         lambda overrides: SimpleNamespace(name="Agent Triage"),
     )
     monkeypatch.setitem(
-        chatkit_module._AGENT_BUILDERS,  # type: ignore[attr-defined]
+        chatkit_module.AGENT_BUILDERS,  # type: ignore[attr-defined]
         "triage_2",
         lambda overrides: SimpleNamespace(name="Agent Secondaire"),
     )
@@ -622,12 +622,12 @@ def test_wait_for_user_input_node_resumes_after_new_message(
     monkeypatch.setattr(chatkit_module.Runner, "run_streamed", _capture_run)
     monkeypatch.setattr(chatkit_module, "stream_agent_response", _noop_stream)
     monkeypatch.setitem(
-        chatkit_module._AGENT_BUILDERS,  # type: ignore[attr-defined]
+        chatkit_module.AGENT_BUILDERS,  # type: ignore[attr-defined]
         "triage",
         lambda overrides: SimpleNamespace(name="Agent Triage"),
     )
     monkeypatch.setitem(
-        chatkit_module._AGENT_BUILDERS,  # type: ignore[attr-defined]
+        chatkit_module.AGENT_BUILDERS,  # type: ignore[attr-defined]
         "triage_2",
         lambda overrides: SimpleNamespace(name="Agent Secondaire"),
     )
@@ -813,7 +813,7 @@ def test_wait_for_user_input_persists_state_across_pause(
     monkeypatch.setattr(chatkit_module, "stream_agent_response", _noop_stream)
     monkeypatch.setattr(chatkit_module.Runner, "run_streamed", _capture_run)
     monkeypatch.setitem(
-        chatkit_module._AGENT_BUILDERS,  # type: ignore[attr-defined]
+        chatkit_module.AGENT_BUILDERS,  # type: ignore[attr-defined]
         "get_data_from_user",
         lambda overrides: SimpleNamespace(name="Agent Collecte"),
     )

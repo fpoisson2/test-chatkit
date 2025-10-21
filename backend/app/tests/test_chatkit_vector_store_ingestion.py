@@ -775,7 +775,7 @@ def _execute_json_vector_store_workflow(
     )
     monkeypatch.setattr(chatkit_module, "stream_agent_response", _fake_stream_agent_response)
     monkeypatch.setitem(
-        chatkit_module._AGENT_BUILDERS,  # type: ignore[attr-defined]
+        chatkit_module.AGENT_BUILDERS,  # type: ignore[attr-defined]
         "vector_scribe",
         lambda overrides: SimpleNamespace(name="Vector Scribe"),
     )
