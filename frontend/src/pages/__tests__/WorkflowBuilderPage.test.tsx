@@ -1241,7 +1241,7 @@ describe("WorkflowBuilderPage", () => {
     fireEvent.click(webSearchToggle);
 
     const searchScopeSelect = await screen.findByLabelText(/portée de la recherche/i);
-    fireEvent.change(searchScopeSelect, { target: { value: "large" } });
+    fireEvent.change(searchScopeSelect, { target: { value: "high" } });
 
     const cityInput = await screen.findByLabelText(/ville/i);
     fireEvent.change(cityInput, { target: { value: "Montréal" } });
@@ -1269,7 +1269,7 @@ describe("WorkflowBuilderPage", () => {
       {
         type: "web_search",
         web_search: {
-          search_context_size: "large",
+          search_context_size: "high",
           user_location: { city: "Montréal", country: "CA" },
         },
       },
