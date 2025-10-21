@@ -380,12 +380,14 @@ class VectorStoreCreateRequest(BaseModel):
     title: str | None = None
     description: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    enable_embeddings: bool = Field(default=True, description="Active la génération d'embeddings pour ce magasin")
 
 
 class VectorStoreUpdateRequest(BaseModel):
     title: str | None = None
     description: str | None = None
     metadata: dict[str, Any] | None = None
+    enable_embeddings: bool | None = Field(default=None, description="Permet d'activer ou désactiver la génération d'embeddings")
 
 
 class VectorStoreResponse(BaseModel):
@@ -393,6 +395,7 @@ class VectorStoreResponse(BaseModel):
     title: str | None = None
     description: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    enable_embeddings: bool = True
     created_at: datetime.datetime
     updated_at: datetime.datetime
     documents_count: int = 0
@@ -404,6 +407,7 @@ class VectorStoreDocumentIngestRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     store_title: str | None = None
     store_metadata: dict[str, Any] | None = None
+    generate_embeddings: bool | None = Field(default=None, description="Outrepasse le comportement par défaut du magasin")
 
 
 class VectorStoreDocumentResponse(BaseModel):

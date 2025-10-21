@@ -36,6 +36,7 @@ def _stub_vector_store(monkeypatch: pytest.MonkeyPatch) -> None:
             store_title: str | None = None,
             store_metadata: dict[str, Any] | None = None,
             document_metadata: dict[str, Any] | None = None,
+            generate_embeddings: bool | None = None,
         ) -> SimpleNamespace:
             _vector_store_events.append(
                 {
@@ -46,6 +47,7 @@ def _stub_vector_store(monkeypatch: pytest.MonkeyPatch) -> None:
                     "store_title": store_title,
                     "store_metadata": store_metadata,
                     "document_metadata": document_metadata,
+                    "generate_embeddings": generate_embeddings,
                 }
             )
             return SimpleNamespace(doc_id=doc_id)
@@ -205,8 +207,10 @@ def test_admin_can_manage_widget_library(
     assert create_event["action"] == "ingest"
     assert create_event["doc_id"] == "resume"
     assert create_event["payload"]["definition"]["type"] == "Card"
+    assert create_event["generate_embeddings"] is False
     assert update_event["action"] == "ingest"
     assert update_event["payload"]["definition"]["type"] == "Text"
+    assert update_event["generate_embeddings"] is False
     assert delete_event == {
         "action": "delete",
         "store": "chatkit-widgets",
@@ -273,6 +277,7 @@ def test_non_admin_cannot_access_widget_library(
             "store_title": "Bibliothèque de widgets",
             "store_metadata": {"scope": "widget_library"},
             "document_metadata": {"slug": "resume"},
+            "generate_embeddings": False,
         }
     ]
 

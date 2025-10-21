@@ -6,6 +6,7 @@ type VectorStoreIngestionFormProps = {
   onSubmit: (payload: VectorStoreIngestionPayload) => Promise<void>;
   onCancel: () => void;
   defaultDocId?: string;
+  embeddingsEnabledByDefault?: boolean;
 };
 
 const stripJsonExtension = (value: string): string => value.replace(/\.json$/i, "");
@@ -14,12 +15,14 @@ export const VectorStoreIngestionForm = ({
   onSubmit,
   onCancel,
   defaultDocId = "",
+  embeddingsEnabledByDefault = true,
 }: VectorStoreIngestionFormProps) => {
   const [docId, setDocId] = useState(defaultDocId);
   const [documentInput, setDocumentInput] = useState("{}");
   const [metadataInput, setMetadataInput] = useState("{}");
   const [storeTitle, setStoreTitle] = useState("");
   const [storeMetadataInput, setStoreMetadataInput] = useState("");
+  const [embeddingStrategy, setEmbeddingStrategy] = useState<"inherit" | "enabled" | "disabled">("inherit");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setSubmitting] = useState(false);
 
@@ -87,6 +90,10 @@ export const VectorStoreIngestionForm = ({
         metadata,
         store_title: storeTitle.trim() || undefined,
         store_metadata: storeMetadata ?? undefined,
+        generate_embeddings:
+          embeddingStrategy === "inherit"
+            ? undefined
+            : embeddingStrategy === "enabled",
       });
     } catch (submitError) {
       setError(
@@ -137,6 +144,21 @@ export const VectorStoreIngestionForm = ({
           spellCheck={false}
         />
       </label>
+      <label className="label">
+        Génération d'embeddings
+        <select
+          className="input"
+          value={embeddingStrategy}
+          onChange={(event) => setEmbeddingStrategy(event.target.value as "inherit" | "enabled" | "disabled")}
+        >
+          <option value="inherit">Respecter la configuration du store ({embeddingsEnabledByDefault ? "activés" : "désactivés"})</option>
+          <option value="enabled">Forcer l'activation pour ce document</option>
+          <option value="disabled">Forcer la désactivation pour ce document</option>
+        </select>
+      </label>
+      <p className="admin-card__subtitle" style={{ marginTop: "-0.25rem" }}>
+        Cette option permet de surcharger ponctuellement la stratégie sans modifier le magasin dans ChatKit.
+      </p>
       <details className="accordion">
         <summary>Mettre à jour les métadonnées du store (optionnel)</summary>
         <label className="label">

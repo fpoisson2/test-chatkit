@@ -38,6 +38,7 @@ export const VectorStoreTable = ({
               <tr>
                 <th>Slug</th>
                 <th>Titre</th>
+                <th>Embeddings</th>
                 <th>Documents</th>
                 <th>Dernière mise à jour</th>
                 <th>Actions</th>
@@ -48,6 +49,7 @@ export const VectorStoreTable = ({
                 <tr key={store.slug}>
                   <td>{store.slug}</td>
                   <td>{store.title ?? "—"}</td>
+                  <td>{store.enable_embeddings ? "Activés" : "Désactivés"}</td>
                   <td>{store.documents_count}</td>
                   <td>{new Date(store.updated_at).toLocaleString()}</td>
                   <td>
@@ -104,6 +106,10 @@ export const VectorStoreTable = ({
               <div>
                 <dt>Documents</dt>
                 <dd>{store.documents_count}</dd>
+              </div>
+              <div>
+                <dt>Embeddings</dt>
+                <dd>{store.enable_embeddings ? "Activés" : "Désactivés"}</dd>
               </div>
               <div>
                 <dt>Dernière mise à jour</dt>

@@ -320,6 +320,9 @@ class JsonVectorStore(Base):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, nullable=False, default=dict
     )
+    embeddings_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -402,8 +405,8 @@ class JsonChunk(Base):
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     raw_chunk: Mapped[dict[str, Any]] = mapped_column("raw_json", JSONB, nullable=False)
     linearized_text: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[list[float]] = mapped_column(
-        Vector(EMBEDDING_DIMENSION), nullable=False
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(EMBEDDING_DIMENSION), nullable=True
     )
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, nullable=False, default=dict

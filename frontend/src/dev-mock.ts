@@ -67,6 +67,7 @@ const MOCK_VECTOR_STORES: VectorStoreSummary[] = [
     title: 'Sample Vector Store',
     description: 'Un store d\'exemple',
     metadata: {},
+    enable_embeddings: true,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     documents_count: 0,

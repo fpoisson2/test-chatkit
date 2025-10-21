@@ -418,6 +418,7 @@ export type VectorStoreSummary = {
   title: string | null;
   description: string | null;
   metadata: Record<string, unknown>;
+  enable_embeddings: boolean;
   created_at: string;
   updated_at: string;
   documents_count: number;
@@ -428,6 +429,7 @@ export type VectorStoreCreatePayload = {
   title?: string | null;
   description?: string | null;
   metadata: Record<string, unknown>;
+  enable_embeddings?: boolean;
 };
 
 export type VectorStoreDocument = {
@@ -448,6 +450,7 @@ export type VectorStoreIngestionPayload = {
   metadata: Record<string, unknown>;
   store_title?: string | null;
   store_metadata?: Record<string, unknown> | null;
+  generate_embeddings?: boolean | null;
 };
 
 export type VectorStoreSearchPayload = {

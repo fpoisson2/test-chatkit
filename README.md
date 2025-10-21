@@ -151,9 +151,9 @@ Assurez-vous que l'utilisateur PostgreSQL dispose du droit `CREATE EXTENSION`. E
 psql "postgresql://user:password@host:5432/chatkit" -c "CREATE EXTENSION IF NOT EXISTS vector"
 ```
 
-L'ingestion est centralisée dans `backend/app/vector_store/service.py`. Le service linéarise automatiquement le JSON, découpe le texte en segments avec chevauchement, génère des embeddings via le modèle local `intfloat/multilingual-e5-small` (`sentence-transformers`) puis normalise les vecteurs avant de les enregistrer. Exemple minimal :
+L'ingestion est centralisée dans `backend/app/vector_store/service.py`. Le service linéarise automatiquement le JSON, découpe le texte en segments avec chevauchement puis, si le magasin l'autorise, génère des embeddings via le modèle `text-embedding-3-small` d'OpenAI avant de les normaliser et de les enregistrer. Lorsque `enable_embeddings` est positionné à `false` (ou qu'une requête d'ingestion fournit `generate_embeddings=false`), aucune requête OpenAI n'est effectuée : le magasin fonctionne alors comme un simple espace de stockage reposant sur l'indexation pleine texte/BM25. Exemple minimal :
 
-> 💡 **Dépendances système** — Sur les distributions Debian/Ubuntu minimalistes (dont l'image officielle `python:3.11-slim` utilisée en Docker Compose), PyTorch nécessite la bibliothèque `libgomp1` pour activer OpenMP. Le `Dockerfile` du backend installe ce paquet automatiquement ; sur une machine hôte, ajoutez-le via `sudo apt install libgomp1` si vous rencontrez une erreur « libgomp.so.1: cannot open shared object file » lors du chargement du modèle d'embedding.
+> 💡 **Clé OpenAI** — La génération d'embeddings nécessite l'environnement `OPENAI_API_KEY`. Si la variable est absente, utilisez `enable_embeddings=false` lors de la création du magasin (ou `generate_embeddings=false` sur une requête d'ingestion) pour désactiver complètement cette étape et conserver uniquement le stockage JSON linéarisé.
 
 ```python
 from backend.app.database import SessionLocal
@@ -173,7 +173,33 @@ with SessionLocal() as session:
     session.commit()
 ```
 
-Le chargement du modèle e5 est effectué paresseusement et mis en cache. Pensez à relancer `npm run backend:sync` (depuis la racine) pour installer les nouvelles dépendances Python (`pgvector`, `sentence-transformers`).
+Chaque document ajoute automatiquement `metadata["has_embeddings"]` et chaque extrait `metadata["has_embedding"]` pour indiquer la présence (ou non) d'un vecteur normalisé. Ces indicateurs peuvent être exploités lors de recherches purement textuelles lorsque les embeddings sont désactivés.
+
+Si vous (ré)activez les embeddings, assurez-vous simplement que la variable `OPENAI_API_KEY` est renseignée avant de relancer `npm run backend:dev`.
+
+### Tests backend
+
+Les tests automatisés couvrent notamment la création de magasins, l'ingestion JSON et l'intégration avec la bibliothèque de widgets. Pour les exécuter en local :
+
+1. Installez les dépendances Python depuis le répertoire `backend/` : `pip install -r backend/requirements.txt`.
+2. Démarrez PostgreSQL (local ou Docker) avec l'extension `vector` disponible.
+3. Exportez les variables d'environnement minimales attendues par la configuration FastAPI :
+
+   ```bash
+   # depuis la racine du dépôt
+   export DATABASE_URL="postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit"
+   export OPENAI_API_KEY="sk-test"
+   export AUTH_SECRET_KEY="secret-key"
+   ```
+
+4. Lancez Pytest depuis la **racine du dépôt** en veillant à exposer cette racine dans `PYTHONPATH` pour que le paquet `backend` soit correctement résolu :
+
+   ```bash
+   # depuis la racine du dépôt
+   PYTHONPATH="$(pwd)" pytest backend/app/tests/test_vector_stores.py backend/app/tests/test_widgets.py
+   ```
+
+> ⚠️ SQLite n'est pas compatible avec les colonnes `JSONB` ni le type `Vector` utilisé par SQLAlchemy ; il est donc indispensable d'utiliser PostgreSQL pour que la suite de tests s'exécute sans erreur.
 
 ### Bibliothèque de widgets ChatKit
 

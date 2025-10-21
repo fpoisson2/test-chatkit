@@ -100,6 +100,16 @@ export const VectorStoresPage = () => {
     void refreshStores();
   }, [refreshStores, token]);
 
+  useEffect(() => {
+    if (!selectedStore) {
+      return;
+    }
+    const updated = stores.find((item) => item.slug === selectedStore.slug);
+    if (updated && updated.updated_at !== selectedStore.updated_at) {
+      setSelectedStore(updated);
+    }
+  }, [stores, selectedStore]);
+
   const handleCreateStore = async (payload: Parameters<typeof vectorStoreApi.createStore>[1]) => {
     if (!token) {
       throw new Error("Authentification requise");
@@ -322,6 +332,7 @@ export const VectorStoresPage = () => {
             onSubmit={handleIngestion}
             onCancel={() => setShowIngestionModal(false)}
             defaultDocId=""
+            embeddingsEnabledByDefault={selectedStore.enable_embeddings}
           />
         </Modal>
       ) : null}

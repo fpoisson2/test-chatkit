@@ -127,6 +127,7 @@ def test_admin_can_create_vector_store() -> None:
     data = response.json()
     assert data["slug"] == payload["slug"]
     assert data["metadata"]["lang"] == "fr"
+    assert data["enable_embeddings"] is True
     assert data["documents_count"] == 0
 
     listing = client.get("/api/vector-stores", headers=_auth_headers(token))
@@ -208,6 +209,7 @@ def test_ingest_search_and_retrieve_document() -> None:
     first = results[0]
     assert first["doc_id"] == "paris-guide"
     assert first["metadata"]["doc_id"] == "paris-guide"
+    assert first["metadata"]["has_embedding"] is True
     assert first["document_metadata"]["topic"] == "travel"
     assert first["score"] >= first["dense_score"] / 2
 
@@ -220,6 +222,64 @@ def test_ingest_search_and_retrieve_document() -> None:
     assert detail["doc_id"] == "paris-guide"
     assert detail["document"]["title"] == "Guide de Paris"
     assert detail["chunk_count"] >= 1
+    assert detail["metadata"]["has_embeddings"] is True
+
+def test_ingest_without_embeddings() -> None:
+    _reset_db()
+    admin = _make_user(email="no-embed-admin@example.com", is_admin=True)
+    agent = _make_user(email="no-embed-agent@example.com", is_admin=False)
+    admin_token = create_access_token(admin)
+    agent_token = create_access_token(agent)
+
+    create_response = client.post(
+        "/api/vector-stores",
+        headers=_auth_headers(admin_token),
+        json={"slug": "archives", "title": "Archives partagées", "enable_embeddings": False},
+    )
+    assert create_response.status_code == 201
+    store_data = create_response.json()
+    assert store_data["enable_embeddings"] is False
+
+    ingest_payload = {
+        "doc_id": "climat",
+        "document": {
+            "title": "Climat méditerranéen",
+            "paragraphs": [
+                {"heading": "Marseille", "content": "La météo est souvent ensoleillée."},
+                {"heading": "Vent", "content": "Le mistral souffle régulièrement."},
+            ],
+        },
+        "metadata": {"category": "weather"},
+    }
+    ingest_response = client.post(
+        "/api/vector-stores/archives/documents",
+        headers=_auth_headers(admin_token),
+        json=ingest_payload,
+    )
+    assert ingest_response.status_code == 201
+    ingest_data = ingest_response.json()
+    assert ingest_data["chunk_count"] >= 1
+
+    detail_response = client.get(
+        "/api/vector-stores/archives/documents/climat",
+        headers=_auth_headers(agent_token),
+    )
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["metadata"]["has_embeddings"] is False
+
+    search_response = client.post(
+        "/api/vector-stores/archives/search_json",
+        headers=_auth_headers(agent_token),
+        json={"query": "météo Marseille", "top_k": 3},
+    )
+    assert search_response.status_code == 200
+    search_results = search_response.json()
+    assert search_results
+    first = search_results[0]
+    assert first["doc_id"] == "climat"
+    assert first["dense_score"] == 0.0
+    assert first["metadata"]["has_embedding"] is False
 
 
 def test_admin_can_delete_document() -> None:

@@ -155,6 +155,7 @@ class WidgetLibraryService:
                 for key, value in payload.items()
                 if key != "definition" and value is not None
             },
+            generate_embeddings=False,
         )
         return self._from_document(document)
 
@@ -192,6 +193,7 @@ class WidgetLibraryService:
                 for key, value in updated_payload.items()
                 if key != "definition" and value is not None
             },
+            generate_embeddings=False,
         )
         return self._from_document(document)
 

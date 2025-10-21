@@ -30,6 +30,7 @@ def _serialize_store(store: JsonVectorStore, *, documents_count: int) -> VectorS
         title=store.title,
         description=store.description,
         metadata=dict(store.metadata_json or {}),
+        enable_embeddings=store.embeddings_enabled,
         created_at=store.created_at,
         updated_at=store.updated_at,
         documents_count=documents_count,
@@ -75,6 +76,7 @@ async def create_vector_store(
             title=payload.title,
             description=payload.description,
             metadata=payload.metadata,
+            embeddings_enabled=payload.enable_embeddings,
         )
     except ValueError as exc:  # slug invalide ou déjà pris
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -112,6 +114,7 @@ async def update_vector_store(
             title=payload.title,
             description=payload.description,
             metadata=payload.metadata,
+            embeddings_enabled=payload.enable_embeddings,
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -158,6 +161,7 @@ async def ingest_document(
             store_title=payload.store_title,
             store_metadata=payload.store_metadata,
             document_metadata=payload.metadata,
+            generate_embeddings=payload.generate_embeddings,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

@@ -12,6 +12,7 @@ export const VectorStoreForm = ({ onSubmit, onCancel }: VectorStoreFormProps) =>
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [metadataInput, setMetadataInput] = useState("{}");
+  const [enableEmbeddings, setEnableEmbeddings] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setSubmitting] = useState(false);
 
@@ -41,6 +42,7 @@ export const VectorStoreForm = ({ onSubmit, onCancel }: VectorStoreFormProps) =>
         title: title.trim() || undefined,
         description: description.trim() || undefined,
         metadata,
+        enable_embeddings: enableEmbeddings,
       });
     } catch (submitError) {
       setError(
@@ -97,6 +99,19 @@ export const VectorStoreForm = ({ onSubmit, onCancel }: VectorStoreFormProps) =>
           spellCheck={false}
         />
       </label>
+      <label className="label">
+        <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <input
+            type="checkbox"
+            checked={enableEmbeddings}
+            onChange={(event) => setEnableEmbeddings(event.target.checked)}
+          />
+          Générer des embeddings (OpenAI)
+        </span>
+      </label>
+      <p className="admin-card__subtitle" style={{ marginTop: "-0.25rem" }}>
+        Décochez pour utiliser le magasin comme un espace de stockage sans vecteurs (recherche BM25 uniquement).
+      </p>
       <div className="admin-form__actions">
         <button className="button button--subtle" type="button" onClick={onCancel} disabled={isSubmitting}>
           Annuler

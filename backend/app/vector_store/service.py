@@ -221,6 +221,7 @@ class JsonVectorStoreService:
         title: str | None = None,
         description: str | None = None,
         metadata: dict[str, Any] | None = None,
+        embeddings_enabled: bool = True,
     ) -> JsonVectorStore:
         normalized_slug = slug.strip()
         if not normalized_slug:
@@ -233,6 +234,7 @@ class JsonVectorStoreService:
             title=title,
             description=description,
             metadata_json=metadata or {},
+            embeddings_enabled=embeddings_enabled,
         )
         self.session.add(store)
         self.session.flush()
@@ -245,6 +247,7 @@ class JsonVectorStoreService:
         title: str | None = None,
         description: str | None = None,
         metadata: dict[str, Any] | None = None,
+        embeddings_enabled: bool | None = None,
     ) -> JsonVectorStore:
         store = self.get_store(slug)
         if store is None:
@@ -255,6 +258,8 @@ class JsonVectorStoreService:
             store.description = description
         if metadata is not None:
             store.metadata_json = metadata
+        if embeddings_enabled is not None:
+            store.embeddings_enabled = embeddings_enabled
         self.session.add(store)
         self.session.flush()
         return store
@@ -312,11 +317,13 @@ class JsonVectorStoreService:
         store_title: str | None = None,
         store_metadata: dict[str, Any] | None = None,
         document_metadata: dict[str, Any] | None = None,
+        generate_embeddings: bool | None = None,
     ) -> JsonDocument:
         store = self._get_or_create_store(
             store_slug,
             title=store_title,
             metadata=store_metadata,
+            embeddings_enabled=generate_embeddings,
         )
         self._delete_existing_document(store.id, doc_id)
 
@@ -349,6 +356,21 @@ class JsonVectorStoreService:
         if document_metadata:
             merged_metadata.update(document_metadata)
 
+        should_generate_embeddings = (
+            bool(generate_embeddings)
+            if generate_embeddings is not None
+            else bool(store.embeddings_enabled)
+        )
+        if generate_embeddings is not None and store.embeddings_enabled != should_generate_embeddings:
+            store.embeddings_enabled = should_generate_embeddings
+        merged_metadata["has_embeddings"] = should_generate_embeddings
+        if not should_generate_embeddings:
+            logger.info(
+                "Ingestion du document %s sans génération d'embeddings (magasin=%s)",
+                doc_id,
+                store.slug,
+            )
+
         document = JsonDocument(
             store_id=store.id,
             doc_id=doc_id,
@@ -373,28 +395,34 @@ class JsonVectorStoreService:
             for chunk in chunk_entries
         ]
 
-        # Générer les embeddings avec OpenAI
-        client = _get_openai_client()
-        response = client.embeddings.create(
-            input=chunk_texts,
-            model=self.model_name,
-        )
+        chunk_vectors: list[list[float] | None]
+        if should_generate_embeddings:
+            client = _get_openai_client()
+            response = client.embeddings.create(
+                input=chunk_texts,
+                model=self.model_name,
+            )
+            chunk_vectors = []
+            for index, data in enumerate(response.data):
+                vector = data.embedding
+                if len(vector) != EMBEDDING_DIMENSION:
+                    raise ValueError(
+                        "La dimension de l'embedding généré "
+                        f"({len(vector)}) ne correspond pas à la configuration "
+                        f"attendue ({EMBEDDING_DIMENSION})"
+                    )
+                chunk_vectors.append(_normalize(vector))
+        else:
+            chunk_vectors = [None] * len(chunk_entries)
 
         json_chunks: list[JsonChunk] = []
-        for index, (chunk, text) in enumerate(zip(chunk_entries, chunk_texts)):
-            vector = response.data[index].embedding
-            if len(vector) != EMBEDDING_DIMENSION:
-                raise ValueError(
-                    "La dimension de l'embedding généré "
-                    f"({len(vector)}) ne correspond pas à la configuration "
-                    f"attendue ({EMBEDDING_DIMENSION})"
-                )
-            vector = _normalize(vector)
+        for index, (chunk, text, vector) in enumerate(zip(chunk_entries, chunk_texts, chunk_vectors)):
             chunk_metadata = {
                 "doc_id": doc_id,
                 "store": store.slug,
                 "chunk_index": index,
                 "line_count": len(chunk) if chunk else len(entries),
+                "has_embedding": vector is not None,
             }
             json_chunks.append(
                 JsonChunk(
@@ -419,6 +447,7 @@ class JsonVectorStoreService:
         *,
         title: str | None = None,
         metadata: dict[str, Any] | None = None,
+        embeddings_enabled: bool | None = None,
     ) -> JsonVectorStore:
         normalized_slug = slug.strip()
         existing = self.session.scalar(
@@ -431,12 +460,15 @@ class JsonVectorStoreService:
                 merged = dict(existing.metadata_json or {})
                 merged.update(metadata)
                 existing.metadata_json = merged
+            if embeddings_enabled is not None:
+                existing.embeddings_enabled = embeddings_enabled
             return existing
 
         store = JsonVectorStore(
             slug=normalized_slug,
             title=title,
             metadata_json=metadata or {},
+            embeddings_enabled=embeddings_enabled if embeddings_enabled is not None else True,
         )
         self.session.add(store)
         self.session.flush()
@@ -504,13 +536,17 @@ class JsonVectorStoreService:
         if not chunks:
             return []
 
-        # Générer l'embedding de la requête avec OpenAI
-        client = _get_openai_client()
-        response = client.embeddings.create(
-            input=[query],
-            model=self.model_name,
+        embeddings_available = any(
+            chunk.embedding is not None for chunk, _document in chunks
         )
-        query_vector = _normalize(response.data[0].embedding)
+        query_vector: list[float] | None = None
+        if embeddings_available:
+            client = _get_openai_client()
+            response = client.embeddings.create(
+                input=[query],
+                model=self.model_name,
+            )
+            query_vector = _normalize(response.data[0].embedding)
 
         token_pattern = re.compile(r"\w+", re.UNICODE)
         query_tokens = [token.lower() for token in token_pattern.findall(query)]
@@ -544,8 +580,11 @@ class JsonVectorStoreService:
         b = 0.75
 
         for index, (chunk, document) in enumerate(chunks):
-            chunk_vector = [float(component) for component in chunk.embedding]
-            dense_score = sum(q * c for q, c in zip(query_vector, chunk_vector))
+            if query_vector is not None and chunk.embedding is not None:
+                chunk_vector = [float(component) for component in chunk.embedding]
+                dense_score = sum(q * c for q, c in zip(query_vector, chunk_vector))
+            else:
+                dense_score = 0.0
             dense_scores.append(dense_score)
 
             if query_tokens:
@@ -581,7 +620,10 @@ class JsonVectorStoreService:
             doc_metadata_per_chunk,
             texts,
         ):
-            dense_norm = (dense_score + 1.0) / 2.0
+            if query_vector is None or chunk.embedding is None:
+                dense_norm = 0.0
+            else:
+                dense_norm = (dense_score + 1.0) / 2.0
             bm25_norm = (bm25_score / max_bm25) if max_bm25 > 0 else 0.0
             weight_sum = dense_weight + sparse_weight if (dense_weight + sparse_weight) > 0 else 1.0
             score = (dense_weight * dense_norm + sparse_weight * bm25_norm) / weight_sum
