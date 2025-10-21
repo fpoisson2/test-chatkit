@@ -1,14 +1,78 @@
 from __future__ import annotations
 
+import copy
+import json
 import logging
 import os
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Mapping
+from pathlib import Path
+from typing import Any, Mapping
 
 from dotenv import load_dotenv
 
 logger = logging.getLogger("chatkit.settings")
+
+
+@dataclass(frozen=True)
+class WorkflowDefaults:
+    """Configuration par défaut pour le workflow ChatKit."""
+
+    default_end_message: str
+    default_workflow_slug: str
+    default_workflow_display_name: str
+    supported_agent_keys: frozenset[str]
+    expected_state_slugs: frozenset[str]
+    default_agent_slugs: frozenset[str]
+    default_workflow_graph: Mapping[str, Any]
+
+    @classmethod
+    def from_mapping(cls, payload: Mapping[str, Any]) -> "WorkflowDefaults":
+        try:
+            default_end_message = str(payload["default_end_message"])
+            default_workflow_slug = str(payload["default_workflow_slug"])
+            default_workflow_display_name = str(payload["default_workflow_display_name"])
+            supported_agent_keys_raw = payload.get("supported_agent_keys", [])
+            expected_state_slugs_raw = payload.get("expected_state_slugs", [])
+            default_agent_slugs_raw = payload.get("default_agent_slugs", [])
+            default_workflow_graph_raw = payload["default_workflow_graph"]
+        except KeyError as exc:  # pragma: no cover - erreur de configuration
+            raise RuntimeError(
+                f"Clé manquante dans la configuration workflow : {exc.args[0]}"
+            ) from exc
+
+        if not isinstance(default_workflow_graph_raw, Mapping):
+            raise RuntimeError(
+                "default_workflow_graph doit être un objet JSON (mapping)"
+            )
+
+        def _as_frozenset(values: Any, *, label: str) -> frozenset[str]:
+            if values is None:
+                return frozenset()
+            if isinstance(values, (list, tuple, set, frozenset)):
+                return frozenset(str(item) for item in values)
+            raise RuntimeError(f"{label} doit être une liste de chaînes")
+
+        return cls(
+            default_end_message=default_end_message,
+            default_workflow_slug=default_workflow_slug,
+            default_workflow_display_name=default_workflow_display_name,
+            supported_agent_keys=_as_frozenset(
+                supported_agent_keys_raw, label="supported_agent_keys"
+            ),
+            expected_state_slugs=_as_frozenset(
+                expected_state_slugs_raw, label="expected_state_slugs"
+            ),
+            default_agent_slugs=_as_frozenset(
+                default_agent_slugs_raw, label="default_agent_slugs"
+            ),
+            default_workflow_graph=dict(default_workflow_graph_raw),
+        )
+
+    def clone_workflow_graph(self) -> dict[str, Any]:
+        """Retourne une copie profonde du graphe par défaut."""
+
+        return copy.deepcopy(self.default_workflow_graph)
 
 
 @dataclass(frozen=True)
@@ -35,6 +99,7 @@ class Settings:
         database_connect_retries: Nombre de tentatives de connexion à la base.
         database_connect_delay: Délai entre deux tentatives (en secondes).
         agent_image_token_ttl_seconds: Durée de validité (en secondes) des liens d'images générées.
+        workflow_defaults: Configuration par défaut du workflow (chargée depuis un fichier JSON).
     """
 
     allowed_origins: list[str]
@@ -56,6 +121,32 @@ class Settings:
     database_connect_retries: int
     database_connect_delay: float
     agent_image_token_ttl_seconds: int
+    workflow_defaults: WorkflowDefaults
+
+    @staticmethod
+    def _load_workflow_defaults(path_value: str | None) -> WorkflowDefaults:
+        if path_value:
+            candidate_path = Path(path_value).expanduser()
+        else:
+            candidate_path = Path(__file__).resolve().parent / "workflows" / "defaults.json"
+
+        try:
+            raw_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+        except FileNotFoundError as exc:  # pragma: no cover - configuration manquante
+            raise RuntimeError(
+                f"Impossible de charger la configuration workflow : {candidate_path}"
+            ) from exc
+        except json.JSONDecodeError as exc:  # pragma: no cover - JSON invalide
+            raise RuntimeError(
+                f"JSON invalide pour la configuration workflow : {candidate_path}"
+            ) from exc
+
+        if not isinstance(raw_payload, Mapping):
+            raise RuntimeError(
+                "Le fichier de configuration workflow doit contenir un objet JSON."
+            )
+
+        return WorkflowDefaults.from_mapping(raw_payload)
 
     @staticmethod
     def _parse_allowed_origins(raw_value: str | None) -> list[str]:
@@ -131,6 +222,9 @@ class Settings:
             database_connect_delay=float(env.get("DATABASE_CONNECT_DELAY", "1.0")),
             agent_image_token_ttl_seconds=int(
                 env.get("AGENT_IMAGE_TOKEN_TTL_SECONDS", "3600")
+            ),
+            workflow_defaults=cls._load_workflow_defaults(
+                env.get("WORKFLOW_DEFAULTS_PATH")
             ),
         )
 

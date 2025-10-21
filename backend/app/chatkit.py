@@ -107,7 +107,6 @@ from .database import SessionLocal
 from .models import WorkflowStep, WorkflowTransition
 from .token_sanitizer import sanitize_model_like
 from .workflows import (
-    DEFAULT_END_MESSAGE,
     WorkflowService,
     resolve_start_auto_start,
     resolve_start_auto_start_message,

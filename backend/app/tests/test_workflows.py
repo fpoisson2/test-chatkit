@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import atexit
+import json
 import os
 from typing import Any
 
@@ -27,6 +28,7 @@ from backend.app.models import (
     WorkflowTransition,
 )
 from backend.app.security import create_access_token, hash_password
+from backend.app.workflows import WorkflowService
 
 _db_path = engine.url.database or ""
 
@@ -53,6 +55,111 @@ def _reset_db() -> None:
 _reset_db()
 
 client = TestClient(app)
+
+
+def test_workflow_defaults_loaded_from_configuration() -> None:
+    defaults = get_settings().workflow_defaults
+    assert defaults.default_workflow_slug == "workflow-par-defaut"
+    assert "analyse" in defaults.default_agent_slugs
+    node_slugs = {
+        str(node.get("slug"))
+        for node in defaults.default_workflow_graph.get("nodes", [])
+        if isinstance(node, dict)
+    }
+    assert {"analyse", "finalisation"}.issubset(node_slugs)
+
+
+def test_workflow_defaults_override_via_configuration(tmp_path) -> None:
+    _reset_db()
+
+    original_path = os.environ.get("WORKFLOW_DEFAULTS_PATH")
+
+    custom_config = {
+        "default_end_message": "Workflow finalisé",
+        "default_workflow_slug": "workflow-personnalise",
+        "default_workflow_display_name": "Workflow personnalisé",
+        "supported_agent_keys": ["agent_special"],
+        "expected_state_slugs": ["etat-custom"],
+        "default_agent_slugs": ["agent-special"],
+        "default_workflow_graph": {
+            "nodes": [
+                {
+                    "slug": "start",
+                    "kind": "start",
+                    "display_name": "Début",
+                    "is_enabled": True,
+                    "parameters": {},
+                    "metadata": {},
+                },
+                {
+                    "slug": "agent-special",
+                    "kind": "agent",
+                    "agent_key": "agent_special",
+                    "display_name": "Agent spécial",
+                    "is_enabled": True,
+                    "parameters": {"instructions": "Analyse personnalisée"},
+                    "metadata": {},
+                },
+                {
+                    "slug": "etat-custom",
+                    "kind": "state",
+                    "display_name": "État personnalisé",
+                    "is_enabled": True,
+                    "parameters": {
+                        "state": [
+                            {
+                                "target": "state.all_done",
+                                "expression": "input.output_parsed.ready",
+                            }
+                        ]
+                    },
+                    "metadata": {},
+                },
+                {
+                    "slug": "end",
+                    "kind": "end",
+                    "display_name": "Fin",
+                    "is_enabled": True,
+                    "parameters": {
+                        "message": "Workflow finalisé",
+                        "status": {"type": "closed", "reason": "Workflow finalisé"},
+                    },
+                    "metadata": {},
+                },
+            ],
+            "edges": [
+                {"source": "start", "target": "agent-special", "metadata": {}},
+                {"source": "agent-special", "target": "etat-custom", "metadata": {}},
+                {"source": "etat-custom", "target": "end", "metadata": {}},
+            ],
+        },
+    }
+
+    custom_path = tmp_path / "workflow_defaults.json"
+    custom_path.write_text(json.dumps(custom_config, ensure_ascii=False), encoding="utf-8")
+
+    os.environ["WORKFLOW_DEFAULTS_PATH"] = str(custom_path)
+
+    try:
+        get_settings.cache_clear()
+        settings = get_settings()
+        service = WorkflowService(settings=settings)
+        with SessionLocal() as session:
+            definition = service.get_current(session)
+            workflow = definition.workflow
+            assert workflow.slug == "workflow-personnalise"
+            assert workflow.display_name == "Workflow personnalisé"
+            step_slugs = {step.slug for step in definition.steps}
+            assert {"agent-special", "etat-custom", "end"}.issubset(step_slugs)
+            end_step = next(step for step in definition.steps if step.kind == "end")
+            assert (end_step.parameters or {}).get("message") == "Workflow finalisé"
+    finally:
+        if original_path is None:
+            os.environ.pop("WORKFLOW_DEFAULTS_PATH", None)
+        else:
+            os.environ["WORKFLOW_DEFAULTS_PATH"] = original_path
+        get_settings.cache_clear()
+        _reset_db()
 
 
 def _cleanup() -> None:
