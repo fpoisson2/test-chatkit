@@ -42,23 +42,35 @@ const allowedHosts = envAllowedHosts?.length
   ? Array.from(new Set([...envAllowedHosts, ...defaultAllowedHosts]))
   : defaultAllowedHosts;
 
+// Désactiver le proxy si VITE_USE_MOCK_API est défini (mode développement sans backend)
+const useMockApi = process.env.VITE_USE_MOCK_API === "true";
+
 export default defineConfig({
   server: {
     host: true, // écoute sur 0.0.0.0
     port: serverPort, // fixe le port
     strictPort: true, // empêche vite de changer de port
-    hmr: {
+    hmr: useMockApi ? true : {
       clientPort: hmrClientPort, // important derrière Cloudflare
       host: hmrHost,
       protocol: hmrProtocol,
     },
     ...(allowedHosts?.length ? { allowedHosts } : {}),
-    proxy: {
-      "/api": {
-        target: backendTarget,
-        changeOrigin: true,
+    // Désactiver le proxy en mode mock pour que fetch soit intercepté
+    ...(!useMockApi ? {
+      proxy: {
+        "/api": {
+          target: backendTarget,
+          changeOrigin: true,
+        },
       },
-    },
+    } : {}),
   },
   plugins: [react()],
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/setupTests.ts"],
+    globals: true,
+    css: true,
+  },
 });

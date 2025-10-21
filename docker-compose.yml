@@ -1,10 +1,11 @@
 services:
   backend:
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     working_dir: /app
     command: >-
-      sh -c "pip install --no-cache-dir -r requirements.txt &&
-      uvicorn server:app --host 0.0.0.0 --port 8000 --reload"
+      uvicorn server:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - ./backend:/app
     environment:
@@ -14,10 +15,12 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://chatkit:chatkit@db:5432/chatkit}
       AUTH_SECRET_KEY: ${AUTH_SECRET_KEY:-change-me}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-120}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-adminpass}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:5183}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     ports:
-      - "8000:8000"
+      - "0.0.0.0:8000:8000"
     depends_on:
       - db
   frontend:
@@ -29,24 +32,31 @@ services:
       - ./frontend:/app
       - frontend-node_modules:/app/node_modules
     environment:
-      VITE_BACKEND_URL: http://backend:8000
+      VITE_BACKEND_URL: ${VITE_BACKEND_URL:-http://backend:8000}
       VITE_PORT: ${VITE_PORT:-5183}
       VITE_HMR_HOST: ${VITE_HMR_HOST:-localhost}
       VITE_ALLOWED_HOSTS: ${VITE_ALLOWED_HOSTS:-}
       VITE_HMR_CLIENT_PORT: ${VITE_HMR_CLIENT_PORT:-5183}
       VITE_HMR_PROTOCOL: ${VITE_HMR_PROTOCOL:-ws}
+      VITE_CHATKIT_API_URL: ${VITE_CHATKIT_API_URL:-/api/chatkit}
+      VITE_CHATKIT_DOMAIN_KEY: ${VITE_CHATKIT_DOMAIN_KEY:-}
+      VITE_CHATKIT_FORCE_HOSTED: ${VITE_CHATKIT_FORCE_HOSTED:-}
+      VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION: ${VITE_CHATKIT_SKIP_DOMAIN_VERIFICATION:-}
+      VITE_CHATKIT_UPLOAD_STRATEGY: ${VITE_CHATKIT_UPLOAD_STRATEGY:-}
+      VITE_CHATKIT_DIRECT_UPLOAD_URL: ${VITE_CHATKIT_DIRECT_UPLOAD_URL:-}
+      VITE_USE_MOCK_API: ${VITE_USE_MOCK_API:-false}
     ports:
       - "${VITE_PORT:-5183}:${VITE_PORT:-5183}"
     depends_on:
       - backend
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-chatkit}
       POSTGRES_USER: ${POSTGRES_USER:-chatkit}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatkit}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
 volumes:

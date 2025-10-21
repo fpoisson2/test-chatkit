@@ -1,6 +1,14 @@
 import type { ReactNode } from "react";
 
-export type SidebarIconName = "logo" | "home" | "admin" | "settings" | "logout";
+export type SidebarIconName =
+  | "logo"
+  | "home"
+  | "admin"
+  | "workflow"
+  | "settings"
+  | "login"
+  | "logout"
+  | "voice";
 
 const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
   logo: (
@@ -52,6 +60,21 @@ const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
       />
     </>
   ),
+  workflow: (
+    <>
+      <circle cx="6.5" cy="7" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="17.5" cy="5.5" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="12" cy="18" r="2" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path
+        d="M8.3 8.2 11 12m3.2 1.6L16 7.4M12 16V14"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </>
+  ),
   settings: (
     <>
       <path
@@ -64,6 +87,34 @@ const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
       />
       <path
         d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </>
+  ),
+  login: (
+    <>
+      <path
+        d="M15 8.25 19.5 12 15 15.75"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M19.5 12H6.75"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M8.25 4.5h-1.5A2.25 2.25 0 0 0 4.5 6.75v10.5A2.25 2.25 0 0 0 6.75 19.5h1.5"
         fill="none"
         stroke="currentColor"
         strokeLinecap="round"
@@ -92,6 +143,42 @@ const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
       />
       <path
         d="M15.75 19.5h1.5A2.25 2.25 0 0 0 19.5 17.25V6.75A2.25 2.25 0 0 0 17.25 4.5h-1.5"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </>
+  ),
+  voice: (
+    <>
+      <path
+        d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M7.5 11a4.5 4.5 0 0 0 9 0"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M12 15v3.25"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M9.75 21h4.5"
         fill="none"
         stroke="currentColor"
         strokeLinecap="round"

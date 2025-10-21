@@ -21,3 +21,24 @@ Toutes les commandes ci-dessous se lancent depuis la racine du dépôt.
 
 Le frontend proxyfie automatiquement les requêtes `/api/chatkit/session` vers le backend, ce qui permet de tester l'intégration
 ChatKit en quelques minutes.
+
+## Tests backend (Pytest)
+
+Toujours depuis la racine du dépôt :
+
+1. Synchronisez les dépendances Python si ce n'est pas déjà fait : `npm run backend:sync`.
+2. Démarrez PostgreSQL depuis la racine du dépôt :
+   - via Docker Compose : `docker compose up -d db` (l'image `pgvector/pgvector:pg16` expose l'extension `vector`) ;
+   - ou en démarrant votre service local (veillez à activer l'extension `vector`).
+3. Exportez les variables minimales attendues par la configuration FastAPI :
+   ```bash
+   export DATABASE_URL="postgresql+psycopg://chatkit:chatkit@localhost:5432/chatkit"
+   export OPENAI_API_KEY="sk-test"
+   export AUTH_SECRET_KEY="secret-key"
+   ```
+   Adaptez ces valeurs à votre environnement (`DATABASE_URL` doit pointer vers la base PostgreSQL démarrée à l'étape précédente).
+4. Exécutez la suite Pytest :
+   - avec `uv` installé : `uv run --project backend pytest` ;
+   - sans `uv` : `python3 -m pytest backend`.
+
+Pensez à arrêter la base de tests lorsque vous avez terminé (`docker compose stop db` ou commande équivalente sur votre service local).

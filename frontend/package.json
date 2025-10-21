@@ -6,19 +6,30 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@openai/chatkit-react": "^0.0.0",
-    "react-router-dom": "^6.28.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "@openai/agents": "*",
+    "@openai/chatkit-react": "*",
+    "@reactflow/core": "*",
+    "lucide-react": "^0.546.0",
+    "react": "*",
+    "react-dom": "*",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "*",
+    "reactflow": "*"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^5.0.4",
-    "typescript": "^5.4.5",
-    "vite": "^5.2.0"
+    "@testing-library/jest-dom": "*",
+    "@testing-library/react": "*",
+    "@testing-library/user-event": "*",
+    "@types/react": "*",
+    "@types/react-dom": "*",
+    "@vitejs/plugin-react": "*",
+    "jsdom": "*",
+    "typescript": "*",
+    "vite": "*",
+    "vitest": "*"
   }
 }

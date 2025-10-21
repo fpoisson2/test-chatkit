@@ -1,19 +1,17 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-
-import { AuthUser, useAuth } from "../auth";
-
-const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
-
-type EditableUser = AuthUser;
-
-type CreateUserPayload = {
-  email: string;
-  password: string;
-  is_admin: boolean;
-};
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useAuth } from "../auth";
+import {
+  CreateUserPayload,
+  EditableUser,
+  adminApi,
+  isUnauthorizedError,
+  resetUserPassword,
+} from "../utils/backend";
+import { AdminTabs } from "../components/AdminTabs";
+import { ManagementPageLayout } from "../components/ManagementPageLayout";
 
 export const AdminPage = () => {
-  const { token, user: currentUser, logout } = useAuth();
+  const { token, logout } = useAuth();
   const [users, setUsers] = useState<EditableUser[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,62 +20,6 @@ export const AdminPage = () => {
     password: "",
     is_admin: false,
   });
-
-  const apiBases = useMemo(() => {
-    const normalizedBackendUrl = backendUrl.replace(/\/+$/, "");
-    const bases = [""];
-    if (normalizedBackendUrl.length > 0) {
-      bases.push(normalizedBackendUrl);
-    }
-    return Array.from(new Set(bases));
-  }, [backendUrl]);
-
-  const headers = useMemo(() => {
-    const base: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (token) {
-      base.Authorization = `Bearer ${token}`;
-    }
-    return base;
-  }, [token]);
-
-  const requestWithFallback = useCallback(
-    async (path: string, init?: RequestInit) => {
-      let lastError: Error | null = null;
-      for (const base of apiBases) {
-        const url = base ? `${base}${path}` : path;
-        try {
-          const response = await fetch(url, init);
-          if (!response.ok && base.length === 0 && apiBases.length > 1) {
-            let detail = `${response.status} ${response.statusText}`;
-            try {
-              const body = await response.clone().json();
-              if (body?.detail) {
-                detail = String(body.detail);
-              }
-            } catch (parseError) {
-              if (parseError instanceof Error) {
-                detail = parseError.message;
-              }
-            }
-            lastError = new Error(detail);
-            continue;
-          }
-          return response;
-        } catch (networkError) {
-          if (networkError instanceof Error) {
-            lastError = networkError;
-          } else {
-            lastError = new Error("Une erreur inattendue est survenue");
-          }
-        }
-      }
-      throw lastError ?? new Error("Impossible de joindre le backend d'administration");
-    },
-    [apiBases],
-  );
-
   const fetchUsers = useCallback(async () => {
     if (!token) {
       return;
@@ -85,29 +27,23 @@ export const AdminPage = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await requestWithFallback("/api/admin/users", {
-        headers,
-      });
-      if (response.status === 401) {
-        logout();
-        throw new Error("Session expirée, veuillez vous reconnecter.");
-      }
-      if (!response.ok) {
-        const { detail } = await response.json();
-        throw new Error(detail ?? "Impossible de récupérer les utilisateurs");
-      }
-      const data: EditableUser[] = await response.json();
+      const data = await adminApi.listUsers(token);
       setUsers(data);
     } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Une erreur inattendue est survenue");
+      if (isUnauthorizedError(err)) {
+        logout();
+        setError("Session expirée, veuillez vous reconnecter.");
+        return;
       }
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Une erreur inattendue est survenue",
+      );
     } finally {
       setLoading(false);
     }
-  }, [headers, logout, requestWithFallback, token]);
+  }, [logout, token]);
 
   useEffect(() => {
     void fetchUsers();
@@ -120,54 +56,42 @@ export const AdminPage = () => {
     }
 
     try {
-      const response = await requestWithFallback("/api/admin/users", {
-        method: "POST",
-        headers,
-        body: JSON.stringify(createPayload),
-      });
-      if (response.status === 401) {
-        logout();
-        throw new Error("Session expirée, veuillez vous reconnecter.");
-      }
-      if (!response.ok) {
-        const { detail } = await response.json();
-        throw new Error(detail ?? "Impossible de créer l'utilisateur");
-      }
-      const created: EditableUser = await response.json();
+      const created = await adminApi.createUser(token, createPayload);
       setUsers((prev) => [...prev, created]);
       setCreatePayload({ email: "", password: "", is_admin: false });
     } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Une erreur inattendue est survenue");
+      if (isUnauthorizedError(err)) {
+        logout();
+        setError("Session expirée, veuillez vous reconnecter.");
+        return;
       }
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Une erreur inattendue est survenue",
+      );
     }
   };
 
   const handleToggleAdmin = async (editableUser: EditableUser) => {
     try {
-      const response = await requestWithFallback(`/api/admin/users/${editableUser.id}`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify({ is_admin: !editableUser.is_admin }),
+      const updated = await adminApi.updateUser(token, editableUser.id, {
+        is_admin: !editableUser.is_admin,
       });
-      if (response.status === 401) {
-        logout();
-        throw new Error("Session expirée, veuillez vous reconnecter.");
-      }
-      if (!response.ok) {
-        const { detail } = await response.json();
-        throw new Error(detail ?? "Impossible de mettre à jour l'utilisateur");
-      }
-      const updated: EditableUser = await response.json();
-      setUsers((prev) => prev.map((user) => (user.id === updated.id ? updated : user)));
+      setUsers((prev) =>
+        prev.map((user) => (user.id === updated.id ? updated : user)),
+      );
     } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Une erreur inattendue est survenue");
+      if (isUnauthorizedError(err)) {
+        logout();
+        setError("Session expirée, veuillez vous reconnecter.");
+        return;
       }
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Une erreur inattendue est survenue",
+      );
     }
   };
 
@@ -177,84 +101,55 @@ export const AdminPage = () => {
     }
 
     try {
-      const response = await requestWithFallback(`/api/admin/users/${editableUser.id}`, {
-        method: "DELETE",
-        headers,
-      });
-      if (response.status === 401) {
-        logout();
-        throw new Error("Session expirée, veuillez vous reconnecter.");
-      }
-      if (!response.ok && response.status !== 204) {
-        const { detail } = await response.json();
-        throw new Error(detail ?? "Impossible de supprimer l'utilisateur");
-      }
+      await adminApi.deleteUser(token, editableUser.id);
       setUsers((prev) => prev.filter((user) => user.id !== editableUser.id));
     } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Une erreur inattendue est survenue");
+      if (isUnauthorizedError(err)) {
+        logout();
+        setError("Session expirée, veuillez vous reconnecter.");
+        return;
       }
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Une erreur inattendue est survenue",
+      );
     }
   };
 
   const handleResetPassword = async (editableUser: EditableUser) => {
-    const newPassword = window.prompt(`Nouveau mot de passe pour ${editableUser.email}`);
+    const newPassword = window.prompt(
+      `Nouveau mot de passe pour ${editableUser.email}`,
+    );
     if (!newPassword) {
       return;
     }
 
     try {
-      const response = await requestWithFallback(`/api/admin/users/${editableUser.id}`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify({ password: newPassword }),
+      const updated = await resetUserPassword(token, editableUser.id, {
+        password: newPassword,
       });
-      if (response.status === 401) {
-        logout();
-        throw new Error("Session expirée, veuillez vous reconnecter.");
-      }
-      if (!response.ok) {
-        const { detail } = await response.json();
-        throw new Error(detail ?? "Impossible de mettre à jour le mot de passe");
-      }
-      const updated: EditableUser = await response.json();
-      setUsers((prev) => prev.map((user) => (user.id === updated.id ? updated : user)));
+      setUsers((prev) =>
+        prev.map((user) => (user.id === updated.id ? updated : user)),
+      );
     } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Une erreur inattendue est survenue");
+      if (isUnauthorizedError(err)) {
+        logout();
+        setError("Session expirée, veuillez vous reconnecter.");
+        return;
       }
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Une erreur inattendue est survenue",
+      );
     }
   };
 
-  const userCountLabel = users.length
-    ? ` · ${users.length} utilisateur${users.length > 1 ? "s" : ""}`
-    : "";
-
   return (
-    <div className="admin-layout">
-      <div className="admin-shell">
-        <header className="admin-shell__header">
-          <div>
-            <h1 className="admin-shell__title">Administration des utilisateurs</h1>
-            <p className="admin-shell__subtitle">
-              Gérez les accès autorisés au widget ChatKit et pilotez les rôles en un clin d'œil.
-            </p>
-          </div>
-          <div className="admin-shell__toolbar">
-            <span className="admin-shell__chips">
-              {currentUser?.email ?? "Administrateur"}
-              {userCountLabel}
-            </span>
-            <button className="button button--ghost" type="button" onClick={logout}>
-              Déconnexion
-            </button>
-          </div>
-        </header>
-
+    <>
+      <AdminTabs activeTab="users" />
+      <ManagementPageLayout>
         {error && <div className="alert alert--danger">{error}</div>}
 
         <div className="admin-grid">
@@ -262,7 +157,8 @@ export const AdminPage = () => {
             <div>
               <h2 className="admin-card__title">Créer un utilisateur</h2>
               <p className="admin-card__subtitle">
-                Invitez un collaborateur et attribuez-lui un rôle adapté à son usage de ChatKit.
+                Invitez un collaborateur et attribuez-lui un rôle adapté à son
+                usage de ChatKit.
               </p>
             </div>
             <form className="admin-form" onSubmit={handleCreate}>
@@ -274,7 +170,12 @@ export const AdminPage = () => {
                     type="email"
                     required
                     value={createPayload.email}
-                    onChange={(event) => setCreatePayload((prev) => ({ ...prev, email: event.target.value }))}
+                    onChange={(event) =>
+                      setCreatePayload((prev) => ({
+                        ...prev,
+                        email: event.target.value,
+                      }))
+                    }
                     placeholder="nouvel.utilisateur@example.com"
                   />
                 </label>
@@ -285,7 +186,12 @@ export const AdminPage = () => {
                     type="text"
                     required
                     value={createPayload.password}
-                    onChange={(event) => setCreatePayload((prev) => ({ ...prev, password: event.target.value }))}
+                    onChange={(event) =>
+                      setCreatePayload((prev) => ({
+                        ...prev,
+                        password: event.target.value,
+                      }))
+                    }
                     placeholder="Mot de passe temporaire"
                   />
                 </label>
@@ -295,7 +201,10 @@ export const AdminPage = () => {
                   type="checkbox"
                   checked={createPayload.is_admin}
                   onChange={(event) =>
-                    setCreatePayload((prev) => ({ ...prev, is_admin: event.target.checked }))
+                    setCreatePayload((prev) => ({
+                      ...prev,
+                      is_admin: event.target.checked,
+                    }))
                   }
                 />
                 Administrateur
@@ -312,16 +221,21 @@ export const AdminPage = () => {
             <div>
               <h2 className="admin-card__title">Utilisateurs</h2>
               <p className="admin-card__subtitle">
-                Consultez les accès existants et appliquez des actions rapides pour chaque compte.
+                Consultez les accès existants et appliquez des actions rapides
+                pour chaque compte.
               </p>
             </div>
             {isLoading ? (
-              <p className="admin-card__subtitle">Chargement des utilisateurs…</p>
+              <p className="admin-card__subtitle">
+                Chargement des utilisateurs…
+              </p>
             ) : users.length === 0 ? (
-              <p className="admin-card__subtitle">Aucun utilisateur pour le moment.</p>
+              <p className="admin-card__subtitle">
+                Aucun utilisateur pour le moment.
+              </p>
             ) : (
               <div className="admin-table-wrapper">
-                <table className="admin-table">
+                <table className="admin-table admin-table--stack">
                   <thead>
                     <tr>
                       <th>E-mail</th>
@@ -334,25 +248,35 @@ export const AdminPage = () => {
                   <tbody>
                     {users.map((editableUser) => (
                       <tr key={editableUser.id}>
-                        <td>{editableUser.email}</td>
-                        <td>{editableUser.is_admin ? "Administrateur" : "Utilisateur"}</td>
-                        <td>{new Date(editableUser.created_at).toLocaleString()}</td>
-                        <td>{new Date(editableUser.updated_at).toLocaleString()}</td>
-                        <td>
+                        <td data-label="E-mail">{editableUser.email}</td>
+                        <td data-label="Rôle">
+                          {editableUser.is_admin
+                            ? "Administrateur"
+                            : "Utilisateur"}
+                        </td>
+                        <td data-label="Créé le">
+                          {new Date(editableUser.created_at).toLocaleString()}
+                        </td>
+                        <td data-label="Mis à jour le">
+                          {new Date(editableUser.updated_at).toLocaleString()}
+                        </td>
+                        <td data-label="Actions">
                           <div className="admin-table__actions">
                             <button
                               className="button button--subtle button--sm"
                               type="button"
                               onClick={() => handleToggleAdmin(editableUser)}
                             >
-                              {editableUser.is_admin ? "Retirer admin" : "Promouvoir"}
+                              {editableUser.is_admin
+                                ? "Retirer admin"
+                                : "Promouvoir"}
                             </button>
                             <button
                               className="button button--ghost button--sm"
                               type="button"
                               onClick={() => handleResetPassword(editableUser)}
                             >
-                              Réinitialiser
+                              Réinitialiser le mot de passe
                             </button>
                             <button
                               className="button button--danger button--sm"
@@ -371,7 +295,7 @@ export const AdminPage = () => {
             )}
           </section>
         </div>
-      </div>
-    </div>
+      </ManagementPageLayout>
+    </>
   );
 };
