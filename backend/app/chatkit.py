@@ -119,7 +119,7 @@ from .image_utils import (
 )
 from .vector_store import JsonVectorStoreService, SearchResult
 from .weather import fetch_weather
-from .widgets import WidgetLibraryService
+from .widgets import WidgetLibraryService, WidgetValidationError
 
 logger = logging.getLogger("chatkit.server")
 
@@ -1551,6 +1551,39 @@ _WEATHER_FUNCTION_TOOL_DEFAULT_DESCRIPTION = (
     "Récupère les conditions météorologiques actuelles via le service Python interne."
 )
 
+_WIDGET_VALIDATION_TOOL_ALIASES = {
+    "validate_widget",
+    "validate_widget_definition",
+    "widget_validation",
+}
+_WIDGET_VALIDATION_TOOL_DEFAULT_DESCRIPTION = (
+    "Valide une définition de widget ChatKit et renvoie la version normalisée ainsi que les erreurs éventuelles."
+)
+
+
+def validate_widget_definition(
+    definition: Mapping[str, Any] | str,
+) -> dict[str, Any]:
+    """Valide une définition de widget et retourne un rapport structuré."""
+
+    if isinstance(definition, Mapping) and not isinstance(definition, dict):
+        definition = dict(definition)
+
+    try:
+        normalized = WidgetLibraryService._normalize_definition(definition)
+    except WidgetValidationError as exc:
+        errors = exc.errors or [str(exc)]
+        return {
+            "valid": False,
+            "errors": list(errors),
+        }
+
+    return {
+        "valid": True,
+        "normalized_definition": normalized,
+        "errors": [],
+    }
+
 
 def _build_weather_function_tool(payload: Any) -> FunctionTool | None:
     """Construit un FunctionTool pointant vers la fonction Python fetch_weather."""
@@ -1580,6 +1613,40 @@ def _build_weather_function_tool(payload: Any) -> FunctionTool | None:
             return None
 
     tool = function_tool(name_override=name_override)(fetch_weather)
+    tool.description = description
+    return tool
+
+
+def _build_widget_validation_function_tool(payload: Any) -> FunctionTool | None:
+    """Construit un FunctionTool pointant vers validate_widget_definition."""
+
+    if isinstance(payload, FunctionTool):
+        return payload
+
+    name_override = "validate_widget"
+    description = _WIDGET_VALIDATION_TOOL_DEFAULT_DESCRIPTION
+
+    if isinstance(payload, dict):
+        raw_name = payload.get("name") or payload.get("id") or payload.get("function_name")
+        if isinstance(raw_name, str) and raw_name.strip():
+            candidate = raw_name.strip()
+            if candidate.lower() in _WIDGET_VALIDATION_TOOL_ALIASES:
+                name_override = candidate
+            else:
+                return None
+        raw_description = payload.get("description")
+        if isinstance(raw_description, str) and raw_description.strip():
+            description = raw_description.strip()
+    elif isinstance(payload, str) and payload.strip():
+        candidate = payload.strip()
+        if candidate.lower() in _WIDGET_VALIDATION_TOOL_ALIASES:
+            name_override = candidate
+        else:
+            return None
+
+    tool = function_tool(name_override=name_override, strict_mode=False)(
+        validate_widget_definition
+    )
     tool.description = description
     return tool
 
@@ -2121,7 +2188,10 @@ def _coerce_agent_tools(
                 continue
 
             if normalized_type == "function":
-                tool = _build_weather_function_tool(entry.get("function"))
+                function_payload = entry.get("function")
+                tool = _build_weather_function_tool(function_payload)
+                if tool is None:
+                    tool = _build_widget_validation_function_tool(function_payload)
                 if tool is not None:
                     coerced.append(tool)
                 continue

@@ -826,6 +826,70 @@ describe("WorkflowBuilderPage", () => {
     });
   });
 
+  test("permet d'activer le function tool de validation de widget", async () => {
+    const fetchMock = setupWorkflowApi();
+
+    const { container } = renderWorkflowBuilder();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-id="agent-triage"]')).not.toBeNull();
+    });
+
+    const triageNode = container.querySelector('[data-id="agent-triage"]');
+    expect(triageNode).not.toBeNull();
+    fireEvent.click(triageNode!);
+
+    const widgetValidationCheckbox = await screen.findByLabelText(
+      /fonction de validation de widget/i,
+    );
+    expect(widgetValidationCheckbox).not.toBeChecked();
+    fireEvent.click(widgetValidationCheckbox);
+
+    await waitFor(() => {
+      expect(widgetValidationCheckbox).toBeChecked();
+    });
+
+    const modelInput = await screen.findByPlaceholderText(/ex\. gpt-4\.1-mini/i);
+    fireEvent.change(modelInput, { target: { value: "gpt-4.1-mini" } });
+
+    await waitFor(
+      () => {
+        expect(
+          fetchMock.mock.calls.some(
+            ([input, init]) =>
+              typeof input === "string" &&
+              input.includes(
+                `/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`,
+              ) &&
+              (init as RequestInit | undefined)?.method === "PUT",
+          ),
+        ).toBe(true);
+      },
+      { timeout: 4000 },
+    );
+
+    const putCall = fetchMock.mock.calls.find(
+      ([input, init]) =>
+        typeof input === "string" &&
+        input.includes(
+          `/api/workflows/${defaultResponse.workflow_id}/versions/${defaultResponse.id}`,
+        ) &&
+        (init as RequestInit | undefined)?.method === "PUT",
+    );
+    const body = JSON.parse((putCall?.[1] as RequestInit).body as string);
+    const agentNode = body.graph.nodes.find((node: any) => node.slug === "agent-triage");
+    expect(agentNode.parameters).toMatchObject({
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "validate_widget",
+          },
+        },
+      ],
+    });
+  });
+
   test("détecte les variables du widget et permet de les ingérer", async () => {
     const user = userEvent.setup();
     listWorkflowWidgetsMock.mockResolvedValue([

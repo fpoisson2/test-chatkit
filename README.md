@@ -256,6 +256,10 @@ curl "http://localhost:8000/api/tools/weather?city=Lyon"
 
 La charge utile retournée est sérialisable en JSON et peut être consommée directement par un outil ChatKit (fonction Python, workflow Agent Builder, etc.).
 
+### Outil de validation de widget
+
+Le workflow Agent peut désormais exposer un outil `validate_widget` qui appelle la fonction Python `validate_widget_definition`. Ce dernier vérifie la structure d'un widget ChatKit côté backend et renvoie soit la définition normalisée, soit la liste des erreurs de validation. Activez simplement le toggle dédié « Autoriser la fonction de validation de widget » dans l'inspecteur d'un nœud agent pour l'ajouter à la configuration.
+
 ### Exemple d'agent Python dédié
 
 Le module `backend/app/chatkit.py` regroupe désormais l'exemple complet basé sur la librairie Python `agents` : il expose le serveur `DemoChatKitServer`, les agents composant le workflow `run_workflow` et la logique de streaming utilisée par `/api/chatkit`.

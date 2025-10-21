@@ -36,6 +36,7 @@ import {
   getAgentTemperature,
   getAgentTopP,
   getAgentWeatherToolEnabled,
+  getAgentWidgetValidationToolEnabled,
   getAgentWebSearchConfig,
   getVectorStoreNodeConfig,
   getStateAssignments,
@@ -212,6 +213,7 @@ export type NodeInspectorProps = {
   availableModelsError: string | null;
   isReasoningModel: (model: string) => boolean;
   onAgentWeatherToolChange: (nodeId: string, enabled: boolean) => void;
+  onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
   vectorStores: VectorStoreSummary[];
   vectorStoresLoading: boolean;
   vectorStoresError: string | null;
@@ -274,6 +276,7 @@ const NodeInspector = ({
   availableModelsError,
   isReasoningModel,
   onAgentWeatherToolChange,
+  onAgentWidgetValidationToolChange,
   vectorStores,
   vectorStoresLoading,
   vectorStoresError,
@@ -377,6 +380,8 @@ const NodeInspector = ({
     onAgentImageGenerationChange(node.id, normalized);
   };
   const weatherFunctionEnabled = getAgentWeatherToolEnabled(parameters);
+  const widgetValidationFunctionEnabled =
+    getAgentWidgetValidationToolEnabled(parameters);
   const selectedVectorStoreSlug = fileSearchConfig?.vector_store_slug ?? "";
   const trimmedVectorStoreSlug = selectedVectorStoreSlug.trim();
   const selectedVectorStoreExists =
@@ -1719,6 +1724,12 @@ const NodeInspector = ({
                 checked={weatherFunctionEnabled}
                 onChange={(next) => onAgentWeatherToolChange(node.id, next)}
                 help="Ajoute l'outil fetch_weather pour récupérer la météo via le backend."
+              />
+              <ToggleRow
+                label="Autoriser la fonction de validation de widget"
+                checked={widgetValidationFunctionEnabled}
+                onChange={(next) => onAgentWidgetValidationToolChange(node.id, next)}
+                help="Ajoute l'outil validate_widget pour vérifier une définition de widget ChatKit."
               />
             </div>
           </div>
