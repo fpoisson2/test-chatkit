@@ -21,7 +21,7 @@ from ..tool_factory import (
     build_web_search_tool,
     build_widget_validation_tool,
 )
-from .chatkit_server.actions import (
+from ..chatkit_server.actions import (
     _StrictSchemaBase,
     _patch_model_json_schema,
     _remove_additional_properties_from_schema,
