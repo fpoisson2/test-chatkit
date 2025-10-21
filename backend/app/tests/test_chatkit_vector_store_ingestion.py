@@ -713,6 +713,7 @@ def _execute_json_vector_store_workflow(
     *,
     storage_parameters: dict[str, object],
     runner_payload: dict[str, object],
+    transform_parameters: dict[str, object] | None = None,
 ) -> tuple[
     list[tuple[str, str, dict[str, object], dict[str, object]]],
     list[SimpleNamespace],
@@ -799,14 +800,29 @@ def _execute_json_vector_store_workflow(
         id=2,
         display_name="Préparation",
     )
+    current_position = 2
+    transform_step = None
+    if transform_parameters is not None:
+        transform_step = SimpleNamespace(
+            slug="transform-record",
+            kind="transform",
+            is_enabled=True,
+            parameters=dict(transform_parameters),
+            agent_key=None,
+            position=current_position,
+            id=3,
+            display_name="Transformation",
+        )
+        current_position += 1
+
     storage_step = SimpleNamespace(
         slug="store-json",
         kind="json_vector_store",
         is_enabled=True,
         parameters=dict(storage_parameters),
         agent_key=None,
-        position=2,
-        id=3,
+        position=current_position,
+        id=3 if transform_step is None else 4,
         display_name="Sauvegarde",
     )
     end_step = SimpleNamespace(
@@ -815,19 +831,55 @@ def _execute_json_vector_store_workflow(
         is_enabled=True,
         parameters={},
         agent_key=None,
-        position=3,
-        id=4,
+        position=current_position + 1,
+        id=4 if transform_step is None else 5,
         display_name="Fin",
     )
 
-    transitions = [
+    transitions: list[SimpleNamespace] = [
         SimpleNamespace(id=1, source_step=start_step, target_step=agent_step, condition=None),
-        SimpleNamespace(id=2, source_step=agent_step, target_step=storage_step, condition=None),
-        SimpleNamespace(id=3, source_step=storage_step, target_step=end_step, condition=None),
     ]
+    next_transition_id = 2
+    if transform_step is not None:
+        transitions.append(
+            SimpleNamespace(
+                id=next_transition_id,
+                source_step=agent_step,
+                target_step=transform_step,
+                condition=None,
+            )
+        )
+        next_transition_id += 1
+        transitions.append(
+            SimpleNamespace(
+                id=next_transition_id,
+                source_step=transform_step,
+                target_step=storage_step,
+                condition=None,
+            )
+        )
+        next_transition_id += 1
+    else:
+        transitions.append(
+            SimpleNamespace(
+                id=next_transition_id,
+                source_step=agent_step,
+                target_step=storage_step,
+                condition=None,
+            )
+        )
+        next_transition_id += 1
+    transitions.append(
+        SimpleNamespace(
+            id=next_transition_id,
+            source_step=storage_step,
+            target_step=end_step,
+            condition=None,
+        )
+    )
 
     definition = SimpleNamespace(
-        steps=[start_step, agent_step, storage_step, end_step],
+        steps=[step for step in [start_step, agent_step, transform_step, storage_step, end_step] if step],
         transitions=transitions,
         workflow_id=1,
         workflow=SimpleNamespace(slug="demo", display_name="Démo"),
@@ -881,6 +933,49 @@ def test_normalize_graph_accepts_json_vector_store_node() -> None:
 
     assert any(node.kind == "json_vector_store" for node in nodes)
     assert any(edge.target_slug == "json-store" for edge in edges)
+
+
+def test_normalize_graph_accepts_transform_node() -> None:
+    service = WorkflowService(session_factory=lambda: None)
+    payload = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {
+                "slug": "agent-triage",
+                "kind": "agent",
+                "agent_key": "triage",
+                "is_enabled": True,
+            },
+            {
+                "slug": "reshape",
+                "kind": "transform",
+                "is_enabled": True,
+                "parameters": {"expressions": {"slug": "{{ input.output_structured.slug }}"}},
+            },
+            {
+                "slug": "json-store",
+                "kind": "json_vector_store",
+                "is_enabled": True,
+                "parameters": {
+                    "vector_store_slug": "dossiers-clients",
+                    "doc_id_expression": "input.output_structured.id",
+                    "document_expression": "input.output_structured",
+                },
+            },
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [
+            {"source": "start", "target": "agent-triage"},
+            {"source": "agent-triage", "target": "reshape"},
+            {"source": "reshape", "target": "json-store"},
+            {"source": "json-store", "target": "end"},
+        ],
+    }
+
+    nodes, edges = service._normalize_graph(payload)
+
+    assert any(node.kind == "transform" for node in nodes)
+    assert any(edge.target_slug == "reshape" for edge in edges)
 
 
 def test_run_workflow_ingests_agent_json(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -978,6 +1073,65 @@ def test_json_vector_store_node_generates_identifier_when_missing(
     assert slug == "demo-store"
     assert doc_id == "store-json-cafebabedeadbeefcafebabedeadbeef"
     assert payload == {"payload": {"title": "Nouvelle fiche"}}
+    assert metadata["workflow_step"] == "store-json"
+    assert metadata["workflow_step_title"] == "Sauvegarde"
+
+    assert sessions and sessions[0].committed is True
+
+
+def test_json_vector_store_transform_step_restructures_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    widget_definition = {
+        "type": "Card",
+        "size": "full",
+        "children": [
+            {
+                "type": "Image",
+                "src": "https://upload.wikimedia.org/wikipedia/commons/a/a9/Example.jpg",
+                "alt": "Image d'exemple (Wikimedia Commons)",
+                "fit": "cover",
+                "frame": False,
+                "position": "center",
+            }
+        ],
+    }
+
+    calls, sessions = _execute_json_vector_store_workflow(
+        monkeypatch,
+        storage_parameters={
+            "vector_store_slug": "demo-store",
+            "doc_id_expression": "input.output_structured.doc_id",
+            "document_expression": "input.output_structured.record",
+        },
+        transform_parameters={
+            "expressions": {
+                "doc_id": "{{ input.output_structured.doc_id }}",
+                "record": {
+                    "slug": "{{ input.output_structured.widget }}",
+                    "title": None,
+                    "definition": "{{ input.output_structured.widget_definition }}",
+                    "description": None,
+                },
+            }
+        },
+        runner_payload={
+            "doc_id": "widget-doc",
+            "widget": "image",
+            "widget_definition": widget_definition,
+        },
+    )
+
+    assert len(calls) == 1
+    slug, doc_id, payload, metadata = calls[0]
+    assert slug == "demo-store"
+    assert doc_id == "widget-doc"
+    assert payload == {
+        "slug": "image",
+        "title": None,
+        "definition": widget_definition,
+        "description": None,
+    }
     assert metadata["workflow_step"] == "store-json"
     assert metadata["workflow_step_title"] == "Sauvegarde"
 
