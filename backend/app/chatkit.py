@@ -265,16 +265,25 @@ class ImageAwareThreadItemConverter(ThreadItemConverter):
         task = item.task
 
         # Extraire l'URL de l'image générée
+        # IMPORTANT: Préférer data_url (base64) qui fonctionne partout
+        # au lieu de image_url (HTTP avec token qui peut expirer)
         image_urls = []
         if task.images:
             for image in task.images:
-                # Récupérer l'URL de l'image
-                image_url = getattr(image, "image_url", None)
-                if not image_url and hasattr(image, "data_url"):
-                    # Si pas d'URL directe, vérifier data_url
+                # Ordre de préférence:
+                # 1. data_url (base64) - fonctionne toujours, pas d'expiration
+                # 2. image_url (HTTP) - peut expirer si tokenisé
+                image_url = None
+
+                # Essayer d'abord le data_url (base64)
+                if hasattr(image, "data_url"):
                     data_url = getattr(image, "data_url", None)
-                    if data_url and not data_url.startswith("data:"):
+                    if data_url and data_url.startswith("data:"):
                         image_url = data_url
+
+                # Si pas de data_url, utiliser image_url
+                if not image_url:
+                    image_url = getattr(image, "image_url", None)
 
                 if image_url:
                     image_urls.append(image_url)
@@ -4158,17 +4167,25 @@ async def run_workflow(
             conversation_history.extend(restored_history)
 
     # Convertir l'historique des thread items si fourni
+    # IMPORTANT: Exclure le message utilisateur actuel (source_item_id) pour éviter la duplication
     if thread_items_history and thread_item_converter:
         try:
-            converted_history = await thread_item_converter.to_agent_input(thread_items_history)
-            if converted_history:
-                conversation_history.extend(converted_history)
+            # Filtrer le message utilisateur actuel de l'historique
+            filtered_history = [
+                item for item in thread_items_history
+                if item.id != current_input_item_id
+            ]
+            if filtered_history:
+                converted_history = await thread_item_converter.to_agent_input(filtered_history)
+                if converted_history:
+                    conversation_history.extend(converted_history)
         except Exception as exc:
             logger.warning(
                 "Impossible de convertir l'historique des thread items, poursuite sans historique",
                 exc_info=exc,
             )
 
+    # Ajouter le message utilisateur actuel
     if initial_user_text.strip():
         conversation_history.append(
             {
