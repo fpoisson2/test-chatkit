@@ -48,7 +48,26 @@ type WeatherToolCall = {
   };
 };
 
-type ClientToolCall = WeatherToolCall;
+type GeneratedImageDescriptor = {
+  url: string;
+  relative_url?: string | null;
+  step_slug?: string | null;
+  step_title?: string | null;
+  agent_key?: string | null;
+  agent_label?: string | null;
+  call_id?: string | null;
+  output_index?: number | null;
+};
+
+type GeneratedImageToolCall = {
+  name: "announce_generated_image";
+  params?: {
+    urls?: string[] | null;
+    images?: GeneratedImageDescriptor[] | null;
+  } | null;
+};
+
+type ClientToolCall = WeatherToolCall | GeneratedImageToolCall;
 
 // Caractère invisible utilisé pour déclencher le démarrage automatique côté widget.
 const AUTO_START_TRIGGER_MESSAGE = "\u200B";
@@ -637,6 +656,83 @@ export function MyChat() {
               }
 
               return response.json();
+            }
+            case "announce_generated_image": {
+              const parameters = (toolCall as GeneratedImageToolCall).params ?? {};
+
+              const urlSet = new Set<string>();
+              const addUrl = (value: unknown) => {
+                if (typeof value !== "string") {
+                  return;
+                }
+                const trimmed = value.trim();
+                if (trimmed) {
+                  urlSet.add(trimmed);
+                }
+              };
+
+              const normalizedImages: GeneratedImageDescriptor[] = [];
+              const rawImages = Array.isArray(parameters.images) ? parameters.images : [];
+              for (const entry of rawImages) {
+                if (!entry || typeof entry !== "object") {
+                  continue;
+                }
+
+                const rawUrl = typeof entry.url === "string" ? entry.url.trim() : "";
+                if (!rawUrl) {
+                  continue;
+                }
+
+                const normalized: GeneratedImageDescriptor = { url: rawUrl };
+                addUrl(rawUrl);
+
+                if (typeof entry.relative_url === "string" && entry.relative_url.trim()) {
+                  const relative = entry.relative_url.trim();
+                  normalized.relative_url = relative;
+                  addUrl(relative);
+                }
+
+                const assignStringField = <K extends keyof GeneratedImageDescriptor>(
+                  key: K,
+                  value: unknown,
+                ) => {
+                  if (typeof value === "string") {
+                    const trimmed = value.trim();
+                    if (trimmed) {
+                      normalized[key] = trimmed as GeneratedImageDescriptor[K];
+                    }
+                  }
+                };
+
+                assignStringField("step_slug", entry.step_slug);
+                assignStringField("step_title", entry.step_title);
+                assignStringField("agent_key", entry.agent_key);
+                assignStringField("agent_label", entry.agent_label);
+                assignStringField("call_id", entry.call_id);
+
+                const outputIndex = entry.output_index;
+                if (typeof outputIndex === "number" && Number.isFinite(outputIndex)) {
+                  normalized.output_index = outputIndex;
+                } else if (typeof outputIndex === "string") {
+                  const parsed = Number.parseInt(outputIndex, 10);
+                  if (Number.isFinite(parsed)) {
+                    normalized.output_index = parsed;
+                  }
+                }
+
+                normalizedImages.push(normalized);
+              }
+
+              const rawUrls = Array.isArray(parameters.urls) ? parameters.urls : [];
+              for (const value of rawUrls) {
+                addUrl(value);
+              }
+
+              return {
+                acknowledged: true,
+                urls: Array.from(urlSet),
+                images: normalizedImages,
+              };
             }
             default:
               throw new Error(`Outil client non pris en charge : ${name}`);

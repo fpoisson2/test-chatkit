@@ -60,7 +60,12 @@ except ImportError:  # pragma: no cover - compatibilité avec les anciennes vers
 from pydantic import BaseModel, Field, create_model
 
 from chatkit.actions import Action
-from chatkit.agents import AgentContext, simple_to_agent_input, stream_agent_response
+from chatkit.agents import (
+    AgentContext,
+    ClientToolCall,
+    simple_to_agent_input,
+    stream_agent_response,
+)
 
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
     from chatkit.agents import stream_widget as _sdk_stream_widget
@@ -125,7 +130,86 @@ logger = logging.getLogger("chatkit.server")
 
 AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
 
+CLIENT_TOOL_CALL_NAME_ANNOUNCE_GENERATED_IMAGE = "announce_generated_image"
+
 _WAIT_STATE_METADATA_KEY = "workflow_wait_for_user_input"
+
+
+def _normalize_optional_str(value: Any) -> str | None:
+    if isinstance(value, str):
+        normalized = value.strip()
+        if normalized:
+            return normalized
+    return None
+
+
+def _to_optional_int(value: Any) -> int | None:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _update_generated_image_client_tool_call(
+    agent_ctx: AgentContext,
+    *,
+    image_record: Mapping[str, Any],
+    metadata: Mapping[str, Any],
+) -> None:
+    url = _normalize_optional_str(image_record.get("local_file_url"))
+    relative_url = _normalize_optional_str(image_record.get("local_file_relative_url"))
+    if not url:
+        url = relative_url
+    elif relative_url == url:
+        relative_url = None
+    if not url:
+        return
+
+    image_entry: dict[str, Any] = {"url": url}
+    if relative_url:
+        image_entry["relative_url"] = relative_url
+
+    for key in ("call_id", "step_slug", "step_title", "agent_key", "agent_label"):
+        candidate = metadata.get(key)
+        if candidate is None:
+            candidate = image_record.get(key)
+        normalized = _normalize_optional_str(candidate)
+        if normalized:
+            image_entry[key] = normalized
+
+    output_index = _to_optional_int(metadata.get("output_index"))
+    if output_index is not None:
+        image_entry["output_index"] = output_index
+
+    existing_call = getattr(agent_ctx, "client_tool_call", None)
+    if not isinstance(existing_call, ClientToolCall) or existing_call.name != CLIENT_TOOL_CALL_NAME_ANNOUNCE_GENERATED_IMAGE:
+        agent_ctx.client_tool_call = ClientToolCall(
+            name=CLIENT_TOOL_CALL_NAME_ANNOUNCE_GENERATED_IMAGE,
+            arguments={"urls": [url], "images": [image_entry]},
+        )
+        return
+
+    arguments = existing_call.arguments
+    urls_argument = arguments.get("urls")
+    if not isinstance(urls_argument, list):
+        urls_argument = []
+        arguments["urls"] = urls_argument
+    if url not in urls_argument:
+        urls_argument.append(url)
+
+    images_argument = arguments.get("images")
+    if not isinstance(images_argument, list):
+        images_argument = []
+        arguments["images"] = images_argument
+    if not any(
+        isinstance(entry, Mapping) and entry.get("url") == url
+        for entry in images_argument
+    ):
+        images_argument.append(image_entry)
 
 
 def _get_wait_state_metadata(thread: Any) -> dict[str, Any] | None:
@@ -5442,6 +5526,12 @@ async def run_workflow(
                 stored_record = await _persist_agent_image(context, key, task, image)
                 context["last_stored_b64"] = image.b64_json
                 agent_image_tasks.pop(key, None)
+                if stored_record:
+                    _update_generated_image_client_tool_call(
+                        agent_context,
+                        image_record=stored_record,
+                        metadata=context,
+                    )
                 if stored_record and on_stream_event is not None:
                     url = stored_record.get("local_file_url") or stored_record.get(
                         "local_file_relative_url"
