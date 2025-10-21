@@ -1,35 +1,25 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { ChatKit, useChatKit } from "@openai/chatkit-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useChatKit } from "@openai/chatkit-react";
 import type { ChatKitOptions } from "@openai/chatkit";
 
 import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
+import { ChatKitHost } from "./components/my-chat/ChatKitHost";
+import { ChatSidebar } from "./components/my-chat/ChatSidebar";
+import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
 import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
+import { useChatkitSession } from "./hooks/useChatkitSession";
+import { useChatkitWorkflowSync } from "./hooks/useChatkitWorkflowSync";
+import { useHostedFlow } from "./hooks/useHostedFlow";
 import { getOrCreateDeviceId } from "./utils/device";
-import {
-  clearStoredChatKitSecret,
-  inferChatKitSessionExpiration,
-  persistChatKitSecret,
-  readStoredChatKitSession,
-} from "./utils/chatkitSession";
+import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import {
   clearStoredThreadId,
   loadStoredThreadId,
   persistStoredThreadId,
 } from "./utils/chatkitThread";
 import type { WorkflowSummary } from "./types/workflows";
-import { ChatWorkflowSidebar } from "./features/workflows/ChatWorkflowSidebar";
-import {
-  chatkitApi,
-  makeApiEndpointCandidates,
-  type ChatKitWorkflowInfo,
-} from "./utils/backend";
+import { makeApiEndpointCandidates } from "./utils/backend";
 
 type ChatConfigDebugSnapshot = {
   hostedFlow: boolean;
@@ -50,53 +40,39 @@ type WeatherToolCall = {
 
 type ClientToolCall = WeatherToolCall;
 
-// Caractère invisible utilisé pour déclencher le démarrage automatique côté widget.
-const AUTO_START_TRIGGER_MESSAGE = "\u200B";
-
-
 export function MyChat() {
   const { token, user } = useAuth();
   const { openSidebar } = useAppLayout();
   const preferredColorScheme = usePreferredColorScheme();
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
   const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
     loadStoredThreadId(sessionOwner),
   );
   const [activeWorkflow, setActiveWorkflow] = useState<WorkflowSummary | null>(null);
-  const [chatkitWorkflowInfo, setChatkitWorkflowInfo] =
-    useState<ChatKitWorkflowInfo | null>(null);
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
-  const [hostedFlowEnabled, setHostedFlowEnabled] = useState(() => {
-    const raw = import.meta.env.VITE_CHATKIT_FORCE_HOSTED;
-    if (!raw) {
-      return false;
-    }
-    const normalized = raw.trim().toLowerCase();
-    if (normalized === "false" || normalized === "0" || normalized === "no") {
-      return false;
-    }
-    return normalized === "true" || normalized === "1" || normalized === "yes";
-  });
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
-  const fetchUpdatesRef = useRef<(() => Promise<void>) | null>(null);
-  const lastVisibilityRefreshRef = useRef(0);
   const previousSessionOwnerRef = useRef<string | null>(null);
-  const autoStartAttemptRef = useRef(false);
   const missingDomainKeyWarningShownRef = useRef(false);
+  const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
+  const resetChatState = useCallback(() => {
+    clearStoredChatKitSecret(sessionOwner);
+    clearStoredThreadId(sessionOwner);
+    lastThreadSnapshotRef.current = null;
+    setInitialThreadId(null);
+    setChatInstanceKey((value) => value + 1);
+  }, [sessionOwner]);
 
-  const reportError = useCallback((message: string, detail?: unknown) => {
-    setError(message);
-    if (message) {
-      if (detail !== undefined) {
-        console.error(`[ChatKit] ${message}`, detail);
-      } else {
-        console.error(`[ChatKit] ${message}`);
-      }
-    }
-  }, []);
+  const { hostedFlowEnabled, disableHostedFlow } = useHostedFlow({
+    onDisable: resetChatState,
+  });
+
+  const { getClientSecret, isLoading, error, reportError, resetError } = useChatkitSession({
+    sessionOwner,
+    token,
+    hostedFlowEnabled,
+    disableHostedFlow,
+  });
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -112,17 +88,14 @@ export function MyChat() {
         const nextId = workflow?.id ?? null;
 
         if (reason === "user" && currentId !== nextId) {
-          clearStoredChatKitSecret(sessionOwner);
-          clearStoredThreadId(sessionOwner);
-          lastThreadSnapshotRef.current = null;
-          setInitialThreadId(null);
-          setChatInstanceKey((value) => value + 1);
+          resetChatState();
+          resetError();
         }
 
         return workflow;
       });
     },
-    [sessionOwner],
+    [resetChatState, resetError],
   );
 
   useEffect(() => {
@@ -137,166 +110,7 @@ export function MyChat() {
     setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
   }, [sessionOwner]);
 
-  useEffect(() => {
-    if (!token) {
-      setChatkitWorkflowInfo(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadWorkflowInfo = async () => {
-      try {
-        const info = await chatkitApi.getWorkflow(token);
-        if (!cancelled) {
-          setChatkitWorkflowInfo(info);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          if (import.meta.env.DEV) {
-            console.warn(
-              "[ChatKit] Impossible de charger le workflow actif pour déterminer le démarrage automatique.",
-              err,
-            );
-          }
-          setChatkitWorkflowInfo(null);
-        }
-      }
-    };
-
-    void loadWorkflowInfo();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [token, activeWorkflow?.id, activeWorkflow?.active_version_id, activeWorkflow?.updated_at]);
-
-  const disableHostedFlow = useCallback(
-    (reason: string | null = null) => {
-      if (!hostedFlowEnabled) {
-        return;
-      }
-
-      if (import.meta.env.DEV) {
-        const hint = reason ? ` (${reason})` : "";
-        console.info("[ChatKit] Désactivation du flux hébergé%s.", hint);
-      }
-
-      clearStoredChatKitSecret(sessionOwner);
-      clearStoredThreadId(sessionOwner);
-      lastThreadSnapshotRef.current = null;
-      setInitialThreadId(null);
-      setHostedFlowEnabled(false);
-      setChatInstanceKey((value) => value + 1);
-    },
-    [hostedFlowEnabled, sessionOwner],
-  );
-
-  const getClientSecret = useCallback(async (currentSecret: string | null) => {
-    const { session: storedSession, shouldRefresh } = readStoredChatKitSession(sessionOwner);
-
-    if (currentSecret && storedSession && storedSession.secret === currentSecret && !shouldRefresh) {
-      return currentSecret;
-    }
-
-    if (!currentSecret && storedSession && !shouldRefresh) {
-      return storedSession.secret;
-    }
-
-    if (storedSession && shouldRefresh) {
-      clearStoredChatKitSecret(sessionOwner);
-    }
-
-    setIsLoading(true);
-    setError(null);
-    if (import.meta.env.DEV) {
-      console.debug(
-        "[ChatKit] Demande d'un client_secret pour %s (flux hébergé activé: %s).",
-        sessionOwner,
-        hostedFlowEnabled ? "oui" : "non",
-      );
-    }
-
-    try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-
-      const res = await fetch("/api/chatkit/session", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ user: sessionOwner }),
-      });
-
-      if (!res.ok) {
-        const message = await res.text();
-        const combinedMessage = `${res.status} ${message}`.trim();
-
-        const normalizedMessage = (() => {
-          try {
-            const parsed = JSON.parse(message);
-            if (parsed?.detail) {
-              if (typeof parsed.detail === "string") {
-                return parsed.detail;
-              }
-              if (typeof parsed.detail?.hint === "string") {
-                return parsed.detail.hint;
-              }
-              if (typeof parsed.detail?.error === "string") {
-                return parsed.detail.error;
-              }
-            }
-          } catch (err) {
-            if (import.meta.env.DEV) {
-              console.warn("[ChatKit] Impossible d'analyser la réponse de session", err);
-            }
-          }
-          return message;
-        })();
-
-        if (import.meta.env.DEV) {
-          console.error(
-            "[ChatKit] Échec lors de la récupération du client_secret (%s) : %s",
-            res.status,
-            normalizedMessage,
-          );
-        }
-
-        if (res.status === 500 && normalizedMessage.includes("CHATKIT_WORKFLOW_ID")) {
-          disableHostedFlow("CHATKIT_WORKFLOW_ID manquant");
-          throw new Error(
-            "Le flux hébergé a été désactivé car CHATKIT_WORKFLOW_ID n'est pas configuré côté serveur.",
-          );
-        }
-
-        const errorMessage = `Failed to fetch client secret: ${combinedMessage}`;
-        throw new Error(errorMessage);
-      }
-
-      const data = await res.json();
-      if (!data?.client_secret) {
-        throw new Error("Missing client_secret in ChatKit session response");
-      }
-
-      const expiresAt = inferChatKitSessionExpiration(data);
-      persistChatKitSecret(sessionOwner, data.client_secret, expiresAt);
-
-      return data.client_secret;
-    } catch (err) {
-      if (err instanceof Error) {
-        reportError(err.message, err);
-      } else {
-        reportError("Erreur inconnue lors de la récupération du client_secret.");
-      }
-      clearStoredChatKitSecret(sessionOwner);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [disableHostedFlow, hostedFlowEnabled, reportError, sessionOwner, token]);
+  
 
   const { apiConfig, attachmentsEnabled, debugSnapshot } = useMemo<{
     apiConfig: ChatKitOptions["api"];
@@ -652,27 +466,16 @@ export function MyChat() {
           reportError(error.message, error);
         },
         onResponseStart: () => {
-          setError(null);
+          resetError();
         },
         onResponseEnd: () => {
           console.debug("[ChatKit] response end");
-          const refresh = fetchUpdatesRef.current;
-          if (!refresh) {
-            return;
-          }
-          refresh().catch((err) => {
-            if (import.meta.env.DEV) {
-              console.warn("[ChatKit] Échec de la synchronisation après la réponse", err);
-            }
-          });
+          requestRefreshRef.current?.("[ChatKit] Échec de la synchronisation après la réponse");
         },
         onThreadChange: ({ threadId }: { threadId: string | null }) => {
           console.debug("[ChatKit] thread change", { threadId });
           persistStoredThreadId(sessionOwner, threadId);
           setInitialThreadId((current) => (current === threadId ? current : threadId));
-          if (threadId === null) {
-            autoStartAttemptRef.current = false;
-          }
         },
         onThreadLoadStart: ({ threadId }: { threadId: string }) => {
           console.debug("[ChatKit] thread load start", { threadId });
@@ -705,141 +508,29 @@ export function MyChat() {
 
   const { control, fetchUpdates, sendUserMessage } = useChatKit(chatkitOptions);
 
-  useEffect(() => {
-    fetchUpdatesRef.current = fetchUpdates;
-    return () => {
-      fetchUpdatesRef.current = null;
-    };
-  }, [fetchUpdates]);
-
-  useEffect(() => {
-    if (!chatkitWorkflowInfo || !chatkitWorkflowInfo.auto_start) {
-      autoStartAttemptRef.current = false;
-      return;
-    }
-
-    if (initialThreadId) {
-      return;
-    }
-
-    if (autoStartAttemptRef.current) {
-      return;
-    }
-
-    autoStartAttemptRef.current = true;
-
-    const configuredMessage = chatkitWorkflowInfo.auto_start_user_message ?? "";
-    const payloadText = configuredMessage.trim()
-      ? configuredMessage
-      : AUTO_START_TRIGGER_MESSAGE;
-
-    sendUserMessage({ text: payloadText, newThread: true })
-      .then(() => {
-        const refresh = fetchUpdatesRef.current;
-        if (!refresh) {
-          return;
-        }
-        return refresh().catch((err: unknown) => {
-          if (import.meta.env.DEV) {
-            console.warn("[ChatKit] Rafraîchissement après démarrage automatique impossible", err);
-          }
-        });
-      })
-      .catch((err: unknown) => {
-        autoStartAttemptRef.current = false;
-        const message =
-          err instanceof Error
-            ? err.message
-            : "Impossible de démarrer automatiquement le workflow.";
-        if (import.meta.env.DEV) {
-          console.warn("[ChatKit] Échec du démarrage automatique", err);
-        }
-        reportError(message, err);
-      });
-  }, [
-    chatkitWorkflowInfo?.auto_start,
-    chatkitWorkflowInfo?.auto_start_user_message,
+  const { requestRefresh } = useChatkitWorkflowSync({
+    token,
+    activeWorkflow,
+    fetchUpdates,
     sendUserMessage,
     initialThreadId,
     reportError,
-  ]);
+  });
 
   useEffect(() => {
-    if (typeof window === "undefined" || typeof document === "undefined") {
-      return;
-    }
-
-    let rafHandle: number | null = null;
-
-    const refreshConversation = () => {
-      const now = Date.now();
-      if (now - lastVisibilityRefreshRef.current < 500) {
-        return;
-      }
-      lastVisibilityRefreshRef.current = now;
-
-      fetchUpdates().catch((err) => {
-        if (import.meta.env.DEV) {
-          console.warn("[ChatKit] Échec de la synchronisation après retour d'onglet", err);
-        }
-      });
-    };
-
-    const scheduleRefresh = () => {
-      if (rafHandle !== null) {
-        cancelAnimationFrame(rafHandle);
-      }
-      rafHandle = requestAnimationFrame(refreshConversation);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        scheduleRefresh();
-      }
-    };
-
-    const handleWindowFocus = () => {
-      scheduleRefresh();
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", handleWindowFocus);
-
+    requestRefreshRef.current = requestRefresh;
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", handleWindowFocus);
-      if (rafHandle !== null) {
-        cancelAnimationFrame(rafHandle);
-      }
+      requestRefreshRef.current = null;
     };
-  }, [fetchUpdates]);
+  }, [requestRefresh]);
 
   const statusMessage = error ?? (isLoading ? "Initialisation de la session…" : null);
 
-  const statusClassName = [
-    "chatkit-status",
-    error ? "chatkit-status--error" : "",
-    !error && isLoading ? "chatkit-status--loading" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
   return (
     <>
-      <ChatWorkflowSidebar onWorkflowActivated={handleWorkflowActivated} />
-      <div className="chatkit-layout__widget">
-        <ChatKit
-          key={chatInstanceKey}
-          control={control}
-          className="chatkit-host"
-          style={{ width: "100%", height: "100%" }}
-        />
-      </div>
-      {statusMessage && (
-        <div className={statusClassName} role="status" aria-live="polite">
-          {statusMessage}
-        </div>
-      )}
+      <ChatSidebar onWorkflowActivated={handleWorkflowActivated} />
+      <ChatKitHost control={control} chatInstanceKey={chatInstanceKey} />
+      <ChatStatusMessage message={statusMessage} isError={Boolean(error)} isLoading={isLoading} />
     </>
   );
 }
