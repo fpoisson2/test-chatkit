@@ -1561,9 +1561,23 @@ _WIDGET_VALIDATION_TOOL_DEFAULT_DESCRIPTION = (
 )
 
 
+class WidgetValidationResult(BaseModel):
+    """Représente le résultat structuré de la validation d'un widget."""
+
+    valid: bool = Field(description="Indique si la définition est valide")
+    normalized_definition: dict[str, Any] | None = Field(
+        default=None,
+        description="Version normalisée du widget lorsque la validation réussit.",
+    )
+    errors: list[str] = Field(
+        default_factory=list,
+        description="Liste des messages d'erreur retournés par la validation.",
+    )
+
+
 def validate_widget_definition(
     definition: Mapping[str, Any] | str,
-) -> dict[str, Any]:
+) -> WidgetValidationResult:
     """Valide une définition de widget et retourne un rapport structuré."""
 
     parsed_definition: Any = definition
@@ -1573,40 +1587,40 @@ def validate_widget_definition(
     elif isinstance(definition, str):
         candidate = definition.strip()
         if not candidate:
-            return {
-                "valid": False,
-                "errors": ["La définition de widget fournie est vide."],
-            }
+            return WidgetValidationResult(
+                valid=False,
+                errors=["La définition de widget fournie est vide."],
+            )
         try:
             parsed_definition = json.loads(candidate)
         except json.JSONDecodeError as exc:
             location = f" (ligne {exc.lineno}, colonne {exc.colno})" if exc.lineno else ""
-            return {
-                "valid": False,
-                "errors": [f"JSON invalide : {exc.msg}{location}"],
-            }
+            return WidgetValidationResult(
+                valid=False,
+                errors=[f"JSON invalide : {exc.msg}{location}"],
+            )
         except Exception as exc:  # pragma: no cover - garde-fou
             logger.exception(
                 "Erreur lors du décodage JSON de la définition de widget",
                 exc_info=exc,
             )
-            return {
-                "valid": False,
-                "errors": [f"JSON invalide : {exc}"],
-            }
+            return WidgetValidationResult(
+                valid=False,
+                errors=[f"JSON invalide : {exc}"],
+            )
     else:
-        return {
-            "valid": False,
-            "errors": [
+        return WidgetValidationResult(
+            valid=False,
+            errors=[
                 "La définition de widget doit être un objet JSON ou une chaîne JSON.",
             ],
-        }
+        )
 
     if not isinstance(parsed_definition, Mapping):
-        return {
-            "valid": False,
-            "errors": ["La définition de widget doit être un objet JSON."],
-        }
+        return WidgetValidationResult(
+            valid=False,
+            errors=["La définition de widget doit être un objet JSON."],
+        )
 
     try:
         normalized = WidgetLibraryService._normalize_definition(parsed_definition)
@@ -1618,25 +1632,22 @@ def validate_widget_definition(
             messages = [str(entry) for entry in raw_errors]
         else:
             messages = [str(exc)]
-        return {
-            "valid": False,
-            "errors": messages,
-        }
+        return WidgetValidationResult(valid=False, errors=messages)
     except Exception as exc:  # pragma: no cover - garde-fou
         logger.exception(
             "Erreur inattendue lors de la validation de widget",
             exc_info=exc,
         )
-        return {
-            "valid": False,
-            "errors": [f"Erreur interne lors de la validation : {exc}"],
-        }
+        return WidgetValidationResult(
+            valid=False,
+            errors=[f"Erreur interne lors de la validation : {exc}"],
+        )
 
-    return {
-        "valid": True,
-        "normalized_definition": normalized,
-        "errors": [],
-    }
+    return WidgetValidationResult(
+        valid=True,
+        normalized_definition=normalized,
+        errors=[],
+    )
 
 
 def _build_weather_function_tool(payload: Any) -> FunctionTool | None:

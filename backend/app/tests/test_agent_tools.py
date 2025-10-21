@@ -169,13 +169,11 @@ def test_validate_widget_definition_success(monkeypatch: pytest.MonkeyPatch) -> 
 
     result = validate_widget_definition({"type": "Card", "value": "Hello"})
 
-    assert result == {
-        "valid": True,
-        "normalized_definition": {
-            "normalized": True,
-            "definition": {"type": "Card", "value": "Hello"},
-        },
-        "errors": [],
+    assert result.valid is True
+    assert result.errors == []
+    assert result.normalized_definition == {
+        "normalized": True,
+        "definition": {"type": "Card", "value": "Hello"},
     }
 
 
@@ -196,8 +194,8 @@ def test_validate_widget_definition_returns_errors(monkeypatch: pytest.MonkeyPat
 
     result = validate_widget_definition({})
 
-    assert result["valid"] is False
-    assert result["errors"] == ["name: champ requis"]
+    assert result.valid is False
+    assert result.errors == ["name: champ requis"]
 
 
 def test_validate_widget_definition_accepts_json_string(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -217,22 +215,22 @@ def test_validate_widget_definition_accepts_json_string(monkeypatch: pytest.Monk
 
     result = validate_widget_definition("{\n  \"type\": \"Card\"\n}")
 
-    assert result["valid"] is True
+    assert result.valid is True
     assert captured == {"type": "Card"}
 
 
 def test_validate_widget_definition_rejects_invalid_json() -> None:
     result = validate_widget_definition("{type: 'Card'")
 
-    assert result["valid"] is False
-    assert any("JSON invalide" in message for message in result["errors"])
+    assert result.valid is False
+    assert any("JSON invalide" in message for message in result.errors)
 
 
 def test_validate_widget_definition_requires_json_object() -> None:
     result = validate_widget_definition("[]")
 
-    assert result["valid"] is False
-    assert result["errors"] == ["La définition de widget doit être un objet JSON."]
+    assert result.valid is False
+    assert result.errors == ["La définition de widget doit être un objet JSON."]
 
 
 def test_validate_widget_definition_handles_unexpected_exception(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -249,8 +247,8 @@ def test_validate_widget_definition_handles_unexpected_exception(monkeypatch: py
 
     result = validate_widget_definition({"type": "Card"})
 
-    assert result["valid"] is False
-    assert any("Erreur interne" in message for message in result["errors"])
+    assert result.valid is False
+    assert any("Erreur interne" in message for message in result.errors)
 
 def test_coerce_agent_tools_accepts_empty_list() -> None:
     tools = _coerce_agent_tools([], [web_search_preview])
