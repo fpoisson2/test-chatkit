@@ -4732,6 +4732,12 @@ async def run_workflow(
                     "Chaque opération doit préciser une cible 'target'."
                 )
             value = _evaluate_state_expression(entry.get("expression"))
+            logger.debug(
+                "set_state: stockage de %s = %s (type: %s)",
+                target,
+                str(value)[:200] if value else "None",
+                type(value).__name__,
+            )
             _assign_state_value(target, value)
 
     def _extract_delta(event: ThreadStreamEvent) -> str:
