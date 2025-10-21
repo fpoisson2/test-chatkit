@@ -365,6 +365,11 @@ async def chatkit_endpoint(
     try:
         server = get_chatkit_server()
     except ModuleNotFoundError as exc:  # pragma: no cover - dépendance optionnelle absente
+        logger.error(
+            "SDK ChatKit introuvable : installez le paquet `chatkit` ou configurez"
+            " CHATKIT_WORKFLOW_ID pour utiliser cette route.",
+            exc_info=exc,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
