@@ -30,6 +30,8 @@ ROOT_DIR = Path(__file__).resolve().parents[3]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from pydantic import AnyUrl  # noqa: E402
+
 from chatkit.store import NotFoundError  # noqa: E402
 from chatkit.types import (  # noqa: E402
     AttachmentCreateParams,
@@ -488,6 +490,25 @@ def test_finalize_upload_exposes_download_url(
         loaded_attachment = await store.load_attachment(pending_attachment.id, context)
         assert isinstance(loaded_attachment, FileAttachment)
         assert str(loaded_attachment.upload_url) == expected_url
+        assert isinstance(loaded_attachment.upload_url, AnyUrl)
+
+        with session_factory() as session:
+            record = session.execute(
+                select(ChatAttachment).where(
+                    ChatAttachment.id == pending_attachment.id
+                )
+            ).scalar_one()
+            legacy_payload = dict(record.payload)
+            legacy_payload["upload_url"] = expected_url
+            record.payload = legacy_payload
+            session.add(record)
+            session.commit()
+
+        coerced_attachment = await store.load_attachment(
+            pending_attachment.id, context
+        )
+        assert isinstance(coerced_attachment.upload_url, AnyUrl)
+        assert str(coerced_attachment.upload_url) == expected_url
 
         message = UserMessageItem(
             id="item-1",
@@ -519,10 +540,32 @@ def test_finalize_upload_exposes_download_url(
         retrieved = page.data[0]
         assert retrieved.attachments
         assert str(retrieved.attachments[0].upload_url) == expected_url
+        assert isinstance(retrieved.attachments[0].upload_url, AnyUrl)
 
         single = await store.load_item(thread.id, message.id, context)
         assert getattr(single, "attachments", None)
         assert str(single.attachments[0].upload_url) == expected_url
+        assert isinstance(single.attachments[0].upload_url, AnyUrl)
+
+        with session_factory() as session:
+            item_record = session.execute(
+                select(ChatThreadItem).where(ChatThreadItem.id == message.id)
+            ).scalar_one()
+            payload = dict(item_record.payload)
+            attachments_payload = list(payload.get("attachments") or [])
+            if attachments_payload:
+                attachments_payload[0]["upload_url"] = expected_url
+                payload["attachments"] = attachments_payload
+                item_record.payload = payload
+                session.add(item_record)
+                session.commit()
+
+        page_again = await store.load_thread_items(thread.id, None, 10, "asc", context)
+        assert page_again.data
+        ensured = page_again.data[0]
+        assert ensured.attachments
+        assert isinstance(ensured.attachments[0].upload_url, AnyUrl)
+        assert str(ensured.attachments[0].upload_url) == expected_url
 
         monkeypatch.setattr(
             routes_chatkit,

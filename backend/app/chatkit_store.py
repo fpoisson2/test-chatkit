@@ -109,7 +109,11 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 )
             )
             current = attachment.upload_url
-            if current is None or str(current) != str(expected):
+            if (
+                current is None
+                or not isinstance(current, AnyUrl)
+                or str(current) != str(expected)
+            ):
                 return attachment.model_copy(update={"upload_url": expected})
         return attachment
 
