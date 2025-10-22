@@ -37,6 +37,8 @@ _LEGACY_AGENT_KEYS = frozenset(
 )
 _LEGACY_STATE_SLUGS = frozenset({"maj-etat-triage", "maj-etat-validation"})
 
+AGENT_NODE_KINDS: frozenset[str] = frozenset({"agent", "voice_agent"})
+
 
 def _coerce_auto_start(value: Any) -> bool:
     if isinstance(value, bool):
@@ -1252,7 +1254,7 @@ class WorkflowService:
             parameters = dict(node.parameters)
             metadata = dict(node.metadata)
 
-            if node.kind == "agent" and node.agent_key:
+            if node.kind in AGENT_NODE_KINDS and node.agent_key:
                 legacy_step = legacy_agent_steps.get(node.agent_key)
                 if legacy_step is not None:
                     if legacy_step.display_name:
@@ -1333,26 +1335,27 @@ class WorkflowService:
             slugs.add(slug)
 
             kind = str(entry.get("kind", "")).strip().lower()
-            if kind not in {
-                "start",
-                "agent",
-                "condition",
-                "state",
-                "transform",
-                "watch",
-                "wait_for_user_input",
-                "assistant_message",
-                "user_message",
-                "json_vector_store",
-                "widget",
-                "end",
-            }:
+            if kind not in AGENT_NODE_KINDS.union(
+                {
+                    "start",
+                    "condition",
+                    "state",
+                    "transform",
+                    "watch",
+                    "wait_for_user_input",
+                    "assistant_message",
+                    "user_message",
+                    "json_vector_store",
+                    "widget",
+                    "end",
+                }
+            ):
                 raise WorkflowValidationError(
                     f"Type de nœud invalide : {kind or 'inconnu'}"
                 )
 
             agent_key: str | None = None
-            if kind == "agent":
+            if kind in AGENT_NODE_KINDS:
                 raw_agent_key = entry.get("agent_key")
                 if raw_agent_key is None:
                     agent_key = None
@@ -1393,7 +1396,7 @@ class WorkflowService:
             )
             normalized_nodes.append(node)
 
-            if node.kind == "agent" and node.is_enabled:
+            if node.kind in AGENT_NODE_KINDS and node.is_enabled:
                 enabled_agent_slugs.add(node.slug)
                 if node.agent_key:
                     enabled_agent_keys.add(node.agent_key)
@@ -1727,7 +1730,7 @@ def serialize_definition(definition: WorkflowDefinition) -> dict[str, Any]:
             "updated_at": step.updated_at,
         }
         for step in sorted(definition.steps, key=lambda s: s.position)
-        if step.kind == "agent"
+        if step.kind in AGENT_NODE_KINDS
     ]
 
     return {

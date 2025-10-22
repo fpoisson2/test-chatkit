@@ -1,6 +1,7 @@
 """Services liés aux workflows ChatKit."""
 
 from .service import (
+    AGENT_NODE_KINDS,
     WorkflowNotFoundError,
     WorkflowService,
     WorkflowValidationError,
@@ -20,6 +21,7 @@ __all__ = [
     "WorkflowService",
     "WorkflowVersionNotFoundError",
     "WorkflowValidationError",
+    "AGENT_NODE_KINDS",
     "serialize_definition",
     "serialize_definition_graph",
     "serialize_viewport",
