@@ -146,26 +146,42 @@ export const prepareNodeParametersForSave = (
 
 export const buildNodeStyle = (
   kind: NodeKind,
-  options: { isSelected?: boolean } = {},
+  options: { isSelected?: boolean; isPreviewActive?: boolean; isPreviewDimmed?: boolean } = {},
 ): CSSProperties => {
-  const { isSelected = false } = options;
+  const {
+    isSelected = false,
+    isPreviewActive = false,
+    isPreviewDimmed = false,
+  } = options;
   const baseShadow = "var(--shadow-soft)";
   const selectionRingColor = "rgba(255, 255, 255, 0.92)";
   const haloShadow = `0 0 0 6px ${NODE_GLOW_COLORS[kind]}`;
   const ringShadow = `0 0 0 2px ${selectionRingColor}`;
+  let boxShadow = isSelected ? `${baseShadow}, ${ringShadow}, ${haloShadow}` : baseShadow;
+  let borderColor = NODE_COLORS[kind];
+  let backgroundColor = NODE_BACKGROUNDS[kind];
+  let textColor = "var(--text-color)";
+
+  if (isPreviewDimmed) {
+    borderColor = "var(--surface-border)";
+    backgroundColor = "var(--color-surface-subtle)";
+    textColor = "var(--text-muted)";
+    boxShadow = "none";
+  } else if (isPreviewActive) {
+    boxShadow = `${baseShadow}, 0 0 0 4px ${NODE_GLOW_COLORS[kind]}`;
+  }
+
   return {
     padding: "0.75rem 1rem",
     borderRadius: "0.75rem",
-    border: `2px solid ${NODE_COLORS[kind]}`,
-    color: "var(--text-color)",
-    background: NODE_BACKGROUNDS[kind],
+    border: `2px solid ${borderColor}`,
+    color: textColor,
+    background: backgroundColor,
     fontWeight: 600,
     minWidth: 160,
     textAlign: "center",
     overflow: "visible",
-    boxShadow: isSelected
-      ? `${baseShadow}, ${ringShadow}, ${haloShadow}`
-      : baseShadow,
+    boxShadow,
   };
 };
 
