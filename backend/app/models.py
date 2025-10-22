@@ -363,7 +363,8 @@ class WorkflowViewport(Base):
             "user_id",
             "workflow_id",
             "version_id",
-            name="workflow_viewports_user_workflow_version",
+            "device_type",
+            name="workflow_viewports_user_workflow_version_device",
         ),
         Index("ix_workflow_viewports_user_workflow", "user_id", "workflow_id"),
     )
@@ -386,6 +387,11 @@ class WorkflowViewport(Base):
         ForeignKey("workflow_definitions.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+    )
+    device_type: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="desktop",
     )
     x: Mapped[float] = mapped_column(Float, nullable=False)
     y: Mapped[float] = mapped_column(Float, nullable=False)

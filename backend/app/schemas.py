@@ -345,6 +345,7 @@ class WorkflowChatKitUpdate(BaseModel):
 class WorkflowViewportEntry(BaseModel):
     workflow_id: int
     version_id: int | None = None
+    device_type: str = "desktop"
     x: float
     y: float
     zoom: float
@@ -357,6 +358,7 @@ class WorkflowViewportEntry(BaseModel):
 class WorkflowViewportUpsert(BaseModel):
     workflow_id: int
     version_id: int | None = None
+    device_type: str = "desktop"
     x: float
     y: float
     zoom: float
@@ -366,6 +368,13 @@ class WorkflowViewportUpsert(BaseModel):
     def _ensure_finite(cls, value: float) -> float:
         if not math.isfinite(value):
             raise ValueError("La valeur doit être un nombre fini.")
+        return value
+
+    @field_validator("device_type")
+    @classmethod
+    def _validate_device_type(cls, value: str) -> str:
+        if value not in ("mobile", "desktop"):
+            raise ValueError("device_type doit être 'mobile' ou 'desktop'")
         return value
 
 

@@ -1736,6 +1736,7 @@ def serialize_viewport(viewport: WorkflowViewport) -> dict[str, Any]:
     return {
         "workflow_id": viewport.workflow_id,
         "version_id": viewport.version_id,
+        "device_type": viewport.device_type,
         "x": viewport.x,
         "y": viewport.y,
         "zoom": viewport.zoom,
