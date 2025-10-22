@@ -902,7 +902,8 @@ class WorkflowService:
     ) -> list[WorkflowViewport]:
         db, owns_session = self._get_session(session)
         try:
-            return db.scalars(
+            logger.info("Listing viewports for user %s", user_id)
+            viewports = db.scalars(
                 select(WorkflowViewport)
                 .where(WorkflowViewport.user_id == user_id)
                 .order_by(
@@ -910,6 +911,22 @@ class WorkflowService:
                     WorkflowViewport.id.desc(),
                 )
             ).all()
+            logger.info(
+                "Loaded %s viewport(s) for user %s: %s",
+                len(viewports),
+                user_id,
+                [
+                    {
+                        "workflow_id": viewport.workflow_id,
+                        "version_id": viewport.version_id,
+                        "x": viewport.x,
+                        "y": viewport.y,
+                        "zoom": viewport.zoom,
+                    }
+                    for viewport in viewports
+                ],
+            )
+            return viewports
         finally:
             if owns_session:
                 db.close()
@@ -923,13 +940,32 @@ class WorkflowService:
     ) -> list[WorkflowViewport]:
         db, owns_session = self._get_session(session)
         try:
+            viewport_entries = list(viewports)
+            logger.info(
+                "Replacing workflow viewports for user %s with payload: %s",
+                user_id,
+                viewport_entries,
+            )
             normalized: dict[tuple[int, int | None], tuple[float, float, float]] = {}
-            for entry in viewports:
+            skipped_entries: list[dict[str, Any]] = []
+            for entry in viewport_entries:
                 workflow_raw = entry.get("workflow_id")
                 if not isinstance(workflow_raw, int | float):
+                    skipped_entries.append(
+                        {
+                            "reason": "invalid_workflow_id",
+                            "entry": entry,
+                        }
+                    )
                     continue
                 workflow_id = int(workflow_raw)
                 if workflow_id <= 0:
+                    skipped_entries.append(
+                        {
+                            "reason": "non_positive_workflow_id",
+                            "entry": entry,
+                        }
+                    )
                     continue
 
                 version_raw = entry.get("version_id")
@@ -939,19 +975,49 @@ class WorkflowService:
                 elif isinstance(version_raw, int | float):
                     version_candidate = int(version_raw)
                     if version_candidate <= 0:
+                        skipped_entries.append(
+                            {
+                                "reason": "non_positive_version_id",
+                                "entry": entry,
+                            }
+                        )
                         continue
                     version_id = version_candidate
                 else:
+                    skipped_entries.append(
+                        {
+                            "reason": "invalid_version_id",
+                            "entry": entry,
+                        }
+                    )
                     continue
 
                 x_raw = entry.get("x")
                 y_raw = entry.get("y")
                 zoom_raw = entry.get("zoom")
                 if not isinstance(x_raw, int | float):
+                    skipped_entries.append(
+                        {
+                            "reason": "invalid_x",
+                            "entry": entry,
+                        }
+                    )
                     continue
                 if not isinstance(y_raw, int | float):
+                    skipped_entries.append(
+                        {
+                            "reason": "invalid_y",
+                            "entry": entry,
+                        }
+                    )
                     continue
                 if not isinstance(zoom_raw, int | float):
+                    skipped_entries.append(
+                        {
+                            "reason": "invalid_zoom",
+                            "entry": entry,
+                        }
+                    )
                     continue
                 x = float(x_raw)
                 y = float(y_raw)
@@ -961,9 +1027,39 @@ class WorkflowService:
                     or not math.isfinite(y)
                     or not math.isfinite(zoom)
                 ):
+                    skipped_entries.append(
+                        {
+                            "reason": "non_finite_coordinates",
+                            "entry": entry,
+                        }
+                    )
                     continue
 
                 normalized[(workflow_id, version_id)] = (x, y, zoom)
+
+            if skipped_entries:
+                logger.info(
+                    "Skipped %s viewport entrie(s) for user %s: %s",
+                    len(skipped_entries),
+                    user_id,
+                    skipped_entries,
+                )
+
+            logger.info(
+                "Normalized %s viewport(s) for user %s: %s",
+                len(normalized),
+                user_id,
+                [
+                    {
+                        "workflow_id": workflow_id,
+                        "version_id": version_id,
+                        "x": x,
+                        "y": y,
+                        "zoom": zoom,
+                    }
+                    for (workflow_id, version_id), (x, y, zoom) in normalized.items()
+                ],
+            )
 
             existing = {
                 (viewport.workflow_id, viewport.version_id): viewport
@@ -974,6 +1070,8 @@ class WorkflowService:
                 )
             }
 
+            created_viewports: list[dict[str, Any]] = []
+            updated_viewports: list[dict[str, Any]] = []
             for (workflow_id, version_id), (x, y, zoom) in normalized.items():
                 viewport = existing.get((workflow_id, version_id))
                 if viewport is None:
@@ -986,17 +1084,70 @@ class WorkflowService:
                         zoom=zoom,
                     )
                     db.add(viewport)
+                    created_viewports.append(
+                        {
+                            "workflow_id": workflow_id,
+                            "version_id": version_id,
+                            "x": x,
+                            "y": y,
+                            "zoom": zoom,
+                        }
+                    )
                 else:
                     viewport.x = x
                     viewport.y = y
                     viewport.zoom = zoom
+                    updated_viewports.append(
+                        {
+                            "workflow_id": workflow_id,
+                            "version_id": version_id,
+                            "x": x,
+                            "y": y,
+                            "zoom": zoom,
+                        }
+                    )
 
+            removed_keys: list[dict[str, Any]] = []
             for key, viewport in existing.items():
                 if key not in normalized:
                     db.delete(viewport)
+                    removed_keys.append(
+                        {
+                            "workflow_id": viewport.workflow_id,
+                            "version_id": viewport.version_id,
+                        }
+                    )
 
             db.commit()
-            return self.list_user_viewports(user_id, session=db)
+            if created_viewports:
+                logger.info(
+                    "Created %s viewport(s) for user %s: %s",
+                    len(created_viewports),
+                    user_id,
+                    created_viewports,
+                )
+            if updated_viewports:
+                logger.info(
+                    "Updated %s viewport(s) for user %s: %s",
+                    len(updated_viewports),
+                    user_id,
+                    updated_viewports,
+                )
+            if removed_keys:
+                logger.info(
+                    "Removed %s viewport(s) for user %s: %s",
+                    len(removed_keys),
+                    user_id,
+                    removed_keys,
+                )
+
+            persisted = self.list_user_viewports(user_id, session=db)
+            logger.info(
+                "User %s now has %s persisted viewport(s)",
+                user_id,
+                len(persisted),
+            )
+            return persisted
         finally:
             if owns_session:
                 db.close()
