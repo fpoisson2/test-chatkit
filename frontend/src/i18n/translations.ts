@@ -123,6 +123,14 @@ const fr: TranslationDictionary = {
   "workflowBuilder.export.success": "Export JSON téléchargé.",
   "workflowBuilder.export.error": "Impossible d'exporter le workflow.",
   "workflowBuilder.export.errorWithStatus": "Impossible d'exporter le workflow (code {{status}}).",
+  "workflowBuilder.deploy.missingDraft": "Aucun brouillon à promouvoir.",
+  "workflowBuilder.deploy.pendingChangesError": "Enregistrement requis avant le déploiement.",
+  "workflowBuilder.deploy.promoting": "Promotion de la version sélectionnée…",
+  "workflowBuilder.deploy.successProduction": "Version sélectionnée déployée en production.",
+  "workflowBuilder.deploy.successPublished": "Version sélectionnée publiée.",
+  "workflowBuilder.deploy.promoteFailedWithStatus": "Échec de la promotion (code {{status}}).",
+  "workflowBuilder.deploy.promoteError": "Impossible de promouvoir la version sélectionnée.",
+  "workflowBuilder.deploy.publishError": "Impossible de publier le workflow.",
 };
 
 const en: TranslationDictionary = {
@@ -236,6 +244,14 @@ const en: TranslationDictionary = {
   "workflowBuilder.export.success": "JSON export downloaded.",
   "workflowBuilder.export.error": "Unable to export the workflow.",
   "workflowBuilder.export.errorWithStatus": "Unable to export the workflow (status {{status}}).",
+  "workflowBuilder.deploy.missingDraft": "No draft available for promotion.",
+  "workflowBuilder.deploy.pendingChangesError": "Saving changes is required before deployment.",
+  "workflowBuilder.deploy.promoting": "Promoting the selected version…",
+  "workflowBuilder.deploy.successProduction": "Selected version deployed to production.",
+  "workflowBuilder.deploy.successPublished": "Selected version published.",
+  "workflowBuilder.deploy.promoteFailedWithStatus": "Promotion failed (status {{status}}).",
+  "workflowBuilder.deploy.promoteError": "Unable to promote the selected version.",
+  "workflowBuilder.deploy.publishError": "Unable to publish the workflow.",
 };
 
 export const translations: Translations = {

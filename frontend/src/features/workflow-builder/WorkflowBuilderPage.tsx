@@ -3359,10 +3359,10 @@ const WorkflowBuilderPage = () => {
       return;
     }
 
-    const draftId = draftVersionIdRef.current;
-    if (!draftId) {
+    let versionIdToPromote = draftVersionIdRef.current ?? selectedVersionId;
+    if (!versionIdToPromote) {
       setSaveState("error");
-      setSaveMessage("Aucun brouillon à promouvoir.");
+      setSaveMessage(t("workflowBuilder.deploy.missingDraft"));
       return;
     }
 
@@ -3373,7 +3373,14 @@ const WorkflowBuilderPage = () => {
       if (hasPendingChanges) {
         setIsDeploying(false);
         setSaveState("error");
-        setSaveMessage("Enregistrement du brouillon requis avant le déploiement.");
+        setSaveMessage(t("workflowBuilder.deploy.pendingChangesError"));
+        return;
+      }
+      versionIdToPromote = draftVersionIdRef.current ?? selectedVersionId ?? versionIdToPromote;
+      if (!versionIdToPromote) {
+        setIsDeploying(false);
+        setSaveState("error");
+        setSaveMessage(t("workflowBuilder.deploy.missingDraft"));
         return;
       }
     }
@@ -3381,7 +3388,7 @@ const WorkflowBuilderPage = () => {
     const graphPayload = buildGraphPayload();
     const graphSnapshot = JSON.stringify(graphPayload);
     setSaveState("saving");
-    setSaveMessage("Promotion du brouillon…");
+    setSaveMessage(t("workflowBuilder.deploy.promoting"));
 
     const promoteCandidates = makeApiEndpointCandidates(
       backendUrl,
@@ -3397,15 +3404,19 @@ const WorkflowBuilderPage = () => {
             "Content-Type": "application/json",
             ...authHeader,
           },
-          body: JSON.stringify({ version_id: draftId }),
+          body: JSON.stringify({ version_id: versionIdToPromote }),
         });
         if (!response.ok) {
-          throw new Error(`Échec de la promotion (${response.status})`);
+          throw new Error(
+            t("workflowBuilder.deploy.promoteFailedWithStatus", { status: response.status }),
+          );
         }
         const promoted: WorkflowVersionResponse = await response.json();
 
-        draftVersionIdRef.current = null;
-        draftVersionSummaryRef.current = null;
+        if (draftVersionIdRef.current === versionIdToPromote) {
+          draftVersionIdRef.current = null;
+          draftVersionSummaryRef.current = null;
+        }
         setSelectedVersionId(promoted.id);
         await loadVersions(selectedWorkflowId, promoted.id);
         await loadWorkflows({ selectWorkflowId: selectedWorkflowId, selectVersionId: promoted.id });
@@ -3413,7 +3424,9 @@ const WorkflowBuilderPage = () => {
         setHasPendingChanges(false);
         setSaveState("saved");
         setSaveMessage(
-          deployToProduction ? "Version déployée en production." : "Version publiée."
+          deployToProduction
+            ? t("workflowBuilder.deploy.successProduction")
+            : t("workflowBuilder.deploy.successPublished"),
         );
         setTimeout(() => setSaveState("idle"), 1500);
         setDeployModalOpen(false);
@@ -3426,13 +3439,13 @@ const WorkflowBuilderPage = () => {
         lastError =
           error instanceof Error
             ? error
-            : new Error("Impossible de promouvoir le brouillon.");
+            : new Error(t("workflowBuilder.deploy.promoteError"));
       }
     }
 
     setIsDeploying(false);
     setSaveState("error");
-    setSaveMessage(lastError?.message ?? "Impossible de publier le workflow.");
+    setSaveMessage(lastError?.message ?? t("workflowBuilder.deploy.publishError"));
   }, [
     authHeader,
     backendUrl,
@@ -3442,7 +3455,9 @@ const WorkflowBuilderPage = () => {
     hasPendingChanges,
     loadVersions,
     loadWorkflows,
+    selectedVersionId,
     selectedWorkflowId,
+    t,
   ]);
 
   useEffect(() => {
