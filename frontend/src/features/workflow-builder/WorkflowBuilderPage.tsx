@@ -146,6 +146,7 @@ import styles from "./WorkflowBuilderPage.module.css";
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 const DESKTOP_MIN_VIEWPORT_ZOOM = 0.1;
 const MOBILE_MIN_VIEWPORT_ZOOM = 0.05;
+const DESKTOP_WORKSPACE_HORIZONTAL_PADDING = "1.5rem";
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
@@ -4884,8 +4885,8 @@ const WorkflowBuilderPage = () => {
       return undefined;
     }
     return {
-      top: `calc(${headerOverlayOffset} + 1.5rem)`,
-      maxHeight: `calc(100% - (${headerOverlayOffset} + 3rem))`,
+      top: `calc(${headerOverlayOffset} + ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`,
+      maxHeight: `calc(100% - (${headerOverlayOffset} + 2 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING}))`,
     };
   }, [headerOverlayOffset, isMobileLayout]);
 
@@ -5076,10 +5077,12 @@ const WorkflowBuilderPage = () => {
       display: "flex",
       flexDirection: "column",
       gap: hasWorkflowMeta ? "1rem" : "0",
-      paddingTop: `calc(${headerOverlayOffset}${hasWorkflowMeta ? " + 1.5rem" : ""})`,
+      paddingTop: `calc(${headerOverlayOffset}${
+        hasWorkflowMeta ? ` + ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING}` : ""
+      })`,
       paddingBottom: 0,
-      paddingLeft: "1.5rem",
-      paddingRight: "1.5rem",
+      paddingLeft: DESKTOP_WORKSPACE_HORIZONTAL_PADDING,
+      paddingRight: DESKTOP_WORKSPACE_HORIZONTAL_PADDING,
     };
   }, [
     headerOverlayOffset,
@@ -5098,6 +5101,11 @@ const WorkflowBuilderPage = () => {
       overflow: "hidden",
       boxShadow: isMobileLayout ? "none" : "var(--shadow-card)",
     };
+
+    if (!isMobileLayout) {
+      baseStyle.marginLeft = `calc(-1 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`;
+      baseStyle.marginRight = `calc(-1 * ${DESKTOP_WORKSPACE_HORIZONTAL_PADDING})`;
+    }
 
     if (!isMobileLayout && !(shouldShowWorkflowDescription || shouldShowPublicationReminder)) {
       baseStyle.marginTop = `calc(-1 * ${headerOverlayOffset})`;
