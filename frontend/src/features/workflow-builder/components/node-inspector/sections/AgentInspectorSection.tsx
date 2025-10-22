@@ -6,6 +6,7 @@ import type {
   WidgetTemplateSummary,
 } from "../../../../../utils/backend";
 import { collectWidgetBindings } from "../../../../../utils/widgetPreview";
+import { useI18n } from "../../../../../i18n";
 import type {
   FileSearchConfig,
   FlowNode,
@@ -180,6 +181,7 @@ export const AgentInspectorSection = ({
     onAgentImageGenerationChange,
   });
 
+  const { t } = useI18n();
   const widgetSelectId = useId();
 
   return (
@@ -196,19 +198,19 @@ export const AgentInspectorSection = ({
 
       <label className={styles.nodeInspectorInlineField}>
         <span className={styles.nodeInspectorLabel}>
-          Modèle OpenAI
-          <HelpTooltip label="Sélectionnez un modèle autorisé pour exécuter ce bloc." />
+          {t("workflowBuilder.agentInspector.modelLabel")}
+          <HelpTooltip label={t("workflowBuilder.agentInspector.modelHelp")} />
         </span>
         <select
           value={selectedModelOption}
           onChange={(event) => onAgentModelChange(nodeId, event.target.value)}
           disabled={availableModelsLoading}
         >
-          <option value="">Sélectionnez un modèle</option>
+          <option value="">{t("workflowBuilder.agentInspector.modelPlaceholder")}</option>
           {availableModels.map((model) => (
             <option key={model.id} value={model.name}>
               {model.display_name?.trim() ? `${model.display_name} (${model.name})` : model.name}
-              {model.supports_reasoning ? " – raisonnement" : ""}
+              {model.supports_reasoning ? t("workflowBuilder.agentInspector.reasoningSuffix") : ""}
             </option>
           ))}
         </select>
@@ -216,13 +218,15 @@ export const AgentInspectorSection = ({
 
       {agentModel.trim() && !matchedModel && !availableModelsLoading ? (
         <p className={styles.nodeInspectorErrorTextSpaced}>
-          Ce bloc utilise actuellement un modèle non listé ({agentModel}). Sélectionnez un modèle dans la liste ci-dessus.
+          {t("workflowBuilder.agentInspector.unlistedModelWarning", {
+            model: agentModel.trim(),
+          })}
         </p>
       ) : null}
 
       {availableModelsLoading ? (
         <p className={styles.nodeInspectorMutedTextSpacedTop}>
-          Chargement des modèles autorisés…
+          {t("workflowBuilder.agentInspector.modelsLoading")}
         </p>
       ) : availableModelsError ? (
         <p className={styles.nodeInspectorErrorTextSpaced}>{availableModelsError}</p>
@@ -667,7 +671,7 @@ export const AgentInspectorSection = ({
               next ? { ...DEFAULT_IMAGE_TOOL_CONFIG } : null,
             )
           }
-          help="Ajoute l'outil image_generation pour produire des visuels via l'API OpenAI."
+          help={t("workflowBuilder.agentInspector.imageToolToggleHelp")}
         />
 
         {imageGenerationEnabled ? (
@@ -675,7 +679,7 @@ export const AgentInspectorSection = ({
             <label className={styles.nodeInspectorInlineField}>
               <span className={styles.nodeInspectorLabel}>
                 Modèle de génération
-                <HelpTooltip label="Sélectionnez le modèle image supporté par l'API OpenAI." />
+                <HelpTooltip label={t("workflowBuilder.agentInspector.imageModelHelp")} />
               </span>
               <select
                 value={imageModelValue}
