@@ -11,6 +11,7 @@ from .service import (
     serialize_definition,
     serialize_definition_graph,
     serialize_version_summary,
+    serialize_viewport,
     serialize_workflow_summary,
 )
 
@@ -21,6 +22,7 @@ __all__ = [
     "WorkflowValidationError",
     "serialize_definition",
     "serialize_definition_graph",
+    "serialize_viewport",
     "serialize_version_summary",
     "serialize_workflow_summary",
     "resolve_start_auto_start",
