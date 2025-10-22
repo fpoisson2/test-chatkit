@@ -557,6 +557,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 event_queue=event_queue,
                 thread_items_history=history.data,
                 thread_item_converter=thread_item_converter,
+                input_user_message=input_user_message,
             ),
             event_queue=event_queue,
         )
@@ -830,6 +831,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         event_queue: asyncio.Queue[Any],
         thread_items_history: list[ThreadItem] | None = None,
         thread_item_converter: ThreadItemConverter | None = None,
+        input_user_message: UserMessageItem | None = None,
     ) -> None:
         streamed_step_keys: set[str] = set()
         step_progress_text: dict[str, str] = {}
@@ -898,6 +900,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 workflow_service=self._workflow_service,
                 thread_item_converter=converter,
                 thread_items_history=thread_items_history,
+                current_user_message=input_user_message,
             )
 
             end_state = summary.end_state
