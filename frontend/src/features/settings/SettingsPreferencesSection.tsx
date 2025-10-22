@@ -17,36 +17,38 @@ export function SettingsPreferencesSection({
   return (
     <section
       key="preferences"
-      className="settings-page__section"
+      className="admin-card"
       aria-labelledby={hideHeader ? undefined : sectionTitleId}
       aria-label={hideHeader ? activeSection.label : undefined}
       id={`settings-section-${activeSection.id}`}
     >
       {hideHeader ? null : (
-        <header className="settings-page__section-header">
-          <h3 id={sectionTitleId} className="settings-page__section-title">
+        <div>
+          <h2 id={sectionTitleId} className="admin-card__title">
             {activeSection.label}
-          </h3>
-          <p className="settings-page__section-description">{activeSection.description}</p>
-        </header>
+          </h2>
+          <p className="admin-card__subtitle">{activeSection.description}</p>
+        </div>
       )}
-      <div className="settings-page__section-body">
-        <div className="settings-page__card">
-          <h4 className="settings-page__card-title">{t("settings.preferences.language.title")}</h4>
-          <p className="settings-page__card-description">
+      <div className="admin-form">
+        <div>
+          <h3 className="admin-card__title">
+            {t("settings.preferences.language.title")}
+          </h3>
+          <p className="admin-card__subtitle">
             {t("settings.preferences.language.description")}
           </p>
-          <LanguageSwitcher
-            id="settings-language"
-            hideLabel={false}
-            label={t("settings.preferences.language.label")}
-            className="label settings-preferences__field"
-            selectClassName="input"
-          />
-          <p className="settings-preferences__hint">
-            {t("settings.preferences.language.hint")}
-          </p>
         </div>
+        <LanguageSwitcher
+          id="settings-language"
+          hideLabel={false}
+          label={t("settings.preferences.language.label")}
+          className="label settings-preferences__field"
+          selectClassName="input"
+        />
+        <p className="settings-preferences__hint">
+          {t("settings.preferences.language.hint")}
+        </p>
       </div>
     </section>
   );

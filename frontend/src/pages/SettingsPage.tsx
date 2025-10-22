@@ -77,26 +77,24 @@ export function SettingsPage() {
     <>
       <ManagementPageLayout
         title={t("settings.page.title")}
+        subtitle={t("settings.page.subtitle")}
         actions={
           sections.length > 0 ? (
-            <div className="settings-page__actions">
-              <button
-                type="button"
-                className="button button--ghost"
-                onClick={handleOpenModal}
-              >
-                {t("settings.modal.title")}
-              </button>
-            </div>
+            <button
+              type="button"
+              className="button button--ghost"
+              onClick={handleOpenModal}
+            >
+              {t("settings.modal.title")}
+            </button>
           ) : null
         }
       >
-        <div className="settings-page__main">
+        <div className="admin-grid">
           {activeSection?.id === "preferences" ? (
             <SettingsPreferencesSection
               key={activeSection.id}
               activeSection={activeSection}
-              hideHeader
             />
           ) : null}
         </div>
