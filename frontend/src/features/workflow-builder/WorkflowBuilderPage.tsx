@@ -453,31 +453,38 @@ const WorkflowBuilderPage = () => {
 
         // Reapply after a short delay to override any automatic adjustments
         setTimeout(() => {
-          flow.setViewport(targetViewport, { duration: 0 });
+          if (reactFlowInstanceRef.current) {
+            reactFlowInstanceRef.current.setViewport(targetViewport, { duration: 0 });
+          }
         }, 10);
 
         setTimeout(() => {
-          flow.setViewport(targetViewport, { duration: 0 });
+          if (reactFlowInstanceRef.current) {
+            reactFlowInstanceRef.current.setViewport(targetViewport, { duration: 0 });
+          }
         }, 50);
 
         setTimeout(() => {
-          flow.setViewport(targetViewport, { duration: 0 });
-          const actualViewport = flow.getViewport();
-          console.log('VIEWPORT CHECK:', {
-            target: targetViewport,
-            actual: actualViewport,
-            match: Math.abs(actualViewport.x - targetViewport.x) < 1 &&
-                   Math.abs(actualViewport.y - targetViewport.y) < 1
-          });
+          if (reactFlowInstanceRef.current) {
+            reactFlowInstanceRef.current.setViewport(targetViewport, { duration: 0 });
+            const actualViewport = reactFlowInstanceRef.current.getViewport();
+            const match = Math.abs(actualViewport.x - targetViewport.x) < 1 &&
+                         Math.abs(actualViewport.y - targetViewport.y) < 1;
+            console.log('VIEWPORT CHECK:', {
+              target: targetViewport,
+              actual: actualViewport,
+              match
+            });
+            // Update viewportRef only if viewport was successfully applied
+            if (match) {
+              viewportRef.current = actualViewport;
+              const key = viewportKeyRef.current;
+              if (key) {
+                viewportMemoryRef.current.set(key, { ...actualViewport });
+              }
+            }
+          }
         }, 100);
-      }
-
-      const appliedViewport = flow.getViewport();
-
-      viewportRef.current = appliedViewport;
-      const key = viewportKeyRef.current;
-      if (key && savedViewport) {
-        viewportMemoryRef.current.set(key, { ...appliedViewport });
       }
     };
 
@@ -5092,6 +5099,8 @@ const WorkflowBuilderPage = () => {
                   onSelectionChange={handleSelectionChange}
                   style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
                   minZoom={minViewportZoom}
+                  defaultViewport={viewportRef.current ?? undefined}
+                  fitView={false}
                   onInit={(instance) => {
                     reactFlowInstanceRef.current = instance;
                     refreshViewportConstraints(instance);
