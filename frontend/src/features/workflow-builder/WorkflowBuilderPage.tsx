@@ -5067,15 +5067,20 @@ const WorkflowBuilderPage = () => {
                     }
                   }}
                   onMoveEnd={(_, viewport) => {
+                    console.log('onMoveEnd called', { viewport, isHydrating: isHydratingRef.current, key: viewportKeyRef.current });
                     if (isHydratingRef.current) {
+                      console.log('onMoveEnd blocked by isHydrating');
                       return;
                     }
                     viewportRef.current = viewport;
                     hasUserViewportChangeRef.current = true;
                     const key = viewportKeyRef.current;
                     if (key) {
+                      console.log('onMoveEnd saving viewport', viewport);
                       viewportMemoryRef.current.set(key, { ...viewport });
                       persistViewportMemory();
+                    } else {
+                      console.log('onMoveEnd no key');
                     }
                   }}
                 >
