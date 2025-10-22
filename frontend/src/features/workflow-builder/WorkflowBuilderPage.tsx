@@ -348,6 +348,8 @@ const WorkflowBuilderPage = () => {
   );
   const [minViewportZoom, setMinViewportZoom] = useState(baseMinViewportZoom);
 
+  const defaultViewport = useMemo(() => viewportRef.current ?? undefined, []);
+
   const persistViewportMemory = useCallback(() => {
     if (!token) {
       return;
@@ -470,11 +472,6 @@ const WorkflowBuilderPage = () => {
             const actualViewport = reactFlowInstanceRef.current.getViewport();
             const match = Math.abs(actualViewport.x - targetViewport.x) < 1 &&
                          Math.abs(actualViewport.y - targetViewport.y) < 1;
-            console.log('VIEWPORT CHECK:', {
-              target: targetViewport,
-              actual: actualViewport,
-              match
-            });
             // Update viewportRef only if viewport was successfully applied
             if (match) {
               viewportRef.current = actualViewport;
@@ -1177,7 +1174,6 @@ const WorkflowBuilderPage = () => {
           isHydratingRef.current = true;
           lastSavedSnapshotRef.current = nextSnapshot;
           setHasPendingChanges(false);
-          console.log('Loading nodes with positions:', flowNodes.map(n => ({ id: n.id, pos: n.position })));
           setNodes(flowNodes);
           setEdges(flowEdges);
           // Reset isHydrating after a short delay to allow viewport restoration
@@ -5099,7 +5095,7 @@ const WorkflowBuilderPage = () => {
                   onSelectionChange={handleSelectionChange}
                   style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
                   minZoom={minViewportZoom}
-                  defaultViewport={viewportRef.current ?? undefined}
+                  defaultViewport={defaultViewport}
                   fitView={false}
                   onInit={(instance) => {
                     reactFlowInstanceRef.current = instance;
