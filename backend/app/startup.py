@@ -605,6 +605,8 @@ def _run_ad_hoc_migrations() -> None:
                 for constraint in inspector.get_unique_constraints(
                     "workflow_viewports"
                 ):
+                    # Chercher une contrainte qui inclut user_id,
+                    # workflow_id et version_id
                     # Chercher une contrainte qui inclut
                     # user_id, workflow_id, version_id
                     if {"user_id", "workflow_id", "version_id"}.issubset(

@@ -111,6 +111,7 @@ from .service import (
 
 logger = logging.getLogger("chatkit.server")
 
+AGENT_NODE_KINDS = frozenset({"agent", "voice_agent"})
 AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
 
 # ---------------------------------------------------------------------------
@@ -488,7 +489,11 @@ async def run_workflow(
     agent_steps_ordered = [
         step
         for step in sorted(definition.steps, key=lambda s: s.position)
-        if step.kind == "agent" and step.is_enabled and step.slug in nodes_by_slug
+        if (
+            step.kind in AGENT_NODE_KINDS
+            and step.is_enabled
+            and step.slug in nodes_by_slug
+        )
     ]
 
     agent_positions = {
@@ -2066,7 +2071,7 @@ async def run_workflow(
             current_slug = transition.target_step.slug
             continue
 
-        if current_node.kind != "agent":
+        if current_node.kind not in AGENT_NODE_KINDS:
             raise WorkflowExecutionError(
                 "configuration",
                 "Configuration du workflow invalide",
