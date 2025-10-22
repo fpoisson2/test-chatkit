@@ -340,9 +340,9 @@ const WorkflowBuilderPage = () => {
         return accumulator;
       }, []);
       if (entries.length === 0) {
-        window.sessionStorage.removeItem(VIEWPORT_STORAGE_KEY);
+        window.localStorage.removeItem(VIEWPORT_STORAGE_KEY);
       } else {
-        window.sessionStorage.setItem(
+        window.localStorage.setItem(
           VIEWPORT_STORAGE_KEY,
           JSON.stringify(Object.fromEntries(entries)),
         );
@@ -357,7 +357,7 @@ const WorkflowBuilderPage = () => {
       return;
     }
     try {
-      const raw = window.sessionStorage.getItem(VIEWPORT_STORAGE_KEY);
+      const raw = window.localStorage.getItem(VIEWPORT_STORAGE_KEY);
       if (!raw) {
         return;
       }
