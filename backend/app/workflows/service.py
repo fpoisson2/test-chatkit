@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import math
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -11,7 +12,13 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..config import Settings, WorkflowDefaults, get_settings
 from ..database import SessionLocal
-from ..models import Workflow, WorkflowDefinition, WorkflowStep, WorkflowTransition
+from ..models import (
+    Workflow,
+    WorkflowDefinition,
+    WorkflowStep,
+    WorkflowTransition,
+    WorkflowViewport,
+)
 from ..token_sanitizer import sanitize_value
 
 logger = logging.getLogger(__name__)
@@ -890,6 +897,307 @@ class WorkflowService:
             if owns_session:
                 db.close()
 
+    def list_user_viewports(
+        self, user_id: int, session: Session | None = None
+    ) -> list[WorkflowViewport]:
+        db, owns_session = self._get_session(session)
+        try:
+            logger.info("Listing viewports for user %s", user_id)
+            viewports = db.scalars(
+                select(WorkflowViewport)
+                .where(WorkflowViewport.user_id == user_id)
+                .order_by(
+                    WorkflowViewport.updated_at.desc(),
+                    WorkflowViewport.id.desc(),
+                )
+            ).all()
+            logger.info(
+                "Loaded %s viewport(s) for user %s: %s",
+                len(viewports),
+                user_id,
+                [
+                    {
+                        "workflow_id": viewport.workflow_id,
+                        "version_id": viewport.version_id,
+                        "x": viewport.x,
+                        "y": viewport.y,
+                        "zoom": viewport.zoom,
+                    }
+                    for viewport in viewports
+                ],
+            )
+            return viewports
+        finally:
+            if owns_session:
+                db.close()
+
+    def replace_user_viewports(
+        self,
+        user_id: int,
+        viewports: Iterable[Mapping[str, Any]],
+        *,
+        session: Session | None = None,
+    ) -> list[WorkflowViewport]:
+        db, owns_session = self._get_session(session)
+        try:
+            viewport_entries = list(viewports)
+            logger.info(
+                "Replacing workflow viewports for user %s with payload: %s",
+                user_id,
+                viewport_entries,
+            )
+            normalized: dict[
+                tuple[int, int | None, str], tuple[float, float, float]
+            ] = {}
+            payload_device_types: set[str] = set()
+            skipped_entries: list[dict[str, Any]] = []
+            for entry in viewport_entries:
+                workflow_raw = entry.get("workflow_id")
+                if not isinstance(workflow_raw, int | float):
+                    skipped_entries.append(
+                        {
+                            "reason": "invalid_workflow_id",
+                            "entry": entry,
+                        }
+                    )
+                    continue
+                workflow_id = int(workflow_raw)
+                if workflow_id <= 0:
+                    skipped_entries.append(
+                        {
+                            "reason": "non_positive_workflow_id",
+                            "entry": entry,
+                        }
+                    )
+                    continue
+
+                version_raw = entry.get("version_id")
+                version_id: int | None
+                if version_raw is None:
+                    version_id = None
+                elif isinstance(version_raw, int | float):
+                    version_candidate = int(version_raw)
+                    if version_candidate <= 0:
+                        skipped_entries.append(
+                            {
+                                "reason": "non_positive_version_id",
+                                "entry": entry,
+                            }
+                        )
+                        continue
+                    version_id = version_candidate
+                else:
+                    skipped_entries.append(
+                        {
+                            "reason": "invalid_version_id",
+                            "entry": entry,
+                        }
+                    )
+                    continue
+
+                device_raw = entry.get("device_type", "desktop")
+                if isinstance(device_raw, str):
+                    device_type_candidate = device_raw.strip().lower()
+                else:
+                    device_type_candidate = ""
+
+                if device_type_candidate not in {"desktop", "mobile"}:
+                    skipped_entries.append(
+                        {
+                            "reason": "invalid_device_type",
+                            "entry": entry,
+                        }
+                    )
+                    continue
+
+                x_raw = entry.get("x")
+                y_raw = entry.get("y")
+                zoom_raw = entry.get("zoom")
+                if not isinstance(x_raw, int | float):
+                    skipped_entries.append(
+                        {
+                            "reason": "invalid_x",
+                            "entry": entry,
+                        }
+                    )
+                    continue
+                if not isinstance(y_raw, int | float):
+                    skipped_entries.append(
+                        {
+                            "reason": "invalid_y",
+                            "entry": entry,
+                        }
+                    )
+                    continue
+                if not isinstance(zoom_raw, int | float):
+                    skipped_entries.append(
+                        {
+                            "reason": "invalid_zoom",
+                            "entry": entry,
+                        }
+                    )
+                    continue
+                x = float(x_raw)
+                y = float(y_raw)
+                zoom = float(zoom_raw)
+                if (
+                    not math.isfinite(x)
+                    or not math.isfinite(y)
+                    or not math.isfinite(zoom)
+                ):
+                    skipped_entries.append(
+                        {
+                            "reason": "non_finite_coordinates",
+                            "entry": entry,
+                        }
+                    )
+                    continue
+
+                normalized[
+                    (workflow_id, version_id, device_type_candidate)
+                ] = (x, y, zoom)
+                payload_device_types.add(device_type_candidate)
+
+            if skipped_entries:
+                logger.info(
+                    "Skipped %s viewport entrie(s) for user %s: %s",
+                    len(skipped_entries),
+                    user_id,
+                    skipped_entries,
+                )
+
+            logger.info(
+                "Normalized %s viewport(s) for user %s: %s",
+                len(normalized),
+                user_id,
+                [
+                    {
+                        "workflow_id": workflow_id,
+                        "version_id": version_id,
+                        "device_type": device_type,
+                        "x": x,
+                        "y": y,
+                        "zoom": zoom,
+                    }
+                    for (
+                        workflow_id,
+                        version_id,
+                        device_type,
+                    ), (x, y, zoom) in normalized.items()
+                ],
+            )
+
+            existing = {
+                (
+                    viewport.workflow_id,
+                    viewport.version_id,
+                    viewport.device_type,
+                ): viewport
+                for viewport in db.scalars(
+                    select(WorkflowViewport).where(
+                        WorkflowViewport.user_id == user_id
+                    )
+                )
+            }
+
+            created_viewports: list[dict[str, Any]] = []
+            updated_viewports: list[dict[str, Any]] = []
+            for (
+                workflow_id,
+                version_id,
+                device_type,
+            ), (x, y, zoom) in normalized.items():
+                viewport = existing.get((workflow_id, version_id, device_type))
+                if viewport is None:
+                    viewport = WorkflowViewport(
+                        user_id=user_id,
+                        workflow_id=workflow_id,
+                        version_id=version_id,
+                        device_type=device_type,
+                        x=x,
+                        y=y,
+                        zoom=zoom,
+                    )
+                    db.add(viewport)
+                    created_viewports.append(
+                        {
+                            "workflow_id": workflow_id,
+                            "version_id": version_id,
+                            "device_type": device_type,
+                            "x": x,
+                            "y": y,
+                            "zoom": zoom,
+                        }
+                    )
+                else:
+                    viewport.x = x
+                    viewport.y = y
+                    viewport.zoom = zoom
+                    updated_viewports.append(
+                        {
+                            "workflow_id": workflow_id,
+                            "version_id": version_id,
+                            "device_type": device_type,
+                            "x": x,
+                            "y": y,
+                            "zoom": zoom,
+                        }
+                    )
+
+            removed_keys: list[dict[str, Any]] = []
+            target_device_types = (
+                payload_device_types if payload_device_types else None
+            )
+            for key, viewport in existing.items():
+                if (
+                    target_device_types is not None
+                    and viewport.device_type not in target_device_types
+                ):
+                    continue
+                if key not in normalized:
+                    db.delete(viewport)
+                    removed_keys.append(
+                        {
+                            "workflow_id": viewport.workflow_id,
+                            "version_id": viewport.version_id,
+                            "device_type": viewport.device_type,
+                        }
+                    )
+
+            db.commit()
+            if created_viewports:
+                logger.info(
+                    "Created %s viewport(s) for user %s: %s",
+                    len(created_viewports),
+                    user_id,
+                    created_viewports,
+                )
+            if updated_viewports:
+                logger.info(
+                    "Updated %s viewport(s) for user %s: %s",
+                    len(updated_viewports),
+                    user_id,
+                    updated_viewports,
+                )
+            if removed_keys:
+                logger.info(
+                    "Removed %s viewport(s) for user %s: %s",
+                    len(removed_keys),
+                    user_id,
+                    removed_keys,
+                )
+
+            persisted = self.list_user_viewports(user_id, session=db)
+            logger.info(
+                "User %s now has %s persisted viewport(s)",
+                user_id,
+                len(persisted),
+            )
+            return persisted
+        finally:
+            if owns_session:
+                db.close()
+
     def _needs_graph_backfill(self, definition: WorkflowDefinition) -> bool:
         has_start = any(step.kind == "start" for step in definition.steps)
         has_edges = bool(definition.transitions)
@@ -1467,4 +1775,16 @@ def serialize_version_summary(definition: WorkflowDefinition) -> dict[str, Any]:
         "is_active": definition.is_active,
         "created_at": definition.created_at,
         "updated_at": definition.updated_at,
+    }
+
+
+def serialize_viewport(viewport: WorkflowViewport) -> dict[str, Any]:
+    return {
+        "workflow_id": viewport.workflow_id,
+        "version_id": viewport.version_id,
+        "device_type": viewport.device_type,
+        "x": viewport.x,
+        "y": viewport.y,
+        "zoom": viewport.zoom,
+        "updated_at": viewport.updated_at,
     }

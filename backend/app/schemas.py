@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import datetime
+import math
 from typing import Any
 
-from pydantic import BaseModel, EmailStr, Field, constr
+from pydantic import BaseModel, EmailStr, Field, constr, field_validator
 
 
 class SessionRequest(BaseModel):
@@ -339,6 +340,50 @@ class WorkflowProductionUpdate(BaseModel):
 
 class WorkflowChatKitUpdate(BaseModel):
     workflow_id: int
+
+
+class WorkflowViewportEntry(BaseModel):
+    workflow_id: int
+    version_id: int | None = None
+    device_type: str = "desktop"
+    x: float
+    y: float
+    zoom: float
+    updated_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WorkflowViewportUpsert(BaseModel):
+    workflow_id: int
+    version_id: int | None = None
+    device_type: str = "desktop"
+    x: float
+    y: float
+    zoom: float
+
+    @field_validator("x", "y", "zoom")
+    @classmethod
+    def _ensure_finite(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("La valeur doit être un nombre fini.")
+        return value
+
+    @field_validator("device_type")
+    @classmethod
+    def _validate_device_type(cls, value: str) -> str:
+        if value not in ("mobile", "desktop"):
+            raise ValueError("device_type doit être 'mobile' ou 'desktop'")
+        return value
+
+
+class WorkflowViewportReplaceRequest(BaseModel):
+    viewports: list[WorkflowViewportUpsert] = Field(default_factory=list)
+
+
+class WorkflowViewportListResponse(BaseModel):
+    viewports: list[WorkflowViewportEntry]
 
 
 class DocumentationMetadataResponse(BaseModel):

@@ -8,6 +8,7 @@ from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -352,6 +353,59 @@ class WorkflowTransition(Base):
         "WorkflowStep",
         foreign_keys=[target_step_id],
         back_populates="incoming_transitions",
+    )
+
+
+class WorkflowViewport(Base):
+    __tablename__ = "workflow_viewports"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "workflow_id",
+            "version_id",
+            "device_type",
+            name="workflow_viewports_user_workflow_version_device",
+        ),
+        Index("ix_workflow_viewports_user_workflow", "user_id", "workflow_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workflow_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    version_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("workflow_definitions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    device_type: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="desktop",
+    )
+    x: Mapped[float] = mapped_column(Float, nullable=False)
+    y: Mapped[float] = mapped_column(Float, nullable=False)
+    zoom: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
     )
 
 
