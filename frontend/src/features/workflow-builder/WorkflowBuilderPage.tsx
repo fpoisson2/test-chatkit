@@ -341,6 +341,13 @@ const WorkflowBuilderPage = () => {
   const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
 
+  const isMobileLayout = useMediaQuery("(max-width: 768px)");
+  const baseMinViewportZoom = useMemo(
+    () => (isMobileLayout ? MOBILE_MIN_VIEWPORT_ZOOM : DESKTOP_MIN_VIEWPORT_ZOOM),
+    [isMobileLayout],
+  );
+  const [minViewportZoom, setMinViewportZoom] = useState(baseMinViewportZoom);
+
   const persistViewportMemory = useCallback(() => {
     if (!token) {
       return;
@@ -404,6 +411,64 @@ const WorkflowBuilderPage = () => {
       }
     })();
   }, [authHeader, backendUrl, token]);
+
+  const refreshViewportConstraints = useCallback(
+    (_flowInstance?: ReactFlowInstance | null) => {
+      const applyMinZoom = (value: number) => {
+        setMinViewportZoom((current) =>
+          Math.abs(current - value) > 0.0001 ? value : current,
+        );
+        return value;
+      };
+
+      return applyMinZoom(baseMinViewportZoom);
+    },
+    [baseMinViewportZoom],
+  );
+
+  const restoreViewport = useCallback(() => {
+    const instance = reactFlowInstanceRef.current;
+    if (!instance) {
+      pendingViewportRestoreRef.current = true;
+      return;
+    }
+
+    const applyViewport = () => {
+      const flow = reactFlowInstanceRef.current;
+      if (!flow) {
+        return;
+      }
+      pendingViewportRestoreRef.current = false;
+      const effectiveMinZoom = refreshViewportConstraints(flow);
+      const savedViewport = viewportRef.current;
+
+      if (savedViewport) {
+        const targetViewport = {
+          ...savedViewport,
+          zoom: Math.max(savedViewport.zoom, effectiveMinZoom),
+        };
+        flow.setViewport(targetViewport, { duration: 0 });
+      }
+
+      const appliedViewport = flow.getViewport();
+
+      viewportRef.current = appliedViewport;
+      const key = viewportKeyRef.current;
+      if (key && savedViewport) {
+        viewportMemoryRef.current.set(key, { ...appliedViewport });
+        persistViewportMemory();
+      }
+    };
+
+    if (typeof window === "undefined") {
+      applyViewport();
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(applyViewport);
+    });
+  }, [persistViewportMemory, refreshViewportConstraints]);
 
   useEffect(() => {
     viewportMemoryRef.current.clear();
@@ -507,12 +572,6 @@ const WorkflowBuilderPage = () => {
     [applyEdgesChange, setHasPendingChanges],
   );
 
-  const isMobileLayout = useMediaQuery("(max-width: 768px)");
-  const baseMinViewportZoom = useMemo(
-    () => (isMobileLayout ? MOBILE_MIN_VIEWPORT_ZOOM : DESKTOP_MIN_VIEWPORT_ZOOM),
-    [isMobileLayout],
-  );
-  const [minViewportZoom, setMinViewportZoom] = useState(baseMinViewportZoom);
   const [isBlockLibraryOpen, setBlockLibraryOpen] = useState<boolean>(() => !isMobileLayout);
   const blockLibraryToggleRef = useRef<HTMLButtonElement | null>(null);
   const propertiesPanelToggleRef = useRef<HTMLButtonElement | null>(null);
@@ -828,18 +887,6 @@ const WorkflowBuilderPage = () => {
     </>
   );
 
-  const refreshViewportConstraints = useCallback(
-    (_flowInstance?: ReactFlowInstance | null) => {
-      const applyMinZoom = (value: number) => {
-        setMinViewportZoom((current) => (Math.abs(current - value) > 0.0001 ? value : current));
-        return value;
-      };
-
-      return applyMinZoom(baseMinViewportZoom);
-    },
-    [baseMinViewportZoom],
-  );
-
   const reactFlowContainerRef = useCallback(
     (node: HTMLDivElement | null) => {
       reactFlowWrapperRef.current = node;
@@ -849,50 +896,6 @@ const WorkflowBuilderPage = () => {
     },
     [refreshViewportConstraints],
   );
-
-  const restoreViewport = useCallback(() => {
-    const instance = reactFlowInstanceRef.current;
-    if (!instance) {
-      pendingViewportRestoreRef.current = true;
-      return;
-    }
-
-    const applyViewport = () => {
-      const flow = reactFlowInstanceRef.current;
-      if (!flow) {
-        return;
-      }
-      pendingViewportRestoreRef.current = false;
-      const effectiveMinZoom = refreshViewportConstraints(flow);
-      const savedViewport = viewportRef.current;
-
-      if (savedViewport) {
-        const targetViewport = {
-          ...savedViewport,
-          zoom: Math.max(savedViewport.zoom, effectiveMinZoom),
-        };
-        flow.setViewport(targetViewport, { duration: 0 });
-      }
-
-      const appliedViewport = flow.getViewport();
-
-      viewportRef.current = appliedViewport;
-      const key = viewportKeyRef.current;
-      if (key && savedViewport) {
-        viewportMemoryRef.current.set(key, { ...appliedViewport });
-        persistViewportMemory();
-      }
-    };
-
-    if (typeof window === "undefined") {
-      applyViewport();
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(applyViewport);
-    });
-  }, [persistViewportMemory, refreshViewportConstraints]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
