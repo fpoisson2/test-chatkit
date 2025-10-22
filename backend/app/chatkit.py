@@ -9,7 +9,16 @@ try:  # pragma: no cover - dépend de la version du SDK Agents installée
 except ImportError:  # pragma: no cover - compatibilité avec les anciennes versions
     _sdk_stream_widget = None  # type: ignore[assignment]
 
+from .chatkit_server.context import ChatKitRequestContext
 from .config import get_settings
+from .workflows.executor import (
+    WorkflowExecutionError,
+    WorkflowInput,
+    WorkflowRunSummary,
+    WorkflowStepStreamUpdate,
+    WorkflowStepSummary,
+    run_workflow,
+)
 
 __path__ = [str((Path(__file__).resolve().parent / "chatkit").resolve())]
 
@@ -36,3 +45,15 @@ def get_chatkit_server() -> DemoChatKitServer:
     if _server is None:
         _server = DemoChatKitServer(get_settings())
     return _server
+
+
+__all__ = [
+    "ChatKitRequestContext",
+    "WorkflowExecutionError",
+    "WorkflowInput",
+    "WorkflowRunSummary",
+    "WorkflowStepStreamUpdate",
+    "WorkflowStepSummary",
+    "get_chatkit_server",
+    "run_workflow",
+]
