@@ -16,6 +16,7 @@ from .database import (
     wait_for_database,
 )
 from .docs import DocumentationService
+from .model_providers import configure_model_provider
 from .models import (
     EMBEDDING_DIMENSION,
     AvailableModel,
@@ -661,6 +662,7 @@ def _run_ad_hoc_migrations() -> None:
 def register_startup_events(app: FastAPI) -> None:
     @app.on_event("startup")
     def _on_startup() -> None:
+        configure_model_provider(settings)
         wait_for_database()
         ensure_database_extensions()
         _run_ad_hoc_migrations()
