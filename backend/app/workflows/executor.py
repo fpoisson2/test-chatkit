@@ -62,9 +62,6 @@ from ..chatkit.agent_registry import (
     AGENT_BUILDERS,
     AGENT_RESPONSE_FORMATS,
     STEP_TITLES,
-    GetDataFromUserContext,
-    GetDataFromWebContext,
-    Triage2Context,
     _build_custom_agent,
     _create_response_format_from_pydantic,
 )
@@ -495,20 +492,14 @@ async def run_workflow(
 
         if builder is None:
             if agent_key:
-                raise WorkflowExecutionError(
-                    "configuration",
-                    "Configuration du workflow invalide",
-                    RuntimeError(f"Agent inconnu : {agent_key}"),
-                    [],
+                logger.warning(
+                    "Aucun builder enregistré pour l'agent '%s', utilisation de la "
+                    "configuration personnalisée.",
+                    agent_key,
                 )
             agent_instances[step.slug] = _build_custom_agent(overrides)
         else:
             agent_instances[step.slug] = builder(overrides)
-
-    if agent_steps_ordered and all(
-        (step.agent_key == "r_dacteur") for step in agent_steps_ordered
-    ):
-        state["should_finalize"] = True
 
     edges_by_source: dict[str, list[WorkflowTransition]] = {}
     for transition in transitions:
@@ -2017,39 +2008,8 @@ async def run_workflow(
         title = _node_title(current_node)
         widget_config = widget_configs_by_step.get(current_node.slug)
 
-        if (
-            agent_key in {"get_data_from_web", "triage_2", "get_data_from_user"}
-            and state["has_all_details"]
-        ):
-            transition = _next_edge(current_slug)
-            if transition is None:
-                if _fallback_to_start("agent", current_node.slug):
-                    continue
-                break
-            current_slug = transition.target_step.slug
-            continue
-
-        if agent_key == "r_dacteur":
-            should_run = state["should_finalize"] or position == total_runtime_steps
-            if not should_run:
-                transition = _next_edge(current_slug)
-                if transition is None:
-                    if _fallback_to_start("agent", current_node.slug):
-                        continue
-                    break
-                current_slug = transition.target_step.slug
-                continue
-
         run_context: Any | None = None
-        if agent_key == "get_data_from_web":
-            run_context = GetDataFromWebContext(state["infos_manquantes"])
-        elif agent_key == "triage_2":
-            run_context = Triage2Context(input_output_text=state["infos_manquantes"])
-        elif agent_key == "get_data_from_user":
-            run_context = GetDataFromUserContext(
-                state_infos_manquantes=state["infos_manquantes"]
-            )
-        elif last_step_context is not None:
+        if last_step_context is not None:
             run_context = dict(last_step_context)
 
         # Injecter le contexte du bloc précédent dans l'historique de conversation
@@ -2157,101 +2117,21 @@ async def run_workflow(
         image_urls = _consume_generated_image_urls(step_identifier)
         links_text = format_generated_image_links(image_urls)
 
-        if agent_key == "triage":
-            parsed, text = _structured_output_as_json(result_stream.final_output)
-            state["has_all_details"] = (
-                bool(parsed.get("has_all_details"))
-                if isinstance(parsed, dict)
-                else False
-            )
-            state["infos_manquantes"] = text
-            state["should_finalize"] = state["has_all_details"]
-            await record_step(
-                step_identifier,
-                title,
-                merge_generated_image_urls_into_payload(parsed, image_urls),
-            )
-            last_step_context = {
-                "agent_key": agent_key,
-                "output": result_stream.final_output,
-                "output_parsed": parsed,
-                "output_structured": parsed,
-                "output_text": append_generated_image_links(text, image_urls),
-            }
-        elif agent_key == "get_data_from_web":
-            text = result_stream.final_output_as(str)
-            display_text = append_generated_image_links(text, image_urls)
-            state["infos_manquantes"] = text
-            await record_step(step_identifier, title, display_text)
-            last_step_context = {
-                "agent_key": agent_key,
-                "output": text,
-                "output_text": display_text,
-            }
-        elif agent_key == "triage_2":
-            parsed, text = _structured_output_as_json(result_stream.final_output)
-            state["has_all_details"] = (
-                bool(parsed.get("has_all_details"))
-                if isinstance(parsed, dict)
-                else False
-            )
-            state["infos_manquantes"] = text
-            state["should_finalize"] = state["has_all_details"]
-            await record_step(
-                step_identifier,
-                title,
-                merge_generated_image_urls_into_payload(parsed, image_urls),
-            )
-            last_step_context = {
-                "agent_key": agent_key,
-                "output": result_stream.final_output,
-                "output_parsed": parsed,
-                "output_structured": parsed,
-                "output_text": append_generated_image_links(text, image_urls),
-            }
-        elif agent_key == "get_data_from_user":
-            text = result_stream.final_output_as(str)
-            display_text = append_generated_image_links(text, image_urls)
-            state["infos_manquantes"] = text
-            state["should_finalize"] = True
-            await record_step(step_identifier, title, display_text)
-            last_step_context = {
-                "agent_key": agent_key,
-                "output": text,
-                "output_text": display_text,
-            }
-        elif agent_key == "r_dacteur":
-            parsed, text = _structured_output_as_json(result_stream.final_output)
-            display_text = append_generated_image_links(text, image_urls)
-            final_output = {
-                "output_text": display_text,
-                "output_parsed": parsed,
-                "output_structured": parsed,
-            }
-            await record_step(step_identifier, title, final_output["output_text"])
-            last_step_context = {
-                "agent_key": agent_key,
-                "output": result_stream.final_output,
-                "output_parsed": parsed,
-                "output_structured": parsed,
-                "output_text": display_text,
-            }
-        else:
-            parsed, text = _structured_output_as_json(result_stream.final_output)
-            await record_step(
-                step_identifier,
-                title,
-                merge_generated_image_urls_into_payload(
-                    result_stream.final_output, image_urls
-                ),
-            )
-            last_step_context = {
-                "agent_key": agent_key,
-                "output": result_stream.final_output,
-                "output_parsed": parsed,
-                "output_structured": parsed,
-                "output_text": append_generated_image_links(text, image_urls),
-            }
+        parsed, text = _structured_output_as_json(result_stream.final_output)
+        await record_step(
+            step_identifier,
+            title,
+            merge_generated_image_urls_into_payload(
+                result_stream.final_output, image_urls
+            ),
+        )
+        last_step_context = {
+            "agent_key": agent_key,
+            "output": result_stream.final_output,
+            "output_parsed": parsed,
+            "output_structured": parsed,
+            "output_text": append_generated_image_links(text, image_urls),
+        }
 
         # Mémoriser la dernière sortie d'agent dans l'état global pour les
         # transitions suivantes.
@@ -2346,9 +2226,6 @@ async def run_workflow(
             last_step_context = augmented_context
 
         transition = _next_edge(current_slug)
-        if agent_key == "r_dacteur":
-            # Après la rédaction finale, on rejoint la fin si disponible
-            transition = transition or _next_edge(current_slug, "true")
         if transition is None:
             break
         current_slug = transition.target_step.slug
