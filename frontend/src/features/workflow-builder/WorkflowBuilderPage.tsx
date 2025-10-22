@@ -145,9 +145,6 @@ import {
 import styles from "./WorkflowBuilderPage.module.css";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
-const AUTO_SAVE_SUCCESS_MESSAGE = "Modifications enregistrées automatiquement.";
-const DRAFT_DISPLAY_NAME = "Brouillon";
-
 const DESKTOP_MIN_VIEWPORT_ZOOM = 0.1;
 const MOBILE_MIN_VIEWPORT_ZOOM = 0.05;
 const MIN_ABSOLUTE_VIEWPORT_ZOOM = 0.01;
@@ -195,6 +192,7 @@ const sortVersionsWithDraftFirst = (
   draftId: number | null,
 ): WorkflowVersionSummary[] => {
   const items = [...versions];
+  const originalOrder = new Map(items.map((version, index) => [version.id, index]));
   items.sort((a, b) => {
     if (draftId != null) {
       if (a.id === draftId && b.id !== draftId) {
@@ -204,16 +202,23 @@ const sortVersionsWithDraftFirst = (
         return 1;
       }
     }
+    if (a.version !== b.version) {
+      return b.version - a.version;
+    }
     if (a.is_active && !b.is_active) {
       return -1;
     }
     if (b.is_active && !a.is_active) {
       return 1;
     }
-    if (a.version !== b.version) {
-      return b.version - a.version;
+    const aUpdatedAt = new Date(a.updated_at).getTime();
+    const bUpdatedAt = new Date(b.updated_at).getTime();
+    if (aUpdatedAt !== bUpdatedAt) {
+      return bUpdatedAt - aUpdatedAt;
     }
-    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    const aIndex = originalOrder.get(a.id) ?? 0;
+    const bIndex = originalOrder.get(b.id) ?? 0;
+    return aIndex - bIndex;
   });
   return items;
 };
@@ -249,6 +254,13 @@ const useMediaQuery = (query: string) => {
 const WorkflowBuilderPage = () => {
   const { token, logout, user } = useAuth();
   const { t } = useI18n();
+  const autoSaveSuccessMessage = t("workflowBuilder.save.autoSaveSuccess");
+  const draftDisplayName = t("workflowBuilder.save.draftDisplayName");
+  const saveFailureMessage = t("workflowBuilder.save.failure");
+  const formatSaveFailureWithStatus = useCallback(
+    (status: number) => t("workflowBuilder.save.failureWithStatus", { status }),
+    [t],
+  );
   const { openSidebar } = useAppLayout();
   const { setSidebarContent, clearSidebarContent } = useSidebarPortal();
   const [loading, setLoading] = useState(true);
@@ -283,6 +295,7 @@ const WorkflowBuilderPage = () => {
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const draftVersionIdRef = useRef<number | null>(null);
   const draftVersionSummaryRef = useRef<WorkflowVersionSummary | null>(null);
+  const selectedVersionIdRef = useRef<number | null>(null);
   const isCreatingDraftRef = useRef(false);
   const isHydratingRef = useRef(false);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
@@ -324,6 +337,7 @@ const WorkflowBuilderPage = () => {
   const selectedEdgeIdRef = useRef<string | null>(null);
   const selectedNodeIdsRef = useRef<Set<string>>(new Set());
   const selectedEdgeIdsRef = useRef<Set<string>>(new Set());
+  const isNodeDragInProgressRef = useRef(false);
   const copySequenceRef = useRef<{ count: number; lastTimestamp: number }>({
     count: 0,
     lastTimestamp: 0,
@@ -546,7 +560,7 @@ const WorkflowBuilderPage = () => {
                 const displayName = version.name?.trim() || null;
                 const labelParts: string[] = [];
                 if (isDraft) {
-                  labelParts.push(displayName ?? DRAFT_DISPLAY_NAME);
+                  labelParts.push(displayName ?? draftDisplayName);
                 } else {
                   labelParts.push(`v${version.version}`);
                   if (
@@ -1135,7 +1149,7 @@ const WorkflowBuilderPage = () => {
           if (draftSummary) {
             const normalizedDraft: WorkflowVersionSummary = {
               ...draftSummary,
-              name: DRAFT_DISPLAY_NAME,
+              name: draftDisplayName,
             };
             versionsForState = versionsForState.map((version) =>
               version.id === normalizedDraft.id ? normalizedDraft : version,
@@ -1159,7 +1173,7 @@ const WorkflowBuilderPage = () => {
                 : {
                     id: draftVersionIdRef.current,
                     workflow_id: workflowId,
-                    name: DRAFT_DISPLAY_NAME,
+                    name: draftDisplayName,
                     version: highestVersion + 1,
                     is_active: false,
                     created_at: new Date().toISOString(),
@@ -1248,6 +1262,7 @@ const WorkflowBuilderPage = () => {
     },
     [
       authHeader,
+      draftDisplayName,
       loadVersionDetail,
       restoreViewport,
       selectedWorkflowId,
@@ -1420,6 +1435,14 @@ const WorkflowBuilderPage = () => {
     [applySelection]
   );
 
+  const handleNodeDragStart = useCallback(() => {
+    isNodeDragInProgressRef.current = true;
+  }, []);
+
+  const handleNodeDragStop = useCallback(() => {
+    isNodeDragInProgressRef.current = false;
+  }, []);
+
   const handleClosePropertiesPanel = useCallback(() => {
     if (isMobileLayout) {
       setPropertiesPanelOpen(false);
@@ -1445,6 +1468,10 @@ const WorkflowBuilderPage = () => {
   const selectedElementKey = selectedNodeId ?? selectedEdgeId ?? null;
 
   useEffect(() => {
+    selectedVersionIdRef.current = selectedVersionId;
+  }, [selectedVersionId]);
+
+  useEffect(() => {
     selectedNodeIdRef.current = selectedNodeId;
   }, [selectedNodeId]);
 
@@ -1455,13 +1482,15 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     if (selectedElementKey) {
       if (previousSelectedElementRef.current !== selectedElementKey) {
-        setPropertiesPanelOpen(true);
+        if (!(isMobileLayout && isNodeDragInProgressRef.current)) {
+          setPropertiesPanelOpen(true);
+        }
       }
     } else {
       setPropertiesPanelOpen(false);
     }
     previousSelectedElementRef.current = selectedElementKey;
-  }, [selectedElementKey]);
+  }, [isMobileLayout, selectedElementKey]);
 
   useEffect(() => {
     if (!isMobileLayout) {
@@ -2878,7 +2907,13 @@ const WorkflowBuilderPage = () => {
       const versionId = Number.isFinite(value) ? value : null;
       setSelectedVersionId(versionId);
       if (selectedWorkflowId && versionId) {
-        void loadVersionDetail(selectedWorkflowId, versionId);
+        const key = viewportKeyFor(selectedWorkflowId, versionId);
+        const hasSavedViewport = key ? viewportMemoryRef.current.has(key) : false;
+        if (hasSavedViewport) {
+          void loadVersionDetail(selectedWorkflowId, versionId);
+        } else {
+          void loadVersionDetail(selectedWorkflowId, versionId, { preserveViewport: true });
+        }
       }
     },
     [loadVersionDetail, selectedWorkflowId],
@@ -3150,12 +3185,12 @@ const WorkflowBuilderPage = () => {
               body: JSON.stringify({ graph: graphPayload, mark_as_active: false }),
             });
             if (!response.ok) {
-              throw new Error(`Échec de l'enregistrement (${response.status})`);
+              throw new Error(formatSaveFailureWithStatus(response.status));
             }
             const created: WorkflowVersionResponse = await response.json();
             const summary: WorkflowVersionSummary = {
               ...versionSummaryFromResponse(created),
-              name: DRAFT_DISPLAY_NAME,
+              name: draftDisplayName,
             };
             const newViewportKey = viewportKeyFor(selectedWorkflowId, summary.id);
             const currentViewport =
@@ -3172,11 +3207,11 @@ const WorkflowBuilderPage = () => {
             lastSavedSnapshotRef.current = graphSnapshot;
             setHasPendingChanges(false);
             setSaveState("saved");
-            setSaveMessage(AUTO_SAVE_SUCCESS_MESSAGE);
+            setSaveMessage(autoSaveSuccessMessage);
             setTimeout(() => {
               setSaveState("idle");
               setSaveMessage((previous) =>
-                previous === AUTO_SAVE_SUCCESS_MESSAGE ? null : previous,
+                previous === autoSaveSuccessMessage ? null : previous,
               );
             }, 1500);
             return;
@@ -3187,7 +3222,7 @@ const WorkflowBuilderPage = () => {
             lastError =
               error instanceof Error
                 ? error
-                : new Error("Impossible d'enregistrer le workflow.");
+                : new Error(saveFailureMessage);
           }
         }
       } finally {
@@ -3195,7 +3230,7 @@ const WorkflowBuilderPage = () => {
       }
       setSaveState("error");
       setHasPendingChanges(true);
-      setSaveMessage(lastError?.message ?? "Impossible d'enregistrer le workflow.");
+      setSaveMessage(lastError?.message ?? saveFailureMessage);
       return;
     }
 
@@ -3214,12 +3249,12 @@ const WorkflowBuilderPage = () => {
           body: JSON.stringify({ graph: graphPayload }),
         });
         if (!response.ok) {
-          throw new Error(`Échec de l'enregistrement (${response.status})`);
+          throw new Error(formatSaveFailureWithStatus(response.status));
         }
         const updated: WorkflowVersionResponse = await response.json();
         const summary: WorkflowVersionSummary = {
           ...versionSummaryFromResponse(updated),
-          name: DRAFT_DISPLAY_NAME,
+          name: draftDisplayName,
         };
         draftVersionSummaryRef.current = summary;
         await loadVersions(selectedWorkflowId, summary.id, {
@@ -3229,11 +3264,11 @@ const WorkflowBuilderPage = () => {
         lastSavedSnapshotRef.current = graphSnapshot;
         setHasPendingChanges(false);
         setSaveState("saved");
-        setSaveMessage(AUTO_SAVE_SUCCESS_MESSAGE);
+        setSaveMessage(autoSaveSuccessMessage);
         setTimeout(() => {
           setSaveState("idle");
           setSaveMessage((previous) =>
-            previous === AUTO_SAVE_SUCCESS_MESSAGE ? null : previous,
+            previous === autoSaveSuccessMessage ? null : previous,
           );
         }, 1500);
         return;
@@ -3244,20 +3279,24 @@ const WorkflowBuilderPage = () => {
         lastError =
           error instanceof Error
             ? error
-            : new Error("Impossible d'enregistrer le workflow.");
+            : new Error(saveFailureMessage);
       }
     }
 
     setSaveState("error");
     setHasPendingChanges(true);
-    setSaveMessage(lastError?.message ?? "Impossible d'enregistrer le workflow.");
+    setSaveMessage(lastError?.message ?? saveFailureMessage);
   }, [
     authHeader,
+    autoSaveSuccessMessage,
     backendUrl,
     buildGraphPayload,
     conditionGraphError,
+    draftDisplayName,
+    formatSaveFailureWithStatus,
     loadVersions,
     nodes,
+    saveFailureMessage,
     selectedWorkflowId,
     versions,
   ]);
@@ -3553,15 +3592,38 @@ const WorkflowBuilderPage = () => {
     setDeployModalOpen(false);
   }, [isDeploying]);
 
+  const resolveVersionIdToPromote = useCallback(
+    (
+      preferDraft = false,
+      options: { selectedId?: number | null } = {},
+    ): number | null => {
+      const draftId = draftVersionIdRef.current;
+      const selectedId = Object.prototype.hasOwnProperty.call(options, "selectedId")
+        ? options.selectedId ?? null
+        : selectedVersionIdRef.current;
+
+      if (preferDraft) {
+        return draftId ?? selectedId ?? null;
+      }
+
+      if (selectedId != null) {
+        return selectedId;
+      }
+
+      return draftId ?? null;
+    },
+    [],
+  );
+
   const handleConfirmDeploy = useCallback(async () => {
     if (!selectedWorkflowId) {
       return;
     }
 
-    const draftId = draftVersionIdRef.current;
-    if (!draftId) {
+    let versionIdToPromote = resolveVersionIdToPromote();
+    if (!versionIdToPromote) {
       setSaveState("error");
-      setSaveMessage("Aucun brouillon à promouvoir.");
+      setSaveMessage(t("workflowBuilder.deploy.missingTarget"));
       return;
     }
 
@@ -3572,7 +3634,14 @@ const WorkflowBuilderPage = () => {
       if (hasPendingChanges) {
         setIsDeploying(false);
         setSaveState("error");
-        setSaveMessage("Enregistrement du brouillon requis avant le déploiement.");
+        setSaveMessage(t("workflowBuilder.deploy.pendingChangesError"));
+        return;
+      }
+      versionIdToPromote = resolveVersionIdToPromote(true) ?? versionIdToPromote;
+      if (!versionIdToPromote) {
+        setIsDeploying(false);
+        setSaveState("error");
+        setSaveMessage(t("workflowBuilder.deploy.missingTarget"));
         return;
       }
     }
@@ -3580,7 +3649,7 @@ const WorkflowBuilderPage = () => {
     const graphPayload = buildGraphPayload();
     const graphSnapshot = JSON.stringify(graphPayload);
     setSaveState("saving");
-    setSaveMessage("Promotion du brouillon…");
+    setSaveMessage(t("workflowBuilder.deploy.promoting"));
 
     const promoteCandidates = makeApiEndpointCandidates(
       backendUrl,
@@ -3596,15 +3665,19 @@ const WorkflowBuilderPage = () => {
             "Content-Type": "application/json",
             ...authHeader,
           },
-          body: JSON.stringify({ version_id: draftId }),
+          body: JSON.stringify({ version_id: versionIdToPromote }),
         });
         if (!response.ok) {
-          throw new Error(`Échec de la promotion (${response.status})`);
+          throw new Error(
+            t("workflowBuilder.deploy.promoteFailedWithStatus", { status: response.status }),
+          );
         }
         const promoted: WorkflowVersionResponse = await response.json();
 
-        draftVersionIdRef.current = null;
-        draftVersionSummaryRef.current = null;
+        if (draftVersionIdRef.current === versionIdToPromote) {
+          draftVersionIdRef.current = null;
+          draftVersionSummaryRef.current = null;
+        }
         setSelectedVersionId(promoted.id);
         await loadVersions(selectedWorkflowId, promoted.id);
         await loadWorkflows({ selectWorkflowId: selectedWorkflowId, selectVersionId: promoted.id });
@@ -3612,7 +3685,9 @@ const WorkflowBuilderPage = () => {
         setHasPendingChanges(false);
         setSaveState("saved");
         setSaveMessage(
-          deployToProduction ? "Version déployée en production." : "Version publiée."
+          deployToProduction
+            ? t("workflowBuilder.deploy.successProduction")
+            : t("workflowBuilder.deploy.successPublished"),
         );
         setTimeout(() => setSaveState("idle"), 1500);
         setDeployModalOpen(false);
@@ -3625,13 +3700,13 @@ const WorkflowBuilderPage = () => {
         lastError =
           error instanceof Error
             ? error
-            : new Error("Impossible de promouvoir le brouillon.");
+            : new Error(t("workflowBuilder.deploy.promoteError"));
       }
     }
 
     setIsDeploying(false);
     setSaveState("error");
-    setSaveMessage(lastError?.message ?? "Impossible de publier le workflow.");
+    setSaveMessage(lastError?.message ?? t("workflowBuilder.deploy.publishError"));
   }, [
     authHeader,
     backendUrl,
@@ -3642,6 +3717,8 @@ const WorkflowBuilderPage = () => {
     loadVersions,
     loadWorkflows,
     selectedWorkflowId,
+    resolveVersionIdToPromote,
+    t,
   ]);
 
   useEffect(() => {
@@ -4513,6 +4590,58 @@ const WorkflowBuilderPage = () => {
 
   const hasSelectedElement = Boolean(selectedNode || selectedEdge);
   const showPropertiesPanel = hasSelectedElement && (!isMobileLayout || isPropertiesPanelOpen);
+
+  const versionIdToPromote = useMemo(
+    () => resolveVersionIdToPromote(false, { selectedId: selectedVersionId }),
+    [resolveVersionIdToPromote, selectedVersionId],
+  );
+
+  const versionSummaryForPromotion = useMemo(() => {
+    if (versionIdToPromote == null) {
+      return null;
+    }
+    return versions.find((version) => version.id === versionIdToPromote) ?? null;
+  }, [versionIdToPromote, versions]);
+
+  const isPromotingDraft = Boolean(
+    versionSummaryForPromotion && draftVersionIdRef.current === versionSummaryForPromotion.id,
+  );
+
+  const deployModalTitle = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.titlePublishDraft")
+      : t("workflowBuilder.deploy.modal.titlePromoteSelected")
+    : t("workflowBuilder.deploy.modal.titleMissing");
+
+  const deployModalDescription = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.descriptionPublishDraft")
+      : t("workflowBuilder.deploy.modal.descriptionPromoteSelected", {
+          version: versionSummaryForPromotion.version,
+        })
+    : t("workflowBuilder.deploy.modal.descriptionMissing");
+
+  const deployModalSourceLabel = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.path.draft")
+      : t("workflowBuilder.deploy.modal.path.selectedWithVersion", {
+          version: versionSummaryForPromotion.version,
+        })
+    : t("workflowBuilder.deploy.modal.path.draft");
+
+  const deployModalTargetLabel = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.path.newVersion")
+      : t("workflowBuilder.deploy.modal.path.production")
+    : t("workflowBuilder.deploy.modal.path.production");
+
+  const deployModalPrimaryLabel = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.action.publish")
+      : t("workflowBuilder.deploy.modal.action.deploy")
+    : t("workflowBuilder.deploy.modal.action.publish");
+
+  const isPrimaryActionDisabled = !versionSummaryForPromotion || isDeploying;
   const selectedElementLabel = selectedNode
     ? selectedNode.data.displayName.trim() || labelForKind(selectedNode.data.kind)
     : selectedEdge
@@ -4800,6 +4929,8 @@ const WorkflowBuilderPage = () => {
                   edges={edges}
                   onNodesChange={onNodesChange}
                   onEdgesChange={handleEdgesChange}
+                  onNodeDragStart={handleNodeDragStart}
+                  onNodeDragStop={handleNodeDragStop}
                   onNodeClick={handleNodeClick}
                   onEdgeClick={handleEdgeClick}
                   onPaneClick={handleClearSelection}
@@ -4973,28 +5104,34 @@ const WorkflowBuilderPage = () => {
                       margin: 0,
                     }}
                   >
-                    Publish changes?
+                    {deployModalTitle}
                   </h2>
                   <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.45 }}>
-                    Create a new version of the workflow with your latest changes.
+                    {deployModalDescription}
                   </p>
-                  <div
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      fontWeight: 600,
-                      color: "var(--text-color)",
-                    }}
-                  >
-                    <span style={{ padding: "0.25rem 0.5rem", background: "#e2e8f0", borderRadius: "999px" }}>
-                      Draft
-                    </span>
-                    <span aria-hidden="true">→</span>
-                    <span style={{ padding: "0.25rem 0.5rem", background: "#dcfce7", borderRadius: "999px" }}>
-                      New version
-                    </span>
-                  </div>
+                  {versionSummaryForPromotion ? (
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        fontWeight: 600,
+                        color: "var(--text-color)",
+                      }}
+                    >
+                      <span
+                        style={{ padding: "0.25rem 0.5rem", background: "#e2e8f0", borderRadius: "999px" }}
+                      >
+                        {deployModalSourceLabel}
+                      </span>
+                      <span aria-hidden="true">→</span>
+                      <span
+                        style={{ padding: "0.25rem 0.5rem", background: "#dcfce7", borderRadius: "999px" }}
+                      >
+                        {deployModalTargetLabel}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
                 <label
                   style={{
@@ -5012,30 +5149,30 @@ const WorkflowBuilderPage = () => {
                     disabled={isDeploying}
                     style={{ width: "1.2rem", height: "1.2rem" }}
                   />
-                  Deploy to production
+                  {t("workflowBuilder.deploy.modal.productionToggle")}
                 </label>
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
                   <button
                     type="button"
                     onClick={handleCloseDeployModal}
-                  disabled={isDeploying}
-                  style={{
-                    padding: "0.6rem 1.2rem",
-                    borderRadius: "0.75rem",
-                    border: "1px solid var(--surface-border)",
-                    background: "var(--surface-strong)",
-                    color: "var(--text-color)",
-                    fontWeight: 600,
-                    cursor: isDeploying ? "not-allowed" : "pointer",
-                    opacity: isDeploying ? 0.5 : 1,
-                  }}
-                >
-                    Cancel
+                    disabled={isDeploying}
+                    style={{
+                      padding: "0.6rem 1.2rem",
+                      borderRadius: "0.75rem",
+                      border: "1px solid var(--surface-border)",
+                      background: "var(--surface-strong)",
+                      color: "var(--text-color)",
+                      fontWeight: 600,
+                      cursor: isDeploying ? "not-allowed" : "pointer",
+                      opacity: isDeploying ? 0.5 : 1,
+                    }}
+                  >
+                    {t("workflowBuilder.deploy.modal.action.cancel")}
                   </button>
                   <button
                     type="button"
                     onClick={handleConfirmDeploy}
-                    disabled={isDeploying}
+                    disabled={isPrimaryActionDisabled}
                     style={{
                       padding: "0.6rem 1.2rem",
                       borderRadius: "0.75rem",
@@ -5043,11 +5180,11 @@ const WorkflowBuilderPage = () => {
                       background: "#2563eb",
                       color: "#fff",
                       fontWeight: 700,
-                      cursor: isDeploying ? "not-allowed" : "pointer",
-                      opacity: isDeploying ? 0.7 : 1,
+                      cursor: isPrimaryActionDisabled ? "not-allowed" : "pointer",
+                      opacity: isPrimaryActionDisabled ? 0.7 : 1,
                     }}
                   >
-                    Publish
+                    {deployModalPrimaryLabel}
                   </button>
                 </div>
               </div>
