@@ -12,6 +12,8 @@ import WidgetLibraryPage from "./pages/WidgetLibraryPage";
 import { AdminPage } from "./pages/AdminPage";
 import { AdminModelsPage } from "./pages/AdminModelsPage";
 import { AdminVoicePage } from "./pages/AdminVoicePage";
+import { DocsPage } from "./pages/docs/DocsPage";
+import { DocDetail } from "./pages/docs/DocDetail";
 
 const RequireAdmin = ({ children }: { children: ReactElement }) => {
   const { user } = useAuth();
@@ -69,6 +71,8 @@ export const App = () => (
     >
       <Route index element={<HomePage />} />
       <Route path="voice" element={<VoicePage />} />
+      <Route path="docs" element={<DocsPage />} />
+      <Route path="docs/:slug" element={<DocDetail />} />
       <Route
         path="workflows"
         element={

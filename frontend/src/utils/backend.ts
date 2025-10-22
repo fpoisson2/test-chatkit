@@ -273,6 +273,100 @@ export const voiceSettingsApi = {
   },
 };
 
+export type DocumentationMetadata = {
+  slug: string;
+  title: string | null;
+  summary: string | null;
+  language: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DocumentationEntry = DocumentationMetadata & {
+  content_markdown: string | null;
+  metadata: Record<string, unknown>;
+};
+
+export type DocumentationCreatePayload = {
+  slug: string;
+  title?: string | null;
+  summary?: string | null;
+  language?: string | null;
+  content_markdown?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type DocumentationUpdatePayload = {
+  title?: string | null;
+  summary?: string | null;
+  language?: string | null;
+  content_markdown?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+const buildDocsPath = (path: string, params?: URLSearchParams): string => {
+  if (!params || Array.from(params.entries()).length === 0) {
+    return path;
+  }
+  return `${path}?${params.toString()}`;
+};
+
+export const docsApi = {
+  async list(
+    token: string | null,
+    options?: { language?: string | null },
+  ): Promise<DocumentationMetadata[]> {
+    const params = new URLSearchParams();
+    if (options?.language) {
+      params.set("language", options.language);
+    }
+
+    const response = await requestWithFallback(buildDocsPath("/api/docs", params), {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async get(token: string | null, slug: string): Promise<DocumentationEntry> {
+    const response = await requestWithFallback(`/api/docs/${encodeURIComponent(slug)}`, {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async create(
+    token: string | null,
+    payload: DocumentationCreatePayload,
+  ): Promise<DocumentationEntry> {
+    const response = await requestWithFallback("/api/docs", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async update(
+    token: string | null,
+    slug: string,
+    payload: DocumentationUpdatePayload,
+  ): Promise<DocumentationEntry> {
+    const response = await requestWithFallback(`/api/docs/${encodeURIComponent(slug)}`, {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async delete(token: string | null, slug: string): Promise<void> {
+    await requestWithFallback(`/api/docs/${encodeURIComponent(slug)}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+  },
+};
+
 
 export type WidgetTemplate = {
   slug: string;

@@ -8,7 +8,8 @@ export type SidebarIconName =
   | "settings"
   | "login"
   | "logout"
-  | "voice";
+  | "voice"
+  | "docs";
 
 const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
   logo: (
@@ -143,6 +144,42 @@ const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
       />
       <path
         d="M15.75 19.5h1.5A2.25 2.25 0 0 0 19.5 17.25V6.75A2.25 2.25 0 0 0 17.25 4.5h-1.5"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </>
+  ),
+  docs: (
+    <>
+      <path
+        d="M6.75 4.5h4.5v15h-4.5A2.25 2.25 0 0 0 4.5 21.75V6.75A2.25 2.25 0 0 1 6.75 4.5Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M17.25 4.5h-4.5v15h4.5a2.25 2.25 0 0 1 2.25 2.25V6.75A2.25 2.25 0 0 0 17.25 4.5Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M10.5 8.25h3"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M10.5 12h3"
         fill="none"
         stroke="currentColor"
         strokeLinecap="round"
