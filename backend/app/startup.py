@@ -565,6 +565,93 @@ def _run_ad_hoc_migrations() -> None:
                         )
                     )
 
+        # Migration de workflow_viewports pour la séparation mobile/desktop
+        if "workflow_viewports" in table_names:
+            dialect = connection.dialect.name
+
+            def _refresh_viewport_columns() -> set[str]:
+                return {
+                    column["name"]
+                    for column in inspect(connection).get_columns("workflow_viewports")
+                }
+
+            viewport_columns = _refresh_viewport_columns()
+
+            if "device_type" not in viewport_columns:
+                logger.info(
+                    "Migration du schéma des workflow_viewports : ajout de la colonne "
+                    "device_type pour la séparation mobile/desktop"
+                )
+                # Ajouter la colonne device_type avec valeur par défaut 'desktop'
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflow_viewports "
+                        "ADD COLUMN device_type VARCHAR(16) NOT NULL DEFAULT 'desktop'"
+                    )
+                )
+                viewport_columns = _refresh_viewport_columns()
+
+                # Supprimer l'ancienne contrainte unique
+                inspector = inspect(connection)
+                unique_constraints = {
+                    constraint["name"]
+                    for constraint in inspector.get_unique_constraints(
+                        "workflow_viewports"
+                    )
+                }
+
+                # Nom de l'ancienne contrainte (sans device_type)
+                old_constraint_name = None
+                for constraint in inspector.get_unique_constraints(
+                    "workflow_viewports"
+                ):
+                    # Chercher une contrainte qui inclut user_id, workflow_id, version_id
+                    if {"user_id", "workflow_id", "version_id"}.issubset(
+                        set(constraint.get("column_names", []))
+                    ):
+                        old_constraint_name = constraint["name"]
+                        break
+
+                if old_constraint_name:
+                    logger.info(
+                        "Suppression de l'ancienne contrainte unique : %s",
+                        old_constraint_name,
+                    )
+                    if dialect == "postgresql":
+                        connection.execute(
+                            text(
+                                f"ALTER TABLE workflow_viewports "
+                                f"DROP CONSTRAINT {old_constraint_name}"
+                            )
+                        )
+                    else:
+                        connection.execute(
+                            text(f"DROP INDEX IF EXISTS {old_constraint_name}")
+                        )
+
+                # Créer la nouvelle contrainte unique incluant device_type
+                if dialect == "postgresql":
+                    connection.execute(
+                        text(
+                            "ALTER TABLE workflow_viewports "
+                            "ADD CONSTRAINT workflow_viewports_user_workflow_version_device "
+                            "UNIQUE (user_id, workflow_id, version_id, device_type)"
+                        )
+                    )
+                else:
+                    connection.execute(
+                        text(
+                            "CREATE UNIQUE INDEX IF NOT EXISTS "
+                            "workflow_viewports_user_workflow_version_device "
+                            "ON workflow_viewports (user_id, workflow_id, version_id, device_type)"
+                        )
+                    )
+
+                logger.info(
+                    "Migration de workflow_viewports terminée : device_type ajouté avec "
+                    "nouvelle contrainte unique"
+                )
+
 
 def register_startup_events(app: FastAPI) -> None:
     @app.on_event("startup")
