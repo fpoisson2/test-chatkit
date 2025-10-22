@@ -1,7 +1,6 @@
 import copy
 
 import pytest
-
 from backend.app.token_sanitizer import sanitize_model_like, sanitize_value
 
 
@@ -9,7 +8,13 @@ from backend.app.token_sanitizer import sanitize_model_like, sanitize_value
     "payload,expected,removed",
     [
         (
-            {"reasoning": {"effort": "medium", "verbosity": "verbose", "summary": "auto"}},
+            {
+                "reasoning": {
+                    "effort": "medium",
+                    "verbosity": "verbose",
+                    "summary": "auto",
+                }
+            },
             {
                 "reasoning": {"effort": "medium", "summary": "auto"},
                 "text": {"verbosity": "verbose"},
@@ -39,7 +44,9 @@ class _DummyModelSettings:
         for key, value in data.items():
             setattr(self, key, value)
 
-    def model_dump(self, *, mode: str, exclude_none: bool, round_trip: bool) -> dict[str, object]:  # noqa: D401
+    def model_dump(
+        self, *, mode: str, exclude_none: bool, round_trip: bool
+    ) -> dict[str, object]:  # noqa: D401
         """Imite l'API Pydantic en retournant une copie profonde."""
 
         return copy.deepcopy(self._data)
@@ -59,8 +66,8 @@ def test_sanitize_model_like_removes_reasoning_verbosity():
     sanitized = sanitize_model_like(settings)
 
     assert sanitized is not settings
-    assert getattr(sanitized, "reasoning") == {"effort": "medium", "summary": "auto"}
-    assert getattr(sanitized, "text") == {"verbosity": "verbose"}
+    assert sanitized.reasoning == {"effort": "medium", "summary": "auto"}
+    assert sanitized.text == {"verbosity": "verbose"}
 
 
 def test_sanitize_model_like_returns_original_when_unchanged():

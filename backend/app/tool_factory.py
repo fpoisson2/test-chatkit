@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from typing import Any
 
 from agents import FunctionTool, WebSearchTool, function_tool
@@ -17,13 +17,15 @@ except ImportError:  # pragma: no cover - compatibilité rétro
     _AgentImageGenerationConfig = None  # type: ignore[assignment]
     _AgentImageGenerationTool = None  # type: ignore[assignment]
 
-try:  # pragma: no cover - certaines versions du client OpenAI n'exposent pas encore ImageGeneration
+try:  # pragma: no cover - clients OpenAI sans ImageGeneration
     from openai.types.responses.tool import ImageGeneration
 except ImportError:  # pragma: no cover - compatibilité rétro
     ImageGeneration = None  # type: ignore[assignment]
 
 try:  # pragma: no cover - nouveaux SDK : le paramètre est dans tool_param
-    from openai.types.responses.tool_param import ImageGeneration as ImageGenerationParam
+    from openai.types.responses.tool_param import (
+        ImageGeneration as ImageGenerationParam,
+    )
 except ImportError:  # pragma: no cover - compatibilité avec les anciennes versions
     ImageGenerationParam = None  # type: ignore[assignment]
 
@@ -51,7 +53,8 @@ _WIDGET_VALIDATION_TOOL_ALIASES = {
     "widget_validation",
 }
 _WIDGET_VALIDATION_TOOL_DEFAULT_DESCRIPTION = (
-    "Valide une définition de widget ChatKit et renvoie la version normalisée ainsi que les erreurs éventuelles."
+    "Valide une définition de widget ChatKit et renvoie la version "
+    "normalisée ainsi que les erreurs éventuelles."
 )
 
 
@@ -109,9 +112,7 @@ def _normalize_image_generation_field(key: str, value: Any) -> Any:
                 return "png"
             if normalized in _SUPPORTED_IMAGE_OUTPUT_FORMATS:
                 return normalized
-            logger.warning(
-                "Format de sortie %r non supporté, repli sur 'png'", value
-            )
+            logger.warning("Format de sortie %r non supporté, repli sur 'png'", value)
             return "png"
         return None
     return value
@@ -212,10 +213,14 @@ def build_image_generation_tool(payload: Any) -> Any | None:
             return _AgentImageGenerationTool(tool_config=tool_config)
         except Exception:  # pragma: no cover - dépend des versions du SDK
             logger.debug(
-                "Impossible d'envelopper le tool ImageGeneration, retour du modèle brut."
+                "Impossible d'envelopper le tool ImageGeneration, retour du "
+                "modèle brut."
             )
 
-    for attribute, default in (("type", "image_generation"), ("name", "image_generation")):
+    for attribute, default in (
+        ("type", "image_generation"),
+        ("name", "image_generation"),
+    ):
         current = getattr(tool_config, attribute, None)
         if isinstance(current, str) and current.strip():
             continue
@@ -240,7 +245,7 @@ def _extract_vector_store_ids(config: dict[str, Any]) -> list[str]:
     result: list[str] = []
 
     raw_ids = config.get("vector_store_ids")
-    if isinstance(raw_ids, (list, tuple, set)):
+    if isinstance(raw_ids, list | tuple | set):
         for entry in raw_ids:
             if isinstance(entry, str) and entry.strip():
                 normalized = entry.strip()
@@ -306,7 +311,7 @@ def _coerce_ranking_options(value: Any) -> dict[str, Any] | None:
             data["ranker"] = ranker.strip()
 
         threshold = value.get("score_threshold")
-        if isinstance(threshold, (int, float)):
+        if isinstance(threshold, int | float):
             data["score_threshold"] = float(threshold)
         elif isinstance(threshold, str):
             try:
@@ -387,9 +392,9 @@ def build_file_search_tool(payload: Any) -> FunctionTool | None:
         if isinstance(top_k, int) and top_k > 0:
             limit = top_k
 
-        def _search_sync() -> tuple[
-            list[tuple[str, list[SearchResult]]], list[dict[str, Any]]
-        ]:
+        def _search_sync() -> (
+            tuple[list[tuple[str, list[SearchResult]]], list[dict[str, Any]]]
+        ):
             matches: list[tuple[str, list[SearchResult]]] = []
             errors: list[dict[str, Any]] = []
             with SessionLocal() as session:
@@ -411,7 +416,8 @@ def build_file_search_tool(payload: Any) -> FunctionTool | None:
                         continue
                     except Exception as exc:  # pragma: no cover - dépend du runtime
                         logger.exception(
-                            "Erreur lors de la recherche dans le magasin %s", slug,
+                            "Erreur lors de la recherche dans le magasin %s",
+                            slug,
                             exc_info=exc,
                         )
                         errors.append(
@@ -449,11 +455,13 @@ def build_file_search_tool(payload: Any) -> FunctionTool | None:
     search_tool = function_tool(name_override=tool_name)(_search_vector_stores)
     if include_search_results:
         search_tool.description = (
-            "Recherche dans les documents locaux et renvoie le texte des extraits pertinents."
+            "Recherche dans les documents locaux et renvoie le texte des extraits "
+            "pertinents."
         )
     else:
         search_tool.description = (
-            "Recherche dans les documents locaux et renvoie les métadonnées des extraits pertinents."
+            "Recherche dans les documents locaux et renvoie les métadonnées des "
+            "extraits pertinents."
         )
 
     return search_tool
@@ -492,7 +500,9 @@ def validate_widget_definition(
         try:
             parsed_definition = json.loads(candidate)
         except json.JSONDecodeError as exc:
-            location = f" (ligne {exc.lineno}, colonne {exc.colno})" if exc.lineno else ""
+            location = (
+                f" (ligne {exc.lineno}, colonne {exc.colno})" if exc.lineno else ""
+            )
             return WidgetValidationResult(
                 valid=False,
                 errors=[f"JSON invalide : {exc.msg}{location}"],
@@ -558,7 +568,9 @@ def build_weather_tool(payload: Any) -> FunctionTool | None:
     description = _WEATHER_FUNCTION_TOOL_DEFAULT_DESCRIPTION
 
     if isinstance(payload, dict):
-        raw_name = payload.get("name") or payload.get("id") or payload.get("function_name")
+        raw_name = (
+            payload.get("name") or payload.get("id") or payload.get("function_name")
+        )
         if isinstance(raw_name, str) and raw_name.strip():
             candidate = raw_name.strip()
             if candidate.lower() in _WEATHER_FUNCTION_TOOL_ALIASES:
@@ -590,7 +602,9 @@ def build_widget_validation_tool(payload: Any) -> FunctionTool | None:
     description = _WIDGET_VALIDATION_TOOL_DEFAULT_DESCRIPTION
 
     if isinstance(payload, dict):
-        raw_name = payload.get("name") or payload.get("id") or payload.get("function_name")
+        raw_name = (
+            payload.get("name") or payload.get("id") or payload.get("function_name")
+        )
         if isinstance(raw_name, str) and raw_name.strip():
             candidate = raw_name.strip()
             if candidate.lower() in _WIDGET_VALIDATION_TOOL_ALIASES:
@@ -626,4 +640,3 @@ __all__ = [
     "sanitize_web_search_user_location",
     "validate_widget_definition",
 ]
-

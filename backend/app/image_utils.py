@@ -132,7 +132,9 @@ def merge_generated_image_urls_into_payload(payload: Any, urls: Sequence[str]) -
         merged.setdefault("generated_image_urls", valid_urls)
         return merged
 
-    if isinstance(payload, Sequence) and not isinstance(payload, (bytes, bytearray, str)):
+    if isinstance(payload, Sequence) and not isinstance(
+        payload, bytes | bytearray | str
+    ):
         return {
             "output": list(payload),
             "generated_image_urls": valid_urls,

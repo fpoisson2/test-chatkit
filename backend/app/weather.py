@@ -198,7 +198,10 @@ async def fetch_weather(city: str, country: str | None = None) -> WeatherRespons
         if not results:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Aucune localité correspondante n'a été trouvée pour cette recherche.",
+                detail=(
+                    "Aucune localité correspondante n'a été trouvée pour cette "
+                    "recherche."
+                ),
             )
 
         location = results[0]
@@ -207,7 +210,10 @@ async def fetch_weather(city: str, country: str | None = None) -> WeatherRespons
         if latitude is None or longitude is None:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Les coordonnées de la localité sont introuvables dans la réponse météo.",
+                detail=(
+                    "Les coordonnées de la localité sont introuvables dans la "
+                    "réponse météo."
+                ),
             )
 
         weather_params = {
@@ -248,7 +254,10 @@ async def fetch_weather(city: str, country: str | None = None) -> WeatherRespons
         if temperature is None or windspeed is None or observation_time is None:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Les données météo actuelles sont incomplètes dans la réponse du fournisseur.",
+                detail=(
+                    "Les données météo actuelles sont incomplètes dans la "
+                    "réponse du fournisseur."
+                ),
             )
 
         code = int(current.get("weathercode", -1))
@@ -256,14 +265,19 @@ async def fetch_weather(city: str, country: str | None = None) -> WeatherRespons
 
         timezone_text = _describe_timezone(weather_payload.get("timezone"))
         return WeatherResponse(
-            city=_sanitize_text(str(location.get("name") or city)) or str(location.get("name") or city),
-            country=_sanitize_text(location.get("country_code") or location.get("country")),
+            city=_sanitize_text(str(location.get("name") or city))
+            or str(location.get("name") or city),
+            country=_sanitize_text(
+                location.get("country_code") or location.get("country")
+            ),
             latitude=_spell_out_number(float(latitude)),
             longitude=_spell_out_number(float(longitude)),
             temperature_celsius=_spell_out_number(float(temperature)),
             wind_speed_kmh=_spell_out_number(float(windspeed)),
             weather_code=_spell_out_number(code),
             weather_description=description,
-            observation_time=_format_observation_time(str(observation_time), timezone_text),
+            observation_time=_format_observation_time(
+                str(observation_time), timezone_text
+            ),
             timezone=timezone_text,
         )

@@ -16,21 +16,29 @@ async def get_current_user(
     session: Session = Depends(get_session),
 ) -> User:
     if credentials is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentification requise")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentification requise"
+        )
 
     payload = decode_access_token(credentials.credentials)
     user_id = payload.get("sub")
     if not user_id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide"
+        )
 
     try:
         user_pk = int(user_id)
     except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide") from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide"
+        ) from exc
 
     user = session.get(User, user_pk)
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur introuvable")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur introuvable"
+        )
     return user
 
 
@@ -48,5 +56,7 @@ async def get_optional_user(
 
 async def require_admin(current_user: User = Depends(get_current_user)) -> User:
     if not current_user.is_admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès administrateur requis")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Accès administrateur requis"
+        )
     return current_user

@@ -10,7 +10,7 @@ from urllib.parse import urljoin
 from fastapi import UploadFile
 
 from chatkit.store import AttachmentStore, NotFoundError
-from chatkit.types import AttachmentCreateParams, FileAttachment
+from chatkit.types import Attachment, AttachmentCreateParams, FileAttachment
 
 from .chatkit_server.context import ChatKitRequestContext
 from .chatkit_store import PostgresChatKitStore
@@ -72,13 +72,17 @@ class LocalAttachmentStore(AttachmentStore[ChatKitRequestContext]):
         self._base_dir.mkdir(parents=True, exist_ok=True)
         self._max_size = max_size
         self._pending: dict[str, _PendingAttachment] = {}
-        self._default_base_url = (default_base_url or "http://localhost:8000").rstrip("/")
+        self._default_base_url = (default_base_url or "http://localhost:8000").rstrip(
+            "/"
+        )
 
     async def create_attachment(
         self, params: AttachmentCreateParams, context: ChatKitRequestContext
     ) -> Attachment:
         if not context.user_id:
-            raise AttachmentUploadError("Authentification requise pour créer une pièce jointe")
+            raise AttachmentUploadError(
+                "Authentification requise pour créer une pièce jointe"
+            )
 
         expected_size = params.size if params.size and params.size > 0 else None
         if expected_size and expected_size > self._max_size:
@@ -108,7 +112,9 @@ class LocalAttachmentStore(AttachmentStore[ChatKitRequestContext]):
         context: ChatKitRequestContext,
     ) -> FileAttachment:
         if not context.user_id:
-            raise AttachmentUploadError("Authentification requise pour téléverser une pièce jointe")
+            raise AttachmentUploadError(
+                "Authentification requise pour téléverser une pièce jointe"
+            )
 
         attachment = self._coerce_file_attachment(
             await self._store.load_attachment(attachment_id, context)
@@ -134,7 +140,10 @@ class LocalAttachmentStore(AttachmentStore[ChatKitRequestContext]):
                             "La pièce jointe dépasse la taille maximale autorisée"
                         )
             if pending and pending.expected_size and total != pending.expected_size:
-                raise AttachmentUploadError("La taille de la pièce jointe ne correspond pas à la déclaration initiale")
+                raise AttachmentUploadError(
+                    "La taille de la pièce jointe ne correspond pas à la déclaration "
+                    "initiale"
+                )
             os.replace(temp_destination, destination)
         except Exception:
             temp_destination.unlink(missing_ok=True)
@@ -156,7 +165,9 @@ class LocalAttachmentStore(AttachmentStore[ChatKitRequestContext]):
         self, attachment_id: str, context: ChatKitRequestContext
     ) -> None:
         if not context.user_id:
-            raise AttachmentUploadError("Authentification requise pour supprimer une pièce jointe")
+            raise AttachmentUploadError(
+                "Authentification requise pour supprimer une pièce jointe"
+            )
 
         try:
             attachment = self._coerce_file_attachment(
@@ -186,7 +197,11 @@ class LocalAttachmentStore(AttachmentStore[ChatKitRequestContext]):
         file_path = user_dir / _attachment_filename(attachment_id, attachment.name)
         if not file_path.is_file():
             raise NotFoundError(f"Pièce jointe {attachment_id} introuvable")
-        return file_path, attachment.mime_type or "application/octet-stream", attachment.name
+        return (
+            file_path,
+            attachment.mime_type or "application/octet-stream",
+            attachment.name,
+        )
 
     @staticmethod
     def _coerce_file_attachment(value: Any) -> FileAttachment:

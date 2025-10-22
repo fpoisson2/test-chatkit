@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from chatkit.types import ThreadItem, UserMessageItem
-
 
 _WAIT_STATE_METADATA_KEY = "workflow_wait_for_user_input"
 """Clé de métadonnées utilisée pour stocker l'état d'attente du workflow."""
@@ -25,9 +25,7 @@ def _get_wait_state_metadata(thread: Any) -> dict[str, Any] | None:
     return None
 
 
-def _set_wait_state_metadata(
-    thread: Any, state: Mapping[str, Any] | None
-) -> None:
+def _set_wait_state_metadata(thread: Any, state: Mapping[str, Any] | None) -> None:
     """Met à jour l'état d'attente dans les métadonnées du fil."""
 
     metadata = getattr(thread, "metadata", None)
@@ -43,7 +41,7 @@ def _set_wait_state_metadata(
 
     if hasattr(thread, "metadata"):
         try:
-            setattr(thread, "metadata", updated)
+            thread.metadata = updated
             return
         except Exception:  # pragma: no cover - dépend du type de l'objet
             pass
@@ -52,13 +50,13 @@ def _set_wait_state_metadata(
         metadata.clear()
         metadata.update(updated)
     else:
-        setattr(thread, "metadata", updated)
+        thread.metadata = updated
 
 
 def _clone_conversation_history_snapshot(payload: Any) -> list[dict[str, Any]]:
     """Nettoie et duplique un historique de conversation sérialisable."""
 
-    if isinstance(payload, (str, bytes, bytearray)):
+    if isinstance(payload, str | bytes | bytearray):
         return []
     if not isinstance(payload, Sequence):
         return []
@@ -113,7 +111,7 @@ class AutoStartConfiguration:
     assistant_message: str
 
     @classmethod
-    def disabled(cls) -> "AutoStartConfiguration":
+    def disabled(cls) -> AutoStartConfiguration:
         return cls(False, "", "")
 
 

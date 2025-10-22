@@ -4,7 +4,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-
 from .routes import (
     admin,
     auth,
@@ -17,10 +16,11 @@ from .routes import (
     workflows,
 )
 
-
 try:  # pragma: no cover - dépendance optionnelle pour le SDK ChatKit
     from .routes import chatkit
-except ModuleNotFoundError:  # pragma: no cover - utilisé dans l'environnement de tests sans SDK
+except (
+    ModuleNotFoundError
+):  # pragma: no cover - utilisé dans l'environnement de tests sans SDK
     chatkit = None  # type: ignore[assignment]
 from .startup import register_startup_events
 

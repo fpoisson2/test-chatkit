@@ -31,9 +31,7 @@ async def create_realtime_voice_session(
 
     sanitized_request, removed_request = sanitize_value(payload)
     if removed_request:
-        logger.debug(
-            "Champs sensibles retirés de la requête Realtime client_secret"
-        )
+        logger.debug("Champs sensibles retirés de la requête Realtime client_secret")
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(
             "Requête Realtime client_secret (sanitisée) : %s",
@@ -48,13 +46,17 @@ async def create_realtime_voice_session(
 
     timeout = httpx.Timeout(30.0, connect=10.0, read=None)
     try:
-        async with httpx.AsyncClient(base_url=settings.chatkit_api_base, timeout=timeout) as client:
+        async with httpx.AsyncClient(
+            base_url=settings.chatkit_api_base, timeout=timeout
+        ) as client:
             response = await client.post(
                 "/v1/realtime/client_secrets",
                 json=payload,
                 headers=headers,
             )
-    except httpx.HTTPError as exc:  # pragma: no cover - exception réseau difficile à reproduire
+    except (
+        httpx.HTTPError
+    ) as exc:  # pragma: no cover - exception réseau difficile à reproduire
         logger.error("Échec de la requête Realtime client_secret : %s", exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -70,9 +72,7 @@ async def create_realtime_voice_session(
             error_payload = {"error": response.text}
         sanitized_error, removed_error = sanitize_value(error_payload)
         if removed_error:
-            logger.debug(
-                "Champs sensibles retirés de la réponse d'erreur Realtime"
-            )
+            logger.debug("Champs sensibles retirés de la réponse d'erreur Realtime")
         logger.error(
             "Erreur de l'API Realtime (%s) : %s",
             response.status_code,
@@ -90,9 +90,7 @@ async def create_realtime_voice_session(
     raw_payload = response.json()
     sanitized_response, removed_response = sanitize_value(raw_payload)
     if removed_response:
-        logger.debug(
-            "Champs sensibles retirés de la réponse Realtime client_secret"
-        )
+        logger.debug("Champs sensibles retirés de la réponse Realtime client_secret")
 
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(

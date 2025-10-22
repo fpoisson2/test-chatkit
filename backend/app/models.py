@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
     DateTime,
@@ -16,8 +17,6 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-from pgvector.sqlalchemy import Vector
-
 # Dimension pour text-embedding-3-small d'OpenAI
 EMBEDDING_DIMENSION = 1536
 
@@ -30,7 +29,9 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(
+        String(320), unique=True, nullable=False, index=True
+    )
     password_hash: Mapped[str] = mapped_column(String(512), nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -51,8 +52,12 @@ class ChatThread(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     owner_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
 
@@ -61,10 +66,15 @@ class ChatThreadItem(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     thread_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("chat_threads.id", ondelete="CASCADE"), index=True, nullable=False
+        String(64),
+        ForeignKey("chat_threads.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
     )
     owner_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
 
@@ -73,7 +83,9 @@ class ChatAttachment(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     owner_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
 
@@ -84,7 +96,9 @@ class AvailableModel(Base):
     name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     description: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    supports_reasoning: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    supports_reasoning: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -107,7 +121,9 @@ class VoiceSettings(Base):
     voice: Mapped[str] = mapped_column(String(64), nullable=False)
     prompt_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    prompt_variables: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    prompt_variables: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -129,9 +145,13 @@ class Workflow(Base):
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
     description: Mapped[str | None] = mapped_column(String(512), nullable=True)
     active_version_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("workflow_definitions.id", ondelete="SET NULL"), nullable=True
+        Integer,
+        ForeignKey("workflow_definitions.id", ondelete="SET NULL"),
+        nullable=True,
     )
-    is_chatkit_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_chatkit_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -144,7 +164,7 @@ class Workflow(Base):
         onupdate=lambda: datetime.datetime.now(datetime.UTC),
     )
 
-    versions: Mapped[list["WorkflowDefinition"]] = relationship(
+    versions: Mapped[list[WorkflowDefinition]] = relationship(
         "WorkflowDefinition",
         back_populates="workflow",
         cascade="all, delete-orphan",
@@ -176,7 +196,10 @@ class WorkflowDefinition(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     workflow_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("workflows.id", ondelete="CASCADE"), nullable=False, index=True
+        Integer,
+        ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -198,13 +221,13 @@ class WorkflowDefinition(Base):
         foreign_keys=[workflow_id],
     )
 
-    steps: Mapped[list["WorkflowStep"]] = relationship(
+    steps: Mapped[list[WorkflowStep]] = relationship(
         "WorkflowStep",
         back_populates="definition",
         cascade="all, delete-orphan",
         order_by="WorkflowStep.position",
     )
-    transitions: Mapped[list["WorkflowTransition"]] = relationship(
+    transitions: Mapped[list[WorkflowTransition]] = relationship(
         "WorkflowTransition",
         back_populates="definition",
         cascade="all, delete-orphan",
@@ -214,7 +237,11 @@ class WorkflowDefinition(Base):
 
 class WorkflowStep(Base):
     __tablename__ = "workflow_steps"
-    __table_args__ = (UniqueConstraint("definition_id", "slug", name="workflow_steps_definition_slug"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "definition_id", "slug", name="workflow_steps_definition_slug"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     definition_id: Mapped[int] = mapped_column(
@@ -229,7 +256,9 @@ class WorkflowStep(Base):
     agent_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    parameters: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    parameters: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
     ui_metadata: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, nullable=False, default=dict
     )
@@ -245,14 +274,16 @@ class WorkflowStep(Base):
         onupdate=lambda: datetime.datetime.now(datetime.UTC),
     )
 
-    definition: Mapped[WorkflowDefinition] = relationship("WorkflowDefinition", back_populates="steps")
-    outgoing_transitions: Mapped[list["WorkflowTransition"]] = relationship(
+    definition: Mapped[WorkflowDefinition] = relationship(
+        "WorkflowDefinition", back_populates="steps"
+    )
+    outgoing_transitions: Mapped[list[WorkflowTransition]] = relationship(
         "WorkflowTransition",
         foreign_keys="WorkflowTransition.source_step_id",
         back_populates="source_step",
         cascade="all, delete-orphan",
     )
-    incoming_transitions: Mapped[list["WorkflowTransition"]] = relationship(
+    incoming_transitions: Mapped[list[WorkflowTransition]] = relationship(
         "WorkflowTransition",
         foreign_keys="WorkflowTransition.target_step_id",
         back_populates="target_step",
@@ -314,7 +345,9 @@ class JsonVectorStore(Base):
     __tablename__ = "json_vector_stores"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    slug: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+    slug: Mapped[str] = mapped_column(
+        String(128), nullable=False, unique=True, index=True
+    )
     title: Mapped[str | None] = mapped_column(String(256), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
@@ -332,7 +365,7 @@ class JsonVectorStore(Base):
         onupdate=lambda: datetime.datetime.now(datetime.UTC),
     )
 
-    documents: Mapped[list["JsonDocument"]] = relationship(
+    documents: Mapped[list[JsonDocument]] = relationship(
         "JsonDocument",
         back_populates="store",
         cascade="all, delete-orphan",
@@ -372,8 +405,10 @@ class JsonDocument(Base):
         onupdate=lambda: datetime.datetime.now(datetime.UTC),
     )
 
-    store: Mapped[JsonVectorStore] = relationship("JsonVectorStore", back_populates="documents")
-    chunks: Mapped[list["JsonChunk"]] = relationship(
+    store: Mapped[JsonVectorStore] = relationship(
+        "JsonVectorStore", back_populates="documents"
+    )
+    chunks: Mapped[list[JsonChunk]] = relationship(
         "JsonChunk",
         back_populates="document",
         cascade="all, delete-orphan",
@@ -384,7 +419,9 @@ class JsonDocument(Base):
 class JsonChunk(Base):
     __tablename__ = "json_chunks"
     __table_args__ = (
-        UniqueConstraint("document_id", "chunk_index", name="json_chunks_document_chunk"),
+        UniqueConstraint(
+            "document_id", "chunk_index", name="json_chunks_document_chunk"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -421,7 +458,9 @@ class JsonChunk(Base):
     )
 
     store: Mapped[JsonVectorStore] = relationship("JsonVectorStore")
-    document: Mapped[JsonDocument] = relationship("JsonDocument", back_populates="chunks")
+    document: Mapped[JsonDocument] = relationship(
+        "JsonDocument", back_populates="chunks"
+    )
 
 
 Index("ix_json_documents_metadata", JsonDocument.metadata_json, postgresql_using="gin")

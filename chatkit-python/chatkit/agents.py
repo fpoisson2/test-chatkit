@@ -6,7 +6,6 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
 from inspect import cleandoc
-from urllib.parse import urlparse
 from typing import (
     Annotated,
     Any,
@@ -18,7 +17,9 @@ from typing import (
     assert_never,
     cast,
 )
+from urllib.parse import urlparse
 
+import httpx
 from agents import (
     InputGuardrailTripwireTriggered,
     OutputGuardrailTripwireTriggered,
@@ -26,38 +27,20 @@ from agents import (
     StreamEvent,
     TResponseInputItem,
 )
-import httpx
 from openai.types.responses import (
     EasyInputMessageParam,
     ResponseFunctionToolCallParam,
     ResponseFunctionWebSearch,
-    ResponseImageGenCallCompletedEvent,
-    ResponseImageGenCallGeneratingEvent,
-    ResponseImageGenCallInProgressEvent,
-    ResponseImageGenCallPartialImageEvent,
     ResponseInputContentParam,
     ResponseInputMessageContentListParam,
     ResponseInputTextParam,
     ResponseOutputText,
-)
-from openai.types.responses.response_function_call_arguments_delta_event import (
-    ResponseFunctionCallArgumentsDeltaEvent,
-)
-from openai.types.responses.response_function_call_arguments_done_event import (
-    ResponseFunctionCallArgumentsDoneEvent,
-)
-from openai.types.responses.response_function_tool_call import (
-    ResponseFunctionToolCall,
-)
-from openai.types.responses.response_function_tool_call_output_item import (
-    ResponseFunctionToolCallOutputItem,
 )
 from openai.types.responses.response_input_item_param import (
     FunctionCallOutput,
     Message,
 )
 from openai.types.responses.response_output_message import Content
-from openai.types.responses.response_output_item import ImageGenerationCall
 from openai.types.responses.response_output_text import (
     Annotation as ResponsesAnnotation,
 )
@@ -80,11 +63,11 @@ from .types import (
     FileSource,
     GeneratedImage,
     HiddenContextItem,
+    ImageTask,
     SearchTask,
     Task,
     TaskItem,
     ThoughtTask,
-    ImageTask,
     ThreadItem,
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
@@ -104,7 +87,6 @@ from .types import (
     WorkflowTaskUpdated,
 )
 from .widgets import Markdown, Text, WidgetRoot
-
 
 LOGGER = logging.getLogger(__name__)
 

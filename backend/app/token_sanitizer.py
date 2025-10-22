@@ -71,8 +71,8 @@ def strip_unsupported_reasoning_fields(value: Any) -> tuple[Any, bool]:
                         ):
                             pending_text_verbosity = field_value.strip()
                         continue
-                    sanitized_value, removed_nested = strip_unsupported_reasoning_fields(
-                        field_value
+                    sanitized_value, removed_nested = (
+                        strip_unsupported_reasoning_fields(field_value)
                     )
                     sanitized_reasoning[field] = sanitized_value
                     removed_reasoning = removed_reasoning or removed_nested
@@ -89,7 +89,10 @@ def strip_unsupported_reasoning_fields(value: Any) -> tuple[Any, bool]:
             current_text = sanitized.get("text")
             if isinstance(current_text, dict):
                 current_verbosity = current_text.get("verbosity")
-                if not isinstance(current_verbosity, str) or not current_verbosity.strip():
+                if (
+                    not isinstance(current_verbosity, str)
+                    or not current_verbosity.strip()
+                ):
                     current_text["verbosity"] = pending_text_verbosity
             else:
                 sanitized["text"] = {"verbosity": pending_text_verbosity}
@@ -112,7 +115,9 @@ def sanitize_value(value: Any) -> tuple[Any, bool]:
     """Retourne une valeur nettoyée et un indicateur de suppression."""
 
     sanitized, removed_tokens = strip_max_token_fields(value)
-    sanitized_reasoning, removed_reasoning = strip_unsupported_reasoning_fields(sanitized)
+    sanitized_reasoning, removed_reasoning = strip_unsupported_reasoning_fields(
+        sanitized
+    )
     return sanitized_reasoning, removed_tokens or removed_reasoning
 
 
@@ -148,4 +153,3 @@ def sanitize_model_like(settings: T) -> T:
         if callable(clone):
             return cast(T, clone(update={}, deep=True))
         return settings
-

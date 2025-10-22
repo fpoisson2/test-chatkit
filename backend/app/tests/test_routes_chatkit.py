@@ -1,25 +1,29 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import sys
-import asyncio
+from importlib import import_module
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from fastapi import HTTPException, status
 from fastapi.responses import FileResponse
 from starlette.datastructures import UploadFile
 
-if importlib.util.find_spec("fastapi") is None:  # pragma: no cover - environnement réduit
+if (
+    importlib.util.find_spec("fastapi") is None
+):  # pragma: no cover - environnement réduit
     pytest.skip("fastapi non disponible", allow_module_level=True)
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from backend.app.routes import chatkit as routes_chatkit
+routes_chatkit = import_module("backend.app.routes.chatkit")
 
 
 class _StubUser:
@@ -62,7 +66,9 @@ class _StubRequest:
                 normalized[key.lower()] = value
         self.headers = normalized
         base = f"{scheme}://{host}"
-        if (scheme == "http" and port not in (80, 0)) or (scheme == "https" and port not in (443, 0)):
+        if (scheme == "http" and port not in (80, 0)) or (
+            scheme == "https" and port not in (443, 0)
+        ):
             base = f"{base}:{port}"
         self._base_url = _BaseURL(base)
 
@@ -104,7 +110,10 @@ def test_chatkit_endpoint_uses_forwarded_headers_when_env_not_overridden(
         )
 
         request = _build_request(
-            headers=[("x-forwarded-host", "public.example"), ("x-forwarded-proto", "https")],
+            headers=[
+                ("x-forwarded-host", "public.example"),
+                ("x-forwarded-proto", "https"),
+            ],
         )
 
         response = await routes_chatkit.chatkit_endpoint(
@@ -114,7 +123,7 @@ def test_chatkit_endpoint_uses_forwarded_headers_when_env_not_overridden(
         assert response.media_type == "application/json"
         context = captured.get("context")
         assert context is not None
-        assert getattr(context, "public_base_url") == "https://public.example"
+        assert context.public_base_url == "https://public.example"
 
     asyncio.run(_run())
 
@@ -141,14 +150,17 @@ def test_chatkit_endpoint_prefers_configured_public_base_url(
         )
 
         request = _build_request(
-            headers=[("x-forwarded-host", "public.example"), ("x-forwarded-proto", "https")],
+            headers=[
+                ("x-forwarded-host", "public.example"),
+                ("x-forwarded-proto", "https"),
+            ],
         )
 
         await routes_chatkit.chatkit_endpoint(request, current_user=_StubUser())
 
         context = captured.get("context")
         assert context is not None
-        assert getattr(context, "public_base_url") == "https://configured.example"
+        assert context.public_base_url == "https://configured.example"
 
     asyncio.run(_run())
 
@@ -180,7 +192,7 @@ def test_chatkit_endpoint_falls_back_to_request_base_url(
 
         context = captured.get("context")
         assert context is not None
-        assert getattr(context, "public_base_url") == "http://backend.internal:9000"
+        assert context.public_base_url == "http://backend.internal:9000"
 
     asyncio.run(_run())
 
@@ -188,7 +200,9 @@ def test_chatkit_endpoint_falls_back_to_request_base_url(
 def test_chatkit_endpoint_handles_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _run() -> None:
         def _raise_import_error():
-            raise ImportError("cannot import name 'AttachmentCreateParams' from 'chatkit.types'")
+            raise ImportError(
+                "cannot import name 'AttachmentCreateParams' from 'chatkit.types'"
+            )
 
         monkeypatch.setattr(routes_chatkit, "get_chatkit_server", _raise_import_error)
 

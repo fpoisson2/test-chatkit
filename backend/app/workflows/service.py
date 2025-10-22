@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import datetime
 import logging
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
+from ..config import Settings, WorkflowDefaults, get_settings
 from ..database import SessionLocal
 from ..models import Workflow, WorkflowDefinition, WorkflowStep, WorkflowTransition
 from ..token_sanitizer import sanitize_value
-from ..config import Settings, WorkflowDefaults, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +32,13 @@ def _coerce_auto_start(value: Any) -> bool:
         if normalized in _FALSY_AUTO_START_VALUES:
             return False
         return False
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return value != 0
     return False
 
 
 def resolve_start_auto_start(
-    definition: "WorkflowDefinition",
+    definition: WorkflowDefinition,
 ) -> bool:
     """Retourne l'option de démarrage automatique du bloc début."""
 
@@ -58,7 +59,7 @@ def resolve_start_auto_start(
 
 
 def resolve_start_auto_start_message(
-    definition: "WorkflowDefinition",
+    definition: WorkflowDefinition,
 ) -> str:
     """Retourne le message utilisateur injecté lors du démarrage automatique."""
 
@@ -78,7 +79,7 @@ def resolve_start_auto_start_message(
 
 
 def resolve_start_auto_start_assistant_message(
-    definition: "WorkflowDefinition",
+    definition: WorkflowDefinition,
 ) -> str:
     """Retourne le message assistant diffusé lors du démarrage automatique."""
 
@@ -95,7 +96,6 @@ def resolve_start_auto_start_assistant_message(
         break
 
     return ""
-
 
 
 @dataclass(slots=True, frozen=True)
@@ -137,7 +137,9 @@ class WorkflowVersionNotFoundError(LookupError):
     """Signale qu'une version de workflow est introuvable."""
 
     def __init__(self, workflow_id: int, version_id: int) -> None:
-        super().__init__(f"Version {version_id} introuvable pour le workflow {workflow_id}")
+        super().__init__(
+            f"Version {version_id} introuvable pour le workflow {workflow_id}"
+        )
         self.workflow_id = workflow_id
         self.version_id = version_id
 
@@ -171,7 +173,9 @@ class WorkflowService:
         """Charge toutes les relations nécessaires avant fermeture de session."""
 
         definition.steps  # noqa: B018 - charge les étapes liées
-        transitions = list(definition.transitions)  # noqa: B018 - charge les transitions
+        transitions = list(
+            definition.transitions
+        )  # noqa: B018 - charge les transitions
         for transition in transitions:
             transition.source_step  # noqa: B018 - charge le nœud source
             transition.target_step  # noqa: B018 - charge le nœud cible
@@ -199,7 +203,9 @@ class WorkflowService:
             select(Workflow).where(Workflow.slug == defaults.default_workflow_slug)
         )
         if workflow is None:
-            existing = session.scalar(select(Workflow).order_by(Workflow.created_at.asc()))
+            existing = session.scalar(
+                select(Workflow).order_by(Workflow.created_at.asc())
+            )
             if existing is not None:
                 workflow = existing
                 workflow.slug = defaults.default_workflow_slug
@@ -241,14 +247,16 @@ class WorkflowService:
             workflow = self._ensure_default_workflow(session)
         return workflow
 
-    def _load_active_definition(self, workflow: Workflow, session: Session) -> WorkflowDefinition | None:
+    def _load_active_definition(
+        self, workflow: Workflow, session: Session
+    ) -> WorkflowDefinition | None:
         definition = session.scalar(
             select(WorkflowDefinition)
-                .where(
-                    WorkflowDefinition.workflow_id == workflow.id,
-                    WorkflowDefinition.is_active.is_(True),
-                )
-                .order_by(WorkflowDefinition.updated_at.desc())
+            .where(
+                WorkflowDefinition.workflow_id == workflow.id,
+                WorkflowDefinition.is_active.is_(True),
+            )
+            .order_by(WorkflowDefinition.updated_at.desc())
         )
         if definition is not None:
             return definition
@@ -365,7 +373,8 @@ class WorkflowService:
             definition = self._fully_load_definition(definition)
             if self._needs_graph_backfill(definition):
                 logger.info(
-                    "Legacy workflow detected, backfilling default graph with existing agent configuration",
+                    "Legacy workflow detected, backfilling default graph with existing "
+                    "agent configuration",
                 )
                 definition = self._backfill_legacy_definition(definition, db)
                 self._set_active_definition(workflow, definition, db)
@@ -399,7 +408,9 @@ class WorkflowService:
             if owns_session:
                 db.close()
 
-    def _create_default_definition(self, session: Session, workflow: Workflow) -> WorkflowDefinition:
+    def _create_default_definition(
+        self, session: Session, workflow: Workflow
+    ) -> WorkflowDefinition:
         nodes, edges = self._normalize_graph(
             self._workflow_defaults.clone_workflow_graph()
         )
@@ -419,9 +430,11 @@ class WorkflowService:
         db, owns_session = self._get_session(session)
         try:
             self._ensure_default_workflow(db)
-            workflows = db.scalars(select(Workflow).order_by(Workflow.created_at.asc())).all()
+            workflows = db.scalars(
+                select(Workflow).order_by(Workflow.created_at.asc())
+            ).all()
             for workflow in workflows:
-                workflow.versions  # force le chargement des versions
+                _ = workflow.versions  # force le chargement des versions
             return workflows
         finally:
             if owns_session:
@@ -437,7 +450,8 @@ class WorkflowService:
                 raise WorkflowNotFoundError(workflow_id)
             if workflow.active_version_id is None:
                 raise WorkflowValidationError(
-                    "Définissez une version de production avant d'utiliser ce workflow avec ChatKit."
+                    "Définissez une version de production avant d'utiliser ce workflow "
+                    "avec ChatKit."
                 )
 
             has_changed = False
@@ -452,19 +466,21 @@ class WorkflowService:
             if has_changed:
                 db.commit()
                 db.refresh(workflow)
-            workflow.versions
+            _ = workflow.versions
             return workflow
         finally:
             if owns_session:
                 db.close()
 
-    def get_workflow(self, workflow_id: int, session: Session | None = None) -> Workflow:
+    def get_workflow(
+        self, workflow_id: int, session: Session | None = None
+    ) -> Workflow:
         db, owns_session = self._get_session(session)
         try:
             workflow = db.get(Workflow, workflow_id)
             if workflow is None:
                 raise WorkflowNotFoundError(workflow_id)
-            workflow.versions
+            _ = workflow.versions
             return workflow
         finally:
             if owns_session:
@@ -484,7 +500,7 @@ class WorkflowService:
                 .order_by(WorkflowDefinition.version.desc())
             ).all()
             for definition in definitions:
-                definition.steps
+                _ = definition.steps
             return definitions
         finally:
             if owns_session:
@@ -496,8 +512,7 @@ class WorkflowService:
         db, owns_session = self._get_session(session)
         try:
             definition = db.scalar(
-                select(WorkflowDefinition)
-                .where(
+                select(WorkflowDefinition).where(
                     WorkflowDefinition.workflow_id == workflow_id,
                     WorkflowDefinition.id == version_id,
                 )
@@ -523,7 +538,9 @@ class WorkflowService:
             existing = db.scalar(select(Workflow).where(Workflow.slug == slug))
             if existing is not None:
                 raise WorkflowValidationError("Un workflow avec ce slug existe déjà.")
-            workflow = Workflow(slug=slug, display_name=display_name, description=description)
+            workflow = Workflow(
+                slug=slug, display_name=display_name, description=description
+            )
             db.add(workflow)
             db.flush()
 
@@ -565,19 +582,27 @@ class WorkflowService:
             if "display_name" in updates:
                 display_name_raw = updates["display_name"]
                 if display_name_raw is None:
-                    raise WorkflowValidationError("Le nom du workflow ne peut pas être vide.")
+                    raise WorkflowValidationError(
+                        "Le nom du workflow ne peut pas être vide."
+                    )
                 display_name = str(display_name_raw).strip()
                 if not display_name:
-                    raise WorkflowValidationError("Le nom du workflow ne peut pas être vide.")
+                    raise WorkflowValidationError(
+                        "Le nom du workflow ne peut pas être vide."
+                    )
                 workflow.display_name = display_name
 
             if "slug" in updates:
                 slug_raw = updates["slug"]
                 if slug_raw is None:
-                    raise WorkflowValidationError("Le slug du workflow ne peut pas être vide.")
+                    raise WorkflowValidationError(
+                        "Le slug du workflow ne peut pas être vide."
+                    )
                 slug = str(slug_raw).strip()
                 if not slug:
-                    raise WorkflowValidationError("Le slug du workflow ne peut pas être vide.")
+                    raise WorkflowValidationError(
+                        "Le slug du workflow ne peut pas être vide."
+                    )
                 defaults = self._workflow_defaults
                 if (
                     workflow.slug == defaults.default_workflow_slug
@@ -588,11 +613,14 @@ class WorkflowService:
                     )
                 if slug != workflow.slug:
                     existing = db.scalar(
-                        select(Workflow.id)
-                        .where(Workflow.slug == slug, Workflow.id != workflow_id)
+                        select(Workflow.id).where(
+                            Workflow.slug == slug, Workflow.id != workflow_id
+                        )
                     )
                     if existing is not None:
-                        raise WorkflowValidationError("Un workflow avec ce slug existe déjà.")
+                        raise WorkflowValidationError(
+                            "Un workflow avec ce slug existe déjà."
+                        )
                     workflow.slug = slug
 
             if "description" in updates:
@@ -727,8 +755,7 @@ class WorkflowService:
         db, owns_session = self._get_session(session)
         try:
             definition = db.scalar(
-                select(WorkflowDefinition)
-                .where(
+                select(WorkflowDefinition).where(
                     WorkflowDefinition.workflow_id == workflow_id,
                     WorkflowDefinition.id == version_id,
                 )
@@ -858,7 +885,9 @@ class WorkflowService:
 
             slug = str(entry.get("slug", "")).strip()
             if not slug:
-                raise WorkflowValidationError("Chaque nœud doit posséder un identifiant (slug).")
+                raise WorkflowValidationError(
+                    "Chaque nœud doit posséder un identifiant (slug)."
+                )
             if slug in slugs:
                 raise WorkflowValidationError(f"Slug dupliqué détecté : {slug}")
             slugs.add(slug)
@@ -878,7 +907,9 @@ class WorkflowService:
                 "widget",
                 "end",
             }:
-                raise WorkflowValidationError(f"Type de nœud invalide : {kind or 'inconnu'}")
+                raise WorkflowValidationError(
+                    f"Type de nœud invalide : {kind or 'inconnu'}"
+                )
 
             agent_key: str | None = None
             if kind == "agent":
@@ -926,20 +957,32 @@ class WorkflowService:
                 if node.agent_key:
                     enabled_agent_keys.add(node.agent_key)
 
-        if not any(node.kind == "start" and node.is_enabled for node in normalized_nodes):
-            raise WorkflowValidationError("Le workflow doit contenir un nœud de début actif.")
+        if not any(
+            node.kind == "start" and node.is_enabled for node in normalized_nodes
+        ):
+            raise WorkflowValidationError(
+                "Le workflow doit contenir un nœud de début actif."
+            )
         normalized_edges: list[NormalizedEdge] = []
         for entry in raw_edges:
             if not isinstance(entry, dict):
-                raise WorkflowValidationError("Chaque connexion doit être un objet JSON.")
+                raise WorkflowValidationError(
+                    "Chaque connexion doit être un objet JSON."
+                )
             source_slug = str(entry.get("source", "")).strip()
             target_slug = str(entry.get("target", "")).strip()
             if not source_slug or not target_slug:
-                raise WorkflowValidationError("Chaque connexion doit préciser source et cible.")
+                raise WorkflowValidationError(
+                    "Chaque connexion doit préciser source et cible."
+                )
             if source_slug not in slugs:
-                raise WorkflowValidationError(f"Connexion inconnue : source {source_slug} absente")
+                raise WorkflowValidationError(
+                    f"Connexion inconnue : source {source_slug} absente"
+                )
             if target_slug not in slugs:
-                raise WorkflowValidationError(f"Connexion inconnue : cible {target_slug} absente")
+                raise WorkflowValidationError(
+                    f"Connexion inconnue : cible {target_slug} absente"
+                )
 
             condition_raw = entry.get("condition")
             if condition_raw is None:
@@ -980,7 +1023,8 @@ class WorkflowService:
             or minimal_skeleton
         ):
             raise WorkflowValidationError(
-                "Le workflow doit activer au moins un agent, un message (assistant ou utilisateur) ou un widget."
+                "Le workflow doit activer au moins un agent, un message "
+                "(assistant ou utilisateur) ou un widget."
             )
         # Les anciens workflows imposaient la présence d'un rédacteur final, mais la
         # bibliothèque permet désormais de créer des workflows plus simples.
@@ -1069,20 +1113,33 @@ class WorkflowService:
     ) -> None:
         nodes_by_slug = {node.slug: node for node in nodes if node.is_enabled}
         if not nodes_by_slug:
-            raise WorkflowValidationError("Le workflow doit conserver au moins un nœud actif.")
+            raise WorkflowValidationError(
+                "Le workflow doit conserver au moins un nœud actif."
+            )
 
-        adjacency: dict[str, list[NormalizedEdge]] = {slug: [] for slug in nodes_by_slug}
-        reverse_adjacency: dict[str, list[NormalizedEdge]] = {slug: [] for slug in nodes_by_slug}
+        adjacency: dict[str, list[NormalizedEdge]] = {
+            slug: [] for slug in nodes_by_slug
+        }
+        reverse_adjacency: dict[str, list[NormalizedEdge]] = {
+            slug: [] for slug in nodes_by_slug
+        }
         for edge in edges:
-            if edge.source_slug not in nodes_by_slug or edge.target_slug not in nodes_by_slug:
+            if (
+                edge.source_slug not in nodes_by_slug
+                or edge.target_slug not in nodes_by_slug
+            ):
                 # Ignore edges reliant un nœud désactivé
                 continue
             adjacency[edge.source_slug].append(edge)
             reverse_adjacency[edge.target_slug].append(edge)
 
-        start_nodes = [slug for slug, node in nodes_by_slug.items() if node.kind == "start"]
+        start_nodes = [
+            slug for slug, node in nodes_by_slug.items() if node.kind == "start"
+        ]
         if not start_nodes:
-            raise WorkflowValidationError("Impossible d'identifier le nœud de début actif.")
+            raise WorkflowValidationError(
+                "Impossible d'identifier le nœud de début actif."
+            )
         if len(start_nodes) > 1:
             raise WorkflowValidationError(
                 "Un seul nœud de début actif est autorisé dans le workflow."
@@ -1094,13 +1151,18 @@ class WorkflowService:
             outgoing = adjacency.get(slug, [])
             incoming = reverse_adjacency.get(slug, [])
             if node.kind == "start" and incoming:
-                raise WorkflowValidationError("Le nœud de début ne doit pas avoir d'entrée.")
+                raise WorkflowValidationError(
+                    "Le nœud de début ne doit pas avoir d'entrée."
+                )
             if node.kind == "end" and outgoing:
-                raise WorkflowValidationError("Le nœud de fin ne doit pas avoir de sortie.")
+                raise WorkflowValidationError(
+                    "Le nœud de fin ne doit pas avoir de sortie."
+                )
             if node.kind == "condition":
                 if len(outgoing) < 2:
                     raise WorkflowValidationError(
-                        f"Le nœud conditionnel {slug} doit comporter au moins deux sorties."
+                        f"Le nœud conditionnel {slug} doit comporter au moins deux "
+                        "sorties."
                     )
                 seen_branches: set[str] = set()
                 default_count = 0
@@ -1110,11 +1172,13 @@ class WorkflowService:
                         default_count += 1
                         if default_count > 1:
                             raise WorkflowValidationError(
-                                f"Le nœud conditionnel {slug} ne peut contenir qu'une seule branche par défaut."
+                                f"Le nœud conditionnel {slug} ne peut contenir qu'une "
+                                "seule branche par défaut."
                             )
                     if normalized in seen_branches:
                         raise WorkflowValidationError(
-                            f"Le nœud conditionnel {slug} contient des branches conditionnelles en double."
+                            f"Le nœud conditionnel {slug} contient des branches "
+                            "conditionnelles en double."
                         )
                     seen_branches.add(normalized)
             if node.kind == "watch":
@@ -1144,13 +1208,15 @@ class WorkflowService:
         for end_slug in end_nodes:
             if end_slug not in visited:
                 raise WorkflowValidationError(
-                    f"Le nœud de fin {end_slug} n'est pas accessible depuis le début du workflow."
+                    f"Le nœud de fin {end_slug} n'est pas accessible depuis le "
+                    "début du workflow."
                 )
 
         reachable_terminals = [slug for slug in visited if not adjacency.get(slug)]
         if not reachable_terminals:
             raise WorkflowValidationError(
-                "Le workflow doit comporter au moins une sortie accessible sans transition."
+                "Le workflow doit comporter au moins une sortie accessible sans "
+                "transition."
             )
 
 
@@ -1205,7 +1271,9 @@ def serialize_definition(definition: WorkflowDefinition) -> dict[str, Any]:
         "id": definition.id,
         "workflow_id": definition.workflow_id,
         "workflow_slug": definition.workflow.slug if definition.workflow else None,
-        "workflow_display_name": definition.workflow.display_name if definition.workflow else None,
+        "workflow_display_name": (
+            definition.workflow.display_name if definition.workflow else None
+        ),
         "workflow_is_chatkit_default": bool(
             definition.workflow and definition.workflow.is_chatkit_default
         ),

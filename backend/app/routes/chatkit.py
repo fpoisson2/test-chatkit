@@ -4,13 +4,25 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 try:  # pragma: no cover - dépendance optionnelle pour les tests
     from chatkit.server import StreamingResult
-except ModuleNotFoundError:  # pragma: no cover - utilisé uniquement quand ChatKit n'est pas installé
+except (
+    ModuleNotFoundError
+):  # pragma: no cover - utilisé uniquement quand ChatKit n'est pas installé
+
     class StreamingResult:  # type: ignore[override]
         """Bouchon minimal utilisé lorsque le SDK ChatKit n'est pas disponible."""
 
@@ -23,7 +35,6 @@ if TYPE_CHECKING:  # pragma: no cover - uniquement pour l'auto-complétion
 from chatkit.store import NotFoundError
 
 from ..attachment_store import AttachmentUploadError
-from ..image_utils import AGENT_IMAGE_STORAGE_DIR
 from ..chatkit_realtime import create_realtime_voice_session
 from ..chatkit_sessions import (
     SessionSecretParser,
@@ -34,6 +45,7 @@ from ..chatkit_sessions import (
 from ..config import get_settings
 from ..database import get_session
 from ..dependencies import get_current_user, get_optional_user
+from ..image_utils import AGENT_IMAGE_STORAGE_DIR
 from ..models import User
 from ..schemas import (
     ChatKitWorkflowResponse,
@@ -41,13 +53,13 @@ from ..schemas import (
     VoiceSessionRequest,
     VoiceSessionResponse,
 )
-from ..voice_settings import get_or_create_voice_settings
 from ..security import decode_agent_image_token
+from ..voice_settings import get_or_create_voice_settings
 from ..workflows import (
     WorkflowService,
     resolve_start_auto_start,
-    resolve_start_auto_start_message,
     resolve_start_auto_start_assistant_message,
+    resolve_start_auto_start_message,
 )
 
 router = APIRouter()
@@ -67,7 +79,7 @@ def _build_request_context(
     request: Request | None,
     *,
     public_base_url: str | None = None,
-) -> "ChatKitRequestContext":
+) -> ChatKitRequestContext:
     from ..chatkit import ChatKitRequestContext
 
     base_url = (
@@ -127,9 +139,9 @@ async def get_chatkit_workflow(
         definition_version=definition.version,
         auto_start=resolve_start_auto_start(definition),
         auto_start_user_message=user_message or None,
-        auto_start_assistant_message=(assistant_message or None)
-        if not user_message
-        else None,
+        auto_start_assistant_message=(
+            (assistant_message or None) if not user_message else None
+        ),
         updated_at=definition.updated_at,
     )
 
@@ -195,7 +207,9 @@ async def upload_chatkit_attachment(
 ):
     try:
         server = get_chatkit_server()
-    except ModuleNotFoundError as exc:  # pragma: no cover - dépendance optionnelle absente
+    except (
+        ModuleNotFoundError
+    ) as exc:  # pragma: no cover - dépendance optionnelle absente
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Le serveur ChatKit n'est pas disponible.",
@@ -206,7 +220,10 @@ async def upload_chatkit_attachment(
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Le serveur ChatKit n'est pas disponible (dépendances incompatibles).",
+            detail=(
+                "Le serveur ChatKit n'est pas disponible "
+                "(dépendances incompatibles)."
+            ),
         ) from exc
 
     attachment_store = getattr(server, "attachment_store", None)
@@ -250,7 +267,9 @@ async def download_chatkit_attachment(
 ):
     try:
         server = get_chatkit_server()
-    except ModuleNotFoundError as exc:  # pragma: no cover - dépendance optionnelle absente
+    except (
+        ModuleNotFoundError
+    ) as exc:  # pragma: no cover - dépendance optionnelle absente
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Pièce jointe introuvable",
@@ -299,9 +318,7 @@ async def create_voice_session(
     voice_settings = get_or_create_voice_settings(session)
 
     resolved_model = (
-        req.model
-        or voice_settings.model
-        or app_settings.chatkit_realtime_model
+        req.model or voice_settings.model or app_settings.chatkit_realtime_model
     )
     resolved_instructions = (
         req.instructions
@@ -309,9 +326,7 @@ async def create_voice_session(
         or app_settings.chatkit_realtime_instructions
     )
     resolved_voice = (
-        req.voice
-        or voice_settings.voice
-        or app_settings.chatkit_realtime_voice
+        req.voice or voice_settings.voice or app_settings.chatkit_realtime_voice
     )
     user_id = f"user:{current_user.id}"
 
@@ -353,7 +368,9 @@ async def create_voice_session(
     "/api/chatkit/proxy/{path:path}",
     methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
 )
-async def proxy_chatkit(path: str, request: Request, _current_user: User = Depends(get_current_user)):
+async def proxy_chatkit(
+    path: str, request: Request, _current_user: User = Depends(get_current_user)
+):
     return await proxy_chatkit_request(path, request)
 
 
@@ -364,7 +381,9 @@ async def chatkit_endpoint(
 ):
     try:
         server = get_chatkit_server()
-    except ModuleNotFoundError as exc:  # pragma: no cover - dépendance optionnelle absente
+    except (
+        ModuleNotFoundError
+    ) as exc:  # pragma: no cover - dépendance optionnelle absente
         logger.error(
             "SDK ChatKit introuvable : installez le paquet `chatkit` ou configurez"
             " CHATKIT_WORKFLOW_ID pour utiliser cette route.",
@@ -374,7 +393,10 @@ async def chatkit_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error": "ChatKit SDK introuvable",
-                "hint": "Installez le paquet `chatkit` ou configurez CHATKIT_WORKFLOW_ID pour utiliser cette route.",
+                "hint": (
+                    "Installez le paquet `chatkit` ou configurez "
+                    "CHATKIT_WORKFLOW_ID pour utiliser cette route."
+                ),
             },
         ) from exc
     except ImportError as exc:  # pragma: no cover - dépendances du SDK incompatibles
@@ -385,7 +407,10 @@ async def chatkit_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error": "Import du SDK ChatKit impossible",
-                "hint": "Mettez à jour le paquet `chatkit` afin de disposer d'une version compatible.",
+                "hint": (
+                    "Mettez à jour le paquet `chatkit` afin de disposer d'une "
+                    "version compatible."
+                ),
                 "details": str(exc),
             },
         ) from exc

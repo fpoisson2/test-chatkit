@@ -10,13 +10,18 @@ assert spec.loader is not None
 spec.loader.exec_module(image_utils)
 
 _SAMPLE_PNG_BASE64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQAAAAASUVORK5CYII="
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAASsJTYQ"
+    "AAAAASUVORK5CYII="
 )
 
 
-def test_save_agent_image_file_writes_png(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_save_agent_image_file_writes_png(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(image_utils, "AGENT_IMAGE_STORAGE_DIR", tmp_path)
-    file_path, url = image_utils.save_agent_image_file("demo-doc", _SAMPLE_PNG_BASE64, output_format="png")
+    file_path, url = image_utils.save_agent_image_file(
+        "demo-doc", _SAMPLE_PNG_BASE64, output_format="png"
+    )
 
     assert file_path is not None
     assert url == f"{image_utils.AGENT_IMAGE_URL_PREFIX}/demo-doc.png"
@@ -25,9 +30,13 @@ def test_save_agent_image_file_writes_png(tmp_path: pathlib.Path, monkeypatch: p
     assert len(data) > 0
 
 
-def test_save_agent_image_file_handles_invalid_base64(tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_save_agent_image_file_handles_invalid_base64(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setattr(image_utils, "AGENT_IMAGE_STORAGE_DIR", tmp_path)
-    file_path, url = image_utils.save_agent_image_file("demo-doc", "!!!", output_format="png")
+    file_path, url = image_utils.save_agent_image_file(
+        "demo-doc", "!!!", output_format="png"
+    )
 
     assert file_path is None
     assert url is None

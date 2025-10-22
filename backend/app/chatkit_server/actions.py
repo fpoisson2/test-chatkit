@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Any, Mapping, Sequence, Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, create_model
 
@@ -14,6 +15,8 @@ from ..database import SessionLocal
 from ..widgets import WidgetLibraryService
 
 logger = logging.getLogger("chatkit.server")
+
+
 def _remove_additional_properties_from_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """
     Supprime récursivement 'additionalProperties' d'un schéma JSON.
@@ -62,6 +65,7 @@ def _remove_additional_properties_from_schema(schema: dict[str, Any]) -> dict[st
 
 
 if hasattr(BaseModel, "model_config"):
+
     class _StrictSchemaBase(BaseModel):
         """
         Classe de base configurée avec extra=\"forbid\" pour Pydantic v2+.
@@ -71,7 +75,9 @@ if hasattr(BaseModel, "model_config"):
             "extra": "forbid",
             "populate_by_name": True,
         }
+
 else:  # pragma: no cover - compatibilité Pydantic v1
+
     class _StrictSchemaBase(BaseModel):  # type: ignore[no-redef]
         """
         Variante Pydantic v1 configurée pour refuser les champs supplémentaires.
@@ -127,7 +133,9 @@ def _patch_model_json_schema(model: type[BaseModel]) -> None:
         patched = True
 
     if patched:
-        setattr(model, "__chatkit_schema_patched__", True)
+        model.__chatkit_schema_patched__ = True
+
+
 @dataclass(frozen=True)
 class _WidgetBinding:
     path: tuple[str | int, ...]
@@ -150,7 +158,7 @@ class _ResponseWidgetConfig:
 def _coerce_bool(value: Any) -> bool | None:
     if isinstance(value, bool):
         return value
-    if isinstance(value, (int, float)):
+    if isinstance(value, int | float):
         return bool(value)
     if isinstance(value, str):
         normalized = value.strip().lower()
@@ -187,7 +195,9 @@ def _parse_response_widget_config(
     if not isinstance(definition_expression_raw, str):
         definition_expression_raw = candidate.get("definitionExpression")
     definition_expression = (
-        definition_expression_raw.strip() if isinstance(definition_expression_raw, str) else ""
+        definition_expression_raw.strip()
+        if isinstance(definition_expression_raw, str)
+        else ""
     )
     slug_raw = candidate.get("slug")
     slug = slug_raw.strip() if isinstance(slug_raw, str) else ""
@@ -273,7 +283,9 @@ def _build_widget_output_model(
                 parts.append(f"Composant : {binding.component_type}")
             sample = binding.sample
             if isinstance(sample, list):
-                sample_text = ", ".join(str(item) for item in sample if item is not None)
+                sample_text = ", ".join(
+                    str(item) for item in sample if item is not None
+                )
             elif sample is not None:
                 sample_text = str(sample)
             else:
@@ -294,13 +306,15 @@ def _build_widget_output_model(
             field = Field(default=None, alias=variable_id, description=description)
             if hasattr(field, "serialization_alias"):
                 try:
-                    setattr(field, "serialization_alias", variable_id)
+                    field.serialization_alias = variable_id
                 except Exception:  # pragma: no cover - dépend des versions de Pydantic
                     pass
         annotation = str | list[str] | None
         field_definitions[field_name] = (annotation, field)
 
-    model_name_parts = [part.capitalize() for part in re.split(r"[^0-9a-zA-Z]+", slug) if part]
+    model_name_parts = [
+        part.capitalize() for part in re.split(r"[^0-9a-zA-Z]+", slug) if part
+    ]
     model_name = "".join(model_name_parts) or "Widget"
     model_name = f"{model_name}Response"
 
@@ -314,6 +328,7 @@ def _build_widget_output_model(
             }
 
         if hasattr(_StrictSchemaBase, "Config"):  # pragma: no cover - Pydantic v1
+
             class Config(_StrictSchemaBase.Config):  # type: ignore[misc]
                 allow_population_by_field_name = True
                 allow_population_by_alias = True
@@ -335,9 +350,12 @@ def _build_widget_output_model(
     _patch_model_json_schema(widget_model)
 
     # Pour Pydantic v1, ajouter la configuration compatible
-    if not hasattr(widget_model, "model_config"):  # pragma: no cover - compatibilité Pydantic v1
+    if not hasattr(
+        widget_model, "model_config"
+    ):  # pragma: no cover - compatibilité Pydantic v1
         config = getattr(widget_model, "Config", None)
         if config is None:
+
             class Config:
                 allow_population_by_field_name = True
                 allow_population_by_alias = True
@@ -345,9 +363,9 @@ def _build_widget_output_model(
 
             widget_model.Config = Config
         else:
-            setattr(config, "allow_population_by_field_name", True)
-            setattr(config, "allow_population_by_alias", True)
-            setattr(config, "extra", "forbid")
+            config.allow_population_by_field_name = True
+            config.allow_population_by_alias = True
+            config.extra = "forbid"
 
     return widget_model
 
@@ -385,7 +403,7 @@ def _load_widget_definition(slug: str, *, context: str) -> Any | None:
 
 def _extract_template_variables(value: str) -> list[str]:
     """Extrait les variables de template au format {{variable}} d'une chaîne."""
-    pattern = r'\{\{([^}]+)\}\}'
+    pattern = r"\{\{([^}]+)\}\}"
     matches = re.findall(pattern, value)
     return [match.strip() for match in matches if match.strip()]
 
@@ -483,7 +501,17 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
                 "image": "image",
             }
             alias = alias_map.get(normalized_type)
-            if alias and value_key in {"value", "text", "title", "label", "content", "body", "src", "alt", "url"}:
+            if alias and value_key in {
+                "value",
+                "text",
+                "title",
+                "label",
+                "content",
+                "body",
+                "src",
+                "alt",
+                "url",
+            }:
                 return _ensure_unique(alias)
 
         name_attr = node.get("name")
@@ -543,7 +571,7 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
                 sample = [str(item) for item in raw_value]
                 captured_key = candidate_key
                 break
-            if isinstance(raw_value, (str, int, float, bool)):
+            if isinstance(raw_value, str | int | float | bool):
                 sample = str(raw_value)
                 captured_key = candidate_key
                 break
@@ -568,7 +596,7 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
                 if isinstance(editable_name, str):
                     _register(editable_name, path, node, is_manual=True)
                 editable_names = editable.get("names")
-                if isinstance(editable_names, (list, tuple)):
+                if isinstance(editable_names, list | tuple):
                     for entry in editable_names:
                         if isinstance(entry, str):
                             _register(entry, path, node, is_manual=True)
@@ -585,19 +613,17 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
                     node, key, existing=bindings.keys()
                 )
                 if not identifier:
-                    identifier_parts = [
-                        str(part) for part in (*path, key) if str(part)
-                    ]
+                    identifier_parts = [str(part) for part in (*path, key) if str(part)]
                     if not identifier_parts:
                         continue
                     identifier = ".".join(identifier_parts)
-                if isinstance(raw_value, (str, int, float, bool)):
+                if isinstance(raw_value, str | int | float | bool):
                     _register(identifier, path, node, is_manual=False, value_key=key)
                 elif isinstance(raw_value, list):
                     simple_values = [
                         str(item)
                         for item in raw_value
-                        if isinstance(item, (str, int, float, bool))
+                        if isinstance(item, str | int | float | bool)
                     ]
                     if simple_values:
                         _register(
@@ -609,11 +635,11 @@ def _collect_widget_bindings(definition: Any) -> dict[str, _WidgetBinding]:
                         )
 
             for key, child in node.items():
-                if isinstance(child, (dict, list)):
+                if isinstance(child, dict | list):
                     _walk(child, (*path, key))
         elif isinstance(node, list):
             for index, entry in enumerate(node):
-                if isinstance(entry, (dict, list)):
+                if isinstance(entry, dict | list):
                     _walk(entry, (*path, index))
 
     _walk(definition, ())
@@ -650,7 +676,14 @@ def _sync_button_text_fields(
         return
 
     candidate_key = assigned_key or preferred_key
-    if not candidate_key or candidate_key not in {"label", "text", "title", "value", "content", "body"}:
+    if not candidate_key or candidate_key not in {
+        "label",
+        "text",
+        "title",
+        "value",
+        "content",
+        "body",
+    }:
         return
 
     normalized_type: str | None = None
@@ -724,9 +757,7 @@ def _apply_widget_variable_values(
             identifier = node.get("id")
             if isinstance(identifier, str) and identifier in values:
                 binding = bindings.get(identifier) if bindings else None
-                path_matches = (
-                    not binding or tuple(binding.path) == path
-                )
+                path_matches = not binding or tuple(binding.path) == path
                 if path_matches:
                     _update_widget_node_value(
                         node,
@@ -779,11 +810,11 @@ def _apply_widget_variable_values(
                     )
                     matched.add(editable_names)
             for key, child in node.items():
-                if isinstance(child, (dict, list)):
+                if isinstance(child, dict | list):
                     _walk(child, (*path, key))
         elif isinstance(node, list):
             for index, entry in enumerate(node):
-                if isinstance(entry, (dict, list)):
+                if isinstance(entry, dict | list):
                     _walk(entry, (*path, index))
 
     _walk(definition, ())
@@ -843,9 +874,11 @@ def _clone_widget_definition(definition: Any) -> Any | None:
 def _json_safe_copy(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {str(key): _json_safe_copy(item) for key, item in value.items()}
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+    if isinstance(value, Sequence) and not isinstance(
+        value, str | bytes | bytearray
+    ):
         return [_json_safe_copy(entry) for entry in value]
-    if isinstance(value, (str, int, float, bool)) or value is None:
+    if isinstance(value, str | int | float | bool) or value is None:
         return value
     return str(value)
 
@@ -898,7 +931,7 @@ def _extract_widget_values(data: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _extract_widget_bindings_from_payload(
-    data: Mapping[str, Any]
+    data: Mapping[str, Any],
 ) -> dict[str, _WidgetBinding]:
     bindings: dict[str, _WidgetBinding] = {}
     raw_bindings = _as_mapping(data.get("bindings"))
@@ -937,12 +970,12 @@ def _extract_widget_bindings_from_payload(
         sample_value = binding_mapping.get("sample")
         sample: str | list[str] | None
         if isinstance(sample_value, Sequence) and not isinstance(
-            sample_value, (str, bytes, bytearray)
+            sample_value, str | bytes | bytearray
         ):
             sample = [
                 str(entry)
                 for entry in sample_value
-                if isinstance(entry, (str, int, float, bool))
+                if isinstance(entry, str | int | float | bool)
             ]
         elif sample_value is None:
             sample = None
@@ -968,30 +1001,27 @@ def _extract_copy_text_update(data: Mapping[str, Any]) -> object:
             value = data[key]
             if value is None:
                 return None
-            if isinstance(value, (str, int, float)):
+            if isinstance(value, str | int | float):
                 return str(value)
             return _UNSET
     return _UNSET
 
 
 def _resolve_widget_action_payload(
-    payload: Mapping[str, Any]
+    payload: Mapping[str, Any],
 ) -> tuple[str | None, Any | None, dict[str, Any], dict[str, _WidgetBinding], object]:
     container = _as_mapping(payload.get("widget")) or payload
 
     slug = _extract_widget_slug(container) or _extract_widget_slug(payload)
 
-    definition = (
-        _clone_widget_definition(
-            container.get("definition")
-            or container.get("widget_definition")
-            or container.get("widgetDefinition")
-        )
-        or _clone_widget_definition(
-            payload.get("definition")
-            or payload.get("widget_definition")
-            or payload.get("widgetDefinition")
-        )
+    definition = _clone_widget_definition(
+        container.get("definition")
+        or container.get("widget_definition")
+        or container.get("widgetDefinition")
+    ) or _clone_widget_definition(
+        payload.get("definition")
+        or payload.get("widget_definition")
+        or payload.get("widgetDefinition")
     )
 
     values = _extract_widget_values(payload)
@@ -1013,14 +1043,25 @@ def _ensure_widget_output_model(
     config: _ResponseWidgetConfig,
 ) -> _ResponseWidgetConfig:
     if config.source != "library" or not config.slug:
-        logger.debug("_ensure_widget_output_model: config source=%s, slug=%s - retour sans modèle", config.source, config.slug)
+        logger.debug(
+            "_ensure_widget_output_model: config source=%s, slug=%s - "
+            "retour sans modèle",
+            config.source,
+            config.slug,
+        )
         return config
 
     if config.output_model is not None:
-        logger.debug("_ensure_widget_output_model: output_model déjà défini pour %s", config.slug)
+        logger.debug(
+            "_ensure_widget_output_model: output_model déjà défini pour %s", config.slug
+        )
         return config
 
-    logger.debug("_ensure_widget_output_model: Début pour widget '%s', variables=%s", config.slug, config.variables)
+    logger.debug(
+        "_ensure_widget_output_model: Début pour widget '%s', variables=%s",
+        config.slug,
+        config.variables,
+    )
 
     variable_ids = list(config.variables.keys())
     definition = _load_widget_definition(config.slug, context="configuration")
@@ -1030,9 +1071,17 @@ def _ensure_widget_output_model(
             config.slug,
         )
     else:
-        logger.debug("_ensure_widget_output_model: définition chargée pour %s: %s", config.slug, json.dumps(definition, ensure_ascii=False)[:500])
+        logger.debug(
+            "_ensure_widget_output_model: définition chargée pour %s: %s",
+            config.slug,
+            json.dumps(definition, ensure_ascii=False)[:500],
+        )
         bindings = _collect_widget_bindings(definition)
-        logger.debug("_ensure_widget_output_model: bindings collectés pour %s: %s", config.slug, list(bindings.keys()) if bindings else [])
+        logger.debug(
+            "_ensure_widget_output_model: bindings collectés pour %s: %s",
+            config.slug,
+            list(bindings.keys()) if bindings else [],
+        )
         for identifier in bindings:
             if identifier not in variable_ids:
                 variable_ids.append(identifier)
@@ -1041,22 +1090,37 @@ def _ensure_widget_output_model(
     if config.bindings and not variable_ids:
         variable_ids.extend(config.bindings.keys())
 
-    logger.debug("_ensure_widget_output_model: variable_ids finaux pour %s: %s", config.slug, variable_ids)
+    logger.debug(
+        "_ensure_widget_output_model: variable_ids finaux pour %s: %s",
+        config.slug,
+        variable_ids,
+    )
 
     # Si aucune variable n'est trouvée, le widget n'a pas besoin d'output_model
     # (il utilise des valeurs hardcodées directement dans sa définition)
     if not variable_ids:
-        logger.debug("_ensure_widget_output_model: Aucune variable trouvée pour %s, pas besoin d'output_model", config.slug)
+        logger.debug(
+            "_ensure_widget_output_model: Aucune variable trouvée pour %s, "
+            "pas besoin d'output_model",
+            config.slug,
+        )
         return config
 
     model = _build_widget_output_model(
         config.slug, variable_ids, bindings=config.bindings
     )
     if model is None:
-        logger.warning("_ensure_widget_output_model: Impossible de construire le modèle pour %s", config.slug)
+        logger.warning(
+            "_ensure_widget_output_model: Impossible de construire le modèle pour %s",
+            config.slug,
+        )
         return config
 
-    logger.debug("_ensure_widget_output_model: Modèle construit avec succès pour %s: %s", config.slug, model.__name__)
+    logger.debug(
+        "_ensure_widget_output_model: Modèle construit avec succès pour %s: %s",
+        config.slug,
+        model.__name__,
+    )
     return replace(config, output_model=model)
 
 
@@ -1069,6 +1133,7 @@ def _should_wait_for_widget_action(
     if config.await_action is not None:
         return config.await_action
     return step_kind == "widget"
+
 
 __all__ = [
     "_UNSET",

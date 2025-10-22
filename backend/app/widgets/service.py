@@ -3,8 +3,9 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
-from typing import Any, Iterable
+from typing import Any
 
 from pydantic import ValidationError
 
@@ -82,7 +83,8 @@ class WidgetLibraryService:
         self._vector_store_slug = (vector_store_slug or "").strip()
         if not self._vector_store_slug:
             raise RuntimeError(
-                "Le vector store des widgets doit être configuré pour utiliser la bibliothèque."
+                "Le vector store des widgets doit être configuré pour utiliser la "
+                "bibliothèque."
             )
 
     def _vector_service(self) -> JsonVectorStoreService:
@@ -113,7 +115,9 @@ class WidgetLibraryService:
         normalized = slug.strip()
         if not normalized:
             return None
-        document = self._vector_service().get_document(self._vector_store_slug, normalized)
+        document = self._vector_service().get_document(
+            self._vector_store_slug, normalized
+        )
         if document is None:
             return None
         return self._from_document(document)
@@ -173,12 +177,16 @@ class WidgetLibraryService:
         updated_payload = {
             "slug": existing.slug,
             "title": existing.title if title is None else self._normalize_text(title),
-            "description": existing.description
-            if description is None
-            else self._normalize_text(description),
-            "definition": existing.definition
-            if definition is None
-            else self._normalize_definition(definition),
+            "description": (
+                existing.description
+                if description is None
+                else self._normalize_text(description)
+            ),
+            "definition": (
+                existing.definition
+                if definition is None
+                else self._normalize_definition(definition)
+            ),
         }
 
         document = self._vector_service().ingest(
@@ -218,13 +226,13 @@ class WidgetLibraryService:
         """Serialize un widget validé quel que soit le runtime Pydantic."""
 
         if hasattr(widget, "model_dump"):
-            dump_method = getattr(widget, "model_dump")
+            dump_method = widget.model_dump
             try:
                 dumped = dump_method(mode="json")
             except TypeError:
                 dumped = dump_method()
         elif hasattr(widget, "dict"):
-            dump_method = getattr(widget, "dict")
+            dump_method = widget.dict
             dumped = dump_method()
         elif isinstance(widget, dict):
             dumped = widget
@@ -268,7 +276,9 @@ class WidgetLibraryService:
                         "Aucun validateur Pydantic disponible pour les widgets"
                     )
                 widget = parse_obj_as(WidgetRoot, payload)
-        except ValidationError as exc:  # pragma: no cover - dépendant de la structure exacte
+        except (
+            ValidationError
+        ) as exc:  # pragma: no cover - dépendant de la structure exacte
             logger.debug("Widget invalide: %s", exc, exc_info=exc)
             messages = []
             for error in exc.errors():
@@ -309,7 +319,9 @@ class WidgetLibraryService:
             if parsed is None:
                 raise WidgetValidationError(
                     "Définition de widget invalide",
-                    errors=["La définition du widget contient une chaîne JSON invalide."],
+                    errors=[
+                        "La définition du widget contient une chaîne JSON invalide."
+                    ],
                 ) from exc
         if not isinstance(parsed, dict):
             raise WidgetValidationError(
@@ -332,7 +344,6 @@ class WidgetLibraryService:
         return None
 
     # -- Intégration vector store -------------------------------------------
-
 
     @staticmethod
     def _normalize_text(value: str | None) -> str | None:

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any
 
 from chatkit.types import ThreadMetadata
 
@@ -82,14 +83,13 @@ class WidgetWaiterRegistry:
                 or waiter.widget_item_id == widget_item_id
             )
             slug_matches = (
-                waiter.slug is None
-                or widget_slug is None
-                or waiter.slug == widget_slug
+                waiter.slug is None or widget_slug is None or waiter.slug == widget_slug
             )
 
             if not id_matches and not slug_matches:
                 logger.debug(
-                    "Action reçue pour le widget %s (item=%s) alors que %s est attendu (item=%s).",
+                    "Action reçue pour le widget %s (item=%s) alors que %s est "
+                    "attendu (item=%s).",
                     widget_slug,
                     widget_item_id,
                     waiter.slug,

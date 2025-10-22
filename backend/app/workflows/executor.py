@@ -2,119 +2,60 @@ from __future__ import annotations
 
 import asyncio
 import copy
-import inspect
 import json
 import logging
 import math
 import re
 import uuid
-from pathlib import Path
-from collections.abc import Collection, Mapping, Sequence
-from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
-from typing import (
-    Any,
-    AsyncIterator,
+from collections.abc import (
     Awaitable,
     Callable,
-    Coroutine,
     Iterator,
-    Literal,
-    Union,
+    Mapping,
+    Sequence,
+)
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import (
+    Any,
 )
 
 from agents import (
     Agent,
-    AgentOutputSchema,
     RunConfig,
     Runner,
     TResponseInputItem,
 )
 from pydantic import BaseModel
 
-from chatkit.actions import Action
-from chatkit.agents import AgentContext, simple_to_agent_input, stream_agent_response, ThreadItemConverter
+from chatkit.agents import (
+    AgentContext,
+    ThreadItemConverter,
+    stream_agent_response,
+)
 
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
     from chatkit.agents import stream_widget as _sdk_stream_widget
 except ImportError:  # pragma: no cover - compatibilité avec les anciennes versions
     _sdk_stream_widget = None  # type: ignore[assignment]
-from chatkit.server import ChatKitServer
-from chatkit.store import NotFoundError
 from chatkit.types import (
-    ActiveStatus,
     AssistantMessageContent,
     AssistantMessageContentPartTextDelta,
     AssistantMessageItem,
-    ClosedStatus,
     EndOfTurnItem,
-    ErrorCode,
-    ErrorEvent,
     GeneratedImage,
     ImageTask,
     InferenceOptions,
-    LockedStatus,
-    ProgressUpdateEvent,
-    TaskItem,
     ThreadItem,
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
-    ThreadItemRemovedEvent,
     ThreadItemUpdated,
-    ThreadMetadata,
     ThreadStreamEvent,
-    WidgetItem,
-    WidgetRootUpdated,
-    WorkflowItem,
-    WorkflowTaskAdded,
-    WorkflowTaskUpdated,
-    UserMessageInput,
     UserMessageItem,
     UserMessageTextContent,
-)
-
-from ..config import Settings, get_settings
-from ..chatkit_store import PostgresChatKitStore
-from ..database import SessionLocal
-from ..models import WorkflowStep, WorkflowTransition
-from .service import (
-    WorkflowService,
-    resolve_start_auto_start,
-    resolve_start_auto_start_message,
-    resolve_start_auto_start_assistant_message,
-)
-from ..image_utils import (
-    append_generated_image_links,
-    build_agent_image_absolute_url,
-    format_generated_image_links,
-    merge_generated_image_urls_into_payload,
-    save_agent_image_file,
-)
-from ..chatkit_server.actions import (
-    _UNSET,
-    _apply_widget_variable_values,
-    _candidate_widget_keys,
-    _clone_widget_definition,
-    _collect_widget_bindings,
-    _ensure_widget_output_model,
-    _extract_copy_text_update,
-    _extract_template_variables,
-    _extract_widget_bindings_from_payload,
-    _extract_widget_slug,
-    _extract_widget_values,
-    _json_safe_copy,
-    _load_widget_definition,
-    _parse_response_widget_config,
-    _resolve_widget_action_payload,
-    _should_wait_for_widget_action,
-    _sanitize_widget_field_name,
-    _build_widget_output_model,
-    _sync_button_text_fields,
-    _update_widget_node_value,
-    _coerce_bool,
-    _remove_additional_properties_from_schema,
-    _StrictSchemaBase,
-    _patch_model_json_schema,
+    WorkflowTaskAdded,
+    WorkflowTaskUpdated,
 )
 
 from ..chatkit.agent_registry import (
@@ -127,36 +68,53 @@ from ..chatkit.agent_registry import (
     _build_custom_agent,
     _create_response_format_from_pydantic,
 )
+from ..chatkit_server.actions import (
+    _apply_widget_variable_values,
+    _collect_widget_bindings,
+    _ensure_widget_output_model,
+    _json_safe_copy,
+    _load_widget_definition,
+    _parse_response_widget_config,
+    _ResponseWidgetConfig,
+    _should_wait_for_widget_action,
+    _WidgetBinding,
+)
 from ..chatkit_server.context import (
-    AutoStartConfiguration,
-    ChatKitRequestContext,
-    _WAIT_STATE_METADATA_KEY,
     _clone_conversation_history_snapshot,
-    _collect_user_text,
     _get_wait_state_metadata,
     _normalize_user_text,
-    _resolve_user_input_text,
     _set_wait_state_metadata,
 )
 from ..chatkit_server.workflow_runner import (
-    _STREAM_DONE,
     _WorkflowStreamResult,
-    _log_background_exceptions,
 )
+from ..config import get_settings
+from ..database import SessionLocal
+from ..image_utils import (
+    append_generated_image_links,
+    build_agent_image_absolute_url,
+    format_generated_image_links,
+    merge_generated_image_urls_into_payload,
+    save_agent_image_file,
+)
+from ..models import WorkflowStep, WorkflowTransition
 from ..vector_store.ingestion import (
     evaluate_state_expression,
     ingest_document,
     ingest_workflow_step,
     resolve_transform_value,
 )
-from ..weather import fetch_weather
-from ..widgets import WidgetLibraryService, WidgetValidationError
+from ..widgets import WidgetLibraryService
+from .service import (
+    WorkflowService,
+    resolve_start_auto_start,
+    resolve_start_auto_start_assistant_message,
+    resolve_start_auto_start_message,
+)
 
 logger = logging.getLogger("chatkit.server")
 
 AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
-
-_WAIT_STATE_METADATA_KEY = "workflow_wait_for_user_input"
 
 # ---------------------------------------------------------------------------
 # Définition du workflow local exécuté par DemoChatKitServer
@@ -190,7 +148,7 @@ class WorkflowRunSummary:
     steps: list[WorkflowStepSummary]
     final_output: dict[str, Any] | None
     final_node_slug: str | None = None
-    end_state: "WorkflowEndState | None" = None
+    end_state: WorkflowEndState | None = None
 
 
 @dataclass
@@ -203,8 +161,6 @@ class WorkflowStepStreamUpdate:
 
 
 @dataclass(frozen=True)
-
-
 class WorkflowExecutionError(RuntimeError):
     def __init__(
         self,
@@ -230,7 +186,7 @@ def _format_step_output(payload: Any) -> str:
     if isinstance(payload, BaseModel):
         payload = payload.model_dump()
 
-    if isinstance(payload, (dict, list)):
+    if isinstance(payload, dict | list):
         try:
             return json.dumps(payload, ensure_ascii=False, indent=2)
         except TypeError:
@@ -246,7 +202,7 @@ def _format_step_output(payload: Any) -> str:
         except json.JSONDecodeError:
             return text_value
 
-        if isinstance(parsed, (dict, list)):
+        if isinstance(parsed, dict | list):
             try:
                 return json.dumps(parsed, ensure_ascii=False, indent=2)
             except TypeError:
@@ -256,9 +212,7 @@ def _format_step_output(payload: Any) -> str:
     return str(payload)
 
 
-def _resolve_watch_payload(
-    context: Any, steps: Sequence["WorkflowStepSummary"]
-) -> Any:
+def _resolve_watch_payload(context: Any, steps: Sequence[WorkflowStepSummary]) -> Any:
     if isinstance(context, Mapping):
         for key in (
             "output_structured",
@@ -284,10 +238,12 @@ async def run_workflow(
     on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None = None,
     on_step_stream: Callable[[WorkflowStepStreamUpdate], Awaitable[None]] | None = None,
     on_stream_event: Callable[[ThreadStreamEvent], Awaitable[None]] | None = None,
-    on_widget_step: Callable[
-        [WorkflowStep, _ResponseWidgetConfig], Awaitable[Mapping[str, Any] | None]
-    ]
-    | None = None,
+    on_widget_step: (
+        Callable[
+            [WorkflowStep, _ResponseWidgetConfig], Awaitable[Mapping[str, Any] | None]
+        ]
+        | None
+    ) = None,
     workflow_service: WorkflowService | None = None,
     thread_item_converter: ThreadItemConverter | None = None,
     thread_items_history: list[ThreadItem] | None = None,
@@ -313,21 +269,26 @@ async def run_workflow(
             conversation_history.extend(restored_history)
 
     # Convertir l'historique des thread items si fourni
-    # IMPORTANT: Exclure le message utilisateur actuel (source_item_id) pour éviter la duplication
+    # IMPORTANT : exclure le message utilisateur actuel (source_item_id)
+    # pour éviter la duplication
     if thread_items_history and thread_item_converter:
         try:
             # Filtrer le message utilisateur actuel de l'historique
             filtered_history = [
-                item for item in thread_items_history
+                item
+                for item in thread_items_history
                 if item.id != current_input_item_id
             ]
             if filtered_history:
-                converted_history = await thread_item_converter.to_agent_input(filtered_history)
+                converted_history = await thread_item_converter.to_agent_input(
+                    filtered_history
+                )
                 if converted_history:
                     conversation_history.extend(converted_history)
         except Exception as exc:
             logger.warning(
-                "Impossible de convertir l'historique des thread items, poursuite sans historique",
+                "Impossible de convertir l'historique des thread items, poursuite "
+                "sans historique",
                 exc_info=exc,
             )
 
@@ -388,7 +349,9 @@ async def run_workflow(
 
     assistant_message_payload = workflow_payload.get("auto_start_assistant_message")
     if not isinstance(assistant_message_payload, str):
-        assistant_message_payload = resolve_start_auto_start_assistant_message(definition)
+        assistant_message_payload = resolve_start_auto_start_assistant_message(
+            definition
+        )
 
     assistant_message = _normalize_user_text(assistant_message_payload)
     if auto_started and assistant_message and not initial_user_text.strip():
@@ -418,7 +381,9 @@ async def run_workflow(
     if pending_wait_state:
         waiting_slug = pending_wait_state.get("slug")
         waiting_input_id = pending_wait_state.get("input_item_id")
-        stored_input_id = waiting_input_id if isinstance(waiting_input_id, str) else None
+        stored_input_id = (
+            waiting_input_id if isinstance(waiting_input_id, str) else None
+        )
         current_input_id = (
             current_input_item_id if isinstance(current_input_item_id, str) else None
         )
@@ -477,7 +442,15 @@ async def run_workflow(
 
     agent_instances: dict[str, Agent] = {}
     for step in agent_steps_ordered:
-        logger.debug("Paramètres bruts du step %s: %s", step.slug, json.dumps(step.parameters, ensure_ascii=False) if step.parameters else "{}")
+        logger.debug(
+            "Paramètres bruts du step %s: %s",
+            step.slug,
+            (
+                json.dumps(step.parameters, ensure_ascii=False)
+                if step.parameters
+                else "{}"
+            ),
+        )
 
         widget_config = _register_widget_config(step)
 
@@ -487,10 +460,11 @@ async def run_workflow(
         overrides = dict(overrides_raw)
 
         logger.info(
-            "Construction de l'agent pour l'étape %s. widget_config: %s, output_model: %s",
+            "Construction de l'agent pour l'étape %s. widget_config: %s, "
+            "output_model: %s",
             step.slug,
             widget_config is not None,
-            widget_config.output_model if widget_config else None
+            widget_config.output_model if widget_config else None,
         )
 
         if widget_config is not None and widget_config.output_model is not None:
@@ -499,8 +473,9 @@ async def run_workflow(
             overrides.pop("response_widget", None)
             overrides.pop("widget", None)
 
-            # NE PAS définir output_type car cela cause des problèmes de double-wrapping
-            # avec AgentOutputSchema dans le SDK. À la place, utiliser seulement response_format.
+            # NE PAS définir output_type car cela cause des problèmes de
+            # double-wrapping avec AgentOutputSchema dans le SDK. À la place,
+            # utiliser seulement response_format.
 
             # Créer le response_format pour que l'API OpenAI utilise json_schema
             try:
@@ -509,11 +484,12 @@ async def run_workflow(
                 )
                 logger.info(
                     "response_format généré depuis le modèle widget pour l'étape %s",
-                    step.slug
+                    step.slug,
                 )
             except Exception as exc:
                 logger.warning(
-                    "Impossible de générer response_format depuis le modèle widget : %s",
+                    "Impossible de générer response_format depuis le modèle "
+                    "widget : %s",
                     exc,
                 )
 
@@ -556,7 +532,9 @@ async def run_workflow(
         status_reason = None
         if isinstance(status_raw, Mapping):
             status_type = _sanitize_end_value(status_raw.get("type"))
-            status_reason = _sanitize_end_value(status_raw.get("reason")) or status_reason
+            status_reason = (
+                _sanitize_end_value(status_raw.get("reason")) or status_reason
+            )
 
         for key in ("status_reason", "reason"):
             fallback = _sanitize_end_value(params.get(key))
@@ -599,7 +577,7 @@ async def run_workflow(
     def _coerce_bool(value: Any) -> bool:
         if isinstance(value, bool):
             return value
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if isinstance(value, int | float) and not isinstance(value, bool):
             return value != 0
         if isinstance(value, str):
             normalized = value.strip().lower()
@@ -616,7 +594,7 @@ async def run_workflow(
         delay_seconds = _DEFAULT_ASSISTANT_STREAM_DELAY_SECONDS
         raw_delay = params.get("simulate_stream_delay_ms")
         candidate: float | None = None
-        if isinstance(raw_delay, (int, float)) and not isinstance(raw_delay, bool):
+        if isinstance(raw_delay, int | float) and not isinstance(raw_delay, bool):
             candidate = float(raw_delay)
         elif isinstance(raw_delay, str):
             normalized = raw_delay.strip()
@@ -639,9 +617,7 @@ async def run_workflow(
         if buffer:
             yield buffer
 
-    async def _stream_assistant_message(
-        text: str, *, delay_seconds: float
-    ) -> None:
+    async def _stream_assistant_message(text: str, *, delay_seconds: float) -> None:
         if on_stream_event is None:
             return
         assistant_item = AssistantMessageItem(
@@ -700,15 +676,21 @@ async def run_workflow(
             metadata["workflow_name"] = definition.workflow.display_name
         try:
             if response_format is not None:
-                return RunConfig(trace_metadata=metadata, response_format=response_format)
+                return RunConfig(
+                    trace_metadata=metadata, response_format=response_format
+                )
         except TypeError:
-            logger.debug("RunConfig ne supporte pas response_format, utilisation de la configuration par défaut")
+            logger.debug(
+                "RunConfig ne supporte pas response_format, utilisation de la "
+                "configuration par défaut"
+            )
         return RunConfig(trace_metadata=metadata)
 
     async def record_step(step_key: str, title: str, payload: Any) -> None:
         formatted_output = _format_step_output(payload)
         print(
-            f"[Workflow] Payload envoyé pour l'étape {step_key} ({title}) :\n{formatted_output}"
+            "[Workflow] Payload envoyé pour l'étape "
+            f"{step_key} ({title}) :\n{formatted_output}"
         )
         summary = WorkflowStepSummary(
             key=step_key,
@@ -735,7 +717,7 @@ async def run_workflow(
             except TypeError:
                 parsed = output.dict()
             return parsed, json.dumps(parsed, ensure_ascii=False)
-        if isinstance(output, (dict, list)):
+        if isinstance(output, dict | list):
             return output, json.dumps(output, ensure_ascii=False)
         return output, str(output)
 
@@ -753,7 +735,8 @@ async def run_workflow(
                 cursor[part] = next_value
             elif not isinstance(next_value, dict):
                 raise ValueError(
-                    f"Impossible d'écrire dans state.{part} : valeur existante incompatible."
+                    f"Impossible d'écrire dans state.{part} : valeur existante "
+                    "incompatible."
                 )
             cursor = next_value
         cursor[path_parts[-1]] = value
@@ -764,9 +747,7 @@ async def run_workflow(
         if operations is None:
             return
         if not isinstance(operations, list):
-            raise ValueError(
-                "Le paramètre 'state' doit être une liste d'opérations."
-            )
+            raise ValueError("Le paramètre 'state' doit être une liste d'opérations.")
         for entry in operations:
             if not isinstance(entry, dict):
                 raise ValueError(
@@ -775,9 +756,7 @@ async def run_workflow(
             target_raw = entry.get("target")
             target = str(target_raw).strip() if target_raw is not None else ""
             if not target:
-                raise ValueError(
-                    "Chaque opération doit préciser une cible 'target'."
-                )
+                raise ValueError("Chaque opération doit préciser une cible 'target'.")
             value = evaluate_state_expression(
                 entry.get("expression"),
                 state=state,
@@ -806,7 +785,7 @@ async def run_workflow(
                 value = value.model_dump(by_alias=True)
             except TypeError:
                 value = value.model_dump()
-        if isinstance(value, (dict, list)):
+        if isinstance(value, dict | list):
             try:
                 return json.dumps(value, ensure_ascii=False)
             except TypeError:
@@ -826,14 +805,16 @@ async def run_workflow(
         preferred_key = (binding.value_key or "").lower()
         component_type = (binding.component_type or "").lower()
 
-        if preferred_key in {"src", "url", "href"} or component_type in {"image", "link"}:
+        if preferred_key in {"src", "url", "href"} or component_type in {
+            "image",
+            "link",
+        }:
             return normalized_items[0]
 
         if isinstance(binding.sample, str):
             return "\n".join(normalized_items)
 
         return normalized_items
-
 
     def _collect_widget_values_from_output(
         output: Any,
@@ -853,7 +834,7 @@ async def run_workflow(
             return candidate
 
         def _normalize_sequence_fields(
-            mapping: dict[str, str | list[str]]
+            mapping: dict[str, str | list[str]],
         ) -> dict[str, str | list[str]]:
             if not mapping:
                 return mapping
@@ -882,7 +863,7 @@ async def run_workflow(
                 has_complex_items = False
                 for item in current:
                     normalized = _normalize(item)
-                    if isinstance(normalized, (dict, list)):
+                    if isinstance(normalized, dict | list):
                         has_complex_items = True
                         break
                     simple_values.append(_stringify_widget_value(normalized))
@@ -1026,10 +1007,18 @@ async def run_workflow(
     ) -> None:
         raw_thread_id = str(context.get("thread_id") or "unknown-thread")
         normalized_thread = _sanitize_identifier(raw_thread_id, "thread")
-        step_identifier_for_doc = context.get("step_key") or context.get("step_slug") or "step"
-        normalized_step_identifier = _sanitize_identifier(str(step_identifier_for_doc), "step")
-        raw_doc_id = f"{normalized_thread}-{key[0]}-{key[1]}-{normalized_step_identifier}"
-        doc_id = _sanitize_identifier(raw_doc_id, f"{normalized_thread}-{uuid.uuid4().hex[:8]}")
+        step_identifier_for_doc = (
+            context.get("step_key") or context.get("step_slug") or "step"
+        )
+        normalized_step_identifier = _sanitize_identifier(
+            str(step_identifier_for_doc), "step"
+        )
+        raw_doc_id = (
+            f"{normalized_thread}-{key[0]}-{key[1]}-{normalized_step_identifier}"
+        )
+        doc_id = _sanitize_identifier(
+            raw_doc_id, f"{normalized_thread}-{uuid.uuid4().hex[:8]}"
+        )
         b64_payload = image.b64_json or ""
         partials = list(image.partials or [])
         local_file_path: str | None = None
@@ -1042,7 +1031,8 @@ async def run_workflow(
                 output_format=getattr(image, "output_format", None),
             )
         if local_file_url:
-            from ..security import create_agent_image_token  # lazy import pour éviter les dépendances globales
+            # lazy import pour éviter les dépendances globales
+            from ..security import create_agent_image_token
 
             file_name = Path(local_file_url).name
             token_user = context.get("user_id")
@@ -1163,8 +1153,6 @@ async def run_workflow(
             return None
         return _stringify_widget_value(raw_value)
 
-        return matched
-
     async def _stream_response_widget(
         config: _ResponseWidgetConfig,
         *,
@@ -1209,7 +1197,9 @@ async def run_workflow(
             if isinstance(definition, str):
                 try:
                     definition = json.loads(definition)
-                except json.JSONDecodeError as exc:  # pragma: no cover - dépend du contenu
+                except (
+                    json.JSONDecodeError
+                ) as exc:  # pragma: no cover - dépend du contenu
                     logger.warning(
                         "Le JSON renvoyé par %s est invalide pour l'étape %s : %s",
                         expression,
@@ -1217,9 +1207,10 @@ async def run_workflow(
                         exc,
                     )
                     return None
-            if not isinstance(definition, (dict, list)):
+            if not isinstance(definition, dict | list):
                 logger.warning(
-                    "L'expression %s doit renvoyer un objet JSON utilisable pour le widget de l'étape %s",
+                    "L'expression %s doit renvoyer un objet JSON utilisable pour "
+                    "le widget de l'étape %s",
                     expression,
                     step_slug,
                 )
@@ -1228,9 +1219,7 @@ async def run_workflow(
                 bindings = _collect_widget_bindings(definition)
         else:
             if not config.slug:
-                logger.warning(
-                    "Slug de widget manquant pour l'étape %s", step_slug
-                )
+                logger.warning("Slug de widget manquant pour l'étape %s", step_slug)
                 return None
             definition = _load_widget_definition(
                 config.slug, context=f"étape {step_slug}"
@@ -1278,13 +1267,16 @@ async def run_workflow(
             widget = WidgetLibraryService._validate_widget(definition)
         except Exception as exc:  # pragma: no cover - dépend du SDK installé
             logger.exception(
-                "Le widget %s est invalide après interpolation", widget_label, exc_info=exc
+                "Le widget %s est invalide après interpolation",
+                widget_label,
+                exc_info=exc,
             )
             return None
 
         if _sdk_stream_widget is None:
             logger.warning(
-                "Le SDK Agents installé ne supporte pas stream_widget : impossible de diffuser %s",
+                "Le SDK Agents installé ne supporte pas stream_widget : "
+                "impossible de diffuser %s",
                 widget_label,
             )
             return None
@@ -1307,7 +1299,9 @@ async def run_workflow(
                     thread_metadata,
                     request_context,
                 )
-            except Exception as exc:  # pragma: no cover - dépend du stockage sous-jacent
+            except (
+                Exception
+            ) as exc:  # pragma: no cover - dépend du stockage sous-jacent
                 logger.exception(
                     "Impossible de générer un identifiant pour le widget %s",
                     widget_label,
@@ -1332,6 +1326,7 @@ async def run_workflow(
             return None
 
         return widget
+
     def _should_forward_agent_event(
         event: ThreadStreamEvent, *, suppress: bool
     ) -> bool:
@@ -1352,14 +1347,18 @@ async def run_workflow(
         step_index = len(steps) + 1
         metadata_for_images = dict(step_metadata or {})
         metadata_for_images["step_key"] = step_key
-        metadata_for_images["step_slug"] = metadata_for_images.get("step_slug") or step_key
-        metadata_for_images["step_title"] = metadata_for_images.get("step_title") or title
+        metadata_for_images["step_slug"] = (
+            metadata_for_images.get("step_slug") or step_key
+        )
+        metadata_for_images["step_title"] = (
+            metadata_for_images.get("step_title") or title
+        )
         if not metadata_for_images.get("agent_key"):
             metadata_for_images["agent_key"] = getattr(agent, "name", None)
         if not metadata_for_images.get("agent_label"):
-            metadata_for_images["agent_label"] = (
-                getattr(agent, "name", None) or getattr(agent, "model", None)
-            )
+            metadata_for_images["agent_label"] = getattr(
+                agent, "name", None
+            ) or getattr(agent, "model", None)
         thread_meta = getattr(agent_context, "thread", None)
         if not metadata_for_images.get("thread_id") and thread_meta is not None:
             metadata_for_images["thread_id"] = getattr(thread_meta, "id", None)
@@ -1376,7 +1375,7 @@ async def run_workflow(
 
         if not metadata_for_images.get("backend_public_base_url"):
             metadata_for_images["backend_public_base_url"] = (
-                self._settings.backend_public_base_url
+                get_settings().backend_public_base_url
             )
 
         logger.info(
@@ -1390,7 +1389,7 @@ async def run_workflow(
 
         async def _inspect_event_for_images(event: ThreadStreamEvent) -> None:
             update = getattr(event, "update", None)
-            if not isinstance(update, (WorkflowTaskAdded, WorkflowTaskUpdated)):
+            if not isinstance(update, WorkflowTaskAdded | WorkflowTaskUpdated):
                 return
             task = getattr(update, "task", None)
             if not isinstance(task, ImageTask):
@@ -1400,7 +1399,8 @@ async def run_workflow(
             )
             if registration is None:
                 logger.debug(
-                    "Impossible de suivre la génération d'image pour %s : identifiant absent.",
+                    "Impossible de suivre la génération d'image pour %s : "
+                    "identifiant absent.",
                     metadata_for_images.get("step_slug"),
                 )
                 return
@@ -1454,7 +1454,8 @@ async def run_workflow(
                 response_format_override = AGENT_RESPONSE_FORMATS.get(agent)
             except TypeError:
                 logger.debug(
-                    "Agent %s non hachable, impossible de récupérer le response_format mémorisé.",
+                    "Agent %s non hachable, impossible de récupérer le "
+                    "response_format mémorisé.",
                     getattr(agent, "name", "<inconnu>"),
                 )
         result = Runner.run_streamed(
@@ -1470,11 +1471,8 @@ async def run_workflow(
                     getattr(event, "type", type(event).__name__),
                     metadata_for_images.get("step_slug"),
                 )
-                if (
-                    on_stream_event is not None
-                    and _should_forward_agent_event(
-                        event, suppress=suppress_stream_events
-                    )
+                if on_stream_event is not None and _should_forward_agent_event(
+                    event, suppress=suppress_stream_events
                 ):
                     await on_stream_event(event)
                 if on_step_stream is not None:
@@ -1542,7 +1540,7 @@ async def run_workflow(
             return None
         if isinstance(value, bool):
             return "true" if value else "false"
-        if isinstance(value, (int, float)):
+        if isinstance(value, int | float):
             return str(value)
         if isinstance(value, str):
             trimmed = value.strip()
@@ -1573,7 +1571,9 @@ async def run_workflow(
 
         return "true" if bool(value) else "false"
 
-    def _next_edge(source_slug: str, branch: str | None = None) -> WorkflowTransition | None:
+    def _next_edge(
+        source_slug: str, branch: str | None = None
+    ) -> WorkflowTransition | None:
         candidates = edges_by_source.get(source_slug, [])
         if not candidates:
             return None
@@ -1648,7 +1648,8 @@ async def run_workflow(
                     "configuration",
                     "Configuration du workflow invalide",
                     RuntimeError(
-                        f"Transition manquante pour la branche {branch_label} du nœud {current_slug}"
+                        f"Transition manquante pour la branche {branch_label} du "
+                        f"nœud {current_slug}"
                     ),
                     list(steps),
                 )
@@ -1714,13 +1715,15 @@ async def run_workflow(
             expressions_payload = current_node.parameters.get("expressions")
             if expressions_payload is None:
                 transform_source: Any = {}
-            elif isinstance(expressions_payload, (dict, list)):
+            elif isinstance(expressions_payload, dict | list):
                 transform_source = copy.deepcopy(expressions_payload)
             else:
                 raise WorkflowExecutionError(
                     current_node.slug,
                     title or current_node.slug,
-                    ValueError("Le paramètre 'expressions' doit être un objet ou une liste."),
+                    ValueError(
+                        "Le paramètre 'expressions' doit être un objet ou une liste."
+                    ),
                     list(steps),
                 )
 
@@ -1759,17 +1762,13 @@ async def run_workflow(
         if current_node.kind == "wait_for_user_input":
             transition = _next_edge(current_slug)
             pending_wait_state = (
-                _get_wait_state_metadata(thread)
-                if thread is not None
-                else None
+                _get_wait_state_metadata(thread) if thread is not None else None
             )
             waiting_slug = (
                 pending_wait_state.get("slug") if pending_wait_state else None
             )
             waiting_input_id = (
-                pending_wait_state.get("input_item_id")
-                if pending_wait_state
-                else None
+                pending_wait_state.get("input_item_id") if pending_wait_state else None
             )
             resumed = (
                 pending_wait_state is not None
@@ -1789,8 +1788,12 @@ async def run_workflow(
                     final_end_state = WorkflowEndState(
                         slug=current_node.slug,
                         status_type="closed",
-                        status_reason="Aucune transition disponible après le bloc d'attente.",
-                        message="Aucune transition disponible après le bloc d'attente.",
+                        status_reason=(
+                            "Aucune transition disponible après le bloc d'attente."
+                        ),
+                        message=(
+                            "Aucune transition disponible après le bloc d'attente."
+                        ),
                     )
                     break
                 current_slug = next_slug
@@ -1799,7 +1802,9 @@ async def run_workflow(
             title = _node_title(current_node)
             raw_message = _resolve_wait_for_user_input_message(current_node)
             sanitized_message = _normalize_user_text(raw_message)
-            display_payload = sanitized_message or "En attente d'une réponse utilisateur."
+            display_payload = (
+                sanitized_message or "En attente d'une réponse utilisateur."
+            )
             wait_reason = display_payload
 
             await record_step(current_node.slug, title, display_payload)
@@ -1941,9 +1946,8 @@ async def run_workflow(
                     step_context=last_step_context,
                 )
                 action_payload: dict[str, Any] | None = None
-                if (
-                    on_widget_step is not None
-                    and _should_wait_for_widget_action(current_node.kind, widget_config)
+                if on_widget_step is not None and _should_wait_for_widget_action(
+                    current_node.kind, widget_config
                 ):
                     result = await on_widget_step(current_node, widget_config)
                     if result is not None:
@@ -1961,11 +1965,10 @@ async def run_workflow(
                     widget_config.source == "variable"
                     and widget_config.definition_expression
                 ):
-                    step_payload["widget_expression"] = widget_config.definition_expression
-                if (
-                    widget_config.source == "variable"
-                    and rendered_widget is not None
-                ):
+                    step_payload["widget_expression"] = (
+                        widget_config.definition_expression
+                    )
+                if widget_config.source == "variable" and rendered_widget is not None:
                     step_payload["widget_definition"] = rendered_widget
                 if action_payload is not None:
                     step_payload["action"] = action_payload
@@ -2043,7 +2046,9 @@ async def run_workflow(
         elif agent_key == "triage_2":
             run_context = Triage2Context(input_output_text=state["infos_manquantes"])
         elif agent_key == "get_data_from_user":
-            run_context = GetDataFromUserContext(state_infos_manquantes=state["infos_manquantes"])
+            run_context = GetDataFromUserContext(
+                state_infos_manquantes=state["infos_manquantes"]
+            )
         elif last_step_context is not None:
             run_context = dict(last_step_context)
 
@@ -2063,7 +2068,7 @@ async def run_workflow(
             if structured_payload is None:
                 structured_payload = last_step_context.get("output")
             if structured_payload is not None:
-                if isinstance(structured_payload, (dict, list)):
+                if isinstance(structured_payload, dict | list):
                     try:
                         serialized_structured = json.dumps(
                             structured_payload,
@@ -2121,7 +2126,9 @@ async def run_workflow(
                 logger.debug(
                     "Historique envoyé à l'agent %s : %s",
                     agent_key,
-                    json.dumps(conversation_history[-1], ensure_ascii=False, default=str),
+                    json.dumps(
+                        conversation_history[-1], ensure_ascii=False, default=str
+                    ),
                 )
             except TypeError:
                 logger.debug(
@@ -2152,7 +2159,11 @@ async def run_workflow(
 
         if agent_key == "triage":
             parsed, text = _structured_output_as_json(result_stream.final_output)
-            state["has_all_details"] = bool(parsed.get("has_all_details")) if isinstance(parsed, dict) else False
+            state["has_all_details"] = (
+                bool(parsed.get("has_all_details"))
+                if isinstance(parsed, dict)
+                else False
+            )
             state["infos_manquantes"] = text
             state["should_finalize"] = state["has_all_details"]
             await record_step(
@@ -2179,7 +2190,11 @@ async def run_workflow(
             }
         elif agent_key == "triage_2":
             parsed, text = _structured_output_as_json(result_stream.final_output)
-            state["has_all_details"] = bool(parsed.get("has_all_details")) if isinstance(parsed, dict) else False
+            state["has_all_details"] = (
+                bool(parsed.get("has_all_details"))
+                if isinstance(parsed, dict)
+                else False
+            )
             state["infos_manquantes"] = text
             state["should_finalize"] = state["has_all_details"]
             await record_step(
@@ -2238,7 +2253,8 @@ async def run_workflow(
                 "output_text": append_generated_image_links(text, image_urls),
             }
 
-        # Mémoriser la dernière sortie d'agent dans l'état global pour les transitions suivantes.
+        # Mémoriser la dernière sortie d'agent dans l'état global pour les
+        # transitions suivantes.
         state["last_agent_key"] = agent_key
         state["last_agent_output"] = last_step_context.get("output")
         state["last_agent_output_text"] = last_step_context.get("output_text")
@@ -2254,7 +2270,7 @@ async def run_workflow(
             except TypeError:
                 structured_candidate = structured_candidate.dict()
         elif structured_candidate is not None and not isinstance(
-            structured_candidate, (dict, list, str)
+            structured_candidate, dict | list | str
         ):
             structured_candidate = str(structured_candidate)
         state["last_agent_output_structured"] = structured_candidate
@@ -2320,9 +2336,8 @@ async def run_workflow(
             if rendered_widget is not None:
                 augmented_context["widget_definition"] = rendered_widget
 
-            if (
-                on_widget_step is not None
-                and _should_wait_for_widget_action(current_node.kind, widget_config)
+            if on_widget_step is not None and _should_wait_for_widget_action(
+                current_node.kind, widget_config
             ):
                 result = await on_widget_step(current_node, widget_config)
                 if result is not None:

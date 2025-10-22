@@ -66,10 +66,14 @@ def update_voice_settings(
     if voice is not None:
         settings.voice = voice
     if prompt_id is not _UNSET:
-        settings.prompt_id = prompt_id if isinstance(prompt_id, str) and prompt_id else None
+        settings.prompt_id = (
+            prompt_id if isinstance(prompt_id, str) and prompt_id else None
+        )
     if prompt_version is not _UNSET:
         settings.prompt_version = (
-            prompt_version if isinstance(prompt_version, str) and prompt_version else None
+            prompt_version
+            if isinstance(prompt_version, str) and prompt_version
+            else None
         )
     if prompt_variables is not _UNSET:
         settings.prompt_variables = _normalize_prompt_variables(

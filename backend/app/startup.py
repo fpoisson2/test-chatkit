@@ -10,12 +10,19 @@ from sqlalchemy import inspect, select, text
 from .config import get_settings
 from .database import (
     SessionLocal,
+    engine,
     ensure_database_extensions,
     ensure_vector_indexes,
-    engine,
     wait_for_database,
 )
-from .models import EMBEDDING_DIMENSION, AvailableModel, Base, User, VoiceSettings, Workflow
+from .models import (
+    EMBEDDING_DIMENSION,
+    AvailableModel,
+    Base,
+    User,
+    VoiceSettings,
+    Workflow,
+)
 from .security import hash_password
 
 logger = logging.getLogger("chatkit.server")
@@ -42,7 +49,8 @@ def _run_ad_hoc_migrations() -> None:
         if "json_chunks" in table_names:
             dialect = connection.dialect.name
             if dialect == "postgresql":
-                # Vérifier la dimension actuelle de la colonne embedding en interrogeant directement le type
+                # Vérifier la dimension actuelle de la colonne embedding
+                # en interrogeant directement le type
                 result = connection.execute(
                     text(
                         "SELECT format_type(atttypid, atttypmod) "
@@ -53,38 +61,46 @@ def _run_ad_hoc_migrations() -> None:
                     )
                 ).scalar()
 
-                # result est de la forme 'vector(1536)' ou None si la colonne n'existe pas
+                # result est de la forme 'vector(1536)'
+                # ou None si la colonne n'existe pas
                 current_dimension = None
                 if result is not None:
                     # Extraire la dimension du format 'vector(1536)'
                     import re
-                    match = re.match(r'vector\((\d+)\)', result)
+
+                    match = re.match(r"vector\((\d+)\)", result)
                     if match:
                         current_dimension = int(match.group(1))
 
-                if current_dimension is not None and current_dimension != EMBEDDING_DIMENSION:
-                        logger.info(
-                            "Migration de la dimension des vecteurs : %d -> %d dimensions. "
-                            "Suppression des données vectorielles existantes.",
-                            current_dimension,
-                            EMBEDDING_DIMENSION,
+                if (
+                    current_dimension is not None
+                    and current_dimension != EMBEDDING_DIMENSION
+                ):
+                    logger.info(
+                        "Migration de la dimension des vecteurs : %d -> %d dimensions. "
+                        "Suppression des données vectorielles existantes.",
+                        current_dimension,
+                        EMBEDDING_DIMENSION,
+                    )
+                    # Supprimer l'index vectoriel s'il existe
+                    connection.execute(
+                        text("DROP INDEX IF EXISTS ix_json_chunks_embedding")
+                    )
+                    # Supprimer toutes les données de la table json_chunks
+                    # car les embeddings existants ne sont plus compatibles
+                    connection.execute(text("TRUNCATE TABLE json_chunks CASCADE"))
+                    connection.execute(text("TRUNCATE TABLE json_documents CASCADE"))
+                    # Recréer la colonne avec la nouvelle dimension
+                    connection.execute(
+                        text("ALTER TABLE json_chunks DROP COLUMN embedding")
+                    )
+                    connection.execute(
+                        text(
+                            "ALTER TABLE json_chunks "
+                            f"ADD COLUMN embedding vector({EMBEDDING_DIMENSION}) "
+                            "NOT NULL"
                         )
-                        # Supprimer l'index vectoriel s'il existe
-                        connection.execute(
-                            text("DROP INDEX IF EXISTS ix_json_chunks_embedding")
-                        )
-                        # Supprimer toutes les données de la table json_chunks
-                        # car les embeddings existants ne sont plus compatibles
-                        connection.execute(text("TRUNCATE TABLE json_chunks CASCADE"))
-                        connection.execute(text("TRUNCATE TABLE json_documents CASCADE"))
-                        # Recréer la colonne avec la nouvelle dimension
-                        connection.execute(text("ALTER TABLE json_chunks DROP COLUMN embedding"))
-                        connection.execute(
-                            text(
-                                f"ALTER TABLE json_chunks "
-                                f"ADD COLUMN embedding vector({EMBEDDING_DIMENSION}) NOT NULL"
-                            )
-                        )
+                    )
 
         if "workflows" in table_names:
             workflow_columns = {
@@ -94,7 +110,8 @@ def _run_ad_hoc_migrations() -> None:
             if "is_chatkit_default" not in workflow_columns:
                 dialect = connection.dialect.name
                 logger.info(
-                    "Migration du schéma des workflows : ajout de la colonne is_chatkit_default"
+                    "Migration du schéma des workflows : ajout de la colonne "
+                    "is_chatkit_default"
                 )
                 connection.execute(
                     text(
@@ -104,14 +121,16 @@ def _run_ad_hoc_migrations() -> None:
                 )
                 connection.execute(
                     text(
-                        "UPDATE workflows SET is_chatkit_default = TRUE WHERE slug = :slug"
+                        "UPDATE workflows SET is_chatkit_default = TRUE "
+                        "WHERE slug = :slug"
                     ),
                     {"slug": "workflow-par-defaut"},
                 )
                 if dialect == "postgresql":
                     connection.execute(
                         text(
-                            "ALTER TABLE workflows ALTER COLUMN is_chatkit_default SET DEFAULT FALSE"
+                            "ALTER TABLE workflows ALTER COLUMN "
+                            "is_chatkit_default SET DEFAULT FALSE"
                         )
                     )
 
@@ -134,14 +153,20 @@ def _run_ad_hoc_migrations() -> None:
 
             if "slug" not in columns:
                 connection.execute(
-                    text("ALTER TABLE workflow_steps ADD COLUMN slug VARCHAR(128)")
+                    text(
+                        "ALTER TABLE workflow_steps "
+                        "ADD COLUMN slug VARCHAR(128)"
+                    )
                 )
                 if dialect == "postgresql":
                     connection.execute(
                         text("UPDATE workflow_steps SET slug = CONCAT('step_', id)")
                     )
                     connection.execute(
-                        text("ALTER TABLE workflow_steps ALTER COLUMN slug SET NOT NULL")
+                        text(
+                            "ALTER TABLE workflow_steps ALTER COLUMN slug "
+                            "SET NOT NULL"
+                        )
                     )
                 else:
                     connection.execute(
@@ -160,37 +185,54 @@ def _run_ad_hoc_migrations() -> None:
 
             if "display_name" not in columns:
                 connection.execute(
-                    text("ALTER TABLE workflow_steps ADD COLUMN display_name VARCHAR(128)")
+                    text(
+                        "ALTER TABLE workflow_steps "
+                        "ADD COLUMN display_name VARCHAR(128)"
+                    )
                 )
                 columns = _refresh_columns()
 
             agent_key_column = _get_column("agent_key")
             if agent_key_column is None:
                 connection.execute(
-                    text("ALTER TABLE workflow_steps ADD COLUMN agent_key VARCHAR(128)")
+                    text(
+                        "ALTER TABLE workflow_steps "
+                        "ADD COLUMN agent_key VARCHAR(128)"
+                    )
                 )
                 agent_key_column = _get_column("agent_key")
-            if agent_key_column is not None and not agent_key_column.get("nullable", True):
+            if agent_key_column is not None and not agent_key_column.get(
+                "nullable", True
+            ):
                 if dialect == "postgresql":
                     connection.execute(
-                        text("ALTER TABLE workflow_steps ALTER COLUMN agent_key DROP NOT NULL")
+                        text(
+                            "ALTER TABLE workflow_steps ALTER COLUMN agent_key "
+                            "DROP NOT NULL"
+                        )
                     )
                     agent_key_column = _get_column("agent_key")
                 else:
                     logger.warning(
-                        "Impossible de rendre la colonne agent_key nullable pour le dialecte %s",
+                        "Impossible de rendre la colonne agent_key nullable pour le "
+                        "dialecte %s",
                         dialect,
                     )
             columns = _refresh_columns()
 
             if "position" not in columns:
                 if "order" in columns:
-                    connection.execute(text("ALTER TABLE workflow_steps ADD COLUMN position INTEGER"))
-                    connection.execute(text("UPDATE workflow_steps SET position = \"order\""))
+                    connection.execute(
+                        text("ALTER TABLE workflow_steps ADD COLUMN position INTEGER")
+                    )
+                    connection.execute(
+                        text('UPDATE workflow_steps SET position = "order"')
+                    )
                     if dialect == "postgresql":
                         connection.execute(
                             text(
-                                "ALTER TABLE workflow_steps ALTER COLUMN position SET NOT NULL"
+                                "ALTER TABLE workflow_steps ALTER COLUMN position "
+                                "SET NOT NULL"
                             )
                         )
                 else:
@@ -227,7 +269,8 @@ def _run_ad_hoc_migrations() -> None:
             if metadata_column not in columns:
                 connection.execute(
                     text(
-                        f"ALTER TABLE workflow_steps ADD COLUMN {metadata_column} {json_type} "
+                        "ALTER TABLE workflow_steps "
+                        f"ADD COLUMN {metadata_column} {json_type} "
                         f"NOT NULL DEFAULT {json_default}"
                     )
                 )
@@ -255,14 +298,19 @@ def _run_ad_hoc_migrations() -> None:
             def _refresh_transition_columns() -> set[str]:
                 return {
                     column["name"]
-                    for column in inspect(connection).get_columns("workflow_transitions")
+                    for column in inspect(connection).get_columns(
+                        "workflow_transitions"
+                    )
                 }
 
             columns = _refresh_transition_columns()
 
             if "condition" not in columns:
                 connection.execute(
-                    text("ALTER TABLE workflow_transitions ADD COLUMN condition VARCHAR(64)")
+                    text(
+                        "ALTER TABLE workflow_transitions "
+                        "ADD COLUMN condition VARCHAR(64)"
+                    )
                 )
                 columns = _refresh_transition_columns()
 
@@ -270,7 +318,8 @@ def _run_ad_hoc_migrations() -> None:
             if metadata_column not in columns:
                 connection.execute(
                     text(
-                        f"ALTER TABLE workflow_transitions ADD COLUMN {metadata_column} {json_type} "
+                        "ALTER TABLE workflow_transitions "
+                        f"ADD COLUMN {metadata_column} {json_type} "
                         f"NOT NULL DEFAULT {json_default}"
                     )
                 )
@@ -281,14 +330,17 @@ def _run_ad_hoc_migrations() -> None:
             def _refresh_definition_columns() -> set[str]:
                 return {
                     column["name"]
-                    for column in inspect(connection).get_columns("workflow_definitions")
+                    for column in inspect(connection).get_columns(
+                        "workflow_definitions"
+                    )
                 }
 
             definition_columns = _refresh_definition_columns()
 
             if "workflow_id" not in definition_columns:
                 logger.info(
-                    "Migration du schéma des workflows : ajout de la colonne workflow_id et rétro-portage des données"
+                    "Migration du schéma des workflows : ajout de la colonne "
+                    "workflow_id et rétro-portage des données"
                 )
 
                 if "workflows" not in table_names:
@@ -297,7 +349,10 @@ def _run_ad_hoc_migrations() -> None:
                     table_names.add("workflows")
 
                 connection.execute(
-                    text("ALTER TABLE workflow_definitions ADD COLUMN workflow_id INTEGER")
+                    text(
+                        "ALTER TABLE workflow_definitions "
+                        "ADD COLUMN workflow_id INTEGER"
+                    )
                 )
                 definition_columns = _refresh_definition_columns()
 
@@ -328,7 +383,9 @@ def _run_ad_hoc_migrations() -> None:
                     ).first()
 
                 if workflow_row is None:
-                    raise RuntimeError("Impossible de créer le workflow par défaut pour la migration")
+                    raise RuntimeError(
+                        "Impossible de créer le workflow par défaut pour la migration"
+                    )
 
                 workflow_id = workflow_row.id
 
@@ -359,31 +416,39 @@ def _run_ad_hoc_migrations() -> None:
                             "UPDATE workflows SET active_version_id = :definition_id "
                             "WHERE id = :workflow_id"
                         ),
-                        {"definition_id": active_definition.id, "workflow_id": workflow_id},
+                        {
+                            "definition_id": active_definition.id,
+                            "workflow_id": workflow_id,
+                        },
                     )
 
                 if dialect == "postgresql":
                     connection.execute(
                         text(
-                            "ALTER TABLE workflow_definitions ALTER COLUMN workflow_id SET NOT NULL"
+                            "ALTER TABLE workflow_definitions ALTER COLUMN "
+                            "workflow_id SET NOT NULL"
                         )
                     )
                     connection.execute(
                         text(
                             "ALTER TABLE workflow_definitions "
                             "ADD CONSTRAINT workflow_definitions_workflow_id_fkey "
-                            "FOREIGN KEY (workflow_id) REFERENCES workflows (id) ON DELETE CASCADE"
+                            "FOREIGN KEY (workflow_id) REFERENCES workflows (id) "
+                            "ON DELETE CASCADE"
                         )
                     )
                     connection.execute(
                         text(
-                            "CREATE INDEX IF NOT EXISTS ix_workflow_definitions_workflow_id "
+                            "CREATE INDEX IF NOT EXISTS "
+                            "ix_workflow_definitions_workflow_id "
                             "ON workflow_definitions (workflow_id)"
                         )
                     )
                 else:
                     logger.warning(
-                        "La contrainte NOT NULL/FOREIGN KEY sur workflow_definitions.workflow_id n'a pas pu être ajoutée pour le dialecte %s",
+                        "La contrainte NOT NULL/FOREIGN KEY sur "
+                        "workflow_definitions.workflow_id n'a pas pu être ajoutée "
+                        "pour le dialecte %s",
                         dialect,
                     )
 
@@ -391,7 +456,9 @@ def _run_ad_hoc_migrations() -> None:
 
             if "name" not in definition_columns:
                 connection.execute(
-                    text("ALTER TABLE workflow_definitions ADD COLUMN name VARCHAR(128)")
+                    text(
+                        "ALTER TABLE workflow_definitions ADD COLUMN name VARCHAR(128)"
+                    )
                 )
                 definition_columns = _refresh_definition_columns()
 
@@ -420,7 +487,8 @@ def _run_ad_hoc_migrations() -> None:
                 connection.execute(
                     text(
                         "ALTER TABLE workflow_definitions "
-                        f"ADD COLUMN created_at {datetime_type} NOT NULL DEFAULT {current_ts}"
+                        f"ADD COLUMN created_at {datetime_type} NOT NULL DEFAULT "
+                        f"{current_ts}"
                     )
                 )
                 definition_columns = _refresh_definition_columns()
@@ -429,14 +497,17 @@ def _run_ad_hoc_migrations() -> None:
                 connection.execute(
                     text(
                         "ALTER TABLE workflow_definitions "
-                        f"ADD COLUMN updated_at {datetime_type} NOT NULL DEFAULT {current_ts}"
+                        f"ADD COLUMN updated_at {datetime_type} NOT NULL DEFAULT "
+                        f"{current_ts}"
                     )
                 )
 
             inspector = inspect(connection)
             unique_constraints = {
                 constraint["name"]
-                for constraint in inspector.get_unique_constraints("workflow_definitions")
+                for constraint in inspector.get_unique_constraints(
+                    "workflow_definitions"
+                )
             }
             indexes = {
                 index["name"]
@@ -446,7 +517,10 @@ def _run_ad_hoc_migrations() -> None:
 
             if "workflow_definitions_name_key" in unique_constraints:
                 connection.execute(
-                    text("ALTER TABLE workflow_definitions DROP CONSTRAINT workflow_definitions_name_key")
+                    text(
+                        "ALTER TABLE workflow_definitions DROP CONSTRAINT "
+                        "workflow_definitions_name_key"
+                    )
                 )
                 unique_constraints.discard("workflow_definitions_name_key")
             elif "workflow_definitions_name_key" in indexes:
@@ -502,7 +576,9 @@ def register_startup_events(app: FastAPI) -> None:
         if settings.admin_email and settings.admin_password:
             normalized_email = settings.admin_email.lower()
             with SessionLocal() as session:
-                existing = session.scalar(select(User).where(User.email == normalized_email))
+                existing = session.scalar(
+                    select(User).where(User.email == normalized_email)
+                )
                 if not existing:
                     logger.info("Creating initial admin user %s", normalized_email)
                     user = User(

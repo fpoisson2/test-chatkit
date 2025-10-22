@@ -4,10 +4,11 @@ import copy
 import json
 import logging
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -27,11 +28,13 @@ class WorkflowDefaults:
     default_workflow_graph: Mapping[str, Any]
 
     @classmethod
-    def from_mapping(cls, payload: Mapping[str, Any]) -> "WorkflowDefaults":
+    def from_mapping(cls, payload: Mapping[str, Any]) -> WorkflowDefaults:
         try:
             default_end_message = str(payload["default_end_message"])
             default_workflow_slug = str(payload["default_workflow_slug"])
-            default_workflow_display_name = str(payload["default_workflow_display_name"])
+            default_workflow_display_name = str(
+                payload["default_workflow_display_name"]
+            )
             supported_agent_keys_raw = payload.get("supported_agent_keys", [])
             expected_state_slugs_raw = payload.get("expected_state_slugs", [])
             default_agent_slugs_raw = payload.get("default_agent_slugs", [])
@@ -49,7 +52,7 @@ class WorkflowDefaults:
         def _as_frozenset(values: Any, *, label: str) -> frozenset[str]:
             if values is None:
                 return frozenset()
-            if isinstance(values, (list, tuple, set, frozenset)):
+            if isinstance(values, list | tuple | set | frozenset):
                 return frozenset(str(item) for item in values)
             raise RuntimeError(f"{label} doit être une liste de chaînes")
 
@@ -84,8 +87,10 @@ class Settings:
         openai_api_key: Jeton API OpenAI utilisé pour contacter ChatKit.
         chatkit_workflow_id: Identifiant du workflow hébergé (optionnel).
         chatkit_api_base: URL de base de l'API OpenAI/ChatKit.
-        backend_public_base_url: URL publique du backend utilisée pour construire les liens absolus.
-        backend_public_base_url_from_env: Indique si l'URL publique provient explicitement de l'environnement.
+        backend_public_base_url: URL publique du backend utilisée pour
+            construire les liens absolus.
+        backend_public_base_url_from_env: Indique si l'URL publique provient
+            explicitement de l'environnement.
         chatkit_agent_model: Modèle utilisé pour les agents classiques.
         chatkit_agent_instructions: Instructions de l'agent historique.
         chatkit_realtime_model: Modèle Realtime par défaut pour les sessions vocales.
@@ -98,8 +103,10 @@ class Settings:
         admin_password: Mot de passe administrateur initial (optionnel).
         database_connect_retries: Nombre de tentatives de connexion à la base.
         database_connect_delay: Délai entre deux tentatives (en secondes).
-        agent_image_token_ttl_seconds: Durée de validité (en secondes) des liens d'images générées.
-        workflow_defaults: Configuration par défaut du workflow (chargée depuis un fichier JSON).
+        agent_image_token_ttl_seconds: Durée de validité (en secondes) des
+            liens d'images générées.
+        workflow_defaults: Configuration par défaut du workflow (chargée
+            depuis un fichier JSON).
     """
 
     allowed_origins: list[str]
@@ -128,7 +135,9 @@ class Settings:
         if path_value:
             candidate_path = Path(path_value).expanduser()
         else:
-            candidate_path = Path(__file__).resolve().parent / "workflows" / "defaults.json"
+            candidate_path = (
+                Path(__file__).resolve().parent / "workflows" / "defaults.json"
+            )
 
         try:
             raw_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
@@ -156,16 +165,14 @@ class Settings:
         return parts or ["*"]
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str]) -> "Settings":
+    def from_env(cls, env: Mapping[str, str]) -> Settings:
         def require(name: str, *, message: str | None = None) -> str:
             value = env.get(name)
             if value:
                 return value
             error = message or f"{name} environment variable is required"
             if name == "OPENAI_API_KEY":
-                logger.error(
-                    "OPENAI_API_KEY manquante : %s", error
-                )
+                logger.error("OPENAI_API_KEY manquante : %s", error)
             else:
                 logger.error(
                     "Variable d'environnement manquante (%s) : %s", name, error
@@ -178,7 +185,9 @@ class Settings:
             if raw_backend_public_base_url is not None
             else None
         )
-        backend_public_base_url = (sanitized_public_base_url or "http://localhost:8000").rstrip("/")
+        backend_public_base_url = (
+            sanitized_public_base_url or "http://localhost:8000"
+        ).rstrip("/")
 
         return cls(
             allowed_origins=cls._parse_allowed_origins(env.get("ALLOWED_ORIGINS")),
@@ -209,13 +218,21 @@ class Settings:
             backend_public_base_url_from_env=bool(sanitized_public_base_url),
             database_url=require(
                 "DATABASE_URL",
-                message="DATABASE_URL environment variable is required for PostgreSQL access",
+                message=(
+                    "DATABASE_URL environment variable is required for "
+                    "PostgreSQL access"
+                ),
             ),
             auth_secret_key=require(
                 "AUTH_SECRET_KEY",
-                message="AUTH_SECRET_KEY environment variable is required for authentication tokens",
+                message=(
+                    "AUTH_SECRET_KEY environment variable is required for "
+                    "authentication tokens"
+                ),
             ),
-            access_token_expire_minutes=int(env.get("ACCESS_TOKEN_EXPIRE_MINUTES", "120")),
+            access_token_expire_minutes=int(
+                env.get("ACCESS_TOKEN_EXPIRE_MINUTES", "120")
+            ),
             admin_email=env.get("ADMIN_EMAIL"),
             admin_password=env.get("ADMIN_PASSWORD"),
             database_connect_retries=int(env.get("DATABASE_CONNECT_RETRIES", "10")),
