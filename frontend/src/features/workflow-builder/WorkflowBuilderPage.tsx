@@ -1163,7 +1163,8 @@ const WorkflowBuilderPage = () => {
               }
             }
             hasUserViewportChangeRef.current = true;
-            pendingViewportRestoreRef.current = false;
+            pendingViewportRestoreRef.current = true;
+            restoreViewport();
           } else {
             viewportRef.current = restoredViewport;
             hasUserViewportChangeRef.current = restoredViewport != null;
