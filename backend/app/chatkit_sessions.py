@@ -343,13 +343,13 @@ async def create_chatkit_session(user_id: str) -> dict[str, Any]:
     }
 
     async with httpx.AsyncClient(
-        base_url=settings.chatkit_api_base, timeout=30
+        base_url=settings.model_api_base, timeout=30
     ) as client:
         response = await client.post(
             "/v1/chatkit/sessions",
             headers={
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {settings.openai_api_key}",
+                "Authorization": f"Bearer {settings.model_api_key}",
                 "OpenAI-Beta": "chatkit_beta=v1",
             },
             json=payload,
@@ -447,7 +447,7 @@ async def proxy_chatkit_request(path: str, request: Request) -> Response:
     timeout = httpx.Timeout(60.0, read=None)
     try:
         async with httpx.AsyncClient(
-            base_url=settings.chatkit_api_base, timeout=timeout
+            base_url=settings.model_api_base, timeout=timeout
         ) as client:
             async with client.stream(
                 request.method,
