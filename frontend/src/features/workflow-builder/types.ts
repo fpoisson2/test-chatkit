@@ -11,6 +11,7 @@ import type { WorkflowSummary, WorkflowVersionSummary } from "../../types/workfl
 export type NodeKind =
   | "start"
   | "agent"
+  | "voice_agent"
   | "condition"
   | "state"
   | "transform"
@@ -100,5 +101,8 @@ export type {
   StateAssignmentScope,
   WebSearchConfig,
   WidgetVariableAssignment,
+  VoiceAgentTool,
+  VoiceAgentStartBehavior,
+  VoiceAgentStopBehavior,
 } from "../../utils/workflows";
 export type { WorkflowSummary, WorkflowVersionSummary } from "../../types/workflows";

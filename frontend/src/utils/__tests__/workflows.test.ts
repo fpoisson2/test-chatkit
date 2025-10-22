@@ -1,6 +1,14 @@
+import { describe, expect, it } from "vitest";
+
 import type { AgentParameters } from "../workflows";
 import {
+  createVoiceAgentParameters,
+  DEFAULT_VOICE_AGENT_MODEL,
+  DEFAULT_VOICE_AGENT_START_BEHAVIOR,
+  DEFAULT_VOICE_AGENT_STOP_BEHAVIOR,
+  DEFAULT_VOICE_AGENT_VOICE,
   getWidgetNodeConfig,
+  resolveVoiceAgentParameters,
   resolveWidgetNodeParameters,
   setWidgetNodeDefinitionExpression,
   setWidgetNodeSlug,
@@ -50,5 +58,57 @@ describe("widget_source override", () => {
     const resolved = resolveWidgetNodeParameters(initial);
     expect(resolved).toEqual({ widget_source: "variable" });
     expect(getWidgetNodeConfig(resolved).source).toBe("variable");
+  });
+});
+
+describe("voice agent helpers", () => {
+  it("returns default realtime configuration when creating parameters", () => {
+    const parameters = createVoiceAgentParameters();
+
+    expect(parameters).toEqual({
+      model: DEFAULT_VOICE_AGENT_MODEL,
+      voice: DEFAULT_VOICE_AGENT_VOICE,
+      realtime: {
+        start_mode: DEFAULT_VOICE_AGENT_START_BEHAVIOR,
+        stop_mode: DEFAULT_VOICE_AGENT_STOP_BEHAVIOR,
+        tools: {
+          response: true,
+          transcription: true,
+          function_call: false,
+        },
+      },
+    });
+  });
+
+  it("normalises realtime settings when resolving voice agent parameters", () => {
+    const raw: AgentParameters = {
+      model: "  gpt-4o-realtime-latest  ",
+      voice: "  nova  ",
+      instructions: "Follow the script",
+      realtime: {
+        start_mode: "invalid",
+        stop_mode: "auto",
+        tools: {
+          transcription: 0,
+        },
+      },
+    };
+
+    const resolved = resolveVoiceAgentParameters(raw);
+
+    expect(resolved).toEqual({
+      model: "gpt-4o-realtime-latest",
+      voice: "nova",
+      instructions: "Follow the script",
+      realtime: {
+        start_mode: DEFAULT_VOICE_AGENT_START_BEHAVIOR,
+        stop_mode: "auto",
+        tools: {
+          response: true,
+          transcription: false,
+          function_call: false,
+        },
+      },
+    });
   });
 });

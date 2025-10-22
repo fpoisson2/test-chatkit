@@ -33,6 +33,9 @@ import type {
   StateAssignment,
   StateAssignmentScope,
   VectorStoreNodeConfig,
+  VoiceAgentTool,
+  VoiceAgentStartBehavior,
+  VoiceAgentStopBehavior,
   WebSearchConfig,
   WidgetVariableAssignment,
 } from "../../types";
@@ -45,6 +48,7 @@ import { AssistantMessageInspectorSection } from "./sections/AssistantMessageIns
 import { ConditionInspectorSection } from "./sections/ConditionInspectorSection";
 import { EndInspectorSection } from "./sections/EndInspectorSection";
 import { JsonVectorStoreInspectorSection } from "./sections/JsonVectorStoreInspectorSection";
+import { VoiceAgentInspectorSection } from "./sections/VoiceAgentInspectorSection";
 import { StartInspectorSection } from "./sections/StartInspectorSection";
 import { StateInspectorSection } from "./sections/StateInspectorSection";
 import { TransformInspectorSection } from "./sections/TransformInspectorSection";
@@ -89,6 +93,20 @@ export type NodeInspectorProps = {
   onAgentWebSearchChange: (nodeId: string, config: WebSearchConfig | null) => void;
   onAgentFileSearchChange: (nodeId: string, config: FileSearchConfig | null) => void;
   onAgentImageGenerationChange: (nodeId: string, config: ImageGenerationToolConfig | null) => void;
+  onVoiceAgentVoiceChange: (nodeId: string, value: string) => void;
+  onVoiceAgentStartBehaviorChange: (
+    nodeId: string,
+    behavior: VoiceAgentStartBehavior,
+  ) => void;
+  onVoiceAgentStopBehaviorChange: (
+    nodeId: string,
+    behavior: VoiceAgentStopBehavior,
+  ) => void;
+  onVoiceAgentToolChange: (
+    nodeId: string,
+    tool: VoiceAgentTool,
+    enabled: boolean,
+  ) => void;
   onVectorStoreNodeConfigChange: (
     nodeId: string,
     updates: Partial<VectorStoreNodeConfig>,
@@ -159,6 +177,10 @@ const NodeInspector = ({
   onAgentWebSearchChange,
   onAgentFileSearchChange,
   onAgentImageGenerationChange,
+  onVoiceAgentVoiceChange,
+  onVoiceAgentStartBehaviorChange,
+  onVoiceAgentStopBehaviorChange,
+  onVoiceAgentToolChange,
   onVectorStoreNodeConfigChange,
   onTransformExpressionsChange,
   onStartAutoRunChange,
@@ -417,6 +439,19 @@ const NodeInspector = ({
           onAgentImageGenerationChange={onAgentImageGenerationChange}
           onAgentWeatherToolChange={onAgentWeatherToolChange}
           onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
+        />
+      ) : null}
+
+      {kind === "voice_agent" ? (
+        <VoiceAgentInspectorSection
+          nodeId={node.id}
+          parameters={parameters}
+          onAgentModelChange={onAgentModelChange}
+          onAgentMessageChange={onAgentMessageChange}
+          onVoiceAgentVoiceChange={onVoiceAgentVoiceChange}
+          onVoiceAgentStartBehaviorChange={onVoiceAgentStartBehaviorChange}
+          onVoiceAgentStopBehaviorChange={onVoiceAgentStopBehaviorChange}
+          onVoiceAgentToolChange={onVoiceAgentToolChange}
         />
       ) : null}
 
