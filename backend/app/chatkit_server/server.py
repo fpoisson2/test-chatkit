@@ -361,6 +361,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         workflow_input: WorkflowInput | None = None
         assistant_stream_text = ""
 
+        source_item_id = getattr(input_user_message, "id", None)
+
         if not user_text:
             config = self._resolve_auto_start_configuration()
             if not config.enabled:
@@ -404,14 +406,14 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     input_as_text=user_text,
                     auto_start_was_triggered=True,
                     auto_start_assistant_message=assistant_stream_text,
-                    source_item_id=getattr(input_user_message, "id", None),
+                    source_item_id=source_item_id,
                 )
             elif assistant_stream_text:
                 workflow_input = WorkflowInput(
                     input_as_text="",
                     auto_start_was_triggered=True,
                     auto_start_assistant_message=assistant_stream_text,
-                    source_item_id=getattr(input_user_message, "id", None),
+                    source_item_id=source_item_id,
                 )
 
             pre_stream_events = await self._prepare_auto_start_thread_items(
@@ -423,7 +425,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         else:
             workflow_input = WorkflowInput(
                 input_as_text=user_text,
-                source_item_id=getattr(input_user_message, "id", None),
+                auto_start_was_triggered=False,
+                auto_start_assistant_message=None,
+                source_item_id=source_item_id,
             )
             pre_stream_events = []
 
