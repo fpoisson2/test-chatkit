@@ -507,6 +507,7 @@ const WorkflowBuilderPage = () => {
             return;
           }
           viewportMemoryRef.current.clear();
+          console.log('Loading viewports from API', data.viewports);
           for (const entry of data.viewports ?? []) {
             if (
               typeof entry.workflow_id !== "number" ||
@@ -523,6 +524,7 @@ const WorkflowBuilderPage = () => {
             }
             // Skip default viewport values (0, 0, 1) as they indicate no user preference
             if (entry.x === 0 && entry.y === 0 && entry.zoom === 1) {
+              console.log('Skipping default viewport', entry);
               continue;
             }
             const versionId =
@@ -531,6 +533,7 @@ const WorkflowBuilderPage = () => {
                 : null;
             const key = viewportKeyFor(entry.workflow_id, versionId);
             if (key) {
+              console.log('Loaded viewport', key, entry);
               viewportMemoryRef.current.set(key, {
                 x: entry.x,
                 y: entry.y,
