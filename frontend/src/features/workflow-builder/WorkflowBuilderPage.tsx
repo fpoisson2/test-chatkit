@@ -2864,7 +2864,13 @@ const WorkflowBuilderPage = () => {
       const versionId = Number.isFinite(value) ? value : null;
       setSelectedVersionId(versionId);
       if (selectedWorkflowId && versionId) {
-        void loadVersionDetail(selectedWorkflowId, versionId);
+        const key = viewportKeyFor(selectedWorkflowId, versionId);
+        const hasSavedViewport = key ? viewportMemoryRef.current.has(key) : false;
+        if (hasSavedViewport) {
+          void loadVersionDetail(selectedWorkflowId, versionId);
+        } else {
+          void loadVersionDetail(selectedWorkflowId, versionId, { preserveViewport: true });
+        }
       }
     },
     [loadVersionDetail, selectedWorkflowId],
