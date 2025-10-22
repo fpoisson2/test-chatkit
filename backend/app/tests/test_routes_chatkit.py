@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
+import os
 import sys
+from datetime import datetime
 from importlib import import_module
 from io import BytesIO
 from pathlib import Path
@@ -19,9 +22,15 @@ if (
 ):  # pragma: no cover - environnement réduit
     pytest.skip("fastapi non disponible", allow_module_level=True)
 
+os.environ.setdefault("DATABASE_URL", "sqlite:///./chatkit-tests.db")
+os.environ.setdefault("OPENAI_API_KEY", "sk-test")
+os.environ.setdefault("AUTH_SECRET_KEY", "secret-key")
+
 ROOT_DIR = Path(__file__).resolve().parents[3]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+
+from chatkit.store import NotFoundError  # noqa: E402
 
 routes_chatkit = import_module("backend.app.routes.chatkit")
 
@@ -375,5 +384,95 @@ def test_download_attachment_missing_store(monkeypatch: pytest.MonkeyPatch) -> N
             )
 
         assert excinfo.value.status_code == status.HTTP_404_NOT_FOUND
+
+    asyncio.run(_run())
+
+
+def test_demo_server_handles_attachment_creation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _run() -> None:
+        app_chatkit = import_module("backend.app.chatkit")
+        server_module = import_module("backend.app.chatkit_server.server")
+        from backend.app.chatkit_server.context import ChatKitRequestContext
+
+        saved: dict[str, Any] = {}
+
+        class _InMemoryStore:
+            def __init__(self, _session_factory: Any) -> None:
+                self._attachments: dict[str, Any] = {}
+
+            async def save_attachment(self, attachment, context):  # type: ignore[no-untyped-def]
+                saved["last_attachment"] = attachment
+                saved["last_context"] = context
+                self._attachments[attachment.id] = attachment
+
+            async def load_attachment(self, attachment_id, context):  # type: ignore[no-untyped-def]
+                try:
+                    return self._attachments[attachment_id]
+                except KeyError as exc:  # pragma: no cover - lecture inattendue
+                    raise NotFoundError(
+                        f"Attachment {attachment_id} introuvable"
+                    ) from exc
+
+            async def delete_attachment(self, attachment_id, context):  # type: ignore[no-untyped-def]
+                self._attachments.pop(attachment_id, None)
+
+        class _StubWorkflowService:
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                pass
+
+            def get_current(self, *args: Any, **kwargs: Any) -> Any:
+                return SimpleNamespace(
+                    workflow=None,
+                    workflow_id=None,
+                    workflow_display_name=None,
+                    id="wf-def-1",
+                    version=1,
+                    updated_at=datetime.now(datetime.UTC),
+                )
+
+        monkeypatch.setattr(server_module, "PostgresChatKitStore", _InMemoryStore)
+        monkeypatch.setattr(server_module, "WorkflowService", _StubWorkflowService)
+        monkeypatch.setattr(
+            server_module, "_get_thread_title_agent", lambda: SimpleNamespace()
+        )
+        monkeypatch.setattr(
+            server_module, "_get_run_workflow", lambda: (lambda *a, **k: None)
+        )
+        monkeypatch.setattr(app_chatkit, "_server", None)
+
+        server = app_chatkit.get_chatkit_server()
+
+        assert isinstance(server.attachment_store, server_module.LocalAttachmentStore)
+
+        context = ChatKitRequestContext(
+            user_id="user-123",
+            email="demo@example.com",
+            authorization=None,
+            public_base_url="https://public.test",
+        )
+
+        payload = json.dumps(
+            {
+                "type": "attachments.create",
+                "params": {
+                    "name": "demo.txt",
+                    "size": 16,
+                    "mime_type": "text/plain",
+                },
+            }
+        )
+
+        result = await server.process(payload, context)
+        response = json.loads(result.json)
+
+        assert response["name"] == "demo.txt"
+        assert response["mime_type"] == "text/plain"
+        assert response["upload_url"].startswith(
+            "https://public.test/api/chatkit/attachments/"
+        )
+        assert saved["last_context"] == context
+        assert saved["last_attachment"].name == "demo.txt"
 
     asyncio.run(_run())
