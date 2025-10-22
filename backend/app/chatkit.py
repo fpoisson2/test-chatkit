@@ -4,6 +4,10 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+__path__ = [str((Path(__file__).resolve().parent / "chatkit").resolve())]
+if __spec__ is not None:  # pragma: no branch - défensif, dépend du chargement du module
+    __spec__.submodule_search_locations = __path__
+
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
     from chatkit.agents import stream_widget as _sdk_stream_widget
 except ImportError:  # pragma: no cover - compatibilité avec les anciennes versions
@@ -19,11 +23,6 @@ from .workflows.executor import (
     WorkflowStepSummary,
     run_workflow,
 )
-
-__path__ = [str((Path(__file__).resolve().parent / "chatkit").resolve())]
-if __spec__ is not None:  # pragma: no branch - défensif, dépend du chargement du module
-    __spec__.submodule_search_locations = __path__
-
 
 logger = logging.getLogger("chatkit.server")
 
