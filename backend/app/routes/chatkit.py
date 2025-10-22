@@ -57,13 +57,64 @@ def _resolve_public_base_url_from_request(request: Request) -> str | None:
             return None
         return raw_value.split(",")[0].strip() or None
 
-    forwarded_host = _first_header("x-forwarded-host")
+    def _parse_forwarded_header(value: str | None) -> dict[str, str]:
+        if not value:
+            return {}
+        parsed: dict[str, str] = {}
+        for part in value.split(";"):
+            if "=" not in part:
+                continue
+            key, raw = part.split("=", 1)
+            key = key.strip().lower()
+            if not key:
+                continue
+            parsed[key] = raw.strip().strip('"')
+        return parsed
+
+    def _host_has_port(host: str) -> bool:
+        if host.startswith("["):
+            closing = host.find("]")
+            if closing == -1:
+                return False
+            remainder = host[closing + 1 :]
+            return remainder.startswith(":") and remainder[1:].isdigit()
+        if host.count(":") == 1:
+            maybe_port = host.rsplit(":", 1)[1]
+            return maybe_port.isdigit()
+        return False
+
+    forwarded = _parse_forwarded_header(_first_header("forwarded"))
+
+    forwarded_host = _first_header("x-forwarded-host") or forwarded.get("host")
     if forwarded_host:
-        scheme = _first_header("x-forwarded-proto") or request.url.scheme
+        forwarded_proto = (
+            _first_header("x-forwarded-proto")
+            or forwarded.get("proto")
+            or request.url.scheme
+        )
+        scheme = forwarded_proto.lower()
+
         forwarded_port = _first_header("x-forwarded-port")
+        if not forwarded_port and forwarded_host:
+            # Tente de déduire le port de l'en-tête Forwarded s'il est présent.
+            if ":" in forwarded_host:
+                candidate = forwarded_host.rsplit(":", 1)[1]
+                if candidate.isdigit():
+                    forwarded_port = candidate
+
+        if forwarded_port == "443" and scheme == "http":
+            scheme = "https"
+        elif forwarded_port == "80" and scheme == "https":
+            scheme = "http"
+
         host = forwarded_host
-        if forwarded_port and ":" not in host:
-            host = f"{host}:{forwarded_port}"
+        if forwarded_port and not _host_has_port(host):
+            if host.startswith("["):
+                host = f"{host}:{forwarded_port}"
+            elif ":" in host:
+                host = f"[{host}]:{forwarded_port}"
+            else:
+                host = f"{host}:{forwarded_port}"
         return f"{scheme}://{host}".rstrip("/")
 
     base_url = str(request.base_url).rstrip("/")

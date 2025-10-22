@@ -108,6 +108,36 @@ async def test_chatkit_endpoint_uses_forwarded_headers_when_env_not_overridden(m
 
 
 @pytest.mark.asyncio
+async def test_chatkit_endpoint_infers_https_from_forwarded_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    class _StubServer:
+        async def process(self, payload: bytes, context) -> SimpleNamespace:
+            captured["context"] = context
+            return SimpleNamespace(json="{}")
+
+    monkeypatch.setattr(routes_chatkit, "get_chatkit_server", lambda: _StubServer())
+    monkeypatch.setattr(
+        routes_chatkit,
+        "get_settings",
+        lambda: SimpleNamespace(
+            backend_public_base_url="http://localhost:8000",
+            backend_public_base_url_from_env=False,
+        ),
+    )
+
+    request = _build_request(
+        headers=[("x-forwarded-host", "public.example"), ("x-forwarded-port", "443")],
+    )
+
+    await routes_chatkit.chatkit_endpoint(request, current_user=_StubUser())
+
+    context = captured.get("context")
+    assert context is not None
+    assert getattr(context, "public_base_url") == "https://public.example"
+
+
+@pytest.mark.asyncio
 async def test_chatkit_endpoint_prefers_configured_public_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
