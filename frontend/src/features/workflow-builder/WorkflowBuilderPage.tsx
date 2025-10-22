@@ -347,8 +347,7 @@ const WorkflowBuilderPage = () => {
     [isMobileLayout],
   );
   const [minViewportZoom, setMinViewportZoom] = useState(baseMinViewportZoom);
-
-  const defaultViewport = useMemo(() => viewportRef.current ?? undefined, []);
+  const [initialViewport, setInitialViewport] = useState<Viewport | undefined>(undefined);
 
   const persistViewportMemory = useCallback(() => {
     if (!token) {
@@ -1222,9 +1221,10 @@ const WorkflowBuilderPage = () => {
           setSaveMessage(null);
           if (!background) {
             // Wait for viewport to be applied before hiding loading
+            // This prevents flickering when the viewport is restored
             setTimeout(() => {
               setLoading(false);
-            }, 150);
+            }, 250);
           }
           return true;
         } catch (error) {
@@ -3359,10 +3359,17 @@ const WorkflowBuilderPage = () => {
               background: true,
             });
             // Force viewport to be reapplied after auto-save
+            // Apply multiple times to ensure it sticks
             if (currentViewport && reactFlowInstanceRef.current) {
               setTimeout(() => {
                 reactFlowInstanceRef.current?.setViewport(currentViewport, { duration: 0 });
+              }, 100);
+              setTimeout(() => {
+                reactFlowInstanceRef.current?.setViewport(currentViewport, { duration: 0 });
               }, 200);
+              setTimeout(() => {
+                reactFlowInstanceRef.current?.setViewport(currentViewport, { duration: 0 });
+              }, 300);
             }
             lastSavedSnapshotRef.current = graphSnapshot;
             setHasPendingChanges(false);
@@ -3423,10 +3430,17 @@ const WorkflowBuilderPage = () => {
           background: true,
         });
         // Force viewport to be reapplied after auto-save
+        // Apply multiple times to ensure it sticks
         if (currentViewport && reactFlowInstanceRef.current) {
           setTimeout(() => {
             reactFlowInstanceRef.current?.setViewport(currentViewport, { duration: 0 });
+          }, 100);
+          setTimeout(() => {
+            reactFlowInstanceRef.current?.setViewport(currentViewport, { duration: 0 });
           }, 200);
+          setTimeout(() => {
+            reactFlowInstanceRef.current?.setViewport(currentViewport, { duration: 0 });
+          }, 300);
         }
         lastSavedSnapshotRef.current = graphSnapshot;
         setHasPendingChanges(false);
