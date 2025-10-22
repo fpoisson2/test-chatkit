@@ -105,6 +105,8 @@ class Settings:
             liens d'images générées.
         workflow_defaults: Configuration par défaut du workflow (chargée
             depuis un fichier JSON).
+        docs_seed_documents: Définitions de documents à ingérer automatiquement
+            lors du démarrage du serveur.
     """
 
     allowed_origins: list[str]
@@ -125,6 +127,7 @@ class Settings:
     database_connect_delay: float
     agent_image_token_ttl_seconds: int
     workflow_defaults: WorkflowDefaults
+    docs_seed_documents: tuple[dict[str, Any], ...]
 
     @staticmethod
     def _load_workflow_defaults(path_value: str | None) -> WorkflowDefaults:
@@ -152,6 +155,65 @@ class Settings:
             )
 
         return WorkflowDefaults.from_mapping(raw_payload)
+
+    @staticmethod
+    def _load_docs_seed(path_value: str | None) -> tuple[dict[str, Any], ...]:
+        if path_value is not None:
+            stripped = path_value.strip()
+            if not stripped:
+                return ()
+            candidate_path = Path(stripped).expanduser()
+            try:
+                raw_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+            except FileNotFoundError as exc:
+                raise RuntimeError(
+                    "Impossible de charger les documents de seed : "
+                    f"{candidate_path}"
+                ) from exc
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(
+                    "JSON invalide pour la configuration de seed documentation : "
+                    f"{candidate_path}"
+                ) from exc
+        else:
+            candidate_path = (
+                Path(__file__).resolve().parent
+                / "docs"
+                / "seed"
+                / "workflow_builder.json"
+            )
+            if not candidate_path.exists():
+                logger.debug(
+                    "Aucun fichier de seed documentation trouvé : %s", candidate_path
+                )
+                return ()
+            try:
+                raw_payload = json.loads(candidate_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError as exc:  # pragma: no cover - JSON invalide
+                raise RuntimeError(
+                    "JSON invalide pour la configuration de seed documentation : "
+                    f"{candidate_path}"
+                ) from exc
+
+        if isinstance(raw_payload, Mapping):
+            documents = [dict(raw_payload)]
+        elif isinstance(raw_payload, list):
+            documents = []
+            for item in raw_payload:
+                if not isinstance(item, Mapping):
+                    raise RuntimeError(
+                        "Chaque document de seed doit être un objet JSON."
+                    )
+                documents.append(dict(item))
+        else:
+            raise RuntimeError(
+                "Le fichier de seed documentation doit contenir un objet ou une liste."
+            )
+
+        sanitized: list[dict[str, Any]] = []
+        for document in documents:
+            sanitized.append(json.loads(json.dumps(document, ensure_ascii=False)))
+        return tuple(sanitized)
 
     @staticmethod
     def _parse_allowed_origins(raw_value: str | None) -> list[str]:
@@ -231,6 +293,7 @@ class Settings:
             workflow_defaults=cls._load_workflow_defaults(
                 env.get("WORKFLOW_DEFAULTS_PATH")
             ),
+            docs_seed_documents=cls._load_docs_seed(env.get("DOCS_SEED_PATH")),
         )
 
 

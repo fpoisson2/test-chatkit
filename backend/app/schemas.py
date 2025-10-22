@@ -341,6 +341,52 @@ class WorkflowChatKitUpdate(BaseModel):
     workflow_id: int
 
 
+class DocumentationMetadataResponse(BaseModel):
+    slug: str
+    title: str | None = None
+    summary: str | None = None
+    language: str | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentationResponse(DocumentationMetadataResponse):
+    content_markdown: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DocumentationCreateRequest(BaseModel):
+    slug: str
+    title: str | None = None
+    summary: str | None = None
+    language: str | None = Field(
+        default=None,
+        description=(
+            "Code langue facultatif (BCP 47) comme 'en', 'fr' ou 'en-us'."
+        ),
+        min_length=2,
+        max_length=32,
+    )
+    content_markdown: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DocumentationUpdateRequest(BaseModel):
+    title: str | None = None
+    summary: str | None = None
+    language: str | None = Field(
+        default=None,
+        description=(
+            "Nouveau code langue (BCP 47) ou null pour réinitialiser la langue."
+        ),
+        min_length=2,
+        max_length=32,
+    )
+    content_markdown: str | None = None
+    metadata: dict[str, Any] | None = None
 class WorkflowImportRequest(BaseModel):
     workflow_id: int | None = None
     slug: str | None = None

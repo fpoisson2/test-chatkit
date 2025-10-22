@@ -12,6 +12,7 @@ def pytest_configure() -> None:
         "DATABASE_URL": "sqlite:///./chatkit-tests.db",
         "OPENAI_API_KEY": "sk-test",  # Clé fictive adaptée aux tests unitaires
         "AUTH_SECRET_KEY": "secret-key",
+        "DOCS_SEED_PATH": "",
     }
 
     for name, value in defaults.items():

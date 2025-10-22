@@ -15,6 +15,7 @@ from .database import (
     ensure_vector_indexes,
     wait_for_database,
 )
+from .docs import DocumentationService
 from .models import (
     EMBEDDING_DIMENSION,
     AvailableModel,
@@ -588,3 +589,47 @@ def register_startup_events(app: FastAPI) -> None:
                     )
                     session.add(user)
                     session.commit()
+        if settings.docs_seed_documents:
+            with SessionLocal() as session:
+                service = DocumentationService(session)
+                for seed in settings.docs_seed_documents:
+                    slug = str(seed.get("slug") or "").strip()
+                    if not slug:
+                        logger.warning(
+                            "Entrée de seed documentation ignorée : slug manquant"
+                        )
+                        continue
+                    if service.get_document(slug) is not None:
+                        continue
+                    metadata = {
+                        key: value
+                        for key, value in seed.items()
+                        if key
+                        not in {
+                            "slug",
+                            "title",
+                            "summary",
+                            "language",
+                            "content_markdown",
+                        }
+                    }
+                    try:
+                        service.create_document(
+                            slug,
+                            title=seed.get("title"),
+                            summary=seed.get("summary"),
+                            language=seed.get("language"),
+                            content_markdown=seed.get("content_markdown"),
+                            metadata=metadata,
+                        )
+                        session.commit()
+                        logger.info(
+                            "Document de documentation initial importé : %s", slug
+                        )
+                    except Exception as exc:  # pragma: no cover - dépend externe
+                        session.rollback()
+                        logger.warning(
+                            "Impossible d'ingérer le document de seed %s : %s",
+                            slug,
+                            exc,
+                        )

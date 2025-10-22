@@ -1,0 +1,11 @@
+[
+  {
+    "slug": "workflow-builder",
+    "title": "Guide du Workflow Builder",
+    "summary": "Présentation du concepteur de workflows ChatKit et de ses fonctionnalités clés.",
+    "language": "fr",
+    "content_markdown": "# Workflow Builder\n\nLe Workflow Builder de ChatKit permet de créer des expériences conversationnelles en orchestrant des agents et des actions.\n\n## Démarrer un nouveau workflow\n\n1. Créez ou importez un workflow depuis la bibliothèque.\n2. Ajoutez des blocs (agents, actions, états) depuis la barre latérale.\n3. Connectez les blocs pour définir le parcours utilisateur.\n\n## Astuces\n\n- Utilisez des noms explicites pour les nœuds afin de faciliter la collaboration.\n- Prévisualisez régulièrement votre workflow pour vérifier les transitions.\n- Définissez des résumés clairs afin d'améliorer la recherche dans la base documentaire.",
+    "category": "guides",
+    "tags": ["workflow", "builder", "guides"]
+  }
+]
