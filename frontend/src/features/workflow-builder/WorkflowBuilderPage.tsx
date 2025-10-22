@@ -1157,6 +1157,10 @@ const WorkflowBuilderPage = () => {
           setHasPendingChanges(false);
           setNodes(flowNodes);
           setEdges(flowEdges);
+          // Reset isHydrating after a short delay to allow viewport restoration
+          setTimeout(() => {
+            isHydratingRef.current = false;
+          }, 100);
           const viewportKey = viewportKeyFor(workflowId, versionId);
           viewportKeyRef.current = viewportKey;
           const restoredViewport = viewportKey
@@ -1308,6 +1312,9 @@ const WorkflowBuilderPage = () => {
             setNodes([]);
             setEdges([]);
             isHydratingRef.current = true;
+            setTimeout(() => {
+              isHydratingRef.current = false;
+            }, 100);
             lastSavedSnapshotRef.current = JSON.stringify(buildGraphPayloadFrom([], []));
             setHasPendingChanges(false);
             if (!background) {
@@ -1421,6 +1428,9 @@ const WorkflowBuilderPage = () => {
             setNodes([]);
             setEdges([]);
             isHydratingRef.current = true;
+            setTimeout(() => {
+              isHydratingRef.current = false;
+            }, 100);
             lastSavedSnapshotRef.current = JSON.stringify(buildGraphPayloadFrom([], []));
             setHasPendingChanges(false);
             setLoading(false);
