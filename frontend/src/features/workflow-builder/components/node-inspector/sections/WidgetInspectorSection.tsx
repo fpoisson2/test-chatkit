@@ -13,8 +13,8 @@ import type {
 import type { WidgetTemplateSummary } from "../../../../../utils/backend";
 import { isTestEnvironment } from "../constants";
 import { useWidgetInspectorState } from "../hooks/useWidgetInspectorState";
-import { fieldStyle, inlineFieldStyle, labelContentStyle } from "../styles";
 import { HelpTooltip } from "../components/HelpTooltip";
+import styles from "../NodeInspector.module.css";
 
 type WidgetInspectorSectionProps = {
   nodeId: string;
@@ -73,12 +73,12 @@ export const WidgetInspectorSection = ({
 
   return (
     <>
-      <p style={{ color: "var(--text-muted)", margin: "0.5rem 0 0" }}>
+      <p className={styles.nodeInspectorMutedTextSpacedTop}>
         Affichez un widget existant ou fournissez une expression qui renvoie sa définition JSON.
       </p>
 
-      <label style={fieldStyle}>
-        <span style={labelContentStyle}>
+      <label className={styles.nodeInspectorField}>
+        <span className={styles.nodeInspectorLabel}>
           Source du widget
           <HelpTooltip label="Diffusez un widget de la bibliothèque ou un JSON stocké dans les variables du workflow." />
         </span>
@@ -95,8 +95,8 @@ export const WidgetInspectorSection = ({
 
       {widgetNodeSource === "library" ? (
         <>
-          <label style={fieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-input`}>
-            <span style={labelContentStyle}>
+          <label className={styles.nodeInspectorField} htmlFor={`${widgetNodeSlugSuggestionsId}-input`}>
+            <span className={styles.nodeInspectorLabel}>
               Slug du widget
               <HelpTooltip label="Correspond au slug défini lors de l'enregistrement du widget dans la bibliothèque." />
             </span>
@@ -110,8 +110,8 @@ export const WidgetInspectorSection = ({
             />
           </label>
 
-          <label style={inlineFieldStyle} htmlFor={`${widgetNodeSlugSuggestionsId}-select`}>
-            <span style={labelContentStyle}>
+          <label className={styles.nodeInspectorInlineField} htmlFor={`${widgetNodeSlugSuggestionsId}-select`}>
+            <span className={styles.nodeInspectorLabel}>
               Widget enregistré
               <HelpTooltip label="La liste provient automatiquement de la bibliothèque des widgets partageables. Le widget sélectionné est diffusé immédiatement dans ChatKit lorsqu'on atteint ce bloc." />
             </span>
@@ -131,23 +131,23 @@ export const WidgetInspectorSection = ({
           </label>
 
           {widgetsLoading ? (
-            <p style={{ color: "var(--text-muted)", margin: 0 }}>
+            <p className={styles.nodeInspectorMutedText}>
               Chargement de la bibliothèque de widgets…
             </p>
           ) : widgetsError ? (
-            <p style={{ color: "#b91c1c", margin: 0 }}>
+            <p className={styles.nodeInspectorErrorText}>
               {widgetsError}
               <br />
               Vous pouvez saisir le slug du widget manuellement ci-dessus.
             </p>
           ) : widgets.length === 0 ? (
-            <p style={{ color: "var(--text-muted)", margin: 0 }}>
+            <p className={styles.nodeInspectorMutedText}>
               Créez un widget dans la bibliothèque dédiée ou saisissez son slug manuellement ci-dessus.
             </p>
           ) : null}
 
           {widgetNodeValidationMessage ? (
-            <p style={{ color: "#b91c1c", margin: 0 }}>{widgetNodeValidationMessage}</p>
+            <p className={styles.nodeInspectorErrorText}>{widgetNodeValidationMessage}</p>
           ) : null}
 
           {widgets.length > 0 && (
@@ -171,7 +171,7 @@ export const WidgetInspectorSection = ({
             />
           )}
 
-          <div style={{ marginTop: "0.75rem" }}>
+          <div className={styles.nodeInspectorSectionSpacer}>
             <WidgetVariablesPanel
               assignments={widgetNodeVariables}
               onChange={(next) => onWidgetNodeVariablesChange(nodeId, next)}
@@ -180,8 +180,8 @@ export const WidgetInspectorSection = ({
         </>
       ) : (
         <>
-          <label style={fieldStyle}>
-            <span style={labelContentStyle}>
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
               Expression JSON du widget
               <HelpTooltip label="Saisissez une expression (ex. state.widget_output) qui renvoie la définition JSON complète du widget." />
             </span>
@@ -194,26 +194,26 @@ export const WidgetInspectorSection = ({
               placeholder="Ex. state.widget_output"
             />
           </label>
-          <p style={{ color: "var(--text-muted)", margin: "-0.35rem 0 0.35rem" }}>
+          <p className={styles.nodeInspectorHintText}>
             Le JSON fourni est transmis tel quel au widget ChatKit. Vérifiez qu'il respecte le schéma attendu.
           </p>
           {widgetNodeValidationMessage ? (
-            <p style={{ color: "#b91c1c", margin: 0 }}>{widgetNodeValidationMessage}</p>
+            <p className={styles.nodeInspectorErrorText}>{widgetNodeValidationMessage}</p>
           ) : null}
         </>
       )}
 
-      <label style={{ ...fieldStyle, marginTop: "0.75rem" }}>
-        <span style={labelContentStyle}>Progression du workflow</span>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
+      <label className={styles.nodeInspectorField}>
+        <span className={styles.nodeInspectorLabel}>Progression du workflow</span>
+        <div className={styles.nodeInspectorInlineStack}>
           <input
             type="checkbox"
             checked={widgetNodeAwaitAction}
             onChange={(event) => onWidgetNodeAwaitActionChange(nodeId, event.target.checked)}
           />
-          <div style={{ lineHeight: 1.4 }}>
+          <div className={styles.nodeInspectorStackText}>
             <strong>Attendre une action utilisateur avant de continuer</strong>
-            <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+            <p className={styles.nodeInspectorHintTextTight}>
               Lorsque cette option est activée, le workflow reste sur ce bloc tant que l'utilisateur n'a pas interagi avec le
               widget. Désactivez-la pour enchaîner automatiquement avec l'étape suivante.
             </p>
@@ -310,43 +310,26 @@ const WidgetNodeContentEditor = ({
   }
 
   return (
-    <section
-      aria-label="Contenu du widget"
-      style={{
-        marginTop: "0.75rem",
-        border: "1px solid rgba(15, 23, 42, 0.12)",
-        borderRadius: "0.75rem",
-        padding: "0.75rem",
-        display: "grid",
-        gap: "0.75rem",
-      }}
-    >
+    <section aria-label="Contenu du widget" className={styles.nodeInspectorPanel}>
       <header>
-        <h3 style={{ margin: 0, fontSize: "1rem" }}>Contenu du widget</h3>
-        <p style={{ margin: "0.25rem 0 0", color: "var(--text-muted)", fontSize: "0.95rem" }}>
+        <h3 className={styles.nodeInspectorSectionHeading}>Contenu du widget</h3>
+        <p className={styles.nodeInspectorSectionDescription}>
           Modifiez les textes diffusés par ce bloc. Les valeurs sont enregistrées dans les propriétés du workflow.
         </p>
       </header>
       {loading ? (
-        <p style={{ margin: 0, color: "var(--text-muted)" }}>Chargement de la prévisualisation…</p>
+        <p className={styles.nodeInspectorMutedText}>Chargement de la prévisualisation…</p>
       ) : error ? (
-        <p style={{ margin: 0, color: "#b91c1c" }}>
+        <p className={styles.nodeInspectorErrorText}>
           Impossible de récupérer le widget « {trimmedSlug} ». {error}
         </p>
       ) : !definition ? (
-        <p style={{ margin: 0, color: "var(--text-muted)" }}>
+        <p className={styles.nodeInspectorMutedText}>
           Sélectionnez un widget dans la bibliothèque pour personnaliser son contenu.
         </p>
       ) : (
         <>
-          <div
-            style={{
-              border: "1px solid rgba(15, 23, 42, 0.12)",
-              borderRadius: "0.65rem",
-              padding: "0.75rem",
-              background: "#f8fafc",
-            }}
-          >
+          <div className={styles.nodeInspectorPreviewCard}>
             <WidgetPreview definition={previewDefinition ?? definition} />
           </div>
           {bindingEntries.length > 0 ? (
@@ -356,8 +339,8 @@ const WidgetNodeContentEditor = ({
                 : identifier;
               const placeholder = formatSampleValue(binding.sample);
               return (
-                <label key={identifier} style={fieldStyle}>
-                  <span style={labelContentStyle}>{label}</span>
+                <label key={identifier} className={styles.nodeInspectorField}>
+                  <span className={styles.nodeInspectorLabel}>{label}</span>
                   <input
                     type="text"
                     value={assignmentMap.get(identifier) ?? ""}
@@ -368,7 +351,7 @@ const WidgetNodeContentEditor = ({
               );
             })
           ) : (
-            <p style={{ margin: 0, color: "var(--text-muted)" }}>
+            <p className={styles.nodeInspectorMutedText}>
               Ce widget n'expose aucun texte modifiable. Il sera diffusé tel que défini dans la bibliothèque.
             </p>
           )}
@@ -404,42 +387,23 @@ const WidgetVariablesPanel = ({ assignments, onChange }: WidgetVariablesPanelPro
   };
 
   return (
-    <section
-      aria-label="Variables de widget"
-      style={{
-        marginTop: "1rem",
-        border: "1px solid rgba(15, 23, 42, 0.12)",
-        borderRadius: "0.75rem",
-        padding: "0.75rem",
-        display: "grid",
-        gap: "0.75rem",
-      }}
-    >
+    <section aria-label="Variables de widget" className={styles.nodeInspectorPanel}>
       <header>
-        <h3 style={{ margin: 0, fontSize: "1rem" }}>Variables de widget</h3>
-        <p style={{ margin: "0.25rem 0 0", color: "var(--text-muted)", fontSize: "0.95rem" }}>
+        <h3 className={styles.nodeInspectorSectionHeading}>Variables de widget</h3>
+        <p className={styles.nodeInspectorSectionDescription}>
           Associez les identifiants du widget aux expressions évaluées lors de l'exécution.
         </p>
       </header>
 
       {assignments.length === 0 ? (
-        <p style={{ margin: 0, color: "#64748b", fontSize: "0.9rem" }}>
+        <p className={styles.nodeInspectorMutedNote}>
           Aucune variable dynamique n'est configurée pour ce widget.
         </p>
       ) : (
         assignments.map((assignment, index) => (
-          <div
-            key={`widget-variable-${index}`}
-            style={{
-              border: "1px solid rgba(148, 163, 184, 0.35)",
-              borderRadius: "0.65rem",
-              padding: "0.75rem",
-              display: "grid",
-              gap: "0.75rem",
-            }}
-          >
-            <label style={fieldStyle}>
-              <span style={labelContentStyle}>
+          <div key={`widget-variable-${index}`} className={styles.nodeInspectorPanelInner}>
+            <label className={styles.nodeInspectorField}>
+              <span className={styles.nodeInspectorLabel}>
                 Identifiant du widget
                 <HelpTooltip label="Correspond aux attributs id, name ou aux zones éditables du widget." />
               </span>
@@ -450,8 +414,8 @@ const WidgetVariablesPanel = ({ assignments, onChange }: WidgetVariablesPanelPro
                 onChange={(event) => handleAssignmentChange(index, "identifier", event.target.value)}
               />
             </label>
-            <label style={fieldStyle}>
-              <span style={labelContentStyle}>
+            <label className={styles.nodeInspectorField}>
+              <span className={styles.nodeInspectorLabel}>
                 Expression associée
                 <HelpTooltip label="Utilisez state. ou input. pour référencer les données du workflow." />
               </span>
@@ -462,7 +426,7 @@ const WidgetVariablesPanel = ({ assignments, onChange }: WidgetVariablesPanelPro
                 onChange={(event) => handleAssignmentChange(index, "expression", event.target.value)}
               />
             </label>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <div className={styles.nodeInspectorSectionFooter}>
               <button type="button" className="btn danger" onClick={() => handleRemoveAssignment(index)}>
                 Supprimer la variable
               </button>

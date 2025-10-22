@@ -1,8 +1,8 @@
 import { useCallback } from "react";
 
 import type { StateAssignment } from "../../../types";
-import { fieldStyle, labelContentStyle } from "../styles";
 import { HelpTooltip } from "./HelpTooltip";
+import styles from "../NodeInspector.module.css";
 
 type StateAssignmentsPanelProps = {
   title: string;
@@ -47,40 +47,24 @@ export const StateAssignmentsPanel = ({
   }, [assignments, onChange]);
 
   return (
-    <section
-      aria-label={title}
-      style={{
-        marginTop: "1rem",
-        border: "1px solid rgba(15, 23, 42, 0.12)",
-        borderRadius: "0.75rem",
-        padding: "0.75rem",
-        display: "grid",
-        gap: "0.75rem",
-      }}
-    >
+    <section aria-label={title} className={styles.nodeInspectorPanel}>
       <header>
-        <h3 style={{ margin: 0, fontSize: "1rem" }}>{title}</h3>
-        <p style={{ margin: "0.25rem 0 0", color: "var(--text-muted)", fontSize: "0.95rem" }}>
+        <h3 className={styles.nodeInspectorSectionHeading}>{title}</h3>
+        <p className={styles.nodeInspectorSectionDescription}>
           {description}
         </p>
       </header>
 
       {assignments.length === 0 ? (
-        <p style={{ margin: 0, color: "#64748b", fontSize: "0.9rem" }}>{emptyLabel}</p>
+        <p className={styles.nodeInspectorEmptyLabel}>{emptyLabel}</p>
       ) : (
         assignments.map((assignment, index) => (
           <div
             key={`${title}-${index}`}
-            style={{
-              border: "1px solid rgba(148, 163, 184, 0.35)",
-              borderRadius: "0.65rem",
-              padding: "0.75rem",
-              display: "grid",
-              gap: "0.75rem",
-            }}
+            className={styles.nodeInspectorPanelInner}
           >
-            <label style={fieldStyle}>
-              <span style={labelContentStyle}>
+            <label className={styles.nodeInspectorField}>
+              <span className={styles.nodeInspectorLabel}>
                 Affecter la valeur
                 <HelpTooltip label="Utilisez le langage Common Expression Language pour créer une expression personnalisée." />
               </span>
@@ -94,8 +78,8 @@ export const StateAssignmentsPanel = ({
               />
             </label>
 
-            <label style={fieldStyle}>
-              <span style={labelContentStyle}>Vers la variable</span>
+            <label className={styles.nodeInspectorField}>
+              <span className={styles.nodeInspectorLabel}>Vers la variable</span>
               <input
                 type="text"
                 value={assignment.target}
@@ -104,7 +88,7 @@ export const StateAssignmentsPanel = ({
               />
             </label>
 
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <div className={styles.nodeInspectorSectionFooter}>
               <button type="button" className="btn danger" onClick={() => handleRemoveAssignment(index)}>
                 Supprimer la variable
               </button>

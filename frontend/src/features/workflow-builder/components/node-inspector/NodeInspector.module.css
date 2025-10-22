@@ -1,0 +1,496 @@
+.nodeInspectorHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.nodeInspectorSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.nodeInspectorTitle {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-strong);
+}
+
+.nodeInspectorSubtitle {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.nodeInspectorDeleteButton {
+  border: 1px solid rgba(220, 38, 38, 0.25);
+  background-color: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+  border-radius: 9999px;
+  padding: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(220, 38, 38, 0.2);
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+
+.nodeInspectorDeleteButtonIcon {
+  width: 1.1rem;
+  height: 1.1rem;
+  display: block;
+}
+
+.nodeInspectorMetaGrid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+}
+
+.nodeInspectorDisplayNameField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.nodeInspectorField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.nodeInspectorInlineField {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.nodeInspectorLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+
+.nodeInspectorToggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.nodeInspectorToggleSwitch {
+  position: relative;
+  width: 2.75rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  border: none;
+  padding: 0;
+  background-color: rgba(148, 163, 184, 0.45);
+  cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.nodeInspectorToggleSwitchChecked {
+  background-color: #2563eb;
+}
+
+.nodeInspectorToggleSwitchDisabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.nodeInspectorToggleSwitchThumb {
+  position: absolute;
+  top: 50%;
+  left: 0.25rem;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 9999px;
+  background-color: #fff;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.25);
+  transform: translate(0, -50%);
+  transition: transform 150ms ease;
+}
+
+.nodeInspectorToggleSwitchThumbChecked {
+  transform: translate(1.2rem, -50%);
+}
+
+.nodeInspectorHelpTooltip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.nodeInspectorHelpTooltipTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 9999px;
+  border: 1px solid var(--surface-border);
+  background-color: var(--surface-color);
+  color: var(--text-color);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+
+.nodeInspectorHelpTooltipTriggerActive {
+  background-color: #2563eb;
+  border-color: rgba(37, 99, 235, 0.7);
+  color: #ffffff;
+}
+
+.nodeInspectorHelpTooltipBubble {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 10;
+  max-width: 18rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.75rem;
+  background-color: var(--text-color);
+  color: var(--main-background);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  box-shadow: var(--shadow-card);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.nodeInspectorHelpTooltipBubbleVisible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.nodeInspectorPanel {
+  margin-top: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.nodeInspectorPanelSpacious {
+  margin-top: 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 0.75rem;
+  padding: 0.9rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.nodeInspectorInputGroup {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.nodeInspectorPanelInner {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.65rem;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.nodeInspectorPanelInnerAccent {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.65rem;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.75rem;
+  background-color: rgba(226, 232, 240, 0.25);
+}
+
+.nodeInspectorPanelInnerAccentTight {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.65rem;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+  background-color: rgba(226, 232, 240, 0.25);
+}
+
+.nodeInspectorPreviewCard {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 0.65rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+}
+
+.nodeInspectorSectionHeading {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.nodeInspectorSectionDescription {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.nodeInspectorSectionTitle {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.nodeInspectorSectionTitleSmall {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.nodeInspectorEmptyLabel {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.nodeInspectorSectionFooter {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.nodeInspectorToggleGroup {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.nodeInspectorSectionSpacer {
+  margin-top: 0.75rem;
+}
+
+.nodeInspectorInlineStack {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.nodeInspectorStackText {
+  line-height: 1.4;
+}
+
+.nodeInspectorTextarea {
+  resize: vertical;
+  min-height: 4.5rem;
+}
+
+.nodeInspectorTextareaLarge {
+  resize: vertical;
+  min-height: 12rem;
+  font-family: var(--font-mono);
+}
+
+.nodeInspectorInputError {
+  border-color: #b91c1c;
+}
+
+.nodeInspectorHintText {
+  color: var(--text-muted);
+  margin: -0.35rem 0 0.35rem;
+}
+
+.nodeInspectorHintTextTight {
+  color: var(--text-muted);
+  margin: 0.35rem 0 0;
+}
+
+.nodeInspectorErrorText {
+  color: #b91c1c;
+  margin: 0;
+}
+
+.nodeInspectorErrorTextCompact {
+  color: #b91c1c;
+  margin: 0 0 0.75rem;
+}
+
+.nodeInspectorErrorTextSpaced {
+  color: #b91c1c;
+  margin: 0.5rem 0 0;
+}
+
+.nodeInspectorErrorTextSmall {
+  color: #b91c1c;
+  font-size: 0.85rem;
+  margin-top: 0.25rem;
+  display: inline-block;
+}
+
+.nodeInspectorMutedText {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.nodeInspectorMutedTextSpaced {
+  color: var(--text-muted);
+  margin: 0 0 0.75rem;
+}
+
+.nodeInspectorMutedTextSpacedTop {
+  color: var(--text-muted);
+  margin: 0.5rem 0 0;
+}
+
+.nodeInspectorMutedTextTightTop {
+  color: var(--text-muted);
+  margin: 0.25rem 0 0;
+}
+
+.nodeInspectorErrorTextTightTop {
+  color: #b91c1c;
+  margin: 0.25rem 0 0;
+}
+
+.nodeInspectorMutedTextHighlight {
+  color: #475569;
+  margin: 0.25rem 0 0;
+  font-size: 0.95rem;
+}
+
+.nodeInspectorMutedNote {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.nodeInspectorSectionLabel {
+  font-weight: 600;
+  color: var(--color-text-strong);
+}
+
+.nodeInspectorInfoMessage {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.nodeInspectorInfoCard {
+  background-color: var(--bg-surface-secondary, #f8fafc);
+  border: 1px solid var(--border-secondary, #e2e8f0);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.nodeInspectorInfoCardNote {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.nodeInspectorDisclosureButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary, #0f172a);
+}
+
+.nodeInspectorDisclosureLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nodeInspectorDisclosureIcon {
+  display: inline-block;
+  transition: transform 0.2s;
+}
+
+.nodeInspectorDisclosureIconExpanded {
+  transform: rotate(90deg);
+}
+
+.nodeInspectorBadge {
+  background-color: var(--bg-primary, #3b82f6);
+  color: #ffffff;
+  font-size: 0.75rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-weight: 600;
+}
+
+.nodeInspectorDisclosureContent {
+  margin-top: 0.75rem;
+}
+
+.nodeInspectorDisclosureHeading {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.nodeInspectorList {
+  margin: 0 0 0.75rem 0;
+  padding-left: 1.5rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #475569);
+}
+
+.nodeInspectorListItem {
+  margin-bottom: 0.25rem;
+}
+
+.nodeInspectorCode {
+  background-color: var(--bg-code, #f1f5f9);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
+  font-family: monospace;
+}
+
+.nodeInspectorCodeNote {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin-left: 0.25rem;
+}
+
+.nodeInspectorInlineCode {
+  padding: 0 0.2rem;
+}
+
+.nodeInspectorDisclosureExample {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.nodeInspectorPre {
+  background-color: var(--bg-code, #1e293b);
+  color: var(--text-code, #e2e8f0);
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.8rem;
+  font-family: monospace;
+  overflow-x: auto;
+  margin: 0;
+}
+
+.nodeInspectorDisclosureNote {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.5rem;
+  font-style: italic;
+}

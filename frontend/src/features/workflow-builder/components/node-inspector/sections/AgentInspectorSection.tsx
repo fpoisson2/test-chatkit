@@ -26,9 +26,9 @@ import {
   textVerbosityOptions,
 } from "../constants";
 import { useAgentInspectorState } from "../hooks/useAgentInspectorState";
-import { fieldStyle, inlineFieldStyle, labelContentStyle } from "../styles";
 import { HelpTooltip } from "../components/HelpTooltip";
 import { ToggleRow } from "../components/ToggleRow";
+import styles from "../NodeInspector.module.css";
 
 type AgentInspectorSectionProps = {
   nodeId: string;
@@ -184,7 +184,7 @@ export const AgentInspectorSection = ({
 
   return (
     <>
-      <label style={fieldStyle}>
+      <label className={styles.nodeInspectorField}>
         <span>Message système</span>
         <textarea
           value={agentMessage}
@@ -194,8 +194,8 @@ export const AgentInspectorSection = ({
         />
       </label>
 
-      <label style={inlineFieldStyle}>
-        <span style={labelContentStyle}>
+      <label className={styles.nodeInspectorInlineField}>
+        <span className={styles.nodeInspectorLabel}>
           Modèle OpenAI
           <HelpTooltip label="Sélectionnez un modèle autorisé pour exécuter ce bloc." />
         </span>
@@ -215,25 +215,25 @@ export const AgentInspectorSection = ({
       </label>
 
       {agentModel.trim() && !matchedModel && !availableModelsLoading ? (
-        <p style={{ color: "#b91c1c", margin: "0.5rem 0 0" }}>
+        <p className={styles.nodeInspectorErrorTextSpaced}>
           Ce bloc utilise actuellement un modèle non listé ({agentModel}). Sélectionnez un modèle dans la liste ci-dessus.
         </p>
       ) : null}
 
       {availableModelsLoading ? (
-        <p style={{ color: "var(--text-muted)", margin: "0.5rem 0 0" }}>
+        <p className={styles.nodeInspectorMutedTextSpacedTop}>
           Chargement des modèles autorisés…
         </p>
       ) : availableModelsError ? (
-        <p style={{ color: "#b91c1c", margin: "0.5rem 0 0" }}>{availableModelsError}</p>
+        <p className={styles.nodeInspectorErrorTextSpaced}>{availableModelsError}</p>
       ) : matchedModel?.description ? (
-        <p style={{ color: "var(--text-muted)", margin: "0.5rem 0 0" }}>{matchedModel.description}</p>
+        <p className={styles.nodeInspectorMutedTextSpacedTop}>{matchedModel.description}</p>
       ) : null}
 
       {supportsReasoning ? (
         <>
-          <label style={inlineFieldStyle}>
-            <span style={labelContentStyle}>
+          <label className={styles.nodeInspectorInlineField}>
+            <span className={styles.nodeInspectorLabel}>
               Niveau de raisonnement
               <HelpTooltip label="Ajuste la profondeur d'analyse du modèle (laisser vide pour utiliser la valeur par défaut)." />
             </span>
@@ -249,8 +249,8 @@ export const AgentInspectorSection = ({
             </select>
           </label>
 
-          <label style={inlineFieldStyle}>
-            <span style={labelContentStyle}>
+          <label className={styles.nodeInspectorInlineField}>
+            <span className={styles.nodeInspectorLabel}>
               Verbosité de la réponse
               <HelpTooltip label="Contrôle la quantité de texte renvoyée par le modèle (laisser vide pour appliquer le paramétrage par défaut)." />
             </span>
@@ -266,8 +266,8 @@ export const AgentInspectorSection = ({
             </select>
           </label>
 
-          <label style={inlineFieldStyle}>
-            <span style={labelContentStyle}>
+          <label className={styles.nodeInspectorInlineField}>
+            <span className={styles.nodeInspectorLabel}>
               Résumé des étapes
               <HelpTooltip label="Détermine si l'agent doit générer un résumé automatique de son raisonnement." />
             </span>
@@ -285,8 +285,8 @@ export const AgentInspectorSection = ({
         </>
       ) : (
         <>
-          <label style={fieldStyle}>
-            <span style={labelContentStyle}>
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
               Température
               <HelpTooltip label="Ajuste la créativité des réponses pour les modèles sans raisonnement." />
             </span>
@@ -300,8 +300,8 @@ export const AgentInspectorSection = ({
               onChange={(event) => onAgentTemperatureChange(nodeId, event.target.value)}
             />
           </label>
-          <label style={fieldStyle}>
-            <span style={labelContentStyle}>
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
               Top-p
               <HelpTooltip label="Détermine la diversité lexicale en limitant la probabilité cumulée." />
             </span>
@@ -318,8 +318,8 @@ export const AgentInspectorSection = ({
         </>
       )}
 
-      <label style={fieldStyle}>
-        <span style={labelContentStyle}>
+      <label className={styles.nodeInspectorField}>
+        <span className={styles.nodeInspectorLabel}>
           Nombre maximal de tokens générés
           <HelpTooltip label="Limite la longueur maximale des réponses produites par cet agent." />
         </span>
@@ -333,7 +333,7 @@ export const AgentInspectorSection = ({
         />
       </label>
 
-      <div style={{ display: "grid", gap: "0.75rem", marginTop: "0.75rem" }}>
+      <div className={styles.nodeInspectorToggleGroup}>
         <ToggleRow
           label="Inclure l'historique du chat"
           checked={includeChatHistory}
@@ -361,8 +361,8 @@ export const AgentInspectorSection = ({
         />
       </div>
 
-      <label style={inlineFieldStyle}>
-        <span style={labelContentStyle}>
+      <label className={styles.nodeInspectorInlineField}>
+        <span className={styles.nodeInspectorLabel}>
           Type de sortie
           <HelpTooltip label="Choisissez le format attendu pour la réponse de l'agent." />
         </span>
@@ -381,7 +381,7 @@ export const AgentInspectorSection = ({
 
       {responseFormat.kind === "json_schema" ? (
         <>
-          <label style={fieldStyle}>
+          <label className={styles.nodeInspectorField}>
             <span>Nom du schéma JSON</span>
             <input
               type="text"
@@ -390,8 +390,8 @@ export const AgentInspectorSection = ({
             />
           </label>
 
-          <label style={fieldStyle}>
-            <span style={labelContentStyle}>
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
               Définition du schéma JSON
               <HelpTooltip label="Fournissez un schéma JSON valide (Draft 2020-12) pour contraindre la sortie." />
             </span>
@@ -409,10 +409,15 @@ export const AgentInspectorSection = ({
                   setSchemaError(error instanceof Error ? error.message : "Schéma JSON invalide");
                 }
               }}
-              style={schemaError ? { borderColor: "#b91c1c" } : undefined}
+              className={[
+                styles.nodeInspectorTextareaLarge,
+                schemaError ? styles.nodeInspectorInputError : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
             />
             {schemaError ? (
-              <span style={{ color: "#b91c1c", fontSize: "0.85rem" }}>{schemaError}</span>
+              <span className={styles.nodeInspectorErrorTextSmall}>{schemaError}</span>
             ) : null}
           </label>
         </>
@@ -420,8 +425,8 @@ export const AgentInspectorSection = ({
 
       {responseFormat.kind === "widget" ? (
         <>
-          <label style={fieldStyle}>
-            <span style={labelContentStyle}>
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
               Source du widget
               <HelpTooltip label="Choisissez entre un widget enregistré ou un JSON fourni par une variable du workflow." />
             </span>
@@ -438,8 +443,8 @@ export const AgentInspectorSection = ({
 
           {responseWidgetSource === "library" ? (
             <>
-              <label style={fieldStyle}>
-                <span style={labelContentStyle}>
+              <label className={styles.nodeInspectorField}>
+                <span className={styles.nodeInspectorLabel}>
                   Widget de sortie
                   <HelpTooltip label="Sélectionnez un widget de la bibliothèque pour diffuser la réponse." />
                 </span>
@@ -458,27 +463,27 @@ export const AgentInspectorSection = ({
               </label>
 
               {widgetsLoading ? (
-                <p style={{ color: "var(--text-muted)", margin: 0 }}>Chargement de la bibliothèque de widgets…</p>
+                <p className={styles.nodeInspectorMutedText}>Chargement de la bibliothèque de widgets…</p>
               ) : widgetsError ? (
-                <p style={{ color: "#b91c1c", margin: 0 }}>
+                <p className={styles.nodeInspectorErrorText}>
                   {widgetsError}
                   <br />
                   Vous pouvez saisir le slug du widget manuellement ci-dessus.
                 </p>
               ) : widgets.length === 0 ? (
-                <p style={{ color: "var(--text-muted)", margin: 0 }}>
+                <p className={styles.nodeInspectorMutedText}>
                   Créez un widget dans la bibliothèque dédiée pour l'utiliser ici.
                 </p>
               ) : null}
 
               {widgetValidationMessage ? (
-                <p id={`${widgetSelectId}-message`} style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}>
+                <p id={`${widgetSelectId}-message`} className={styles.nodeInspectorErrorTextTightTop}>
                   {widgetValidationMessage}
                 </p>
               ) : null}
 
               {responseWidgetSlug && !widgetsLoading && widgetsError ? (
-                <p style={{ color: "var(--text-muted)", margin: "0.25rem 0 0" }}>
+                <p className={styles.nodeInspectorMutedTextTightTop}>
                   Le widget sélectionné ({responseWidgetSlug}) sera conservé tant que la bibliothèque n'est pas disponible.
                 </p>
               ) : null}
@@ -493,8 +498,8 @@ export const AgentInspectorSection = ({
             </>
           ) : (
             <>
-              <label style={fieldStyle}>
-                <span style={labelContentStyle}>
+              <label className={styles.nodeInspectorField}>
+                <span className={styles.nodeInspectorLabel}>
                   Expression JSON du widget
                   <HelpTooltip label="Saisissez une expression (ex. state.widget_json) qui renvoie la définition JSON complète du widget." />
                 </span>
@@ -507,11 +512,11 @@ export const AgentInspectorSection = ({
                   placeholder="Ex. state.widget_json"
                 />
               </label>
-              <p style={{ color: "var(--text-muted)", margin: "-0.35rem 0 0.35rem" }}>
+              <p className={styles.nodeInspectorHintText}>
                 La valeur doit être un objet JSON valide conforme aux spécifications ChatKit Widget.
               </p>
               {widgetValidationMessage ? (
-                <p id={`${widgetSelectId}-message`} style={{ color: "#b91c1c", margin: "0.25rem 0 0" }}>
+                <p id={`${widgetSelectId}-message`} className={styles.nodeInspectorErrorTextTightTop}>
                   {widgetValidationMessage}
                 </p>
               ) : null}
@@ -520,17 +525,8 @@ export const AgentInspectorSection = ({
         </>
       ) : null}
 
-      <div
-        style={{
-          border: "1px solid rgba(15, 23, 42, 0.12)",
-          borderRadius: "0.75rem",
-          padding: "0.75rem",
-          display: "grid",
-          gap: "0.75rem",
-          marginTop: "1rem",
-        }}
-      >
-        <strong style={{ fontSize: "0.95rem" }}>Outils</strong>
+      <div className={styles.nodeInspectorPanel}>
+        <strong className={styles.nodeInspectorSectionTitle}>Outils</strong>
         <ToggleRow
           label="Activer la recherche web"
           checked={webSearchEnabled}
@@ -543,8 +539,8 @@ export const AgentInspectorSection = ({
         />
         {webSearchEnabled ? (
           <>
-            <label style={inlineFieldStyle}>
-              <span style={labelContentStyle}>
+            <label className={styles.nodeInspectorInlineField}>
+              <span className={styles.nodeInspectorLabel}>
                 Portée de la recherche
                 <HelpTooltip label="Définit la quantité de contexte web récupérée pour l'agent." />
               </span>
@@ -568,13 +564,13 @@ export const AgentInspectorSection = ({
               </select>
             </label>
 
-            <div style={{ display: "grid", gap: "0.5rem" }}>
-              <span style={{ fontWeight: 600 }}>Localisation utilisateur</span>
+            <div className={styles.nodeInspectorInputGroup}>
+              <span className={styles.nodeInspectorSectionLabel}>Localisation utilisateur</span>
               {Object.entries(WEB_SEARCH_LOCATION_LABELS).map(([key, label]) => {
                 const typedKey = key as keyof typeof WEB_SEARCH_LOCATION_LABELS;
                 const currentValue = (webSearchConfig?.user_location?.[typedKey] as string | undefined) ?? "";
                 return (
-                  <label key={key} style={fieldStyle}>
+                  <label key={key} className={styles.nodeInspectorField}>
                     <span>{label}</span>
                     <input
                       type="text"
@@ -622,20 +618,20 @@ export const AgentInspectorSection = ({
         />
 
         {vectorStoresError ? (
-          <p style={{ color: "#b91c1c", margin: 0 }}>{vectorStoresError}</p>
+          <p className={styles.nodeInspectorErrorText}>{vectorStoresError}</p>
         ) : null}
 
         {fileSearchEnabled ? (
           <>
             {vectorStoresLoading ? (
-              <p style={{ color: "var(--text-muted)", margin: 0 }}>Chargement des vector stores…</p>
+              <p className={styles.nodeInspectorMutedText}>Chargement des vector stores…</p>
             ) : vectorStores.length === 0 ? (
-              <p style={{ color: "var(--text-muted)", margin: 0 }}>
+              <p className={styles.nodeInspectorMutedText}>
                 Aucun vector store disponible. Créez-en un depuis l'onglet « Vector stores JSON ».
               </p>
             ) : (
-              <label style={inlineFieldStyle}>
-                <span style={labelContentStyle}>
+              <label className={styles.nodeInspectorInlineField}>
+                <span className={styles.nodeInspectorLabel}>
                   Vector store à interroger
                   <HelpTooltip label="Le document complet du résultat sera transmis à l'agent." />
                 </span>
@@ -655,7 +651,7 @@ export const AgentInspectorSection = ({
                   ))}
                 </select>
                 {fileSearchValidationMessage ? (
-                  <p style={{ color: "#b91c1c", margin: 0 }}>{fileSearchValidationMessage}</p>
+                  <p className={styles.nodeInspectorErrorText}>{fileSearchValidationMessage}</p>
                 ) : null}
               </label>
             )}
@@ -675,18 +671,9 @@ export const AgentInspectorSection = ({
         />
 
         {imageGenerationEnabled ? (
-          <div
-            style={{
-              display: "grid",
-              gap: "0.75rem",
-              border: "1px solid rgba(148, 163, 184, 0.35)",
-              borderRadius: "0.65rem",
-              padding: "0.75rem",
-              backgroundColor: "rgba(226, 232, 240, 0.25)",
-            }}
-          >
-            <label style={inlineFieldStyle}>
-              <span style={labelContentStyle}>
+          <div className={styles.nodeInspectorPanelInnerAccent}>
+            <label className={styles.nodeInspectorInlineField}>
+              <span className={styles.nodeInspectorLabel}>
                 Modèle de génération
                 <HelpTooltip label="Sélectionnez le modèle image supporté par l'API OpenAI." />
               </span>
@@ -704,8 +691,8 @@ export const AgentInspectorSection = ({
               </select>
             </label>
 
-            <label style={inlineFieldStyle}>
-              <span style={labelContentStyle}>
+            <label className={styles.nodeInspectorInlineField}>
+              <span className={styles.nodeInspectorLabel}>
                 Taille de sortie
                 <HelpTooltip label="Définit la résolution retournée par l'API." />
               </span>
@@ -724,8 +711,8 @@ export const AgentInspectorSection = ({
               </select>
             </label>
 
-            <label style={inlineFieldStyle}>
-              <span style={labelContentStyle}>
+            <label className={styles.nodeInspectorInlineField}>
+              <span className={styles.nodeInspectorLabel}>
                 Qualité de rendu
                 <HelpTooltip label="Ajuste la fidélité des images générées." />
               </span>
@@ -744,8 +731,8 @@ export const AgentInspectorSection = ({
               </select>
             </label>
 
-            <label style={inlineFieldStyle}>
-              <span style={labelContentStyle}>
+            <label className={styles.nodeInspectorInlineField}>
+              <span className={styles.nodeInspectorLabel}>
                 Arrière-plan
                 <HelpTooltip label="Choisissez la transparence de l'image finale." />
               </span>
@@ -764,8 +751,8 @@ export const AgentInspectorSection = ({
               </select>
             </label>
 
-            <label style={inlineFieldStyle}>
-              <span style={labelContentStyle}>
+            <label className={styles.nodeInspectorInlineField}>
+              <span className={styles.nodeInspectorLabel}>
                 Format de sortie
                 <HelpTooltip label="Détermine le format MIME restitué par l'outil." />
               </span>
@@ -786,17 +773,8 @@ export const AgentInspectorSection = ({
           </div>
         ) : null}
 
-        <div
-          style={{
-            border: "1px solid rgba(148, 163, 184, 0.35)",
-            borderRadius: "0.65rem",
-            padding: "0.75rem",
-            display: "grid",
-            gap: "0.5rem",
-            backgroundColor: "rgba(226, 232, 240, 0.25)",
-          }}
-        >
-          <strong style={{ fontSize: "0.9rem" }}>Function tool</strong>
+        <div className={styles.nodeInspectorPanelInnerAccentTight}>
+          <strong className={styles.nodeInspectorSectionTitleSmall}>Function tool</strong>
           <ToggleRow
             label="Autoriser la fonction météo Python"
             checked={weatherFunctionEnabled}
@@ -826,7 +804,7 @@ const WidgetJsonFormatInfo = ({ definition, loading, error }: WidgetJsonFormatIn
 
   if (loading) {
     return (
-      <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginTop: "0.5rem" }}>
+      <div className={styles.nodeInspectorInfoMessage}>
         Chargement du format JSON…
       </div>
     );
@@ -841,17 +819,8 @@ const WidgetJsonFormatInfo = ({ definition, loading, error }: WidgetJsonFormatIn
 
   if (bindingKeys.length === 0) {
     return (
-      <div
-        style={{
-          backgroundColor: "var(--bg-surface-secondary, #f8fafc)",
-          border: "1px solid var(--border-secondary, #e2e8f0)",
-          borderRadius: "0.5rem",
-          padding: "0.75rem",
-          marginTop: "0.5rem",
-          fontSize: "0.85rem",
-        }}
-      >
-        <div style={{ color: "var(--text-muted)", fontStyle: "italic" }}>
+      <div className={styles.nodeInspectorInfoCard}>
+        <div className={styles.nodeInspectorInfoCardNote}>
           Ce widget n'a pas de champs dynamiques configurables.
         </div>
       </div>
@@ -872,122 +841,51 @@ const WidgetJsonFormatInfo = ({ definition, loading, error }: WidgetJsonFormatIn
   );
 
   return (
-    <div
-      style={{
-        backgroundColor: "var(--bg-surface-secondary, #f8fafc)",
-        border: "1px solid var(--border-secondary, #e2e8f0)",
-        borderRadius: "0.5rem",
-        padding: "0.75rem",
-        marginTop: "0.5rem",
-      }}
-    >
+    <div className={styles.nodeInspectorInfoCard}>
       <button
         type="button"
         onClick={() => setIsExpanded((value) => !value)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          width: "100%",
-          background: "none",
-          border: "none",
-          padding: 0,
-          cursor: "pointer",
-          fontSize: "0.85rem",
-          fontWeight: 500,
-          color: "var(--text-primary, #0f172a)",
-        }}
+        className={styles.nodeInspectorDisclosureButton}
       >
-        <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <span className={styles.nodeInspectorDisclosureLabel}>
           <span
-            style={{
-              transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)",
-              transition: "transform 0.2s",
-              display: "inline-block",
-            }}
+            className={[
+              styles.nodeInspectorDisclosureIcon,
+              isExpanded ? styles.nodeInspectorDisclosureIconExpanded : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
           >
             ▶
           </span>
           Format JSON attendu
         </span>
-        <span
-          style={{
-            backgroundColor: "var(--bg-primary, #3b82f6)",
-            color: "white",
-            fontSize: "0.75rem",
-            padding: "0.125rem 0.375rem",
-            borderRadius: "0.25rem",
-            fontWeight: 600,
-          }}
-        >
-          {bindingKeys.length}
-        </span>
+        <span className={styles.nodeInspectorBadge}>{bindingKeys.length}</span>
       </button>
 
       {isExpanded ? (
-        <div style={{ marginTop: "0.75rem" }}>
-          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
+        <div className={styles.nodeInspectorDisclosureContent}>
+          <div className={styles.nodeInspectorDisclosureHeading}>
             Champs dynamiques disponibles :
           </div>
-          <ul
-            style={{
-              margin: "0 0 0.75rem 0",
-              paddingLeft: "1.5rem",
-              fontSize: "0.85rem",
-              color: "var(--text-secondary, #475569)",
-            }}
-          >
+          <ul className={styles.nodeInspectorList}>
             {bindingKeys.sort().map((key) => {
               const sanitizedKey = key.replace(/[^0-9a-zA-Z_]+/g, "_").replace(/^_+|_+$/g, "");
               return (
-                <li key={key} style={{ marginBottom: "0.25rem" }}>
-                  <code
-                    style={{
-                      backgroundColor: "var(--bg-code, #f1f5f9)",
-                      padding: "0.125rem 0.375rem",
-                      borderRadius: "0.25rem",
-                      fontSize: "0.8rem",
-                      fontFamily: "monospace",
-                    }}
-                  >
-                    {sanitizedKey}
-                  </code>
+                <li key={key} className={styles.nodeInspectorListItem}>
+                  <code className={styles.nodeInspectorCode}>{sanitizedKey}</code>
                   {sanitizedKey !== key ? (
-                    <span
-                      style={{ color: "var(--text-muted)", fontSize: "0.75rem", marginLeft: "0.25rem" }}
-                    >
-                      (pour {key})
-                    </span>
+                    <span className={styles.nodeInspectorCodeNote}>(pour {key})</span>
                   ) : null}
                 </li>
               );
             })}
           </ul>
-          <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
+          <div className={styles.nodeInspectorDisclosureExample}>
             Exemple de JSON à générer par l'agent :
           </div>
-          <pre
-            style={{
-              backgroundColor: "var(--bg-code, #1e293b)",
-              color: "var(--text-code, #e2e8f0)",
-              padding: "0.75rem",
-              borderRadius: "0.375rem",
-              fontSize: "0.8rem",
-              fontFamily: "monospace",
-              overflowX: "auto",
-              margin: 0,
-            }}
-          >
-            {jsonString}
-          </pre>
-          <div
-            style={{
-              fontSize: "0.75rem",
-              color: "var(--text-muted)",
-              marginTop: "0.5rem",
-              fontStyle: "italic",
-            }}
-          >
+          <pre className={styles.nodeInspectorPre}>{jsonString}</pre>
+          <div className={styles.nodeInspectorDisclosureNote}>
             Note : Les clés avec des caractères spéciaux sont normalisées (points remplacés par underscores).
           </div>
         </div>

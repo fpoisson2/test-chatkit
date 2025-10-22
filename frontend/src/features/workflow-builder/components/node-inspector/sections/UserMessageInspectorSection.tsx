@@ -1,4 +1,4 @@
-import { fieldStyle, labelContentStyle } from "../styles";
+import styles from "../NodeInspector.module.css";
 
 type UserMessageInspectorSectionProps = {
   nodeId: string;
@@ -11,16 +11,16 @@ export const UserMessageInspectorSection = ({
   userMessageDraft,
   onUserMessageDraftChange,
 }: UserMessageInspectorSectionProps) => (
-  <label style={fieldStyle}>
-    <span style={labelContentStyle}>Texte du message utilisateur</span>
+  <label className={styles.nodeInspectorField}>
+    <span className={styles.nodeInspectorLabel}>Texte du message utilisateur</span>
     <textarea
       value={userMessageDraft}
       onChange={(event) => onUserMessageDraftChange(nodeId, event.target.value)}
       rows={4}
       placeholder="Texte injecté dans la conversation comme message utilisateur"
-      style={{ resize: "vertical", minHeight: "4.5rem" }}
+      className={styles.nodeInspectorTextarea}
     />
-    <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+    <p className={styles.nodeInspectorHintTextTight}>
       Ce message est transmis à l'agent comme s'il provenait directement de l'utilisateur avant de passer au bloc suivant.
     </p>
   </label>
