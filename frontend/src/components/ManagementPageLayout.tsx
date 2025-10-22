@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { useAppLayout } from "./AppLayout";
+import { useI18n } from "../i18n";
 
 import styles from "./ManagementPageLayout.module.css";
 
@@ -36,6 +37,7 @@ export const ManagementPageLayout = ({
   hideHeader = false,
 }: ManagementPageLayoutProps) => {
   const { openSidebar, isDesktopLayout, isSidebarOpen } = useAppLayout();
+  const { t } = useI18n();
   const showSidebarButton = !isDesktopLayout || !isSidebarOpen;
   const hasHeaderMain = Boolean(title || subtitle);
   const hasHeaderAside = Boolean(badge || actions);
@@ -51,7 +53,7 @@ export const ManagementPageLayout = ({
       type="button"
       onClick={openSidebar}
       className={`${styles.menuButton}${extraClassName ? ` ${extraClassName}` : ""}`}
-      aria-label="Ouvrir la navigation générale"
+      aria-label={t("layout.menu.openSidebar")}
     >
       <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
         <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />

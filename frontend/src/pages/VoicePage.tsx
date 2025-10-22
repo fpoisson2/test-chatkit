@@ -3,33 +3,32 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../auth";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import { VoiceChat } from "../voice/VoiceChat";
+import { useI18n } from "../i18n";
 import styles from "./VoicePage.module.css";
 
 export const VoicePage = () => {
   const { user } = useAuth();
+  const { t } = useI18n();
 
   if (!user) {
     return (
       <ManagementPageLayout
-        title="Assistant vocal"
-        subtitle="Vous devez être connecté pour accéder à l'interface vocale."
+        title={t("voice.title")}
+        subtitle={t("voice.subtitle")}
         actions={
           <>
             <Link className="button" to="/login">
-              Se connecter
+              {t("voice.actions.signIn")}
             </Link>
             <Link className="button button--subtle" to="/">
-              ← Chat texte
+              {t("voice.actions.backToChat")}
             </Link>
           </>
         }
         maxWidth="md"
       >
         <div className={styles.emptyState}>
-          <p>
-            Connectez-vous pour lancer des sessions Realtime, autoriser votre microphone et consulter les transcriptions en
-            direct.
-          </p>
+          <p>{t("voice.description")}</p>
         </div>
       </ManagementPageLayout>
     );
@@ -37,7 +36,7 @@ export const VoicePage = () => {
 
   return (
     <ManagementPageLayout
-      title="Assistant vocal"
+      title={t("voice.title")}
       hideHeader
       maxWidth="lg"
     >

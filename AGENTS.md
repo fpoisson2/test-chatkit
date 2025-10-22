@@ -18,3 +18,7 @@ Pense à désactiver `VITE_USE_MOCK_API` lorsque tu veux reconnecter le frontend
 ## Qualité du code Python
 
 Avant de soumettre une modification Python, exécute `ruff check` (dans les dossiers pertinents comme `backend` ou `chatkit-python`) et corrige **tous** les problèmes signalés.
+
+## Localisation frontend
+
+Chaque fois que tu ajoutes ou modifies un texte côté UI, pense à l'exposer via le système i18n du dossier `frontend/src/i18n` et à fournir les traductions en anglais **et** en français.

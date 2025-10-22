@@ -9,6 +9,7 @@ import {
 
 import type { AuthUser } from "../../auth";
 import { makeApiEndpointCandidates } from "../../utils/backend";
+import { useI18n } from "../../i18n";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 
@@ -53,6 +54,7 @@ export function useAdminUsers({
   isEnabled,
   onUnauthorized,
 }: UseAdminUsersOptions): UseAdminUsersResult {
+  const { t } = useI18n();
   const [users, setUsers] = useState<EditableUser[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,19 +105,19 @@ export function useAdminUsers({
         if (networkError instanceof Error) {
           lastError = networkError;
         } else {
-          lastError = new Error("Une erreur inattendue est survenue");
+          lastError = new Error(t("admin.users.error.unexpected"));
         }
       }
     }
 
-    throw lastError ?? new Error("Impossible de joindre le backend d'administration");
-  }, []);
+    throw lastError ?? new Error(t("admin.users.error.backendUnavailable"));
+  }, [t]);
 
   const handleUnauthorized = useCallback(() => {
     onUnauthorized();
     setUsers([]);
-    setError("Session expirée, veuillez vous reconnecter.");
-  }, [onUnauthorized]);
+    setError(t("admin.users.error.sessionExpired"));
+  }, [onUnauthorized, t]);
 
   const fetchUsers = useCallback(async () => {
     if (!token || !isEnabled) {
@@ -133,7 +135,7 @@ export function useAdminUsers({
       }
       if (!response.ok) {
         const { detail } = await response.json();
-        throw new Error(detail ?? "Impossible de récupérer les utilisateurs");
+        throw new Error(detail ?? t("admin.users.error.fetchUsers"));
       }
       const data: EditableUser[] = await response.json();
       setUsers(data);
@@ -141,12 +143,12 @@ export function useAdminUsers({
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Une erreur inattendue est survenue");
+        setError(t("admin.users.error.unexpected"));
       }
     } finally {
       setIsLoading(false);
     }
-  }, [handleUnauthorized, headers, isEnabled, requestWithFallback, token]);
+  }, [handleUnauthorized, headers, isEnabled, requestWithFallback, t, token]);
 
   useEffect(() => {
     if (isEnabled) {
@@ -177,7 +179,7 @@ export function useAdminUsers({
       }
       if (!response.ok) {
         const { detail } = await response.json();
-        throw new Error(detail ?? "Impossible de créer l'utilisateur");
+        throw new Error(detail ?? t("admin.users.error.createUser"));
       }
       const created: EditableUser = await response.json();
       setUsers((prev) => [...prev, created]);
@@ -186,12 +188,20 @@ export function useAdminUsers({
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Une erreur inattendue est survenue");
+        setError(t("admin.users.error.unexpected"));
       }
     } finally {
       setIsCreatingUser(false);
     }
-  }, [createPayload, handleUnauthorized, headers, isEnabled, requestWithFallback, token]);
+  }, [
+    createPayload,
+    handleUnauthorized,
+    headers,
+    isEnabled,
+    requestWithFallback,
+    t,
+    token,
+  ]);
 
   const toggleAdmin = useCallback(
     async (editableUser: EditableUser) => {
@@ -211,7 +221,7 @@ export function useAdminUsers({
         }
         if (!response.ok) {
           const { detail } = await response.json();
-          throw new Error(detail ?? "Impossible de mettre à jour l'utilisateur");
+          throw new Error(detail ?? t("admin.users.error.updateUser"));
         }
         const updated: EditableUser = await response.json();
         setUsers((prev) => prev.map((candidate) => (candidate.id === updated.id ? updated : candidate)));
@@ -219,11 +229,11 @@ export function useAdminUsers({
         if (err instanceof Error) {
           setError(err.message);
         } else {
-          setError("Une erreur inattendue est survenue");
+          setError(t("admin.users.error.unexpected"));
         }
       }
     },
-    [handleUnauthorized, headers, isEnabled, requestWithFallback, token],
+    [handleUnauthorized, headers, isEnabled, requestWithFallback, t, token],
   );
 
   const deleteUser = useCallback(
@@ -243,18 +253,18 @@ export function useAdminUsers({
         }
         if (!response.ok && response.status !== 204) {
           const { detail } = await response.json();
-          throw new Error(detail ?? "Impossible de supprimer l'utilisateur");
+          throw new Error(detail ?? t("admin.users.error.deleteUser"));
         }
         setUsers((prev) => prev.filter((candidate) => candidate.id !== editableUser.id));
       } catch (err) {
         if (err instanceof Error) {
           setError(err.message);
         } else {
-          setError("Une erreur inattendue est survenue");
+          setError(t("admin.users.error.unexpected"));
         }
       }
     },
-    [handleUnauthorized, headers, isEnabled, requestWithFallback, token],
+    [handleUnauthorized, headers, isEnabled, requestWithFallback, t, token],
   );
 
   const updatePassword = useCallback(
@@ -275,7 +285,7 @@ export function useAdminUsers({
         }
         if (!response.ok) {
           const { detail } = await response.json();
-          throw new Error(detail ?? "Impossible de mettre à jour le mot de passe");
+          throw new Error(detail ?? t("admin.users.error.updatePassword"));
         }
         const updated: EditableUser = await response.json();
         setUsers((prev) => prev.map((candidate) => (candidate.id === updated.id ? updated : candidate)));
@@ -283,11 +293,11 @@ export function useAdminUsers({
         if (err instanceof Error) {
           setError(err.message);
         } else {
-          setError("Une erreur inattendue est survenue");
+          setError(t("admin.users.error.unexpected"));
         }
       }
     },
-    [handleUnauthorized, headers, isEnabled, requestWithFallback, token],
+    [handleUnauthorized, headers, isEnabled, requestWithFallback, t, token],
   );
 
   const refresh = useCallback(async () => {
