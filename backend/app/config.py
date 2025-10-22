@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import json
 import logging
 import os
@@ -20,62 +19,19 @@ class WorkflowDefaults:
     """Configuration par défaut pour le workflow ChatKit."""
 
     default_end_message: str
-    default_workflow_slug: str
-    default_workflow_display_name: str
-    supported_agent_keys: frozenset[str]
-    expected_state_slugs: frozenset[str]
-    default_agent_slugs: frozenset[str]
-    default_workflow_graph: Mapping[str, Any]
 
     @classmethod
     def from_mapping(cls, payload: Mapping[str, Any]) -> WorkflowDefaults:
         try:
             default_end_message = str(payload["default_end_message"])
-            default_workflow_slug = str(payload["default_workflow_slug"])
-            default_workflow_display_name = str(
-                payload["default_workflow_display_name"]
-            )
-            supported_agent_keys_raw = payload.get("supported_agent_keys", [])
-            expected_state_slugs_raw = payload.get("expected_state_slugs", [])
-            default_agent_slugs_raw = payload.get("default_agent_slugs", [])
-            default_workflow_graph_raw = payload["default_workflow_graph"]
         except KeyError as exc:  # pragma: no cover - erreur de configuration
             raise RuntimeError(
                 f"Clé manquante dans la configuration workflow : {exc.args[0]}"
             ) from exc
 
-        if not isinstance(default_workflow_graph_raw, Mapping):
-            raise RuntimeError(
-                "default_workflow_graph doit être un objet JSON (mapping)"
-            )
-
-        def _as_frozenset(values: Any, *, label: str) -> frozenset[str]:
-            if values is None:
-                return frozenset()
-            if isinstance(values, list | tuple | set | frozenset):
-                return frozenset(str(item) for item in values)
-            raise RuntimeError(f"{label} doit être une liste de chaînes")
-
         return cls(
             default_end_message=default_end_message,
-            default_workflow_slug=default_workflow_slug,
-            default_workflow_display_name=default_workflow_display_name,
-            supported_agent_keys=_as_frozenset(
-                supported_agent_keys_raw, label="supported_agent_keys"
-            ),
-            expected_state_slugs=_as_frozenset(
-                expected_state_slugs_raw, label="expected_state_slugs"
-            ),
-            default_agent_slugs=_as_frozenset(
-                default_agent_slugs_raw, label="default_agent_slugs"
-            ),
-            default_workflow_graph=dict(default_workflow_graph_raw),
         )
-
-    def clone_workflow_graph(self) -> dict[str, Any]:
-        """Retourne une copie profonde du graphe par défaut."""
-
-        return copy.deepcopy(self.default_workflow_graph)
 
 
 @dataclass(frozen=True)
