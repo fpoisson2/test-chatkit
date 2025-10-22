@@ -178,6 +178,7 @@ class WeatherResponse(BaseModel):
 KNOWN_WORKFLOW_NODE_KINDS = (
     "start",
     "agent",
+    "voice_agent",
     "condition",
     "state",
     "watch",
