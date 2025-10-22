@@ -10,8 +10,12 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from chatkit.store import NotFoundError, Store
-from chatkit.types import Attachment, Page, ThreadItem, ThreadMetadata
+from chatkit.types import Attachment, FileAttachment, Page, ThreadItem, ThreadMetadata
 
+from .attachment_store import (
+    DEFAULT_ATTACHMENT_BASE_URL,
+    build_attachment_download_url,
+)
 from .models import ChatAttachment, ChatThread, ChatThreadItem
 from .workflows import WorkflowService
 
@@ -38,11 +42,15 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         self,
         session_factory: sessionmaker[Session],
         workflow_service: WorkflowService | None = None,
+        *,
+        default_attachment_base_url: str | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._attachment_adapter = TypeAdapter(Attachment)
         self._thread_item_adapter = TypeAdapter(ThreadItem)
         self._workflow_service = workflow_service or WorkflowService()
+        resolved_base = default_attachment_base_url or DEFAULT_ATTACHMENT_BASE_URL
+        self._default_attachment_base_url = resolved_base.rstrip("/")
 
     def _require_user_id(self, context: ChatKitRequestContext) -> str:
         if not context.user_id:
@@ -295,7 +303,18 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             record = session.execute(stmt).scalar_one_or_none()
             if record is None:
                 raise NotFoundError(f"Pièce jointe {attachment_id} introuvable")
-            return self._attachment_adapter.validate_python(record.payload)
+            attachment = self._attachment_adapter.validate_python(record.payload)
+            if isinstance(attachment, FileAttachment):
+                download_url = build_attachment_download_url(
+                    attachment.id,
+                    context=context,
+                    default_base_url=self._default_attachment_base_url,
+                )
+                if attachment.upload_url != download_url:
+                    attachment = attachment.model_copy(
+                        update={"upload_url": download_url}
+                    )
+            return attachment
 
         return await self._run(_load)
 

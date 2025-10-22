@@ -4,7 +4,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin
 
 from fastapi import UploadFile
@@ -13,12 +13,15 @@ from chatkit.store import AttachmentStore, NotFoundError
 from chatkit.types import Attachment, AttachmentCreateParams, FileAttachment
 
 from .chatkit_server.context import ChatKitRequestContext
-from .chatkit_store import PostgresChatKitStore
+
+if TYPE_CHECKING:  # pragma: no cover - uniquement pour l'auto-complétion
+    from .chatkit_store import PostgresChatKitStore
 
 ATTACHMENT_STORAGE_DIR = Path(__file__).resolve().parent / "uploaded_attachments"
 ATTACHMENT_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
+DEFAULT_ATTACHMENT_BASE_URL = "http://localhost:8000"
 _CHUNK_SIZE = 1024 * 1024
 
 
@@ -56,6 +59,18 @@ class _PendingAttachment:
     expected_size: int | None
 
 
+def build_attachment_download_url(
+    attachment_id: str,
+    *,
+    context: ChatKitRequestContext,
+    default_base_url: str,
+) -> str:
+    """Construit l'URL publique de téléchargement pour une pièce jointe."""
+
+    base_url = (context.public_base_url or default_base_url).rstrip("/")
+    return urljoin(base_url + "/", f"api/chatkit/attachments/{attachment_id}")
+
+
 class LocalAttachmentStore(AttachmentStore[ChatKitRequestContext]):
     """Implémentation locale de l'AttachmentStore."""
 
@@ -72,9 +87,8 @@ class LocalAttachmentStore(AttachmentStore[ChatKitRequestContext]):
         self._base_dir.mkdir(parents=True, exist_ok=True)
         self._max_size = max_size
         self._pending: dict[str, _PendingAttachment] = {}
-        self._default_base_url = (default_base_url or "http://localhost:8000").rstrip(
-            "/"
-        )
+        resolved_base = default_base_url or DEFAULT_ATTACHMENT_BASE_URL
+        self._default_base_url = resolved_base.rstrip("/")
 
     async def create_attachment(
         self, params: AttachmentCreateParams, context: ChatKitRequestContext
@@ -152,11 +166,16 @@ class LocalAttachmentStore(AttachmentStore[ChatKitRequestContext]):
             await upload.close()
             self._pending.pop(attachment_id, None)
 
+        download_url = build_attachment_download_url(
+            attachment.id,
+            context=context,
+            default_base_url=self._default_base_url,
+        )
         stored = FileAttachment(
             id=attachment.id,
             name=attachment.name,
             mime_type=attachment.mime_type,
-            upload_url=None,
+            upload_url=download_url,
         )
         await self._store.save_attachment(stored, context)
         return stored

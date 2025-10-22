@@ -5,7 +5,7 @@ import importlib.util
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from importlib import import_module
 from io import BytesIO
 from pathlib import Path
@@ -32,14 +32,25 @@ if str(ROOT_DIR) not in sys.path:
 
 from chatkit.store import NotFoundError  # noqa: E402
 from chatkit.types import (  # noqa: E402
+    AttachmentCreateParams,
+    FileAttachment,
     InferenceOptions,
     ThreadCreateParams,
+    ThreadMetadata,
     ThreadsCreateReq,
     UserMessageInput,
+    UserMessageItem,
     UserMessageTextContent,
 )
 
 routes_chatkit = import_module("backend.app.routes.chatkit")
+
+from backend.app.attachment_store import LocalAttachmentStore  # noqa: E402
+from backend.app.chatkit_server.context import ChatKitRequestContext  # noqa: E402
+from backend.app.chatkit_store import PostgresChatKitStore  # noqa: E402
+from backend.app.models import Base  # noqa: E402
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 
 class _StubUser:
@@ -391,6 +402,111 @@ def test_download_attachment_missing_store(monkeypatch: pytest.MonkeyPatch) -> N
             )
 
         assert excinfo.value.status_code == status.HTTP_404_NOT_FOUND
+
+    asyncio.run(_run())
+
+
+def test_finalize_upload_exposes_download_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def _run() -> None:
+        class _StubWorkflowService:
+            def __init__(self) -> None:
+                self.slug = "demo-workflow"
+                self.workflow_id = 1
+                self.definition_id = 42
+
+            def get_current(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[no-untyped-def]
+                workflow = SimpleNamespace(id=self.workflow_id, slug=self.slug)
+                return SimpleNamespace(id=self.definition_id, workflow=workflow)
+
+        database_path = tmp_path / "attachments.db"
+        engine = create_engine(
+            f"sqlite:///{database_path}",
+            future=True,
+            connect_args={"check_same_thread": False},
+        )
+        Base.metadata.create_all(engine)
+        session_factory = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+        workflow_service = _StubWorkflowService()
+        store = PostgresChatKitStore(
+            session_factory,
+            workflow_service=workflow_service,
+            default_attachment_base_url="https://public.example",
+        )
+        attachment_store = LocalAttachmentStore(
+            store,
+            base_dir=tmp_path / "uploaded",
+            default_base_url="https://public.example",
+        )
+
+        context = ChatKitRequestContext(
+            user_id=_StubUser.id,
+            email=_StubUser.email,
+            authorization=None,
+            public_base_url="https://public.example",
+        )
+
+        thread = ThreadMetadata(
+            id="thread-1",
+            created_at=datetime.now(timezone.utc),
+        )
+        await store.save_thread(thread, context)
+
+        params = AttachmentCreateParams(
+            name="demo.txt",
+            size=11,
+            mime_type="text/plain",
+        )
+        pending_attachment = await attachment_store.create_attachment(params, context)
+
+        upload = UploadFile(filename="demo.txt", file=BytesIO(b"hello world"))
+        stored_attachment = await attachment_store.finalize_upload(
+            pending_attachment.id,
+            upload,
+            context,
+        )
+
+        expected_url = (
+            f"https://public.example/api/chatkit/attachments/{pending_attachment.id}"
+        )
+        assert str(stored_attachment.upload_url) == expected_url
+
+        loaded_attachment = await store.load_attachment(pending_attachment.id, context)
+        assert isinstance(loaded_attachment, FileAttachment)
+        assert str(loaded_attachment.upload_url) == expected_url
+
+        message = UserMessageItem(
+            id="item-1",
+            thread_id=thread.id,
+            created_at=datetime.now(timezone.utc),
+            content=[UserMessageTextContent(text="Bonjour")],
+            attachments=[stored_attachment],
+            inference_options=InferenceOptions(),
+        )
+        await store.add_thread_item(thread.id, message, context)
+
+        page = await store.load_thread_items(thread.id, None, 10, "asc", context)
+        assert page.data
+        retrieved = page.data[0]
+        assert retrieved.attachments
+        assert str(retrieved.attachments[0].upload_url) == expected_url
+
+        monkeypatch.setattr(
+            routes_chatkit,
+            "get_chatkit_server",
+            lambda: SimpleNamespace(attachment_store=attachment_store),
+        )
+        request = _build_request(scheme="https", host="public.example")
+        response = await routes_chatkit.download_chatkit_attachment(
+            pending_attachment.id,
+            request,
+            current_user=_StubUser(),
+        )
+
+        assert isinstance(response, FileResponse)
+        assert Path(response.path).read_text() == "hello world"
 
     asyncio.run(_run())
 

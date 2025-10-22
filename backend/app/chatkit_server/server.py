@@ -355,7 +355,11 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
     def __init__(self, settings: Settings) -> None:
         workflow_service = WorkflowService(settings=settings)
-        store = PostgresChatKitStore(SessionLocal, workflow_service=workflow_service)
+        store = PostgresChatKitStore(
+            SessionLocal,
+            workflow_service=workflow_service,
+            default_attachment_base_url=settings.backend_public_base_url,
+        )
         attachment_store = LocalAttachmentStore(
             store, default_base_url=settings.backend_public_base_url
         )
