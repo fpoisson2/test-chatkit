@@ -4,12 +4,12 @@ import {
   useState,
 } from "react";
 
-import { useAuth } from "../../../auth";
+import { useAuth } from "../../../../auth";
 import {
   type AvailableModel,
   type VectorStoreSummary,
   type WidgetTemplateSummary,
-} from "../../../utils/backend";
+} from "../../../../utils/backend";
 import {
   getAssistantMessage,
   getAssistantMessageStreamDelay,
@@ -25,7 +25,7 @@ import {
   getUserMessage,
   getVectorStoreNodeConfig,
   getWaitForUserInputMessage,
-} from "../../../utils/workflows";
+} from "../../../../utils/workflows";
 import type {
   FileSearchConfig,
   FlowNode,
@@ -35,8 +35,8 @@ import type {
   VectorStoreNodeConfig,
   WebSearchConfig,
   WidgetVariableAssignment,
-} from "../types";
-import { labelForKind } from "../utils";
+} from "../../types";
+import { labelForKind } from "../../utils";
 import { TrashIcon } from "./components/TrashIcon";
 import { inspectorHeaderStyle, inspectorSubtitleStyle, inspectorTitleStyle, deleteButtonStyle } from "./styles";
 import { useTransformInspectorState } from "./hooks/useTransformInspectorState";

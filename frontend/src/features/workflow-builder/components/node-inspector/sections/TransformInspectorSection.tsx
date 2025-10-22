@@ -30,9 +30,9 @@ export const TransformInspectorSection = ({
       <h3 style={{ margin: 0, fontSize: "1rem" }}>Restructuration des données</h3>
       <p style={{ margin: "0.25rem 0 0", color: "#475569", fontSize: "0.95rem" }}>
         Définissez la forme JSON qui doit être transmise au bloc suivant. Les expressions <code style={{ padding: "0 0.2rem" }}>
-          {{"{{ }}"}}
+          {"{{ }}"}
         </code>{" "}
-        sont évaluées à partir du contexte du bloc précédent (par exemple <code>{{"{{ input.output_structured }}"}}</code>).
+        sont évaluées à partir du contexte du bloc précédent (par exemple <code>{"{{ input.output_structured }}"}</code>).
       </p>
     </header>
 
