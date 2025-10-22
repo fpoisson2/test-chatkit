@@ -456,7 +456,6 @@ const WorkflowBuilderPage = () => {
       const key = viewportKeyRef.current;
       if (key && savedViewport) {
         viewportMemoryRef.current.set(key, { ...appliedViewport });
-        persistViewportMemory();
       }
     };
 
@@ -516,6 +515,10 @@ const WorkflowBuilderPage = () => {
               !isFiniteNumber(entry.y) ||
               !isFiniteNumber(entry.zoom)
             ) {
+              continue;
+            }
+            // Skip default viewport values (0, 0, 1) as they indicate no user preference
+            if (entry.x === 0 && entry.y === 0 && entry.zoom === 1) {
               continue;
             }
             const versionId =
@@ -1166,8 +1169,10 @@ const WorkflowBuilderPage = () => {
           } else {
             viewportRef.current = restoredViewport;
             hasUserViewportChangeRef.current = restoredViewport != null;
-            pendingViewportRestoreRef.current = true;
-            restoreViewport();
+            pendingViewportRestoreRef.current = restoredViewport != null;
+            if (restoredViewport != null) {
+              restoreViewport();
+            }
           }
           const { nodeId: nextSelectedNodeId, edgeId: nextSelectedEdgeId } =
             resolveSelectionAfterLoad({
