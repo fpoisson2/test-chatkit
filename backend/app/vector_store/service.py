@@ -25,6 +25,11 @@ DEFAULT_CHUNK_SIZE = 40
 DEFAULT_CHUNK_OVERLAP = 8
 MAX_LINEARIZED_ENTRY_LENGTH = 60_000
 MAX_LINEARIZED_TEXT_LENGTH = 900_000
+# Limite stricte pour les textes envoyés au modèle d'embedding afin d'éviter
+# les erreurs « context length ». 20 000 caractères représentent environ 5 000
+# tokens pour du texte latin, ce qui offre une marge confortable par rapport à
+# la limite de 8 192 tokens du modèle `text-embedding-3-small`.
+MAX_EMBEDDING_TEXT_LENGTH = 20_000
 
 
 def _get_openai_client() -> OpenAI:
@@ -146,6 +151,102 @@ def _chunk_entries(
             start = end
         else:
             start = max(end - adjusted_overlap, start + 1)
+
+
+def _split_entry_for_max_length(
+    entry: dict[str, str], *, max_text_length: int
+) -> list[dict[str, str]]:
+    """Découpe une entrée si sa ligne dépasse la longueur maximale autorisée."""
+
+    path = entry.get("path", "")
+    value = entry.get("value", "")
+    line = f"{path}: {value}"
+    if len(line) <= max_text_length:
+        return [dict(entry)]
+
+    base_prefix = len(f"{path}: ")
+    base_available = max(max_text_length - base_prefix, 1)
+    if len(value) <= base_available:
+        return [dict(entry)]
+
+    parts: list[dict[str, str]] = []
+    start = 0
+    part_index = 1
+    total = len(value)
+    while start < total:
+        part_path = f"{path} (part {part_index})"
+        prefix_length = len(f"{part_path}: ")
+        available = max(max_text_length - prefix_length, 1)
+        end = min(total, start + available)
+        segment_value = value[start:end]
+        parts.append({"path": part_path, "value": segment_value})
+        start = end
+        part_index += 1
+
+    return parts or [dict(entry)]
+
+
+def _expand_entries_for_embeddings(
+    entries: Sequence[dict[str, str]], *, max_text_length: int
+) -> list[dict[str, str]]:
+    expanded: list[dict[str, str]] = []
+    for entry in entries:
+        expanded.extend(
+            _split_entry_for_max_length(entry, max_text_length=max_text_length)
+        )
+    return expanded
+
+
+def _split_chunk_by_text_length(
+    chunk: list[dict[str, str]], *, max_text_length: int
+) -> list[list[dict[str, str]]]:
+    if not chunk:
+        return [chunk]
+
+    safe_chunks: list[list[dict[str, str]]] = []
+    current_chunk: list[dict[str, str]] = []
+    current_length = 0
+
+    for entry in chunk:
+        expanded_entries = _split_entry_for_max_length(
+            entry, max_text_length=max_text_length
+        )
+        for expanded in expanded_entries:
+            line = f"{expanded['path']}: {expanded['value']}"
+            line_length = len(line)
+            if line_length > max_text_length:
+                # En dernier recours, on force l'entrée à occuper son propre chunk.
+                safe_chunks.append([expanded])
+                current_chunk = []
+                current_length = 0
+                continue
+
+            separator = 0 if not current_chunk else 1
+            projected_length = current_length + separator + line_length
+            if current_chunk and projected_length > max_text_length:
+                safe_chunks.append(current_chunk)
+                current_chunk = []
+                current_length = 0
+                separator = 0
+
+            current_chunk.append(expanded)
+            current_length += separator + line_length
+
+    if current_chunk:
+        safe_chunks.append(current_chunk)
+
+    return safe_chunks if safe_chunks else [chunk]
+
+
+def _prepare_embedding_chunks(
+    chunks: Sequence[list[dict[str, str]]], *, max_text_length: int
+) -> list[list[dict[str, str]]]:
+    prepared: list[list[dict[str, str]]] = []
+    for chunk in chunks:
+        prepared.extend(
+            _split_chunk_by_text_length(chunk, max_text_length=max_text_length)
+        )
+    return prepared
 
 
 def _normalize(vector: Sequence[float]) -> list[float]:
@@ -364,21 +465,43 @@ class JsonVectorStoreService:
         self.session.add(document)
         self.session.flush()
 
-        chunk_entries = list(
+        embedding_entries = _expand_entries_for_embeddings(
+            sanitized_entries, max_text_length=MAX_EMBEDDING_TEXT_LENGTH
+        )
+
+        base_chunks = list(
             _chunk_entries(
-                sanitized_entries,
+                embedding_entries,
                 chunk_size=self.chunk_size,
                 overlap=self.chunk_overlap,
             )
         )
-        chunk_texts = [
-            (
-                "\n".join(f"{entry['path']}: {entry['value']}" for entry in chunk)
-                if chunk
-                else linearized
+
+        prepared_chunks = _prepare_embedding_chunks(
+            base_chunks, max_text_length=MAX_EMBEDDING_TEXT_LENGTH
+        )
+        if not prepared_chunks:
+            prepared_chunks = [[{"path": "root", "value": linearized}]]
+
+        chunk_texts: list[str] = []
+        for chunk in prepared_chunks:
+            if not chunk:
+                chunk_texts.append(linearized)
+                continue
+            text = "\n".join(
+                f"{entry['path']}: {entry['value']}" for entry in chunk
             )
-            for chunk in chunk_entries
-        ]
+            chunk_texts.append(text)
+
+        for text in chunk_texts:
+            if len(text) > MAX_EMBEDDING_TEXT_LENGTH:
+                raise ValueError(
+                    "Un chunk préparé dépasse la taille maximale autorisée pour "
+                    "la génération d'embeddings"
+                )
+
+        if not chunk_texts:
+            raise ValueError("Impossible de préparer des chunks pour l'indexation")
 
         # Générer les embeddings avec OpenAI
         client = _get_openai_client()
@@ -389,7 +512,7 @@ class JsonVectorStoreService:
 
         json_chunks: list[JsonChunk] = []
         for index, (chunk, text) in enumerate(
-            zip(chunk_entries, chunk_texts, strict=False)
+            zip(prepared_chunks, chunk_texts, strict=False)
         ):
             vector = response.data[index].embedding
             if len(vector) != EMBEDDING_DIMENSION:
@@ -403,7 +526,7 @@ class JsonVectorStoreService:
                 "doc_id": doc_id,
                 "store": store.slug,
                 "chunk_index": index,
-                "line_count": len(chunk) if chunk else len(entries),
+                "line_count": len(chunk) if chunk else len(sanitized_entries),
             }
             json_chunks.append(
                 JsonChunk(
@@ -411,7 +534,9 @@ class JsonVectorStoreService:
                     document_id=document.id,
                     doc_id=doc_id,
                     chunk_index=index,
-                    raw_chunk={"entries": chunk} if chunk else {"entries": entries},
+                    raw_chunk={"entries": chunk}
+                    if chunk
+                    else {"entries": sanitized_entries},
                     linearized_text=text,
                     embedding=vector,
                     metadata_json=chunk_metadata,
