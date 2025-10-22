@@ -15,8 +15,10 @@ import ReactFlow, {
   addEdge,
   type Connection,
   type EdgeChange,
+  type EdgeTypes,
   type ReactFlowInstance,
   ReactFlowProvider,
+  type NodeTypes,
   type Viewport,
   useEdgesState,
   useNodesState,
@@ -141,6 +143,9 @@ import {
   loadingStyle,
 } from "./styles";
 import styles from "./WorkflowBuilderPage.module.css";
+
+export const NODE_TYPES: NodeTypes = {};
+export const EDGE_TYPES: EdgeTypes = {};
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 const AUTO_SAVE_SUCCESS_MESSAGE = "Modifications enregistrées automatiquement.";
@@ -4475,6 +4480,8 @@ const WorkflowBuilderPage = () => {
                 <ReactFlow
                   nodes={nodes}
                   edges={edges}
+                  nodeTypes={NODE_TYPES}
+                  edgeTypes={EDGE_TYPES}
                   onNodesChange={onNodesChange}
                   onEdgesChange={handleEdgesChange}
                   onNodeClick={handleNodeClick}
