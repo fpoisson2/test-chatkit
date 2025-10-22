@@ -279,6 +279,8 @@ const WorkflowBuilderPage = () => {
   const [isDeploying, setIsDeploying] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isClipboardImportSupported, setIsClipboardImportSupported] =
+    useState(false);
   const autoSaveTimeoutRef = useRef<number | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const draftVersionIdRef = useRef<number | null>(null);
@@ -296,6 +298,16 @@ const WorkflowBuilderPage = () => {
   const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined") {
+      return;
+    }
+    const supportsClipboardImport =
+      !!navigator.clipboard &&
+      typeof navigator.clipboard.readText === "function";
+    setIsClipboardImportSupported(supportsClipboardImport);
+  }, []);
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange<FlowEdgeData>[]) => {
@@ -570,9 +582,24 @@ const WorkflowBuilderPage = () => {
         </div>
       </div>
       <div style={getHeaderActionAreaStyle(isMobileLayout)}>
+        {isClipboardImportSupported ? (
+          <button
+            type="button"
+            onClick={() => void handleImportFromClipboard()}
+            disabled={loading || isImporting}
+            aria-busy={isImporting}
+            style={getDeployButtonStyle(isMobileLayout, {
+              disabled: loading || isImporting,
+            })}
+          >
+            {isImporting
+              ? t("workflowBuilder.import.inProgress")
+              : t("workflowBuilder.actions.importFromClipboard")}
+          </button>
+        ) : null}
         <button
           type="button"
-          onClick={() => void handleTriggerImport()}
+          onClick={handleTriggerImport}
           disabled={loading || isImporting}
           aria-busy={isImporting}
           style={getDeployButtonStyle(isMobileLayout, {
@@ -3433,6 +3460,7 @@ const WorkflowBuilderPage = () => {
         return;
       }
       try {
+        setSaveMessage(null);
         const text = await file.text();
         await processImportPayload(text);
       } catch (_error) {
@@ -3444,40 +3472,44 @@ const WorkflowBuilderPage = () => {
     [processImportPayload, t],
   );
 
-  const handleTriggerImport = useCallback(async () => {
+  const handleImportFromClipboard = useCallback(async () => {
+    if (loading || isImporting) {
+      return;
+    }
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.clipboard ||
+      typeof navigator.clipboard.readText !== "function"
+    ) {
+      setSaveState("error");
+      setSaveMessage(t("workflowBuilder.import.errorClipboardUnavailable"));
+      return;
+    }
+    setSaveMessage(null);
+    setIsImporting(true);
+    try {
+      const clipboardText = await navigator.clipboard.readText();
+      if (!clipboardText.trim()) {
+        setSaveState("error");
+        setSaveMessage(t("workflowBuilder.import.errorClipboardEmpty"));
+        setIsImporting(false);
+        return;
+      }
+      await processImportPayload(clipboardText);
+    } catch (_error) {
+      setSaveState("error");
+      setSaveMessage(t("workflowBuilder.import.errorClipboardUnavailable"));
+      setIsImporting(false);
+    }
+  }, [isImporting, loading, processImportPayload, t]);
+
+  const handleTriggerImport = useCallback(() => {
     if (loading || isImporting) {
       return;
     }
     setSaveMessage(null);
-    if (navigator.clipboard && typeof navigator.clipboard.readText === "function") {
-      const useClipboard = window.confirm(
-        t("workflowBuilder.import.confirmClipboard"),
-      );
-      if (useClipboard) {
-        try {
-          const clipboardText = await navigator.clipboard.readText();
-          if (!clipboardText.trim()) {
-            setSaveState("error");
-            setSaveMessage(t("workflowBuilder.import.errorClipboardEmpty"));
-            return;
-          }
-          await processImportPayload(clipboardText);
-          return;
-        } catch (_error) {
-          setSaveState("error");
-          setSaveMessage(t("workflowBuilder.import.errorClipboardUnavailable"));
-          return;
-        }
-      }
-    }
     importFileInputRef.current?.click();
-  }, [
-    importFileInputRef,
-    isImporting,
-    loading,
-    processImportPayload,
-    t,
-  ]);
+  }, [importFileInputRef, isImporting, loading]);
 
   const handleExportWorkflow = useCallback(async () => {
     if (!selectedWorkflowId || !selectedVersionId || isExporting) {

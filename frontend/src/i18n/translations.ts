@@ -119,6 +119,7 @@ const fr: TranslationDictionary = {
     "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.",
   "Libellé affiché": "Libellé affiché",
   "workflowBuilder.actions.importJson": "Importer un JSON",
+  "workflowBuilder.actions.importFromClipboard": "Importer depuis le presse-papiers",
   "workflowBuilder.actions.exportJson": "Exporter en JSON",
   "workflowBuilder.export.preparing": "Préparation de l'export…",
   "workflowBuilder.export.success": "Export JSON téléchargé.",
@@ -138,8 +139,6 @@ const fr: TranslationDictionary = {
   "workflowBuilder.import.errorMissingName": "Le nom du workflow importé est requis.",
   "workflowBuilder.import.errorFileRead": "Impossible de lire le fichier sélectionné.",
   "workflowBuilder.import.promptDisplayName": "Nom du workflow importé ?",
-  "workflowBuilder.import.confirmClipboard":
-    "Coller le JSON depuis le presse-papiers ? Cliquez sur Annuler pour sélectionner un fichier.",
   "workflowBuilder.import.defaultVersionName": "Import du {{timestamp}}",
   "workflowBuilder.import.errorWithStatus": "Impossible d'importer le workflow (code {{status}}).",
 };
@@ -251,6 +250,7 @@ const en: TranslationDictionary = {
     "Give the branch a unique name (e.g. approve, reject). Leave it blank to set the default branch.",
   "Libellé affiché": "Display label",
   "workflowBuilder.actions.importJson": "Import JSON",
+  "workflowBuilder.actions.importFromClipboard": "Import from clipboard",
   "workflowBuilder.actions.exportJson": "Export as JSON",
   "workflowBuilder.export.preparing": "Preparing export…",
   "workflowBuilder.export.success": "JSON export downloaded.",
@@ -270,8 +270,6 @@ const en: TranslationDictionary = {
   "workflowBuilder.import.errorMissingName": "A name is required for the imported workflow.",
   "workflowBuilder.import.errorFileRead": "Unable to read the selected file.",
   "workflowBuilder.import.promptDisplayName": "Name for the imported workflow?",
-  "workflowBuilder.import.confirmClipboard":
-    "Paste JSON from the clipboard? Click Cancel to choose a file.",
   "workflowBuilder.import.defaultVersionName": "Import on {{timestamp}}",
   "workflowBuilder.import.errorWithStatus": "Unable to import the workflow (status {{status}}).",
 };
