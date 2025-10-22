@@ -43,10 +43,12 @@ from chatkit.types import (
     AssistantMessageContent,
     AssistantMessageContentPartTextDelta,
     AssistantMessageItem,
+    CustomTask,
     EndOfTurnItem,
     GeneratedImage,
     ImageTask,
     InferenceOptions,
+    TaskItem,
     ThreadItem,
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
@@ -65,6 +67,7 @@ from ..chatkit.agent_registry import (
     _build_custom_agent,
     _create_response_format_from_pydantic,
 )
+from ..chatkit_realtime import create_realtime_voice_session
 from ..chatkit_server.actions import (
     _apply_widget_variable_values,
     _collect_widget_bindings,
@@ -466,6 +469,13 @@ async def run_workflow(
             and stored_input_id != current_input_id
         ):
             resume_from_wait_slug = waiting_slug
+        elif (
+            isinstance(waiting_slug, str)
+            and waiting_slug in nodes_by_slug
+            and isinstance(pending_wait_state.get("voice_transcripts"), list)
+            and pending_wait_state.get("voice_transcripts")
+        ):
+            resume_from_wait_slug = waiting_slug
 
     transitions = [
         transition
@@ -526,6 +536,10 @@ async def run_workflow(
                 else "{}"
             ),
         )
+
+        if step.kind == "voice_agent":
+            _register_widget_config(step)
+            continue
 
         widget_config = _register_widget_config(step)
 
@@ -718,6 +732,92 @@ async def run_workflow(
             content=[AssistantMessageContent(text=text)],
         )
         await on_stream_event(ThreadItemDoneEvent(item=final_item))
+
+    _VOICE_DEFAULT_START_MODE = "manual"
+    _VOICE_DEFAULT_STOP_MODE = "auto"
+    _VOICE_TOOL_DEFAULTS: dict[str, bool] = {
+        "response": True,
+        "transcription": True,
+        "function_call": False,
+    }
+
+    def _resolve_voice_agent_configuration(
+        step: WorkflowStep,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        params_raw = step.parameters or {}
+        params = params_raw if isinstance(params_raw, Mapping) else {}
+
+        settings = get_settings()
+
+        def _sanitize_text(value: Any, *, fallback: str) -> str:
+            if isinstance(value, str):
+                candidate = value.strip()
+                if candidate:
+                    return candidate
+            return fallback
+
+        voice_model = _sanitize_text(
+            params.get("model"), fallback=settings.chatkit_realtime_model
+        )
+        instructions = _sanitize_text(
+            params.get("instructions"),
+            fallback=settings.chatkit_realtime_instructions,
+        )
+        voice_id = _sanitize_text(
+            params.get("voice"), fallback=settings.chatkit_realtime_voice
+        )
+
+        realtime_raw = params.get("realtime")
+        realtime = realtime_raw if isinstance(realtime_raw, Mapping) else {}
+
+        def _sanitize_mode(value: Any, *, default: str) -> str:
+            if isinstance(value, str):
+                normalized = value.strip().lower()
+                if normalized in {"manual", "auto"}:
+                    return normalized
+            return default
+
+        start_mode = _sanitize_mode(
+            realtime.get("start_mode"), default=_VOICE_DEFAULT_START_MODE
+        )
+        stop_mode = _sanitize_mode(
+            realtime.get("stop_mode"), default=_VOICE_DEFAULT_STOP_MODE
+        )
+
+        tools_raw = realtime.get("tools")
+        tools_mapping = tools_raw if isinstance(tools_raw, Mapping) else {}
+        tools_permissions: dict[str, bool] = {}
+        for key, default in _VOICE_TOOL_DEFAULTS.items():
+            candidate = tools_mapping.get(key)
+            if candidate is None:
+                tools_permissions[key] = default
+            else:
+                tools_permissions[key] = _coerce_bool(candidate)
+
+        realtime_config = {
+            "start_mode": start_mode,
+            "stop_mode": stop_mode,
+            "tools": tools_permissions,
+        }
+
+        tool_definitions = params.get("tools")
+        sanitized_tools = _json_safe_copy(tool_definitions)
+
+        voice_context = {
+            "model": voice_model,
+            "voice": voice_id,
+            "instructions": instructions,
+            "realtime": realtime_config,
+            "tools": sanitized_tools,
+        }
+
+        return voice_context, {
+            "model": voice_model,
+            "voice": voice_id,
+            "instructions": instructions,
+            "realtime": realtime_config,
+            "tool_definitions": sanitized_tools,
+        }
 
     def _resolve_user_message(step: WorkflowStep) -> str:
         raw_params = step.parameters or {}
@@ -1915,6 +2015,259 @@ async def run_workflow(
                 status_type="waiting",
                 status_reason=wait_reason,
                 message=wait_reason,
+            )
+            break
+
+        if current_node.kind == "voice_agent":
+            title = _node_title(current_node)
+            try:
+                voice_context, event_context = _resolve_voice_agent_configuration(
+                    current_node
+                )
+            except Exception as exc:
+                raise_step_error(current_node.slug, title or current_node.slug, exc)
+
+            voice_wait_state: Mapping[str, Any] | None = None
+            if (
+                pending_wait_state
+                and pending_wait_state.get("slug") == current_node.slug
+            ):
+                voice_wait_state = pending_wait_state
+
+            transcripts_payload = None
+            if voice_wait_state is not None:
+                transcripts_payload = voice_wait_state.get("voice_transcripts")
+                if not transcripts_payload:
+                    final_end_state = WorkflowEndState(
+                        slug=current_node.slug,
+                        status_type="waiting",
+                        status_reason="En attente des transcriptions vocales.",
+                        message="En attente des transcriptions vocales.",
+                    )
+                    break
+
+            if transcripts_payload is not None:
+                normalized_transcripts: list[dict[str, Any]] = []
+
+                is_sequence = isinstance(transcripts_payload, Sequence)
+                is_textual = isinstance(
+                    transcripts_payload, str | bytes | bytearray
+                )
+                iterable = (
+                    transcripts_payload if is_sequence and not is_textual else []
+                )
+
+                for entry in iterable:
+                    if not isinstance(entry, Mapping):
+                        continue
+                    role_raw = entry.get("role")
+                    if not isinstance(role_raw, str):
+                        continue
+                    normalized_role = role_raw.strip().lower()
+                    if normalized_role not in {"user", "assistant"}:
+                        continue
+                    text_raw = entry.get("text")
+                    if not isinstance(text_raw, str):
+                        continue
+                    text_value = text_raw.strip()
+                    if not text_value:
+                        continue
+                    transcript_entry: dict[str, Any] = {
+                        "role": normalized_role,
+                        "text": text_value,
+                    }
+                    status_raw = entry.get("status")
+                    if isinstance(status_raw, str) and status_raw.strip():
+                        transcript_entry["status"] = status_raw.strip()
+                    normalized_transcripts.append(transcript_entry)
+
+                    if normalized_role == "user":
+                        conversation_history.append(
+                            {
+                                "role": "user",
+                                "content": [
+                                    {
+                                        "type": "input_text",
+                                        "text": text_value,
+                                    }
+                                ],
+                            }
+                        )
+                        if (
+                            on_stream_event is not None
+                            and agent_context.thread is not None
+                        ):
+                            user_item = UserMessageItem(
+                                id=agent_context.generate_id("message"),
+                                thread_id=agent_context.thread.id,
+                                created_at=datetime.now(),
+                                content=[UserMessageTextContent(text=text_value)],
+                                attachments=[],
+                                quoted_text=None,
+                                inference_options=InferenceOptions(),
+                            )
+                            await on_stream_event(
+                                ThreadItemAddedEvent(item=user_item)
+                            )
+                            await on_stream_event(
+                                ThreadItemDoneEvent(item=user_item)
+                            )
+                    else:
+                        conversation_history.append(
+                            {
+                                "role": "assistant",
+                                "content": [
+                                    {
+                                        "type": "output_text",
+                                        "text": text_value,
+                                    }
+                                ],
+                            }
+                        )
+                        if (
+                            on_stream_event is not None
+                            and agent_context.thread is not None
+                        ):
+                            assistant_item = AssistantMessageItem(
+                                id=agent_context.generate_id("message"),
+                                thread_id=agent_context.thread.id,
+                                created_at=datetime.now(),
+                                content=[AssistantMessageContent(text=text_value)],
+                            )
+                            await on_stream_event(
+                                ThreadItemAddedEvent(item=assistant_item)
+                            )
+                            await on_stream_event(
+                                ThreadItemDoneEvent(item=assistant_item)
+                            )
+
+                if not normalized_transcripts:
+                    final_end_state = WorkflowEndState(
+                        slug=current_node.slug,
+                        status_type="waiting",
+                        status_reason="En attente des transcriptions vocales.",
+                        message="En attente des transcriptions vocales.",
+                    )
+                    break
+
+                step_output = {"transcripts": normalized_transcripts}
+                output_text = "\n\n".join(
+                    f"{entry['role']}: {entry['text']}"
+                    for entry in normalized_transcripts
+                )
+                last_step_context = {
+                    "voice_transcripts": normalized_transcripts,
+                    "voice_session": voice_context,
+                    "output": step_output,
+                    "output_parsed": step_output,
+                    "output_structured": step_output,
+                    "output_text": output_text,
+                }
+                agent_key = current_node.agent_key or current_node.slug
+                state["last_voice_session"] = voice_context
+                state["last_voice_transcripts"] = normalized_transcripts
+                state["last_agent_key"] = agent_key
+                state["last_agent_output"] = step_output
+                state["last_agent_output_text"] = output_text
+                state["last_agent_output_structured"] = step_output
+                state.pop("voice_session_active", None)
+
+                await record_step(current_node.slug, title, step_output)
+
+                await ingest_workflow_step(
+                    config=(current_node.parameters or {}).get(
+                        "vector_store_ingestion"
+                    ),
+                    step_slug=current_node.slug,
+                    step_title=title,
+                    step_context=last_step_context,
+                    state=state,
+                    default_input_context=last_step_context,
+                    session_factory=SessionLocal,
+                )
+
+                if thread is not None:
+                    _set_wait_state_metadata(thread, None)
+                pending_wait_state = None
+
+                transition = _next_edge(current_slug)
+                if transition is None:
+                    break
+                current_slug = transition.target_step.slug
+                continue
+
+            request_context = getattr(agent_context, "request_context", None)
+            user_id = None
+            if request_context is not None:
+                user_id = getattr(request_context, "user_id", None)
+            if not isinstance(user_id, str) or not user_id.strip():
+                thread_meta = getattr(agent_context, "thread", None)
+                fallback_id = getattr(thread_meta, "id", None)
+                user_id = str(fallback_id or "voice-user")
+
+            try:
+                realtime_secret = await create_realtime_voice_session(
+                    user_id=user_id,
+                    model=event_context["model"],
+                    instructions=event_context["instructions"],
+                )
+            except Exception as exc:
+                raise_step_error(current_node.slug, title or current_node.slug, exc)
+
+            event_payload = {
+                "type": "voice_session.created",
+                "step": {"slug": current_node.slug, "title": title},
+                "client_secret": realtime_secret,
+                "session": event_context,
+                "tool_permissions": event_context["realtime"]["tools"],
+            }
+
+            if on_stream_event is not None and agent_context.thread is not None:
+                task_item = TaskItem(
+                    id=agent_context.generate_id("task"),
+                    thread_id=agent_context.thread.id,
+                    created_at=datetime.now(),
+                    task=CustomTask(
+                        title=title,
+                        content=json.dumps(event_payload, ensure_ascii=False),
+                    ),
+                )
+                await on_stream_event(ThreadItemAddedEvent(item=task_item))
+                await on_stream_event(ThreadItemDoneEvent(item=task_item))
+
+            step_payload = {
+                "status": "waiting_for_voice",
+                "voice_session": voice_context,
+            }
+            await record_step(current_node.slug, title, step_payload)
+
+            last_step_context = {"voice_session": voice_context}
+            state["voice_session_active"] = True
+            state["last_voice_session"] = voice_context
+
+            wait_state_payload: dict[str, Any] = {
+                "slug": current_node.slug,
+                "input_item_id": current_input_item_id,
+                "type": "voice",
+            }
+            conversation_snapshot = _clone_conversation_history_snapshot(
+                conversation_history
+            )
+            if conversation_snapshot:
+                wait_state_payload["conversation_history"] = conversation_snapshot
+            wait_state_payload["state"] = _json_safe_copy(state)
+
+            transition = _next_edge(current_slug)
+            if transition is not None:
+                wait_state_payload["next_step_slug"] = transition.target_step.slug
+            if thread is not None:
+                _set_wait_state_metadata(thread, wait_state_payload)
+
+            final_end_state = WorkflowEndState(
+                slug=current_node.slug,
+                status_type="waiting",
+                status_reason="Session vocale en cours",
+                message="Session vocale en cours",
             )
             break
 
