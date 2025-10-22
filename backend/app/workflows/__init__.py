@@ -9,6 +9,7 @@ from .service import (
     resolve_start_auto_start_assistant_message,
     resolve_start_auto_start_message,
     serialize_definition,
+    serialize_definition_graph,
     serialize_version_summary,
     serialize_workflow_summary,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "WorkflowVersionNotFoundError",
     "WorkflowValidationError",
     "serialize_definition",
+    "serialize_definition_graph",
     "serialize_version_summary",
     "serialize_workflow_summary",
     "resolve_start_auto_start",

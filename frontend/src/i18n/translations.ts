@@ -118,6 +118,11 @@ const fr: TranslationDictionary = {
   "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.":
     "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.",
   "Libellé affiché": "Libellé affiché",
+  "workflowBuilder.actions.exportJson": "Exporter en JSON",
+  "workflowBuilder.export.preparing": "Préparation de l'export…",
+  "workflowBuilder.export.success": "Export JSON téléchargé.",
+  "workflowBuilder.export.error": "Impossible d'exporter le workflow.",
+  "workflowBuilder.export.errorWithStatus": "Impossible d'exporter le workflow (code {{status}}).",
 };
 
 const en: TranslationDictionary = {
@@ -226,6 +231,11 @@ const en: TranslationDictionary = {
   "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.":
     "Give the branch a unique name (e.g. approve, reject). Leave it blank to set the default branch.",
   "Libellé affiché": "Display label",
+  "workflowBuilder.actions.exportJson": "Export as JSON",
+  "workflowBuilder.export.preparing": "Preparing export…",
+  "workflowBuilder.export.success": "JSON export downloaded.",
+  "workflowBuilder.export.error": "Unable to export the workflow.",
+  "workflowBuilder.export.errorWithStatus": "Unable to export the workflow (status {{status}}).",
 };
 
 export const translations: Translations = {

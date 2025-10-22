@@ -26,6 +26,7 @@ import { getNodesBounds, getViewportForBounds } from "@reactflow/core";
 import "reactflow/dist/style.css";
 
 import { useAuth } from "../../auth";
+import { useI18n } from "../../i18n";
 import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
 import {
   makeApiEndpointCandidates,
@@ -246,6 +247,7 @@ const useMediaQuery = (query: string) => {
 
 const WorkflowBuilderPage = () => {
   const { token, logout, user } = useAuth();
+  const { t } = useI18n();
   const { openSidebar } = useAppLayout();
   const { setSidebarContent, clearSidebarContent } = useSidebarPortal();
   const [loading, setLoading] = useState(true);
@@ -274,6 +276,7 @@ const WorkflowBuilderPage = () => {
   const [isDeployModalOpen, setDeployModalOpen] = useState(false);
   const [deployToProduction, setDeployToProduction] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const autoSaveTimeoutRef = useRef<number | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const draftVersionIdRef = useRef<number | null>(null);
@@ -564,6 +567,28 @@ const WorkflowBuilderPage = () => {
         </div>
       </div>
       <div style={getHeaderActionAreaStyle(isMobileLayout)}>
+        <button
+          type="button"
+          onClick={() => void handleExportWorkflow()}
+          disabled={
+            loading ||
+            !selectedWorkflowId ||
+            !selectedVersionId ||
+            isExporting
+          }
+          aria-busy={isExporting}
+          style={getDeployButtonStyle(isMobileLayout, {
+            disabled:
+              loading ||
+              !selectedWorkflowId ||
+              !selectedVersionId ||
+              isExporting,
+          })}
+        >
+          {isExporting
+            ? t("workflowBuilder.export.preparing")
+            : t("workflowBuilder.actions.exportJson")}
+        </button>
         <button
           type="button"
           onClick={handleOpenDeployModal}
@@ -3209,6 +3234,93 @@ const WorkflowBuilderPage = () => {
     loadVersions,
     nodes,
     selectedWorkflowId,
+    versions,
+  ]);
+
+  const handleExportWorkflow = useCallback(async () => {
+    if (!selectedWorkflowId || !selectedVersionId || isExporting) {
+      return;
+    }
+
+    setIsExporting(true);
+    setSaveState("saving");
+    setSaveMessage(t("workflowBuilder.export.preparing"));
+
+    const endpoint = `/api/workflows/${selectedWorkflowId}/versions/${selectedVersionId}/export`;
+    const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
+    let lastError: Error | null = null;
+
+    try {
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              Accept: "application/json",
+              ...authHeader,
+            },
+          });
+          if (!response.ok) {
+            throw new Error(
+              t("workflowBuilder.export.errorWithStatus", { status: response.status }),
+            );
+          }
+
+          const graph = await response.json();
+          if (typeof document === "undefined") {
+            throw new Error(t("workflowBuilder.export.error"));
+          }
+
+          const serialized = JSON.stringify(graph, null, 2);
+          const workflowLabel =
+            selectedWorkflow?.display_name?.trim() ||
+            selectedWorkflow?.slug ||
+            `workflow-${selectedWorkflowId}`;
+          const versionSummary =
+            versions.find((version) => version.id === selectedVersionId) ?? null;
+          const workflowSlug = slugifyWorkflowName(workflowLabel);
+          const versionSlug = versionSummary
+            ? slugifyWorkflowName(
+                versionSummary.name?.trim() || `v${versionSummary.version}`,
+              )
+            : slugifyWorkflowName(`version-${selectedVersionId}`);
+          const fileName = `${workflowSlug}-${versionSlug}.json`;
+
+          const blob = new Blob([serialized], {
+            type: "application/json;charset=utf-8",
+          });
+          const blobUrl = URL.createObjectURL(blob);
+          const anchor = document.createElement("a");
+          anchor.href = blobUrl;
+          anchor.download = fileName;
+          document.body.appendChild(anchor);
+          anchor.click();
+          document.body.removeChild(anchor);
+          URL.revokeObjectURL(blobUrl);
+
+          setSaveState("saved");
+          setSaveMessage(t("workflowBuilder.export.success"));
+          setTimeout(() => setSaveState("idle"), 1500);
+          return;
+        } catch (error) {
+          lastError =
+            error instanceof Error
+              ? error
+              : new Error(t("workflowBuilder.export.error"));
+        }
+      }
+
+      setSaveState("error");
+      setSaveMessage(lastError?.message ?? t("workflowBuilder.export.error"));
+    } finally {
+      setIsExporting(false);
+    }
+  }, [
+    authHeader,
+    isExporting,
+    selectedWorkflow,
+    selectedWorkflowId,
+    selectedVersionId,
+    t,
     versions,
   ]);
 

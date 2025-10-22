@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
@@ -24,6 +26,7 @@ from ..workflows import (
     WorkflowValidationError,
     WorkflowVersionNotFoundError,
     serialize_definition,
+    serialize_definition_graph,
     serialize_version_summary,
     serialize_workflow_summary,
 )
@@ -196,6 +199,26 @@ async def get_workflow_version(
             status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
     return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
+
+
+@router.get("/api/workflows/{workflow_id}/versions/{version_id}/export")
+async def export_workflow_version(
+    workflow_id: int,
+    version_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    _ensure_admin(current_user)
+    service = WorkflowService()
+    try:
+        definition = service.get_version(workflow_id, version_id, session)
+    except WorkflowVersionNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    return serialize_definition_graph(
+        definition, include_position_metadata=False
+    )
 
 
 @router.post(

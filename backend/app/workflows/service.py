@@ -1245,38 +1245,60 @@ class WorkflowService:
             )
 
 
+def serialize_definition_graph(
+    definition: WorkflowDefinition,
+    *,
+    include_position_metadata: bool = True,
+) -> dict[str, Any]:
+    """Construit la représentation graphe d'une définition de workflow."""
+
+    nodes_payload = []
+    for step in sorted(definition.steps, key=lambda s: s.position):
+        metadata = dict(step.ui_metadata or {})
+        if not include_position_metadata:
+            metadata.pop("position", None)
+
+        nodes_payload.append(
+            {
+                "id": step.id,
+                "slug": step.slug,
+                "kind": step.kind,
+                "display_name": step.display_name,
+                "agent_key": step.agent_key,
+                "position": step.position,
+                "is_enabled": step.is_enabled,
+                "parameters": dict(step.parameters or {}),
+                "metadata": metadata,
+                "created_at": step.created_at,
+                "updated_at": step.updated_at,
+            }
+        )
+
+    edges_payload = []
+    for edge in definition.transitions:
+        metadata = dict(edge.ui_metadata or {})
+        if not include_position_metadata:
+            metadata.pop("position", None)
+
+        edges_payload.append(
+            {
+                "id": edge.id,
+                "source": edge.source_step.slug,
+                "target": edge.target_step.slug,
+                "condition": edge.condition,
+                "metadata": metadata,
+                "created_at": edge.created_at,
+                "updated_at": edge.updated_at,
+            }
+        )
+
+    return {"nodes": nodes_payload, "edges": edges_payload}
+
+
 def serialize_definition(definition: WorkflowDefinition) -> dict[str, Any]:
     """Convertit un objet SQLAlchemy en dictionnaire API-friendly."""
 
-    nodes_payload = [
-        {
-            "id": step.id,
-            "slug": step.slug,
-            "kind": step.kind,
-            "display_name": step.display_name,
-            "agent_key": step.agent_key,
-            "position": step.position,
-            "is_enabled": step.is_enabled,
-            "parameters": dict(step.parameters or {}),
-            "metadata": dict(step.ui_metadata or {}),
-            "created_at": step.created_at,
-            "updated_at": step.updated_at,
-        }
-        for step in sorted(definition.steps, key=lambda s: s.position)
-    ]
-
-    edges_payload = [
-        {
-            "id": edge.id,
-            "source": edge.source_step.slug,
-            "target": edge.target_step.slug,
-            "condition": edge.condition,
-            "metadata": dict(edge.ui_metadata or {}),
-            "created_at": edge.created_at,
-            "updated_at": edge.updated_at,
-        }
-        for edge in definition.transitions
-    ]
+    graph_payload = serialize_definition_graph(definition)
 
     agent_steps = [
         {
@@ -1308,7 +1330,7 @@ def serialize_definition(definition: WorkflowDefinition) -> dict[str, Any]:
         "created_at": definition.created_at,
         "updated_at": definition.updated_at,
         "steps": agent_steps,
-        "graph": {"nodes": nodes_payload, "edges": edges_payload},
+        "graph": graph_payload,
     }
 
 
