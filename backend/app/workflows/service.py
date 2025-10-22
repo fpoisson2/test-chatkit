@@ -19,6 +19,17 @@ logger = logging.getLogger(__name__)
 _TRUTHY_AUTO_START_VALUES = {"true", "1", "yes", "on"}
 _FALSY_AUTO_START_VALUES = {"false", "0", "no", "off"}
 
+_LEGACY_AGENT_KEYS = frozenset(
+    {
+        "triage",
+        "triage_2",
+        "r_dacteur",
+        "get_data_from_web",
+        "get_data_from_user",
+    }
+)
+_LEGACY_STATE_SLUGS = frozenset({"maj-etat-triage", "maj-etat-validation"})
+
 
 def _coerce_auto_start(value: Any) -> bool:
     if isinstance(value, bool):
@@ -779,10 +790,25 @@ class WorkflowService:
 
         existing_slugs = {step.slug for step in definition.steps}
         defaults = self._workflow_defaults
-        if defaults.expected_state_slugs.issubset(existing_slugs):
+        if (
+            defaults.expected_state_slugs
+            and defaults.expected_state_slugs.issubset(existing_slugs)
+        ):
             return False
 
-        if defaults.default_agent_slugs.issubset(existing_slugs):
+        if (
+            defaults.default_agent_slugs
+            and defaults.default_agent_slugs.issubset(existing_slugs)
+        ):
+            return True
+
+        if any(
+            (step.agent_key or "").strip() in _LEGACY_AGENT_KEYS
+            for step in definition.steps
+        ):
+            return True
+
+        if _LEGACY_STATE_SLUGS.intersection(existing_slugs):
             return True
 
         return False
@@ -917,7 +943,8 @@ class WorkflowService:
                 elif isinstance(raw_agent_key, str):
                     trimmed_key = raw_agent_key.strip()
                     if trimmed_key:
-                        if trimmed_key not in defaults.supported_agent_keys:
+                        supported_keys = defaults.supported_agent_keys
+                        if supported_keys and trimmed_key not in supported_keys:
                             raise WorkflowValidationError(
                                 f"Agent inconnu : {trimmed_key}"
                             )
