@@ -16,15 +16,8 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
 import { SidebarIcon, type SidebarIconName } from "./SidebarIcon";
 import { getDesktopLayoutPreference, useIsDesktopLayout } from "../hooks/useDesktopLayout";
-import { SettingsModal } from "../features/settings/SettingsModal";
-import {
-  SETTINGS_SECTIONS,
-  buildSettingsSections,
-  type SettingsSectionId,
-} from "../features/settings/sections";
-import { useAdminUsers } from "../features/settings/useAdminUsers";
+import type { SettingsSectionId } from "../features/settings/sections";
 import { useI18n } from "../i18n";
-import { LanguageSwitcher } from "./LanguageSwitcher";
 
 type NavigationItem = {
   key: string;
@@ -132,7 +125,6 @@ const useSidebarInteractions = ({
 type AppLayoutContextValue = {
   openSidebar: () => void;
   closeSidebar: () => void;
-  openSettings: () => void;
   isDesktopLayout: boolean;
   isSidebarOpen: boolean;
 };
@@ -145,8 +137,6 @@ type SidebarPortalContextValue = {
 };
 
 const SidebarPortalContext = createContext<SidebarPortalContextValue | undefined>(undefined);
-
-const DEFAULT_SETTINGS_SECTION_ID = SETTINGS_SECTIONS[0]?.id ?? "users";
 
 export const useAppLayout = () => {
   const context = useContext(AppLayoutContext);
@@ -169,7 +159,7 @@ export const useSidebarPortal = () => {
 };
 
 export const AppLayout = ({ children }: { children?: ReactNode }) => {
-  const { user, token, logout } = useAuth();
+  const { user, logout } = useAuth();
   const { t } = useI18n();
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
@@ -178,10 +168,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const isDesktopLayout = useIsDesktopLayout();
   const previousIsDesktopRef = useRef(isDesktopLayout);
   const [isSidebarOpen, setIsSidebarOpen] = useState(getDesktopLayoutPreference);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSectionId>(
-    DEFAULT_SETTINGS_SECTION_ID,
-  );
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
@@ -199,14 +185,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
     previousIsDesktopRef.current = isDesktopLayout;
   }, [isDesktopLayout]);
-
-  const settingsSections = useMemo(() => buildSettingsSections(t), [t]);
-
-  useEffect(() => {
-    if (isSettingsModalOpen) {
-      setActiveSettingsSection(settingsSections[0]?.id ?? DEFAULT_SETTINGS_SECTION_ID);
-    }
-  }, [isSettingsModalOpen, settingsSections]);
 
   const openSidebar = useCallback(() => {
     setIsSidebarOpen(true);
@@ -277,14 +255,18 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     [availableApplications, closeSidebar, isDesktopLayout, navigate],
   );
 
-  const handleOpenSettings = useCallback(() => {
-    if (!user) {
-      navigate("/login");
-      return;
-    }
+  const handleOpenSettings = useCallback(
+    (sectionId?: SettingsSectionId) => {
+      if (!user) {
+        navigate("/login");
+        return;
+      }
 
-    setIsSettingsModalOpen(true);
-  }, [navigate, user]);
+      const search = sectionId ? `?section=${encodeURIComponent(sectionId)}` : "";
+      navigate(`/settings${search}`);
+    },
+    [navigate, user],
+  );
 
   const handleSidebarLogin = useCallback(() => {
     if (!isDesktopLayout) {
@@ -310,11 +292,16 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     navigate("/admin");
   }, [closeSidebar, isDesktopLayout, navigate]);
 
+  const handleProfileOpenSettings = useCallback(() => {
+    setIsProfileMenuOpen(false);
+
   const handleGoToDocs = useCallback(() => {
     if (!isDesktopLayout) {
       closeSidebar();
     }
 
+    handleOpenSettings("preferences");
+  }, [closeSidebar, handleOpenSettings, isDesktopLayout]);
     navigate("/docs");
   }, [closeSidebar, isDesktopLayout, navigate]);
 
@@ -405,36 +392,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     [closeSidebar, isDesktopLayout],
   );
 
-  const handleCloseSettings = useCallback(() => {
-    setIsSettingsModalOpen(false);
-  }, []);
-
-  const handleGoHomeFromModal = useCallback(() => {
-    handleCloseSettings();
-    navigate("/");
-  }, [handleCloseSettings, navigate]);
-
-  const handleOpenWorkflowsFromModal = useCallback(() => {
-    handleCloseSettings();
-    navigate("/workflows");
-  }, [handleCloseSettings, navigate]);
-
-  const handleLogoutFromModal = useCallback(() => {
-    handleCloseSettings();
-    logout();
-  }, [handleCloseSettings, logout]);
-
-  const handleSettingsUnauthorized = useCallback(() => {
-    handleCloseSettings();
-    logout();
-  }, [handleCloseSettings, logout]);
-
-  const adminUsers = useAdminUsers({
-    token,
-    isEnabled: Boolean(user?.is_admin) && isSettingsModalOpen,
-    onUnauthorized: handleSettingsUnauthorized,
-  });
-
   const layoutClassName = useMemo(
     () =>
       [
@@ -463,11 +420,10 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     () => ({
       openSidebar,
       closeSidebar,
-      openSettings: handleOpenSettings,
       isDesktopLayout,
       isSidebarOpen,
     }),
-    [closeSidebar, handleOpenSettings, isDesktopLayout, isSidebarOpen, openSidebar],
+    [closeSidebar, isDesktopLayout, isSidebarOpen, openSidebar],
   );
 
   const handleSetSidebarContent = useCallback((content: ReactNode | null) => {
@@ -519,7 +475,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                 </div>
               </div>
               <div className="chatkit-sidebar__actions">
-                <LanguageSwitcher tabIndex={sidebarTabIndex} />
                 {isSidebarOpen ? (
                   <button
                     type="button"
@@ -594,6 +549,16 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                     role="menu"
                     aria-hidden={!isProfileMenuOpen}
                   >
+                    <button
+                      type="button"
+                      className="chatkit-sidebar__profile-action"
+                      role="menuitem"
+                      onClick={handleProfileOpenSettings}
+                      tabIndex={isProfileMenuOpen ? 0 : -1}
+                    >
+                      <SidebarIcon name="settings" className="chatkit-sidebar__icon" />
+                      <span>{t("app.sidebar.profile.settings")}</span>
+                    </button>
                     {user.is_admin && (
                       <button
                         type="button"
@@ -637,18 +602,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
         <div className="chatkit-layout__main" {...mainInteractionHandlers}>
           {children ?? <Outlet />}
         </div>
-        <SettingsModal
-          isOpen={isSettingsModalOpen}
-          sections={settingsSections}
-          activeSectionId={activeSettingsSection}
-          onSelectSection={setActiveSettingsSection}
-          onClose={handleCloseSettings}
-          currentUser={user}
-          onGoHome={handleGoHomeFromModal}
-          onLogout={handleLogoutFromModal}
-          onOpenWorkflows={handleOpenWorkflowsFromModal}
-          adminUsers={adminUsers}
-        />
         </div>
       </AppLayoutContext.Provider>
     </SidebarPortalContext.Provider>
