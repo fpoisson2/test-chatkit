@@ -157,18 +157,6 @@ AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
 
 _WAIT_STATE_METADATA_KEY = "workflow_wait_for_user_input"
 
-
-
-
-@dataclass(frozen=True)
-
-
-@dataclass
-
-
-
-
-
 # ---------------------------------------------------------------------------
 # Définition du workflow local exécuté par DemoChatKitServer
 # ---------------------------------------------------------------------------
