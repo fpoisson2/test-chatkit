@@ -321,6 +321,7 @@ const WorkflowBuilderPage = () => {
   const selectedEdgeIdRef = useRef<string | null>(null);
   const selectedNodeIdsRef = useRef<Set<string>>(new Set());
   const selectedEdgeIdsRef = useRef<Set<string>>(new Set());
+  const isNodeDragInProgressRef = useRef(false);
   const copySequenceRef = useRef<{ count: number; lastTimestamp: number }>({
     count: 0,
     lastTimestamp: 0,
@@ -1395,6 +1396,14 @@ const WorkflowBuilderPage = () => {
     [applySelection]
   );
 
+  const handleNodeDragStart = useCallback(() => {
+    isNodeDragInProgressRef.current = true;
+  }, []);
+
+  const handleNodeDragStop = useCallback(() => {
+    isNodeDragInProgressRef.current = false;
+  }, []);
+
   const handleClosePropertiesPanel = useCallback(() => {
     if (isMobileLayout) {
       setPropertiesPanelOpen(false);
@@ -1430,13 +1439,15 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     if (selectedElementKey) {
       if (previousSelectedElementRef.current !== selectedElementKey) {
-        setPropertiesPanelOpen(true);
+        if (!(isMobileLayout && isNodeDragInProgressRef.current)) {
+          setPropertiesPanelOpen(true);
+        }
       }
     } else {
       setPropertiesPanelOpen(false);
     }
     previousSelectedElementRef.current = selectedElementKey;
-  }, [selectedElementKey]);
+  }, [isMobileLayout, selectedElementKey]);
 
   useEffect(() => {
     if (!isMobileLayout) {
@@ -4584,6 +4595,8 @@ const WorkflowBuilderPage = () => {
                   edges={edges}
                   onNodesChange={onNodesChange}
                   onEdgesChange={handleEdgesChange}
+                  onNodeDragStart={handleNodeDragStart}
+                  onNodeDragStop={handleNodeDragStop}
                   onNodeClick={handleNodeClick}
                   onEdgeClick={handleEdgeClick}
                   onPaneClick={handleClearSelection}
