@@ -442,15 +442,23 @@ const WorkflowBuilderPage = () => {
       const effectiveMinZoom = refreshViewportConstraints(flow);
       const savedViewport = viewportRef.current;
 
-      console.log('restoreViewport applying', { savedViewport, key: viewportKeyRef.current });
-
       if (savedViewport) {
         const targetViewport = {
           ...savedViewport,
           zoom: Math.max(savedViewport.zoom, effectiveMinZoom),
         };
         flow.setViewport(targetViewport, { duration: 0 });
-        console.log('restoreViewport set viewport to', targetViewport);
+
+        // Verify the viewport was actually applied
+        setTimeout(() => {
+          const actualViewport = flow.getViewport();
+          console.log('VIEWPORT CHECK:', {
+            target: targetViewport,
+            actual: actualViewport,
+            match: Math.abs(actualViewport.x - targetViewport.x) < 1 &&
+                   Math.abs(actualViewport.y - targetViewport.y) < 1
+          });
+        }, 50);
       }
 
       const appliedViewport = flow.getViewport();
@@ -459,7 +467,6 @@ const WorkflowBuilderPage = () => {
       const key = viewportKeyRef.current;
       if (key && savedViewport) {
         viewportMemoryRef.current.set(key, { ...appliedViewport });
-        console.log('restoreViewport updated memory', appliedViewport);
       }
     };
 
@@ -507,7 +514,6 @@ const WorkflowBuilderPage = () => {
             return;
           }
           viewportMemoryRef.current.clear();
-          console.log('Loading viewports from API', data.viewports);
           for (const entry of data.viewports ?? []) {
             if (
               typeof entry.workflow_id !== "number" ||
@@ -524,7 +530,6 @@ const WorkflowBuilderPage = () => {
             }
             // Skip default viewport values (0, 0, 1) as they indicate no user preference
             if (entry.x === 0 && entry.y === 0 && entry.zoom === 1) {
-              console.log('Skipping default viewport', entry);
               continue;
             }
             const versionId =
@@ -533,7 +538,6 @@ const WorkflowBuilderPage = () => {
                 : null;
             const key = viewportKeyFor(entry.workflow_id, versionId);
             if (key) {
-              console.log('Loaded viewport', key, entry);
               viewportMemoryRef.current.set(key, {
                 x: entry.x,
                 y: entry.y,
@@ -1170,7 +1174,6 @@ const WorkflowBuilderPage = () => {
             if (viewportKey) {
               const currentViewport =
                 reactFlowInstanceRef.current?.getViewport() ?? viewportRef.current;
-              console.log('loadVersionDetail preserveViewport', { currentViewport, key: viewportKey });
               if (currentViewport) {
                 viewportMemoryRef.current.set(viewportKey, { ...currentViewport });
                 viewportRef.current = { ...currentViewport };
@@ -1179,12 +1182,10 @@ const WorkflowBuilderPage = () => {
             hasUserViewportChangeRef.current = true;
             pendingViewportRestoreRef.current = true;
           } else {
-            console.log('loadVersionDetail NOT preserveViewport', { restoredViewport, key: viewportKey });
             viewportRef.current = restoredViewport;
             hasUserViewportChangeRef.current = restoredViewport != null;
             pendingViewportRestoreRef.current = restoredViewport != null;
             if (restoredViewport != null) {
-              console.log('loadVersionDetail calling restoreViewport immediately');
               restoreViewport();
             }
           }
@@ -5080,29 +5081,22 @@ const WorkflowBuilderPage = () => {
                   style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
                   minZoom={minViewportZoom}
                   onInit={(instance) => {
-                    console.log('onInit called', { pending: pendingViewportRestoreRef.current, viewport: instance.getViewport() });
                     reactFlowInstanceRef.current = instance;
                     refreshViewportConstraints(instance);
                     if (pendingViewportRestoreRef.current) {
-                      console.log('onInit calling restoreViewport');
                       restoreViewport();
                     }
                   }}
                   onMoveEnd={(_, viewport) => {
-                    console.log('onMoveEnd called', { viewport, isHydrating: isHydratingRef.current, key: viewportKeyRef.current });
                     if (isHydratingRef.current) {
-                      console.log('onMoveEnd blocked by isHydrating');
                       return;
                     }
                     viewportRef.current = viewport;
                     hasUserViewportChangeRef.current = true;
                     const key = viewportKeyRef.current;
                     if (key) {
-                      console.log('onMoveEnd saving viewport', viewport);
                       viewportMemoryRef.current.set(key, { ...viewport });
                       persistViewportMemory();
-                    } else {
-                      console.log('onMoveEnd no key');
                     }
                   }}
                 >
