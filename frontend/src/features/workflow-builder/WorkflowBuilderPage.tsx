@@ -147,6 +147,9 @@ import styles from "./WorkflowBuilderPage.module.css";
 export const NODE_TYPES: NodeTypes = {};
 export const EDGE_TYPES: EdgeTypes = {};
 
+Object.freeze(NODE_TYPES);
+Object.freeze(EDGE_TYPES);
+
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 const AUTO_SAVE_SUCCESS_MESSAGE = "Modifications enregistrées automatiquement.";
 const DRAFT_DISPLAY_NAME = "Brouillon";
@@ -295,6 +298,8 @@ const WorkflowBuilderPage = () => {
   const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
+  const nodeTypes = useMemo<NodeTypes>(() => NODE_TYPES, []);
+  const edgeTypes = useMemo<EdgeTypes>(() => EDGE_TYPES, []);
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange<FlowEdgeData>[]) => {
@@ -4480,8 +4485,8 @@ const WorkflowBuilderPage = () => {
                 <ReactFlow
                   nodes={nodes}
                   edges={edges}
-                  nodeTypes={NODE_TYPES}
-                  edgeTypes={EDGE_TYPES}
+                  nodeTypes={nodeTypes}
+                  edgeTypes={edgeTypes}
                   onNodesChange={onNodesChange}
                   onEdgesChange={handleEdgesChange}
                   onNodeClick={handleNodeClick}
