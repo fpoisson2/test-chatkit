@@ -69,28 +69,14 @@ const APPLICATIONS: ApplicationDescriptor[] = [
 const buildNavigationItems = ({
   isAuthenticated,
   handleSidebarLogin,
-  handleGoToDocs,
   loginLabel,
-  docsLabel,
-  docsActive,
 }: {
   isAuthenticated: boolean;
   handleSidebarLogin: () => void;
   loginLabel: string;
-  handleGoToDocs: () => void;
-  docsLabel: string;
-  docsActive: boolean;
 }): NavigationItem[] => {
   if (isAuthenticated) {
-    return [
-      {
-        key: "docs",
-        label: docsLabel,
-        icon: "docs",
-        onClick: handleGoToDocs,
-        isActive: docsActive,
-      },
-    ];
+    return [];
   }
 
   return [
@@ -305,18 +291,19 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     navigate("/docs");
   }, [closeSidebar, isDesktopLayout, navigate]);
 
+  const isDocsActive = useMemo(
+    () => location.pathname === "/docs" || location.pathname.startsWith("/docs/"),
+    [location.pathname],
+  );
+
   const navigationItems = useMemo(
     () =>
       buildNavigationItems({
         isAuthenticated,
         handleSidebarLogin,
         loginLabel: t("app.sidebar.login"),
-        handleGoToDocs,
-        docsLabel: t("app.sidebar.docs"),
-        docsActive:
-          location.pathname === "/docs" || location.pathname.startsWith("/docs/"),
       }),
-    [handleGoToDocs, handleSidebarLogin, isAuthenticated, location.pathname, t],
+    [handleSidebarLogin, isAuthenticated, t],
   );
 
   useEffect(() => {
@@ -519,6 +506,19 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
           )}
           {isAuthenticated && (
             <footer className="chatkit-sidebar__footer">
+              <button
+                type="button"
+                className={`chatkit-sidebar__footer-link${
+                  isDocsActive ? " chatkit-sidebar__footer-link--active" : ""
+                }`}
+                onClick={handleGoToDocs}
+                tabIndex={sidebarTabIndex}
+                aria-label={t("app.sidebar.docs")}
+                aria-current={isDocsActive ? "page" : undefined}
+              >
+                <SidebarIcon name="docs" className="chatkit-sidebar__icon" />
+                <span className="chatkit-sidebar__footer-link-label">{t("app.sidebar.docs")}</span>
+              </button>
               <div
                 className={`chatkit-sidebar__profile${isProfileMenuOpen ? " chatkit-sidebar__profile--open" : ""}`}
                 ref={profileMenuRef}
