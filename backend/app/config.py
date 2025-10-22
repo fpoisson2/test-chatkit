@@ -91,8 +91,6 @@ class Settings:
             construire les liens absolus.
         backend_public_base_url_from_env: Indique si l'URL publique provient
             explicitement de l'environnement.
-        chatkit_agent_model: Modèle utilisé pour les agents classiques.
-        chatkit_agent_instructions: Instructions de l'agent historique.
         chatkit_realtime_model: Modèle Realtime par défaut pour les sessions vocales.
         chatkit_realtime_instructions: Instructions transmises aux sessions Realtime.
         chatkit_realtime_voice: Voix utilisée pour la synthèse Realtime.
@@ -113,8 +111,6 @@ class Settings:
     openai_api_key: str
     chatkit_workflow_id: str | None
     chatkit_api_base: str
-    chatkit_agent_model: str
-    chatkit_agent_instructions: str
     chatkit_realtime_model: str
     chatkit_realtime_instructions: str
     chatkit_realtime_voice: str
@@ -194,14 +190,6 @@ class Settings:
             openai_api_key=require("OPENAI_API_KEY"),
             chatkit_workflow_id=env.get("CHATKIT_WORKFLOW_ID"),
             chatkit_api_base=env.get("CHATKIT_API_BASE", "https://api.openai.com"),
-            chatkit_agent_model=env.get(
-                "CHATKIT_AGENT_MODEL",
-                "gpt-5",
-            ),
-            chatkit_agent_instructions=env.get(
-                "CHATKIT_AGENT_INSTRUCTIONS",
-                "Assistant conversationnel",
-            ),
             chatkit_realtime_model=env.get(
                 "CHATKIT_REALTIME_MODEL",
                 "gpt-realtime",
