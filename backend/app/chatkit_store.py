@@ -5,7 +5,7 @@ import datetime as dt
 from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any, TypeVar
 
-from pydantic import TypeAdapter
+from pydantic import AnyUrl, TypeAdapter
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -48,6 +48,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         self._session_factory = session_factory
         self._attachment_adapter = TypeAdapter(Attachment)
         self._thread_item_adapter = TypeAdapter(ThreadItem)
+        self._url_adapter = TypeAdapter(AnyUrl)
         self._workflow_service = workflow_service or WorkflowService()
         resolved_base = default_attachment_base_url or DEFAULT_ATTACHMENT_BASE_URL
         self._default_attachment_base_url = resolved_base.rstrip("/")
@@ -95,6 +96,44 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             and metadata.get("slug") == expected.get("slug")
             and metadata.get("definition_id") == expected.get("definition_id")
         )
+
+    def _ensure_attachment_download_url(
+        self, attachment: Attachment, *, context: ChatKitRequestContext
+    ) -> Attachment:
+        if isinstance(attachment, FileAttachment):
+            expected = self._url_adapter.validate_python(
+                build_attachment_download_url(
+                    attachment.id,
+                    context=context,
+                    default_base_url=self._default_attachment_base_url,
+                )
+            )
+            current = attachment.upload_url
+            if current is None or str(current) != str(expected):
+                return attachment.model_copy(update={"upload_url": expected})
+        return attachment
+
+    def _ensure_item_download_urls(
+        self, item: ThreadItem, *, context: ChatKitRequestContext
+    ) -> ThreadItem:
+        attachments = getattr(item, "attachments", None)
+        if not attachments:
+            return item
+
+        updated: list[Attachment] = []
+        changed = False
+        for attachment in attachments:
+            ensured = self._ensure_attachment_download_url(
+                attachment, context=context
+            )
+            if ensured is not attachment:
+                changed = True
+            updated.append(ensured)
+
+        if not changed:
+            return item
+
+        return item.model_copy(update={"attachments": updated})
 
     def _normalize_thread_record(
         self,
@@ -259,7 +298,11 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 self._thread_item_adapter.validate_python(record.payload)
                 for record in sliced
             ]
-            return Page(data=items, has_more=has_more, after=next_after)
+            hydrated = [
+                self._ensure_item_download_urls(item, context=context)
+                for item in items
+            ]
+            return Page(data=hydrated, has_more=has_more, after=next_after)
 
         return await self._run(_load)
 
@@ -304,17 +347,9 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             if record is None:
                 raise NotFoundError(f"Pièce jointe {attachment_id} introuvable")
             attachment = self._attachment_adapter.validate_python(record.payload)
-            if isinstance(attachment, FileAttachment):
-                download_url = build_attachment_download_url(
-                    attachment.id,
-                    context=context,
-                    default_base_url=self._default_attachment_base_url,
-                )
-                if attachment.upload_url != download_url:
-                    attachment = attachment.model_copy(
-                        update={"upload_url": download_url}
-                    )
-            return attachment
+            return self._ensure_attachment_download_url(
+                attachment, context=context
+            )
 
         return await self._run(_load)
 
@@ -466,7 +501,8 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 raise NotFoundError(
                     f"Élément {item_id} introuvable dans le fil {thread_id}"
                 )
-            return self._thread_item_adapter.validate_python(record.payload)
+            item = self._thread_item_adapter.validate_python(record.payload)
+            return self._ensure_item_download_urls(item, context=context)
 
         return await self._run(_load)
 

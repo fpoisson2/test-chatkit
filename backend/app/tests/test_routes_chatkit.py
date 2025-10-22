@@ -48,8 +48,8 @@ routes_chatkit = import_module("backend.app.routes.chatkit")
 from backend.app.attachment_store import LocalAttachmentStore  # noqa: E402
 from backend.app.chatkit_server.context import ChatKitRequestContext  # noqa: E402
 from backend.app.chatkit_store import PostgresChatKitStore  # noqa: E402
-from backend.app.models import Base  # noqa: E402
-from sqlalchemy import create_engine  # noqa: E402
+from backend.app.models import Base, ChatAttachment, ChatThreadItem  # noqa: E402
+from sqlalchemy import create_engine, select  # noqa: E402
 from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 
@@ -473,6 +473,18 @@ def test_finalize_upload_exposes_download_url(
         )
         assert str(stored_attachment.upload_url) == expected_url
 
+        with session_factory() as session:
+            record = session.execute(
+                select(ChatAttachment).where(
+                    ChatAttachment.id == pending_attachment.id
+                )
+            ).scalar_one()
+            legacy_payload = dict(record.payload)
+            legacy_payload["upload_url"] = str(pending_attachment.upload_url)
+            record.payload = legacy_payload
+            session.add(record)
+            session.commit()
+
         loaded_attachment = await store.load_attachment(pending_attachment.id, context)
         assert isinstance(loaded_attachment, FileAttachment)
         assert str(loaded_attachment.upload_url) == expected_url
@@ -487,11 +499,30 @@ def test_finalize_upload_exposes_download_url(
         )
         await store.add_thread_item(thread.id, message, context)
 
+        with session_factory() as session:
+            item_record = session.execute(
+                select(ChatThreadItem).where(ChatThreadItem.id == message.id)
+            ).scalar_one()
+            payload = dict(item_record.payload)
+            attachments_payload = list(payload.get("attachments") or [])
+            if attachments_payload:
+                attachments_payload[0]["upload_url"] = str(
+                    pending_attachment.upload_url
+                )
+                payload["attachments"] = attachments_payload
+                item_record.payload = payload
+                session.add(item_record)
+                session.commit()
+
         page = await store.load_thread_items(thread.id, None, 10, "asc", context)
         assert page.data
         retrieved = page.data[0]
         assert retrieved.attachments
         assert str(retrieved.attachments[0].upload_url) == expected_url
+
+        single = await store.load_item(thread.id, message.id, context)
+        assert getattr(single, "attachments", None)
+        assert str(single.attachments[0].upload_url) == expected_url
 
         monkeypatch.setattr(
             routes_chatkit,

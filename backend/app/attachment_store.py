@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urljoin
 
 from fastapi import UploadFile
+from pydantic import AnyUrl, TypeAdapter
 
 from chatkit.store import AttachmentStore, NotFoundError
 from chatkit.types import Attachment, AttachmentCreateParams, FileAttachment
@@ -23,6 +24,8 @@ ATTACHMENT_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 DEFAULT_MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024
 DEFAULT_ATTACHMENT_BASE_URL = "http://localhost:8000"
 _CHUNK_SIZE = 1024 * 1024
+
+_ANY_URL_ADAPTER = TypeAdapter(AnyUrl)
 
 
 class AttachmentUploadError(Exception):
@@ -171,11 +174,8 @@ class LocalAttachmentStore(AttachmentStore[ChatKitRequestContext]):
             context=context,
             default_base_url=self._default_base_url,
         )
-        stored = FileAttachment(
-            id=attachment.id,
-            name=attachment.name,
-            mime_type=attachment.mime_type,
-            upload_url=download_url,
+        stored = attachment.model_copy(
+            update={"upload_url": _ANY_URL_ADAPTER.validate_python(download_url)}
         )
         await self._store.save_attachment(stored, context)
         return stored
