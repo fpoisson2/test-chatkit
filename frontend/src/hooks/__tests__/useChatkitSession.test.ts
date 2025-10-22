@@ -1,13 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
 
 import { useChatkitSession } from "../useChatkitSession";
-
-declare global {
-  // eslint-disable-next-line no-var
-  var fetch: ReturnType<typeof vi.fn> | undefined;
-}
-
-const originalFetch = global.fetch;
+import * as backendApi from "../../utils/backend";
+import { ApiError } from "../../utils/backend";
 
 const {
   mockReadStoredChatKitSession,
@@ -27,6 +22,8 @@ vi.mock("../../utils/chatkitSession", () => ({
   clearStoredChatKitSecret: mockClearStoredChatKitSecret,
   normalizeSessionExpiration: mockNormalizeSessionExpiration,
 }));
+
+const fetchChatkitSessionSpy = vi.spyOn(backendApi, "fetchChatkitSession");
 
 const setupHook = (overrides: Partial<Parameters<typeof useChatkitSession>[0]> = {}) => {
   const disableHostedFlow = vi.fn();
@@ -49,12 +46,11 @@ describe("useChatkitSession", () => {
     mockPersistChatKitSecret.mockReset();
     mockClearStoredChatKitSecret.mockReset();
     mockNormalizeSessionExpiration.mockReset();
-    global.fetch = vi.fn();
+    fetchChatkitSessionSpy.mockReset();
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-    global.fetch = originalFetch;
+  afterAll(() => {
+    fetchChatkitSessionSpy.mockRestore();
   });
 
   it("retourne le secret stocké lorsqu'il est valide", async () => {
@@ -71,7 +67,7 @@ describe("useChatkitSession", () => {
     });
 
     expect(secret).toBe("stored-secret");
-    expect(global.fetch).not.toHaveBeenCalled();
+    expect(fetchChatkitSessionSpy).not.toHaveBeenCalled();
     expect(mockPersistChatKitSecret).not.toHaveBeenCalled();
     expect(result.current.isLoading).toBe(false);
 
@@ -90,9 +86,9 @@ describe("useChatkitSession", () => {
     mockReadStoredChatKitSession.mockReturnValue({ session: null, shouldRefresh: false });
     mockNormalizeSessionExpiration.mockReturnValue(1_704_067_200_000);
 
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: async () => ({ client_secret: "fresh-secret", expires_at: "2024-01-01T00:00:00Z" }),
+    fetchChatkitSessionSpy.mockResolvedValue({
+      client_secret: "fresh-secret",
+      expires_at: "2024-01-01T00:00:00Z",
     });
 
     const { result } = setupHook();
@@ -103,7 +99,9 @@ describe("useChatkitSession", () => {
     });
 
     expect(secret).toBe("fresh-secret");
-    expect(global.fetch).toHaveBeenCalledWith("/api/chatkit/session", expect.any(Object));
+    expect(fetchChatkitSessionSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ user: "user@example.com", token: null }),
+    );
     expect(mockNormalizeSessionExpiration).toHaveBeenCalledWith("2024-01-01T00:00:00Z");
     expect(mockPersistChatKitSecret).toHaveBeenCalledWith(
       "user@example.com",
@@ -116,11 +114,12 @@ describe("useChatkitSession", () => {
   it("désactive le flux hébergé lorsque CHATKIT_WORKFLOW_ID est manquant", async () => {
     mockReadStoredChatKitSession.mockReturnValue({ session: null, shouldRefresh: false });
 
-    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: false,
-      status: 500,
-      text: async () => JSON.stringify({ detail: { error: "CHATKIT_WORKFLOW_ID missing" } }),
-    });
+    fetchChatkitSessionSpy.mockRejectedValue(
+      new ApiError("CHATKIT_WORKFLOW_ID missing", {
+        status: 500,
+        detail: { detail: { error: "CHATKIT_WORKFLOW_ID missing" } },
+      }),
+    );
 
     const { result, disableHostedFlow } = setupHook();
 
