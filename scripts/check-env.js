@@ -73,6 +73,57 @@ function checkUrl(variable, value, { requiredPath, defaultInfo } = {}) {
   }
 }
 
+function sanitizeEnvName(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim();
+  return trimmed === "" ? "" : trimmed;
+}
+
+function getEnvValue(env, key) {
+  if (!key) {
+    return "";
+  }
+  const value = env[key];
+  if (typeof value !== "string") {
+    return "";
+  }
+  const trimmed = value.trim();
+  return trimmed === "" ? "" : trimmed;
+}
+
+function validateOpenAIKey(variable, value) {
+  if (!value) {
+    logStatus(
+      false,
+      `${variable} manquante.`,
+      `Renseignez la clé API fournie dans la console OpenAI (accès ChatKit requis) via ${variable}.`,
+    );
+    return;
+  }
+
+  if (!value.startsWith("sk-") && !value.startsWith("sk-proj-")) {
+    logStatus(
+      false,
+      `${variable} ne ressemble pas à une clé valide.`,
+      "Les clés commencent généralement par sk- ou sk-proj-.",
+    );
+    return;
+  }
+
+  if (value.includes("your-openai-api-key")) {
+    logStatus(
+      false,
+      `${variable} utilise encore la valeur d'exemple.`,
+      "Remplacez-la par votre véritable clé API.",
+    );
+    return;
+  }
+
+  logStatus(true, `${variable} semble correctement renseignée.`);
+}
+
 function main() {
   console.log("🔍 Diagnostic du fichier .env\n");
 
@@ -85,15 +136,111 @@ function main() {
   const content = fs.readFileSync(envPath, "utf8");
   const env = parseEnv(content);
 
-  const apiKey = env.OPENAI_API_KEY;
-  if (!apiKey) {
-    logStatus(false, "OPENAI_API_KEY manquante.", "Renseignez la clé API fournie dans la console OpenAI (accès ChatKit requis).");
-  } else if (!apiKey.startsWith("sk-")) {
-    logStatus(false, "OPENAI_API_KEY ne ressemble pas à une clé valide.", "Les clés commencent généralement par sk- ou sk-proj-.");
-  } else if (apiKey.includes("your-openai-api-key")) {
-    logStatus(false, "OPENAI_API_KEY utilise encore la valeur d'exemple.", "Remplacez-la par votre véritable clé API.");
+  const provider = sanitizeEnvName(env.MODEL_PROVIDER) || "openai";
+  const normalizedProvider = provider.toLowerCase();
+  logStatus(true, `MODEL_PROVIDER → ${provider}`);
+
+  const explicitModelApiBase = sanitizeEnvName(env.MODEL_API_BASE);
+  const explicitModelApiKeyEnv = sanitizeEnvName(env.MODEL_API_KEY_ENV);
+  const keyEnv =
+    explicitModelApiKeyEnv
+      || (normalizedProvider === "openai"
+        ? "OPENAI_API_KEY"
+        : normalizedProvider === "litellm"
+          ? "LITELLM_API_KEY"
+          : "");
+
+  if (normalizedProvider === "openai") {
+    if (explicitModelApiBase) {
+      logStatus(true, `MODEL_API_BASE → ${explicitModelApiBase}`);
+    } else if (env.CHATKIT_API_BASE) {
+      const chatkitBase = sanitizeEnvName(env.CHATKIT_API_BASE);
+      if (chatkitBase) {
+        logStatus(true, `CHATKIT_API_BASE → ${chatkitBase}`);
+      }
+    }
+
+    if (explicitModelApiKeyEnv) {
+      logStatus(true, `MODEL_API_KEY_ENV → ${explicitModelApiKeyEnv}`);
+    }
+
+    const keyValue = getEnvValue(env, keyEnv);
+    validateOpenAIKey(keyEnv, keyValue);
+  } else if (normalizedProvider === "litellm") {
+    if (explicitModelApiBase) {
+      logStatus(true, `MODEL_API_BASE → ${explicitModelApiBase}`);
+    } else {
+      const litellmBase = sanitizeEnvName(env.LITELLM_API_BASE);
+      if (litellmBase) {
+        logStatus(true, `LITELLM_API_BASE → ${litellmBase}`);
+      } else {
+        logStatus(
+          false,
+          "LITELLM_API_BASE manquante.",
+          "Définissez LITELLM_API_BASE (ex. http://localhost:4000) lorsque MODEL_PROVIDER=litellm.",
+        );
+      }
+    }
+
+    if (explicitModelApiKeyEnv) {
+      logStatus(true, `MODEL_API_KEY_ENV → ${explicitModelApiKeyEnv}`);
+    }
+
+    if (!keyEnv) {
+      logStatus(
+        false,
+        "MODEL_API_KEY_ENV non défini.",
+        "Précisez la variable contenant la clé de votre proxy LiteLLM (ex. MODEL_API_KEY_ENV=LITELLM_API_KEY).",
+      );
+    } else {
+      const proxyKey = getEnvValue(env, keyEnv);
+      if (!proxyKey) {
+        logStatus(
+          false,
+          `${keyEnv} manquante.`,
+          "Ajoutez la clé API partagée utilisée pour sécuriser votre proxy LiteLLM.",
+        );
+      } else {
+        logStatus(true, `${keyEnv} détectée.`);
+      }
+    }
+
+    console.log(
+      "   → Pensez à exposer ANTHROPIC_API_KEY, GEMINI_API_KEY, MISTRAL_API_KEY, etc. selon les modèles déclarés côté LiteLLM.",
+    );
   } else {
-    logStatus(true, "OPENAI_API_KEY semble correctement renseignée.");
+    if (explicitModelApiBase) {
+      logStatus(true, `MODEL_API_BASE → ${explicitModelApiBase}`);
+    } else {
+      logStatus(
+        false,
+        "MODEL_API_BASE non défini.",
+        "Indiquez l'URL de base de votre fournisseur compatible OpenAI via MODEL_API_BASE.",
+      );
+    }
+
+    if (explicitModelApiKeyEnv) {
+      logStatus(true, `MODEL_API_KEY_ENV → ${explicitModelApiKeyEnv}`);
+    }
+
+    if (!keyEnv) {
+      logStatus(
+        false,
+        "MODEL_API_KEY_ENV non défini.",
+        "Renseignez MODEL_API_KEY_ENV pour indiquer la variable qui contient votre clé API fournisseur.",
+      );
+    } else {
+      const providerKey = getEnvValue(env, keyEnv);
+      if (!providerKey) {
+        logStatus(
+          false,
+          `${keyEnv} manquante.`,
+          `Ajoutez la clé API référencée par MODEL_API_KEY_ENV (${keyEnv}).`,
+        );
+      } else {
+        logStatus(true, `${keyEnv} détectée.`);
+      }
+    }
   }
 
   const origins = env.ALLOWED_ORIGINS;

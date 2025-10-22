@@ -1,5 +1,5 @@
 # Core dependencies
-openai-agents
+openai-agents[litellm]
 fastapi
 openai
 openai-chatkit @ file:../chatkit-python

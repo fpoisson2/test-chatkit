@@ -607,6 +607,8 @@ def _run_ad_hoc_migrations() -> None:
                 ):
                     # Chercher une contrainte qui inclut user_id,
                     # workflow_id et version_id
+                    # Chercher une contrainte qui inclut
+                    # user_id, workflow_id, version_id
                     if {"user_id", "workflow_id", "version_id"}.issubset(
                         set(constraint.get("column_names", []))
                     ):
@@ -635,8 +637,8 @@ def _run_ad_hoc_migrations() -> None:
                     connection.execute(
                         text(
                             "ALTER TABLE workflow_viewports "
-                            "ADD CONSTRAINT workflow_viewports_user_workflow_"
-                            "version_device "
+                            "ADD CONSTRAINT "
+                            "workflow_viewports_user_workflow_version_device "
                             "UNIQUE (user_id, workflow_id, version_id, device_type)"
                         )
                     )
@@ -644,16 +646,15 @@ def _run_ad_hoc_migrations() -> None:
                     connection.execute(
                         text(
                             "CREATE UNIQUE INDEX IF NOT EXISTS "
-                            "workflow_viewports_user_workflow_"
-                            "version_device "
-                            "ON workflow_viewports (user_id, workflow_id, version_id, "
-                            "device_type)"
+                            "workflow_viewports_user_workflow_version_device "
+                            "ON workflow_viewports "
+                            "(user_id, workflow_id, version_id, device_type)"
                         )
                     )
 
                 logger.info(
                     "Migration de workflow_viewports terminée : "
-                    "device_type ajouté avec une nouvelle contrainte unique"
+                    "device_type ajouté avec nouvelle contrainte unique"
                 )
 
 

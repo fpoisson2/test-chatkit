@@ -158,6 +158,7 @@ const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 const DESKTOP_MIN_VIEWPORT_ZOOM = 0.1;
 const MOBILE_MIN_VIEWPORT_ZOOM = 0.05;
 const DESKTOP_WORKSPACE_HORIZONTAL_PADDING = "1.5rem";
+const HISTORY_LIMIT = 50;
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
@@ -173,6 +174,8 @@ type WorkflowViewportRecord = {
   zoom: number;
 };
 
+const isValidNodeKind = (value: string): value is NodeKind =>
+  Object.prototype.hasOwnProperty.call(NODE_COLORS, value);
 const isAgentKind = (kind: NodeKind): boolean => kind === "agent" || kind === "voice_agent";
 
 type WorkflowViewportListResponse = {
@@ -654,6 +657,18 @@ const WorkflowBuilderPage = () => {
   });
   const nodesRef = useRef<FlowNode[]>([]);
   const edgesRef = useRef<FlowEdge[]>([]);
+  const historyRef = useRef<{
+    past: string[];
+    future: string[];
+    last: string | null;
+    isRestoring: boolean;
+  }>({ past: [], future: [], last: null, isRestoring: false });
+  const resetHistory = useCallback((snapshot: string | null) => {
+    historyRef.current.past = [];
+    historyRef.current.future = [];
+    historyRef.current.last = snapshot;
+    historyRef.current.isRestoring = false;
+  }, []);
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
   const blockLibraryId = "workflow-builder-block-library";
@@ -1421,6 +1436,7 @@ const WorkflowBuilderPage = () => {
           isHydratingRef.current = true;
           lastSavedSnapshotRef.current = nextSnapshot;
           setHasPendingChanges(false);
+          resetHistory(nextSnapshot);
           setNodes(flowNodes);
           setEdges(flowEdges);
           // Reset isHydrating after a short delay to allow viewport restoration
@@ -1503,6 +1519,7 @@ const WorkflowBuilderPage = () => {
       applySelection,
       deviceType,
       persistViewportMemory,
+      resetHistory,
       restoreViewport,
       setEdges,
       setHasPendingChanges,
@@ -1594,7 +1611,9 @@ const WorkflowBuilderPage = () => {
             setTimeout(() => {
               isHydratingRef.current = false;
             }, 100);
-            lastSavedSnapshotRef.current = JSON.stringify(buildGraphPayloadFrom([], []));
+            const emptySnapshot = JSON.stringify(buildGraphPayloadFrom([], []));
+            lastSavedSnapshotRef.current = emptySnapshot;
+            resetHistory(emptySnapshot);
             setHasPendingChanges(false);
             if (!background) {
               setLoading(false);
@@ -1667,6 +1686,7 @@ const WorkflowBuilderPage = () => {
       deviceType,
       loadVersionDetail,
       persistViewportMemory,
+      resetHistory,
       restoreViewport,
       selectedWorkflowId,
       selectedVersionId,
@@ -1711,7 +1731,9 @@ const WorkflowBuilderPage = () => {
             setTimeout(() => {
               isHydratingRef.current = false;
             }, 100);
-            lastSavedSnapshotRef.current = JSON.stringify(buildGraphPayloadFrom([], []));
+            const emptySnapshot = JSON.stringify(buildGraphPayloadFrom([], []));
+            lastSavedSnapshotRef.current = emptySnapshot;
+            resetHistory(emptySnapshot);
             setHasPendingChanges(false);
             setLoading(false);
             viewportKeyRef.current = null;
@@ -1773,6 +1795,7 @@ const WorkflowBuilderPage = () => {
       authHeader,
       loadVersions,
       persistViewportMemory,
+      resetHistory,
       restoreViewport,
       selectedWorkflowId,
       setEdges,
@@ -3725,6 +3748,130 @@ const WorkflowBuilderPage = () => {
     t,
   ]);
 
+  const restoreGraphFromSnapshot = useCallback(
+    (snapshot: string): boolean => {
+      let parsed;
+      try {
+        parsed = parseWorkflowImport(snapshot);
+      } catch (error) {
+        console.error("Failed to parse workflow history snapshot", error);
+        return false;
+      }
+
+      const flowNodes: FlowNode[] = parsed.graph.nodes.reduce<FlowNode[]>((accumulator, node, index) => {
+        if (!isValidNodeKind(node.kind)) {
+          return accumulator;
+        }
+        const kind = node.kind;
+        const positionFromMetadata = extractPosition(node.metadata);
+        const position = positionFromMetadata ?? { x: 150 * index, y: 120 * index };
+        const displayName = node.display_name ?? humanizeSlug(node.slug);
+        const agentKey = kind === "agent" ? node.agent_key ?? null : null;
+        const parameters =
+          kind === "agent"
+            ? resolveAgentParameters(agentKey, node.parameters)
+            : kind === "state"
+              ? resolveStateParameters(node.slug, node.parameters)
+              : kind === "json_vector_store"
+                ? setVectorStoreNodeConfig({}, getVectorStoreNodeConfig(node.parameters))
+                : kind === "widget"
+                  ? resolveWidgetNodeParameters(node.parameters)
+                  : resolveAgentParameters(null, node.parameters);
+        accumulator.push({
+          id: node.slug,
+          position,
+          data: {
+            slug: node.slug,
+            kind,
+            displayName,
+            label: displayName,
+            isEnabled: node.is_enabled ?? true,
+            agentKey,
+            parameters,
+            parametersText: stringifyAgentParameters(parameters),
+            parametersError: null,
+            metadata: node.metadata ?? {},
+          },
+          draggable: true,
+          selected: false,
+          style: buildNodeStyle(kind, { isSelected: false }),
+        });
+        return accumulator;
+      }, []);
+
+      const flowEdges = parsed.graph.edges.map<FlowEdge>((edge, index) => ({
+        id: String(edge.metadata?.id ?? `${edge.source}-${edge.target}-${index}`),
+        source: edge.source,
+        target: edge.target,
+        label: edge.metadata?.label ? String(edge.metadata.label) : edge.condition ?? "",
+        data: {
+          condition: edge.condition ?? null,
+          metadata: edge.metadata ?? {},
+        },
+        markerEnd: defaultEdgeOptions.markerEnd
+          ? { ...defaultEdgeOptions.markerEnd }
+          : { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
+        style: buildEdgeStyle({ isSelected: false }),
+      }));
+
+      historyRef.current.isRestoring = true;
+      setNodes(flowNodes);
+      setEdges(flowEdges);
+      selectedNodeIdsRef.current = new Set();
+      selectedEdgeIdsRef.current = new Set();
+      setSelectedNodeId(null);
+      setSelectedEdgeId(null);
+      selectedNodeIdRef.current = null;
+      selectedEdgeIdRef.current = null;
+      return true;
+    },
+    [setEdges, setNodes, setSelectedEdgeId, setSelectedNodeId],
+  );
+
+  const undoHistory = useCallback((): boolean => {
+    const history = historyRef.current;
+    if (history.past.length === 0 || !history.last) {
+      return false;
+    }
+    const previousSnapshot = history.past[history.past.length - 1];
+    if (!previousSnapshot) {
+      return false;
+    }
+    const currentSnapshot = history.last;
+    const restored = restoreGraphFromSnapshot(previousSnapshot);
+    if (!restored) {
+      return false;
+    }
+    history.past = history.past.slice(0, -1);
+    if (currentSnapshot) {
+      history.future = [currentSnapshot, ...history.future].slice(0, HISTORY_LIMIT);
+    }
+    history.last = previousSnapshot;
+    return true;
+  }, [restoreGraphFromSnapshot]);
+
+  const redoHistory = useCallback((): boolean => {
+    const history = historyRef.current;
+    if (history.future.length === 0) {
+      return false;
+    }
+    const [nextSnapshot, ...remaining] = history.future;
+    if (!nextSnapshot) {
+      return false;
+    }
+    const currentSnapshot = history.last;
+    const restored = restoreGraphFromSnapshot(nextSnapshot);
+    if (!restored) {
+      return false;
+    }
+    history.future = remaining;
+    if (currentSnapshot) {
+      history.past = [...history.past, currentSnapshot].slice(-HISTORY_LIMIT);
+    }
+    history.last = nextSnapshot;
+    return true;
+  }, [restoreGraphFromSnapshot]);
+
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -3777,6 +3924,30 @@ const WorkflowBuilderPage = () => {
 
       if (isEditableTarget(event.target) && !allowDueToCopySequence) {
         if (!isCtrlOrMeta) {
+          resetCopySequence();
+        }
+        return;
+      }
+
+      if (isCtrlOrMeta && key === "z") {
+        if (workflowBusy) {
+          return;
+        }
+        const performed = event.shiftKey ? redoHistory() : undoHistory();
+        if (performed) {
+          event.preventDefault();
+          resetCopySequence();
+        }
+        return;
+      }
+
+      if (isCtrlOrMeta && key === "y") {
+        if (workflowBusy) {
+          return;
+        }
+        const performed = redoHistory();
+        if (performed) {
+          event.preventDefault();
           resetCopySequence();
         }
         return;
@@ -3844,8 +4015,10 @@ const WorkflowBuilderPage = () => {
     isImporting,
     loading,
     pasteClipboardGraph,
+    redoHistory,
     removeElements,
     resetCopySequence,
+    undoHistory,
   ]);
 
   const handleSelectWorkflow = useCallback(
@@ -4016,6 +4189,37 @@ const WorkflowBuilderPage = () => {
   );
 
   const graphSnapshot = useMemo(() => JSON.stringify(buildGraphPayload()), [buildGraphPayload]);
+
+  useEffect(() => {
+    const history = historyRef.current;
+    if (!selectedWorkflowId) {
+      history.past = [];
+      history.future = [];
+      history.last = graphSnapshot;
+      history.isRestoring = false;
+      return;
+    }
+    if (isHydratingRef.current) {
+      history.past = [];
+      history.future = [];
+      history.last = graphSnapshot;
+      return;
+    }
+    if (history.isRestoring) {
+      history.isRestoring = false;
+      history.last = graphSnapshot;
+      return;
+    }
+    if (!history.last) {
+      history.last = graphSnapshot;
+      return;
+    }
+    if (history.last !== graphSnapshot) {
+      history.past = [...history.past, history.last].slice(-HISTORY_LIMIT);
+      history.future = [];
+      history.last = graphSnapshot;
+    }
+  }, [graphSnapshot, selectedWorkflowId]);
 
   const conditionGraphError = useMemo(() => {
     const enabledNodes = new Map(
