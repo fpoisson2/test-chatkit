@@ -5064,6 +5064,9 @@ const WorkflowBuilderPage = () => {
                     }
                   }}
                   onMoveEnd={(_, viewport) => {
+                    if (isHydratingRef.current) {
+                      return;
+                    }
                     viewportRef.current = viewport;
                     hasUserViewportChangeRef.current = true;
                     const key = viewportKeyRef.current;
