@@ -1158,13 +1158,11 @@ const WorkflowBuilderPage = () => {
                 reactFlowInstanceRef.current?.getViewport() ?? viewportRef.current;
               if (currentViewport) {
                 viewportMemoryRef.current.set(viewportKey, { ...currentViewport });
-                persistViewportMemory();
                 viewportRef.current = { ...currentViewport };
               }
             }
             hasUserViewportChangeRef.current = true;
             pendingViewportRestoreRef.current = true;
-            restoreViewport();
           } else {
             viewportRef.current = restoredViewport;
             hasUserViewportChangeRef.current = restoredViewport != null;
