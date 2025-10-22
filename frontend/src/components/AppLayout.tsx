@@ -294,14 +294,14 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
   const handleProfileOpenSettings = useCallback(() => {
     setIsProfileMenuOpen(false);
+    handleOpenSettings();
+  }, [handleOpenSettings]);
 
   const handleGoToDocs = useCallback(() => {
     if (!isDesktopLayout) {
       closeSidebar();
     }
 
-    handleOpenSettings("preferences");
-  }, [closeSidebar, handleOpenSettings, isDesktopLayout]);
     navigate("/docs");
   }, [closeSidebar, isDesktopLayout, navigate]);
 
