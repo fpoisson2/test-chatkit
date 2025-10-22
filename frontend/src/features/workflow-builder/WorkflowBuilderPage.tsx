@@ -706,7 +706,6 @@ const WorkflowBuilderPage = () => {
     setBlockLibraryOpen(!isMobileLayout);
   }, [isMobileLayout]);
 
-  useEffect(() => {
   // Ferme les actions mobiles quand on n’est pas en layout mobile
   useEffect(() => {
     if (!isMobileLayout) {
