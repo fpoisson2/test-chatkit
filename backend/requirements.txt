@@ -14,10 +14,6 @@ email-validator
 # Vector store - uses OpenAI Embeddings API (no heavy ML dependencies needed)
 pgvector
 
-# Alternative: Local embeddings (heavy - ~500MB with PyTorch)
-# Uncomment if you prefer local embeddings instead of OpenAI API
-# sentence-transformers
-
 # Outils de qualité de code
 black>=24.4.0
 isort>=5.13.0
