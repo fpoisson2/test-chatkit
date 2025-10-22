@@ -84,9 +84,12 @@ class Settings:
 
     Attributes:
         allowed_origins: Liste d'origines autorisées pour le CORS.
-        openai_api_key: Jeton API OpenAI utilisé pour contacter ChatKit.
+        model_provider: Fournisseur de modèles configuré ("openai", "litellm", ...).
+        model_api_base: URL de base utilisée pour contacter l'API du fournisseur.
+        model_api_key_env: Nom de la variable d'environnement contenant la clé API.
+        model_api_key: Valeur de la clé API active pour le fournisseur choisi.
+        openai_api_key: Jeton API OpenAI (présent uniquement si défini dans l'env).
         chatkit_workflow_id: Identifiant du workflow hébergé (optionnel).
-        chatkit_api_base: URL de base de l'API OpenAI/ChatKit.
         backend_public_base_url: URL publique du backend utilisée pour
             construire les liens absolus.
         backend_public_base_url_from_env: Indique si l'URL publique provient
@@ -110,9 +113,12 @@ class Settings:
     """
 
     allowed_origins: list[str]
-    openai_api_key: str
+    model_provider: str
+    model_api_base: str
+    model_api_key_env: str
+    model_api_key: str
+    openai_api_key: str | None
     chatkit_workflow_id: str | None
-    chatkit_api_base: str
     chatkit_realtime_model: str
     chatkit_realtime_instructions: str
     chatkit_realtime_voice: str
@@ -128,6 +134,12 @@ class Settings:
     agent_image_token_ttl_seconds: int
     workflow_defaults: WorkflowDefaults
     docs_seed_documents: tuple[dict[str, Any], ...]
+
+    @property
+    def chatkit_api_base(self) -> str:
+        """Alias conservé pour compatibilité rétroactive."""
+
+        return self.model_api_base
 
     @staticmethod
     def _load_workflow_defaults(path_value: str | None) -> WorkflowDefaults:
@@ -226,8 +238,10 @@ class Settings:
     def from_env(cls, env: Mapping[str, str]) -> Settings:
         def require(name: str, *, message: str | None = None) -> str:
             value = env.get(name)
-            if value:
-                return value
+            if value is not None:
+                stripped = value.strip()
+                if stripped:
+                    return stripped
             error = message or f"{name} environment variable is required"
             if name == "OPENAI_API_KEY":
                 logger.error("OPENAI_API_KEY manquante : %s", error)
@@ -236,6 +250,72 @@ class Settings:
                     "Variable d'environnement manquante (%s) : %s", name, error
                 )
             raise RuntimeError(error)
+
+        def get_stripped(name: str) -> str | None:
+            value = env.get(name)
+            if value is None:
+                return None
+            stripped = value.strip()
+            return stripped or None
+
+        model_provider = (get_stripped("MODEL_PROVIDER") or "openai").lower()
+
+        explicit_model_api_base = get_stripped("MODEL_API_BASE")
+        if explicit_model_api_base:
+            model_api_base = explicit_model_api_base.rstrip("/")
+        elif model_provider == "openai":
+            default_base = get_stripped("CHATKIT_API_BASE") or "https://api.openai.com"
+            model_api_base = default_base.rstrip("/")
+        elif model_provider == "litellm":
+            litellm_base = get_stripped("LITELLM_API_BASE")
+            if not litellm_base:
+                raise RuntimeError(
+                    "LITELLM_API_BASE environment variable is required "
+                    "when MODEL_PROVIDER=litellm"
+                )
+            model_api_base = litellm_base.rstrip("/")
+        else:
+            raise RuntimeError(
+                "MODEL_API_BASE environment variable is required when MODEL_PROVIDER="
+                f"={model_provider}"
+            )
+
+        if not model_api_base:
+            raise RuntimeError(
+                "Invalid MODEL_API_BASE configuration: the resolved URL cannot be empty"
+            )
+
+        explicit_model_api_key_env = get_stripped("MODEL_API_KEY_ENV")
+        if explicit_model_api_key_env:
+            model_api_key_env = explicit_model_api_key_env
+        elif model_provider == "openai":
+            model_api_key_env = "OPENAI_API_KEY"
+        elif model_provider == "litellm":
+            model_api_key_env = "LITELLM_API_KEY"
+        else:
+            raise RuntimeError(
+                "MODEL_API_KEY_ENV environment variable is required when "
+                f"MODEL_PROVIDER={model_provider}"
+            )
+
+        key_value = get_stripped(model_api_key_env)
+        if key_value is None:
+            if model_provider == "openai" and model_api_key_env == "OPENAI_API_KEY":
+                model_api_key = require("OPENAI_API_KEY")
+            else:
+                model_api_key = require(
+                    model_api_key_env,
+                    message=(
+                        f"{model_api_key_env} environment variable is required when "
+                        f"MODEL_PROVIDER={model_provider}"
+                    ),
+                )
+        else:
+            model_api_key = key_value
+
+        openai_api_key_value = get_stripped("OPENAI_API_KEY")
+        if model_provider == "openai" and model_api_key_env == "OPENAI_API_KEY":
+            openai_api_key_value = model_api_key
 
         raw_backend_public_base_url = env.get("BACKEND_PUBLIC_BASE_URL")
         sanitized_public_base_url = (
@@ -249,9 +329,12 @@ class Settings:
 
         return cls(
             allowed_origins=cls._parse_allowed_origins(env.get("ALLOWED_ORIGINS")),
-            openai_api_key=require("OPENAI_API_KEY"),
+            model_provider=model_provider,
+            model_api_base=model_api_base,
+            model_api_key_env=model_api_key_env,
+            model_api_key=model_api_key,
+            openai_api_key=openai_api_key_value,
             chatkit_workflow_id=env.get("CHATKIT_WORKFLOW_ID"),
-            chatkit_api_base=env.get("CHATKIT_API_BASE", "https://api.openai.com"),
             chatkit_realtime_model=env.get(
                 "CHATKIT_REALTIME_MODEL",
                 "gpt-realtime",

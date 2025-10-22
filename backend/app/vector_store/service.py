@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import math
-import os
 import re
 from collections import Counter
 from collections.abc import Iterable, Sequence
@@ -16,6 +15,7 @@ from openai import OpenAI
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..config import get_settings
 from ..models import EMBEDDING_DIMENSION, JsonChunk, JsonDocument, JsonVectorStore
 
 logger = logging.getLogger("chatkit.vector_store")
@@ -34,13 +34,22 @@ MAX_EMBEDDING_TEXT_LENGTH = 20_000
 
 def _get_openai_client() -> OpenAI:
     """Retourne le client OpenAI configuré."""
-    api_key = os.environ.get("OPENAI_API_KEY")
+
+    settings = get_settings()
+    api_key = settings.model_api_key
     if not api_key:
         raise RuntimeError(
-            "La variable d'environnement OPENAI_API_KEY est requise pour générer "
-            "des embeddings."
+            "Une clé API modèle est requise pour générer des embeddings. "
+            f"Définissez {settings.model_api_key_env}."
         )
-    return OpenAI(api_key=api_key)
+
+    base_url = settings.model_api_base
+    if base_url.endswith("/v1"):
+        client_base_url = base_url
+    else:
+        client_base_url = f"{base_url}/v1"
+
+    return OpenAI(api_key=api_key, base_url=client_base_url)
 
 
 def _format_value(value: Any) -> str:

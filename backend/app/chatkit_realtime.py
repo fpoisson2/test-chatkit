@@ -39,7 +39,7 @@ async def create_realtime_voice_session(
         )
 
     headers = {
-        "Authorization": f"Bearer {settings.openai_api_key}",
+        "Authorization": f"Bearer {settings.model_api_key}",
         "Content-Type": "application/json",
         "OpenAI-Beta": "realtime=v1",
     }
@@ -47,7 +47,7 @@ async def create_realtime_voice_session(
     timeout = httpx.Timeout(30.0, connect=10.0, read=None)
     try:
         async with httpx.AsyncClient(
-            base_url=settings.chatkit_api_base, timeout=timeout
+            base_url=settings.model_api_base, timeout=timeout
         ) as client:
             response = await client.post(
                 "/v1/realtime/client_secrets",
