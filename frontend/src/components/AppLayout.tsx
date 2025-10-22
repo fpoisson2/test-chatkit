@@ -32,8 +32,7 @@ type ApplicationKey =
   | "voice"
   | "workflows"
   | "vector-stores"
-  | "widgets"
-  | "admin";
+  | "widgets";
 
 type ApplicationDescriptor = {
   key: ApplicationKey;
@@ -63,7 +62,6 @@ const APPLICATIONS: ApplicationDescriptor[] = [
     path: "/widgets",
     requiresAdmin: true,
   },
-  { key: "admin", labelKey: "app.sidebar.applications.admin", path: "/admin", requiresAdmin: true },
 ];
 
 const buildNavigationItems = ({
