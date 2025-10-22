@@ -146,27 +146,42 @@ import styles from "./WorkflowBuilderPage.module.css";
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 const DESKTOP_MIN_VIEWPORT_ZOOM = 0.1;
 const MOBILE_MIN_VIEWPORT_ZOOM = 0.05;
-const VIEWPORT_STORAGE_KEY = "workflowBuilder:viewportMemory";
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
-type StoredViewport = Pick<Viewport, "x" | "y" | "zoom">;
+type WorkflowViewportRecord = {
+  workflow_id: number;
+  version_id: number | null;
+  x: number;
+  y: number;
+  zoom: number;
+};
 
-const isStoredViewport = (value: unknown): value is StoredViewport => {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const candidate = value as Record<string, unknown>;
-  return (
-    isFiniteNumber(candidate.x) &&
-    isFiniteNumber(candidate.y) &&
-    isFiniteNumber(candidate.zoom)
-  );
+type WorkflowViewportListResponse = {
+  viewports: WorkflowViewportRecord[];
 };
 
 const viewportKeyFor = (workflowId: number | null, versionId: number | null) =>
   workflowId != null ? `${workflowId}:${versionId ?? "latest"}` : null;
+
+const parseViewportKey = (
+  key: string,
+): { workflowId: number; versionId: number | null } | null => {
+  const [workflowPart, versionPart] = key.split(":");
+  const workflowId = Number.parseInt(workflowPart ?? "", 10);
+  if (!Number.isFinite(workflowId)) {
+    return null;
+  }
+  if (!versionPart || versionPart === "latest") {
+    return { workflowId, versionId: null };
+  }
+  const versionId = Number.parseInt(versionPart, 10);
+  if (!Number.isFinite(versionId)) {
+    return null;
+  }
+  return { workflowId, versionId };
+};
 
 const versionSummaryFromResponse = (
   definition: WorkflowVersionResponse,
@@ -323,58 +338,150 @@ const WorkflowBuilderPage = () => {
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
 
   const persistViewportMemory = useCallback(() => {
-    if (typeof window === "undefined") {
+    if (!token) {
       return;
     }
-    try {
-      const entries = Array.from(viewportMemoryRef.current.entries()).reduce<
-        Array<[string, StoredViewport]>
-      >((accumulator, [key, viewport]) => {
-        if (
-          isFiniteNumber(viewport.x) &&
-          isFiniteNumber(viewport.y) &&
-          isFiniteNumber(viewport.zoom)
-        ) {
-          accumulator.push([key, { x: viewport.x, y: viewport.y, zoom: viewport.zoom }]);
-        }
+    const payload = Array.from(viewportMemoryRef.current.entries()).reduce<
+      WorkflowViewportRecord[]
+    >((accumulator, [key, viewport]) => {
+      const parsedKey = parseViewportKey(key);
+      if (!parsedKey) {
         return accumulator;
-      }, []);
-      if (entries.length === 0) {
-        window.localStorage.removeItem(VIEWPORT_STORAGE_KEY);
-      } else {
-        window.localStorage.setItem(
-          VIEWPORT_STORAGE_KEY,
-          JSON.stringify(Object.fromEntries(entries)),
-        );
       }
-    } catch (error) {
-      console.error(error);
-    }
-  }, []);
+      if (
+        !isFiniteNumber(viewport.x) ||
+        !isFiniteNumber(viewport.y) ||
+        !isFiniteNumber(viewport.zoom)
+      ) {
+        return accumulator;
+      }
+      accumulator.push({
+        workflow_id: parsedKey.workflowId,
+        version_id: parsedKey.versionId,
+        x: viewport.x,
+        y: viewport.y,
+        zoom: viewport.zoom,
+      });
+      return accumulator;
+    }, []);
+
+    const candidates = makeApiEndpointCandidates(
+      backendUrl,
+      "/api/workflows/viewports",
+    );
+
+    void (async () => {
+      let lastError: unknown = null;
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeader,
+            },
+            body: JSON.stringify({ viewports: payload }),
+          });
+          if (!response.ok) {
+            throw new Error(
+              `Échec de la sauvegarde du viewport (${response.status})`,
+            );
+          }
+          return;
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            return;
+          }
+          lastError = error;
+        }
+      }
+      if (lastError) {
+        console.error(lastError);
+      }
+    })();
+  }, [authHeader, backendUrl, token]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    viewportMemoryRef.current.clear();
+    if (!token) {
       return;
     }
-    try {
-      const raw = window.localStorage.getItem(VIEWPORT_STORAGE_KEY);
-      if (!raw) {
-        return;
-      }
-      const parsed = JSON.parse(raw) as unknown;
-      if (!parsed || typeof parsed !== "object") {
-        return;
-      }
-      viewportMemoryRef.current.clear();
-      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-        if (isStoredViewport(value)) {
-          viewportMemoryRef.current.set(key, { ...value });
+
+    const controller = new AbortController();
+    let isActive = true;
+
+    const loadViewports = async () => {
+      const candidates = makeApiEndpointCandidates(
+        backendUrl,
+        "/api/workflows/viewports",
+      );
+      let lastError: unknown = null;
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeader,
+            },
+            signal: controller.signal,
+          });
+          if (!response.ok) {
+            throw new Error(
+              `Échec du chargement des viewports (${response.status})`,
+            );
+          }
+          const data: WorkflowViewportListResponse = await response.json();
+          if (!isActive) {
+            return;
+          }
+          viewportMemoryRef.current.clear();
+          for (const entry of data.viewports ?? []) {
+            if (
+              typeof entry.workflow_id !== "number" ||
+              !Number.isFinite(entry.workflow_id)
+            ) {
+              continue;
+            }
+            if (
+              !isFiniteNumber(entry.x) ||
+              !isFiniteNumber(entry.y) ||
+              !isFiniteNumber(entry.zoom)
+            ) {
+              continue;
+            }
+            const versionId =
+              typeof entry.version_id === "number" && Number.isFinite(entry.version_id)
+                ? entry.version_id
+                : null;
+            const key = viewportKeyFor(entry.workflow_id, versionId);
+            if (key) {
+              viewportMemoryRef.current.set(key, {
+                x: entry.x,
+                y: entry.y,
+                zoom: entry.zoom,
+              });
+            }
+          }
+          return;
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            return;
+          }
+          lastError = error;
         }
       }
-    } catch (error) {
-      console.error(error);
-    }
-  }, []);
+      if (lastError) {
+        console.error(lastError);
+      }
+    };
+
+    void loadViewports();
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [authHeader, backendUrl, token]);
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange<FlowEdgeData>[]) => {

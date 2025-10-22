@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import math
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -11,7 +12,13 @@ from sqlalchemy.orm import Session, selectinload
 
 from ..config import Settings, WorkflowDefaults, get_settings
 from ..database import SessionLocal
-from ..models import Workflow, WorkflowDefinition, WorkflowStep, WorkflowTransition
+from ..models import (
+    Workflow,
+    WorkflowDefinition,
+    WorkflowStep,
+    WorkflowTransition,
+    WorkflowViewport,
+)
 from ..token_sanitizer import sanitize_value
 
 logger = logging.getLogger(__name__)
@@ -890,6 +897,110 @@ class WorkflowService:
             if owns_session:
                 db.close()
 
+    def list_user_viewports(
+        self, user_id: int, session: Session | None = None
+    ) -> list[WorkflowViewport]:
+        db, owns_session = self._get_session(session)
+        try:
+            return db.scalars(
+                select(WorkflowViewport)
+                .where(WorkflowViewport.user_id == user_id)
+                .order_by(
+                    WorkflowViewport.updated_at.desc(),
+                    WorkflowViewport.id.desc(),
+                )
+            ).all()
+        finally:
+            if owns_session:
+                db.close()
+
+    def replace_user_viewports(
+        self,
+        user_id: int,
+        viewports: Iterable[Mapping[str, Any]],
+        *,
+        session: Session | None = None,
+    ) -> list[WorkflowViewport]:
+        db, owns_session = self._get_session(session)
+        try:
+            normalized: dict[tuple[int, int | None], tuple[float, float, float]] = {}
+            for entry in viewports:
+                workflow_raw = entry.get("workflow_id")
+                if not isinstance(workflow_raw, int | float):
+                    continue
+                workflow_id = int(workflow_raw)
+                if workflow_id <= 0:
+                    continue
+
+                version_raw = entry.get("version_id")
+                version_id: int | None
+                if version_raw is None:
+                    version_id = None
+                elif isinstance(version_raw, int | float):
+                    version_candidate = int(version_raw)
+                    if version_candidate <= 0:
+                        continue
+                    version_id = version_candidate
+                else:
+                    continue
+
+                x_raw = entry.get("x")
+                y_raw = entry.get("y")
+                zoom_raw = entry.get("zoom")
+                if not isinstance(x_raw, int | float):
+                    continue
+                if not isinstance(y_raw, int | float):
+                    continue
+                if not isinstance(zoom_raw, int | float):
+                    continue
+                x = float(x_raw)
+                y = float(y_raw)
+                zoom = float(zoom_raw)
+                if (
+                    not math.isfinite(x)
+                    or not math.isfinite(y)
+                    or not math.isfinite(zoom)
+                ):
+                    continue
+
+                normalized[(workflow_id, version_id)] = (x, y, zoom)
+
+            existing = {
+                (viewport.workflow_id, viewport.version_id): viewport
+                for viewport in db.scalars(
+                    select(WorkflowViewport).where(
+                        WorkflowViewport.user_id == user_id
+                    )
+                )
+            }
+
+            for (workflow_id, version_id), (x, y, zoom) in normalized.items():
+                viewport = existing.get((workflow_id, version_id))
+                if viewport is None:
+                    viewport = WorkflowViewport(
+                        user_id=user_id,
+                        workflow_id=workflow_id,
+                        version_id=version_id,
+                        x=x,
+                        y=y,
+                        zoom=zoom,
+                    )
+                    db.add(viewport)
+                else:
+                    viewport.x = x
+                    viewport.y = y
+                    viewport.zoom = zoom
+
+            for key, viewport in existing.items():
+                if key not in normalized:
+                    db.delete(viewport)
+
+            db.commit()
+            return self.list_user_viewports(user_id, session=db)
+        finally:
+            if owns_session:
+                db.close()
+
     def _needs_graph_backfill(self, definition: WorkflowDefinition) -> bool:
         has_start = any(step.kind == "start" for step in definition.steps)
         has_edges = bool(definition.transitions)
@@ -1467,4 +1578,15 @@ def serialize_version_summary(definition: WorkflowDefinition) -> dict[str, Any]:
         "is_active": definition.is_active,
         "created_at": definition.created_at,
         "updated_at": definition.updated_at,
+    }
+
+
+def serialize_viewport(viewport: WorkflowViewport) -> dict[str, Any]:
+    return {
+        "workflow_id": viewport.workflow_id,
+        "version_id": viewport.version_id,
+        "x": viewport.x,
+        "y": viewport.y,
+        "zoom": viewport.zoom,
+        "updated_at": viewport.updated_at,
     }

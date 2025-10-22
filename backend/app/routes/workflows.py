@@ -20,6 +20,8 @@ from ..schemas import (
     WorkflowVersionCreateRequest,
     WorkflowVersionSummaryResponse,
     WorkflowVersionUpdateRequest,
+    WorkflowViewportListResponse,
+    WorkflowViewportReplaceRequest,
 )
 from ..workflows import (
     WorkflowNotFoundError,
@@ -29,6 +31,7 @@ from ..workflows import (
     serialize_definition,
     serialize_definition_graph,
     serialize_version_summary,
+    serialize_viewport,
     serialize_workflow_summary,
 )
 
@@ -82,6 +85,43 @@ async def list_workflows(
         WorkflowSummaryResponse.model_validate(serialize_workflow_summary(w))
         for w in workflows
     ]
+
+
+@router.get(
+    "/api/workflows/viewports",
+    response_model=WorkflowViewportListResponse,
+)
+async def list_workflow_viewports(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowViewportListResponse:
+    _ensure_admin(current_user)
+    service = WorkflowService()
+    viewports = service.list_user_viewports(current_user.id, session=session)
+    return WorkflowViewportListResponse(
+        viewports=[serialize_viewport(entry) for entry in viewports]
+    )
+
+
+@router.put(
+    "/api/workflows/viewports",
+    response_model=WorkflowViewportListResponse,
+)
+async def replace_workflow_viewports(
+    payload: WorkflowViewportReplaceRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowViewportListResponse:
+    _ensure_admin(current_user)
+    service = WorkflowService()
+    viewports = service.replace_user_viewports(
+        current_user.id,
+        [entry.model_dump() for entry in payload.viewports],
+        session=session,
+    )
+    return WorkflowViewportListResponse(
+        viewports=[serialize_viewport(entry) for entry in viewports]
+    )
 
 
 @router.post(
