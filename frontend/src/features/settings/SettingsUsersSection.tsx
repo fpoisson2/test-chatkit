@@ -7,6 +7,7 @@ import type {
   EditableUser,
 } from "./useAdminUsers";
 import type { SettingsSection } from "./sections";
+import { useI18n } from "../../i18n";
 
 export type SettingsUsersSectionProps = {
   activeSection: SettingsSection;
@@ -27,6 +28,7 @@ export function SettingsUsersSection({
   state,
   actions,
 }: SettingsUsersSectionProps) {
+  const { t } = useI18n();
   const { users, isLoading, error, createPayload, isCreatingUser } = state;
   const { setCreatePayload, refresh, createUser, toggleAdmin, deleteUser, updatePassword } = actions;
 
@@ -46,27 +48,26 @@ export function SettingsUsersSection({
         </header>
         <div className="settings-modal__section-body">
           <div className="settings-modal__card settings-modal__card--muted">
-            <h4 className="settings-modal__card-title">Administration</h4>
+            <h4 className="settings-modal__card-title">{t("settings.users.accessRestricted.title")}</h4>
             <p className="settings-modal__card-description">
-              Vous n'avez pas les droits nécessaires pour consulter la gestion des utilisateurs. Contactez un
-              administrateur pour obtenir un accès étendu.
+              {t("settings.users.accessRestricted.description")}
             </p>
           </div>
           <div className="settings-modal__card">
-            <h4 className="settings-modal__card-title">Actions rapides</h4>
+            <h4 className="settings-modal__card-title">{t("settings.users.accessRestricted.actionsTitle")}</h4>
             <p className="settings-modal__card-description">
-              Retournez à l'accueil ou fermez votre session en toute sécurité.
+              {t("settings.users.accessRestricted.actionsDescription")}
             </p>
             <div className="settings-modal__actions">
               <button type="button" className="settings-modal__action-button" onClick={onGoHome}>
-                Retour à l'accueil
+                {t("settings.users.actions.goHome")}
               </button>
               <button
                 type="button"
                 className="settings-modal__action-button settings-modal__action-button--danger"
                 onClick={onLogout}
               >
-                Déconnexion
+                {t("settings.users.actions.logout")}
               </button>
             </div>
           </div>
@@ -75,7 +76,14 @@ export function SettingsUsersSection({
     );
   }
 
-  const userCountLabel = users.length ? ` · ${users.length} utilisateur${users.length > 1 ? "s" : ""}` : "";
+  const userCountLabel = users.length
+    ? ` · ${t(
+        users.length > 1
+          ? "settings.users.meta.countPlural"
+          : "settings.users.meta.countSingular",
+        { count: users.length },
+      )}`
+    : "";
 
   const handleCreateUser = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -87,13 +95,15 @@ export function SettingsUsersSection({
   };
 
   const handleDeleteUser = (editableUser: EditableUser) => {
-    if (window.confirm(`Supprimer ${editableUser.email} ?`)) {
+    if (window.confirm(t("settings.users.actions.delete.confirm", { email: editableUser.email }))) {
       void deleteUser(editableUser);
     }
   };
 
   const handleResetPassword = (editableUser: EditableUser) => {
-    const newPassword = window.prompt(`Nouveau mot de passe pour ${editableUser.email}`);
+    const newPassword = window.prompt(
+      t("settings.users.actions.resetPassword.prompt", { email: editableUser.email }),
+    );
     if (newPassword) {
       void updatePassword(editableUser, newPassword);
     }
@@ -116,18 +126,16 @@ export function SettingsUsersSection({
         <div className="settings-users">
           <div className="settings-users__intro">
             <div>
-              <h4 className="admin-shell__title">Administration des utilisateurs</h4>
-              <p className="admin-shell__subtitle">
-                Gérez les accès autorisés au widget ChatKit et pilotez les rôles en un clin d'œil.
-              </p>
+              <h4 className="admin-shell__title">{t("settings.users.admin.title")}</h4>
+              <p className="admin-shell__subtitle">{t("settings.users.admin.subtitle")}</p>
             </div>
             <div className="settings-users__meta">
               <span className="admin-shell__chips">
-                {currentUser?.email ?? "Administrateur"}
+                {currentUser?.email ?? t("settings.users.meta.fallbackAdmin")}
                 {userCountLabel}
               </span>
               <button className="button button--ghost" type="button" onClick={onLogout}>
-                Déconnexion
+                {t("settings.users.actions.logout")}
               </button>
             </div>
           </div>
@@ -136,7 +144,7 @@ export function SettingsUsersSection({
 
           <div className="settings-users__toolbar">
             <button className="button button--ghost" type="button" onClick={onOpenWorkflows}>
-              Configurer le workflow ChatKit
+              {t("settings.users.actions.configureWorkflow")}
             </button>
             <button
               className="button button--subtle"
@@ -146,22 +154,22 @@ export function SettingsUsersSection({
               }}
               disabled={isLoading}
             >
-              {isLoading ? "Actualisation…" : "Actualiser la liste"}
+              {isLoading
+                ? t("settings.users.actions.refreshing")
+                : t("settings.users.actions.refresh")}
             </button>
           </div>
 
           <div className="settings-users__grid">
             <section className="admin-card">
               <div>
-                <h5 className="admin-card__title">Créer un utilisateur</h5>
-                <p className="admin-card__subtitle">
-                  Invitez un collaborateur et attribuez-lui un rôle adapté à son usage de ChatKit.
-                </p>
+                <h5 className="admin-card__title">{t("settings.users.create.title")}</h5>
+                <p className="admin-card__subtitle">{t("settings.users.create.subtitle")}</p>
               </div>
               <form className="admin-form" onSubmit={handleCreateUser}>
                 <div className="admin-form__row">
                   <label className="label">
-                    E-mail
+                    {t("settings.users.create.email")}
                     <input
                       className="input"
                       type="email"
@@ -170,11 +178,11 @@ export function SettingsUsersSection({
                       onChange={(event) =>
                         setCreatePayload((prev) => ({ ...prev, email: event.target.value }))
                       }
-                      placeholder="nouvel.utilisateur@example.com"
+                      placeholder={t("settings.users.create.emailPlaceholder")}
                     />
                   </label>
                   <label className="label">
-                    Mot de passe temporaire
+                    {t("settings.users.create.tempPassword")}
                     <input
                       className="input"
                       type="text"
@@ -183,7 +191,7 @@ export function SettingsUsersSection({
                       onChange={(event) =>
                         setCreatePayload((prev) => ({ ...prev, password: event.target.value }))
                       }
-                      placeholder="Mot de passe temporaire"
+                      placeholder={t("settings.users.create.tempPasswordPlaceholder")}
                     />
                   </label>
                 </div>
@@ -195,11 +203,13 @@ export function SettingsUsersSection({
                       setCreatePayload((prev) => ({ ...prev, is_admin: event.target.checked }))
                     }
                   />
-                  Administrateur
+                  {t("settings.users.create.adminToggle")}
                 </label>
                 <div className="admin-form__actions">
                   <button className="button" type="submit" disabled={isCreatingUser}>
-                    {isCreatingUser ? "Ajout en cours…" : "Ajouter"}
+                    {isCreatingUser
+                      ? t("settings.users.create.submit.loading")
+                      : t("settings.users.create.submit.label")}
                   </button>
                 </div>
               </form>
@@ -207,32 +217,34 @@ export function SettingsUsersSection({
 
             <section className="admin-card">
               <div>
-                <h5 className="admin-card__title">Utilisateurs</h5>
-                <p className="admin-card__subtitle">
-                  Consultez les accès existants et appliquez des actions rapides pour chaque compte.
-                </p>
+                <h5 className="admin-card__title">{t("settings.users.table.title")}</h5>
+                <p className="admin-card__subtitle">{t("settings.users.table.subtitle")}</p>
               </div>
               {isLoading ? (
-                <p className="admin-card__subtitle">Chargement des utilisateurs…</p>
+                <p className="admin-card__subtitle">{t("settings.users.table.loading")}</p>
               ) : users.length === 0 ? (
-                <p className="admin-card__subtitle">Aucun utilisateur pour le moment.</p>
+                <p className="admin-card__subtitle">{t("settings.users.table.empty")}</p>
               ) : (
                 <div className="admin-table-wrapper">
                   <table className="admin-table">
                     <thead>
                       <tr>
-                        <th>E-mail</th>
-                        <th>Rôle</th>
-                        <th>Créé le</th>
-                        <th>Mis à jour le</th>
-                        <th>Actions</th>
+                        <th>{t("settings.users.table.header.email")}</th>
+                        <th>{t("settings.users.table.header.role")}</th>
+                        <th>{t("settings.users.table.header.createdAt")}</th>
+                        <th>{t("settings.users.table.header.updatedAt")}</th>
+                        <th>{t("settings.users.table.header.actions")}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {users.map((editableUser) => (
                         <tr key={editableUser.id}>
                           <td>{editableUser.email}</td>
-                          <td>{editableUser.is_admin ? "Administrateur" : "Utilisateur"}</td>
+                          <td>
+                            {editableUser.is_admin
+                              ? t("settings.users.roles.admin")
+                              : t("settings.users.roles.user")}
+                          </td>
                           <td>{new Date(editableUser.created_at).toLocaleString()}</td>
                           <td>{new Date(editableUser.updated_at).toLocaleString()}</td>
                           <td>
@@ -244,7 +256,9 @@ export function SettingsUsersSection({
                                   handleToggleAdmin(editableUser);
                                 }}
                               >
-                                {editableUser.is_admin ? "Retirer admin" : "Promouvoir"}
+                                {editableUser.is_admin
+                                  ? t("settings.users.actions.demote")
+                                  : t("settings.users.actions.promote")}
                               </button>
                               <button
                                 className="button button--ghost button--sm"
@@ -253,7 +267,7 @@ export function SettingsUsersSection({
                                   handleResetPassword(editableUser);
                                 }}
                               >
-                                Réinitialiser
+                                {t("settings.users.actions.resetPassword")}
                               </button>
                               <button
                                 className="button button--danger button--sm"
@@ -262,7 +276,7 @@ export function SettingsUsersSection({
                                   handleDeleteUser(editableUser);
                                 }}
                               >
-                                Supprimer
+                                {t("settings.users.actions.delete")}
                               </button>
                             </div>
                           </td>

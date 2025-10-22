@@ -2,6 +2,7 @@ import type { AuthUser } from "../../auth";
 import type { SettingsSection, SettingsSectionId } from "./sections";
 import type { UseAdminUsersResult } from "./useAdminUsers";
 import { SettingsUsersSection } from "./SettingsUsersSection";
+import { useI18n } from "../../i18n";
 
 export type SettingsModalProps = {
   isOpen: boolean;
@@ -28,6 +29,7 @@ export function SettingsModal({
   onOpenWorkflows,
   adminUsers,
 }: SettingsModalProps) {
+  const { t } = useI18n();
   if (!isOpen) {
     return null;
   }
@@ -42,23 +44,23 @@ export function SettingsModal({
         <header className="settings-modal__header">
           <div>
             <h2 id="settings-modal-title" className="settings-modal__title">
-              Paramètres rapides
+              {t("settings.modal.title")}
             </h2>
             <p className="settings-modal__subtitle">
-              Accédez rapidement aux sections clés de votre espace.
+              {t("settings.modal.subtitle")}
             </p>
           </div>
           <button
             type="button"
             className="settings-modal__close"
             onClick={onClose}
-            aria-label="Fermer les paramètres"
+            aria-label={t("settings.modal.close")}
           >
             ×
           </button>
         </header>
         <div className="settings-modal__body">
-          <nav className="settings-modal__sidebar" aria-label="Sections des paramètres">
+          <nav className="settings-modal__sidebar" aria-label={t("settings.modal.navLabel")}>
             <ul className="settings-modal__nav">
               {sections.map((section) => {
                 const isActive = section.id === activeSectionId;

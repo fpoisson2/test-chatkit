@@ -17,8 +17,14 @@ import { useAuth } from "../auth";
 import { SidebarIcon, type SidebarIconName } from "./SidebarIcon";
 import { getDesktopLayoutPreference, useIsDesktopLayout } from "../hooks/useDesktopLayout";
 import { SettingsModal } from "../features/settings/SettingsModal";
-import { SETTINGS_SECTIONS, type SettingsSectionId } from "../features/settings/sections";
+import {
+  SETTINGS_SECTIONS,
+  buildSettingsSections,
+  type SettingsSectionId,
+} from "../features/settings/sections";
 import { useAdminUsers } from "../features/settings/useAdminUsers";
+import { useI18n } from "../i18n";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 
 type NavigationItem = {
   key: string;
@@ -37,26 +43,43 @@ type ApplicationKey =
 
 type ApplicationDescriptor = {
   key: ApplicationKey;
-  label: string;
+  labelKey: string;
   path: string;
   requiresAdmin?: boolean;
 };
 
 const APPLICATIONS: ApplicationDescriptor[] = [
-  { key: "chat", label: "Chat", path: "/" },
-  { key: "voice", label: "Voix", path: "/voice" },
-  { key: "workflows", label: "Workflow Builder", path: "/workflows", requiresAdmin: true },
-  { key: "vector-stores", label: "Vector Store", path: "/vector-stores", requiresAdmin: true },
-  { key: "widgets", label: "Widget Library", path: "/widgets", requiresAdmin: true },
-  { key: "admin", label: "Administration", path: "/admin", requiresAdmin: true },
+  { key: "chat", labelKey: "app.sidebar.applications.chat", path: "/" },
+  { key: "voice", labelKey: "app.sidebar.applications.voice", path: "/voice" },
+  {
+    key: "workflows",
+    labelKey: "app.sidebar.applications.workflows",
+    path: "/workflows",
+    requiresAdmin: true,
+  },
+  {
+    key: "vector-stores",
+    labelKey: "app.sidebar.applications.vectorStores",
+    path: "/vector-stores",
+    requiresAdmin: true,
+  },
+  {
+    key: "widgets",
+    labelKey: "app.sidebar.applications.widgets",
+    path: "/widgets",
+    requiresAdmin: true,
+  },
+  { key: "admin", labelKey: "app.sidebar.applications.admin", path: "/admin", requiresAdmin: true },
 ];
 
 const buildNavigationItems = ({
   isAuthenticated,
   handleSidebarLogin,
+  loginLabel,
 }: {
   isAuthenticated: boolean;
   handleSidebarLogin: () => void;
+  loginLabel: string;
 }): NavigationItem[] => {
   if (isAuthenticated) {
     return [];
@@ -65,7 +88,7 @@ const buildNavigationItems = ({
   return [
     {
       key: "login",
-      label: "Connexion",
+      label: loginLabel,
       icon: "login",
       onClick: handleSidebarLogin,
     },
@@ -108,11 +131,13 @@ type SidebarPortalContextValue = {
 
 const SidebarPortalContext = createContext<SidebarPortalContextValue | undefined>(undefined);
 
+const DEFAULT_SETTINGS_SECTION_ID = SETTINGS_SECTIONS[0]?.id ?? "users";
+
 export const useAppLayout = () => {
   const context = useContext(AppLayoutContext);
 
   if (!context) {
-    throw new Error("useAppLayout doit être utilisé à l'intérieur d'AppLayout");
+    throw new Error("useAppLayout must be used within AppLayout");
   }
 
   return context;
@@ -122,7 +147,7 @@ export const useSidebarPortal = () => {
   const context = useContext(SidebarPortalContext);
 
   if (!context) {
-    throw new Error("useSidebarPortal doit être utilisé à l'intérieur d'AppLayout");
+    throw new Error("useSidebarPortal must be used within AppLayout");
   }
 
   return context;
@@ -130,6 +155,7 @@ export const useSidebarPortal = () => {
 
 export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const { user, token, logout } = useAuth();
+  const { t } = useI18n();
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
   const navigate = useNavigate();
@@ -139,7 +165,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(getDesktopLayoutPreference);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [activeSettingsSection, setActiveSettingsSection] = useState<SettingsSectionId>(
-    SETTINGS_SECTIONS[0].id,
+    DEFAULT_SETTINGS_SECTION_ID,
   );
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
@@ -159,11 +185,13 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     previousIsDesktopRef.current = isDesktopLayout;
   }, [isDesktopLayout]);
 
+  const settingsSections = useMemo(() => buildSettingsSections(t), [t]);
+
   useEffect(() => {
     if (isSettingsModalOpen) {
-      setActiveSettingsSection(SETTINGS_SECTIONS[0].id);
+      setActiveSettingsSection(settingsSections[0]?.id ?? DEFAULT_SETTINGS_SECTION_ID);
     }
-  }, [isSettingsModalOpen]);
+  }, [isSettingsModalOpen, settingsSections]);
 
   const openSidebar = useCallback(() => {
     setIsSidebarOpen(true);
@@ -187,9 +215,19 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const sidebarTabIndex = isSidebarOpen || isDesktopLayout ? 0 : -1;
   const isSidebarCollapsed = isDesktopLayout && !isSidebarOpen;
 
+  type LocalizedApplication = ApplicationDescriptor & { label: string };
+  const localizedApplications = useMemo<LocalizedApplication[]>(
+    () =>
+      APPLICATIONS.map((application) => ({
+        ...application,
+        label: t(application.labelKey),
+      })),
+    [t],
+  );
+
   const availableApplications = useMemo(
-    () => APPLICATIONS.filter((application) => (application.requiresAdmin ? isAdmin : true)),
-    [isAdmin],
+    () => localizedApplications.filter((application) => (application.requiresAdmin ? isAdmin : true)),
+    [isAdmin, localizedApplications],
   );
 
   const activeApplication = useMemo<ApplicationKey>(() => {
@@ -262,8 +300,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
       buildNavigationItems({
         isAuthenticated,
         handleSidebarLogin,
+        loginLabel: t("app.sidebar.login"),
       }),
-    [handleSidebarLogin, isAuthenticated],
+    [handleSidebarLogin, isAuthenticated, t],
   );
 
   useEffect(() => {
@@ -426,7 +465,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
         <div className={layoutClassName}>
           <aside
             className={sidebarClassName}
-            aria-label="Navigation principale"
+            aria-label={t("app.sidebar.ariaLabel")}
             aria-hidden={!isSidebarOpen && !isDesktopLayout}
           >
           <header className="chatkit-sidebar__header">
@@ -435,7 +474,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                 <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
                 <div className="chatkit-sidebar__brand-switcher">
                   <label htmlFor="chatkit-app-switcher" className="visually-hidden">
-                    Applications
+                    {t("app.sidebar.switcherLabel")}
                   </label>
                   <select
                     id="chatkit-app-switcher"
@@ -452,24 +491,27 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                   </select>
                 </div>
               </div>
-              {isSidebarOpen && (
-                <button
-                  type="button"
-                  className="chatkit-sidebar__dismiss"
-                  onClick={closeSidebar}
-                  tabIndex={sidebarTabIndex}
-                  aria-label="Fermer la barre latérale"
-                >
-                  ×
-                </button>
-              )}
+              <div className="chatkit-sidebar__actions">
+                <LanguageSwitcher tabIndex={sidebarTabIndex} />
+                {isSidebarOpen ? (
+                  <button
+                    type="button"
+                    className="chatkit-sidebar__dismiss"
+                    onClick={closeSidebar}
+                    tabIndex={sidebarTabIndex}
+                    aria-label={t("app.sidebar.close")}
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </div>
             </div>
           </header>
           {sidebarContent ? (
             <div className="chatkit-sidebar__dynamic">{sidebarContent}</div>
           ) : null}
           {navigationItems.length > 0 && (
-            <nav className="chatkit-sidebar__nav" aria-label="Menu principal">
+            <nav className="chatkit-sidebar__nav" aria-label={t("app.sidebar.menu")}>
               <ul className="chatkit-sidebar__list">
                 {navigationItems.map((item) => (
                   <li key={item.key} className="chatkit-sidebar__item">
@@ -507,48 +549,50 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                   <span className="chatkit-sidebar__profile-details">
                     <span className="chatkit-sidebar__profile-name">{user.email}</span>
                     <span className="chatkit-sidebar__profile-role">
-                      {user.is_admin ? "Administrateur" : "Utilisateur"}
+                      {user.is_admin
+                        ? t("app.sidebar.profile.role.admin")
+                        : t("app.sidebar.profile.role.user")}
                     </span>
                   </span>
                   <span className="chatkit-sidebar__profile-caret" aria-hidden="true" />
                 </button>
-                <div
-                  className="chatkit-sidebar__profile-menu"
-                  role="menu"
-                  aria-hidden={!isProfileMenuOpen}
-                >
-                  {user.is_admin && (
+                  <div
+                    className="chatkit-sidebar__profile-menu"
+                    role="menu"
+                    aria-hidden={!isProfileMenuOpen}
+                  >
+                    {user.is_admin && (
+                      <button
+                        type="button"
+                        className="chatkit-sidebar__profile-action"
+                        role="menuitem"
+                        onClick={handleProfileGoToAdmin}
+                        tabIndex={isProfileMenuOpen ? 0 : -1}
+                      >
+                        <SidebarIcon name="admin" className="chatkit-sidebar__icon" />
+                        <span>{t("app.sidebar.profile.admin")}</span>
+                      </button>
+                    )}
                     <button
                       type="button"
-                      className="chatkit-sidebar__profile-action"
+                      className="chatkit-sidebar__profile-action chatkit-sidebar__profile-action--logout"
                       role="menuitem"
-                      onClick={handleProfileGoToAdmin}
+                      onClick={handleProfileLogout}
                       tabIndex={isProfileMenuOpen ? 0 : -1}
                     >
-                      <SidebarIcon name="admin" className="chatkit-sidebar__icon" />
-                      <span>Administration</span>
+                      <SidebarIcon name="logout" className="chatkit-sidebar__icon" />
+                      <span>{t("app.sidebar.profile.logout")}</span>
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    className="chatkit-sidebar__profile-action chatkit-sidebar__profile-action--logout"
-                    role="menuitem"
-                    onClick={handleProfileLogout}
-                    tabIndex={isProfileMenuOpen ? 0 : -1}
-                  >
-                    <SidebarIcon name="logout" className="chatkit-sidebar__icon" />
-                    <span>Déconnexion</span>
-                  </button>
+                  </div>
                 </div>
-              </div>
-            </footer>
-          )}
+              </footer>
+            )}
           </aside>
         <button
           type="button"
           className={`chatkit-layout__scrim${isSidebarOpen ? " chatkit-layout__scrim--active" : ""}`}
           aria-hidden={!isSidebarOpen || isDesktopLayout}
-          aria-label="Fermer la barre latérale"
+          aria-label={t("app.sidebar.close")}
           onPointerDown={handleScrimPointerDown}
           onClick={() => {
             if (!isDesktopLayout) {
@@ -562,7 +606,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
         </div>
         <SettingsModal
           isOpen={isSettingsModalOpen}
-          sections={SETTINGS_SECTIONS}
+          sections={settingsSections}
           activeSectionId={activeSettingsSection}
           onSelectSection={setActiveSettingsSection}
           onClose={handleCloseSettings}
