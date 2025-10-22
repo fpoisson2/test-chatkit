@@ -51,7 +51,7 @@ const fr: TranslationDictionary = {
   "voice.actions.backToChat": "← Chat texte",
   "voice.description":
     "Connectez-vous pour lancer des sessions Realtime, autoriser votre microphone et consulter les transcriptions en direct.",
-  "settings.page.title": "Paramètres de ChatKit",
+  "settings.page.title": "Paramètres",
   "settings.page.subtitle":
     "Personnalisez votre expérience d'utilisation de ChatKit.",
   "settings.page.navLabel": "Navigation des paramètres",
@@ -122,6 +122,9 @@ const fr: TranslationDictionary = {
   "workflowBuilder.export.success": "Export JSON téléchargé.",
   "workflowBuilder.export.error": "Impossible d'exporter le workflow.",
   "workflowBuilder.export.errorWithStatus": "Impossible d'exporter le workflow (code {{status}}).",
+  "workflowBuilder.mobileActions.open": "Afficher les actions",
+  "workflowBuilder.mobileActions.title": "Actions du workflow",
+  "workflowBuilder.mobileActions.close": "Fermer",
   "workflowBuilder.import.inProgress": "Import en cours…",
   "workflowBuilder.import.saving": "Importation du workflow…",
   "workflowBuilder.import.success": "Workflow importé avec succès.",
@@ -170,6 +173,23 @@ const fr: TranslationDictionary = {
   "workflowBuilder.deploy.modal.action.cancel": "Annuler",
   "workflowBuilder.deploy.modal.action.publish": "Publier",
   "workflowBuilder.deploy.modal.action.deploy": "Déployer",
+  "workflowBuilder.voiceInspector.modelLabel": "Modèle Realtime",
+  "workflowBuilder.voiceInspector.voiceLabel": "Voix",
+  "workflowBuilder.voiceInspector.instructionsLabel": "Instructions temps réel",
+  "workflowBuilder.voiceInspector.instructionsPlaceholder":
+    "Texte transmis à l'assistant vocal pour guider son comportement",
+  "workflowBuilder.voiceInspector.startBehaviorLabel": "Démarrage de session",
+  "workflowBuilder.voiceInspector.stopBehaviorLabel": "Arrêt de session",
+  "workflowBuilder.voiceInspector.start.manual": "Lancement manuel",
+  "workflowBuilder.voiceInspector.start.auto": "Démarrage automatique à l'entrée du bloc",
+  "workflowBuilder.voiceInspector.stop.manual": "Arrêt manuel (session persistante)",
+  "workflowBuilder.voiceInspector.stop.auto": "Arrêt automatique après la réponse",
+  "workflowBuilder.voiceInspector.toolsLabel": "Outils temps réel",
+  "workflowBuilder.voiceInspector.tool.response": "Réponses audio",
+  "workflowBuilder.voiceInspector.tool.transcription": "Transcriptions",
+  "workflowBuilder.voiceInspector.tool.functionCall": "Fonctions personnalisées",
+  "workflowBuilder.voiceInspector.tool.functionCall.help":
+    "Active les appels de fonction via le runtime Realtime.",
 };
 
 const en: TranslationDictionary = {
@@ -211,7 +231,7 @@ const en: TranslationDictionary = {
   "voice.actions.backToChat": "← Text chat",
   "voice.description":
     "Sign in to start Realtime sessions, grant microphone access, and review live transcripts.",
-  "settings.page.title": "ChatKit settings",
+  "settings.page.title": "Settings",
   "settings.page.subtitle": "Tailor the ChatKit experience to your needs.",
   "settings.page.navLabel": "Settings navigation",
   "settings.sections.preferences.label": "Preferences",
@@ -280,6 +300,9 @@ const en: TranslationDictionary = {
   "workflowBuilder.export.success": "JSON export downloaded.",
   "workflowBuilder.export.error": "Unable to export the workflow.",
   "workflowBuilder.export.errorWithStatus": "Unable to export the workflow (status {{status}}).",
+  "workflowBuilder.mobileActions.open": "Show actions",
+  "workflowBuilder.mobileActions.title": "Workflow actions",
+  "workflowBuilder.mobileActions.close": "Close",
   "workflowBuilder.import.inProgress": "Importing…",
   "workflowBuilder.import.saving": "Importing workflow…",
   "workflowBuilder.import.success": "Workflow imported successfully.",
@@ -328,6 +351,23 @@ const en: TranslationDictionary = {
   "workflowBuilder.deploy.modal.action.cancel": "Cancel",
   "workflowBuilder.deploy.modal.action.publish": "Publish",
   "workflowBuilder.deploy.modal.action.deploy": "Deploy",
+  "workflowBuilder.voiceInspector.modelLabel": "Realtime model",
+  "workflowBuilder.voiceInspector.voiceLabel": "Voice ID",
+  "workflowBuilder.voiceInspector.instructionsLabel": "Realtime instructions",
+  "workflowBuilder.voiceInspector.instructionsPlaceholder":
+    "Guidance shared with the voice assistant",
+  "workflowBuilder.voiceInspector.startBehaviorLabel": "Session start",
+  "workflowBuilder.voiceInspector.stopBehaviorLabel": "Session stop",
+  "workflowBuilder.voiceInspector.start.manual": "Manual start",
+  "workflowBuilder.voiceInspector.start.auto": "Automatically when the block runs",
+  "workflowBuilder.voiceInspector.stop.manual": "Manual stop (keep session active)",
+  "workflowBuilder.voiceInspector.stop.auto": "Stop automatically after the response",
+  "workflowBuilder.voiceInspector.toolsLabel": "Realtime tools",
+  "workflowBuilder.voiceInspector.tool.response": "Audio responses",
+  "workflowBuilder.voiceInspector.tool.transcription": "Speech-to-text transcripts",
+  "workflowBuilder.voiceInspector.tool.functionCall": "Function calling",
+  "workflowBuilder.voiceInspector.tool.functionCall.help":
+    "Enable function calls to invoke custom business logic.",
 };
 
 export const translations: Translations = {

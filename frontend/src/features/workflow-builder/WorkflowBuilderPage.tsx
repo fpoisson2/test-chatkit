@@ -64,6 +64,10 @@ import {
   setAgentWeatherToolEnabled,
   setAgentWidgetValidationToolEnabled,
   setAgentWebSearchConfig,
+  setVoiceAgentVoice,
+  setVoiceAgentStartBehavior,
+  setVoiceAgentStopBehavior,
+  setVoiceAgentToolEnabled,
   setStateAssignments,
   setStartAutoRun,
   setStartAutoRunMessage,
@@ -89,6 +93,8 @@ import {
   setWidgetNodeSource,
   setWidgetNodeDefinitionExpression,
   setWidgetNodeVariables,
+  createVoiceAgentParameters,
+  resolveVoiceAgentParameters,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
@@ -111,6 +117,9 @@ import type {
   WorkflowVersionResponse,
   WorkflowVersionSummary,
   WidgetVariableAssignment,
+  VoiceAgentTool,
+  VoiceAgentStartBehavior,
+  VoiceAgentStopBehavior,
 } from "./types";
 import {
   AUTO_SAVE_DELAY_MS,
@@ -131,6 +140,7 @@ import {
   controlLabelStyle,
   getActionMenuItemStyle,
   getActionMenuStyle,
+  getActionMenuWrapperStyle,
   getCreateWorkflowButtonStyle,
   getDeployButtonStyle,
   getHeaderActionAreaStyle,
@@ -138,6 +148,7 @@ import {
   getHeaderGroupStyle,
   getHeaderLayoutStyle,
   getHeaderNavigationButtonStyle,
+  getMobileActionButtonStyle,
   getVersionSelectStyle,
   loadingStyle,
 } from "./styles";
@@ -165,6 +176,7 @@ type WorkflowViewportRecord = {
 
 const isValidNodeKind = (value: string): value is NodeKind =>
   Object.prototype.hasOwnProperty.call(NODE_COLORS, value);
+const isAgentKind = (kind: NodeKind): boolean => kind === "agent" || kind === "voice_agent";
 
 type WorkflowViewportListResponse = {
   viewports: WorkflowViewportRecord[];
@@ -343,6 +355,7 @@ const WorkflowBuilderPage = () => {
   const [isDeploying, setIsDeploying] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [isMobileActionsOpen, setIsMobileActionsOpen] = useState(false);
   const autoSaveTimeoutRef = useRef<number | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const draftVersionIdRef = useRef<number | null>(null);
@@ -358,6 +371,8 @@ const WorkflowBuilderPage = () => {
   const pendingViewportRestoreRef = useRef(false);
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
   const importFileInputRef = useRef<HTMLInputElement | null>(null);
+  const mobileActionsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const mobileActionsMenuRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
@@ -659,6 +674,17 @@ const WorkflowBuilderPage = () => {
   const blockLibraryId = "workflow-builder-block-library";
   const propertiesPanelId = "workflow-builder-properties-panel";
   const propertiesPanelTitleId = `${propertiesPanelId}-title`;
+  const mobileActionsDialogId = "workflow-builder-mobile-actions";
+  const mobileActionsTitleId = `${mobileActionsDialogId}-title`;
+  const closeMobileActions = useCallback(
+    (options: { focusTrigger?: boolean } = {}) => {
+      setIsMobileActionsOpen(false);
+      if (options.focusTrigger && mobileActionsTriggerRef.current) {
+        mobileActionsTriggerRef.current.focus();
+      }
+    },
+    [mobileActionsTriggerRef],
+  );
   const toggleBlockLibrary = useCallback(() => {
     setBlockLibraryOpen((prev) => !prev);
   }, []);
@@ -681,9 +707,19 @@ const WorkflowBuilderPage = () => {
   }, [isMobileLayout]);
 
   useEffect(() => {
+  // Ferme les actions mobiles quand on n’est pas en layout mobile
+  useEffect(() => {
+    if (!isMobileLayout) {
+      setIsMobileActionsOpen(false);
+    }
+  }, [isMobileLayout]);
+
+  // Garde la ref des nodes à jour
+  useEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
 
+  // Garde la ref des edges à jour
   useEffect(() => {
     edgesRef.current = edges;
   }, [edges]);
@@ -706,6 +742,45 @@ const WorkflowBuilderPage = () => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [closeBlockLibrary, isBlockLibraryOpen, isMobileLayout]);
+
+  useEffect(() => {
+    if (!isMobileActionsOpen) {
+      return;
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeMobileActions({ focusTrigger: true });
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeMobileActions, isMobileActionsOpen]);
+
+  useEffect(() => {
+    if (!isMobileActionsOpen) {
+      return;
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (mobileActionsTriggerRef.current?.contains(target)) {
+        return;
+      }
+      if (mobileActionsMenuRef.current?.contains(target)) {
+        return;
+      }
+      closeMobileActions();
+    };
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [closeMobileActions, isMobileActionsOpen]);
 
   useEffect(() => {
     if (!isBlockLibraryOpen) {
@@ -841,20 +916,46 @@ const WorkflowBuilderPage = () => {
 
   const renderWorkflowDescription = (className?: string) =>
     selectedWorkflow?.description ? (
-      <div className={className} style={{ color: "var(--text-muted)", fontSize: "0.95rem" }}>
+      <div
+        className={className}
+        style={
+          className
+            ? undefined
+            : { color: "var(--text-muted)", fontSize: "0.95rem" }
+        }
+      >
         {selectedWorkflow.description}
       </div>
     ) : null;
 
   const renderWorkflowPublicationReminder = (className?: string) =>
     selectedWorkflow && !selectedWorkflow.active_version_id ? (
-      <div className={className} style={{ color: "#b45309", fontSize: "0.85rem", fontWeight: 600 }}>
+      <div
+        className={className}
+        style={
+          className
+            ? undefined
+            : { color: "#b45309", fontSize: "0.85rem", fontWeight: 600 }
+        }
+      >
         Publiez une version pour l'utiliser.
       </div>
     ) : null;
 
-  const renderHeaderControls = () => (
-    <>
+  const renderHeaderControls = () => {
+    const importDisabled = loading || isImporting;
+    const exportDisabled =
+      loading || !selectedWorkflowId || !selectedVersionId || isExporting;
+    const deployDisabled =
+      loading || !selectedWorkflowId || versions.length === 0 || isDeploying;
+    const importLabel = isImporting
+      ? t("workflowBuilder.import.inProgress")
+      : t("workflowBuilder.actions.importJson");
+    const exportLabel = isExporting
+      ? t("workflowBuilder.export.preparing")
+      : t("workflowBuilder.actions.exportJson");
+
+    const versionSelect = (
       <div style={getHeaderLayoutStyle(isMobileLayout)}>
         <div style={getHeaderGroupStyle(isMobileLayout)}>
           {!isMobileLayout ? (
@@ -903,64 +1004,177 @@ const WorkflowBuilderPage = () => {
           </select>
         </div>
       </div>
-      <div style={getHeaderActionAreaStyle(isMobileLayout)}>
-        <button
-          type="button"
-          onClick={handleTriggerImport}
-          disabled={loading || isImporting}
-          aria-busy={isImporting}
-          style={getDeployButtonStyle(isMobileLayout, {
-            disabled: loading || isImporting,
-          })}
-        >
-          {isImporting
-            ? t("workflowBuilder.import.inProgress")
-            : t("workflowBuilder.actions.importJson")}
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleExportWorkflow()}
-          disabled={
-            loading ||
-            !selectedWorkflowId ||
-            !selectedVersionId ||
-            isExporting
-          }
-          aria-busy={isExporting}
-          style={getDeployButtonStyle(isMobileLayout, {
-            disabled:
-              loading ||
-              !selectedWorkflowId ||
-              !selectedVersionId ||
-              isExporting,
-          })}
-        >
-          {isExporting
-            ? t("workflowBuilder.export.preparing")
-            : t("workflowBuilder.actions.exportJson")}
-        </button>
-        <input
-          ref={importFileInputRef}
-          type="file"
-          accept="application/json"
-          hidden
-          onChange={(event) => {
-            void handleImportFileChange(event);
-          }}
-        />
-        <button
-          type="button"
-          onClick={handleOpenDeployModal}
-          disabled={loading || !selectedWorkflowId || versions.length === 0 || isDeploying}
-          style={getDeployButtonStyle(isMobileLayout, {
-            disabled: loading || !selectedWorkflowId || versions.length === 0 || isDeploying,
-          })}
-        >
-          Déployer
-        </button>
-      </div>
-    </>
-  );
+    );
+
+    const importInput = (
+      <input
+        ref={importFileInputRef}
+        type="file"
+        accept="application/json"
+        hidden
+        onChange={(event) => {
+          void handleImportFileChange(event);
+        }}
+      />
+    );
+
+    if (isMobileLayout) {
+      const mobileMenuStyle = getActionMenuStyle(true);
+      mobileMenuStyle.right = 0;
+      mobileMenuStyle.left = "auto";
+      mobileMenuStyle.minWidth = "min(18rem, 85vw)";
+      mobileMenuStyle.width = "min(18rem, 85vw)";
+      mobileMenuStyle.padding = "1rem";
+      mobileMenuStyle.gap = "0.75rem";
+      const shouldShowMobileInfo =
+        Boolean(selectedWorkflow?.description) ||
+        Boolean(selectedWorkflow && !selectedWorkflow.active_version_id);
+
+      return (
+        <>
+          {versionSelect}
+          <div style={getHeaderActionAreaStyle(true)}>
+            <div style={{ ...getActionMenuWrapperStyle(true), width: "auto" }}>
+              <button
+                type="button"
+                ref={mobileActionsTriggerRef}
+                onClick={() => {
+                  setIsMobileActionsOpen((previous) => !previous);
+                }}
+                aria-haspopup="menu"
+                aria-expanded={isMobileActionsOpen}
+                aria-controls={mobileActionsDialogId}
+                style={{
+                  width: "2.75rem",
+                  height: "2.75rem",
+                  borderRadius: "0.75rem",
+                  border: "1px solid var(--surface-border)",
+                  background: "var(--surface-strong)",
+                  color: "var(--text-color)",
+                  display: "grid",
+                  placeItems: "center",
+                  fontSize: "1.5rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                <span aria-hidden="true">⋯</span>
+                <span className={styles.srOnly}>
+                  {t("workflowBuilder.mobileActions.open")}
+                </span>
+              </button>
+              {isMobileActionsOpen ? (
+                <div
+                  id={mobileActionsDialogId}
+                  role="menu"
+                  aria-labelledby={mobileActionsTitleId}
+                  ref={mobileActionsMenuRef}
+                  style={mobileMenuStyle}
+                  className={styles.mobileHeaderMenu}
+                >
+                  <span id={mobileActionsTitleId} className={styles.srOnly}>
+                    {t("workflowBuilder.mobileActions.title")}
+                  </span>
+                  {shouldShowMobileInfo ? (
+                    <div className={styles.mobileHeaderMenuInfo}>
+                      {renderWorkflowDescription(styles.mobileHeaderMenuInfoText)}
+                      {renderWorkflowPublicationReminder(
+                        styles.mobileHeaderMenuInfoWarning,
+                      )}
+                    </div>
+                  ) : null}
+                  <div className={styles.mobileHeaderMenuActions}>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        handleTriggerImport();
+                        closeMobileActions();
+                      }}
+                      disabled={importDisabled}
+                      aria-busy={isImporting}
+                      style={getMobileActionButtonStyle({ disabled: importDisabled })}
+                    >
+                      {importLabel}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        void handleExportWorkflow();
+                        closeMobileActions();
+                      }}
+                      disabled={exportDisabled}
+                      aria-busy={isExporting}
+                      style={getMobileActionButtonStyle({ disabled: exportDisabled })}
+                    >
+                      {exportLabel}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        handleOpenDeployModal();
+                        closeMobileActions();
+                      }}
+                      disabled={deployDisabled}
+                      style={getMobileActionButtonStyle({ disabled: deployDisabled })}
+                    >
+                      Déployer
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+          {importInput}
+        </>
+      );
+    }
+
+    return (
+      <>
+        {versionSelect}
+        <div style={getHeaderActionAreaStyle(false)}>
+          <button
+            type="button"
+            onClick={handleTriggerImport}
+            disabled={importDisabled}
+            aria-busy={isImporting}
+            style={getDeployButtonStyle(false, {
+              disabled: importDisabled,
+            })}
+          >
+            {importLabel}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void handleExportWorkflow();
+            }}
+            disabled={exportDisabled}
+            aria-busy={isExporting}
+            style={getDeployButtonStyle(false, {
+              disabled: exportDisabled,
+            })}
+          >
+            {exportLabel}
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenDeployModal}
+            disabled={deployDisabled}
+            style={getDeployButtonStyle(false, {
+              disabled: deployDisabled,
+            })}
+          >
+            Déployer
+          </button>
+        </div>
+        {importInput}
+      </>
+    );
+  };
 
   const reactFlowContainerRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -1168,10 +1382,12 @@ const WorkflowBuilderPage = () => {
           const flowNodes = data.graph.nodes.map<FlowNode>((node, index) => {
             const positionFromMetadata = extractPosition(node.metadata);
             const displayName = node.display_name ?? humanizeSlug(node.slug);
-            const agentKey = node.kind === "agent" ? node.agent_key ?? null : null;
+            const agentKey = isAgentKind(node.kind) ? node.agent_key ?? null : null;
             const parameters =
               node.kind === "agent"
                 ? resolveAgentParameters(agentKey, node.parameters)
+                : node.kind === "voice_agent"
+                  ? resolveVoiceAgentParameters(node.parameters)
                 : node.kind === "state"
                   ? resolveStateParameters(node.slug, node.parameters)
                   : node.kind === "json_vector_store"
@@ -1832,7 +2048,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentMessageChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentMessage(data.parameters, value);
@@ -1850,7 +2066,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentModelChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         let nextParameters = setAgentModel(data.parameters, value);
@@ -1873,7 +2089,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentReasoningChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentReasoningEffort(data.parameters, value);
@@ -1891,7 +2107,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentReasoningSummaryChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentReasoningSummary(data.parameters, value);
@@ -1909,7 +2125,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentTextVerbosityChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentTextVerbosity(data.parameters, value);
@@ -1927,7 +2143,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentTemperatureChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentTemperature(data.parameters, value);
@@ -1945,7 +2161,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentTopPChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentTopP(data.parameters, value);
@@ -1963,7 +2179,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentMaxOutputTokensChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentMaxOutputTokens(data.parameters, value);
@@ -1981,7 +2197,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentIncludeChatHistoryChange = useCallback(
     (nodeId: string, value: boolean) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentIncludeChatHistory(data.parameters, value);
@@ -1999,7 +2215,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentDisplayResponseInChatChange = useCallback(
     (nodeId: string, value: boolean) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentDisplayResponseInChat(data.parameters, value);
@@ -2017,7 +2233,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentShowSearchSourcesChange = useCallback(
     (nodeId: string, value: boolean) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentShowSearchSources(data.parameters, value);
@@ -2035,7 +2251,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentContinueOnErrorChange = useCallback(
     (nodeId: string, value: boolean) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentContinueOnError(data.parameters, value);
@@ -2053,7 +2269,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentStorePreferenceChange = useCallback(
     (nodeId: string, value: boolean) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentStorePreference(data.parameters, value);
@@ -2071,7 +2287,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentResponseFormatKindChange = useCallback(
     (nodeId: string, kind: "text" | "json_schema" | "widget") => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentResponseFormatKind(data.parameters, kind);
@@ -2089,7 +2305,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentResponseFormatNameChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentResponseFormatName(data.parameters, value);
@@ -2107,7 +2323,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentResponseFormatSchemaChange = useCallback(
     (nodeId: string, schema: unknown) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentResponseFormatSchema(data.parameters, schema);
@@ -2125,7 +2341,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentResponseWidgetSlugChange = useCallback(
     (nodeId: string, slug: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentResponseWidgetSlug(data.parameters, slug);
@@ -2143,7 +2359,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentResponseWidgetSourceChange = useCallback(
     (nodeId: string, source: "library" | "variable") => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentResponseWidgetSource(data.parameters, source);
@@ -2161,7 +2377,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentResponseWidgetDefinitionChange = useCallback(
     (nodeId: string, expression: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentResponseWidgetDefinition(data.parameters, expression);
@@ -2326,7 +2542,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentWebSearchChange = useCallback(
     (nodeId: string, config: WebSearchConfig | null) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentWebSearchConfig(data.parameters, config);
@@ -2344,7 +2560,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentFileSearchChange = useCallback(
     (nodeId: string, config: FileSearchConfig | null) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentFileSearchConfig(data.parameters, config);
@@ -2362,7 +2578,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentImageGenerationChange = useCallback(
     (nodeId: string, config: ImageGenerationToolConfig | null) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentImageGenerationConfig(data.parameters, config);
@@ -2421,7 +2637,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentWeatherToolChange = useCallback(
     (nodeId: string, enabled: boolean) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentWeatherToolEnabled(data.parameters, enabled);
@@ -2439,11 +2655,87 @@ const WorkflowBuilderPage = () => {
   const handleAgentWidgetValidationToolChange = useCallback(
     (nodeId: string, enabled: boolean) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentWidgetValidationToolEnabled(
           data.parameters,
+          enabled,
+        );
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleVoiceAgentVoiceChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "voice_agent") {
+          return data;
+        }
+        const nextParameters = setVoiceAgentVoice(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleVoiceAgentStartBehaviorChange = useCallback(
+    (nodeId: string, behavior: VoiceAgentStartBehavior) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "voice_agent") {
+          return data;
+        }
+        const nextParameters = setVoiceAgentStartBehavior(data.parameters, behavior);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleVoiceAgentStopBehaviorChange = useCallback(
+    (nodeId: string, behavior: VoiceAgentStopBehavior) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "voice_agent") {
+          return data;
+        }
+        const nextParameters = setVoiceAgentStopBehavior(data.parameters, behavior);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleVoiceAgentToolChange = useCallback(
+    (nodeId: string, tool: VoiceAgentTool, enabled: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "voice_agent") {
+          return data;
+        }
+        const nextParameters = setVoiceAgentToolEnabled(
+          data.parameters,
+          tool,
           enabled,
         );
         return {
@@ -2787,6 +3079,31 @@ const WorkflowBuilderPage = () => {
       draggable: true,
       style: buildNodeStyle("agent", { isSelected: true }),
     };
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
+
+  const handleAddVoiceAgentNode = useCallback(() => {
+    const slug = `voice-agent-${Date.now()}`;
+    const parameters = createVoiceAgentParameters();
+    const displayName = humanizeSlug(slug);
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 300, y: 220 },
+      data: {
+        slug,
+        kind: "voice_agent",
+        displayName,
+        label: displayName,
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("voice_agent", { isSelected: true }),
+    } satisfies FlowNode;
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
 
@@ -4821,7 +5138,7 @@ const WorkflowBuilderPage = () => {
         return false;
       }
 
-      if (node.data.kind === "agent") {
+      if (isAgentKind(node.data.kind)) {
         const fileSearchConfig = getAgentFileSearchConfig(node.data.parameters);
         if (fileSearchConfig) {
           const slug = fileSearchConfig.vector_store_slug?.trim() ?? "";
@@ -4941,6 +5258,13 @@ const WorkflowBuilderPage = () => {
         onClick: handleAddAgentNode,
       },
       {
+        key: "voice-agent",
+        label: "Agent vocal",
+        shortLabel: "V",
+        color: NODE_COLORS.voice_agent,
+        onClick: handleAddVoiceAgentNode,
+      },
+      {
         key: "condition",
         label: "Condition",
         shortLabel: "C",
@@ -5013,6 +5337,7 @@ const WorkflowBuilderPage = () => {
     ],
     [
       handleAddAgentNode,
+      handleAddVoiceAgentNode,
       handleAddConditionNode,
       handleAddStateNode,
       handleAddWatchNode,
@@ -5620,6 +5945,10 @@ const WorkflowBuilderPage = () => {
             onAgentWebSearchChange={handleAgentWebSearchChange}
             onAgentFileSearchChange={handleAgentFileSearchChange}
             onAgentImageGenerationChange={handleAgentImageGenerationChange}
+            onVoiceAgentVoiceChange={handleVoiceAgentVoiceChange}
+            onVoiceAgentStartBehaviorChange={handleVoiceAgentStartBehaviorChange}
+            onVoiceAgentStopBehaviorChange={handleVoiceAgentStopBehaviorChange}
+            onVoiceAgentToolChange={handleVoiceAgentToolChange}
             onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
             onTransformExpressionsChange={handleTransformExpressionsChange}
             onStartAutoRunChange={handleStartAutoRunChange}
