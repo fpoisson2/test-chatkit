@@ -3,12 +3,14 @@ import { useNavigate } from "react-router-dom";
 
 import { AuthUser, useAuth } from "../auth";
 import { makeApiEndpointCandidates } from "../utils/backend";
+import { useI18n } from "../i18n";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 
 export const LoginPage = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +42,7 @@ export const LoginPage = () => {
           });
 
           if (!response.ok) {
-            let detail = "Échec de la connexion";
+            let detail = t("auth.login.error.failure");
             try {
               const body = await response.json();
               if (body?.detail) {
@@ -61,13 +63,13 @@ export const LoginPage = () => {
           if (networkError instanceof Error) {
             lastError = networkError;
           } else {
-            lastError = new Error("Une erreur inattendue est survenue");
+            lastError = new Error(t("auth.login.error.unexpected"));
           }
         }
       }
 
       if (!data) {
-        throw lastError ?? new Error("Impossible de joindre le backend d'authentification");
+        throw lastError ?? new Error(t("auth.login.error.unreachable"));
       }
 
       login(data.access_token, data.user);
@@ -76,7 +78,7 @@ export const LoginPage = () => {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError("Une erreur inattendue est survenue");
+        setError(t("auth.login.error.unexpected"));
       }
     } finally {
       setSubmitting(false);
@@ -87,34 +89,32 @@ export const LoginPage = () => {
     <div className="login-layout">
       <form className="login-card" onSubmit={handleSubmit}>
         <div>
-          <h1 className="login-card__title">Connexion</h1>
-          <p className="login-card__subtitle">
-            Accédez au panneau d'administration pour gérer les utilisateurs et vos sessions ChatKit.
-          </p>
+          <h1 className="login-card__title">{t("auth.login.title")}</h1>
+          <p className="login-card__subtitle">{t("auth.login.subtitle")}</p>
         </div>
 
         <div className="form-grid">
           <label className="label">
-            Adresse e-mail
+            {t("auth.login.email.label")}
             <input
               className="input"
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
-              placeholder="vous@example.com"
+              placeholder={t("auth.login.email.placeholder")}
             />
           </label>
 
           <label className="label">
-            Mot de passe
+            {t("auth.login.password.label")}
             <input
               className="input"
               type="password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               required
-              placeholder="••••••••"
+              placeholder={t("auth.login.password.placeholder")}
             />
           </label>
         </div>
@@ -122,7 +122,7 @@ export const LoginPage = () => {
         {error && <div className="alert alert--danger">{error}</div>}
 
         <button className="button" type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Connexion en cours…" : "Se connecter"}
+          {isSubmitting ? t("auth.login.submit.loading") : t("auth.login.submit.label")}
         </button>
       </form>
     </div>

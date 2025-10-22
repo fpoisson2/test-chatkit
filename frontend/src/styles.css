@@ -716,11 +716,41 @@ button {
   border: 0;
 }
 
+.language-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.language-switcher__select {
+  appearance: none;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-color);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.75rem;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.language-switcher__select:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
 .chatkit-sidebar__topline {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+
+.chatkit-sidebar__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .chatkit-sidebar__brand {
