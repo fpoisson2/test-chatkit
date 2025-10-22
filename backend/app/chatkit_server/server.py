@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import re
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from agents import Agent, RunConfig, Runner
-from openai.types.responses import ResponseInputImageParam, ResponseInputTextParam
+from openai.types.responses import (
+    ResponseInputContentParam,
+    ResponseInputFileParam,
+    ResponseInputImageParam,
+    ResponseInputTextParam,
+)
 from openai.types.responses.response_input_item_param import Message
 
 from chatkit.actions import Action
@@ -26,6 +33,7 @@ from chatkit.types import (
     ActiveStatus,
     AssistantMessageContent,
     AssistantMessageItem,
+    Attachment,
     ClosedStatus,
     EndOfTurnItem,
     ErrorCode,
@@ -119,9 +127,75 @@ class ImageAwareThreadItemConverter(ThreadItemConverter):
     les URLs des images générées à l'agent dans l'historique de conversation.
     """
 
-    def __init__(self, backend_public_base_url: str | None = None):
+    def __init__(
+        self,
+        backend_public_base_url: str | None = None,
+        *,
+        open_attachment: (
+            Callable[[str, ChatKitRequestContext], Awaitable[tuple[Path, str, str]]]
+            | None
+        ) = None,
+    ):
         super().__init__()
         self.backend_public_base_url = backend_public_base_url
+        self._open_attachment = open_attachment
+        self._request_context: ChatKitRequestContext | None = None
+
+    def for_context(
+        self, context: ChatKitRequestContext | None
+    ) -> ImageAwareThreadItemConverter:
+        """Créer un convertisseur initialisé pour le contexte fourni."""
+
+        clone = ImageAwareThreadItemConverter(
+            backend_public_base_url=self.backend_public_base_url,
+            open_attachment=self._open_attachment,
+        )
+        clone._request_context = context
+        return clone
+
+    async def attachment_to_message_content(
+        self, attachment: Attachment
+    ) -> ResponseInputContentParam:
+        """Convertir une pièce jointe en contenu compatible avec le modèle."""
+
+        if self._open_attachment is None or self._request_context is None:
+            return self._describe_attachment_as_text(attachment)
+
+        try:
+            path, mime_type, filename = await self._open_attachment(
+                attachment.id, self._request_context
+            )
+            data = path.read_bytes()
+        except Exception as exc:  # pragma: no cover - robustesse vis-à-vis des I/O
+            logger.warning(
+                "Impossible de charger la pièce jointe %s pour la conversion",  # noqa: TRY400
+                attachment.id,
+                exc_info=exc,
+            )
+            return self._describe_attachment_as_text(
+                attachment,
+                error_reason="lecture impossible",
+            )
+
+        resolved_mime = (mime_type or getattr(attachment, "mime_type", None)) or (
+            "application/octet-stream"
+        )
+        resolved_name = filename or getattr(attachment, "name", None) or attachment.id
+        b64_payload = base64.b64encode(data).decode("ascii")
+        data_url = f"data:{resolved_mime};base64,{b64_payload}"
+
+        if resolved_mime.startswith("image/"):
+            return ResponseInputImageParam(
+                type="input_image",
+                detail="auto",
+                image_url=data_url,
+            )
+
+        return ResponseInputFileParam(
+            type="input_file",
+            file_data=data_url,
+            filename=resolved_name,
+        )
 
     def task_to_input(
         self, item: TaskItem
@@ -246,6 +320,30 @@ class ImageAwareThreadItemConverter(ThreadItemConverter):
 
         return messages if messages else None
 
+    def _describe_attachment_as_text(
+        self,
+        attachment: Attachment,
+        *,
+        error_reason: str | None = None,
+    ) -> ResponseInputTextParam:
+        """Construit un message textuel décrivant la pièce jointe."""
+
+        mime = getattr(attachment, "mime_type", None) or "inconnu"
+        display_name = getattr(attachment, "name", None) or attachment.id
+        parts = [
+            f"L'utilisateur a envoyé la pièce jointe « {display_name} » (type {mime})."
+        ]
+        if self.backend_public_base_url:
+            base = self.backend_public_base_url.rstrip("/")
+            parts.append(
+                "Téléchargement possible : "
+                f"{base}/api/chatkit/attachments/{attachment.id}"
+            )
+        if error_reason:
+            parts.append(f"Impossible de la charger automatiquement ({error_reason}).")
+        description = "\n".join(parts)
+        return ResponseInputTextParam(type="input_text", text=description)
+
 
 class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     """Serveur ChatKit piloté par un workflow local."""
@@ -262,7 +360,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         self._run_workflow = _get_run_workflow()
         self._title_agent = _get_thread_title_agent()
         self._thread_item_converter = ImageAwareThreadItemConverter(
-            backend_public_base_url=settings.backend_public_base_url
+            backend_public_base_url=settings.backend_public_base_url,
+            open_attachment=attachment_store.open_attachment,
         )
         self.attachment_store = attachment_store
 
@@ -333,8 +432,14 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         input_user_message: UserMessageItem | None,
         context: ChatKitRequestContext,
     ) -> AsyncIterator[ThreadStreamEvent]:
+        thread_item_converter = self._thread_item_converter.for_context(context)
         if input_user_message is not None:
-            await self._maybe_update_thread_title(thread, input_user_message, context)
+            await self._maybe_update_thread_title(
+                thread,
+                input_user_message,
+                context,
+                converter=thread_item_converter,
+            )
         try:
             history = await self.store.load_thread_items(
                 thread.id,
@@ -451,6 +556,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 workflow_input=workflow_input,
                 event_queue=event_queue,
                 thread_items_history=history.data,
+                thread_item_converter=thread_item_converter,
             ),
             event_queue=event_queue,
         )
@@ -471,12 +577,17 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         thread: ThreadMetadata,
         input_item: UserMessageItem,
         context: ChatKitRequestContext,
+        *,
+        converter: ThreadItemConverter | None = None,
     ) -> None:
         if thread.title:
             return
 
         try:
-            agent_input = await simple_to_agent_input(input_item)
+            if converter is not None:
+                agent_input = await converter.to_agent_input(input_item)
+            else:
+                agent_input = await simple_to_agent_input(input_item)
         except Exception as exc:  # pragma: no cover - dépend des conversions SDK
             logger.warning(
                 "Impossible de convertir le message utilisateur en entrée agent "
