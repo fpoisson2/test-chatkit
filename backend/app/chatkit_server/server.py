@@ -33,14 +33,19 @@ from chatkit.types import (
     ImageTask,
     InferenceOptions,
     LockedStatus,
+    Page,
     ProgressUpdateEvent,
+    StreamingReq,
     TaskItem,
+    Thread,
+    ThreadCreatedEvent,
     ThreadItem,
     ThreadItemAddedEvent,
     ThreadItemDoneEvent,
     ThreadItemRemovedEvent,
     ThreadItemUpdated,
     ThreadMetadata,
+    ThreadsCreateReq,
     ThreadStreamEvent,
     UserMessageInput,
     UserMessageItem,
@@ -251,13 +256,14 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     """Serveur ChatKit piloté par un workflow local."""
 
     def __init__(self, settings: Settings) -> None:
-        store = PostgresChatKitStore(SessionLocal)
+        workflow_service = WorkflowService(settings=settings)
+        store = PostgresChatKitStore(SessionLocal, workflow_service=workflow_service)
         attachment_store = LocalAttachmentStore(
             store, default_base_url=settings.backend_public_base_url
         )
         super().__init__(store, attachment_store=attachment_store)
         self._settings = settings
-        self._workflow_service = WorkflowService(settings=settings)
+        self._workflow_service = workflow_service
         self._widget_waiters = WidgetWaiterRegistry()
         self._run_workflow = _get_run_workflow()
         self._title_agent = _get_thread_title_agent()
@@ -265,6 +271,55 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             backend_public_base_url=settings.backend_public_base_url
         )
         self.attachment_store = attachment_store
+
+    async def _process_streaming_impl(
+        self,
+        request: StreamingReq,
+        context: ChatKitRequestContext,
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        if isinstance(request, ThreadsCreateReq):
+            definition = self._workflow_service.get_current()
+            workflow = getattr(definition, "workflow", None)
+            workflow_id = getattr(workflow, "id", None)
+            if workflow_id is None:
+                workflow_id = getattr(definition, "workflow_id", None)
+            workflow_slug = getattr(workflow, "slug", None)
+            if workflow_slug is None:
+                raise RuntimeError("Aucun slug de workflow actif n'est disponible")
+            workflow_metadata = {
+                "id": workflow_id,
+                "slug": workflow_slug,
+                "definition_id": definition.id,
+            }
+
+            thread = Thread(
+                id=self.store.generate_thread_id(context),
+                created_at=datetime.now(),
+                metadata={"workflow": workflow_metadata},
+                items=Page(),
+            )
+
+            await self.store.save_thread(
+                ThreadMetadata(**thread.model_dump()),
+                context=context,
+            )
+            yield ThreadCreatedEvent(thread=self._to_thread_response(thread))
+
+            user_message = await self._build_user_message_item(
+                request.params.input,
+                thread,
+                context,
+            )
+            async for event in self._process_new_thread_item_respond(
+                thread,
+                user_message,
+                context,
+            ):
+                yield event
+            return
+
+        async for event in super()._process_streaming_impl(request, context):
+            yield event
 
     async def _wait_for_widget_action(
         self,

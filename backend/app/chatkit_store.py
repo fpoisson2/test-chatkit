@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from pydantic import TypeAdapter
@@ -13,6 +13,7 @@ from chatkit.store import NotFoundError, Store
 from chatkit.types import Attachment, Page, ThreadItem, ThreadMetadata
 
 from .models import ChatAttachment, ChatThread, ChatThreadItem
+from .workflows import WorkflowService
 
 if TYPE_CHECKING:
     from .chatkit import ChatKitRequestContext
@@ -33,10 +34,15 @@ def _ensure_timezone(value: dt.datetime | None) -> dt.datetime:
 class PostgresChatKitStore(Store[ChatKitRequestContext]):
     """Implémentation du store ChatKit reposant sur PostgreSQL."""
 
-    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+    def __init__(
+        self,
+        session_factory: sessionmaker[Session],
+        workflow_service: WorkflowService | None = None,
+    ) -> None:
         self._session_factory = session_factory
         self._attachment_adapter = TypeAdapter(Attachment)
         self._thread_item_adapter = TypeAdapter(ThreadItem)
+        self._workflow_service = workflow_service or WorkflowService()
 
     def _require_user_id(self, context: ChatKitRequestContext) -> str:
         if not context.user_id:
@@ -50,19 +56,108 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         with self._session_factory() as session:
             return func(session)
 
+    def _current_workflow_metadata(self) -> dict[str, Any]:
+        definition = self._workflow_service.get_current()
+        workflow = getattr(definition, "workflow", None)
+        workflow_id = getattr(workflow, "id", getattr(definition, "workflow_id", None))
+        workflow_slug = getattr(workflow, "slug", None)
+        if workflow_slug is None:
+            raise RuntimeError("Le workflow actif n'a pas de slug défini")
+        return {
+            "id": workflow_id,
+            "slug": workflow_slug,
+            "definition_id": definition.id,
+        }
+
+    @staticmethod
+    def _has_complete_workflow_metadata(metadata: Any) -> bool:
+        return (
+            isinstance(metadata, Mapping)
+            and "id" in metadata
+            and "slug" in metadata
+            and "definition_id" in metadata
+        )
+
+    @staticmethod
+    def _workflow_matches(
+        metadata: Any, expected: Mapping[str, Any]
+    ) -> bool:
+        return (
+            isinstance(metadata, Mapping)
+            and metadata.get("slug") == expected.get("slug")
+            and metadata.get("definition_id") == expected.get("definition_id")
+        )
+
+    def _normalize_thread_record(
+        self,
+        record: ChatThread,
+        *,
+        owner_id: str,
+        session: Session,
+        expected_workflow: Mapping[str, Any],
+    ) -> tuple[dict[str, Any], bool]:
+        payload = dict(record.payload)
+        metadata = dict(payload.get("metadata") or {})
+        changed = False
+
+        if metadata.get("owner_id") != owner_id:
+            metadata["owner_id"] = owner_id
+            changed = True
+
+        workflow_metadata = metadata.get("workflow")
+        matches = self._workflow_matches(workflow_metadata, expected_workflow)
+        if not matches and not self._has_complete_workflow_metadata(workflow_metadata):
+            metadata["workflow"] = dict(expected_workflow)
+            matches = True
+            changed = True
+
+        payload["metadata"] = metadata
+
+        if changed:
+            record.payload = payload
+            record.updated_at = dt.datetime.now(dt.UTC)
+            session.add(record)
+            session.commit()
+
+        return payload, matches
+
+    def _require_thread_record(
+        self,
+        session: Session,
+        thread_id: str,
+        owner_id: str,
+        expected_workflow: Mapping[str, Any],
+    ) -> tuple[ChatThread, dict[str, Any]]:
+        stmt = select(ChatThread).where(
+            ChatThread.id == thread_id, ChatThread.owner_id == owner_id
+        )
+        record = session.execute(stmt).scalar_one_or_none()
+        if record is None:
+            raise NotFoundError(f"Thread {thread_id} introuvable")
+        payload, matches = self._normalize_thread_record(
+            record,
+            owner_id=owner_id,
+            session=session,
+            expected_workflow=expected_workflow,
+        )
+        if not matches:
+            raise NotFoundError(f"Thread {thread_id} introuvable")
+        return record, payload
+
     async def load_thread(
         self, thread_id: str, context: ChatKitRequestContext
     ) -> ThreadMetadata:
         owner_id = self._require_user_id(context)
 
         def _load(session: Session) -> ThreadMetadata:
-            stmt = select(ChatThread).where(
-                ChatThread.id == thread_id, ChatThread.owner_id == owner_id
+            expected = self._current_workflow_metadata()
+            _record, payload = self._require_thread_record(
+                session,
+                thread_id,
+                owner_id,
+                expected,
             )
-            result = session.execute(stmt).scalar_one_or_none()
-            if result is None:
-                raise NotFoundError(f"Thread {thread_id} introuvable")
-            return ThreadMetadata.model_validate(result.payload)
+            return ThreadMetadata.model_validate(payload)
 
         return await self._run(_load)
 
@@ -75,6 +170,14 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             payload = thread.model_dump(mode="json")
             metadata = dict(payload.get("metadata") or {})
             metadata.setdefault("owner_id", owner_id)
+            expected_workflow = self._current_workflow_metadata()
+            workflow_metadata = metadata.get("workflow")
+            if self._has_complete_workflow_metadata(workflow_metadata):
+                if not self._workflow_matches(workflow_metadata, expected_workflow):
+                    raise NotFoundError(f"Thread {thread.id} introuvable")
+            else:
+                metadata["workflow"] = dict(expected_workflow)
+            thread.metadata = metadata
             payload["metadata"] = metadata
             now = dt.datetime.now(dt.UTC)
             created_at = _ensure_timezone(thread.created_at)
@@ -111,6 +214,14 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _load(session: Session) -> Page[ThreadItem]:
+            expected = self._current_workflow_metadata()
+            self._require_thread_record(
+                session,
+                thread_id,
+                owner_id,
+                expected,
+            )
+
             stmt = select(ChatThreadItem).where(
                 ChatThreadItem.thread_id == thread_id,
                 ChatThreadItem.owner_id == owner_id,
@@ -213,6 +324,8 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _load(session: Session) -> Page[ThreadMetadata]:
+            expected = self._current_workflow_metadata()
+
             stmt = select(ChatThread).where(ChatThread.owner_id == owner_id)
             if order == "desc":
                 stmt = stmt.order_by(ChatThread.created_at.desc(), ChatThread.id.desc())
@@ -220,17 +333,36 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 stmt = stmt.order_by(ChatThread.created_at.asc(), ChatThread.id.asc())
             records = session.execute(stmt).scalars().all()
 
+            matching: list[tuple[ChatThread, dict[str, Any]]] = []
+            for record in records:
+                payload, matches = self._normalize_thread_record(
+                    record,
+                    owner_id=owner_id,
+                    session=session,
+                    expected_workflow=expected,
+                )
+                if matches:
+                    matching.append((record, payload))
+
+            filtered_records = [record for record, _payload in matching]
+
             start_index = 0
             if after:
-                for idx, record in enumerate(records):
+                for idx, record in enumerate(filtered_records):
                     if record.id == after:
                         start_index = idx + 1
                         break
-            effective_limit = limit or max(len(records) - start_index, 0)
-            sliced = records[start_index : start_index + effective_limit]
-            has_more = start_index + effective_limit < len(records)
-            next_after = sliced[-1].id if has_more and sliced else None
-            data = [ThreadMetadata.model_validate(record.payload) for record in sliced]
+
+            effective_limit = limit or max(len(filtered_records) - start_index, 0)
+            sliced_pairs = matching[start_index : start_index + effective_limit]
+            has_more = start_index + effective_limit < len(filtered_records)
+            next_after = (
+                sliced_pairs[-1][0].id if has_more and sliced_pairs else None
+            )
+            data = [
+                ThreadMetadata.model_validate(payload)
+                for _record, payload in sliced_pairs
+            ]
             return Page(data=data, has_more=has_more, after=next_after)
 
         return await self._run(_load)
@@ -241,12 +373,13 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _add(session: Session) -> None:
-            thread_stmt = select(ChatThread).where(
-                ChatThread.id == thread_id, ChatThread.owner_id == owner_id
+            expected = self._current_workflow_metadata()
+            self._require_thread_record(
+                session,
+                thread_id,
+                owner_id,
+                expected,
             )
-            thread = session.execute(thread_stmt).scalar_one_or_none()
-            if thread is None:
-                raise NotFoundError(f"Thread {thread_id} introuvable")
             payload = item.model_dump(mode="json")
             created_at = _ensure_timezone(getattr(item, "created_at", None))
             session.add(
@@ -268,6 +401,13 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _save(session: Session) -> None:
+            expected = self._current_workflow_metadata()
+            self._require_thread_record(
+                session,
+                thread_id,
+                owner_id,
+                expected,
+            )
             stmt = select(ChatThreadItem).where(
                 ChatThreadItem.id == item.id,
                 ChatThreadItem.thread_id == thread_id,
@@ -290,6 +430,13 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _load(session: Session) -> ThreadItem:
+            expected = self._current_workflow_metadata()
+            self._require_thread_record(
+                session,
+                thread_id,
+                owner_id,
+                expected,
+            )
             stmt = select(ChatThreadItem).where(
                 ChatThreadItem.id == item_id,
                 ChatThreadItem.thread_id == thread_id,
@@ -310,6 +457,13 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _delete(session: Session) -> None:
+            expected = self._current_workflow_metadata()
+            self._require_thread_record(
+                session,
+                thread_id,
+                owner_id,
+                expected,
+            )
             stmt = delete(ChatThread).where(
                 ChatThread.id == thread_id,
                 ChatThread.owner_id == owner_id,
@@ -325,6 +479,13 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         owner_id = self._require_user_id(context)
 
         def _delete(session: Session) -> None:
+            expected = self._current_workflow_metadata()
+            self._require_thread_record(
+                session,
+                thread_id,
+                owner_id,
+                expected,
+            )
             stmt = delete(ChatThreadItem).where(
                 ChatThreadItem.id == item_id,
                 ChatThreadItem.thread_id == thread_id,
