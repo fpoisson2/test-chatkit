@@ -1221,7 +1221,10 @@ const WorkflowBuilderPage = () => {
           setSaveState("idle");
           setSaveMessage(null);
           if (!background) {
-            setLoading(false);
+            // Wait for viewport to be applied before hiding loading
+            setTimeout(() => {
+              setLoading(false);
+            }, 150);
           }
           return true;
         } catch (error) {
@@ -3355,6 +3358,12 @@ const WorkflowBuilderPage = () => {
               preserveViewport: true,
               background: true,
             });
+            // Force viewport to be reapplied after auto-save
+            if (currentViewport && reactFlowInstanceRef.current) {
+              setTimeout(() => {
+                reactFlowInstanceRef.current?.setViewport(currentViewport, { duration: 0 });
+              }, 200);
+            }
             lastSavedSnapshotRef.current = graphSnapshot;
             setHasPendingChanges(false);
             setSaveState("saved");
@@ -3408,10 +3417,17 @@ const WorkflowBuilderPage = () => {
           name: draftDisplayName,
         };
         draftVersionSummaryRef.current = summary;
+        const currentViewport = reactFlowInstanceRef.current?.getViewport();
         await loadVersions(selectedWorkflowId, summary.id, {
           preserveViewport: true,
           background: true,
         });
+        // Force viewport to be reapplied after auto-save
+        if (currentViewport && reactFlowInstanceRef.current) {
+          setTimeout(() => {
+            reactFlowInstanceRef.current?.setViewport(currentViewport, { duration: 0 });
+          }, 200);
+        }
         lastSavedSnapshotRef.current = graphSnapshot;
         setHasPendingChanges(false);
         setSaveState("saved");
