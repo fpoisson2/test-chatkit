@@ -76,24 +76,61 @@
   gap: 1rem;
 }
 
-.mobileToggleButton {
+.mobileActionStack {
   position: fixed;
   bottom: 1.25rem;
   right: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.75rem;
+  z-index: 40;
+}
+
+.mobileActionButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 3.25rem;
-  height: 3.25rem;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  border: none;
+  background: var(--surface-strong);
+  color: var(--text-color);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.2s ease;
+}
+
+.mobileActionButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mobileActionButton:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.mobileActionButton:active {
+  transform: translateY(1px);
+}
+
+.mobileToggleButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.35rem;
+  height: 3.35rem;
   border-radius: 50%;
   border: none;
   background: var(--text-color);
   color: var(--main-background);
   font-size: 1.75rem;
-  font-weight: 500;
+  font-weight: 600;
   box-shadow: var(--shadow-soft);
   cursor: pointer;
-  z-index: 40;
+  transition: transform 0.15s ease;
 }
 
 .mobileToggleButton:focus-visible {
@@ -106,7 +143,7 @@
 }
 
 @media (min-width: 769px) {
-  .mobileToggleButton {
+  .mobileActionStack {
     display: none;
   }
 }
@@ -254,40 +291,6 @@
 
 .propertiesPanelMobile .propertiesPanelBody {
   padding-bottom: 1.5rem;
-}
-
-.propertiesToggleButton {
-  position: fixed;
-  bottom: 1.25rem;
-  left: 1.25rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.1rem;
-  border-radius: 9999px;
-  border: none;
-  background: var(--text-color);
-  color: var(--main-background);
-  font-weight: 600;
-  font-size: 0.95rem;
-  box-shadow: var(--shadow-soft);
-  cursor: pointer;
-  z-index: 40;
-}
-
-.propertiesToggleButton:focus-visible {
-  outline: 2px solid var(--primary-color);
-  outline-offset: 2px;
-}
-
-.propertiesToggleButton:active {
-  transform: translateY(1px);
-}
-
-@media (min-width: 769px) {
-  .propertiesToggleButton {
-    display: none;
-  }
 }
 
 .srOnly {
