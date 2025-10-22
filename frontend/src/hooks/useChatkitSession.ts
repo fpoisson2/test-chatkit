@@ -6,6 +6,7 @@ import {
   persistChatKitSecret,
   readStoredChatKitSession,
 } from "../utils/chatkitSession";
+import { ApiError, fetchChatkitSession } from "../utils/backend";
 
 export type UseChatkitSessionParams = {
   sessionOwner: string;
@@ -74,65 +75,10 @@ export const useChatkitSession = ({
       }
 
       try {
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
-        if (token) {
-          headers.Authorization = `Bearer ${token}`;
-        }
-
-        const res = await fetch("/api/chatkit/session", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ user: sessionOwner }),
+        const data = await fetchChatkitSession({
+          user: sessionOwner,
+          token,
         });
-
-        if (!res.ok) {
-          const message = await res.text();
-          const combinedMessage = `${res.status} ${message}`.trim();
-
-          const normalizedMessage = (() => {
-            try {
-              const parsed = JSON.parse(message);
-              if (parsed?.detail) {
-                if (typeof parsed.detail === "string") {
-                  return parsed.detail;
-                }
-                if (typeof parsed.detail?.hint === "string") {
-                  return parsed.detail.hint;
-                }
-                if (typeof parsed.detail?.error === "string") {
-                  return parsed.detail.error;
-                }
-              }
-            } catch (err) {
-              if (import.meta.env.DEV) {
-                console.warn("[ChatKit] Impossible d'analyser la réponse de session", err);
-              }
-            }
-            return message;
-          })();
-
-          if (import.meta.env.DEV) {
-            console.error(
-              "[ChatKit] Échec lors de la récupération du client_secret (%s) : %s",
-              res.status,
-              normalizedMessage,
-            );
-          }
-
-          if (res.status === 500 && normalizedMessage.includes("CHATKIT_WORKFLOW_ID")) {
-            disableHostedFlow("CHATKIT_WORKFLOW_ID manquant");
-            throw new Error(
-              "Le flux hébergé a été désactivé car CHATKIT_WORKFLOW_ID n'est pas configuré côté serveur.",
-            );
-          }
-
-          const errorMessage = `Failed to fetch client secret: ${combinedMessage}`;
-          throw new Error(errorMessage);
-        }
-
-        const data = await res.json();
         if (!data?.client_secret) {
           throw new Error("Missing client_secret in ChatKit session response");
         }
@@ -142,6 +88,65 @@ export const useChatkitSession = ({
 
         return data.client_secret;
       } catch (err) {
+        if (err instanceof ApiError) {
+          const extractDetailMessage = (detail: unknown): string | null => {
+            if (!detail) {
+              return null;
+            }
+            if (typeof detail === "string") {
+              return detail;
+            }
+            if (typeof detail === "object") {
+              const record = detail as Record<string, unknown>;
+              if ("detail" in record) {
+                const nested = extractDetailMessage(record.detail);
+                if (nested) {
+                  return nested;
+                }
+              }
+              const candidates = ["hint", "error", "message"] as const;
+              for (const key of candidates) {
+                const value = record[key];
+                if (typeof value === "string" && value) {
+                  return value;
+                }
+              }
+            }
+            return null;
+          };
+
+          const detailMessage = extractDetailMessage(err.detail) ?? err.message;
+          if (import.meta.env.DEV) {
+            console.error(
+              "[ChatKit] Échec lors de la récupération du client_secret (%s) : %s",
+              err.status ?? "inconnu",
+              detailMessage,
+            );
+          }
+
+          if (err.status === 500 && detailMessage.includes("CHATKIT_WORKFLOW_ID")) {
+            disableHostedFlow("CHATKIT_WORKFLOW_ID manquant");
+            const workflowError = new Error(
+              "Le flux hébergé a été désactivé car CHATKIT_WORKFLOW_ID n'est pas configuré côté serveur.",
+            );
+            reportError(workflowError.message, err);
+            clearStoredChatKitSecret(sessionOwner);
+            throw workflowError;
+          }
+
+          const combinedMessage = err.status
+            ? `${err.status} ${detailMessage}`.trim()
+            : detailMessage;
+
+          const wrappedError = new ApiError(`Failed to fetch client secret: ${combinedMessage}`, {
+            status: err.status,
+            detail: err.detail,
+          });
+          reportError(wrappedError.message, err);
+          clearStoredChatKitSecret(sessionOwner);
+          throw wrappedError;
+        }
+
         if (err instanceof Error) {
           reportError(err.message, err);
         } else {

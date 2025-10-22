@@ -122,6 +122,31 @@ const withAuthHeaders = (token: string | null | undefined): HeadersInit => {
   return headers;
 };
 
+export type ChatkitSessionResponse = {
+  client_secret: string;
+  expires_at?: unknown;
+  expiresAt?: unknown;
+};
+
+export const fetchChatkitSession = async ({
+  user,
+  token,
+  signal,
+}: {
+  user: string;
+  token: string | null | undefined;
+  signal?: AbortSignal;
+}): Promise<ChatkitSessionResponse> => {
+  const response = await requestWithFallback("/api/chatkit/session", {
+    method: "POST",
+    headers: withAuthHeaders(token ?? null),
+    body: JSON.stringify({ user }),
+    signal,
+  });
+
+  return response.json();
+};
+
 export type EditableUser = {
   id: number;
   email: string;
