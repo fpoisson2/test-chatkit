@@ -341,6 +341,16 @@ class WorkflowChatKitUpdate(BaseModel):
     workflow_id: int
 
 
+class WorkflowImportRequest(BaseModel):
+    workflow_id: int | None = None
+    slug: str | None = None
+    display_name: str | None = None
+    description: str | None = None
+    version_name: str | None = None
+    mark_as_active: bool | None = False
+    graph: WorkflowGraphInput
+
+
 class WidgetTemplateBase(BaseModel):
     slug: str
     title: str | None = None

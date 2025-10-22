@@ -93,6 +93,7 @@ import {
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
+import { parseWorkflowImport, WorkflowImportError } from "./importWorkflow";
 import type {
   AgentParameters,
   FileSearchConfig,
@@ -289,6 +290,7 @@ const WorkflowBuilderPage = () => {
   const [deployToProduction, setDeployToProduction] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const autoSaveTimeoutRef = useRef<number | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const draftVersionIdRef = useRef<number | null>(null);
@@ -303,6 +305,7 @@ const WorkflowBuilderPage = () => {
   const hasUserViewportChangeRef = useRef(false);
   const pendingViewportRestoreRef = useRef(false);
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
@@ -583,6 +586,19 @@ const WorkflowBuilderPage = () => {
       <div style={getHeaderActionAreaStyle(isMobileLayout)}>
         <button
           type="button"
+          onClick={handleTriggerImport}
+          disabled={loading || isImporting}
+          aria-busy={isImporting}
+          style={getDeployButtonStyle(isMobileLayout, {
+            disabled: loading || isImporting,
+          })}
+        >
+          {isImporting
+            ? t("workflowBuilder.import.inProgress")
+            : t("workflowBuilder.actions.importJson")}
+        </button>
+        <button
+          type="button"
           onClick={() => void handleExportWorkflow()}
           disabled={
             loading ||
@@ -603,6 +619,15 @@ const WorkflowBuilderPage = () => {
             ? t("workflowBuilder.export.preparing")
             : t("workflowBuilder.actions.exportJson")}
         </button>
+        <input
+          ref={importFileInputRef}
+          type="file"
+          accept="application/json"
+          hidden
+          onChange={(event) => {
+            void handleImportFileChange(event);
+          }}
+        />
         <button
           type="button"
           onClick={handleOpenDeployModal}
@@ -3275,6 +3300,197 @@ const WorkflowBuilderPage = () => {
     selectedWorkflowId,
     versions,
   ]);
+
+  const resolveImportErrorMessage = useCallback(
+    (error: unknown): string => {
+      if (error instanceof WorkflowImportError) {
+        switch (error.reason) {
+          case "invalid_json":
+            return t("workflowBuilder.import.errorInvalidJson");
+          case "missing_nodes":
+            return t("workflowBuilder.import.errorMissingNodes");
+          case "invalid_node":
+            return t("workflowBuilder.import.errorInvalidNode");
+          case "invalid_edge":
+            return t("workflowBuilder.import.errorInvalidEdge");
+          case "invalid_graph":
+          default:
+            return t("workflowBuilder.import.errorInvalidGraph");
+        }
+      }
+      if (error instanceof Error) {
+        return error.message;
+      }
+      return t("workflowBuilder.import.error");
+    },
+    [t],
+  );
+
+  const processImportPayload = useCallback(
+    async (rawText: string) => {
+      setIsImporting(true);
+      try {
+        const parsed = parseWorkflowImport(rawText);
+        let targetWorkflowId = selectedWorkflowId ?? null;
+        if (targetWorkflowId == null && parsed.workflowId != null) {
+          targetWorkflowId = parsed.workflowId;
+        }
+
+        const requestPayload: Record<string, unknown> = {
+          graph: parsed.graph,
+        };
+
+        const ensureVersionName = () =>
+          t("workflowBuilder.import.defaultVersionName", {
+            timestamp: new Date().toLocaleString(),
+          });
+
+        if (targetWorkflowId != null) {
+          requestPayload.workflow_id = targetWorkflowId;
+          if (parsed.slug) {
+            requestPayload.slug = parsed.slug;
+          }
+          if (parsed.displayName) {
+            requestPayload.display_name = parsed.displayName;
+          }
+          if (parsed.description !== undefined) {
+            requestPayload.description = parsed.description;
+          }
+          if (parsed.markAsActive !== undefined) {
+            requestPayload.mark_as_active = parsed.markAsActive;
+          }
+          requestPayload.version_name = parsed.versionName ?? ensureVersionName();
+        } else {
+          let displayName = parsed.displayName ?? null;
+          if (!displayName) {
+            const proposed = window.prompt(
+              t("workflowBuilder.import.promptDisplayName"),
+            );
+            if (!proposed) {
+              setSaveState("error");
+              setSaveMessage(t("workflowBuilder.import.errorMissingName"));
+              return;
+            }
+            const trimmed = proposed.trim();
+            if (!trimmed) {
+              setSaveState("error");
+              setSaveMessage(t("workflowBuilder.import.errorMissingName"));
+              return;
+            }
+            displayName = trimmed;
+          }
+          const slug = parsed.slug ?? slugifyWorkflowName(displayName);
+          requestPayload.display_name = displayName;
+          requestPayload.slug = slug;
+          requestPayload.description = parsed.description ?? null;
+          requestPayload.mark_as_active = parsed.markAsActive ?? true;
+          requestPayload.version_name = parsed.versionName ?? ensureVersionName();
+        }
+
+        setSaveState("saving");
+        setSaveMessage(t("workflowBuilder.import.saving"));
+
+        const candidates = makeApiEndpointCandidates(
+          backendUrl,
+          "/api/workflows/import",
+        );
+        let lastError: Error | null = null;
+
+        for (const url of candidates) {
+          try {
+            const response = await fetch(url, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...authHeader,
+              },
+              body: JSON.stringify(requestPayload),
+            });
+            if (!response.ok) {
+              let detail = t("workflowBuilder.import.errorWithStatus", {
+                status: response.status,
+              });
+              try {
+                const data = await response.json();
+                if (data && typeof data.detail === "string" && data.detail.trim()) {
+                  detail = data.detail.trim();
+                }
+              } catch (parseError) {
+                lastError =
+                  parseError instanceof Error
+                    ? parseError
+                    : new Error(t("workflowBuilder.import.error"));
+              }
+              throw new Error(detail);
+            }
+            const imported: WorkflowVersionResponse = await response.json();
+            await loadWorkflows({
+              selectWorkflowId: imported.workflow_id,
+              selectVersionId: imported.id,
+            });
+            setSaveState("saved");
+            setSaveMessage(t("workflowBuilder.import.success"));
+            setTimeout(() => setSaveState("idle"), 1500);
+            return;
+          } catch (error) {
+            if (error instanceof Error && error.name === "AbortError") {
+              continue;
+            }
+            lastError =
+              error instanceof Error
+                ? error
+                : new Error(t("workflowBuilder.import.error"));
+          }
+        }
+
+        if (lastError) {
+          throw lastError;
+        }
+        throw new Error(t("workflowBuilder.import.error"));
+      } catch (error) {
+        setSaveState("error");
+        setSaveMessage(resolveImportErrorMessage(error));
+      } finally {
+        setIsImporting(false);
+      }
+    },
+    [
+      authHeader,
+      backendUrl,
+      loadWorkflows,
+      resolveImportErrorMessage,
+      selectedWorkflowId,
+      t,
+    ],
+  );
+
+  const handleImportFileChange = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0] ?? null;
+      event.target.value = "";
+      if (!file) {
+        return;
+      }
+      try {
+        setSaveMessage(null);
+        const text = await file.text();
+        await processImportPayload(text);
+      } catch (_error) {
+        setSaveState("error");
+        setSaveMessage(t("workflowBuilder.import.errorFileRead"));
+        setIsImporting(false);
+      }
+    },
+    [processImportPayload, t],
+  );
+
+  const handleTriggerImport = useCallback(() => {
+    if (loading || isImporting) {
+      return;
+    }
+    setSaveMessage(null);
+    importFileInputRef.current?.click();
+  }, [importFileInputRef, isImporting, loading]);
 
   const handleExportWorkflow = useCallback(async () => {
     if (!selectedWorkflowId || !selectedVersionId || isExporting) {
