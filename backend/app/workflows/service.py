@@ -946,7 +946,10 @@ class WorkflowService:
                 user_id,
                 viewport_entries,
             )
-            normalized: dict[tuple[int, int | None], tuple[float, float, float]] = {}
+            normalized: dict[
+                tuple[int, int | None, str], tuple[float, float, float]
+            ] = {}
+            payload_device_types: set[str] = set()
             skipped_entries: list[dict[str, Any]] = []
             for entry in viewport_entries:
                 workflow_raw = entry.get("workflow_id")
@@ -987,6 +990,21 @@ class WorkflowService:
                     skipped_entries.append(
                         {
                             "reason": "invalid_version_id",
+                            "entry": entry,
+                        }
+                    )
+                    continue
+
+                device_raw = entry.get("device_type", "desktop")
+                if isinstance(device_raw, str):
+                    device_type_candidate = device_raw.strip().lower()
+                else:
+                    device_type_candidate = ""
+
+                if device_type_candidate not in {"desktop", "mobile"}:
+                    skipped_entries.append(
+                        {
+                            "reason": "invalid_device_type",
                             "entry": entry,
                         }
                     )
@@ -1035,7 +1053,10 @@ class WorkflowService:
                     )
                     continue
 
-                normalized[(workflow_id, version_id)] = (x, y, zoom)
+                normalized[
+                    (workflow_id, version_id, device_type_candidate)
+                ] = (x, y, zoom)
+                payload_device_types.add(device_type_candidate)
 
             if skipped_entries:
                 logger.info(
@@ -1053,16 +1074,25 @@ class WorkflowService:
                     {
                         "workflow_id": workflow_id,
                         "version_id": version_id,
+                        "device_type": device_type,
                         "x": x,
                         "y": y,
                         "zoom": zoom,
                     }
-                    for (workflow_id, version_id), (x, y, zoom) in normalized.items()
+                    for (
+                        workflow_id,
+                        version_id,
+                        device_type,
+                    ), (x, y, zoom) in normalized.items()
                 ],
             )
 
             existing = {
-                (viewport.workflow_id, viewport.version_id): viewport
+                (
+                    viewport.workflow_id,
+                    viewport.version_id,
+                    viewport.device_type,
+                ): viewport
                 for viewport in db.scalars(
                     select(WorkflowViewport).where(
                         WorkflowViewport.user_id == user_id
@@ -1072,13 +1102,18 @@ class WorkflowService:
 
             created_viewports: list[dict[str, Any]] = []
             updated_viewports: list[dict[str, Any]] = []
-            for (workflow_id, version_id), (x, y, zoom) in normalized.items():
-                viewport = existing.get((workflow_id, version_id))
+            for (
+                workflow_id,
+                version_id,
+                device_type,
+            ), (x, y, zoom) in normalized.items():
+                viewport = existing.get((workflow_id, version_id, device_type))
                 if viewport is None:
                     viewport = WorkflowViewport(
                         user_id=user_id,
                         workflow_id=workflow_id,
                         version_id=version_id,
+                        device_type=device_type,
                         x=x,
                         y=y,
                         zoom=zoom,
@@ -1088,6 +1123,7 @@ class WorkflowService:
                         {
                             "workflow_id": workflow_id,
                             "version_id": version_id,
+                            "device_type": device_type,
                             "x": x,
                             "y": y,
                             "zoom": zoom,
@@ -1101,6 +1137,7 @@ class WorkflowService:
                         {
                             "workflow_id": workflow_id,
                             "version_id": version_id,
+                            "device_type": device_type,
                             "x": x,
                             "y": y,
                             "zoom": zoom,
@@ -1108,13 +1145,22 @@ class WorkflowService:
                     )
 
             removed_keys: list[dict[str, Any]] = []
+            target_device_types = (
+                payload_device_types if payload_device_types else None
+            )
             for key, viewport in existing.items():
+                if (
+                    target_device_types is not None
+                    and viewport.device_type not in target_device_types
+                ):
+                    continue
                 if key not in normalized:
                     db.delete(viewport)
                     removed_keys.append(
                         {
                             "workflow_id": viewport.workflow_id,
                             "version_id": viewport.version_id,
+                            "device_type": viewport.device_type,
                         }
                     )
 

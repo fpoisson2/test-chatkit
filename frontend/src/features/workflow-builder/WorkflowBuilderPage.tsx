@@ -150,9 +150,12 @@ const MOBILE_MIN_VIEWPORT_ZOOM = 0.05;
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
+type DeviceType = "mobile" | "desktop";
+
 type WorkflowViewportRecord = {
   workflow_id: number;
   version_id: number | null;
+  device_type: DeviceType;
   x: number;
   y: number;
   zoom: number;
@@ -162,25 +165,38 @@ type WorkflowViewportListResponse = {
   viewports: WorkflowViewportRecord[];
 };
 
-const viewportKeyFor = (workflowId: number | null, versionId: number | null) =>
-  workflowId != null ? `${workflowId}:${versionId ?? "latest"}` : null;
+const viewportKeyFor = (
+  workflowId: number | null,
+  versionId: number | null,
+  deviceType: DeviceType | null,
+) =>
+  workflowId != null && deviceType != null
+    ? `${deviceType}:${workflowId}:${versionId ?? "latest"}`
+    : null;
 
 const parseViewportKey = (
   key: string,
-): { workflowId: number; versionId: number | null } | null => {
-  const [workflowPart, versionPart] = key.split(":");
+): {
+  deviceType: DeviceType;
+  workflowId: number;
+  versionId: number | null;
+} | null => {
+  const [devicePart, workflowPart, versionPart] = key.split(":");
+  if (devicePart !== "mobile" && devicePart !== "desktop") {
+    return null;
+  }
   const workflowId = Number.parseInt(workflowPart ?? "", 10);
   if (!Number.isFinite(workflowId)) {
     return null;
   }
   if (!versionPart || versionPart === "latest") {
-    return { workflowId, versionId: null };
+    return { deviceType: devicePart, workflowId, versionId: null };
   }
   const versionId = Number.parseInt(versionPart, 10);
   if (!Number.isFinite(versionId)) {
     return null;
   }
-  return { workflowId, versionId };
+  return { deviceType: devicePart, workflowId, versionId };
 };
 
 const versionSummaryFromResponse = (
@@ -342,6 +358,7 @@ const WorkflowBuilderPage = () => {
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
 
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
+  const deviceType: DeviceType = isMobileLayout ? "mobile" : "desktop";
   const baseMinViewportZoom = useMemo(
     () => (isMobileLayout ? MOBILE_MIN_VIEWPORT_ZOOM : DESKTOP_MIN_VIEWPORT_ZOOM),
     [isMobileLayout],
@@ -370,6 +387,7 @@ const WorkflowBuilderPage = () => {
       accumulator.push({
         workflow_id: parsedKey.workflowId,
         version_id: parsedKey.versionId,
+        device_type: parsedKey.deviceType,
         x: viewport.x,
         y: viewport.y,
         zoom: viewport.zoom,
@@ -550,7 +568,9 @@ const WorkflowBuilderPage = () => {
               typeof entry.version_id === "number" && Number.isFinite(entry.version_id)
                 ? entry.version_id
                 : null;
-            const key = viewportKeyFor(entry.workflow_id, versionId);
+            const entryDeviceType: DeviceType =
+              entry.device_type === "mobile" ? "mobile" : "desktop";
+            const key = viewportKeyFor(entry.workflow_id, versionId, entryDeviceType);
             if (key) {
               viewportMemoryRef.current.set(key, {
                 x: entry.x,
@@ -1179,7 +1199,7 @@ const WorkflowBuilderPage = () => {
           setTimeout(() => {
             isHydratingRef.current = false;
           }, 100);
-          const viewportKey = viewportKeyFor(workflowId, versionId);
+          const viewportKey = viewportKeyFor(workflowId, versionId, deviceType);
           viewportKeyRef.current = viewportKey;
           const restoredViewport = viewportKey
             ? viewportMemoryRef.current.get(viewportKey) ?? null
@@ -1253,6 +1273,7 @@ const WorkflowBuilderPage = () => {
     [
       authHeader,
       applySelection,
+      deviceType,
       persistViewportMemory,
       restoreViewport,
       setEdges,
@@ -1350,7 +1371,7 @@ const WorkflowBuilderPage = () => {
             if (!background) {
               setLoading(false);
             }
-            const emptyViewportKey = viewportKeyFor(workflowId, null);
+            const emptyViewportKey = viewportKeyFor(workflowId, null, deviceType);
             viewportKeyRef.current = emptyViewportKey;
             if (emptyViewportKey) {
               viewportMemoryRef.current.delete(emptyViewportKey);
@@ -1415,6 +1436,7 @@ const WorkflowBuilderPage = () => {
     [
       authHeader,
       draftDisplayName,
+      deviceType,
       loadVersionDetail,
       persistViewportMemory,
       restoreViewport,
@@ -3065,7 +3087,7 @@ const WorkflowBuilderPage = () => {
       const versionId = Number.isFinite(value) ? value : null;
       setSelectedVersionId(versionId);
       if (selectedWorkflowId && versionId) {
-        const key = viewportKeyFor(selectedWorkflowId, versionId);
+        const key = viewportKeyFor(selectedWorkflowId, versionId, deviceType);
         const hasSavedViewport = key ? viewportMemoryRef.current.has(key) : false;
         if (hasSavedViewport) {
           void loadVersionDetail(selectedWorkflowId, versionId);
@@ -3074,7 +3096,7 @@ const WorkflowBuilderPage = () => {
         }
       }
     },
-    [loadVersionDetail, selectedWorkflowId],
+    [deviceType, loadVersionDetail, selectedWorkflowId],
   );
 
   const handleCreateWorkflow = useCallback(async () => {
@@ -3350,7 +3372,11 @@ const WorkflowBuilderPage = () => {
               ...versionSummaryFromResponse(created),
               name: draftDisplayName,
             };
-            const newViewportKey = viewportKeyFor(selectedWorkflowId, summary.id);
+            const newViewportKey = viewportKeyFor(
+              selectedWorkflowId,
+              summary.id,
+              deviceType,
+            );
             const currentViewport =
               reactFlowInstanceRef.current?.getViewport() ?? viewportRef.current;
             if (newViewportKey && currentViewport) {
@@ -3435,7 +3461,7 @@ const WorkflowBuilderPage = () => {
         };
         draftVersionSummaryRef.current = summary;
         const currentViewport = reactFlowInstanceRef.current?.getViewport();
-        const viewportKey = viewportKeyFor(selectedWorkflowId, summary.id);
+        const viewportKey = viewportKeyFor(selectedWorkflowId, summary.id, deviceType);
         // Update initialViewport so ReactFlow uses it as defaultViewport
         if (currentViewport) {
           setInitialViewport({ ...currentViewport });
@@ -3493,6 +3519,7 @@ const WorkflowBuilderPage = () => {
     backendUrl,
     buildGraphPayload,
     conditionGraphError,
+    deviceType,
     draftDisplayName,
     formatSaveFailureWithStatus,
     loadVersions,
@@ -5004,13 +5031,13 @@ const WorkflowBuilderPage = () => {
   }, [saveState]);
 
   useEffect(() => {
-    const key = viewportKeyFor(selectedWorkflowId, selectedVersionId);
+    const key = viewportKeyFor(selectedWorkflowId, selectedVersionId, deviceType);
     viewportKeyRef.current = key;
     const savedViewport = key ? viewportMemoryRef.current.get(key) ?? null : null;
     viewportRef.current = savedViewport;
     hasUserViewportChangeRef.current = savedViewport != null;
     pendingViewportRestoreRef.current = true;
-  }, [selectedVersionId, selectedWorkflowId]);
+  }, [deviceType, selectedVersionId, selectedWorkflowId]);
 
   const headerStyle = useMemo(() => {
     const baseStyle = getHeaderContainerStyle(isMobileLayout);
