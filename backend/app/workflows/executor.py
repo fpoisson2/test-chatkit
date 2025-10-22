@@ -118,6 +118,77 @@ AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
 # ---------------------------------------------------------------------------
 
 
+async def _build_user_message_history_items(
+    *,
+    converter: ThreadItemConverter | None,
+    message: UserMessageItem | None,
+    fallback_text: str,
+) -> list[TResponseInputItem]:
+    """Construit les éléments d'historique pour le message utilisateur courant."""
+
+    normalized_fallback = _normalize_user_text(fallback_text)
+
+    typed_parts: list[str] = []
+    attachments_present = False
+    if message is not None:
+        attachments = getattr(message, "attachments", None) or []
+        attachments_present = bool(attachments)
+        for part in getattr(message, "content", []) or []:
+            text_value = getattr(part, "text", None)
+            normalized = _normalize_user_text(text_value) if text_value else ""
+            if normalized:
+                typed_parts.append(normalized)
+
+    typed_text = "\n".join(typed_parts)
+
+    items: list[TResponseInputItem] = []
+
+    if converter is not None and message is not None:
+        try:
+            converted = await converter.to_agent_input(message)
+        except Exception as exc:  # pragma: no cover - dépend du SDK installé
+            logger.warning(
+                "Impossible de convertir le message utilisateur courant en "
+                "entrée agent",
+                exc_info=exc,
+            )
+        else:
+            if converted:
+                if isinstance(converted, list):
+                    items.extend(converted)
+                else:  # pragma: no cover - API accepte aussi un seul item
+                    items.append(converted)
+
+    if normalized_fallback:
+        if items:
+            if attachments_present and not typed_text:
+                items.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "input_text",
+                                "text": normalized_fallback,
+                            }
+                        ],
+                    }
+                )
+        else:
+            items.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": normalized_fallback,
+                        }
+                    ],
+                }
+            )
+
+    return items
+
+
 class WorkflowInput(BaseModel):
     input_as_text: str
     auto_start_was_triggered: bool | None = None
@@ -244,6 +315,7 @@ async def run_workflow(
     workflow_service: WorkflowService | None = None,
     thread_item_converter: ThreadItemConverter | None = None,
     thread_items_history: list[ThreadItem] | None = None,
+    current_user_message: UserMessageItem | None = None,
 ) -> WorkflowRunSummary:
     workflow_payload = workflow_input.model_dump()
     steps: list[WorkflowStepSummary] = []
@@ -251,6 +323,9 @@ async def run_workflow(
     initial_user_text = _normalize_user_text(workflow_payload["input_as_text"])
     workflow_payload["input_as_text"] = initial_user_text
     current_input_item_id = workflow_payload.get("source_item_id")
+    if not isinstance(current_input_item_id, str) and current_user_message is not None:
+        candidate_id = getattr(current_user_message, "id", None)
+        current_input_item_id = candidate_id if isinstance(candidate_id, str) else None
     conversation_history: list[TResponseInputItem] = []
     thread = getattr(agent_context, "thread", None)
     pending_wait_state = (
@@ -274,7 +349,10 @@ async def run_workflow(
             filtered_history = [
                 item
                 for item in thread_items_history
-                if item.id != current_input_item_id
+                if not (
+                    isinstance(current_input_item_id, str)
+                    and item.id == current_input_item_id
+                )
             ]
             if filtered_history:
                 converted_history = await thread_item_converter.to_agent_input(
@@ -296,18 +374,13 @@ async def run_workflow(
         if isinstance(stored_state, Mapping):
             restored_state = copy.deepcopy(dict(stored_state))
 
-    if initial_user_text.strip():
-        conversation_history.append(
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": initial_user_text,
-                    }
-                ],
-            }
-        )
+    user_history_items = await _build_user_message_history_items(
+        converter=thread_item_converter,
+        message=current_user_message,
+        fallback_text=initial_user_text,
+    )
+    if user_history_items:
+        conversation_history.extend(user_history_items)
     state: dict[str, Any] = {
         "has_all_details": False,
         "infos_manquantes": initial_user_text,

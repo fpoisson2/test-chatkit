@@ -118,17 +118,48 @@ class AutoStartConfiguration:
 def _collect_user_text(message: UserMessageItem | None) -> str:
     """Concatène le texte d'un message utilisateur après normalisation."""
 
-    if not message or not getattr(message, "content", None):
+    if not message:
         return ""
 
     parts: list[str] = []
-    for content_item in message.content:
+    for content_item in getattr(message, "content", []) or []:
         text = getattr(content_item, "text", None)
         normalized = _normalize_user_text(text) if text else ""
         if normalized:
             parts.append(normalized)
 
-    return "\n".join(parts)
+    if parts:
+        return "\n".join(parts)
+
+    attachment_descriptions: list[str] = []
+    attachments = getattr(message, "attachments", None) or []
+    for index, attachment in enumerate(attachments, start=1):
+        if not attachment:
+            continue
+
+        display_name = _normalize_user_text(getattr(attachment, "name", None))
+        if display_name:
+            label = display_name
+        else:
+            label = getattr(attachment, "id", None) or "attachment"
+
+        metadata_parts: list[str] = []
+        attachment_type = getattr(attachment, "type", None)
+        if attachment_type:
+            metadata_parts.append(str(attachment_type))
+        mime_type = getattr(attachment, "mime_type", None)
+        if mime_type:
+            metadata_parts.append(str(mime_type))
+
+        if metadata_parts:
+            label = f"{label} ({', '.join(metadata_parts)})"
+
+        attachment_descriptions.append(f"Attachment {index}: {label}")
+
+    if attachment_descriptions:
+        return "\n".join(attachment_descriptions)
+
+    return ""
 
 
 def _resolve_user_input_text(
