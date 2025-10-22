@@ -1170,6 +1170,7 @@ const WorkflowBuilderPage = () => {
             if (viewportKey) {
               const currentViewport =
                 reactFlowInstanceRef.current?.getViewport() ?? viewportRef.current;
+              console.log('loadVersionDetail preserveViewport', { currentViewport, key: viewportKey });
               if (currentViewport) {
                 viewportMemoryRef.current.set(viewportKey, { ...currentViewport });
                 viewportRef.current = { ...currentViewport };
@@ -1178,10 +1179,12 @@ const WorkflowBuilderPage = () => {
             hasUserViewportChangeRef.current = true;
             pendingViewportRestoreRef.current = true;
           } else {
+            console.log('loadVersionDetail NOT preserveViewport', { restoredViewport, key: viewportKey });
             viewportRef.current = restoredViewport;
             hasUserViewportChangeRef.current = restoredViewport != null;
             pendingViewportRestoreRef.current = restoredViewport != null;
             if (restoredViewport != null) {
+              console.log('loadVersionDetail calling restoreViewport immediately');
               restoreViewport();
             }
           }
@@ -5077,9 +5080,11 @@ const WorkflowBuilderPage = () => {
                   style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
                   minZoom={minViewportZoom}
                   onInit={(instance) => {
+                    console.log('onInit called', { pending: pendingViewportRestoreRef.current, viewport: instance.getViewport() });
                     reactFlowInstanceRef.current = instance;
                     refreshViewportConstraints(instance);
                     if (pendingViewportRestoreRef.current) {
+                      console.log('onInit calling restoreViewport');
                       restoreViewport();
                     }
                   }}
