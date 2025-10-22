@@ -131,6 +131,23 @@ const fr: TranslationDictionary = {
   "workflowBuilder.deploy.promoteFailedWithStatus": "Échec de la promotion (code {{status}}).",
   "workflowBuilder.deploy.promoteError": "Impossible de promouvoir la version sélectionnée.",
   "workflowBuilder.deploy.publishError": "Impossible de publier le workflow.",
+  "workflowBuilder.deploy.modal.titlePublishDraft": "Publier les modifications ?",
+  "workflowBuilder.deploy.modal.descriptionPublishDraft":
+    "Créez une nouvelle version du workflow avec vos dernières modifications.",
+  "workflowBuilder.deploy.modal.titlePromoteSelected": "Déployer la version sélectionnée ?",
+  "workflowBuilder.deploy.modal.descriptionPromoteSelected":
+    "Remplace la version de production actuelle par la révision v{{version}}.",
+  "workflowBuilder.deploy.modal.titleMissing": "Sélectionner une version à déployer",
+  "workflowBuilder.deploy.modal.descriptionMissing":
+    "Choisissez un brouillon ou une version existante à promouvoir.",
+  "workflowBuilder.deploy.modal.path.draft": "Brouillon",
+  "workflowBuilder.deploy.modal.path.newVersion": "Nouvelle version",
+  "workflowBuilder.deploy.modal.path.selectedWithVersion": "Version sélectionnée v{{version}}",
+  "workflowBuilder.deploy.modal.path.production": "Production",
+  "workflowBuilder.deploy.modal.productionToggle": "Déployer en production",
+  "workflowBuilder.deploy.modal.action.cancel": "Annuler",
+  "workflowBuilder.deploy.modal.action.publish": "Publier",
+  "workflowBuilder.deploy.modal.action.deploy": "Déployer",
 };
 
 const en: TranslationDictionary = {
@@ -252,6 +269,23 @@ const en: TranslationDictionary = {
   "workflowBuilder.deploy.promoteFailedWithStatus": "Promotion failed (status {{status}}).",
   "workflowBuilder.deploy.promoteError": "Unable to promote the selected version.",
   "workflowBuilder.deploy.publishError": "Unable to publish the workflow.",
+  "workflowBuilder.deploy.modal.titlePublishDraft": "Publish changes?",
+  "workflowBuilder.deploy.modal.descriptionPublishDraft":
+    "Create a new version of the workflow with your latest changes.",
+  "workflowBuilder.deploy.modal.titlePromoteSelected": "Deploy selected version?",
+  "workflowBuilder.deploy.modal.descriptionPromoteSelected":
+    "Replace the current production version with revision v{{version}}.",
+  "workflowBuilder.deploy.modal.titleMissing": "Select a version to deploy",
+  "workflowBuilder.deploy.modal.descriptionMissing":
+    "Choose a draft or existing version to promote.",
+  "workflowBuilder.deploy.modal.path.draft": "Draft",
+  "workflowBuilder.deploy.modal.path.newVersion": "New version",
+  "workflowBuilder.deploy.modal.path.selectedWithVersion": "Selected version v{{version}}",
+  "workflowBuilder.deploy.modal.path.production": "Production",
+  "workflowBuilder.deploy.modal.productionToggle": "Deploy to production",
+  "workflowBuilder.deploy.modal.action.cancel": "Cancel",
+  "workflowBuilder.deploy.modal.action.publish": "Publish",
+  "workflowBuilder.deploy.modal.action.deploy": "Deploy",
 };
 
 export const translations: Translations = {

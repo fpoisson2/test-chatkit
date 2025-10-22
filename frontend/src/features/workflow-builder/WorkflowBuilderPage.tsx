@@ -194,6 +194,7 @@ const sortVersionsWithDraftFirst = (
   draftId: number | null,
 ): WorkflowVersionSummary[] => {
   const items = [...versions];
+  const originalOrder = new Map(items.map((version, index) => [version.id, index]));
   items.sort((a, b) => {
     if (draftId != null) {
       if (a.id === draftId && b.id !== draftId) {
@@ -203,16 +204,23 @@ const sortVersionsWithDraftFirst = (
         return 1;
       }
     }
+    if (a.version !== b.version) {
+      return b.version - a.version;
+    }
     if (a.is_active && !b.is_active) {
       return -1;
     }
     if (b.is_active && !a.is_active) {
       return 1;
     }
-    if (a.version !== b.version) {
-      return b.version - a.version;
+    const aUpdatedAt = new Date(a.updated_at).getTime();
+    const bUpdatedAt = new Date(b.updated_at).getTime();
+    if (aUpdatedAt !== bUpdatedAt) {
+      return bUpdatedAt - aUpdatedAt;
     }
-    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    const aIndex = originalOrder.get(a.id) ?? 0;
+    const bIndex = originalOrder.get(b.id) ?? 0;
+    return aIndex - bIndex;
   });
   return items;
 };
@@ -3360,18 +3368,24 @@ const WorkflowBuilderPage = () => {
   }, [isDeploying]);
 
   const resolveVersionIdToPromote = useCallback(
-    (preferDraft = false): number | null => {
+    (
+      preferDraft = false,
+      options: { selectedId?: number | null } = {},
+    ): number | null => {
       const draftId = draftVersionIdRef.current;
-      const selectedId = selectedVersionIdRef.current;
+      const selectedId = Object.prototype.hasOwnProperty.call(options, "selectedId")
+        ? options.selectedId ?? null
+        : selectedVersionIdRef.current;
 
-      if (!preferDraft) {
-        if (selectedId != null) {
-          return selectedId;
-        }
-        return draftId ?? null;
+      if (preferDraft) {
+        return draftId ?? selectedId ?? null;
       }
 
-      return draftId ?? selectedId ?? null;
+      if (selectedId != null) {
+        return selectedId;
+      }
+
+      return draftId ?? null;
     },
     [],
   );
@@ -4351,6 +4365,58 @@ const WorkflowBuilderPage = () => {
 
   const hasSelectedElement = Boolean(selectedNode || selectedEdge);
   const showPropertiesPanel = hasSelectedElement && (!isMobileLayout || isPropertiesPanelOpen);
+
+  const versionIdToPromote = useMemo(
+    () => resolveVersionIdToPromote(false, { selectedId: selectedVersionId }),
+    [resolveVersionIdToPromote, selectedVersionId],
+  );
+
+  const versionSummaryForPromotion = useMemo(() => {
+    if (versionIdToPromote == null) {
+      return null;
+    }
+    return versions.find((version) => version.id === versionIdToPromote) ?? null;
+  }, [versionIdToPromote, versions]);
+
+  const isPromotingDraft = Boolean(
+    versionSummaryForPromotion && draftVersionIdRef.current === versionSummaryForPromotion.id,
+  );
+
+  const deployModalTitle = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.titlePublishDraft")
+      : t("workflowBuilder.deploy.modal.titlePromoteSelected")
+    : t("workflowBuilder.deploy.modal.titleMissing");
+
+  const deployModalDescription = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.descriptionPublishDraft")
+      : t("workflowBuilder.deploy.modal.descriptionPromoteSelected", {
+          version: versionSummaryForPromotion.version,
+        })
+    : t("workflowBuilder.deploy.modal.descriptionMissing");
+
+  const deployModalSourceLabel = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.path.draft")
+      : t("workflowBuilder.deploy.modal.path.selectedWithVersion", {
+          version: versionSummaryForPromotion.version,
+        })
+    : t("workflowBuilder.deploy.modal.path.draft");
+
+  const deployModalTargetLabel = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.path.newVersion")
+      : t("workflowBuilder.deploy.modal.path.production")
+    : t("workflowBuilder.deploy.modal.path.production");
+
+  const deployModalPrimaryLabel = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.action.publish")
+      : t("workflowBuilder.deploy.modal.action.deploy")
+    : t("workflowBuilder.deploy.modal.action.publish");
+
+  const isPrimaryActionDisabled = !versionSummaryForPromotion || isDeploying;
   const selectedElementLabel = selectedNode
     ? selectedNode.data.displayName.trim() || labelForKind(selectedNode.data.kind)
     : selectedEdge
@@ -4813,28 +4879,34 @@ const WorkflowBuilderPage = () => {
                       margin: 0,
                     }}
                   >
-                    Publish changes?
+                    {deployModalTitle}
                   </h2>
                   <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.45 }}>
-                    Create a new version of the workflow with your latest changes.
+                    {deployModalDescription}
                   </p>
-                  <div
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      fontWeight: 600,
-                      color: "var(--text-color)",
-                    }}
-                  >
-                    <span style={{ padding: "0.25rem 0.5rem", background: "#e2e8f0", borderRadius: "999px" }}>
-                      Draft
-                    </span>
-                    <span aria-hidden="true">→</span>
-                    <span style={{ padding: "0.25rem 0.5rem", background: "#dcfce7", borderRadius: "999px" }}>
-                      New version
-                    </span>
-                  </div>
+                  {versionSummaryForPromotion ? (
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        fontWeight: 600,
+                        color: "var(--text-color)",
+                      }}
+                    >
+                      <span
+                        style={{ padding: "0.25rem 0.5rem", background: "#e2e8f0", borderRadius: "999px" }}
+                      >
+                        {deployModalSourceLabel}
+                      </span>
+                      <span aria-hidden="true">→</span>
+                      <span
+                        style={{ padding: "0.25rem 0.5rem", background: "#dcfce7", borderRadius: "999px" }}
+                      >
+                        {deployModalTargetLabel}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
                 <label
                   style={{
@@ -4852,30 +4924,30 @@ const WorkflowBuilderPage = () => {
                     disabled={isDeploying}
                     style={{ width: "1.2rem", height: "1.2rem" }}
                   />
-                  Deploy to production
+                  {t("workflowBuilder.deploy.modal.productionToggle")}
                 </label>
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
                   <button
                     type="button"
                     onClick={handleCloseDeployModal}
-                  disabled={isDeploying}
-                  style={{
-                    padding: "0.6rem 1.2rem",
-                    borderRadius: "0.75rem",
-                    border: "1px solid var(--surface-border)",
-                    background: "var(--surface-strong)",
-                    color: "var(--text-color)",
-                    fontWeight: 600,
-                    cursor: isDeploying ? "not-allowed" : "pointer",
-                    opacity: isDeploying ? 0.5 : 1,
-                  }}
-                >
-                    Cancel
+                    disabled={isDeploying}
+                    style={{
+                      padding: "0.6rem 1.2rem",
+                      borderRadius: "0.75rem",
+                      border: "1px solid var(--surface-border)",
+                      background: "var(--surface-strong)",
+                      color: "var(--text-color)",
+                      fontWeight: 600,
+                      cursor: isDeploying ? "not-allowed" : "pointer",
+                      opacity: isDeploying ? 0.5 : 1,
+                    }}
+                  >
+                    {t("workflowBuilder.deploy.modal.action.cancel")}
                   </button>
                   <button
                     type="button"
                     onClick={handleConfirmDeploy}
-                    disabled={isDeploying}
+                    disabled={isPrimaryActionDisabled}
                     style={{
                       padding: "0.6rem 1.2rem",
                       borderRadius: "0.75rem",
@@ -4883,11 +4955,11 @@ const WorkflowBuilderPage = () => {
                       background: "#2563eb",
                       color: "#fff",
                       fontWeight: 700,
-                      cursor: isDeploying ? "not-allowed" : "pointer",
-                      opacity: isDeploying ? 0.7 : 1,
+                      cursor: isPrimaryActionDisabled ? "not-allowed" : "pointer",
+                      opacity: isPrimaryActionDisabled ? 0.7 : 1,
                     }}
                   >
-                    Publish
+                    {deployModalPrimaryLabel}
                   </button>
                 </div>
               </div>
