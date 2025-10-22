@@ -572,6 +572,114 @@ class WorkflowService:
             if owns_session:
                 db.close()
 
+    def import_workflow(
+        self,
+        *,
+        graph_payload: Mapping[str, Any] | None,
+        session: Session | None = None,
+        workflow_id: int | None = None,
+        slug: str | None = None,
+        display_name: str | None = None,
+        description: str | None = None,
+        version_name: str | None = None,
+        mark_as_active: bool = False,
+    ) -> WorkflowDefinition:
+        db, owns_session = self._get_session(session)
+        try:
+            nodes, edges = self._normalize_graph(graph_payload)
+
+            slug_value = slug.strip() if isinstance(slug, str) else None
+            display_name_value = (
+                display_name.strip() if isinstance(display_name, str) else None
+            )
+            description_value = (
+                description.strip() or None
+                if isinstance(description, str)
+                else None
+            )
+            version_label = (
+                version_name.strip() or None
+                if isinstance(version_name, str)
+                else None
+            )
+
+            workflow: Workflow | None = None
+            if workflow_id is not None:
+                workflow = db.get(Workflow, workflow_id)
+                if workflow is None:
+                    raise WorkflowNotFoundError(workflow_id)
+            elif slug_value:
+                workflow = db.scalar(
+                    select(Workflow).where(Workflow.slug == slug_value)
+                )
+
+            if workflow is None:
+                if not slug_value or not display_name_value:
+                    raise WorkflowValidationError(
+                        "Un slug et un nom sont requis pour importer un nouveau "
+                        "workflow."
+                    )
+                existing = db.scalar(
+                    select(Workflow.id).where(Workflow.slug == slug_value)
+                )
+                if existing is not None:
+                    raise WorkflowValidationError(
+                        "Un workflow avec ce slug existe déjà."
+                    )
+                workflow = Workflow(
+                    slug=slug_value,
+                    display_name=display_name_value,
+                    description=description_value,
+                )
+                db.add(workflow)
+                db.flush()
+                name = version_label or "Version importée"
+                definition = self._create_definition_from_graph(
+                    workflow=workflow,
+                    nodes=nodes,
+                    edges=edges,
+                    session=db,
+                    name=name,
+                    mark_active=True,
+                )
+                db.commit()
+                db.refresh(definition)
+                return self._fully_load_definition(definition)
+
+            updates: dict[str, Any] = {}
+            if slug_value is not None and slug_value != workflow.slug:
+                updates["slug"] = slug_value
+            if (
+                display_name_value is not None
+                and display_name_value != (workflow.display_name or "")
+            ):
+                updates["display_name"] = display_name_value
+            if description is not None and description_value != workflow.description:
+                updates["description"] = description_value
+
+            if updates:
+                workflow = self.update_workflow(workflow.id, updates, session=db)
+
+            effective_mark_active = bool(mark_as_active)
+            if not effective_mark_active and workflow.active_version_id is None:
+                effective_mark_active = True
+
+            name = version_label or "Version importée"
+            definition = self._create_definition_from_graph(
+                workflow=workflow,
+                nodes=nodes,
+                edges=edges,
+                session=db,
+                name=name,
+                mark_active=effective_mark_active,
+            )
+            db.commit()
+            db.refresh(definition)
+            return self._fully_load_definition(definition)
+        finally:
+            if owns_session:
+                db.close()
+
     def update_workflow(
         self,
         workflow_id: int,

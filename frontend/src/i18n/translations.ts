@@ -118,11 +118,30 @@ const fr: TranslationDictionary = {
   "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.":
     "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.",
   "Libellé affiché": "Libellé affiché",
+  "workflowBuilder.actions.importJson": "Importer un JSON",
   "workflowBuilder.actions.exportJson": "Exporter en JSON",
   "workflowBuilder.export.preparing": "Préparation de l'export…",
   "workflowBuilder.export.success": "Export JSON téléchargé.",
   "workflowBuilder.export.error": "Impossible d'exporter le workflow.",
   "workflowBuilder.export.errorWithStatus": "Impossible d'exporter le workflow (code {{status}}).",
+  "workflowBuilder.import.inProgress": "Import en cours…",
+  "workflowBuilder.import.saving": "Importation du workflow…",
+  "workflowBuilder.import.success": "Workflow importé avec succès.",
+  "workflowBuilder.import.error": "Impossible d'importer le workflow.",
+  "workflowBuilder.import.errorInvalidJson": "Le fichier ne contient pas un JSON valide.",
+  "workflowBuilder.import.errorInvalidGraph": "Le JSON ne décrit pas un graphe de workflow valide.",
+  "workflowBuilder.import.errorInvalidNode": "Un bloc du workflow est invalide.",
+  "workflowBuilder.import.errorInvalidEdge": "Une connexion du workflow est invalide.",
+  "workflowBuilder.import.errorMissingNodes": "Le JSON ne contient aucun bloc de workflow.",
+  "workflowBuilder.import.errorClipboardUnavailable": "Impossible de lire le presse-papiers.",
+  "workflowBuilder.import.errorClipboardEmpty": "Le presse-papiers ne contient pas de JSON utilisable.",
+  "workflowBuilder.import.errorMissingName": "Le nom du workflow importé est requis.",
+  "workflowBuilder.import.errorFileRead": "Impossible de lire le fichier sélectionné.",
+  "workflowBuilder.import.promptDisplayName": "Nom du workflow importé ?",
+  "workflowBuilder.import.confirmClipboard":
+    "Coller le JSON depuis le presse-papiers ? Cliquez sur Annuler pour sélectionner un fichier.",
+  "workflowBuilder.import.defaultVersionName": "Import du {{timestamp}}",
+  "workflowBuilder.import.errorWithStatus": "Impossible d'importer le workflow (code {{status}}).",
 };
 
 const en: TranslationDictionary = {
@@ -231,11 +250,30 @@ const en: TranslationDictionary = {
   "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.":
     "Give the branch a unique name (e.g. approve, reject). Leave it blank to set the default branch.",
   "Libellé affiché": "Display label",
+  "workflowBuilder.actions.importJson": "Import JSON",
   "workflowBuilder.actions.exportJson": "Export as JSON",
   "workflowBuilder.export.preparing": "Preparing export…",
   "workflowBuilder.export.success": "JSON export downloaded.",
   "workflowBuilder.export.error": "Unable to export the workflow.",
   "workflowBuilder.export.errorWithStatus": "Unable to export the workflow (status {{status}}).",
+  "workflowBuilder.import.inProgress": "Importing…",
+  "workflowBuilder.import.saving": "Importing workflow…",
+  "workflowBuilder.import.success": "Workflow imported successfully.",
+  "workflowBuilder.import.error": "Unable to import the workflow.",
+  "workflowBuilder.import.errorInvalidJson": "The file does not contain valid JSON.",
+  "workflowBuilder.import.errorInvalidGraph": "The JSON does not describe a valid workflow graph.",
+  "workflowBuilder.import.errorInvalidNode": "A workflow block is invalid.",
+  "workflowBuilder.import.errorInvalidEdge": "A workflow connection is invalid.",
+  "workflowBuilder.import.errorMissingNodes": "The JSON does not contain any workflow nodes.",
+  "workflowBuilder.import.errorClipboardUnavailable": "Unable to read from the clipboard.",
+  "workflowBuilder.import.errorClipboardEmpty": "The clipboard does not contain usable JSON.",
+  "workflowBuilder.import.errorMissingName": "A name is required for the imported workflow.",
+  "workflowBuilder.import.errorFileRead": "Unable to read the selected file.",
+  "workflowBuilder.import.promptDisplayName": "Name for the imported workflow?",
+  "workflowBuilder.import.confirmClipboard":
+    "Paste JSON from the clipboard? Click Cancel to choose a file.",
+  "workflowBuilder.import.defaultVersionName": "Import on {{timestamp}}",
+  "workflowBuilder.import.errorWithStatus": "Unable to import the workflow (status {{status}}).",
 };
 
 export const translations: Translations = {
