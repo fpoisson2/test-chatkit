@@ -161,6 +161,23 @@ const fr: TranslationDictionary = {
   "workflowBuilder.deploy.modal.action.cancel": "Annuler",
   "workflowBuilder.deploy.modal.action.publish": "Publier",
   "workflowBuilder.deploy.modal.action.deploy": "Déployer",
+  "workflowBuilder.voiceInspector.modelLabel": "Modèle Realtime",
+  "workflowBuilder.voiceInspector.voiceLabel": "Voix",
+  "workflowBuilder.voiceInspector.instructionsLabel": "Instructions temps réel",
+  "workflowBuilder.voiceInspector.instructionsPlaceholder":
+    "Texte transmis à l'assistant vocal pour guider son comportement",
+  "workflowBuilder.voiceInspector.startBehaviorLabel": "Démarrage de session",
+  "workflowBuilder.voiceInspector.stopBehaviorLabel": "Arrêt de session",
+  "workflowBuilder.voiceInspector.start.manual": "Lancement manuel",
+  "workflowBuilder.voiceInspector.start.auto": "Démarrage automatique à l'entrée du bloc",
+  "workflowBuilder.voiceInspector.stop.manual": "Arrêt manuel (session persistante)",
+  "workflowBuilder.voiceInspector.stop.auto": "Arrêt automatique après la réponse",
+  "workflowBuilder.voiceInspector.toolsLabel": "Outils temps réel",
+  "workflowBuilder.voiceInspector.tool.response": "Réponses audio",
+  "workflowBuilder.voiceInspector.tool.transcription": "Transcriptions",
+  "workflowBuilder.voiceInspector.tool.functionCall": "Fonctions personnalisées",
+  "workflowBuilder.voiceInspector.tool.functionCall.help":
+    "Active les appels de fonction via le runtime Realtime.",
 };
 
 const en: TranslationDictionary = {
@@ -310,6 +327,23 @@ const en: TranslationDictionary = {
   "workflowBuilder.deploy.modal.action.cancel": "Cancel",
   "workflowBuilder.deploy.modal.action.publish": "Publish",
   "workflowBuilder.deploy.modal.action.deploy": "Deploy",
+  "workflowBuilder.voiceInspector.modelLabel": "Realtime model",
+  "workflowBuilder.voiceInspector.voiceLabel": "Voice ID",
+  "workflowBuilder.voiceInspector.instructionsLabel": "Realtime instructions",
+  "workflowBuilder.voiceInspector.instructionsPlaceholder":
+    "Guidance shared with the voice assistant",
+  "workflowBuilder.voiceInspector.startBehaviorLabel": "Session start",
+  "workflowBuilder.voiceInspector.stopBehaviorLabel": "Session stop",
+  "workflowBuilder.voiceInspector.start.manual": "Manual start",
+  "workflowBuilder.voiceInspector.start.auto": "Automatically when the block runs",
+  "workflowBuilder.voiceInspector.stop.manual": "Manual stop (keep session active)",
+  "workflowBuilder.voiceInspector.stop.auto": "Stop automatically after the response",
+  "workflowBuilder.voiceInspector.toolsLabel": "Realtime tools",
+  "workflowBuilder.voiceInspector.tool.response": "Audio responses",
+  "workflowBuilder.voiceInspector.tool.transcription": "Speech-to-text transcripts",
+  "workflowBuilder.voiceInspector.tool.functionCall": "Function calling",
+  "workflowBuilder.voiceInspector.tool.functionCall.help":
+    "Enable function calls to invoke custom business logic.",
 };
 
 export const translations: Translations = {

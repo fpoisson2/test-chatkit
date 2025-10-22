@@ -571,6 +571,253 @@ export const setAgentModel = (parameters: AgentParameters, model: string): Agent
   return { ...next, model: trimmed };
 };
 
+export const VOICE_AGENT_TOOL_KEYS = [
+  "response",
+  "transcription",
+  "function_call",
+] as const;
+
+export type VoiceAgentTool = (typeof VOICE_AGENT_TOOL_KEYS)[number];
+export type VoiceAgentStartBehavior = "manual" | "auto";
+export type VoiceAgentStopBehavior = "manual" | "auto";
+
+export const DEFAULT_VOICE_AGENT_MODEL = "gpt-4o-realtime-preview";
+export const DEFAULT_VOICE_AGENT_VOICE = "alloy";
+export const DEFAULT_VOICE_AGENT_START_BEHAVIOR: VoiceAgentStartBehavior = "manual";
+export const DEFAULT_VOICE_AGENT_STOP_BEHAVIOR: VoiceAgentStopBehavior = "auto";
+
+const VOICE_AGENT_TOOL_DEFAULTS: Record<VoiceAgentTool, boolean> = {
+  response: true,
+  transcription: true,
+  function_call: false,
+};
+
+const isVoiceAgentStartBehavior = (value: unknown): value is VoiceAgentStartBehavior =>
+  value === "manual" || value === "auto";
+
+const isVoiceAgentStopBehavior = (value: unknown): value is VoiceAgentStopBehavior =>
+  value === "manual" || value === "auto";
+
+const coerceVoiceBoolean = (value: unknown, fallback: boolean): boolean => {
+  if (value === undefined) {
+    return fallback;
+  }
+  return coerceBoolean(value);
+};
+
+const cleanupVoiceRealtimeConfig = (
+  config: Record<string, unknown>,
+): Record<string, unknown> => {
+  const next = { ...config } as Record<string, unknown>;
+
+  const tools = isPlainRecord(next.tools)
+    ? { ...(next.tools as Record<string, unknown>) }
+    : {};
+
+  const normalizedTools: Record<VoiceAgentTool, boolean> = {
+    response: coerceVoiceBoolean(tools.response, VOICE_AGENT_TOOL_DEFAULTS.response),
+    transcription: coerceVoiceBoolean(
+      tools.transcription,
+      VOICE_AGENT_TOOL_DEFAULTS.transcription,
+    ),
+    function_call: coerceVoiceBoolean(
+      tools.function_call,
+      VOICE_AGENT_TOOL_DEFAULTS.function_call,
+    ),
+  };
+
+  next.tools = normalizedTools;
+
+  const startMode = next.start_mode;
+  next.start_mode = isVoiceAgentStartBehavior(startMode)
+    ? startMode
+    : DEFAULT_VOICE_AGENT_START_BEHAVIOR;
+
+  const stopMode = next.stop_mode;
+  next.stop_mode = isVoiceAgentStopBehavior(stopMode)
+    ? stopMode
+    : DEFAULT_VOICE_AGENT_STOP_BEHAVIOR;
+
+  return next;
+};
+
+const updateVoiceRealtimeConfig = (
+  parameters: AgentParameters,
+  updater: (current: Record<string, unknown>) => Record<string, unknown>,
+): AgentParameters => {
+  const base = { ...parameters } as Record<string, unknown>;
+  const current = isPlainRecord(base.realtime)
+    ? { ...(base.realtime as Record<string, unknown>) }
+    : {};
+  const updated = cleanupVoiceRealtimeConfig(updater(current));
+
+  if (Object.keys(updated).length === 0) {
+    delete base.realtime;
+  } else {
+    base.realtime = updated;
+  }
+
+  return stripEmpty(base);
+};
+
+export const createVoiceAgentParameters = (): AgentParameters => ({
+  model: DEFAULT_VOICE_AGENT_MODEL,
+  voice: DEFAULT_VOICE_AGENT_VOICE,
+  realtime: {
+    start_mode: DEFAULT_VOICE_AGENT_START_BEHAVIOR,
+    stop_mode: DEFAULT_VOICE_AGENT_STOP_BEHAVIOR,
+    tools: {
+      response: VOICE_AGENT_TOOL_DEFAULTS.response,
+      transcription: VOICE_AGENT_TOOL_DEFAULTS.transcription,
+      function_call: VOICE_AGENT_TOOL_DEFAULTS.function_call,
+    },
+  },
+});
+
+export const getVoiceAgentVoice = (
+  parameters: AgentParameters | null | undefined,
+): string => {
+  if (!parameters) {
+    return DEFAULT_VOICE_AGENT_VOICE;
+  }
+  const voice = (parameters as Record<string, unknown>).voice;
+  if (typeof voice === "string" && voice.trim()) {
+    return voice.trim();
+  }
+  return DEFAULT_VOICE_AGENT_VOICE;
+};
+
+export const setVoiceAgentVoice = (
+  parameters: AgentParameters,
+  voice: string,
+): AgentParameters => {
+  const next = { ...parameters } as Record<string, unknown>;
+  const normalized = voice.trim() || DEFAULT_VOICE_AGENT_VOICE;
+  next.voice = normalized;
+  return stripEmpty(next);
+};
+
+export const getVoiceAgentStartBehavior = (
+  parameters: AgentParameters | null | undefined,
+): VoiceAgentStartBehavior => {
+  if (!parameters) {
+    return DEFAULT_VOICE_AGENT_START_BEHAVIOR;
+  }
+  const realtime = (parameters as Record<string, unknown>).realtime;
+  if (!isPlainRecord(realtime)) {
+    return DEFAULT_VOICE_AGENT_START_BEHAVIOR;
+  }
+  const startMode = (realtime as Record<string, unknown>).start_mode;
+  return isVoiceAgentStartBehavior(startMode)
+    ? startMode
+    : DEFAULT_VOICE_AGENT_START_BEHAVIOR;
+};
+
+export const setVoiceAgentStartBehavior = (
+  parameters: AgentParameters,
+  behavior: VoiceAgentStartBehavior,
+): AgentParameters =>
+  updateVoiceRealtimeConfig(parameters, (current) => ({
+    ...current,
+    start_mode: isVoiceAgentStartBehavior(behavior)
+      ? behavior
+      : DEFAULT_VOICE_AGENT_START_BEHAVIOR,
+  }));
+
+export const getVoiceAgentStopBehavior = (
+  parameters: AgentParameters | null | undefined,
+): VoiceAgentStopBehavior => {
+  if (!parameters) {
+    return DEFAULT_VOICE_AGENT_STOP_BEHAVIOR;
+  }
+  const realtime = (parameters as Record<string, unknown>).realtime;
+  if (!isPlainRecord(realtime)) {
+    return DEFAULT_VOICE_AGENT_STOP_BEHAVIOR;
+  }
+  const stopMode = (realtime as Record<string, unknown>).stop_mode;
+  return isVoiceAgentStopBehavior(stopMode)
+    ? stopMode
+    : DEFAULT_VOICE_AGENT_STOP_BEHAVIOR;
+};
+
+export const setVoiceAgentStopBehavior = (
+  parameters: AgentParameters,
+  behavior: VoiceAgentStopBehavior,
+): AgentParameters =>
+  updateVoiceRealtimeConfig(parameters, (current) => ({
+    ...current,
+    stop_mode: isVoiceAgentStopBehavior(behavior)
+      ? behavior
+      : DEFAULT_VOICE_AGENT_STOP_BEHAVIOR,
+  }));
+
+export const getVoiceAgentTools = (
+  parameters: AgentParameters | null | undefined,
+): Record<VoiceAgentTool, boolean> => {
+  if (!parameters) {
+    return {
+      response: VOICE_AGENT_TOOL_DEFAULTS.response,
+      transcription: VOICE_AGENT_TOOL_DEFAULTS.transcription,
+      function_call: VOICE_AGENT_TOOL_DEFAULTS.function_call,
+    };
+  }
+
+  const realtime = (parameters as Record<string, unknown>).realtime;
+  const tools = isPlainRecord(realtime) && isPlainRecord((realtime as Record<string, unknown>).tools)
+    ? ((realtime as Record<string, unknown>).tools as Record<string, unknown>)
+    : {};
+
+  return {
+    response: coerceVoiceBoolean(tools.response, VOICE_AGENT_TOOL_DEFAULTS.response),
+    transcription: coerceVoiceBoolean(
+      tools.transcription,
+      VOICE_AGENT_TOOL_DEFAULTS.transcription,
+    ),
+    function_call: coerceVoiceBoolean(
+      tools.function_call,
+      VOICE_AGENT_TOOL_DEFAULTS.function_call,
+    ),
+  };
+};
+
+export const setVoiceAgentToolEnabled = (
+  parameters: AgentParameters,
+  tool: VoiceAgentTool,
+  enabled: boolean,
+): AgentParameters =>
+  updateVoiceRealtimeConfig(parameters, (current) => {
+    const tools = isPlainRecord(current.tools)
+      ? { ...(current.tools as Record<string, unknown>) }
+      : {};
+    tools[tool] = Boolean(enabled);
+    return { ...current, tools };
+  });
+
+export const resolveVoiceAgentParameters = (
+  rawParameters: AgentParameters | null | undefined,
+): AgentParameters => {
+  const base = isPlainRecord(rawParameters)
+    ? ({ ...(rawParameters as AgentParameters) } as AgentParameters)
+    : ({} as AgentParameters);
+
+  let result = base;
+
+  result = setAgentModel(result, getAgentModel(rawParameters) || DEFAULT_VOICE_AGENT_MODEL);
+  result = setVoiceAgentVoice(result, getVoiceAgentVoice(rawParameters));
+  result = setVoiceAgentStartBehavior(result, getVoiceAgentStartBehavior(rawParameters));
+  result = setVoiceAgentStopBehavior(result, getVoiceAgentStopBehavior(rawParameters));
+
+  const tools = getVoiceAgentTools(rawParameters);
+  for (const tool of VOICE_AGENT_TOOL_KEYS) {
+    result = setVoiceAgentToolEnabled(result, tool, tools[tool]);
+  }
+
+  const instructions = getAgentMessage(rawParameters);
+  result = setAgentMessage(result, instructions);
+
+  return result;
+};
+
 export const setAgentReasoningEffort = (
   parameters: AgentParameters,
   effort: string,

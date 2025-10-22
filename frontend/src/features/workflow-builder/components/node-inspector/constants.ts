@@ -1,4 +1,8 @@
-import type { ImageGenerationToolConfig, WebSearchConfig } from "../../types";
+import type {
+  ImageGenerationToolConfig,
+  VoiceAgentTool,
+  WebSearchConfig,
+} from "../../types";
 
 export const reasoningEffortOptions = [
   { value: "", label: "Comportement par défaut" },
@@ -98,3 +102,45 @@ export const isTestEnvironment =
   typeof process !== "undefined" && process.env && process.env.NODE_ENV === "test";
 
 export const EMPTY_TRANSFORM_EXPRESSIONS: Record<string, unknown> = Object.freeze({});
+
+export const VOICE_AGENT_START_BEHAVIOR_OPTIONS = [
+  {
+    value: "manual" as const,
+    labelKey: "workflowBuilder.voiceInspector.start.manual",
+  },
+  {
+    value: "auto" as const,
+    labelKey: "workflowBuilder.voiceInspector.start.auto",
+  },
+] as const;
+
+export const VOICE_AGENT_STOP_BEHAVIOR_OPTIONS = [
+  {
+    value: "manual" as const,
+    labelKey: "workflowBuilder.voiceInspector.stop.manual",
+  },
+  {
+    value: "auto" as const,
+    labelKey: "workflowBuilder.voiceInspector.stop.auto",
+  },
+] as const;
+
+export const VOICE_AGENT_TOOL_DEFINITIONS: ReadonlyArray<{
+  key: VoiceAgentTool;
+  labelKey: string;
+  helpKey?: string;
+}> = [
+  {
+    key: "response",
+    labelKey: "workflowBuilder.voiceInspector.tool.response",
+  },
+  {
+    key: "transcription",
+    labelKey: "workflowBuilder.voiceInspector.tool.transcription",
+  },
+  {
+    key: "function_call",
+    labelKey: "workflowBuilder.voiceInspector.tool.functionCall",
+    helpKey: "workflowBuilder.voiceInspector.tool.functionCall.help",
+  },
+];

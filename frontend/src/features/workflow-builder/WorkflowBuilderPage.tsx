@@ -64,6 +64,10 @@ import {
   setAgentWeatherToolEnabled,
   setAgentWidgetValidationToolEnabled,
   setAgentWebSearchConfig,
+  setVoiceAgentVoice,
+  setVoiceAgentStartBehavior,
+  setVoiceAgentStopBehavior,
+  setVoiceAgentToolEnabled,
   setStateAssignments,
   setStartAutoRun,
   setStartAutoRunMessage,
@@ -89,6 +93,8 @@ import {
   setWidgetNodeSource,
   setWidgetNodeDefinitionExpression,
   setWidgetNodeVariables,
+  createVoiceAgentParameters,
+  resolveVoiceAgentParameters,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
@@ -111,6 +117,9 @@ import type {
   WorkflowVersionResponse,
   WorkflowVersionSummary,
   WidgetVariableAssignment,
+  VoiceAgentTool,
+  VoiceAgentStartBehavior,
+  VoiceAgentStopBehavior,
 } from "./types";
 import {
   AUTO_SAVE_DELAY_MS,
@@ -160,6 +169,8 @@ type WorkflowViewportRecord = {
   y: number;
   zoom: number;
 };
+
+const isAgentKind = (kind: NodeKind): boolean => kind === "agent" || kind === "voice_agent";
 
 type WorkflowViewportListResponse = {
   viewports: WorkflowViewportRecord[];
@@ -1141,10 +1152,12 @@ const WorkflowBuilderPage = () => {
           const flowNodes = data.graph.nodes.map<FlowNode>((node, index) => {
             const positionFromMetadata = extractPosition(node.metadata);
             const displayName = node.display_name ?? humanizeSlug(node.slug);
-            const agentKey = node.kind === "agent" ? node.agent_key ?? null : null;
+            const agentKey = isAgentKind(node.kind) ? node.agent_key ?? null : null;
             const parameters =
               node.kind === "agent"
                 ? resolveAgentParameters(agentKey, node.parameters)
+                : node.kind === "voice_agent"
+                  ? resolveVoiceAgentParameters(node.parameters)
                 : node.kind === "state"
                   ? resolveStateParameters(node.slug, node.parameters)
                   : node.kind === "json_vector_store"
@@ -1797,7 +1810,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentMessageChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentMessage(data.parameters, value);
@@ -1815,7 +1828,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentModelChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         let nextParameters = setAgentModel(data.parameters, value);
@@ -1838,7 +1851,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentReasoningChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentReasoningEffort(data.parameters, value);
@@ -1856,7 +1869,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentReasoningSummaryChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentReasoningSummary(data.parameters, value);
@@ -1874,7 +1887,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentTextVerbosityChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentTextVerbosity(data.parameters, value);
@@ -1892,7 +1905,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentTemperatureChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentTemperature(data.parameters, value);
@@ -1910,7 +1923,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentTopPChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentTopP(data.parameters, value);
@@ -1928,7 +1941,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentMaxOutputTokensChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentMaxOutputTokens(data.parameters, value);
@@ -1946,7 +1959,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentIncludeChatHistoryChange = useCallback(
     (nodeId: string, value: boolean) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentIncludeChatHistory(data.parameters, value);
@@ -1964,7 +1977,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentDisplayResponseInChatChange = useCallback(
     (nodeId: string, value: boolean) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentDisplayResponseInChat(data.parameters, value);
@@ -1982,7 +1995,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentShowSearchSourcesChange = useCallback(
     (nodeId: string, value: boolean) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentShowSearchSources(data.parameters, value);
@@ -2000,7 +2013,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentContinueOnErrorChange = useCallback(
     (nodeId: string, value: boolean) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentContinueOnError(data.parameters, value);
@@ -2018,7 +2031,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentStorePreferenceChange = useCallback(
     (nodeId: string, value: boolean) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentStorePreference(data.parameters, value);
@@ -2036,7 +2049,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentResponseFormatKindChange = useCallback(
     (nodeId: string, kind: "text" | "json_schema" | "widget") => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentResponseFormatKind(data.parameters, kind);
@@ -2054,7 +2067,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentResponseFormatNameChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentResponseFormatName(data.parameters, value);
@@ -2072,7 +2085,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentResponseFormatSchemaChange = useCallback(
     (nodeId: string, schema: unknown) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentResponseFormatSchema(data.parameters, schema);
@@ -2090,7 +2103,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentResponseWidgetSlugChange = useCallback(
     (nodeId: string, slug: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentResponseWidgetSlug(data.parameters, slug);
@@ -2108,7 +2121,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentResponseWidgetSourceChange = useCallback(
     (nodeId: string, source: "library" | "variable") => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentResponseWidgetSource(data.parameters, source);
@@ -2126,7 +2139,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentResponseWidgetDefinitionChange = useCallback(
     (nodeId: string, expression: string) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentResponseWidgetDefinition(data.parameters, expression);
@@ -2291,7 +2304,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentWebSearchChange = useCallback(
     (nodeId: string, config: WebSearchConfig | null) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentWebSearchConfig(data.parameters, config);
@@ -2309,7 +2322,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentFileSearchChange = useCallback(
     (nodeId: string, config: FileSearchConfig | null) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentFileSearchConfig(data.parameters, config);
@@ -2327,7 +2340,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentImageGenerationChange = useCallback(
     (nodeId: string, config: ImageGenerationToolConfig | null) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentImageGenerationConfig(data.parameters, config);
@@ -2386,7 +2399,7 @@ const WorkflowBuilderPage = () => {
   const handleAgentWeatherToolChange = useCallback(
     (nodeId: string, enabled: boolean) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentWeatherToolEnabled(data.parameters, enabled);
@@ -2404,11 +2417,87 @@ const WorkflowBuilderPage = () => {
   const handleAgentWidgetValidationToolChange = useCallback(
     (nodeId: string, enabled: boolean) => {
       updateNodeData(nodeId, (data) => {
-        if (data.kind !== "agent") {
+        if (!isAgentKind(data.kind)) {
           return data;
         }
         const nextParameters = setAgentWidgetValidationToolEnabled(
           data.parameters,
+          enabled,
+        );
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleVoiceAgentVoiceChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "voice_agent") {
+          return data;
+        }
+        const nextParameters = setVoiceAgentVoice(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleVoiceAgentStartBehaviorChange = useCallback(
+    (nodeId: string, behavior: VoiceAgentStartBehavior) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "voice_agent") {
+          return data;
+        }
+        const nextParameters = setVoiceAgentStartBehavior(data.parameters, behavior);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleVoiceAgentStopBehaviorChange = useCallback(
+    (nodeId: string, behavior: VoiceAgentStopBehavior) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "voice_agent") {
+          return data;
+        }
+        const nextParameters = setVoiceAgentStopBehavior(data.parameters, behavior);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleVoiceAgentToolChange = useCallback(
+    (nodeId: string, tool: VoiceAgentTool, enabled: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "voice_agent") {
+          return data;
+        }
+        const nextParameters = setVoiceAgentToolEnabled(
+          data.parameters,
+          tool,
           enabled,
         );
         return {
@@ -2752,6 +2841,31 @@ const WorkflowBuilderPage = () => {
       draggable: true,
       style: buildNodeStyle("agent", { isSelected: true }),
     };
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
+
+  const handleAddVoiceAgentNode = useCallback(() => {
+    const slug = `voice-agent-${Date.now()}`;
+    const parameters = createVoiceAgentParameters();
+    const displayName = humanizeSlug(slug);
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 300, y: 220 },
+      data: {
+        slug,
+        kind: "voice_agent",
+        displayName,
+        label: displayName,
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        metadata: {},
+      },
+      draggable: true,
+      style: buildNodeStyle("voice_agent", { isSelected: true }),
+    } satisfies FlowNode;
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
 
@@ -4154,7 +4268,7 @@ const WorkflowBuilderPage = () => {
         return false;
       }
 
-      if (node.data.kind === "agent") {
+      if (isAgentKind(node.data.kind)) {
         const fileSearchConfig = getAgentFileSearchConfig(node.data.parameters);
         if (fileSearchConfig) {
           const slug = fileSearchConfig.vector_store_slug?.trim() ?? "";
@@ -4274,6 +4388,13 @@ const WorkflowBuilderPage = () => {
         onClick: handleAddAgentNode,
       },
       {
+        key: "voice-agent",
+        label: "Agent vocal",
+        shortLabel: "V",
+        color: NODE_COLORS.voice_agent,
+        onClick: handleAddVoiceAgentNode,
+      },
+      {
         key: "condition",
         label: "Condition",
         shortLabel: "C",
@@ -4346,6 +4467,7 @@ const WorkflowBuilderPage = () => {
     ],
     [
       handleAddAgentNode,
+      handleAddVoiceAgentNode,
       handleAddConditionNode,
       handleAddStateNode,
       handleAddWatchNode,
@@ -4953,6 +5075,10 @@ const WorkflowBuilderPage = () => {
             onAgentWebSearchChange={handleAgentWebSearchChange}
             onAgentFileSearchChange={handleAgentFileSearchChange}
             onAgentImageGenerationChange={handleAgentImageGenerationChange}
+            onVoiceAgentVoiceChange={handleVoiceAgentVoiceChange}
+            onVoiceAgentStartBehaviorChange={handleVoiceAgentStartBehaviorChange}
+            onVoiceAgentStopBehaviorChange={handleVoiceAgentStopBehaviorChange}
+            onVoiceAgentToolChange={handleVoiceAgentToolChange}
             onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
             onTransformExpressionsChange={handleTransformExpressionsChange}
             onStartAutoRunChange={handleStartAutoRunChange}

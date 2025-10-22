@@ -8,6 +8,7 @@ import type { FlowEdge, FlowNode, NodeKind } from "./types";
 export const NODE_COLORS: Record<NodeKind, string> = {
   start: "#2563eb",
   agent: "#16a34a",
+  voice_agent: "#f59e0b",
   condition: "#f97316",
   state: "#0ea5e9",
   transform: "#8b5cf6",
@@ -23,6 +24,7 @@ export const NODE_COLORS: Record<NodeKind, string> = {
 export const NODE_BACKGROUNDS: Record<NodeKind, string> = {
   start: "rgba(37, 99, 235, 0.12)",
   agent: "rgba(22, 163, 74, 0.12)",
+  voice_agent: "rgba(245, 158, 11, 0.14)",
   condition: "rgba(249, 115, 22, 0.14)",
   state: "rgba(14, 165, 233, 0.14)",
   transform: "rgba(139, 92, 246, 0.16)",
@@ -38,6 +40,7 @@ export const NODE_BACKGROUNDS: Record<NodeKind, string> = {
 const NODE_GLOW_COLORS: Record<NodeKind, string> = {
   start: "rgba(37, 99, 235, 0.45)",
   agent: "rgba(22, 163, 74, 0.45)",
+  voice_agent: "rgba(245, 158, 11, 0.45)",
   condition: "rgba(249, 115, 22, 0.45)",
   state: "rgba(14, 165, 233, 0.45)",
   transform: "rgba(139, 92, 246, 0.45)",
@@ -86,7 +89,10 @@ export const buildGraphPayloadFrom = (flowNodes: FlowNode[], flowEdges: FlowEdge
     slug: node.data.slug,
     kind: node.data.kind,
     display_name: node.data.displayName.trim() || null,
-    agent_key: node.data.kind === "agent" ? node.data.agentKey : null,
+    agent_key:
+      node.data.kind === "agent" || node.data.kind === "voice_agent"
+        ? node.data.agentKey
+        : null,
     is_enabled: node.data.isEnabled,
     parameters: prepareNodeParametersForSave(node.data.kind, node.data.parameters),
     metadata: {
@@ -169,6 +175,8 @@ export const labelForKind = (kind: NodeKind) => {
       return "Début";
     case "agent":
       return "Agent";
+    case "voice_agent":
+      return "Agent vocal";
     case "condition":
       return "Condition";
     case "state":
