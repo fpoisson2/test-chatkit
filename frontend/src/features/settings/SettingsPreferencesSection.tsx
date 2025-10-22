@@ -4,41 +4,51 @@ import type { SettingsSection } from "./sections";
 
 export type SettingsPreferencesSectionProps = {
   activeSection: SettingsSection;
+  hideHeader?: boolean;
 };
 
-export function SettingsPreferencesSection({ activeSection }: SettingsPreferencesSectionProps) {
+export function SettingsPreferencesSection({
+  activeSection,
+  hideHeader = false,
+}: SettingsPreferencesSectionProps) {
   const { t } = useI18n();
+  const sectionTitleId = "settings-section-preferences-title";
 
   return (
     <section
       key="preferences"
-      className="settings-page__section"
-      aria-labelledby="settings-section-preferences-title"
-      id="settings-section-preferences"
+      className="admin-card"
+      aria-labelledby={hideHeader ? undefined : sectionTitleId}
+      aria-label={hideHeader ? activeSection.label : undefined}
+      id={`settings-section-${activeSection.id}`}
     >
-      <header className="settings-page__section-header">
-        <h3 id="settings-section-preferences-title" className="settings-page__section-title">
-          {activeSection.label}
-        </h3>
-        <p className="settings-page__section-description">{activeSection.description}</p>
-      </header>
-      <div className="settings-page__section-body">
-        <div className="settings-page__card">
-          <h4 className="settings-page__card-title">{t("settings.preferences.language.title")}</h4>
-          <p className="settings-page__card-description">
+      {hideHeader ? null : (
+        <div>
+          <h2 id={sectionTitleId} className="admin-card__title">
+            {activeSection.label}
+          </h2>
+          <p className="admin-card__subtitle">{activeSection.description}</p>
+        </div>
+      )}
+      <div className="admin-form">
+        <div>
+          <h3 className="admin-card__title">
+            {t("settings.preferences.language.title")}
+          </h3>
+          <p className="admin-card__subtitle">
             {t("settings.preferences.language.description")}
           </p>
-          <LanguageSwitcher
-            id="settings-language"
-            hideLabel={false}
-            label={t("settings.preferences.language.label")}
-            className="label settings-preferences__field"
-            selectClassName="input"
-          />
-          <p className="settings-preferences__hint">
-            {t("settings.preferences.language.hint")}
-          </p>
         </div>
+        <LanguageSwitcher
+          id="settings-language"
+          hideLabel={false}
+          label={t("settings.preferences.language.label")}
+          className="label settings-preferences__field"
+          selectClassName="input"
+        />
+        <p className="settings-preferences__hint">
+          {t("settings.preferences.language.hint")}
+        </p>
       </div>
     </section>
   );
