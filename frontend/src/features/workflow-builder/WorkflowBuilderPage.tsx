@@ -3354,6 +3354,8 @@ const WorkflowBuilderPage = () => {
             if (newViewportKey && currentViewport) {
               viewportMemoryRef.current.set(newViewportKey, { ...currentViewport });
               persistViewportMemory();
+              // Update initialViewport so ReactFlow uses it as defaultViewport
+              setInitialViewport({ ...currentViewport });
             }
             viewportKeyRef.current = newViewportKey;
             viewportRef.current = currentViewport ? { ...currentViewport } : null;
@@ -3431,6 +3433,10 @@ const WorkflowBuilderPage = () => {
         };
         draftVersionSummaryRef.current = summary;
         const currentViewport = reactFlowInstanceRef.current?.getViewport();
+        // Update initialViewport so ReactFlow uses it as defaultViewport
+        if (currentViewport) {
+          setInitialViewport({ ...currentViewport });
+        }
         await loadVersions(selectedWorkflowId, summary.id, {
           preserveViewport: true,
           background: true,
