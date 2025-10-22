@@ -92,7 +92,7 @@ import {
   setWidgetNodeVariables,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
-import NodeInspector from "./components/NodeInspector";
+import NodeInspector from "./components/node-inspector/NodeInspector";
 import type {
   AgentParameters,
   FileSearchConfig,
