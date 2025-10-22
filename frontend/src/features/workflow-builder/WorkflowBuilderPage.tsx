@@ -1231,8 +1231,12 @@ const WorkflowBuilderPage = () => {
               nextVersionId = active?.id ?? orderedVersions[0]?.id ?? null;
             }
           }
+          const matchesSelectedVersion =
+            selectedVersionId != null && nextVersionId === selectedVersionId;
+          const matchesPreferredVersion =
+            preferredVersionId != null && nextVersionId === preferredVersionId;
           const shouldPreserveViewport =
-            preserveViewport && selectedVersionId != null && nextVersionId === selectedVersionId;
+            preserveViewport && (matchesSelectedVersion || matchesPreferredVersion);
           setSelectedVersionId(nextVersionId);
           if (nextVersionId != null) {
             await loadVersionDetail(workflowId, nextVersionId, {
