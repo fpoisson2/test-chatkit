@@ -21,7 +21,6 @@ import ReactFlow, {
   useEdgesState,
   useNodesState,
 } from "reactflow";
-import { getNodesBounds, getViewportForBounds } from "@reactflow/core";
 
 import "reactflow/dist/style.css";
 
@@ -147,11 +146,6 @@ import styles from "./WorkflowBuilderPage.module.css";
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 const DESKTOP_MIN_VIEWPORT_ZOOM = 0.1;
 const MOBILE_MIN_VIEWPORT_ZOOM = 0.05;
-const MIN_ABSOLUTE_VIEWPORT_ZOOM = 0.01;
-const DESKTOP_FIT_VIEW_PADDING = 0.2;
-const MOBILE_FIT_VIEW_PADDING = 0.08;
-const DESKTOP_MAX_INITIAL_VIEWPORT_ZOOM = 1;
-const MOBILE_MAX_INITIAL_VIEWPORT_ZOOM = 1.1;
 const VIEWPORT_STORAGE_KEY = "workflowBuilder:viewportMemory";
 
 const isFiniteNumber = (value: unknown): value is number =>
@@ -715,57 +709,15 @@ const WorkflowBuilderPage = () => {
   );
 
   const refreshViewportConstraints = useCallback(
-    (flowInstance?: ReactFlowInstance | null) => {
-      const instance = flowInstance ?? reactFlowInstanceRef.current;
-      const container = reactFlowWrapperRef.current;
+    (_flowInstance?: ReactFlowInstance | null) => {
       const applyMinZoom = (value: number) => {
         setMinViewportZoom((current) => (Math.abs(current - value) > 0.0001 ? value : current));
         return value;
       };
 
-      if (!instance || !container) {
-        return applyMinZoom(baseMinViewportZoom);
-      }
-
-      const nodes = instance.getNodes();
-      if (nodes.length === 0) {
-        return applyMinZoom(baseMinViewportZoom);
-      }
-
-      const bounds = getNodesBounds(nodes);
-      if (
-        !Number.isFinite(bounds.width) ||
-        !Number.isFinite(bounds.height) ||
-        bounds.width <= 0 ||
-        bounds.height <= 0
-      ) {
-        return applyMinZoom(baseMinViewportZoom);
-      }
-
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-      if (width <= 0 || height <= 0) {
-        return applyMinZoom(baseMinViewportZoom);
-      }
-
-      const padding = isMobileLayout ? MOBILE_FIT_VIEW_PADDING : DESKTOP_FIT_VIEW_PADDING;
-      const { zoom } = getViewportForBounds(
-        bounds,
-        width,
-        height,
-        MIN_ABSOLUTE_VIEWPORT_ZOOM,
-        1,
-        padding,
-      );
-
-      const effectiveMinZoom = Math.min(
-        baseMinViewportZoom,
-        Number.isFinite(zoom) ? zoom : baseMinViewportZoom,
-      );
-
-      return applyMinZoom(effectiveMinZoom);
+      return applyMinZoom(baseMinViewportZoom);
     },
-    [baseMinViewportZoom, isMobileLayout],
+    [baseMinViewportZoom],
   );
 
   const reactFlowContainerRef = useCallback(
@@ -792,13 +744,7 @@ const WorkflowBuilderPage = () => {
       }
       pendingViewportRestoreRef.current = false;
       const effectiveMinZoom = refreshViewportConstraints(flow);
-      const padding = isMobileLayout ? MOBILE_FIT_VIEW_PADDING : DESKTOP_FIT_VIEW_PADDING;
       const savedViewport = viewportRef.current;
-      const hasUserViewportChange = hasUserViewportChangeRef.current;
-      const container = reactFlowWrapperRef.current;
-      const nodes = flow.getNodes();
-      const hasValidContainer =
-        !!container && container.clientWidth > 0 && container.clientHeight > 0;
 
       if (savedViewport) {
         flow.setViewport(
@@ -807,60 +753,7 @@ const WorkflowBuilderPage = () => {
         );
       }
 
-      let appliedViewport = flow.getViewport();
-
-      const shouldComputeInitialViewport = !savedViewport;
-      let needsViewportUpdate = shouldComputeInitialViewport;
-
-      if (hasValidContainer && nodes.length > 0 && appliedViewport.zoom > 0) {
-        const bounds = getNodesBounds(nodes);
-        if (
-          Number.isFinite(bounds.width) &&
-          Number.isFinite(bounds.height) &&
-          bounds.width > 0 &&
-          bounds.height > 0
-        ) {
-          if (!shouldComputeInitialViewport && !hasUserViewportChange) {
-            const visibleLeft = -appliedViewport.x / appliedViewport.zoom;
-            const visibleTop = -appliedViewport.y / appliedViewport.zoom;
-            const visibleRight =
-              visibleLeft + container!.clientWidth / appliedViewport.zoom;
-            const visibleBottom =
-              visibleTop + container!.clientHeight / appliedViewport.zoom;
-
-            const nodesLeft = bounds.x;
-            const nodesTop = bounds.y;
-            const nodesRight = bounds.x + bounds.width;
-            const nodesBottom = bounds.y + bounds.height;
-            const tolerance = 48 / appliedViewport.zoom;
-
-            needsViewportUpdate =
-              nodesLeft < visibleLeft - tolerance ||
-              nodesTop < visibleTop - tolerance ||
-              nodesRight > visibleRight + tolerance ||
-              nodesBottom > visibleBottom + tolerance;
-          }
-
-          if (needsViewportUpdate) {
-            const maxInitialZoom = isMobileLayout
-              ? MOBILE_MAX_INITIAL_VIEWPORT_ZOOM
-              : DESKTOP_MAX_INITIAL_VIEWPORT_ZOOM;
-            const minZoomLimit = Math.max(effectiveMinZoom, MIN_ABSOLUTE_VIEWPORT_ZOOM);
-            const maxZoomLimit = Math.max(maxInitialZoom, minZoomLimit);
-            const nextViewport = getViewportForBounds(
-              bounds,
-              container!.clientWidth,
-              container!.clientHeight,
-              minZoomLimit,
-              maxZoomLimit,
-              padding,
-            );
-
-            flow.setViewport(nextViewport, { duration: 0 });
-            appliedViewport = flow.getViewport();
-          }
-        }
-      }
+      const appliedViewport = flow.getViewport();
 
       viewportRef.current = appliedViewport;
       const key = viewportKeyRef.current;
@@ -878,7 +771,7 @@ const WorkflowBuilderPage = () => {
     requestAnimationFrame(() => {
       requestAnimationFrame(applyViewport);
     });
-  }, [isMobileLayout, persistViewportMemory, refreshViewportConstraints]);
+  }, [persistViewportMemory, refreshViewportConstraints]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
