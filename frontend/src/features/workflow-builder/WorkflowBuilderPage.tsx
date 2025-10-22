@@ -1184,6 +1184,12 @@ const WorkflowBuilderPage = () => {
           const restoredViewport = viewportKey
             ? viewportMemoryRef.current.get(viewportKey) ?? null
             : null;
+
+          // Update initialViewport for ReactFlow's defaultViewport prop
+          if (restoredViewport) {
+            setInitialViewport(restoredViewport);
+          }
+
           if (preserveViewport) {
             if (viewportKey) {
               const currentViewport =
@@ -5125,7 +5131,7 @@ const WorkflowBuilderPage = () => {
                   onSelectionChange={handleSelectionChange}
                   style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
                   minZoom={minViewportZoom}
-                  defaultViewport={defaultViewport}
+                  defaultViewport={initialViewport}
                   fitView={false}
                   onInit={(instance) => {
                     reactFlowInstanceRef.current = instance;
