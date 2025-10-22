@@ -635,6 +635,8 @@ const WorkflowBuilderPage = () => {
     count: 0,
     lastTimestamp: 0,
   });
+  const nodesRef = useRef<FlowNode[]>([]);
+  const edgesRef = useRef<FlowEdge[]>([]);
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
   const blockLibraryId = "workflow-builder-block-library";
@@ -660,6 +662,14 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     setBlockLibraryOpen(!isMobileLayout);
   }, [isMobileLayout]);
+
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+
+  useEffect(() => {
+    edgesRef.current = edges;
+  }, [edges]);
 
   useEffect(() => {
     draftVersionIdRef.current = null;
@@ -2996,15 +3006,410 @@ const WorkflowBuilderPage = () => {
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
 
+  const resetCopySequence = useCallback(() => {
+    copySequenceRef.current.count = 0;
+    copySequenceRef.current.lastTimestamp = 0;
+  }, []);
+
+  const copySelectionToClipboard = useCallback(
+    async ({ includeEntireGraph = false }: { includeEntireGraph?: boolean } = {}) => {
+      const currentNodes = nodesRef.current;
+      const currentEdges = edgesRef.current;
+
+      const nodeIdSet = includeEntireGraph
+        ? new Set(currentNodes.map((node) => node.id))
+        : new Set(selectedNodeIdsRef.current);
+
+      if (!includeEntireGraph) {
+        for (const edgeId of selectedEdgeIdsRef.current) {
+          const edge = currentEdges.find((item) => item.id === edgeId);
+          if (edge) {
+            nodeIdSet.add(edge.source);
+            nodeIdSet.add(edge.target);
+          }
+        }
+      }
+
+      if (nodeIdSet.size === 0) {
+        setSaveState("error");
+        setSaveMessage(t("workflowBuilder.clipboard.copyEmpty"));
+        setTimeout(() => setSaveState("idle"), 1500);
+        resetCopySequence();
+        return false;
+      }
+
+      const nodesToCopy = currentNodes.filter((node) => nodeIdSet.has(node.id));
+      const edgesToCopy = includeEntireGraph
+        ? currentEdges
+        : currentEdges.filter(
+            (edge) => nodeIdSet.has(edge.source) && nodeIdSet.has(edge.target),
+          );
+
+      const payload = buildGraphPayloadFrom(nodesToCopy, edgesToCopy);
+      const serialized = JSON.stringify(payload, null, 2);
+
+      const writeText = async () => {
+        if (
+          typeof navigator !== "undefined" &&
+          navigator.clipboard &&
+          typeof navigator.clipboard.writeText === "function"
+        ) {
+          await navigator.clipboard.writeText(serialized);
+          return;
+        }
+        if (typeof document === "undefined") {
+          throw new Error("Clipboard unavailable");
+        }
+        const textarea = document.createElement("textarea");
+        textarea.value = serialized;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.top = "0";
+        textarea.style.left = "0";
+        textarea.style.width = "1px";
+        textarea.style.height = "1px";
+        textarea.style.opacity = "0";
+        textarea.style.pointerEvents = "none";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        const successful = document.execCommand("copy");
+        document.body.removeChild(textarea);
+        if (!successful) {
+          throw new Error("Clipboard copy failed");
+        }
+      };
+
+      try {
+        await writeText();
+        setSaveState("saved");
+        setSaveMessage(
+          includeEntireGraph
+            ? t("workflowBuilder.clipboard.copyAllSuccess")
+            : t("workflowBuilder.clipboard.copySelectionSuccess"),
+        );
+        setTimeout(() => setSaveState("idle"), 1500);
+        return true;
+      } catch (error) {
+        console.error(error);
+        setSaveState("error");
+        setSaveMessage(t("workflowBuilder.clipboard.copyError"));
+        setTimeout(() => setSaveState("idle"), 1500);
+        return false;
+      } finally {
+        resetCopySequence();
+      }
+    },
+    [resetCopySequence, setSaveMessage, setSaveState, t],
+  );
+
+  const pasteClipboardGraph = useCallback(async () => {
+    const readText = async (): Promise<string | null> => {
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.clipboard &&
+        typeof navigator.clipboard.readText === "function"
+      ) {
+        try {
+          return await navigator.clipboard.readText();
+        } catch (error) {
+          console.error(error);
+        }
+      }
+      if (typeof document === "undefined") {
+        return null;
+      }
+      const textarea = document.createElement("textarea");
+      textarea.value = "";
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.top = "0";
+      textarea.style.left = "0";
+      textarea.style.width = "1px";
+      textarea.style.height = "1px";
+      textarea.style.opacity = "0";
+      textarea.style.pointerEvents = "none";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      let pasted: string | null = null;
+      try {
+        const successful = document.execCommand("paste");
+        if (successful) {
+          pasted = textarea.value;
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        document.body.removeChild(textarea);
+      }
+      return pasted;
+    };
+
+    try {
+      const text = await readText();
+      if (text === null) {
+        setSaveState("error");
+        setSaveMessage(t("workflowBuilder.clipboard.pasteError"));
+        setTimeout(() => setSaveState("idle"), 1500);
+        return false;
+      }
+      if (!text.trim()) {
+        setSaveState("error");
+        setSaveMessage(t("workflowBuilder.clipboard.pasteEmpty"));
+        setTimeout(() => setSaveState("idle"), 1500);
+        return false;
+      }
+
+      let parsed;
+      try {
+        parsed = parseWorkflowImport(text);
+      } catch (error) {
+        if (error instanceof WorkflowImportError) {
+          setSaveState("error");
+          setSaveMessage(t("workflowBuilder.clipboard.pasteInvalid"));
+        } else {
+          console.error(error);
+          setSaveState("error");
+          setSaveMessage(t("workflowBuilder.clipboard.pasteError"));
+        }
+        setTimeout(() => setSaveState("idle"), 1500);
+        return false;
+      }
+
+      const importedNodes = parsed.graph.nodes;
+      const importedEdges = parsed.graph.edges;
+
+      const existingNodes = nodesRef.current;
+      const existingEdges = edgesRef.current;
+
+      const existingNodeIds = new Set(existingNodes.map((node) => node.id));
+      const existingNodeSlugs = new Set(existingNodes.map((node) => node.data.slug));
+      const tempNodeIds = new Set<string>();
+      const slugUsage = new Map<string, number>();
+      const slugMapping = new Map<string, string>();
+      const startNodeExists = existingNodes.some((node) => node.data.kind === "start");
+
+      const nodesToInsert: FlowNode[] = [];
+
+      for (const node of importedNodes) {
+        if (!Object.prototype.hasOwnProperty.call(NODE_COLORS, node.kind)) {
+          continue;
+        }
+        const kind = node.kind as NodeKind;
+        if (kind === "start" && startNodeExists) {
+          continue;
+        }
+
+        const baseSlug = node.slug;
+        let nextSlug = baseSlug;
+        let suffix = slugUsage.get(baseSlug) ?? 0;
+        while (
+          existingNodeIds.has(nextSlug) ||
+          existingNodeSlugs.has(nextSlug) ||
+          tempNodeIds.has(nextSlug)
+        ) {
+          suffix += 1;
+          nextSlug = `${baseSlug}-${suffix}`;
+        }
+        slugUsage.set(baseSlug, suffix);
+        tempNodeIds.add(nextSlug);
+        existingNodeIds.add(nextSlug);
+        existingNodeSlugs.add(nextSlug);
+        slugMapping.set(node.slug, nextSlug);
+
+        const position = extractPosition(node.metadata) ?? { x: 0, y: 0 };
+        const displayName = node.display_name ?? humanizeSlug(node.slug);
+        const agentKey = kind === "agent" ? node.agent_key ?? null : null;
+        const parameters =
+          kind === "agent"
+            ? resolveAgentParameters(agentKey, node.parameters)
+            : kind === "state"
+              ? resolveStateParameters(node.slug, node.parameters)
+              : kind === "json_vector_store"
+                ? setVectorStoreNodeConfig(
+                    {},
+                    getVectorStoreNodeConfig(node.parameters),
+                  )
+                : kind === "widget"
+                  ? resolveWidgetNodeParameters(node.parameters)
+                  : resolveAgentParameters(null, node.parameters);
+
+        const metadata = { ...(node.metadata ?? {}) };
+
+        nodesToInsert.push({
+          id: nextSlug,
+          position: { x: position.x, y: position.y },
+          data: {
+            slug: nextSlug,
+            kind,
+            displayName,
+            label: displayName,
+            isEnabled: node.is_enabled ?? true,
+            agentKey,
+            parameters,
+            parametersText: stringifyAgentParameters(parameters),
+            parametersError: null,
+            metadata,
+          },
+          draggable: true,
+          selected: false,
+          style: buildNodeStyle(kind, { isSelected: false }),
+        });
+      }
+
+      if (nodesToInsert.length === 0) {
+        setSaveState("error");
+        setSaveMessage(t("workflowBuilder.clipboard.pasteNothing"));
+        setTimeout(() => setSaveState("idle"), 1500);
+        return false;
+      }
+
+      let minX = Number.POSITIVE_INFINITY;
+      let maxX = Number.NEGATIVE_INFINITY;
+      let minY = Number.POSITIVE_INFINITY;
+      let maxY = Number.NEGATIVE_INFINITY;
+
+      for (const node of nodesToInsert) {
+        minX = Math.min(minX, node.position.x);
+        maxX = Math.max(maxX, node.position.x);
+        minY = Math.min(minY, node.position.y);
+        maxY = Math.max(maxY, node.position.y);
+      }
+
+      if (!Number.isFinite(minX) || !Number.isFinite(maxX)) {
+        minX = 0;
+        maxX = 0;
+      }
+      if (!Number.isFinite(minY) || !Number.isFinite(maxY)) {
+        minY = 0;
+        maxY = 0;
+      }
+
+      const selectionCenter = {
+        x: (minX + maxX) / 2,
+        y: (minY + maxY) / 2,
+      };
+
+      let targetCenter: { x: number; y: number } | null = null;
+
+      if (reactFlowInstanceRef.current && typeof window !== "undefined") {
+        const wrapper = reactFlowWrapperRef.current;
+        const rect = wrapper?.getBoundingClientRect();
+        const clientPoint = rect
+          ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+          : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+        try {
+          targetCenter = reactFlowInstanceRef.current.project(clientPoint);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+
+      if (!targetCenter) {
+        const viewport = reactFlowInstanceRef.current?.getViewport() ?? viewportRef.current;
+        const wrapper = reactFlowWrapperRef.current;
+        const width = wrapper?.clientWidth ?? 0;
+        const height = wrapper?.clientHeight ?? 0;
+        if (viewport) {
+          targetCenter = {
+            x: (width / 2 - viewport.x) / viewport.zoom,
+            y: (height / 2 - viewport.y) / viewport.zoom,
+          };
+        } else {
+          targetCenter = { x: selectionCenter.x, y: selectionCenter.y };
+        }
+      }
+
+      const offsetX = targetCenter.x - selectionCenter.x;
+      const offsetY = targetCenter.y - selectionCenter.y;
+
+      const adjustedNodes = nodesToInsert.map((node) => {
+        const x = node.position.x + offsetX;
+        const y = node.position.y + offsetY;
+        return {
+          ...node,
+          position: { x, y },
+          data: {
+            ...node.data,
+            metadata: { ...node.data.metadata, position: { x, y } },
+          },
+        } satisfies FlowNode;
+      });
+
+      const existingEdgeIds = new Set(existingEdges.map((edge) => edge.id));
+      const tempEdgeIds = new Set<string>();
+      const edgesToInsert: FlowEdge[] = [];
+
+      for (const edge of importedEdges) {
+        const source = slugMapping.get(edge.source);
+        const target = slugMapping.get(edge.target);
+        if (!source || !target) {
+          continue;
+        }
+        const baseId = `${source}-${target}`;
+        let candidateId = baseId;
+        let suffix = 1;
+        while (existingEdgeIds.has(candidateId) || tempEdgeIds.has(candidateId)) {
+          candidateId = `${baseId}-${suffix}`;
+          suffix += 1;
+        }
+        tempEdgeIds.add(candidateId);
+        existingEdgeIds.add(candidateId);
+        const metadataLabel = edge.metadata?.label;
+        const labelText =
+          metadataLabel != null && String(metadataLabel).trim()
+            ? String(metadataLabel).trim()
+            : edge.condition ?? "";
+        edgesToInsert.push({
+          id: candidateId,
+          source,
+          target,
+          label: labelText,
+          data: {
+            condition: edge.condition ?? null,
+            metadata: edge.metadata ?? {},
+          },
+          markerEnd: defaultEdgeOptions.markerEnd
+            ? { ...defaultEdgeOptions.markerEnd }
+            : { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
+          style: buildEdgeStyle({ isSelected: false }),
+        });
+      }
+
+      const newNodeIds = adjustedNodes.map((node) => node.id);
+      const newEdgeIds = edgesToInsert.map((edge) => edge.id);
+
+      setNodes((current) => [...current, ...adjustedNodes]);
+      setEdges((current) => [...current, ...edgesToInsert]);
+      setHasPendingChanges(true);
+      applySelection({
+        nodeIds: newNodeIds,
+        edgeIds: newEdgeIds,
+        primaryNodeId: newNodeIds[0] ?? null,
+      });
+      setSaveState("saved");
+      setSaveMessage(t("workflowBuilder.clipboard.pasteSuccess"));
+      setTimeout(() => setSaveState("idle"), 1500);
+      return true;
+    } catch (error) {
+      console.error(error);
+      setSaveState("error");
+      setSaveMessage(t("workflowBuilder.clipboard.pasteError"));
+      setTimeout(() => setSaveState("idle"), 1500);
+      return false;
+    }
+  }, [
+    applySelection,
+    setEdges,
+    setHasPendingChanges,
+    setNodes,
+    t,
+  ]);
+
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
-
-    const resetCopySequence = () => {
-      copySequenceRef.current.count = 0;
-      copySequenceRef.current.lastTimestamp = 0;
-    };
 
     const isEditableTarget = (target: EventTarget | null): boolean => {
       if (!(target instanceof HTMLElement)) {
@@ -3021,23 +3426,70 @@ const WorkflowBuilderPage = () => {
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      const isCopy = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "c";
-      if (isCopy) {
-        const now = Date.now();
-        const { lastTimestamp, count } = copySequenceRef.current;
-        copySequenceRef.current.count = now - lastTimestamp <= 600 ? count + 1 : 1;
+      const isCtrlOrMeta = event.ctrlKey || event.metaKey;
+      const key = event.key.toLowerCase();
+      const now = Date.now();
+      const workflowBusy = loading || isImporting || isExporting;
+
+      if (isCtrlOrMeta && key === "c") {
+        const previousTimestamp = copySequenceRef.current.lastTimestamp;
+        const previousCount = copySequenceRef.current.count;
+        const nextCount =
+          previousTimestamp && now - previousTimestamp <= 600 ? previousCount + 1 : 1;
+        copySequenceRef.current.count = nextCount;
         copySequenceRef.current.lastTimestamp = now;
+
+        if (workflowBusy) {
+          return;
+        }
+
+        if (isEditableTarget(event.target) && nextCount < 2) {
+          return;
+        }
+
+        event.preventDefault();
+        void copySelectionToClipboard({ includeEntireGraph: nextCount >= 2 });
         return;
       }
 
-      const now = Date.now();
-      const triggeredBySequence =
-        copySequenceRef.current.count >= 2 && now - copySequenceRef.current.lastTimestamp <= 800;
+      const allowDueToCopySequence =
+        copySequenceRef.current.count >= 2 &&
+        now - copySequenceRef.current.lastTimestamp <= 800;
 
-      if (isEditableTarget(event.target) && !triggeredBySequence) {
-        if (!event.ctrlKey && !event.metaKey) {
+      if (isEditableTarget(event.target) && !allowDueToCopySequence) {
+        if (!isCtrlOrMeta) {
           resetCopySequence();
         }
+        return;
+      }
+
+      if (isCtrlOrMeta && key === "a") {
+        if (workflowBusy) {
+          return;
+        }
+        event.preventDefault();
+        const allNodeIds = nodesRef.current.map((node) => node.id);
+        const allEdgeIds = edgesRef.current.map((edge) => edge.id);
+        const primaryNodeId = allNodeIds[0] ?? null;
+        const primaryEdgeId = primaryNodeId ? null : allEdgeIds[0] ?? null;
+        applySelection({
+          nodeIds: allNodeIds,
+          edgeIds: allEdgeIds,
+          primaryNodeId,
+          primaryEdgeId,
+        });
+        resetCopySequence();
+        return;
+      }
+
+      if (isCtrlOrMeta && key === "v") {
+        if (workflowBusy) {
+          return;
+        }
+        event.preventDefault();
+        void pasteClipboardGraph().finally(() => {
+          resetCopySequence();
+        });
         return;
       }
 
@@ -3057,7 +3509,7 @@ const WorkflowBuilderPage = () => {
         return;
       }
 
-      if (!event.ctrlKey && !event.metaKey) {
+      if (!isCtrlOrMeta) {
         resetCopySequence();
       }
     };
@@ -3066,7 +3518,16 @@ const WorkflowBuilderPage = () => {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [removeElements]);
+  }, [
+    applySelection,
+    copySelectionToClipboard,
+    isExporting,
+    isImporting,
+    loading,
+    pasteClipboardGraph,
+    removeElements,
+    resetCopySequence,
+  ]);
 
   const handleSelectWorkflow = useCallback(
     (workflowId: number) => {
