@@ -152,6 +152,24 @@ const DESKTOP_FIT_VIEW_PADDING = 0.2;
 const MOBILE_FIT_VIEW_PADDING = 0.08;
 const DESKTOP_MAX_INITIAL_VIEWPORT_ZOOM = 1;
 const MOBILE_MAX_INITIAL_VIEWPORT_ZOOM = 1.1;
+const VIEWPORT_STORAGE_KEY = "workflowBuilder:viewportMemory";
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+type StoredViewport = Pick<Viewport, "x" | "y" | "zoom">;
+
+const isStoredViewport = (value: unknown): value is StoredViewport => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    isFiniteNumber(candidate.x) &&
+    isFiniteNumber(candidate.y) &&
+    isFiniteNumber(candidate.zoom)
+  );
+};
 
 const viewportKeyFor = (workflowId: number | null, versionId: number | null) =>
   workflowId != null ? `${workflowId}:${versionId ?? "latest"}` : null;
@@ -309,6 +327,60 @@ const WorkflowBuilderPage = () => {
   const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
+
+  const persistViewportMemory = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const entries = Array.from(viewportMemoryRef.current.entries()).reduce<
+        Array<[string, StoredViewport]>
+      >((accumulator, [key, viewport]) => {
+        if (
+          isFiniteNumber(viewport.x) &&
+          isFiniteNumber(viewport.y) &&
+          isFiniteNumber(viewport.zoom)
+        ) {
+          accumulator.push([key, { x: viewport.x, y: viewport.y, zoom: viewport.zoom }]);
+        }
+        return accumulator;
+      }, []);
+      if (entries.length === 0) {
+        window.sessionStorage.removeItem(VIEWPORT_STORAGE_KEY);
+      } else {
+        window.sessionStorage.setItem(
+          VIEWPORT_STORAGE_KEY,
+          JSON.stringify(Object.fromEntries(entries)),
+        );
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      const raw = window.sessionStorage.getItem(VIEWPORT_STORAGE_KEY);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw) as unknown;
+      if (!parsed || typeof parsed !== "object") {
+        return;
+      }
+      viewportMemoryRef.current.clear();
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+        if (isStoredViewport(value)) {
+          viewportMemoryRef.current.set(key, { ...value });
+        }
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }, []);
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange<FlowEdgeData>[]) => {
@@ -793,7 +865,8 @@ const WorkflowBuilderPage = () => {
       viewportRef.current = appliedViewport;
       const key = viewportKeyRef.current;
       if (key) {
-        viewportMemoryRef.current.set(key, appliedViewport);
+        viewportMemoryRef.current.set(key, { ...appliedViewport });
+        persistViewportMemory();
       }
     };
 
@@ -805,7 +878,7 @@ const WorkflowBuilderPage = () => {
     requestAnimationFrame(() => {
       requestAnimationFrame(applyViewport);
     });
-  }, [isMobileLayout, refreshViewportConstraints]);
+  }, [isMobileLayout, persistViewportMemory, refreshViewportConstraints]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1068,6 +1141,7 @@ const WorkflowBuilderPage = () => {
                 reactFlowInstanceRef.current?.getViewport() ?? viewportRef.current;
               if (currentViewport) {
                 viewportMemoryRef.current.set(viewportKey, { ...currentViewport });
+                persistViewportMemory();
                 viewportRef.current = { ...currentViewport };
               }
             }
@@ -1114,7 +1188,15 @@ const WorkflowBuilderPage = () => {
       }
       return false;
     },
-    [authHeader, applySelection, restoreViewport, setEdges, setHasPendingChanges, setNodes],
+    [
+      authHeader,
+      applySelection,
+      persistViewportMemory,
+      restoreViewport,
+      setEdges,
+      setHasPendingChanges,
+      setNodes,
+    ],
   );
 
   const loadVersions = useCallback(
@@ -1207,6 +1289,7 @@ const WorkflowBuilderPage = () => {
             viewportKeyRef.current = emptyViewportKey;
             if (emptyViewportKey) {
               viewportMemoryRef.current.delete(emptyViewportKey);
+              persistViewportMemory();
             }
             viewportRef.current = null;
             hasUserViewportChangeRef.current = false;
@@ -1268,6 +1351,7 @@ const WorkflowBuilderPage = () => {
       authHeader,
       draftDisplayName,
       loadVersionDetail,
+      persistViewportMemory,
       restoreViewport,
       selectedWorkflowId,
       selectedVersionId,
@@ -1315,6 +1399,7 @@ const WorkflowBuilderPage = () => {
             viewportKeyRef.current = null;
             viewportRef.current = null;
             viewportMemoryRef.current.clear();
+            persistViewportMemory();
             hasUserViewportChangeRef.current = false;
             pendingViewportRestoreRef.current = true;
             restoreViewport();
@@ -1369,6 +1454,7 @@ const WorkflowBuilderPage = () => {
     [
       authHeader,
       loadVersions,
+      persistViewportMemory,
       restoreViewport,
       selectedWorkflowId,
       setEdges,
@@ -3201,6 +3287,7 @@ const WorkflowBuilderPage = () => {
               reactFlowInstanceRef.current?.getViewport() ?? viewportRef.current;
             if (newViewportKey && currentViewport) {
               viewportMemoryRef.current.set(newViewportKey, { ...currentViewport });
+              persistViewportMemory();
             }
             viewportKeyRef.current = newViewportKey;
             viewportRef.current = currentViewport ? { ...currentViewport } : null;
@@ -3303,6 +3390,7 @@ const WorkflowBuilderPage = () => {
     formatSaveFailureWithStatus,
     loadVersions,
     nodes,
+    persistViewportMemory,
     saveFailureMessage,
     selectedWorkflowId,
     versions,
@@ -4962,7 +5050,8 @@ const WorkflowBuilderPage = () => {
                     hasUserViewportChangeRef.current = true;
                     const key = viewportKeyRef.current;
                     if (key) {
-                      viewportMemoryRef.current.set(key, viewport);
+                      viewportMemoryRef.current.set(key, { ...viewport });
+                      persistViewportMemory();
                     }
                   }}
                 >
