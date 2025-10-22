@@ -68,7 +68,7 @@ Toutes les commandes ci-dessous se lancent **depuis la racine du dépôt** :
 
 ```bash
 # depuis la racine du dépôt
-npm run backend:sync   # installe les dépendances Python (pgvector, sentence-transformers…)
+npm run backend:sync   # installe les dépendances Python (pgvector, client OpenAI…)
 npm run backend:dev    # démarre FastAPI et initialise les tables json_vector_stores
 npm run frontend:dev   # lance Vite pour accéder au panneau d'administration
 ```
@@ -154,9 +154,7 @@ Assurez-vous que l'utilisateur PostgreSQL dispose du droit `CREATE EXTENSION`. E
 psql "postgresql://user:password@host:5432/chatkit" -c "CREATE EXTENSION IF NOT EXISTS vector"
 ```
 
-L'ingestion est centralisée dans `backend/app/vector_store/service.py`. Le service linéarise automatiquement le JSON, découpe le texte en segments avec chevauchement, génère des embeddings via le modèle local `intfloat/multilingual-e5-small` (`sentence-transformers`) puis normalise les vecteurs avant de les enregistrer. Exemple minimal :
-
-> 💡 **Dépendances système** — Sur les distributions Debian/Ubuntu minimalistes (dont l'image officielle `python:3.11-slim` utilisée en Docker Compose), PyTorch nécessite la bibliothèque `libgomp1` pour activer OpenMP. Le `Dockerfile` du backend installe ce paquet automatiquement ; sur une machine hôte, ajoutez-le via `sudo apt install libgomp1` si vous rencontrez une erreur « libgomp.so.1: cannot open shared object file » lors du chargement du modèle d'embedding.
+L'ingestion est centralisée dans `backend/app/vector_store/service.py`. Le service linéarise automatiquement le JSON, découpe le texte en segments avec chevauchement, génère des embeddings via l'API OpenAI (`text-embedding-3-small`) puis normalise les vecteurs avant de les enregistrer. Exemple minimal :
 
 ```python
 from backend.app.database import SessionLocal
@@ -176,7 +174,7 @@ with SessionLocal() as session:
     session.commit()
 ```
 
-Le chargement du modèle e5 est effectué paresseusement et mis en cache. Pensez à relancer `npm run backend:sync` (depuis la racine) pour installer les nouvelles dépendances Python (`pgvector`, `sentence-transformers`).
+Les embeddings sont générés à la volée via l'API OpenAI : aucune dépendance PyTorch ou modèle local n'est nécessaire. Assurez-vous simplement que `OPENAI_API_KEY` est disponible avant de lancer l'ingestion.
 
 ### Bibliothèque de widgets ChatKit
 

@@ -5,11 +5,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-# Dépendance système requise par torch/sentence-transformers (libgomp pour OpenMP)
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 # Pré-installe les dépendances Python (dont la version locale d'openai-chatkit)
