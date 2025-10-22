@@ -442,12 +442,15 @@ const WorkflowBuilderPage = () => {
       const effectiveMinZoom = refreshViewportConstraints(flow);
       const savedViewport = viewportRef.current;
 
+      console.log('restoreViewport applying', { savedViewport, key: viewportKeyRef.current });
+
       if (savedViewport) {
         const targetViewport = {
           ...savedViewport,
           zoom: Math.max(savedViewport.zoom, effectiveMinZoom),
         };
         flow.setViewport(targetViewport, { duration: 0 });
+        console.log('restoreViewport set viewport to', targetViewport);
       }
 
       const appliedViewport = flow.getViewport();
@@ -456,6 +459,7 @@ const WorkflowBuilderPage = () => {
       const key = viewportKeyRef.current;
       if (key && savedViewport) {
         viewportMemoryRef.current.set(key, { ...appliedViewport });
+        console.log('restoreViewport updated memory', appliedViewport);
       }
     };
 
