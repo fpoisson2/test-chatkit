@@ -281,6 +281,7 @@ const WorkflowBuilderPage = () => {
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const draftVersionIdRef = useRef<number | null>(null);
   const draftVersionSummaryRef = useRef<WorkflowVersionSummary | null>(null);
+  const selectedVersionIdRef = useRef<number | null>(null);
   const isCreatingDraftRef = useRef(false);
   const isHydratingRef = useRef(false);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
@@ -1427,6 +1428,10 @@ const WorkflowBuilderPage = () => {
   }, [selectedEdge, selectedNode]);
 
   const selectedElementKey = selectedNodeId ?? selectedEdgeId ?? null;
+
+  useEffect(() => {
+    selectedVersionIdRef.current = selectedVersionId;
+  }, [selectedVersionId]);
 
   useEffect(() => {
     selectedNodeIdRef.current = selectedNodeId;
@@ -3354,15 +3359,32 @@ const WorkflowBuilderPage = () => {
     setDeployModalOpen(false);
   }, [isDeploying]);
 
+  const resolveVersionIdToPromote = useCallback(
+    (preferDraft = false): number | null => {
+      const draftId = draftVersionIdRef.current;
+      const selectedId = selectedVersionIdRef.current;
+
+      if (!preferDraft) {
+        if (selectedId != null) {
+          return selectedId;
+        }
+        return draftId ?? null;
+      }
+
+      return draftId ?? selectedId ?? null;
+    },
+    [],
+  );
+
   const handleConfirmDeploy = useCallback(async () => {
     if (!selectedWorkflowId) {
       return;
     }
 
-    let versionIdToPromote = draftVersionIdRef.current ?? selectedVersionId;
+    let versionIdToPromote = resolveVersionIdToPromote();
     if (!versionIdToPromote) {
       setSaveState("error");
-      setSaveMessage(t("workflowBuilder.deploy.missingDraft"));
+      setSaveMessage(t("workflowBuilder.deploy.missingTarget"));
       return;
     }
 
@@ -3376,11 +3398,11 @@ const WorkflowBuilderPage = () => {
         setSaveMessage(t("workflowBuilder.deploy.pendingChangesError"));
         return;
       }
-      versionIdToPromote = draftVersionIdRef.current ?? selectedVersionId ?? versionIdToPromote;
+      versionIdToPromote = resolveVersionIdToPromote(true) ?? versionIdToPromote;
       if (!versionIdToPromote) {
         setIsDeploying(false);
         setSaveState("error");
-        setSaveMessage(t("workflowBuilder.deploy.missingDraft"));
+        setSaveMessage(t("workflowBuilder.deploy.missingTarget"));
         return;
       }
     }
@@ -3455,8 +3477,8 @@ const WorkflowBuilderPage = () => {
     hasPendingChanges,
     loadVersions,
     loadWorkflows,
-    selectedVersionId,
     selectedWorkflowId,
+    resolveVersionIdToPromote,
     t,
   ]);
 
