@@ -118,6 +118,10 @@ const fr: TranslationDictionary = {
   "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.":
     "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.",
   "Libellé affiché": "Libellé affiché",
+  "workflowBuilder.save.autoSaveSuccess": "Modifications enregistrées automatiquement.",
+  "workflowBuilder.save.draftDisplayName": "Brouillon",
+  "workflowBuilder.save.failure": "Impossible d'enregistrer le workflow.",
+  "workflowBuilder.save.failureWithStatus": "Échec de l'enregistrement ({{status}}).",
   "workflowBuilder.actions.exportJson": "Exporter en JSON",
   "workflowBuilder.export.preparing": "Préparation de l'export…",
   "workflowBuilder.export.success": "Export JSON téléchargé.",
@@ -231,6 +235,10 @@ const en: TranslationDictionary = {
   "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.":
     "Give the branch a unique name (e.g. approve, reject). Leave it blank to set the default branch.",
   "Libellé affiché": "Display label",
+  "workflowBuilder.save.autoSaveSuccess": "Changes saved automatically.",
+  "workflowBuilder.save.draftDisplayName": "Draft",
+  "workflowBuilder.save.failure": "Unable to save the workflow.",
+  "workflowBuilder.save.failureWithStatus": "Save failed (status {{status}}).",
   "workflowBuilder.actions.exportJson": "Export as JSON",
   "workflowBuilder.export.preparing": "Preparing export…",
   "workflowBuilder.export.success": "JSON export downloaded.",
