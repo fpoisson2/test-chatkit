@@ -2,66 +2,29 @@ import { describe, expect, it } from "vitest";
 
 import { resolveStateParameters } from "../agentPresets";
 
-const TRIAGE_STATE_DEFAULTS = [
-  {
-    target: "state.has_all_details",
-    expression: "input.output_parsed.has_all_details",
-  },
-  {
-    target: "state.infos_manquantes",
-    expression: "input.output_text",
-  },
-  {
-    target: "state.should_finalize",
-    expression: "input.output_parsed.has_all_details",
-  },
-];
-
 describe("resolveStateParameters", () => {
-  it("applique les valeurs par défaut pour un bloc état connu", () => {
+  it("renvoie un objet vide lorsqu'aucun preset n'est défini", () => {
     const resolved = resolveStateParameters("maj-etat-triage", null);
-    expect(resolved).toEqual({ state: TRIAGE_STATE_DEFAULTS });
+    expect(resolved).toEqual({});
   });
 
-  it("permet de surcharger des expressions reconnues", () => {
-    const resolved = resolveStateParameters("maj-etat-triage", {
+  it("préserve les affectations fournies pour les slugs hérités", () => {
+    const payload = {
       state: [
-        { target: "state.has_all_details", expression: "output.success" },
-        { target: "state.infos_manquantes", expression: "output.text" },
+        { target: "state.custom_flag", expression: "input.value" },
       ],
-    });
+      globals: [
+        { target: "global.ready", expression: "true" },
+      ],
+    } as const;
 
+    const resolved = resolveStateParameters("maj-etat-validation", payload);
     expect(resolved).toEqual({
       state: [
-        { target: "state.has_all_details", expression: "output.success" },
-        { target: "state.infos_manquantes", expression: "output.text" },
-        {
-          target: "state.should_finalize",
-          expression: "input.output_parsed.has_all_details",
-        },
+        { target: "state.custom_flag", expression: "input.value" },
       ],
-    });
-  });
-
-  it("ignore les affectations inconnues pour les blocs préconfigurés", () => {
-    const resolved = resolveStateParameters("maj-etat-triage", {
-      state: [
-        { target: "state.has_all_details", expression: "output.success" },
-        { target: "state.extra", expression: "output.extra" },
-      ],
-    });
-
-    expect(resolved).toEqual({
-      state: [
-        { target: "state.has_all_details", expression: "output.success" },
-        {
-          target: "state.infos_manquantes",
-          expression: "input.output_text",
-        },
-        {
-          target: "state.should_finalize",
-          expression: "input.output_parsed.has_all_details",
-        },
+      globals: [
+        { target: "global.ready", expression: "true" },
       ],
     });
   });
