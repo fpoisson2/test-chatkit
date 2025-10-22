@@ -34,11 +34,17 @@ def _handle_widget_error(exc: Exception) -> None:
             detail={"message": str(exc), "errors": exc.errors},
         ) from exc
     if isinstance(exc, ValueError):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
     if isinstance(exc, LookupError):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
     if isinstance(exc, RuntimeError):
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)
+        ) from exc
     raise exc
 
 
@@ -101,7 +107,9 @@ async def get_widget(
     service = WidgetLibraryService(session)
     widget = service.get_widget(slug)
     if widget is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Widget introuvable")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Widget introuvable"
+        )
     return _serialize_widget(widget)
 
 

@@ -50,7 +50,9 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
         with self._session_factory() as session:
             return func(session)
 
-    async def load_thread(self, thread_id: str, context: ChatKitRequestContext) -> ThreadMetadata:
+    async def load_thread(
+        self, thread_id: str, context: ChatKitRequestContext
+    ) -> ThreadMetadata:
         owner_id = self._require_user_id(context)
 
         def _load(session: Session) -> ThreadMetadata:
@@ -64,7 +66,9 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
         return await self._run(_load)
 
-    async def save_thread(self, thread: ThreadMetadata, context: ChatKitRequestContext) -> None:
+    async def save_thread(
+        self, thread: ThreadMetadata, context: ChatKitRequestContext
+    ) -> None:
         owner_id = self._require_user_id(context)
 
         def _save(session: Session) -> None:
@@ -112,9 +116,13 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                 ChatThreadItem.owner_id == owner_id,
             )
             if order == "desc":
-                stmt = stmt.order_by(ChatThreadItem.created_at.desc(), ChatThreadItem.id.desc())
+                stmt = stmt.order_by(
+                    ChatThreadItem.created_at.desc(), ChatThreadItem.id.desc()
+                )
             else:
-                stmt = stmt.order_by(ChatThreadItem.created_at.asc(), ChatThreadItem.id.asc())
+                stmt = stmt.order_by(
+                    ChatThreadItem.created_at.asc(), ChatThreadItem.id.asc()
+                )
             records = session.execute(stmt).scalars().all()
 
             start_index = 0
@@ -136,7 +144,9 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
         return await self._run(_load)
 
-    async def save_attachment(self, attachment: Attachment, context: ChatKitRequestContext) -> None:
+    async def save_attachment(
+        self, attachment: Attachment, context: ChatKitRequestContext
+    ) -> None:
         owner_id = self._require_user_id(context)
 
         def _save(session: Session) -> None:
@@ -161,7 +171,9 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
         await self._run(_save)
 
-    async def load_attachment(self, attachment_id: str, context: ChatKitRequestContext) -> Attachment:
+    async def load_attachment(
+        self, attachment_id: str, context: ChatKitRequestContext
+    ) -> Attachment:
         owner_id = self._require_user_id(context)
 
         def _load(session: Session) -> Attachment:
@@ -176,7 +188,9 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
 
         return await self._run(_load)
 
-    async def delete_attachment(self, attachment_id: str, context: ChatKitRequestContext) -> None:
+    async def delete_attachment(
+        self, attachment_id: str, context: ChatKitRequestContext
+    ) -> None:
         owner_id = self._require_user_id(context)
 
         def _delete(session: Session) -> None:
@@ -261,7 +275,9 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             )
             record = session.execute(stmt).scalar_one_or_none()
             if record is None:
-                raise NotFoundError(f"Élément {item.id} introuvable dans le fil {thread_id}")
+                raise NotFoundError(
+                    f"Élément {item.id} introuvable dans le fil {thread_id}"
+                )
             record.payload = item.model_dump(mode="json")
             record.created_at = _ensure_timezone(getattr(item, "created_at", None))
             session.commit()
@@ -281,12 +297,16 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             )
             record = session.execute(stmt).scalar_one_or_none()
             if record is None:
-                raise NotFoundError(f"Élément {item_id} introuvable dans le fil {thread_id}")
+                raise NotFoundError(
+                    f"Élément {item_id} introuvable dans le fil {thread_id}"
+                )
             return self._thread_item_adapter.validate_python(record.payload)
 
         return await self._run(_load)
 
-    async def delete_thread(self, thread_id: str, context: ChatKitRequestContext) -> None:
+    async def delete_thread(
+        self, thread_id: str, context: ChatKitRequestContext
+    ) -> None:
         owner_id = self._require_user_id(context)
 
         def _delete(session: Session) -> None:

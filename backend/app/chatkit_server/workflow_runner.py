@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, AsyncIterator, Coroutine
+from collections.abc import AsyncIterator, Coroutine
+from typing import Any
 
 logger = logging.getLogger("chatkit.server")
 

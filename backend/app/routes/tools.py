@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import httpx
 import logging
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query, status
 
 from ..weather import fetch_weather

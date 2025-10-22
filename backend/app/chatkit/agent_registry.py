@@ -5,13 +5,19 @@ import keyword
 import logging
 import re
 import weakref
-from collections.abc import Mapping, Sequence
-from typing import Any, Callable
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any
 
 from agents import Agent, ModelSettings, RunContextWrapper, WebSearchTool
 from openai.types.shared.reasoning import Reasoning
 from pydantic import BaseModel, Field, create_model
 
+from ..chatkit_server.actions import (
+    _patch_model_json_schema,
+    _remove_additional_properties_from_schema,
+    _sanitize_widget_field_name,
+    _StrictSchemaBase,
+)
 from ..database import SessionLocal
 from ..token_sanitizer import sanitize_model_like
 from ..tool_factory import (
@@ -20,12 +26,6 @@ from ..tool_factory import (
     build_weather_tool,
     build_web_search_tool,
     build_widget_validation_tool,
-)
-from ..chatkit_server.actions import (
-    _StrictSchemaBase,
-    _patch_model_json_schema,
-    _remove_additional_properties_from_schema,
-    _sanitize_widget_field_name,
 )
 
 logger = logging.getLogger("chatkit.server")
@@ -163,18 +163,22 @@ def _coerce_model_settings(value: Any) -> Any:
         result = _model_settings(**value)
         logger.debug(
             "Résultat après nettoyage: %s",
-            getattr(result, "model_dump", lambda **_: result)()
-            if hasattr(result, "model_dump")
-            else result,
+            (
+                getattr(result, "model_dump", lambda **_: result)()
+                if hasattr(result, "model_dump")
+                else result
+            ),
         )
         return result
     logger.debug("Nettoyage model_settings objet: %s", value)
     result = sanitize_model_like(value)
     logger.debug(
         "Résultat après nettoyage: %s",
-        getattr(result, "model_dump", lambda **_: result)()
-        if hasattr(result, "model_dump")
-        else result,
+        (
+            getattr(result, "model_dump", lambda **_: result)()
+            if hasattr(result, "model_dump")
+            else result
+        ),
     )
     return result
 
@@ -184,7 +188,9 @@ def _clone_tools(value: Sequence[Any] | None) -> list[Any]:
         return []
     if isinstance(value, list):
         return list(value)
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+    if isinstance(value, Sequence) and not isinstance(
+        value, str | bytes | bytearray
+    ):
         return list(value)
     return [value]
 
@@ -235,7 +241,8 @@ def _create_response_format_from_pydantic(model: type[BaseModel]) -> dict[str, A
         )
     except Exception:  # pragma: no cover - sérialisation best effort
         logger.debug(
-            "response_format demandé (modèle=%s) - impossible de sérialiser pour les logs",
+            "response_format demandé (modèle=%s) - impossible de sérialiser pour "
+            "les logs",
             sanitized_name,
         )
 
@@ -313,7 +320,11 @@ class _JsonSchemaOutputBuilder:
                 items_type = Any
             return list[items_type], nullable
 
-        if schema_type == "object" or "properties" in schema or "additionalProperties" in schema:
+        if (
+            schema_type == "object"
+            or "properties" in schema
+            or "additionalProperties" in schema
+        ):
             return self._build_object(schema, name), nullable
 
         if isinstance(schema_type, str):
@@ -338,13 +349,17 @@ class _JsonSchemaOutputBuilder:
                 return dict[str, value_type]
             if additional:
                 return dict[str, Any]
-            model = create_model(sanitized, __module__=__name__, __base__=_StrictSchemaBase)
+            model = create_model(
+                sanitized, __module__=__name__, __base__=_StrictSchemaBase
+            )
             _patch_model_json_schema(model)
             self._models[sanitized] = model
             return model
 
         if not properties:
-            model = create_model(sanitized, __module__=__name__, __base__=_StrictSchemaBase)
+            model = create_model(
+                sanitized, __module__=__name__, __base__=_StrictSchemaBase
+            )
             _patch_model_json_schema(model)
             self._models[sanitized] = model
             return model
@@ -354,7 +369,11 @@ class _JsonSchemaOutputBuilder:
         for index, prop in enumerate(properties, start=1):
             if not isinstance(prop, str):
                 return dict[str, Any]
-            if prop.isidentifier() and not keyword.iskeyword(prop) and prop not in used_names:
+            if (
+                prop.isidentifier()
+                and not keyword.iskeyword(prop)
+                and prop not in used_names
+            ):
                 sanitized_fields[prop] = prop
                 used_names.add(prop)
                 continue
@@ -395,18 +414,18 @@ class _JsonSchemaOutputBuilder:
             if field_name is None:
                 return dict[str, Any]
 
-            def _build_field(default: Any) -> Any:
+            def _build_field(default: Any, *, alias_name: str = prop_name) -> Any:
                 try:
                     return Field(
                         default,
-                        alias=prop_name,
-                        serialization_alias=prop_name,
+                        alias=alias_name,
+                        serialization_alias=alias_name,
                     )
                 except TypeError:  # pragma: no cover - compatibilité Pydantic v1
-                    field = Field(default, alias=prop_name)
+                    field = Field(default, alias=alias_name)
                     if hasattr(field, "serialization_alias"):
                         try:
-                            setattr(field, "serialization_alias", prop_name)
+                            field.serialization_alias = alias_name
                         except Exception:
                             pass
                     return field
@@ -440,7 +459,8 @@ def _build_output_type_from_response_format(
 ) -> Any | None:
     if not isinstance(response_format, dict):
         logger.warning(
-            "Format de réponse agent invalide (type inattendu) : %s. Utilisation du type existant.",
+            "Format de réponse agent invalide (type inattendu) : %s. "
+            "Utilisation du type existant.",
             response_format,
         )
         return fallback
@@ -459,7 +479,9 @@ def _build_output_type_from_response_format(
     json_schema = response_format.get("json_schema")
     if isinstance(json_schema, Mapping):
         schema_name_raw = (
-            json_schema.get("name") if isinstance(json_schema.get("name"), str) else None
+            json_schema.get("name")
+            if isinstance(json_schema.get("name"), str)
+            else None
         )
         schema_payload = (
             json_schema.get("schema")
@@ -468,7 +490,8 @@ def _build_output_type_from_response_format(
         )
     elif json_schema is not None:
         logger.warning(
-            "Format JSON Schema invalide (clé 'json_schema' inattendue) pour la configuration agent : %s. Utilisation du type existant.",
+            "Format JSON Schema invalide (clé 'json_schema' inattendue) pour la "
+            "configuration agent : %s. Utilisation du type existant.",
             response_format,
         )
         return fallback
@@ -478,7 +501,11 @@ def _build_output_type_from_response_format(
         if isinstance(alt_name, str) and alt_name.strip():
             schema_name_raw = alt_name
 
-    original_name = schema_name_raw if isinstance(schema_name_raw, str) and schema_name_raw.strip() else None
+    original_name = (
+        schema_name_raw
+        if isinstance(schema_name_raw, str) and schema_name_raw.strip()
+        else None
+    )
     schema_name = _sanitize_model_name(original_name)
 
     if schema_payload is None:
@@ -504,7 +531,8 @@ def _build_output_type_from_response_format(
     built = builder.build_type(schema_payload, name=schema_name)
     if built is None:
         logger.warning(
-            "Impossible de construire un output_type depuis le schéma %s, utilisation du type existant.",
+            "Impossible de construire un output_type depuis le schéma %s, "
+            "utilisation du type existant.",
             schema_name,
         )
         return fallback
@@ -529,7 +557,9 @@ def _coerce_agent_tools(
 
         if isinstance(entry, dict):
             tool_type = entry.get("type") or entry.get("tool") or entry.get("name")
-            normalized_type = tool_type.strip().lower() if isinstance(tool_type, str) else ""
+            normalized_type = (
+                tool_type.strip().lower() if isinstance(tool_type, str) else ""
+            )
 
             if normalized_type == "web_search":
                 tool = build_web_search_tool(entry.get("web_search"))
@@ -563,7 +593,8 @@ def _coerce_agent_tools(
 
     if value:
         logger.warning(
-            "Outils agent non reconnus (%s), utilisation de la configuration par défaut.",
+            "Outils agent non reconnus (%s), utilisation de la configuration par "
+            "défaut.",
             value,
         )
         return _clone_tools(fallback)
@@ -572,7 +603,7 @@ def _coerce_agent_tools(
 
 
 def _build_response_format_from_widget(
-    response_widget: dict[str, Any]
+    response_widget: dict[str, Any],
 ) -> dict[str, Any] | None:
     logger.info(
         "_build_response_format_from_widget appelée avec: %s",
@@ -634,7 +665,9 @@ def _build_response_format_from_widget(
         required = []
 
         for var_path in widget_variables.keys():
-            safe_key = _sanitize_widget_field_name(var_path, fallback=var_path.replace(".", "_"))
+            safe_key = _sanitize_widget_field_name(
+                var_path, fallback=var_path.replace(".", "_")
+            )
 
             properties[safe_key] = {
                 "type": "string",
@@ -695,7 +728,8 @@ def _build_response_format_from_widget(
             response_format["description"] = description
 
         logger.info(
-            "response_format généré depuis le widget de bibliothèque '%s' (variables: %s)",
+            "response_format généré depuis le widget de bibliothèque '%s' "
+            "(variables: %s)",
             slug,
             list(widget_variables.keys()) if widget_variables else "aucune",
         )
@@ -707,7 +741,8 @@ def _build_response_format_from_widget(
             )
         except Exception:  # pragma: no cover - sérialisation best effort
             logger.debug(
-                "response_format demandé pour le widget '%s' - impossible de sérialiser pour les logs",
+                "response_format demandé pour le widget '%s' - impossible de "
+                "sérialiser pour les logs",
                 slug,
             )
         return response_format
@@ -762,7 +797,9 @@ def _build_agent_kwargs(
     return merged
 
 
-AGENT_RESPONSE_FORMATS: "weakref.WeakKeyDictionary[Agent, dict[str, Any]]" = weakref.WeakKeyDictionary()
+AGENT_RESPONSE_FORMATS: weakref.WeakKeyDictionary[Agent, dict[str, Any]] = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
@@ -770,14 +807,14 @@ def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
     agent = Agent(**kwargs)
     if response_format is not None:
         try:
-            setattr(agent, "response_format", response_format)
+            agent.response_format = response_format
         except Exception:
             logger.debug(
                 "Impossible d'attacher response_format directement à l'agent %s",
                 getattr(agent, "name", "<inconnu>"),
             )
         try:
-            setattr(agent, "_chatkit_response_format", response_format)
+            agent._chatkit_response_format = response_format
         except Exception:
             logger.debug(
                 "Impossible de stocker _chatkit_response_format pour l'agent %s",
@@ -808,14 +845,16 @@ def _build_triage_agent(overrides: dict[str, Any] | None = None) -> Agent:
     base_kwargs: dict[str, Any] = {
         "name": "Triage",
         "instructions": (
-            """Ton rôle : Vérifier si toutes les informations nécessaires sont présentes pour générer un plan-cadre.
+            """Ton rôle : Vérifier si toutes les informations nécessaires sont
+présentes pour générer un plan-cadre.
 Si oui → has_all_details: true
 Sinon → has_all_details: false + lister uniquement les éléments manquants
 
 Ne génère pas encore le plan-cadre.
 
 Informations attendues
-Le plan-cadre pourra être généré seulement si les champs suivants sont fournis :
+Le plan-cadre pourra être généré seulement si les champs suivants sont
+fournis :
 code_cours:
 nom_cours:
 programme:
@@ -829,8 +868,9 @@ heures_lab:
 heures_maison:
 competences_developpees: []   # Codes + titres
 competences_atteintes: []     # Codes + titres
-competence_nom:               # Pour la section Description des compétences développées
-cours_developpant_une_meme_competence: [] # Pour les activités pratiques
+competence_nom:               # Pour la section Description des compétences
+                               # développées
+cours_developpant_une_meme_competence: []  # Pour les activités pratiques
 Une idée générale de ce qui devrait se retrouver dans le cours."""
         ),
         "model": "gpt-5",
@@ -851,7 +891,8 @@ def _build_thread_title_agent() -> Agent:
         "name": "TitreFil",
         "model": "gpt-5-nano",
         "instructions": (
-            """Propose un titre court et descriptif en français pour un nouveau fil de discussion.
+            """Propose un titre court et descriptif en français pour un nouveau fil
+de discussion.
 Utilise au maximum 6 mots."""
         ),
         "model_settings": _model_settings(store=True),
@@ -859,13 +900,18 @@ Utilise au maximum 6 mots."""
     return _instantiate_agent(_build_agent_kwargs(base_kwargs, None))
 
 
-R_DACTEUR_INSTRUCTIONS = (
-    """Tu es un assistant pédagogique qui génère, en français, des contenus de plan-cadre selon le ton institutionnel : clairs, concis, rigoureux, rédigés au vouvoiement. Tu ne t’appuies que sur les informations fournies dans le prompt utilisateur, sans inventer de contenu. Si une information manque et qu’aucune directive de repli n’est donnée, omets l’élément manquant.
+R_DACTEUR_INSTRUCTIONS = """Tu es un assistant pédagogique qui génère, en français,
+des contenus de plan-cadre selon le ton institutionnel : clairs, concis,
+rigoureux, rédigés au vouvoiement. Tu ne t’appuies que sur les informations
+fournies dans le prompt utilisateur, sans inventer de contenu. Si une information
+manque et qu’aucune directive de repli n’est donnée, omets l’élément manquant.
 
 **CONTRAINTE SPÉCIALE – SAVOIR ET SAVOIR-FAIRE PAR CAPACITÉ**
-Pour chaque capacité identifiée dans le cours, tu dois générer explicitement :
-- La liste des savoirs nécessaires à la maîtrise de cette capacité (minimum 10 par capacité)
-- La liste des savoir-faire associés à cette même capacité (minimum 10 par capacité, chacun avec niveau cible et seuil)
+Pour chaque capacité identifiée dans le cours, tu dois générer explicitement :
+- La liste des savoirs nécessaires à la maîtrise de cette capacité (minimum 10 par
+  capacité)
+- La liste des savoir-faire associés à cette même capacité (minimum 10 par
+  capacité, chacun avec niveau cible et seuil)
 
 Ton rôle est de récupérer les informations manquantes pour rédiger le plan-cadre.
 Demande à l'utilisateur les informations manquantes.
@@ -873,88 +919,145 @@ Demande à l'utilisateur les informations manquantes.
 SECTIONS ET RÈGLES DE GÉNÉRATION
 
 ## Intro et place du cours
-Génère une description détaillée pour le cours «{{code_cours}} – {{nom_cours}}» qui s’inscrit dans le fil conducteur «{{fil_conducteur}}» du programme de {{programme}} et se donne en session {{session}} de la grille de cours.
+Génère une description détaillée pour le cours «{{code_cours}} – {{nom_cours}}» qui
+s’inscrit dans le fil conducteur «{{fil_conducteur}}» du programme de {{programme}}
+et se donne en session {{session}} de la grille de cours.
 
 La description devra comporter :
 
-Une introduction qui situe le cours dans son contexte (code, nom, fil conducteur, programme et session).
+Une introduction qui situe le cours dans son contexte (code, nom, fil conducteur,
+programme et session).
 
-Une explication sur l’importance des connaissances préalables pour réussir ce cours.
+Une explication sur l’importance des connaissances préalables pour réussir ce
+cours.
 
-Pour chaque cours préalable listé dans {{cours_prealables}}, détaillez les connaissances et compétences essentielles acquises et expliquez en quoi ces acquis sont indispensables pour aborder les notions spécifiques du cours actuel.
+Pour chaque cours préalable listé dans {{cours_prealables}}, détaille les
+connaissances et compétences essentielles acquises et explique en quoi ces acquis
+sont indispensables pour aborder les notions spécifiques du cours actuel.
 
-Le texte final devra adopter un style clair et pédagogique, similaire à l’exemple suivant, mais adapté au contenu du présent cours :
+Le texte final doit adopter un style clair et pédagogique, similaire à l’exemple
+suivant, mais adapté au contenu du présent cours :
 
-"Le cours «243-4Q4 – Communication radio» s’inscrit dans le fil conducteur «Sans-fil et fibre optique» du programme de Technologie du génie électrique : Réseaux et télécommunications et se donne en session 4. Afin de bien réussir ce cours, il est essentiel de maîtriser les connaissances préalables acquises dans «nom du cours», particulièrement [connaissances et compétences]. Ces acquis permettront aux personnes étudiantes de saisir plus aisément les notions [ de ... ]abordées dans le présent cours."
+"Le cours «243-4Q4 – Communication radio» s’inscrit dans le fil conducteur
+«Sans-fil et fibre optique» du programme de Technologie du génie électrique :
+Réseaux et télécommunications et se donne en session 4. Afin de bien réussir ce
+cours, il est essentiel de maîtriser les connaissances préalables acquises dans
+«nom du cours», particulièrement [connaissances et compétences]. Ces acquis
+permettront aux personnes étudiantes de saisir plus aisément les notions
+abordées dans le présent cours."
 
 ---
 
 ## Objectif terminal
-Écrire un objectif terminal pour le cours {{nom_cours}} qui devrait commencer par: "Au terme de ce cours, les personnes étudiantes seront capables de" et qui termine par un objectif terminal qui correspond aux compétences à développer ou atteinte({{competences_developpees}}{{competences_atteintes}}). Celui-ci devrait clair, mais ne comprendre que 2 ou 3 actes. Le e nom du cours donne de bonnes explications sur les technologies utilisés dans le cours, à intégrer dans l'objectif terminal.
+Écris un objectif terminal pour le cours {{nom_cours}} qui commence par
+"Au terme de ce cours, les personnes étudiantes seront capables de" et se termine
+par un objectif correspondant aux compétences à développer ou à atteindre
+({{competences_developpees}}{{competences_atteintes}}). L’énoncé doit être clair
+et comporter uniquement deux ou trois actes. Utilise le nom du cours pour
+décrire les technologies abordées.
 
 ---
 
 ## Introduction Structure du Cours
-Le cours «{{nom_cours}}» prévoit {{heures_theorie}} heures de théorie, {{heures_lab}} heures d’application en travaux pratiques ou en laboratoire et {{heures_maison}} heures de travail personnel sur une base hebdomadaire.
+Le cours «{{nom_cours}}» prévoit {{heures_theorie}} heures de théorie,
+{{heures_lab}} heures d’application en travaux pratiques ou en laboratoire et
+{{heures_maison}} heures de travail personnel par semaine.
 
 ---
 
 ## Activités Théoriques
-Écrire un texte sous cette forme adapté à la nature du cours ({{nom_cours}}), celui-ci devrait être similaire en longueur et en style:
+Écris un texte adapté à la nature du cours ({{nom_cours}}), similaire en longueur
+et en style à ce modèle :
 
-"Les séances théoriques du cours visent à préparer les personnes étudiantes en vue de la mise en pratique de leurs connaissances au laboratoire. Ces séances seront axées sur plusieurs aspects, notamment les éléments constitutifs des systèmes électroniques analogiques utilisés en télécommunications. Les personnes étudiantes auront l'opportunité d'approfondir leur compréhension par le biais de discussions interactives, des exercices et des analyses de cas liés à l’installation et au fonctionnement des systèmes électroniques analogiques. "
+"Les séances théoriques du cours visent à préparer les personnes étudiantes en
+vue de la mise en pratique de leurs connaissances au laboratoire. Ces séances
+seront axées sur plusieurs aspects, notamment les éléments constitutifs des
+systèmes électroniques analogiques utilisés en télécommunications. Les personnes
+étudiantes approfondiront leur compréhension par des discussions interactives,
+des exercices et des analyses de cas liés à l’installation et au fonctionnement
+des systèmes électroniques analogiques."
 
 ---
 
 ## Activités Pratiques
-Écrire un texte sous cette forme adapté à la nature du cours {{nom_cours}}, celui-ci devrait être similaire en longueur et en style.  Le premier chiffre après 243 indique la session sur 6 et le nom du cours donne de bonnes explications sur le matériel ou la technologie utilisé dans le cours
+Écris un texte adapté à la nature du cours {{nom_cours}}, similaire en longueur et
+en style. Le premier chiffre après 243 indique la session sur six et le nom du
+cours décrit le matériel ou la technologie utilisée.
 
-Voici les cours reliés:
+Voici les cours reliés :
 {{cours_developpant_une_meme_competence}}
 
-Voici un exemple provenant d'un autre cours de mes attentes:
-"La structure des activités pratiques sur les 15 semaines du cours se déroulera de manière progressive et devrait se dérouler en 4 phases. La première phrase devrait s’inspirer du quotidien des personnes étudiantes qui, généralement, ont simplement utilisé des systèmes électroniques. Son objectif serait donc de favoriser la compréhension des composants essentiels des systèmes électroniques analogiques. Cela devrait conduire à une compréhension d’un système d’alimentation basé sur des panneaux solaires photovoltaïques, offrant ainsi une introduction pertinente aux systèmes d’alimentation en courant continu, utilisés dans les télécommunications. La seconde phase devrait mener l’a personne à comprendre la nature des signaux alternatifs dans le cadre de systèmes d’alimentation en courant alternatif et sur des signaux audios. La troisième phase viserait une exploration des systèmes de communication radio. Finalement, la dernière phase viserait à réaliser un projet final combinant les apprentissages réalisés, en partenariat avec les cours 243-1N5-LI - Systèmes numériques et 243-1P4-LI – Travaux d’atelier."
+Voici un exemple provenant d'un autre cours :
+"La structure des activités pratiques sur les 15 semaines du cours se déroulera
+de manière progressive et devrait se dérouler en quatre phases. La première phase
+devrait s’inspirer du quotidien des personnes étudiantes qui, généralement, ont
+simplement utilisé des systèmes électroniques. Son objectif serait de favoriser
+la compréhension des composants essentiels des systèmes électroniques
+analogiques. Cela devrait conduire à une compréhension d’un système d’alimentation
+basé sur des panneaux solaires photovoltaïques, offrant une introduction pertinente
+aux systèmes d’alimentation en courant continu utilisés dans les
+télécommunications. La seconde phase mènerait la personne à comprendre la nature
+des signaux alternatifs dans le cadre de systèmes d’alimentation en courant
+alternatif et sur des signaux audios. La troisième phase viserait une exploration
+des systèmes de communication radio. Finalement, la dernière phase viserait à
+réaliser un projet final combinant les apprentissages réalisés, en partenariat
+avec les cours 243-1N5-LI - Systèmes numériques et 243-1P4-LI – Travaux d’atelier."
 
 ---
 
 ## Activités Prévues
-Décrire les différentes phases de manière succincte en utilisant cette forme. Ne pas oublier que la session dure 15 semaines.
+Décris les différentes phases de manière succincte en utilisant cette forme.
+N’oublie pas que la session dure 15 semaines.
 
-**Phase X - titre de la phase (Semaines Y à 4Z)**
+**Phase X - titre de la phase (Semaines Y à Z)**
   - Description de la phase
 
 ---
 
 ## Évaluation Sommative des Apprentissages
-Pour la réussite du cours, la personne étudiante doit obtenir la note de 60% lorsque l'on fait la somme pondérée des capacités.
+Pour la réussite du cours, la personne étudiante doit obtenir la note de 60 % en
+faisant la somme pondérée des capacités.
 
-La note attribuée à une capacité ne sera pas nécessairement la moyenne cumulative des résultats des évaluations pour cette capacité, mais bien le reflet des observations constatées en cours de session, par la personne enseignante et le jugement global de cette dernière.
+La note attribuée à une capacité n’est pas nécessairement la moyenne cumulative
+des évaluations pour cette capacité, mais bien le reflet des observations faites
+en cours de session par la personne enseignante et de son jugement global.
 
 ---
 
 ## Nature des Évaluations Sommatives
-Inclure un texte similaire à celui-ci:
+Inclure un texte similaire à celui-ci :
 
-L’évaluation sommative devrait surtout être réalisée à partir de travaux pratiques effectués en laboratoire, alignés avec le savoir-faire évalué. Les travaux pratiques pourraient prendre la forme de...
+"L’évaluation sommative devrait surtout être réalisée à partir de travaux
+pratiques effectués en laboratoire, alignés avec le savoir-faire évalué. Les
+travaux pratiques pourraient prendre la forme de..."
 
-Pour certains savoirs, il est possible que de courts examens théoriques soient le moyen à privilégier, par exemple pour les savoirs suivants:
+Pour certains savoirs, de courts examens théoriques peuvent être privilégiés,
+par exemple pour les savoirs suivants :
 ...
 
 ---
 
 ## Évaluation de la Langue
-Utiliser ce modèle:
+Utilise ce modèle :
 
-Dans un souci de valorisation de la langue, l’évaluation de l’expression et de la communication en français se fera de façon constante par l’enseignant(e) sur une base formative, à l’oral ou à l’écrit. Son évaluation se fera sur une base sommative pour les savoir-faire reliés à la documentation. Les critères d’évaluation se trouvent au plan général d’évaluation sommative présenté à la page suivante. Les dispositions pour la valorisation de l’expression et de la communication en français sont encadrées par les modalités particulières d’application de l’article 6.6 de la PIEA (Politique institutionnelle d’évaluation des apprentissages) et sont précisées dans le plan de cours.
-...
-Pour chaque capacité, générez immédiatement après son texte et sa pondération :
-- La liste complète de ses savoirs nécessaires ;
-- La liste complète de ses savoir-faire associés (avec cible et seuil) ;
-- Les moyens d’évaluation pertinents pour cette capacité.
+"Dans un souci de valorisation de la langue, l’évaluation de l’expression et de
+la communication en français se fera de façon constante par l’enseignant(e) sur
+une base formative, à l’oral ou à l’écrit. Son évaluation se fera sur une base
+sommative pour les savoir-faire reliés à la documentation. Les critères
+d’évaluation se trouvent au plan général d’évaluation sommative présenté à la
+page suivante. Les dispositions pour la valorisation de l’expression et de la
+communication en français sont encadrées par les modalités particulières
+d’application de l’article 6.6 de la PIEA (Politique institutionnelle
+d’évaluation des apprentissages) et sont précisées dans le plan de cours."
 
-Générez les autres sections exactement comme décrit, sans ajout ni omission spontanée.
+Pour chaque capacité, génère immédiatement après son texte et sa pondération :
+- La liste complète de ses savoirs nécessaires
+- La liste complète de ses savoir-faire associés (avec cible et seuil)
+- Les moyens d’évaluation pertinents pour cette capacité
+
+Génère les autres sections exactement comme décrit, sans ajout ni omission
+spontanée.
 """
-)
 
 
 def _build_r_dacteur_agent(overrides: dict[str, Any] | None = None) -> Agent:
@@ -982,7 +1085,8 @@ def get_data_from_web_instructions(
     _agent: Agent[GetDataFromWebContext],
 ) -> str:
     state_infos_manquantes = run_context.context.state_infos_manquantes
-    return f"""Ton rôle est de récupérer les informations manquantes pour rédiger le plan-cadre.
+    return f"""Ton rôle est de récupérer les informations manquantes pour rédiger
+le plan-cadre.
 Va chercher sur le web pour les informations manquantes.
 
 Voici les informations manquantes:
@@ -1033,30 +1137,33 @@ def triage_2_instructions(
     _agent: Agent[Triage2Context],
 ) -> str:
     input_output_text = run_context.context.input_output_text
-    return f"""Ton rôle : Vérifier si toutes les informations nécessaires sont présentes pour générer un plan-cadre.
-Si oui → has_all_details: true
-Sinon → has_all_details: false + lister uniquement les éléments manquants
-
-Ne génère pas encore le plan-cadre.
-
-Informations attendues
-Le plan-cadre pourra être généré seulement si les champs suivants sont fournis :
-code_cours:
-nom_cours:
-programme:
-fil_conducteur:
-session:
-cours_prealables: []       # Codes + titres cours_requis: []           # (optionnel)
-cours_reliés: []           # (optionnel)
-heures_theorie:
-heures_lab:
-heures_maison:
-competences_developpees: []   # Codes + titres
-competences_atteintes: []     # Codes + titres
-competence_nom:               # Pour la section Description des compétences développées cours_developpant_une_meme_competence: [] # Pour les activités pratiques
-Une idée générale de ce qui devrait se retrouver dans le cours.
-
-Voici les informations connues {input_output_text}"""
+    return (
+        "Ton rôle : Vérifier si toutes les informations nécessaires sont "
+        "présentes pour générer un plan-cadre.\n"
+        "Si oui → has_all_details: true\n"
+        "Sinon → has_all_details: false + lister uniquement les éléments manquants\n\n"
+        "Ne génère pas encore le plan-cadre.\n\n"
+        "Informations attendues\n"
+        "Le plan-cadre pourra être généré seulement si les champs suivants "
+        "sont fournis :\n"
+        "code_cours:\n"
+        "nom_cours:\n"
+        "programme:\n"
+        "fil_conducteur:\n"
+        "session:\n"
+        "cours_prealables: []       # Codes + titres\n"
+        "cours_requis: []           # (optionnel)\n"
+        "cours_reliés: []           # (optionnel)\n"
+        "heures_theorie:\n"
+        "heures_lab:\n"
+        "heures_maison:\n"
+        "competences_developpees: []   # Codes + titres\n"
+        "competences_atteintes: []     # Codes + titres\n"
+        "competence_nom:               # Pour la section Description des compétences\n"
+        "cours_developpant_une_meme_competence: []  # Pour les activités pratiques\n"
+        "Une idée générale de ce qui devrait se retrouver dans le cours.\n\n"
+        f"Voici les informations connues {input_output_text}"
+    )
 
 
 def _build_triage_2_agent(overrides: dict[str, Any] | None = None) -> Agent:
@@ -1086,12 +1193,13 @@ def get_data_from_user_instructions(
     _agent: Agent[GetDataFromUserContext],
 ) -> str:
     state_infos_manquantes = run_context.context.state_infos_manquantes
-    return f"""Ton rôle est de récupérer les informations manquantes pour rédiger le plan-cadre.
-
-Arrête-toi et demande à l'utilisateur les informations manquantes.
-infos manquantes:
- {state_infos_manquantes}
-"""
+    return (
+        "Ton rôle est de récupérer les informations manquantes pour rédiger "
+        "le plan-cadre.\n\n"
+        "Arrête-toi et demande à l'utilisateur les informations manquantes.\n"
+        "infos manquantes:\n"
+        f" {state_infos_manquantes}\n"
+    )
 
 
 def _build_get_data_from_user_agent(overrides: dict[str, Any] | None = None) -> Agent:

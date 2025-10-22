@@ -33,6 +33,7 @@ def verify_password(password: str, stored_hash: str) -> bool:
     expected = hash_password(password, salt)
     return secrets.compare_digest(expected, stored_hash)
 
+
 def _reset_workflow_state_for_tests() -> None:
     """Réinitialise les workflows entre les tests Pytest."""
 
@@ -66,7 +67,9 @@ def decode_access_token(token: str) -> dict:
     try:
         return jwt.decode(token, settings.auth_secret_key, algorithms=["HS256"])
     except jwt.PyJWTError as exc:  # type: ignore[attr-defined]
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide") from exc
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide"
+        ) from exc
 
 
 def create_agent_image_token(

@@ -54,9 +54,6 @@ from openai.types.responses.response_function_call_arguments_done_event import (
 from openai.types.responses.response_function_tool_call_item import (
     ResponseFunctionToolCallItem,
 )
-from openai.types.responses.response_function_tool_call_output_item import (
-    ResponseFunctionToolCallOutputItem,
-)
 from openai.types.responses.response_function_web_search import (
     ActionSearch,
     ActionSearchSource,
@@ -100,8 +97,8 @@ from chatkit.types import (
     CustomTask,
     DurationSummary,
     FileSource,
-    InferenceOptions,
     ImageTask,
+    InferenceOptions,
     Page,
     SearchTask,
     TaskItem,

@@ -81,11 +81,19 @@ class VoiceSettingsResponse(BaseModel):
 
 
 class VoiceSettingsUpdateRequest(BaseModel):
-    instructions: str | None = Field(default=None, description="Instructions vocales personnalisées.")
+    instructions: str | None = Field(
+        default=None, description="Instructions vocales personnalisées."
+    )
     model: str | None = Field(default=None, description="Modèle Realtime à utiliser.")
-    voice: str | None = Field(default=None, description="Identifiant de la voix Realtime.")
-    prompt_id: str | None = Field(default=None, description="Identifiant du prompt stocké côté serveur.")
-    prompt_version: str | None = Field(default=None, description="Version optionnelle du prompt.")
+    voice: str | None = Field(
+        default=None, description="Identifiant de la voix Realtime."
+    )
+    prompt_id: str | None = Field(
+        default=None, description="Identifiant du prompt stocké côté serveur."
+    )
+    prompt_version: str | None = Field(
+        default=None, description="Version optionnelle du prompt."
+    )
     prompt_variables: dict[str, str] | None = Field(
         default=None,
         description="Variables injectées lors de la résolution du prompt.",
@@ -121,8 +129,12 @@ class UserResponse(BaseModel):
 
 class AvailableModelBase(BaseModel):
     name: constr(strip_whitespace=True, min_length=1, max_length=128)
-    display_name: constr(strip_whitespace=True, min_length=1, max_length=128) | None = None
-    description: constr(strip_whitespace=True, min_length=1, max_length=512) | None = None
+    display_name: constr(strip_whitespace=True, min_length=1, max_length=128) | None = (
+        None
+    )
+    description: constr(strip_whitespace=True, min_length=1, max_length=512) | None = (
+        None
+    )
     supports_reasoning: bool = False
 
 
@@ -323,7 +335,6 @@ class WorkflowVersionUpdateRequest(BaseModel):
 
 class WorkflowProductionUpdate(BaseModel):
     version_id: int
-
 
 
 class WorkflowChatKitUpdate(BaseModel):

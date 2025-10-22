@@ -32,13 +32,14 @@ def _get_openai_client() -> OpenAI:
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError(
-            "La variable d'environnement OPENAI_API_KEY est requise pour générer des embeddings."
+            "La variable d'environnement OPENAI_API_KEY est requise pour générer "
+            "des embeddings."
         )
     return OpenAI(api_key=api_key)
 
 
 def _format_value(value: Any) -> str:
-    if isinstance(value, (dict, list)):
+    if isinstance(value, dict | list):
         return json.dumps(value, ensure_ascii=False, sort_keys=True)
     if value is None:
         return "null"
@@ -88,7 +89,8 @@ def _sanitize_entries_for_indexing(
         if projected_total > MAX_LINEARIZED_TEXT_LENGTH:
             sanitized_value = (
                 "<valeur omise pour respecter la limite globale de "
-                f"{MAX_LINEARIZED_TEXT_LENGTH} caractères (longueur originale {len(value)})>"
+                f"{MAX_LINEARIZED_TEXT_LENGTH} caractères "
+                f"(longueur originale {len(value)})>"
             )
             line = f"{path}: {sanitized_value}"
             projected_total = total_length + len(line) + 1
@@ -324,8 +326,10 @@ class JsonVectorStoreService:
         if not entries:
             entries = [{"path": "root", "value": _format_value(payload)}]
 
-        sanitized_entries, linearized_lines, redactions = _sanitize_entries_for_indexing(
-            entries, max_value_length=MAX_LINEARIZED_ENTRY_LENGTH
+        sanitized_entries, linearized_lines, redactions = (
+            _sanitize_entries_for_indexing(
+                entries, max_value_length=MAX_LINEARIZED_ENTRY_LENGTH
+            )
         )
         if not sanitized_entries:
             fallback_entry = {"path": "root", "value": _format_value(payload)}
@@ -342,7 +346,8 @@ class JsonVectorStoreService:
             merged_metadata["redactions"] = redactions
             merged_metadata["redactions_count"] = len(redactions)
             logger.info(
-                "Certaines valeurs ont été omises lors de l'indexation (doc_id=%s, chemins=%s)",
+                "Certaines valeurs ont été omises lors de l'indexation "
+                "(doc_id=%s, chemins=%s)",
                 doc_id,
                 ", ".join(redaction["path"] for redaction in redactions),
             )
@@ -367,9 +372,11 @@ class JsonVectorStoreService:
             )
         )
         chunk_texts = [
-            "\n".join(f"{entry['path']}: {entry['value']}" for entry in chunk)
-            if chunk
-            else linearized
+            (
+                "\n".join(f"{entry['path']}: {entry['value']}" for entry in chunk)
+                if chunk
+                else linearized
+            )
             for chunk in chunk_entries
         ]
 
@@ -381,7 +388,9 @@ class JsonVectorStoreService:
         )
 
         json_chunks: list[JsonChunk] = []
-        for index, (chunk, text) in enumerate(zip(chunk_entries, chunk_texts)):
+        for index, (chunk, text) in enumerate(
+            zip(chunk_entries, chunk_texts, strict=False)
+        ):
             vector = response.data[index].embedding
             if len(vector) != EMBEDDING_DIMENSION:
                 raise ValueError(
@@ -497,7 +506,10 @@ class JsonVectorStoreService:
                 combined_metadata: dict[str, Any] = dict(chunk.metadata_json or {})
                 doc_metadata = document.metadata_json or {}
                 combined_metadata.update(doc_metadata)
-                if all(combined_metadata.get(key) == value for key, value in metadata_filters.items()):
+                if all(
+                    combined_metadata.get(key) == value
+                    for key, value in metadata_filters.items()
+                ):
                     filtered.append((chunk, document))
             chunks = filtered
 
@@ -526,13 +538,18 @@ class JsonVectorStoreService:
             tokenized_chunks: list[list[str]] = []
             term_frequencies: list[Counter[str]] = []
             for chunk, _document in chunks:
-                tokens = [token.lower() for token in token_pattern.findall(chunk.linearized_text)]
+                tokens = [
+                    token.lower()
+                    for token in token_pattern.findall(chunk.linearized_text)
+                ]
                 tokenized_chunks.append(tokens)
                 counter = Counter(tokens)
                 term_frequencies.append(counter)
                 doc_freq.update(set(tokens))
             total_docs = len(tokenized_chunks)
-            avg_doc_len = sum(len(tokens) for tokens in tokenized_chunks) / max(total_docs, 1)
+            avg_doc_len = sum(len(tokens) for tokens in tokenized_chunks) / max(
+                total_docs, 1
+            )
         else:
             tokenized_chunks = []
             term_frequencies = []
@@ -545,7 +562,9 @@ class JsonVectorStoreService:
 
         for index, (chunk, document) in enumerate(chunks):
             chunk_vector = [float(component) for component in chunk.embedding]
-            dense_score = sum(q * c for q, c in zip(query_vector, chunk_vector))
+            dense_score = sum(
+                q * c for q, c in zip(query_vector, chunk_vector, strict=False)
+            )
             dense_scores.append(dense_score)
 
             if query_tokens:
@@ -573,17 +592,29 @@ class JsonVectorStoreService:
 
         max_bm25 = max(bm25_scores) if bm25_scores else 0.0
         fused_results: list[SearchResult] = []
-        for (chunk, document), dense_score, bm25_score, metadata, doc_metadata, text in zip(
+        for (
+            (chunk, _document),
+            dense_score,
+            bm25_score,
+            metadata,
+            doc_metadata,
+            text,
+        ) in zip(
             chunks,
             dense_scores,
             bm25_scores,
             metadata_per_chunk,
             doc_metadata_per_chunk,
             texts,
+            strict=False,
         ):
             dense_norm = (dense_score + 1.0) / 2.0
             bm25_norm = (bm25_score / max_bm25) if max_bm25 > 0 else 0.0
-            weight_sum = dense_weight + sparse_weight if (dense_weight + sparse_weight) > 0 else 1.0
+            weight_sum = (
+                dense_weight + sparse_weight
+                if (dense_weight + sparse_weight) > 0
+                else 1.0
+            )
             score = (dense_weight * dense_norm + sparse_weight * bm25_norm) / weight_sum
             fused_results.append(
                 SearchResult(

@@ -4,9 +4,9 @@ import datetime
 import json
 import logging
 import math
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Any, Callable
-from collections.abc import Iterable
+from typing import Any
 from urllib.parse import parse_qsl, urlencode
 
 import httpx
@@ -89,7 +89,11 @@ class SessionSecretParser:
 
             expiration = (
                 self._infer_expiration(container, now)
-                or (self._infer_expiration(secret, now) if isinstance(secret, dict) else None)
+                or (
+                    self._infer_expiration(secret, now)
+                    if isinstance(secret, dict)
+                    else None
+                )
                 or fallback_expiration
             )
 
@@ -135,7 +139,13 @@ class SessionSecretParser:
                 if timestamp is not None:
                     return timestamp
 
-        for key in ("expires_after", "expiresAfter", "ttl", "ttl_seconds", "ttlSeconds"):
+        for key in (
+            "expires_after",
+            "expiresAfter",
+            "ttl",
+            "ttl_seconds",
+            "ttlSeconds",
+        ):
             if key in source:
                 duration = self._parse_duration(source[key])
                 if duration is not None:
@@ -146,9 +156,11 @@ class SessionSecretParser:
     @staticmethod
     def _parse_timestamp(value: Any) -> datetime.datetime | None:
         if isinstance(value, datetime.datetime):
-            return value if value.tzinfo else value.replace(tzinfo=datetime.timezone.utc)
+            return (
+                value if value.tzinfo else value.replace(tzinfo=datetime.timezone.utc)
+            )
 
-        if isinstance(value, (int, float)) and math.isfinite(value):
+        if isinstance(value, int | float) and math.isfinite(value):
             if value <= 0:
                 return None
             seconds = value / 1000 if value > 10_000_000_000 else value
@@ -167,7 +179,9 @@ class SessionSecretParser:
                 return datetime.datetime.fromtimestamp(seconds, datetime.timezone.utc)
 
             try:
-                parsed = datetime.datetime.fromisoformat(stripped.replace("Z", "+00:00"))
+                parsed = datetime.datetime.fromisoformat(
+                    stripped.replace("Z", "+00:00")
+                )
             except ValueError:
                 try:
                     from email.utils import parsedate_to_datetime
@@ -186,7 +200,7 @@ class SessionSecretParser:
         if isinstance(value, datetime.timedelta):
             return value if value > datetime.timedelta(0) else None
 
-        if isinstance(value, (int, float)) and math.isfinite(value):
+        if isinstance(value, int | float) and math.isfinite(value):
             if value <= 0:
                 return None
             seconds = value / 1000 if value > 10_000 else value
@@ -229,13 +243,15 @@ def summarize_payload_shape(payload: Any) -> dict[str, Any] | str:
             continue
         if isinstance(value, dict):
             summary[key] = {
-                sub_key: type(sub_value).__name__ for sub_key, sub_value in value.items()
+                sub_key: type(sub_value).__name__
+                for sub_key, sub_value in value.items()
             }
         elif isinstance(value, list):
             summary[key] = f"list(len={len(value)})"
         else:
             summary[key] = type(value).__name__
     return summary
+
 
 def _sanitize_json_body(
     body: bytes | None,
@@ -267,7 +283,9 @@ def _sanitize_query_string(query: str) -> tuple[str, bool]:
         return "", False
 
     pairs = parse_qsl(query, keep_blank_values=True)
-    filtered_pairs = [(key, value) for key, value in pairs if key not in MAX_TOKEN_FIELD_NAMES]
+    filtered_pairs = [
+        (key, value) for key, value in pairs if key not in MAX_TOKEN_FIELD_NAMES
+    ]
 
     if len(filtered_pairs) == len(pairs):
         return query, False
@@ -302,7 +320,10 @@ async def create_chatkit_session(user_id: str) -> dict[str, Any]:
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error": "CHATKIT_WORKFLOW_ID is not configured",
-                "hint": "Définissez CHATKIT_WORKFLOW_ID dans votre .env pour utiliser l'API ChatKit hébergée.",
+                "hint": (
+                    "Définissez CHATKIT_WORKFLOW_ID dans votre .env pour utiliser "
+                    "l'API ChatKit hébergée."
+                ),
             },
         )
 
@@ -321,7 +342,9 @@ async def create_chatkit_session(user_id: str) -> dict[str, Any]:
         "rate_limits": {"max_requests_per_1_minute": 50},
     }
 
-    async with httpx.AsyncClient(base_url=settings.chatkit_api_base, timeout=30) as client:
+    async with httpx.AsyncClient(
+        base_url=settings.chatkit_api_base, timeout=30
+    ) as client:
         response = await client.post(
             "/v1/chatkit/sessions",
             headers={
@@ -423,7 +446,9 @@ async def proxy_chatkit_request(path: str, request: Request) -> Response:
 
     timeout = httpx.Timeout(60.0, read=None)
     try:
-        async with httpx.AsyncClient(base_url=settings.chatkit_api_base, timeout=timeout) as client:
+        async with httpx.AsyncClient(
+            base_url=settings.chatkit_api_base, timeout=timeout
+        ) as client:
             async with client.stream(
                 request.method,
                 upstream_path,

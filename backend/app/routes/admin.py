@@ -24,7 +24,9 @@ async def list_users(
     return users
 
 
-@router.post("/api/admin/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/api/admin/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED
+)
 async def create_user(
     payload: UserCreate,
     session: Session = Depends(get_session),
@@ -33,7 +35,10 @@ async def create_user(
     email = payload.email.lower()
     existing = session.scalar(select(User).where(User.email == email))
     if existing:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Un utilisateur avec cet e-mail existe déjà")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Un utilisateur avec cet e-mail existe déjà",
+        )
 
     user = User(
         email=email,
@@ -55,7 +60,9 @@ async def update_user(
 ):
     user = session.get(User, user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utilisateur introuvable")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Utilisateur introuvable"
+        )
 
     updated = False
     if payload.password:
@@ -82,7 +89,9 @@ async def delete_user(
 ):
     user = session.get(User, user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Utilisateur introuvable")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Utilisateur introuvable"
+        )
 
     session.delete(user)
     session.commit()

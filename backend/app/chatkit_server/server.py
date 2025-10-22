@@ -5,17 +5,20 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import AsyncIterator, Mapping
 from datetime import datetime
-from typing import Any, AsyncIterator, Mapping, Sequence
+from typing import Any
 
 from agents import Agent, RunConfig, Runner
+from openai.types.responses import ResponseInputImageParam, ResponseInputTextParam
+from openai.types.responses.response_input_item_param import Message
+
 from chatkit.actions import Action
 from chatkit.agents import (
     AgentContext,
     ThreadItemConverter,
     TResponseInputItem,
     simple_to_agent_input,
-    stream_agent_response,
 )
 from chatkit.server import ChatKitServer
 from chatkit.store import NotFoundError
@@ -27,7 +30,6 @@ from chatkit.types import (
     EndOfTurnItem,
     ErrorCode,
     ErrorEvent,
-    GeneratedImage,
     ImageTask,
     InferenceOptions,
     LockedStatus,
@@ -40,39 +42,35 @@ from chatkit.types import (
     ThreadItemUpdated,
     ThreadMetadata,
     ThreadStreamEvent,
-    WidgetItem,
-    WidgetRootUpdated,
-    WorkflowItem,
-    WorkflowTaskAdded,
-    WorkflowTaskUpdated,
     UserMessageInput,
     UserMessageItem,
     UserMessageTextContent,
+    WidgetItem,
+    WidgetRootUpdated,
+    WorkflowItem,
 )
-from openai.types.responses import ResponseInputImageParam, ResponseInputTextParam
-from openai.types.responses.response_input_item_param import Message
 
 from ..attachment_store import LocalAttachmentStore
 from ..chatkit_store import PostgresChatKitStore
 from ..config import Settings
 from ..database import SessionLocal
+from ..models import WorkflowStep
+from ..widgets import WidgetLibraryService
 from ..workflows import (
     WorkflowService,
     resolve_start_auto_start,
     resolve_start_auto_start_assistant_message,
     resolve_start_auto_start_message,
 )
-from ..widgets import WidgetLibraryService
-
 from .actions import (
     _UNSET,
     _apply_widget_variable_values,
     _clone_widget_definition,
     _collect_widget_bindings,
-    _ensure_widget_output_model,
     _json_safe_copy,
     _load_widget_definition,
     _resolve_widget_action_payload,
+    _ResponseWidgetConfig,
 )
 from .context import (
     AutoStartConfiguration,
@@ -84,7 +82,6 @@ from .widget_waiters import WidgetWaiterRegistry
 from .workflow_runner import (
     _STREAM_DONE,
     _WorkflowStreamResult,
-    _log_background_exceptions,
 )
 
 try:
@@ -168,8 +165,6 @@ class ImageAwareThreadItemConverter(ThreadItemConverter):
             return super().task_to_input(item)
 
         # Construire le contenu du message avec les images
-        from openai.types.responses.response_input_item_param import Message
-        from openai.types.responses import ResponseInputImageParam
 
         content = []
 
@@ -226,8 +221,13 @@ class ImageAwareThreadItemConverter(ThreadItemConverter):
             elif task.type == "custom" and (task.title or task.content):
                 title = f"{task.title}" if task.title else ""
                 content = f"{task.content}" if task.content else ""
-                task_text = f"{title}: {content}" if title and content else title or content
-                text = f"A message was displayed to the user that the following task was performed:\n<Task>\n{task_text}\n</Task>"
+                task_text = (
+                    f"{title}: {content}" if title and content else title or content
+                )
+                text = (
+                    "A message was displayed to the user that the following task "
+                    f"was performed:\n<Task>\n{task_text}\n</Task>"
+                )
 
                 from openai.types.responses.response_input_item_param import Message
 
@@ -245,6 +245,7 @@ class ImageAwareThreadItemConverter(ThreadItemConverter):
                 )
 
         return messages if messages else None
+
 
 class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     """Serveur ChatKit piloté par un workflow local."""
@@ -278,7 +279,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             widget_item_id=widget_item_id,
         )
 
-
     async def _signal_widget_action(
         self,
         thread_id: str,
@@ -294,7 +294,6 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             widget_slug=widget_slug,
             payload=sanitized,
         )
-
 
     def _resolve_auto_start_configuration(self) -> AutoStartConfiguration:
         try:
@@ -312,9 +311,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         message = resolve_start_auto_start_message(definition)
         assistant_message = resolve_start_auto_start_assistant_message(definition)
-        user_text = (
-            _normalize_user_text(message) if isinstance(message, str) else ""
-        )
+        user_text = _normalize_user_text(message) if isinstance(message, str) else ""
         assistant_text = (
             _normalize_user_text(assistant_message)
             if isinstance(assistant_message, str)
@@ -323,8 +320,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         if user_text and assistant_text:
             logger.warning(
-                "Le bloc début contient simultanément un message utilisateur et un message assistant. "
-                "Seul le message utilisateur sera pris en compte.",
+                "Le bloc début contient simultanément un message utilisateur et un "
+                "message assistant. Seul le message utilisateur sera pris en compte.",
             )
             assistant_text = ""
 
@@ -337,9 +334,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         context: ChatKitRequestContext,
     ) -> AsyncIterator[ThreadStreamEvent]:
         if input_user_message is not None:
-            await self._maybe_update_thread_title(
-                thread, input_user_message, context
-            )
+            await self._maybe_update_thread_title(thread, input_user_message, context)
         try:
             history = await self.store.load_thread_items(
                 thread.id,
@@ -368,7 +363,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             if not config.enabled:
                 yield ErrorEvent(
                     code=ErrorCode.STREAM_ERROR,
-                    message="Impossible de déterminer le message utilisateur à traiter.",
+                    message=(
+                        "Impossible de déterminer le message utilisateur à traiter."
+                    ),
                     allow_retry=False,
                 )
                 return
@@ -381,14 +378,13 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     yield ThreadItemRemovedEvent(item_id=input_user_message.id)
                 except Exception as exc:  # pragma: no cover - suppression best effort
                     logger.warning(
-                        "Impossible de retirer le message utilisateur initial pour le fil %s",
+                        "Impossible de retirer le message utilisateur initial pour le "
+                        "fil %s",
                         thread.id,
                         exc_info=exc,
                     )
 
-            logger.info(
-                "Démarrage automatique du workflow pour le fil %s", thread.id
-            )
+            logger.info("Démarrage automatique du workflow pour le fil %s", thread.id)
             user_text = _normalize_user_text(config.user_message)
             assistant_stream_text = (
                 "" if user_text else _normalize_user_text(config.assistant_message)
@@ -396,7 +392,10 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             if not user_text and not assistant_stream_text:
                 yield ErrorEvent(
                     code=ErrorCode.STREAM_ERROR,
-                    message="Aucun message automatique n'est configuré pour ce workflow.",
+                    message=(
+                        "Aucun message automatique n'est configuré pour ce "
+                        "workflow."
+                    ),
                     allow_retry=False,
                 )
                 return
@@ -461,7 +460,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 yield event
         except asyncio.CancelledError:  # pragma: no cover - déconnexion client
             logger.info(
-                "Streaming interrompu pour le fil %s, poursuite du workflow en tâche de fond",
+                "Streaming interrompu pour le fil %s, poursuite du workflow en "
+                "tâche de fond",
                 thread.id,
             )
             return
@@ -479,7 +479,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             agent_input = await simple_to_agent_input(input_item)
         except Exception as exc:  # pragma: no cover - dépend des conversions SDK
             logger.warning(
-                "Impossible de convertir le message utilisateur en entrée agent pour titrage (thread=%s)",
+                "Impossible de convertir le message utilisateur en entrée agent "
+                "pour titrage (thread=%s)",
                 thread.id,
                 exc_info=exc,
             )
@@ -500,7 +501,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 input=agent_input,
                 run_config=RunConfig(trace_metadata=metadata),
             )
-        except Exception as exc:  # pragma: no cover - la génération de titre ne doit pas bloquer
+        except (
+            Exception
+        ) as exc:  # pragma: no cover - la génération de titre ne doit pas bloquer
             logger.warning(
                 "Échec de la génération automatique du titre pour le fil %s",
                 thread.id,
@@ -510,7 +513,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         raw_title = getattr(run, "final_output", "")
         if isinstance(raw_title, str):
-            normalized_title = re.sub(r"\s+", " ", raw_title).strip().strip('\"\'`”’“«»')
+            normalized_title = re.sub(r"\s+", " ", raw_title).strip().strip("\"'`”’“«»")
         else:
             try:
                 normalized_title = str(raw_title).strip()
@@ -555,9 +558,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         definition = definition_override
         if definition is None and slug:
-            definition = _load_widget_definition(
-                slug, context=f"action {action.type}"
-            )
+            definition = _load_widget_definition(slug, context=f"action {action.type}")
 
         if definition is None and sender is not None:
             try:
@@ -604,7 +605,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             widget_root = WidgetLibraryService._validate_widget(definition)
         except Exception as exc:  # pragma: no cover - dépend du SDK installé
             logger.exception(
-                "Widget invalide après traitement de l'action %s", action.type, exc_info=exc
+                "Widget invalide après traitement de l'action %s",
+                action.type,
+                exc_info=exc,
             )
             if False:  # pragma: no cover - satisfait l'interface AsyncIterator
                 yield None
@@ -690,7 +693,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             await self.store.add_thread_item(thread.id, new_item, context=context)
         except Exception as exc:  # pragma: no cover - dépend du stockage
             logger.exception(
-                "Impossible d'ajouter un widget suite à l'action %s", action.type, exc_info=exc
+                "Impossible d'ajouter un widget suite à l'action %s",
+                action.type,
+                exc_info=exc,
             )
             if False:  # pragma: no cover - satisfait l'interface AsyncIterator
                 yield None
@@ -722,9 +727,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         try:
             logger.info("Démarrage du workflow pour le fil %s", thread.id)
 
-            async def on_step(
-                step_summary: WorkflowStepSummary, index: int
-            ) -> None:
+            async def on_step(step_summary: WorkflowStepSummary, index: int) -> None:
                 streamed_step_keys.add(step_summary.key)
                 step_progress_text.pop(step_summary.key, None)
                 header = step_progress_headers.pop(step_summary.key, None)
@@ -763,7 +766,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
             async def on_widget_step(
                 step: WorkflowStep,
-                config: "_ResponseWidgetConfig",
+                config: _ResponseWidgetConfig,
             ) -> Mapping[str, Any] | None:
                 return await self._wait_for_widget_action(
                     thread=thread,
@@ -790,12 +793,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 end_message = self._settings.workflow_defaults.default_end_message
                 status_type_raw = (end_state.status_type or "closed").strip().lower()
                 cleaned_reason = (
-                    (
-                        end_state.status_reason
-                        or end_state.message
-                        or end_message
-                    )
-                    or ""
+                    (end_state.status_reason or end_state.message or end_message) or ""
                 ).strip() or None
                 status_reason = cleaned_reason or end_message
 
@@ -813,7 +811,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     applied_status = True
                 else:
                     logger.warning(
-                        "Type de statut inconnu '%s' pour le nœud de fin %s, fermeture par défaut.",
+                        "Type de statut inconnu '%s' pour le nœud de fin %s, "
+                        "fermeture par défaut.",
                         status_type_raw,
                         end_state.slug,
                     )
@@ -831,10 +830,15 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
             if end_state is not None:
                 logger.info(
-                    "Workflow terminé pour le fil %s via le nœud %s (statut=%s, raison=%s)",
+                    "Workflow terminé pour le fil %s via le nœud %s (statut=%s, "
+                    "raison=%s)",
                     thread.id,
                     end_state.slug,
-                    getattr(thread.status, "type", "inconnu") if applied_status else "inconnu",
+                    (
+                        getattr(thread.status, "type", "inconnu")
+                        if applied_status
+                        else "inconnu"
+                    ),
                     cleaned_reason or end_message,
                 )
             else:
@@ -843,7 +847,9 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     thread.id,
                     summary.final_node_slug,
                 )
-        except WorkflowExecutionError as exc:  # pragma: no cover - erreurs connues du workflow
+        except (
+            WorkflowExecutionError
+        ) as exc:  # pragma: no cover - erreurs connues du workflow
             logger.exception("Workflow execution failed")
             error_message = (
                 f"Le workflow a échoué pendant l'étape « {exc.title} » ({exc.step}). "
@@ -869,9 +875,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     allow_retry=True,
                 )
             )
-            logger.info(
-                "Workflow en erreur inattendue pour le fil %s", thread.id
-            )
+            logger.info("Workflow en erreur inattendue pour le fil %s", thread.id)
         finally:
             event_queue.put_nowait(_STREAM_DONE)
 
@@ -883,7 +887,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         user_text: str,
         assistant_text: str,
     ) -> list[ThreadStreamEvent]:
-        """Ajoute les messages initialisés automatiquement au fil et prépare les événements."""
+        """Ajoute les messages auto-initialisés au fil et prépare les événements."""
 
         events: list[ThreadStreamEvent] = []
 

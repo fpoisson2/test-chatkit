@@ -21,7 +21,9 @@ async def list_models(
     _: User = Depends(get_current_user),
 ) -> list[AvailableModel]:
     models = session.scalars(
-        select(AvailableModel).order_by(AvailableModel.display_name.asc(), AvailableModel.name.asc())
+        select(AvailableModel).order_by(
+            AvailableModel.display_name.asc(), AvailableModel.name.asc()
+        )
     ).all()
     return models
 
@@ -32,18 +34,26 @@ async def list_admin_models(
     _: User = Depends(require_admin),
 ) -> list[AvailableModel]:
     models = session.scalars(
-        select(AvailableModel).order_by(AvailableModel.display_name.asc(), AvailableModel.name.asc())
+        select(AvailableModel).order_by(
+            AvailableModel.display_name.asc(), AvailableModel.name.asc()
+        )
     ).all()
     return models
 
 
-@router.post("/api/admin/models", response_model=AvailableModelResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/api/admin/models",
+    response_model=AvailableModelResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_model(
     payload: AvailableModelCreateRequest,
     session: Session = Depends(get_session),
     _: User = Depends(require_admin),
 ) -> AvailableModel:
-    existing = session.scalar(select(AvailableModel).where(AvailableModel.name == payload.name))
+    existing = session.scalar(
+        select(AvailableModel).where(AvailableModel.name == payload.name)
+    )
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -73,7 +83,9 @@ async def delete_model(
 ) -> Response:
     model = session.get(AvailableModel, model_id)
     if not model:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Modèle introuvable")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Modèle introuvable"
+        )
 
     session.delete(model)
     session.commit()

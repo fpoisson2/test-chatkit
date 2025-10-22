@@ -7,6 +7,7 @@ from ..database import get_session
 from ..dependencies import get_current_user
 from ..models import User
 from ..schemas import (
+    WorkflowChatKitUpdate,
     WorkflowCreateRequest,
     WorkflowDefinitionResponse,
     WorkflowDefinitionUpdate,
@@ -14,14 +15,13 @@ from ..schemas import (
     WorkflowSummaryResponse,
     WorkflowUpdateRequest,
     WorkflowVersionCreateRequest,
-    WorkflowVersionUpdateRequest,
     WorkflowVersionSummaryResponse,
-    WorkflowChatKitUpdate,
+    WorkflowVersionUpdateRequest,
 )
 from ..workflows import (
+    WorkflowNotFoundError,
     WorkflowService,
     WorkflowValidationError,
-    WorkflowNotFoundError,
     WorkflowVersionNotFoundError,
     serialize_definition,
     serialize_version_summary,
@@ -33,7 +33,9 @@ router = APIRouter()
 
 def _ensure_admin(user: User) -> None:
     if not user.is_admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès administrateur requis")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Accès administrateur requis"
+        )
 
 
 @router.get("/api/workflows/current", response_model=WorkflowDefinitionResponse)
@@ -58,7 +60,9 @@ async def update_current_workflow(
     try:
         definition = service.update_current(payload.graph.model_dump(), session=session)
     except WorkflowValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
     return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
 
 
@@ -70,10 +74,17 @@ async def list_workflows(
     _ensure_admin(current_user)
     service = WorkflowService()
     workflows = service.list_workflows(session)
-    return [WorkflowSummaryResponse.model_validate(serialize_workflow_summary(w)) for w in workflows]
+    return [
+        WorkflowSummaryResponse.model_validate(serialize_workflow_summary(w))
+        for w in workflows
+    ]
 
 
-@router.post("/api/workflows", response_model=WorkflowDefinitionResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/api/workflows",
+    response_model=WorkflowDefinitionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def create_workflow(
     payload: WorkflowCreateRequest,
     session: Session = Depends(get_session),
@@ -90,7 +101,9 @@ async def create_workflow(
             session=session,
         )
     except WorkflowValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
     return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
 
 
@@ -110,9 +123,13 @@ async def update_workflow(
             session=session,
         )
     except WorkflowNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
     except WorkflowValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
     return WorkflowSummaryResponse.model_validate(serialize_workflow_summary(workflow))
 
 
@@ -127,9 +144,13 @@ async def delete_workflow(
     try:
         service.delete_workflow(workflow_id, session=session)
     except WorkflowNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
     except WorkflowValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -147,8 +168,13 @@ async def list_workflow_versions(
     try:
         versions = service.list_versions(workflow_id, session)
     except WorkflowNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    return [WorkflowVersionSummaryResponse.model_validate(serialize_version_summary(v)) for v in versions]
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    return [
+        WorkflowVersionSummaryResponse.model_validate(serialize_version_summary(v))
+        for v in versions
+    ]
 
 
 @router.get(
@@ -166,7 +192,9 @@ async def get_workflow_version(
     try:
         definition = service.get_version(workflow_id, version_id, session)
     except WorkflowVersionNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
     return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
 
 
@@ -192,9 +220,13 @@ async def create_workflow_version(
             session=session,
         )
     except WorkflowNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
     except WorkflowValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
     return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
 
 
@@ -219,9 +251,13 @@ async def update_workflow_version(
             session=session,
         )
     except WorkflowVersionNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
     except WorkflowValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
     return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
 
 
@@ -244,7 +280,9 @@ async def set_workflow_production_version(
             session=session,
         )
     except WorkflowVersionNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
     return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
 
 
@@ -259,7 +297,11 @@ async def set_chatkit_workflow(
     try:
         workflow = service.set_chatkit_workflow(payload.workflow_id, session=session)
     except WorkflowNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
     except WorkflowValidationError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
     return WorkflowSummaryResponse.model_validate(serialize_workflow_summary(workflow))

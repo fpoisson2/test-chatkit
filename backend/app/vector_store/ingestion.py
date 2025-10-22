@@ -44,7 +44,7 @@ def resolve_from_container(value: Any, path: str) -> Any:
         if not parts:
             return current
 
-        if isinstance(current, (list, tuple)):
+        if isinstance(current, list | tuple):
             head, *tail = parts
             try:
                 index = int(head)
@@ -88,7 +88,7 @@ def evaluate_state_expression(
 ) -> Any:
     if expression is None:
         return None
-    if isinstance(expression, (bool, int, float, dict, list)):
+    if isinstance(expression, bool | int | float | dict | list):
         return expression
     if isinstance(expression, str):
         expr = expression.strip()
@@ -108,7 +108,8 @@ def evaluate_state_expression(
         if expr.startswith("input."):
             if context is None:
                 raise RuntimeError(
-                    "Aucun résultat précédent disponible pour les expressions basées sur 'input'."
+                    "Aucun résultat précédent disponible pour les expressions "
+                    "basées sur 'input'."
                 )
             return resolve_from_container(context, expr[len("input.") :])
         try:
@@ -161,7 +162,7 @@ def _render_template_string(
             return ""
         if value is None:
             return ""
-        if isinstance(value, (dict, list)):
+        if isinstance(value, dict | list):
             try:
                 return json.dumps(value, ensure_ascii=False)
             except TypeError:
@@ -257,13 +258,15 @@ def _to_mapping(
         except json.JSONDecodeError as exc:
             if purpose == "document":
                 logger.warning(
-                    "Le document produit par %s n'est pas un JSON valide pour l'ingestion. Erreur: %s",
+                    "Le document produit par %s n'est pas un JSON valide pour "
+                    "l'ingestion. Erreur: %s",
                     step_slug,
                     str(exc),
                 )
             else:
                 logger.warning(
-                    "Les métadonnées calculées pour %s ne sont pas un JSON valide. Erreur: %s",
+                    "Les métadonnées calculées pour %s ne sont pas un JSON "
+                    "valide. Erreur: %s",
                     step_slug,
                     str(exc),
                 )
@@ -272,13 +275,15 @@ def _to_mapping(
             return decoded
         if purpose == "document":
             logger.warning(
-                "Le document généré par %s doit être un objet JSON pour être indexé (type %s).",
+                "Le document généré par %s doit être un objet JSON pour "
+                "être indexé (type %s).",
                 step_slug,
                 type(decoded).__name__,
             )
         else:
             logger.warning(
-                "Les métadonnées calculées pour %s doivent être un objet JSON (type %s).",
+                "Les métadonnées calculées pour %s doivent être un objet "
+                "JSON (type %s).",
                 step_slug,
                 type(decoded).__name__,
             )
@@ -367,16 +372,15 @@ async def ingest_workflow_step(
 
     if not isinstance(step_context, Mapping):
         logger.warning(
-            "Impossible d'ingérer le document JSON pour %s : aucun contexte disponible.",
+            "Impossible d'ingérer le document JSON pour %s : aucun contexte "
+            "disponible.",
             step_slug,
         )
         return
 
     doc_id_expression_raw = config.get("doc_id_expression") or config.get("doc_id")
     doc_id_expression = (
-        doc_id_expression_raw.strip()
-        if isinstance(doc_id_expression_raw, str)
-        else ""
+        doc_id_expression_raw.strip() if isinstance(doc_id_expression_raw, str) else ""
     )
     doc_id_value: Any = None
     if doc_id_expression:
@@ -418,8 +422,8 @@ async def ingest_workflow_step(
                 doc_id,
             )
 
-    document_expression_raw = (
-        config.get("document_expression") or config.get("document")
+    document_expression_raw = config.get("document_expression") or config.get(
+        "document"
     )
     document_expression = (
         document_expression_raw.strip()
@@ -474,7 +478,8 @@ async def ingest_workflow_step(
     )
     if document_mapping is None:
         logger.warning(
-            "Le document généré par %s doit être un objet JSON pour être indexé (type %s).",
+            "Le document généré par %s doit être un objet JSON pour être indexé "
+            "(type %s).",
             step_slug,
             type(document_value).__name__ if document_value is not None else "None",
         )
