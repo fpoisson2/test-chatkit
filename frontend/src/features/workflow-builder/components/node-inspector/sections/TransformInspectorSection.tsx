@@ -1,4 +1,4 @@
-import { labelContentStyle } from "../styles";
+import styles from "../NodeInspector.module.css";
 
 type TransformInspectorSectionProps = {
   transformExpressionsText: string;
@@ -17,27 +17,22 @@ export const TransformInspectorSection = ({
 }: TransformInspectorSectionProps) => (
   <section
     aria-label="Configuration du bloc transform"
-    style={{
-      marginTop: "1rem",
-      border: "1px solid rgba(15, 23, 42, 0.12)",
-      borderRadius: "0.75rem",
-      padding: "0.9rem",
-      display: "grid",
-      gap: "0.75rem",
-    }}
+    className={styles.nodeInspectorPanelSpacious}
   >
     <header>
-      <h3 style={{ margin: 0, fontSize: "1rem" }}>Restructuration des données</h3>
-      <p style={{ margin: "0.25rem 0 0", color: "#475569", fontSize: "0.95rem" }}>
-        Définissez la forme JSON qui doit être transmise au bloc suivant. Les expressions <code style={{ padding: "0 0.2rem" }}>
+      <h3 className={styles.nodeInspectorSectionHeading}>Restructuration des données</h3>
+      <p className={styles.nodeInspectorMutedTextHighlight}>
+        Définissez la forme JSON qui doit être transmise au bloc suivant. Les expressions <code
+          className={styles.nodeInspectorInlineCode}
+        >
           {"{{ }}"}
         </code>{" "}
         sont évaluées à partir du contexte du bloc précédent (par exemple <code>{"{{ input.output_structured }}"}</code>).
       </p>
     </header>
 
-    <label style={{ display: "grid", gap: "0.5rem" }}>
-      <span style={{ ...labelContentStyle, fontWeight: 600 }}>Expressions JSON</span>
+    <label className={styles.nodeInspectorInputGroup}>
+      <span className={styles.nodeInspectorLabel}>Expressions JSON</span>
       <textarea
         value={transformExpressionsText}
         onChange={(event) => {
@@ -48,16 +43,16 @@ export const TransformInspectorSection = ({
         rows={10}
         spellCheck={false}
         placeholder={`{\n  "doc_id": "{{ input.output_structured.id }}",\n  "record": {\n    "slug": "{{ input.output_structured.widget }}"\n  }\n}`}
-        style={{ resize: "vertical", fontFamily: "var(--font-mono)", minHeight: "12rem" }}
+        className={styles.nodeInspectorTextareaLarge}
       />
     </label>
 
-    <p style={{ color: "var(--text-muted)", margin: "-0.35rem 0 0.35rem" }}>
+    <p className={styles.nodeInspectorHintText}>
       Le JSON final doit être un objet. Utilisez <code>state.</code> ou <code>input.</code> pour accéder aux variables du workflow.
     </p>
 
     {transformExpressionsError ? (
-      <p style={{ color: "#b91c1c", margin: 0 }}>{transformExpressionsError}</p>
+      <p className={styles.nodeInspectorErrorText}>{transformExpressionsError}</p>
     ) : null}
   </section>
 );

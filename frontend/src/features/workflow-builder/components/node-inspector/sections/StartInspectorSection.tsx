@@ -1,5 +1,5 @@
-import { fieldStyle, labelContentStyle } from "../styles";
 import { ToggleRow } from "../components/ToggleRow";
+import styles from "../NodeInspector.module.css";
 
 type StartInspectorSectionProps = {
   nodeId: string;
@@ -34,24 +34,24 @@ export const StartInspectorSection = ({
 
       {startAutoRun ? (
         <>
-          <label style={fieldStyle}>
-            <span style={labelContentStyle}>Message utilisateur initial</span>
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>Message utilisateur initial</span>
             <textarea
               value={startAutoRunMessage}
               onChange={(event) => onStartAutoRunMessageChange(nodeId, event.target.value)}
               rows={3}
               placeholder="Ex. Bonjour, voici les informations de départ… (facultatif)"
-              style={{ resize: "vertical", minHeight: "4.5rem" }}
+              className={styles.nodeInspectorTextarea}
               disabled={hasStartAutoRunAssistantMessage}
             />
-            <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+            <p className={styles.nodeInspectorHintTextTight}>
               Ce message est transmis à l'agent lorsqu'un fil démarre sans saisie utilisateur. Saisir un message assistant ci-dessous
               effacera automatiquement ce contenu.
             </p>
           </label>
 
-          <label style={fieldStyle}>
-            <span style={labelContentStyle}>Message assistant initial</span>
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>Message assistant initial</span>
             <textarea
               value={startAutoRunAssistantMessage}
               onChange={(event) =>
@@ -59,10 +59,10 @@ export const StartInspectorSection = ({
               }
               rows={3}
               placeholder="Ex. Bonjour, je suis votre assistant… (facultatif)"
-              style={{ resize: "vertical", minHeight: "4.5rem" }}
+              className={styles.nodeInspectorTextarea}
               disabled={hasStartAutoRunUserMessage}
             />
-            <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+            <p className={styles.nodeInspectorHintTextTight}>
               Ce message est diffusé en tant que première réponse de l'assistant lorsque le démarrage automatique est déclenché. Ajoutez
               un message utilisateur ci-dessus pour désactiver cette réponse.
             </p>

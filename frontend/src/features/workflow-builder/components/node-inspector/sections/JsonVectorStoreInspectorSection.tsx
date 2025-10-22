@@ -1,7 +1,7 @@
 import type { VectorStoreSummary } from "../../../../../utils/backend";
 import type { VectorStoreNodeConfig } from "../../../types";
-import { fieldStyle, inlineFieldStyle, labelContentStyle } from "../styles";
 import { HelpTooltip } from "../components/HelpTooltip";
+import styles from "../NodeInspector.module.css";
 
 type JsonVectorStoreInspectorSectionProps = {
   nodeId: string;
@@ -32,25 +32,25 @@ export const JsonVectorStoreInspectorSection = ({
   onVectorStoreNodeConfigChange,
 }: JsonVectorStoreInspectorSectionProps) => (
   <>
-    <p style={{ color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
+    <p className={styles.nodeInspectorMutedTextSpaced}>
       Ce bloc enregistre le JSON produit par le bloc précédent dans le vector store sélectionné.
     </p>
 
     {vectorStoresError ? (
-      <p style={{ color: "#b91c1c", margin: "0 0 0.75rem" }}>{vectorStoresError}</p>
+      <p className={styles.nodeInspectorErrorTextCompact}>{vectorStoresError}</p>
     ) : null}
 
     {vectorStoresLoading ? (
-      <p style={{ color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
+      <p className={styles.nodeInspectorMutedTextSpaced}>
         Chargement des vector stores…
       </p>
     ) : vectorStores.length === 0 ? (
-      <p style={{ color: "var(--text-muted)", margin: "0 0 0.75rem" }}>
+      <p className={styles.nodeInspectorMutedTextSpaced}>
         Aucun vector store disponible. Créez-en un depuis l'onglet « Vector stores JSON ».
       </p>
     ) : (
-      <label style={inlineFieldStyle}>
-        <span style={labelContentStyle}>
+      <label className={styles.nodeInspectorInlineField}>
+        <span className={styles.nodeInspectorLabel}>
           Vector store cible
           <HelpTooltip label="Choisissez le magasin JSON dans lequel indexer la réponse structurée." />
         </span>
@@ -70,8 +70,8 @@ export const JsonVectorStoreInspectorSection = ({
       </label>
     )}
 
-    <label style={fieldStyle}>
-      <span style={labelContentStyle}>
+    <label className={styles.nodeInspectorField}>
+      <span className={styles.nodeInspectorLabel}>
         Expression de l'identifiant du document (facultatif)
         <HelpTooltip label="Laissez vide pour réutiliser la clé doc_id du JSON structuré ou générer un identifiant automatique." />
       </span>
@@ -85,8 +85,8 @@ export const JsonVectorStoreInspectorSection = ({
       />
     </label>
 
-    <label style={fieldStyle}>
-      <span style={labelContentStyle}>
+    <label className={styles.nodeInspectorField}>
+      <span className={styles.nodeInspectorLabel}>
         Expression JSON à indexer (facultatif)
         <HelpTooltip label="Laissez vide pour indexer automatiquement la sortie structurée du bloc précédent." />
       </span>
@@ -100,8 +100,8 @@ export const JsonVectorStoreInspectorSection = ({
       />
     </label>
 
-    <label style={fieldStyle}>
-      <span style={labelContentStyle}>
+    <label className={styles.nodeInspectorField}>
+      <span className={styles.nodeInspectorLabel}>
         Expression des métadonnées (facultatif)
         <HelpTooltip label="Retourne un objet JSON fusionné avec les métadonnées automatiques du workflow." />
       </span>
@@ -116,7 +116,7 @@ export const JsonVectorStoreInspectorSection = ({
     </label>
 
     {vectorStoreNodeValidationMessages.map((message, index) => (
-      <p key={`vector-store-node-${index}`} style={{ color: "#b91c1c", margin: 0 }}>
+      <p key={`vector-store-node-${index}`} className={styles.nodeInspectorErrorText}>
         {message}
       </p>
     ))}

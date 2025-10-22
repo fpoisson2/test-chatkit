@@ -38,7 +38,7 @@ import type {
 } from "../../types";
 import { labelForKind } from "../../utils";
 import { TrashIcon } from "./components/TrashIcon";
-import { inspectorHeaderStyle, inspectorSubtitleStyle, inspectorTitleStyle, deleteButtonStyle } from "./styles";
+import styles from "./NodeInspector.module.css";
 import { useTransformInspectorState } from "./hooks/useTransformInspectorState";
 import { AgentInspectorSection } from "./sections/AgentInspectorSection";
 import { AssistantMessageInspectorSection } from "./sections/AssistantMessageInspectorSection";
@@ -263,18 +263,18 @@ const NodeInspector = ({
 
   return (
     <section aria-label={`Propriétés du nœud ${node.data.slug}`}>
-      <div style={inspectorHeaderStyle}>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
-          <span style={inspectorTitleStyle}>
+      <div className={styles.nodeInspectorHeader}>
+        <div className={styles.nodeInspectorSummary}>
+          <span className={styles.nodeInspectorTitle}>
             {displayName.trim() ? displayName : `Bloc ${labelForKind(kind)}`}
           </span>
-          <span style={inspectorSubtitleStyle}>Identifiant : {node.data.slug}</span>
+          <span className={styles.nodeInspectorSubtitle}>Identifiant : {node.data.slug}</span>
         </div>
         {!isFixed ? (
           <button
             type="button"
             onClick={() => onRemove(node.id)}
-            style={deleteButtonStyle}
+            className={styles.nodeInspectorDeleteButton}
             aria-label={`Supprimer le bloc ${displayName.trim() ? displayName : node.data.slug}`}
             title="Supprimer ce bloc"
           >
@@ -283,14 +283,14 @@ const NodeInspector = ({
         ) : null}
       </div>
 
-      <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 0.75rem" }}>
+      <dl className={styles.nodeInspectorMetaGrid}>
         <dt>Identifiant</dt>
         <dd>{node.data.slug}</dd>
         <dt>Type</dt>
         <dd>{labelForKind(kind)}</dd>
       </dl>
 
-      <label style={{ display: "flex", flexDirection: "column", gap: "0.5rem", marginTop: "0.75rem" }}>
+      <label className={styles.nodeInspectorDisplayNameField}>
         <span>Nom affiché</span>
         <input
           type="text"

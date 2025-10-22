@@ -1,7 +1,5 @@
-import type { CSSProperties } from "react";
-
-import { labelContentStyle, toggleRowStyle } from "../styles";
 import { HelpTooltip } from "./HelpTooltip";
+import styles from "../NodeInspector.module.css";
 
 type ToggleSwitchProps = {
   checked: boolean;
@@ -17,41 +15,8 @@ type ToggleRowProps = {
   onChange: (checked: boolean) => void;
   disabled?: boolean;
   help?: string;
+  className?: string;
 };
-
-const switchBaseStyle: CSSProperties = {
-  position: "relative",
-  width: "2.75rem",
-  height: "1.5rem",
-  borderRadius: "9999px",
-  border: "none",
-  padding: 0,
-  backgroundColor: "rgba(148, 163, 184, 0.45)",
-  cursor: "pointer",
-  transition: "background-color 150ms ease",
-};
-
-const switchCheckedStyle: CSSProperties = {
-  backgroundColor: "#2563eb",
-};
-
-const switchDisabledStyle: CSSProperties = {
-  cursor: "not-allowed",
-  opacity: 0.6,
-};
-
-const getSwitchThumbStyle = (checked: boolean): CSSProperties => ({
-  position: "absolute",
-  top: "50%",
-  left: "0.25rem",
-  width: "1.15rem",
-  height: "1.15rem",
-  borderRadius: "9999px",
-  backgroundColor: "#fff",
-  boxShadow: "0 2px 6px rgba(15, 23, 42, 0.25)",
-  transform: `translate(${checked ? "1.2rem" : "0"}, -50%)`,
-  transition: "transform 150ms ease",
-});
 
 export const ToggleSwitch = ({
   checked,
@@ -72,22 +37,33 @@ export const ToggleSwitch = ({
       }
     }}
     disabled={disabled}
-    style={{
-      ...switchBaseStyle,
-      ...(checked ? switchCheckedStyle : {}),
-      ...(disabled ? switchDisabledStyle : {}),
-    }}
+    className={[
+      styles.nodeInspectorToggleSwitch,
+      checked ? styles.nodeInspectorToggleSwitchChecked : "",
+      disabled ? styles.nodeInspectorToggleSwitchDisabled : "",
+    ]
+      .filter(Boolean)
+      .join(" ")}
   >
-    <span style={getSwitchThumbStyle(checked)} />
+    <span
+      className={[
+        styles.nodeInspectorToggleSwitchThumb,
+        checked ? styles.nodeInspectorToggleSwitchThumbChecked : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    />
   </button>
 );
 
-export const ToggleRow = ({ label, checked, onChange, disabled, help }: ToggleRowProps) => {
+export const ToggleRow = ({ label, checked, onChange, disabled, help, className }: ToggleRowProps) => {
   const describedById = help ? `${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-help` : undefined;
 
   return (
-    <div style={toggleRowStyle}>
-      <span style={labelContentStyle} id={describedById}>
+    <div
+      className={[styles.nodeInspectorToggleRow, className].filter(Boolean).join(" ")}
+    >
+      <span className={styles.nodeInspectorLabel} id={describedById}>
         {label}
         {help ? <HelpTooltip label={help} /> : null}
       </span>

@@ -1,6 +1,6 @@
 import { conditionModeOptions } from "../constants";
-import { fieldStyle, labelContentStyle } from "../styles";
 import { HelpTooltip } from "../components/HelpTooltip";
+import styles from "../NodeInspector.module.css";
 
 type ConditionInspectorSectionProps = {
   nodeId: string;
@@ -22,8 +22,8 @@ export const ConditionInspectorSection = ({
   onConditionValueChange,
 }: ConditionInspectorSectionProps) => (
   <>
-    <label style={fieldStyle}>
-      <span style={labelContentStyle}>
+    <label className={styles.nodeInspectorField}>
+      <span className={styles.nodeInspectorLabel}>
         Variable observée
         <HelpTooltip label="Référencez une valeur disponible dans l'état (ex. state.status ou globals.client_type)." />
       </span>
@@ -35,8 +35,8 @@ export const ConditionInspectorSection = ({
       />
     </label>
 
-    <label style={fieldStyle}>
-      <span style={labelContentStyle}>
+    <label className={styles.nodeInspectorField}>
+      <span className={styles.nodeInspectorLabel}>
         Mode d'évaluation
         <HelpTooltip label="Choisissez comment interpréter la valeur observée pour déterminer la branche à suivre." />
       </span>
@@ -53,8 +53,8 @@ export const ConditionInspectorSection = ({
     </label>
 
     {(conditionMode === "equals" || conditionMode === "not_equals") && (
-      <label style={fieldStyle}>
-        <span style={labelContentStyle}>
+      <label className={styles.nodeInspectorField}>
+        <span className={styles.nodeInspectorLabel}>
           Valeur de comparaison
           <HelpTooltip label="La valeur (chaîne, nombre…) qui servira de référence pour la comparaison." />
         </span>
@@ -67,7 +67,7 @@ export const ConditionInspectorSection = ({
       </label>
     )}
 
-    <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+    <p className={styles.nodeInspectorHintTextTight}>
       Définissez les différentes branches dans les propriétés des connexions. Laissez le champ vide pour créer une branche par
       défaut.
     </p>

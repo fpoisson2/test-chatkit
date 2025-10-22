@@ -1,4 +1,4 @@
-import { fieldStyle, labelContentStyle } from "../styles";
+import styles from "../NodeInspector.module.css";
 
 type AssistantMessageInspectorSectionProps = {
   nodeId: string;
@@ -20,31 +20,31 @@ export const AssistantMessageInspectorSection = ({
   onAssistantMessageStreamDelayChange,
 }: AssistantMessageInspectorSectionProps) => (
   <>
-    <label style={fieldStyle}>
-      <span style={labelContentStyle}>Texte du message assistant</span>
+    <label className={styles.nodeInspectorField}>
+      <span className={styles.nodeInspectorLabel}>Texte du message assistant</span>
       <textarea
         value={assistantMessage}
         onChange={(event) => onAssistantMessageChange(nodeId, event.target.value)}
         rows={4}
         placeholder="Texte affiché aux utilisateurs lorsque ce bloc est exécuté"
-        style={{ resize: "vertical", minHeight: "4.5rem" }}
+        className={styles.nodeInspectorTextarea}
       />
-      <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+      <p className={styles.nodeInspectorHintTextTight}>
         Ce message est diffusé tel quel dans la conversation avant de passer au bloc suivant.
       </p>
     </label>
 
-    <label style={{ ...fieldStyle, marginTop: "0.75rem" }}>
-      <span style={labelContentStyle}>Effet de streaming</span>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
+    <label className={styles.nodeInspectorField}>
+      <span className={styles.nodeInspectorLabel}>Effet de streaming</span>
+      <div className={styles.nodeInspectorInlineStack}>
         <input
           type="checkbox"
           checked={assistantMessageStreamEnabled}
           onChange={(event) => onAssistantMessageStreamEnabledChange(nodeId, event.target.checked)}
         />
-        <div style={{ lineHeight: 1.4 }}>
+        <div className={styles.nodeInspectorStackText}>
           <strong>Simuler une réponse progressive</strong>
-          <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+          <p className={styles.nodeInspectorHintTextTight}>
             Quand cette option est active, le texte est diffusé en plusieurs morceaux dans le chat afin d'imiter la frappe d'un
             agent.
           </p>
@@ -53,8 +53,8 @@ export const AssistantMessageInspectorSection = ({
     </label>
 
     {assistantMessageStreamEnabled ? (
-      <label style={fieldStyle}>
-        <span style={labelContentStyle}>Délai entre les paquets (ms)</span>
+      <label className={styles.nodeInspectorField}>
+        <span className={styles.nodeInspectorLabel}>Délai entre les paquets (ms)</span>
         <input
           type="number"
           min={0}
@@ -62,7 +62,7 @@ export const AssistantMessageInspectorSection = ({
           value={String(assistantMessageStreamDelay)}
           onChange={(event) => onAssistantMessageStreamDelayChange(nodeId, event.target.value)}
         />
-        <p style={{ color: "var(--text-muted)", margin: "0.35rem 0 0" }}>
+        <p className={styles.nodeInspectorHintTextTight}>
           Ajustez le temps d'attente entre chaque mise à jour envoyée aux utilisateurs.
         </p>
       </label>
