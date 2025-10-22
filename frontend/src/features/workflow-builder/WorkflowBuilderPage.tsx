@@ -92,7 +92,8 @@ import {
   setWidgetNodeVariables,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
-import NodeInspector from "./components/node-inspector/NodeInspector";
+import NodeInspector from "./components/NodeInspector";
+import { parseWorkflowImport, WorkflowImportError } from "./importWorkflow";
 import type {
   AgentParameters,
   FileSearchConfig,
@@ -191,6 +192,7 @@ const sortVersionsWithDraftFirst = (
   draftId: number | null,
 ): WorkflowVersionSummary[] => {
   const items = [...versions];
+  const originalOrder = new Map(items.map((version, index) => [version.id, index]));
   items.sort((a, b) => {
     if (draftId != null) {
       if (a.id === draftId && b.id !== draftId) {
@@ -200,16 +202,23 @@ const sortVersionsWithDraftFirst = (
         return 1;
       }
     }
+    if (a.version !== b.version) {
+      return b.version - a.version;
+    }
     if (a.is_active && !b.is_active) {
       return -1;
     }
     if (b.is_active && !a.is_active) {
       return 1;
     }
-    if (a.version !== b.version) {
-      return b.version - a.version;
+    const aUpdatedAt = new Date(a.updated_at).getTime();
+    const bUpdatedAt = new Date(b.updated_at).getTime();
+    if (aUpdatedAt !== bUpdatedAt) {
+      return bUpdatedAt - aUpdatedAt;
     }
-    return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    const aIndex = originalOrder.get(a.id) ?? 0;
+    const bIndex = originalOrder.get(b.id) ?? 0;
+    return aIndex - bIndex;
   });
   return items;
 };
@@ -281,10 +290,12 @@ const WorkflowBuilderPage = () => {
   const [deployToProduction, setDeployToProduction] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const autoSaveTimeoutRef = useRef<number | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const draftVersionIdRef = useRef<number | null>(null);
   const draftVersionSummaryRef = useRef<WorkflowVersionSummary | null>(null);
+  const selectedVersionIdRef = useRef<number | null>(null);
   const isCreatingDraftRef = useRef(false);
   const isHydratingRef = useRef(false);
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
@@ -294,6 +305,7 @@ const WorkflowBuilderPage = () => {
   const hasUserViewportChangeRef = useRef(false);
   const pendingViewportRestoreRef = useRef(false);
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
+  const importFileInputRef = useRef<HTMLInputElement | null>(null);
   const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
@@ -574,6 +586,19 @@ const WorkflowBuilderPage = () => {
       <div style={getHeaderActionAreaStyle(isMobileLayout)}>
         <button
           type="button"
+          onClick={handleTriggerImport}
+          disabled={loading || isImporting}
+          aria-busy={isImporting}
+          style={getDeployButtonStyle(isMobileLayout, {
+            disabled: loading || isImporting,
+          })}
+        >
+          {isImporting
+            ? t("workflowBuilder.import.inProgress")
+            : t("workflowBuilder.actions.importJson")}
+        </button>
+        <button
+          type="button"
           onClick={() => void handleExportWorkflow()}
           disabled={
             loading ||
@@ -594,6 +619,15 @@ const WorkflowBuilderPage = () => {
             ? t("workflowBuilder.export.preparing")
             : t("workflowBuilder.actions.exportJson")}
         </button>
+        <input
+          ref={importFileInputRef}
+          type="file"
+          accept="application/json"
+          hidden
+          onChange={(event) => {
+            void handleImportFileChange(event);
+          }}
+        />
         <button
           type="button"
           onClick={handleOpenDeployModal}
@@ -1432,6 +1466,10 @@ const WorkflowBuilderPage = () => {
   }, [selectedEdge, selectedNode]);
 
   const selectedElementKey = selectedNodeId ?? selectedEdgeId ?? null;
+
+  useEffect(() => {
+    selectedVersionIdRef.current = selectedVersionId;
+  }, [selectedVersionId]);
 
   useEffect(() => {
     selectedNodeIdRef.current = selectedNodeId;
@@ -3263,6 +3301,197 @@ const WorkflowBuilderPage = () => {
     versions,
   ]);
 
+  const resolveImportErrorMessage = useCallback(
+    (error: unknown): string => {
+      if (error instanceof WorkflowImportError) {
+        switch (error.reason) {
+          case "invalid_json":
+            return t("workflowBuilder.import.errorInvalidJson");
+          case "missing_nodes":
+            return t("workflowBuilder.import.errorMissingNodes");
+          case "invalid_node":
+            return t("workflowBuilder.import.errorInvalidNode");
+          case "invalid_edge":
+            return t("workflowBuilder.import.errorInvalidEdge");
+          case "invalid_graph":
+          default:
+            return t("workflowBuilder.import.errorInvalidGraph");
+        }
+      }
+      if (error instanceof Error) {
+        return error.message;
+      }
+      return t("workflowBuilder.import.error");
+    },
+    [t],
+  );
+
+  const processImportPayload = useCallback(
+    async (rawText: string) => {
+      setIsImporting(true);
+      try {
+        const parsed = parseWorkflowImport(rawText);
+        let targetWorkflowId = selectedWorkflowId ?? null;
+        if (targetWorkflowId == null && parsed.workflowId != null) {
+          targetWorkflowId = parsed.workflowId;
+        }
+
+        const requestPayload: Record<string, unknown> = {
+          graph: parsed.graph,
+        };
+
+        const ensureVersionName = () =>
+          t("workflowBuilder.import.defaultVersionName", {
+            timestamp: new Date().toLocaleString(),
+          });
+
+        if (targetWorkflowId != null) {
+          requestPayload.workflow_id = targetWorkflowId;
+          if (parsed.slug) {
+            requestPayload.slug = parsed.slug;
+          }
+          if (parsed.displayName) {
+            requestPayload.display_name = parsed.displayName;
+          }
+          if (parsed.description !== undefined) {
+            requestPayload.description = parsed.description;
+          }
+          if (parsed.markAsActive !== undefined) {
+            requestPayload.mark_as_active = parsed.markAsActive;
+          }
+          requestPayload.version_name = parsed.versionName ?? ensureVersionName();
+        } else {
+          let displayName = parsed.displayName ?? null;
+          if (!displayName) {
+            const proposed = window.prompt(
+              t("workflowBuilder.import.promptDisplayName"),
+            );
+            if (!proposed) {
+              setSaveState("error");
+              setSaveMessage(t("workflowBuilder.import.errorMissingName"));
+              return;
+            }
+            const trimmed = proposed.trim();
+            if (!trimmed) {
+              setSaveState("error");
+              setSaveMessage(t("workflowBuilder.import.errorMissingName"));
+              return;
+            }
+            displayName = trimmed;
+          }
+          const slug = parsed.slug ?? slugifyWorkflowName(displayName);
+          requestPayload.display_name = displayName;
+          requestPayload.slug = slug;
+          requestPayload.description = parsed.description ?? null;
+          requestPayload.mark_as_active = parsed.markAsActive ?? true;
+          requestPayload.version_name = parsed.versionName ?? ensureVersionName();
+        }
+
+        setSaveState("saving");
+        setSaveMessage(t("workflowBuilder.import.saving"));
+
+        const candidates = makeApiEndpointCandidates(
+          backendUrl,
+          "/api/workflows/import",
+        );
+        let lastError: Error | null = null;
+
+        for (const url of candidates) {
+          try {
+            const response = await fetch(url, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...authHeader,
+              },
+              body: JSON.stringify(requestPayload),
+            });
+            if (!response.ok) {
+              let detail = t("workflowBuilder.import.errorWithStatus", {
+                status: response.status,
+              });
+              try {
+                const data = await response.json();
+                if (data && typeof data.detail === "string" && data.detail.trim()) {
+                  detail = data.detail.trim();
+                }
+              } catch (parseError) {
+                lastError =
+                  parseError instanceof Error
+                    ? parseError
+                    : new Error(t("workflowBuilder.import.error"));
+              }
+              throw new Error(detail);
+            }
+            const imported: WorkflowVersionResponse = await response.json();
+            await loadWorkflows({
+              selectWorkflowId: imported.workflow_id,
+              selectVersionId: imported.id,
+            });
+            setSaveState("saved");
+            setSaveMessage(t("workflowBuilder.import.success"));
+            setTimeout(() => setSaveState("idle"), 1500);
+            return;
+          } catch (error) {
+            if (error instanceof Error && error.name === "AbortError") {
+              continue;
+            }
+            lastError =
+              error instanceof Error
+                ? error
+                : new Error(t("workflowBuilder.import.error"));
+          }
+        }
+
+        if (lastError) {
+          throw lastError;
+        }
+        throw new Error(t("workflowBuilder.import.error"));
+      } catch (error) {
+        setSaveState("error");
+        setSaveMessage(resolveImportErrorMessage(error));
+      } finally {
+        setIsImporting(false);
+      }
+    },
+    [
+      authHeader,
+      backendUrl,
+      loadWorkflows,
+      resolveImportErrorMessage,
+      selectedWorkflowId,
+      t,
+    ],
+  );
+
+  const handleImportFileChange = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0] ?? null;
+      event.target.value = "";
+      if (!file) {
+        return;
+      }
+      try {
+        setSaveMessage(null);
+        const text = await file.text();
+        await processImportPayload(text);
+      } catch (_error) {
+        setSaveState("error");
+        setSaveMessage(t("workflowBuilder.import.errorFileRead"));
+        setIsImporting(false);
+      }
+    },
+    [processImportPayload, t],
+  );
+
+  const handleTriggerImport = useCallback(() => {
+    if (loading || isImporting) {
+      return;
+    }
+    setSaveMessage(null);
+    importFileInputRef.current?.click();
+  }, [importFileInputRef, isImporting, loading]);
+
   const handleExportWorkflow = useCallback(async () => {
     if (!selectedWorkflowId || !selectedVersionId || isExporting) {
       return;
@@ -3363,15 +3592,38 @@ const WorkflowBuilderPage = () => {
     setDeployModalOpen(false);
   }, [isDeploying]);
 
+  const resolveVersionIdToPromote = useCallback(
+    (
+      preferDraft = false,
+      options: { selectedId?: number | null } = {},
+    ): number | null => {
+      const draftId = draftVersionIdRef.current;
+      const selectedId = Object.prototype.hasOwnProperty.call(options, "selectedId")
+        ? options.selectedId ?? null
+        : selectedVersionIdRef.current;
+
+      if (preferDraft) {
+        return draftId ?? selectedId ?? null;
+      }
+
+      if (selectedId != null) {
+        return selectedId;
+      }
+
+      return draftId ?? null;
+    },
+    [],
+  );
+
   const handleConfirmDeploy = useCallback(async () => {
     if (!selectedWorkflowId) {
       return;
     }
 
-    const draftId = draftVersionIdRef.current;
-    if (!draftId) {
+    let versionIdToPromote = resolveVersionIdToPromote();
+    if (!versionIdToPromote) {
       setSaveState("error");
-      setSaveMessage("Aucun brouillon à promouvoir.");
+      setSaveMessage(t("workflowBuilder.deploy.missingTarget"));
       return;
     }
 
@@ -3382,7 +3634,14 @@ const WorkflowBuilderPage = () => {
       if (hasPendingChanges) {
         setIsDeploying(false);
         setSaveState("error");
-        setSaveMessage("Enregistrement du brouillon requis avant le déploiement.");
+        setSaveMessage(t("workflowBuilder.deploy.pendingChangesError"));
+        return;
+      }
+      versionIdToPromote = resolveVersionIdToPromote(true) ?? versionIdToPromote;
+      if (!versionIdToPromote) {
+        setIsDeploying(false);
+        setSaveState("error");
+        setSaveMessage(t("workflowBuilder.deploy.missingTarget"));
         return;
       }
     }
@@ -3390,7 +3649,7 @@ const WorkflowBuilderPage = () => {
     const graphPayload = buildGraphPayload();
     const graphSnapshot = JSON.stringify(graphPayload);
     setSaveState("saving");
-    setSaveMessage("Promotion du brouillon…");
+    setSaveMessage(t("workflowBuilder.deploy.promoting"));
 
     const promoteCandidates = makeApiEndpointCandidates(
       backendUrl,
@@ -3406,15 +3665,19 @@ const WorkflowBuilderPage = () => {
             "Content-Type": "application/json",
             ...authHeader,
           },
-          body: JSON.stringify({ version_id: draftId }),
+          body: JSON.stringify({ version_id: versionIdToPromote }),
         });
         if (!response.ok) {
-          throw new Error(`Échec de la promotion (${response.status})`);
+          throw new Error(
+            t("workflowBuilder.deploy.promoteFailedWithStatus", { status: response.status }),
+          );
         }
         const promoted: WorkflowVersionResponse = await response.json();
 
-        draftVersionIdRef.current = null;
-        draftVersionSummaryRef.current = null;
+        if (draftVersionIdRef.current === versionIdToPromote) {
+          draftVersionIdRef.current = null;
+          draftVersionSummaryRef.current = null;
+        }
         setSelectedVersionId(promoted.id);
         await loadVersions(selectedWorkflowId, promoted.id);
         await loadWorkflows({ selectWorkflowId: selectedWorkflowId, selectVersionId: promoted.id });
@@ -3422,7 +3685,9 @@ const WorkflowBuilderPage = () => {
         setHasPendingChanges(false);
         setSaveState("saved");
         setSaveMessage(
-          deployToProduction ? "Version déployée en production." : "Version publiée."
+          deployToProduction
+            ? t("workflowBuilder.deploy.successProduction")
+            : t("workflowBuilder.deploy.successPublished"),
         );
         setTimeout(() => setSaveState("idle"), 1500);
         setDeployModalOpen(false);
@@ -3435,13 +3700,13 @@ const WorkflowBuilderPage = () => {
         lastError =
           error instanceof Error
             ? error
-            : new Error("Impossible de promouvoir le brouillon.");
+            : new Error(t("workflowBuilder.deploy.promoteError"));
       }
     }
 
     setIsDeploying(false);
     setSaveState("error");
-    setSaveMessage(lastError?.message ?? "Impossible de publier le workflow.");
+    setSaveMessage(lastError?.message ?? t("workflowBuilder.deploy.publishError"));
   }, [
     authHeader,
     backendUrl,
@@ -3452,6 +3717,8 @@ const WorkflowBuilderPage = () => {
     loadVersions,
     loadWorkflows,
     selectedWorkflowId,
+    resolveVersionIdToPromote,
+    t,
   ]);
 
   useEffect(() => {
@@ -4323,6 +4590,58 @@ const WorkflowBuilderPage = () => {
 
   const hasSelectedElement = Boolean(selectedNode || selectedEdge);
   const showPropertiesPanel = hasSelectedElement && (!isMobileLayout || isPropertiesPanelOpen);
+
+  const versionIdToPromote = useMemo(
+    () => resolveVersionIdToPromote(false, { selectedId: selectedVersionId }),
+    [resolveVersionIdToPromote, selectedVersionId],
+  );
+
+  const versionSummaryForPromotion = useMemo(() => {
+    if (versionIdToPromote == null) {
+      return null;
+    }
+    return versions.find((version) => version.id === versionIdToPromote) ?? null;
+  }, [versionIdToPromote, versions]);
+
+  const isPromotingDraft = Boolean(
+    versionSummaryForPromotion && draftVersionIdRef.current === versionSummaryForPromotion.id,
+  );
+
+  const deployModalTitle = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.titlePublishDraft")
+      : t("workflowBuilder.deploy.modal.titlePromoteSelected")
+    : t("workflowBuilder.deploy.modal.titleMissing");
+
+  const deployModalDescription = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.descriptionPublishDraft")
+      : t("workflowBuilder.deploy.modal.descriptionPromoteSelected", {
+          version: versionSummaryForPromotion.version,
+        })
+    : t("workflowBuilder.deploy.modal.descriptionMissing");
+
+  const deployModalSourceLabel = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.path.draft")
+      : t("workflowBuilder.deploy.modal.path.selectedWithVersion", {
+          version: versionSummaryForPromotion.version,
+        })
+    : t("workflowBuilder.deploy.modal.path.draft");
+
+  const deployModalTargetLabel = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.path.newVersion")
+      : t("workflowBuilder.deploy.modal.path.production")
+    : t("workflowBuilder.deploy.modal.path.production");
+
+  const deployModalPrimaryLabel = versionSummaryForPromotion
+    ? isPromotingDraft
+      ? t("workflowBuilder.deploy.modal.action.publish")
+      : t("workflowBuilder.deploy.modal.action.deploy")
+    : t("workflowBuilder.deploy.modal.action.publish");
+
+  const isPrimaryActionDisabled = !versionSummaryForPromotion || isDeploying;
   const selectedElementLabel = selectedNode
     ? selectedNode.data.displayName.trim() || labelForKind(selectedNode.data.kind)
     : selectedEdge
@@ -4785,28 +5104,34 @@ const WorkflowBuilderPage = () => {
                       margin: 0,
                     }}
                   >
-                    Publish changes?
+                    {deployModalTitle}
                   </h2>
                   <p style={{ margin: 0, color: "var(--text-muted)", lineHeight: 1.45 }}>
-                    Create a new version of the workflow with your latest changes.
+                    {deployModalDescription}
                   </p>
-                  <div
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                      fontWeight: 600,
-                      color: "var(--text-color)",
-                    }}
-                  >
-                    <span style={{ padding: "0.25rem 0.5rem", background: "#e2e8f0", borderRadius: "999px" }}>
-                      Draft
-                    </span>
-                    <span aria-hidden="true">→</span>
-                    <span style={{ padding: "0.25rem 0.5rem", background: "#dcfce7", borderRadius: "999px" }}>
-                      New version
-                    </span>
-                  </div>
+                  {versionSummaryForPromotion ? (
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        fontWeight: 600,
+                        color: "var(--text-color)",
+                      }}
+                    >
+                      <span
+                        style={{ padding: "0.25rem 0.5rem", background: "#e2e8f0", borderRadius: "999px" }}
+                      >
+                        {deployModalSourceLabel}
+                      </span>
+                      <span aria-hidden="true">→</span>
+                      <span
+                        style={{ padding: "0.25rem 0.5rem", background: "#dcfce7", borderRadius: "999px" }}
+                      >
+                        {deployModalTargetLabel}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
                 <label
                   style={{
@@ -4824,30 +5149,30 @@ const WorkflowBuilderPage = () => {
                     disabled={isDeploying}
                     style={{ width: "1.2rem", height: "1.2rem" }}
                   />
-                  Deploy to production
+                  {t("workflowBuilder.deploy.modal.productionToggle")}
                 </label>
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem" }}>
                   <button
                     type="button"
                     onClick={handleCloseDeployModal}
-                  disabled={isDeploying}
-                  style={{
-                    padding: "0.6rem 1.2rem",
-                    borderRadius: "0.75rem",
-                    border: "1px solid var(--surface-border)",
-                    background: "var(--surface-strong)",
-                    color: "var(--text-color)",
-                    fontWeight: 600,
-                    cursor: isDeploying ? "not-allowed" : "pointer",
-                    opacity: isDeploying ? 0.5 : 1,
-                  }}
-                >
-                    Cancel
+                    disabled={isDeploying}
+                    style={{
+                      padding: "0.6rem 1.2rem",
+                      borderRadius: "0.75rem",
+                      border: "1px solid var(--surface-border)",
+                      background: "var(--surface-strong)",
+                      color: "var(--text-color)",
+                      fontWeight: 600,
+                      cursor: isDeploying ? "not-allowed" : "pointer",
+                      opacity: isDeploying ? 0.5 : 1,
+                    }}
+                  >
+                    {t("workflowBuilder.deploy.modal.action.cancel")}
                   </button>
                   <button
                     type="button"
                     onClick={handleConfirmDeploy}
-                    disabled={isDeploying}
+                    disabled={isPrimaryActionDisabled}
                     style={{
                       padding: "0.6rem 1.2rem",
                       borderRadius: "0.75rem",
@@ -4855,11 +5180,11 @@ const WorkflowBuilderPage = () => {
                       background: "#2563eb",
                       color: "#fff",
                       fontWeight: 700,
-                      cursor: isDeploying ? "not-allowed" : "pointer",
-                      opacity: isDeploying ? 0.7 : 1,
+                      cursor: isPrimaryActionDisabled ? "not-allowed" : "pointer",
+                      opacity: isPrimaryActionDisabled ? 0.7 : 1,
                     }}
                   >
-                    Publish
+                    {deployModalPrimaryLabel}
                   </button>
                 </div>
               </div>
