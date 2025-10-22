@@ -122,9 +122,11 @@ def _run_ad_hoc_migrations() -> None:
                 connection.execute(
                     text(
                         "UPDATE workflows SET is_chatkit_default = TRUE "
-                        "WHERE slug = :slug"
+                        "WHERE id = ("
+                        "  SELECT id FROM workflows "
+                        "  ORDER BY created_at ASC LIMIT 1"
+                        ")"
                     ),
-                    {"slug": "workflow-par-defaut"},
                 )
                 if dialect == "postgresql":
                     connection.execute(
@@ -357,34 +359,46 @@ def _run_ad_hoc_migrations() -> None:
                 definition_columns = _refresh_definition_columns()
 
                 timestamp = datetime.datetime.now(datetime.UTC)
-                default_slug = "workflow-par-defaut"
-                default_display_name = "Workflow par défaut"
 
                 workflow_row = connection.execute(
-                    text("SELECT id FROM workflows WHERE slug = :slug"),
-                    {"slug": default_slug},
+                    text(
+                        "SELECT id FROM workflows ORDER BY created_at ASC LIMIT 1"
+                    )
                 ).first()
 
                 if workflow_row is None:
+                    base_slug = "workflow"
+                    base_name = "Workflow"
+                    slug = base_slug
+                    index = 1
+                    while connection.execute(
+                        text("SELECT 1 FROM workflows WHERE slug = :slug"),
+                        {"slug": slug},
+                    ).first():
+                        index += 1
+                        slug = f"{base_slug}-{index}"
+                    display_name = base_name if index == 1 else f"{base_name} {index}"
+
                     connection.execute(
                         Workflow.__table__.insert(),
                         {
-                            "slug": default_slug,
-                            "display_name": default_display_name,
+                            "slug": slug,
+                            "display_name": display_name,
                             "description": None,
                             "active_version_id": None,
+                            "is_chatkit_default": True,
                             "created_at": timestamp,
                             "updated_at": timestamp,
                         },
                     )
                     workflow_row = connection.execute(
                         text("SELECT id FROM workflows WHERE slug = :slug"),
-                        {"slug": default_slug},
+                        {"slug": slug},
                     ).first()
 
                 if workflow_row is None:
                     raise RuntimeError(
-                        "Impossible de créer le workflow par défaut pour la migration"
+                        "Impossible de créer un workflow initial pour la migration"
                     )
 
                 workflow_id = workflow_row.id

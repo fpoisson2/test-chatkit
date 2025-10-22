@@ -94,13 +94,13 @@ export const setupMockAuth = () => {
 // Stockage en mémoire pour la persistance pendant la session
 const workflowVersionsStorage = new Map<string, any>();
 
-// Initialiser une version par défaut
+// Initialiser une version initiale
 const getDefaultVersionData = (workflowId: number, versionId: number) => ({
   id: versionId,
   workflow_id: workflowId,
   workflow_slug: 'demo-workflow',
-  workflow_display_name: 'Demo Workflow',
-  workflow_is_chatkit_default: false,
+  workflow_display_name: 'Workflow démo',
+  workflow_is_chatkit_default: true,
   name: 'Brouillon',
   version: 1,
   is_active: false,
@@ -147,8 +147,8 @@ export const setupMockApi = () => {
       console.log('🔧 Mock API: /api/chatkit/workflow');
       return new Response(JSON.stringify({
         workflow_id: 1,
-        workflow_slug: 'default-workflow',
-        workflow_display_name: 'Default Workflow',
+        workflow_slug: 'demo-workflow',
+        workflow_display_name: 'Workflow démo',
         definition_id: 1,
         definition_version: 1,
         auto_start: false,
@@ -222,7 +222,7 @@ export const setupMockApi = () => {
         const versionId = parseInt(versionDetailMatch[2]);
         const storageKey = `${workflowId}-${versionId}`;
 
-        // Récupérer depuis le stockage ou créer une version par défaut
+        // Récupérer depuis le stockage ou créer une version de démonstration
         if (!workflowVersionsStorage.has(storageKey)) {
           workflowVersionsStorage.set(storageKey, getDefaultVersionData(workflowId, versionId));
         }
@@ -371,13 +371,13 @@ export const setupMockApi = () => {
         });
       }
 
-      // GET - Retourner un workflow par défaut
+      // GET - Retourner un workflow de démonstration
       if (method === 'GET' && url.endsWith('/api/workflows')) {
         return new Response(JSON.stringify([
           {
             id: 1,
             slug: 'demo-workflow',
-            display_name: 'Demo Workflow',
+            display_name: 'Workflow démo',
             description: null,
             active_version_id: null,
             active_version_number: null,

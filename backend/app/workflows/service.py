@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
+from ..chatkit.agent_registry import AGENT_BUILDERS
 from ..config import Settings, WorkflowDefaults, get_settings
 from ..database import SessionLocal
 from ..models import Workflow, WorkflowDefinition, WorkflowStep, WorkflowTransition
@@ -162,7 +163,7 @@ class WorkflowService:
         if workflow_defaults is None:
             if settings is None:
                 raise RuntimeError(
-                    "Impossible de déterminer la configuration du workflow par défaut."
+                    "Impossible de déterminer la configuration du workflow."
                 )
             workflow_defaults = settings.workflow_defaults
         self._workflow_defaults = workflow_defaults
@@ -195,54 +196,62 @@ class WorkflowService:
             return session, False
         return self._session_factory(), True
 
-    def _get_or_create_default_workflow(self, session: Session) -> Workflow:
-        defaults = self._workflow_defaults
-        workflow = session.scalar(
-            select(Workflow).where(Workflow.slug == defaults.default_workflow_slug)
-        )
-        if workflow is None:
-            existing = session.scalar(
-                select(Workflow).order_by(Workflow.created_at.asc())
-            )
-            if existing is not None:
-                workflow = existing
-                workflow.slug = defaults.default_workflow_slug
-                if not workflow.display_name:
-                    workflow.display_name = defaults.default_workflow_display_name
-                session.flush()
-            else:
-                workflow = Workflow(
-                    slug=defaults.default_workflow_slug,
-                    display_name=defaults.default_workflow_display_name,
-                )
-                session.add(workflow)
-                session.flush()
-        return workflow
-
-    def _ensure_default_workflow(self, session: Session) -> Workflow:
-        workflow = self._get_or_create_default_workflow(session)
-        definition = self._load_active_definition(workflow, session)
-        if definition is None:
-            self._create_default_definition(session, workflow)
-            session.commit()
-            session.refresh(workflow)
-
-        has_chatkit_default = session.scalar(
-            select(Workflow.id).where(Workflow.is_chatkit_default.is_(True))
-        )
-        if has_chatkit_default is None:
-            workflow.is_chatkit_default = True
-            session.add(workflow)
-            session.commit()
-            session.refresh(workflow)
-        return workflow
+    def _generate_default_workflow_identifiers(
+        self, session: Session
+    ) -> tuple[str, str]:
+        base_slug = "workflow"
+        base_name = "Workflow"
+        slug = base_slug
+        index = 1
+        while session.scalar(
+            select(Workflow.id).where(Workflow.slug == slug)
+        ) is not None:
+            index += 1
+            slug = f"{base_slug}-{index}"
+        display_name = base_name if index == 1 else f"{base_name} {index}"
+        return slug, display_name
 
     def _get_chatkit_workflow(self, session: Session) -> Workflow:
+        configured_id = None
+        if self._settings and self._settings.chatkit_workflow_id:
+            try:
+                configured_id = int(self._settings.chatkit_workflow_id)
+            except (TypeError, ValueError):  # pragma: no cover - configuration invalide
+                configured_id = None
+
+        if configured_id is not None:
+            workflow = session.get(Workflow, configured_id)
+            if workflow is not None:
+                if not workflow.is_chatkit_default:
+                    workflow.is_chatkit_default = True
+                    session.add(workflow)
+                    session.commit()
+                    session.refresh(workflow)
+                return workflow
+
         workflow = session.scalar(
             select(Workflow).where(Workflow.is_chatkit_default.is_(True))
         )
-        if workflow is None:
-            workflow = self._ensure_default_workflow(session)
+        if workflow is not None:
+            return workflow
+
+        workflow = session.scalar(
+            select(Workflow).order_by(Workflow.created_at.asc())
+        )
+        if workflow is not None:
+            if not workflow.is_chatkit_default:
+                workflow.is_chatkit_default = True
+                session.add(workflow)
+                session.commit()
+                session.refresh(workflow)
+            return workflow
+
+        slug, display_name = self._generate_default_workflow_identifiers(session)
+        workflow = Workflow(slug=slug, display_name=display_name)
+        workflow.is_chatkit_default = True
+        session.add(workflow)
+        session.commit()
+        session.refresh(workflow)
         return workflow
 
     def _load_active_definition(
@@ -365,19 +374,18 @@ class WorkflowService:
             workflow = self._get_chatkit_workflow(db)
             definition = self._load_active_definition(workflow, db)
             if definition is None:
-                definition = self._create_default_definition(db, workflow)
+                nodes, edges = self._build_minimal_graph()
+                definition = self._create_definition_from_graph(
+                    workflow=workflow,
+                    nodes=nodes,
+                    edges=edges,
+                    session=db,
+                    name="Version initiale",
+                    mark_active=True,
+                )
                 db.commit()
                 db.refresh(definition)
-            definition = self._fully_load_definition(definition)
-            if self._needs_graph_backfill(definition):
-                logger.info(
-                    "Legacy workflow detected, backfilling default graph with existing "
-                    "agent configuration",
-                )
-                definition = self._backfill_legacy_definition(definition, db)
-                self._set_active_definition(workflow, definition, db)
-                db.commit()
-            return definition
+            return self._fully_load_definition(definition)
         finally:
             if owns_session:
                 db.close()
@@ -406,28 +414,10 @@ class WorkflowService:
             if owns_session:
                 db.close()
 
-    def _create_default_definition(
-        self, session: Session, workflow: Workflow
-    ) -> WorkflowDefinition:
-        nodes, edges = self._normalize_graph(
-            self._workflow_defaults.clone_workflow_graph()
-        )
-        definition = self._create_definition_from_graph(
-            workflow=workflow,
-            nodes=nodes,
-            edges=edges,
-            session=session,
-            name="Version initiale",
-            mark_active=True,
-        )
-        session.commit()
-        session.refresh(definition)
-        return self._fully_load_definition(definition)
-
     def list_workflows(self, session: Session | None = None) -> list[Workflow]:
         db, owns_session = self._get_session(session)
         try:
-            self._ensure_default_workflow(db)
+            self._get_chatkit_workflow(db)
             workflows = db.scalars(
                 select(Workflow).order_by(Workflow.created_at.asc())
             ).all()
@@ -601,14 +591,6 @@ class WorkflowService:
                     raise WorkflowValidationError(
                         "Le slug du workflow ne peut pas être vide."
                     )
-                defaults = self._workflow_defaults
-                if (
-                    workflow.slug == defaults.default_workflow_slug
-                    and slug != defaults.default_workflow_slug
-                ):
-                    raise WorkflowValidationError(
-                        "Le slug du workflow par défaut ne peut pas être modifié."
-                    )
                 if slug != workflow.slug:
                     existing = db.scalar(
                         select(Workflow.id).where(
@@ -646,11 +628,7 @@ class WorkflowService:
             workflow = db.get(Workflow, workflow_id)
             if workflow is None:
                 raise WorkflowNotFoundError(workflow_id)
-            defaults = self._workflow_defaults
-            if (
-                workflow.slug == defaults.default_workflow_slug
-                or workflow.is_chatkit_default
-            ):
+            if workflow.is_chatkit_default:
                 raise WorkflowValidationError(
                     "Le workflow sélectionné pour ChatKit ne peut pas être supprimé."
                 )
@@ -771,83 +749,6 @@ class WorkflowService:
             if owns_session:
                 db.close()
 
-    def _needs_graph_backfill(self, definition: WorkflowDefinition) -> bool:
-        has_start = any(step.kind == "start" for step in definition.steps)
-        has_edges = bool(definition.transitions)
-        if not (has_start and has_edges):
-            return True
-
-        existing_slugs = {step.slug for step in definition.steps}
-        defaults = self._workflow_defaults
-        if defaults.expected_state_slugs.issubset(existing_slugs):
-            return False
-
-        if defaults.default_agent_slugs.issubset(existing_slugs):
-            return True
-
-        return False
-
-    def _backfill_legacy_definition(
-        self, definition: WorkflowDefinition, session: Session
-    ) -> WorkflowDefinition:
-        legacy_agent_steps: dict[str, WorkflowStep] = {}
-        for step in definition.steps:
-            if step.agent_key:
-                legacy_agent_steps.setdefault(step.agent_key, step)
-
-        definition.transitions.clear()
-        definition.steps.clear()
-        session.flush()
-
-        nodes, edges = self._normalize_graph(
-            self._workflow_defaults.clone_workflow_graph()
-        )
-        slug_to_step: dict[str, WorkflowStep] = {}
-
-        for index, node in enumerate(nodes, start=1):
-            display_name = node.display_name
-            is_enabled = node.is_enabled
-            parameters = dict(node.parameters)
-            metadata = dict(node.metadata)
-
-            if node.kind == "agent" and node.agent_key:
-                legacy_step = legacy_agent_steps.get(node.agent_key)
-                if legacy_step is not None:
-                    if legacy_step.display_name:
-                        display_name = legacy_step.display_name
-                    is_enabled = legacy_step.is_enabled
-                    parameters = dict(legacy_step.parameters or {})
-                    metadata = dict(legacy_step.ui_metadata or metadata)
-
-            step = WorkflowStep(
-                slug=node.slug,
-                kind=node.kind,
-                display_name=display_name,
-                agent_key=node.agent_key,
-                position=index,
-                is_enabled=is_enabled,
-                parameters=parameters,
-                ui_metadata=metadata,
-            )
-            definition.steps.append(step)
-            slug_to_step[node.slug] = step
-
-        for edge in edges:
-            definition.transitions.append(
-                WorkflowTransition(
-                    source_step=slug_to_step[edge.source_slug],
-                    target_step=slug_to_step[edge.target_slug],
-                    condition=edge.condition,
-                    ui_metadata=dict(edge.metadata),
-                )
-            )
-
-        definition.updated_at = datetime.datetime.now(datetime.UTC)
-        session.add(definition)
-        session.commit()
-        session.refresh(definition)
-        return self._fully_load_definition(definition)
-
     def _normalize_graph(
         self,
         payload: dict[str, Any] | None,
@@ -869,8 +770,6 @@ class WorkflowService:
                     )
                 return self._build_minimal_graph()
             raise WorkflowValidationError("Le workflow doit contenir au moins un nœud.")
-
-        defaults = self._workflow_defaults
 
         normalized_nodes: list[NormalizedNode] = []
         slugs: set[str] = set()
@@ -917,7 +816,7 @@ class WorkflowService:
                 elif isinstance(raw_agent_key, str):
                     trimmed_key = raw_agent_key.strip()
                     if trimmed_key:
-                        if trimmed_key not in defaults.supported_agent_keys:
+                        if trimmed_key not in AGENT_BUILDERS:
                             raise WorkflowValidationError(
                                 f"Agent inconnu : {trimmed_key}"
                             )

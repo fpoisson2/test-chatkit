@@ -3438,10 +3438,7 @@ const WorkflowBuilderPage = () => {
         return;
       }
 
-      const slug =
-        target.slug === "workflow-par-defaut"
-          ? target.slug
-          : slugifyWorkflowName(displayName);
+      const slug = slugifyWorkflowName(displayName);
       if (!slug) {
         setSaveState("error");
         setSaveMessage("Impossible de renommer le workflow.");
