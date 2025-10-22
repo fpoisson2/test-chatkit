@@ -3203,7 +3203,10 @@ const WorkflowBuilderPage = () => {
             draftVersionIdRef.current = summary.id;
             draftVersionSummaryRef.current = summary;
             setSelectedVersionId(summary.id);
-            await loadVersions(selectedWorkflowId, summary.id);
+            await loadVersions(selectedWorkflowId, summary.id, {
+              preserveViewport: true,
+              background: true,
+            });
             lastSavedSnapshotRef.current = graphSnapshot;
             setHasPendingChanges(false);
             setSaveState("saved");
