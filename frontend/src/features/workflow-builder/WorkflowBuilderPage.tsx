@@ -662,12 +662,14 @@ const WorkflowBuilderPage = () => {
     future: string[];
     last: string | null;
     isRestoring: boolean;
-  }>({ past: [], future: [], last: null, isRestoring: false });
+    pendingSnapshot: string | null;
+  }>({ past: [], future: [], last: null, isRestoring: false, pendingSnapshot: null });
   const resetHistory = useCallback((snapshot: string | null) => {
     historyRef.current.past = [];
     historyRef.current.future = [];
     historyRef.current.last = snapshot;
     historyRef.current.isRestoring = false;
+    historyRef.current.pendingSnapshot = null;
   }, []);
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
@@ -1435,7 +1437,13 @@ const WorkflowBuilderPage = () => {
           isHydratingRef.current = true;
           lastSavedSnapshotRef.current = nextSnapshot;
           setHasPendingChanges(false);
-          resetHistory(nextSnapshot);
+          if (background) {
+            historyRef.current.isRestoring = true;
+            historyRef.current.pendingSnapshot = null;
+            historyRef.current.last = nextSnapshot;
+          } else {
+            resetHistory(nextSnapshot);
+          }
           setNodes(flowNodes);
           setEdges(flowEdges);
           // Reset isHydrating after a short delay to allow viewport restoration
@@ -1871,6 +1879,19 @@ const WorkflowBuilderPage = () => {
 
   const handleNodeDragStop = useCallback(() => {
     isNodeDragInProgressRef.current = false;
+    const history = historyRef.current;
+    const pending = history.pendingSnapshot;
+    if (!pending) {
+      return;
+    }
+    if (history.last == null) {
+      history.last = pending;
+    } else if (history.last !== pending) {
+      history.past = [...history.past, history.last].slice(-HISTORY_LIMIT);
+      history.future = [];
+      history.last = pending;
+    }
+    history.pendingSnapshot = null;
   }, []);
 
   const handleClosePropertiesPanel = useCallback(() => {
@@ -3814,6 +3835,7 @@ const WorkflowBuilderPage = () => {
       }));
 
       historyRef.current.isRestoring = true;
+      historyRef.current.pendingSnapshot = null;
       setNodes(flowNodes);
       setEdges(flowEdges);
       selectedNodeIdsRef.current = new Set();
@@ -3846,6 +3868,7 @@ const WorkflowBuilderPage = () => {
       history.future = [currentSnapshot, ...history.future].slice(0, HISTORY_LIMIT);
     }
     history.last = previousSnapshot;
+    history.pendingSnapshot = null;
     return true;
   }, [restoreGraphFromSnapshot]);
 
@@ -3868,6 +3891,7 @@ const WorkflowBuilderPage = () => {
       history.past = [...history.past, currentSnapshot].slice(-HISTORY_LIMIT);
     }
     history.last = nextSnapshot;
+    history.pendingSnapshot = null;
     return true;
   }, [restoreGraphFromSnapshot]);
 
@@ -4196,27 +4220,35 @@ const WorkflowBuilderPage = () => {
       history.future = [];
       history.last = graphSnapshot;
       history.isRestoring = false;
+      history.pendingSnapshot = null;
       return;
     }
     if (isHydratingRef.current) {
-      history.past = [];
-      history.future = [];
       history.last = graphSnapshot;
+      history.pendingSnapshot = null;
       return;
     }
     if (history.isRestoring) {
       history.isRestoring = false;
       history.last = graphSnapshot;
+      history.pendingSnapshot = null;
       return;
     }
     if (!history.last) {
       history.last = graphSnapshot;
+      history.pendingSnapshot = null;
       return;
     }
-    if (history.last !== graphSnapshot) {
+    if (isNodeDragInProgressRef.current) {
+      history.pendingSnapshot = graphSnapshot;
+      return;
+    }
+    const nextSnapshot = history.pendingSnapshot ?? graphSnapshot;
+    history.pendingSnapshot = null;
+    if (history.last !== nextSnapshot) {
       history.past = [...history.past, history.last].slice(-HISTORY_LIMIT);
       history.future = [];
-      history.last = graphSnapshot;
+      history.last = nextSnapshot;
     }
   }, [graphSnapshot, selectedWorkflowId]);
 
