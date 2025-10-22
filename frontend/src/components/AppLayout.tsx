@@ -31,6 +31,7 @@ type NavigationItem = {
   label: string;
   icon: SidebarIconName;
   onClick: () => void;
+  isActive?: boolean;
 };
 
 type ApplicationKey =
@@ -75,14 +76,28 @@ const APPLICATIONS: ApplicationDescriptor[] = [
 const buildNavigationItems = ({
   isAuthenticated,
   handleSidebarLogin,
+  handleGoToDocs,
   loginLabel,
+  docsLabel,
+  docsActive,
 }: {
   isAuthenticated: boolean;
   handleSidebarLogin: () => void;
   loginLabel: string;
+  handleGoToDocs: () => void;
+  docsLabel: string;
+  docsActive: boolean;
 }): NavigationItem[] => {
   if (isAuthenticated) {
-    return [];
+    return [
+      {
+        key: "docs",
+        label: docsLabel,
+        icon: "docs",
+        onClick: handleGoToDocs,
+        isActive: docsActive,
+      },
+    ];
   }
 
   return [
@@ -295,14 +310,26 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     navigate("/admin");
   }, [closeSidebar, isDesktopLayout, navigate]);
 
+  const handleGoToDocs = useCallback(() => {
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
+
+    navigate("/docs");
+  }, [closeSidebar, isDesktopLayout, navigate]);
+
   const navigationItems = useMemo(
     () =>
       buildNavigationItems({
         isAuthenticated,
         handleSidebarLogin,
         loginLabel: t("app.sidebar.login"),
+        handleGoToDocs,
+        docsLabel: t("app.sidebar.docs"),
+        docsActive:
+          location.pathname === "/docs" || location.pathname.startsWith("/docs/"),
       }),
-    [handleSidebarLogin, isAuthenticated, t],
+    [handleGoToDocs, handleSidebarLogin, isAuthenticated, location.pathname, t],
   );
 
   useEffect(() => {
@@ -514,12 +541,18 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             <nav className="chatkit-sidebar__nav" aria-label={t("app.sidebar.menu")}>
               <ul className="chatkit-sidebar__list">
                 {navigationItems.map((item) => (
-                  <li key={item.key} className="chatkit-sidebar__item">
+                  <li
+                    key={item.key}
+                    className={`chatkit-sidebar__item${
+                      item.isActive ? " chatkit-sidebar__item--active" : ""
+                    }`}
+                  >
                     <button
                       type="button"
                       onClick={item.onClick}
                       tabIndex={sidebarTabIndex}
                       aria-label={item.label}
+                      aria-current={item.isActive ? "page" : undefined}
                     >
                       <SidebarIcon name={item.icon} className="chatkit-sidebar__icon" />
                       <span className="chatkit-sidebar__label">{item.label}</span>
