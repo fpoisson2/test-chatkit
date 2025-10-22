@@ -1389,7 +1389,7 @@ const WorkflowBuilderPage = () => {
           if (nextVersionId != null) {
             await loadVersionDetail(workflowId, nextVersionId, {
               preserveViewport: shouldPreserveViewport,
-              background: shouldPreserveViewport && background,
+              background,
             });
           } else {
             if (!background) {
