@@ -2498,7 +2498,7 @@ const WorkflowBuilderPage = () => {
 
   const handleAddConditionNode = useCallback(() => {
     const slug = `condition-${Date.now()}`;
-    const parameters: AgentParameters = { path: "has_all_details", mode: "truthy" };
+    const parameters: AgentParameters = {};
     const newNode: FlowNode = {
       id: slug,
       position: { x: 400, y: 260 },
@@ -2522,12 +2522,7 @@ const WorkflowBuilderPage = () => {
 
   const handleAddStateNode = useCallback(() => {
     const slug = `state-${Date.now()}`;
-    const parameters: AgentParameters = {
-      state: [
-        { target: "state.has_all_details", expression: "input.output_parsed.has_all_details" },
-        { target: "state.infos_manquantes", expression: "input.output_text" },
-      ],
-    };
+    const parameters: AgentParameters = {};
     const newNode: FlowNode = {
       id: slug,
       position: { x: 360, y: 220 },
