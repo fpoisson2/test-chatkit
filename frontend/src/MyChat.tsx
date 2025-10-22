@@ -40,28 +40,46 @@ type WeatherToolCall = {
 
 type ClientToolCall = WeatherToolCall;
 
+type ResetChatStateOptions = {
+  workflowSlug?: string | null;
+  preserveStoredThread?: boolean;
+};
+
 export function MyChat() {
   const { token, user } = useAuth();
   const { openSidebar } = useAppLayout();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
-  const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
-    loadStoredThreadId(sessionOwner),
-  );
   const [activeWorkflow, setActiveWorkflow] = useState<WorkflowSummary | null>(null);
+  const activeWorkflowSlug = activeWorkflow?.slug ?? null;
+  const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
+    loadStoredThreadId(sessionOwner, activeWorkflowSlug),
+  );
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
-  const resetChatState = useCallback(() => {
-    clearStoredChatKitSecret(sessionOwner);
-    clearStoredThreadId(sessionOwner);
-    lastThreadSnapshotRef.current = null;
-    setInitialThreadId(null);
-    setChatInstanceKey((value) => value + 1);
-  }, [sessionOwner]);
+  const resetChatState = useCallback(
+    ({ workflowSlug, preserveStoredThread = false }: ResetChatStateOptions = {}) => {
+      clearStoredChatKitSecret(sessionOwner);
+
+      const resolvedWorkflowSlug = workflowSlug ?? activeWorkflowSlug;
+      if (!preserveStoredThread) {
+        clearStoredThreadId(sessionOwner, resolvedWorkflowSlug);
+      }
+
+      lastThreadSnapshotRef.current = null;
+
+      const nextInitialThreadId = preserveStoredThread
+        ? loadStoredThreadId(sessionOwner, resolvedWorkflowSlug)
+        : null;
+      setInitialThreadId(nextInitialThreadId);
+      setChatInstanceKey((value) => value + 1);
+    },
+    [activeWorkflowSlug, sessionOwner],
+  );
 
   const { hostedFlowEnabled, disableHostedFlow } = useHostedFlow({
     onDisable: resetChatState,
@@ -88,7 +106,7 @@ export function MyChat() {
         const nextId = workflow?.id ?? null;
 
         if (reason === "user" && currentId !== nextId) {
-          resetChatState();
+          resetChatState({ workflowSlug: workflow?.slug, preserveStoredThread: true });
           resetError();
         }
 
@@ -102,13 +120,13 @@ export function MyChat() {
     const previousOwner = previousSessionOwnerRef.current;
     if (previousOwner && previousOwner !== sessionOwner) {
       clearStoredChatKitSecret(previousOwner);
-      clearStoredThreadId(previousOwner);
+      clearStoredThreadId(previousOwner, activeWorkflowSlug);
     }
     previousSessionOwnerRef.current = sessionOwner;
 
-    const storedThreadId = loadStoredThreadId(sessionOwner);
+    const storedThreadId = loadStoredThreadId(sessionOwner, activeWorkflowSlug);
     setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
-  }, [sessionOwner]);
+  }, [activeWorkflowSlug, sessionOwner]);
 
   
 
@@ -474,7 +492,7 @@ export function MyChat() {
         },
         onThreadChange: ({ threadId }: { threadId: string | null }) => {
           console.debug("[ChatKit] thread change", { threadId });
-          persistStoredThreadId(sessionOwner, threadId);
+          persistStoredThreadId(sessionOwner, threadId, activeWorkflowSlug);
           setInitialThreadId((current) => (current === threadId ? current : threadId));
         },
         onThreadLoadStart: ({ threadId }: { threadId: string }) => {
@@ -500,6 +518,7 @@ export function MyChat() {
       openSidebar,
       sessionOwner,
       activeWorkflow?.id,
+      activeWorkflowSlug,
       chatInstanceKey,
       preferredColorScheme,
       reportError,

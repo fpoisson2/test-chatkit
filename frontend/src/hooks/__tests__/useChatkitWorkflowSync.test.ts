@@ -85,6 +85,32 @@ describe("useChatkitWorkflowSync", () => {
     expect(reportError).not.toHaveBeenCalled();
   });
 
+  it("n'envoie pas de démarrage automatique lorsqu'un fil est stocké", async () => {
+    getWorkflowMock.mockResolvedValue({ auto_start: true, auto_start_user_message: "" });
+
+    const fetchUpdates = vi.fn().mockResolvedValue(undefined);
+    const sendUserMessage = vi.fn().mockResolvedValue(undefined);
+    const reportError = vi.fn();
+
+    renderHook(() =>
+      useChatkitWorkflowSync({
+        token: "token",
+        activeWorkflow: null,
+        fetchUpdates,
+        sendUserMessage,
+        initialThreadId: "thread-existant",
+        reportError,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(getWorkflowMock).toHaveBeenCalled();
+    });
+
+    expect(sendUserMessage).not.toHaveBeenCalled();
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
   it("expose une fonction de rafraîchissement réutilisable", async () => {
     getWorkflowMock.mockResolvedValue({ auto_start: false });
 
