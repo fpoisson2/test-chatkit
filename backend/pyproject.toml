@@ -7,7 +7,7 @@ dependencies = [
     "agents",
     "fastapi",
     "openai",
-    "openai-chatkit",
+    "openai-chatkit @ file:../chatkit-python",
     "uvicorn[standard]",
     "python-dotenv",
     "httpx",
@@ -25,18 +25,6 @@ dev = [
     "mypy>=1.10.0",
     "ruff>=0.4.0",
 ]
-
-[tool.uv]
-package = false
-dev-dependencies = [
-    "black>=24.4.0",
-    "isort>=5.13.0",
-    "mypy>=1.10.0",
-    "ruff>=0.4.0",
-]
-
-[tool.uv.sources]
-openai-chatkit = { path = "../chatkit-python" }
 
 [tool.black]
 line-length = 88

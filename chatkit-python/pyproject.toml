@@ -6,14 +6,26 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["pydantic", "uvicorn", "openai", "openai-agents>=0.3.2"]
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
-  "pytest", "pytest-asyncio", "debugpy", "fastapi", "python-multipart", "psycopg2-binary", "flask", "pyright",
-  "mypy", "ruff==0.9.2",
-  "mkdocs", "mkdocs-material", "mkdocstrings[python]", "mkdocs-gen-files"
+  "pytest",
+  "pytest-asyncio",
+  "debugpy",
+  "fastapi",
+  "python-multipart",
+  "psycopg2-binary",
+  "flask",
+  "pyright",
+  "mypy",
+  "ruff==0.9.2",
+  "mkdocs",
+  "mkdocs-material",
+  "mkdocstrings[python]",
+  "mkdocs-gen-files",
+  "build",
 ]
 lint = [
-  "ruff"
+  "ruff==0.9.2"
 ]
 
 [tool.ruff]
