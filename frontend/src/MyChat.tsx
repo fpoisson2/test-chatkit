@@ -45,6 +45,61 @@ type ResetChatStateOptions = {
   preserveStoredThread?: boolean;
 };
 
+type DirectUploadUrlNormalizationResult =
+  | { kind: "ok"; url: string; wasUpgraded: boolean }
+  | { kind: "error"; message: string };
+
+const ensureSecureDirectUploadUrl = (rawUrl: string): DirectUploadUrlNormalizationResult => {
+  const trimmed = rawUrl.trim();
+
+  if (!trimmed) {
+    return {
+      kind: "error",
+      message:
+        "[ChatKit] URL de téléchargement directe vide détectée. Les pièces jointes restent désactivées.",
+    };
+  }
+
+  if (typeof window === "undefined") {
+    return { kind: "ok", url: trimmed, wasUpgraded: false };
+  }
+
+  const isProtocolRelative = trimmed.startsWith("//");
+  const isAbsolute = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(trimmed) || isProtocolRelative;
+
+  if (!isAbsolute) {
+    return { kind: "ok", url: trimmed, wasUpgraded: false };
+  }
+
+  let parsed: URL;
+
+  try {
+    parsed = new URL(isProtocolRelative ? `${window.location.protocol}${trimmed}` : trimmed);
+  } catch (error) {
+    return {
+      kind: "error",
+      message: `[ChatKit] URL de téléchargement directe invalide détectée (${trimmed}). Les pièces jointes restent désactivées.`,
+    };
+  }
+
+  const { protocol: pageProtocol, hostname: pageHostname } = window.location;
+
+  if (pageProtocol === "https:" && parsed.protocol === "http:") {
+    if (parsed.hostname === pageHostname) {
+      parsed.protocol = "https:";
+      return { kind: "ok", url: parsed.toString(), wasUpgraded: true };
+    }
+
+    return {
+      kind: "error",
+      message:
+        `[ChatKit] URL de téléchargement directe non sécurisée (${trimmed}) détectée en contexte HTTPS. Utilisez une URL HTTPS ou relative pour activer les pièces jointes.`,
+    };
+  }
+
+  return { kind: "ok", url: parsed.toString(), wasUpgraded: false };
+};
+
 export function MyChat() {
   const { token, user } = useAuth();
   const { openSidebar } = useAppLayout();
@@ -211,8 +266,20 @@ export function MyChat() {
     } else if (normalizedStrategy === "direct") {
       const directUploadUrl = import.meta.env.VITE_CHATKIT_DIRECT_UPLOAD_URL?.trim();
       if (directUploadUrl) {
-        uploadStrategy = { type: "direct", uploadUrl: directUploadUrl };
-        attachmentsAreEnabled = true;
+        const normalizedDirectUpload = ensureSecureDirectUploadUrl(directUploadUrl);
+
+        if (normalizedDirectUpload.kind === "ok") {
+          if (normalizedDirectUpload.wasUpgraded) {
+            console.info(
+              "[ChatKit] URL de téléchargement directe mise à niveau vers HTTPS pour éviter le contenu mixte.",
+            );
+          }
+
+          uploadStrategy = { type: "direct", uploadUrl: normalizedDirectUpload.url };
+          attachmentsAreEnabled = true;
+        } else {
+          console.warn(normalizedDirectUpload.message);
+        }
       } else {
         console.warn(
           "[ChatKit] VITE_CHATKIT_UPLOAD_STRATEGY=direct nécessite VITE_CHATKIT_DIRECT_UPLOAD_URL. Les pièces jointes restent désactivées.",
