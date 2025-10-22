@@ -45,18 +45,17 @@ type ResetChatStateOptions = {
   preserveStoredThread?: boolean;
 };
 
-type DirectUploadUrlNormalizationResult =
+type SecureUrlNormalizationResult =
   | { kind: "ok"; url: string; wasUpgraded: boolean }
   | { kind: "error"; message: string };
 
-const ensureSecureDirectUploadUrl = (rawUrl: string): DirectUploadUrlNormalizationResult => {
+const ensureSecureUrl = (rawUrl: string): SecureUrlNormalizationResult => {
   const trimmed = rawUrl.trim();
 
   if (!trimmed) {
     return {
       kind: "error",
-      message:
-        "[ChatKit] URL de téléchargement directe vide détectée. Les pièces jointes restent désactivées.",
+      message: "[ChatKit] URL vide détectée.",
     };
   }
 
@@ -78,7 +77,7 @@ const ensureSecureDirectUploadUrl = (rawUrl: string): DirectUploadUrlNormalizati
   } catch (error) {
     return {
       kind: "error",
-      message: `[ChatKit] URL de téléchargement directe invalide détectée (${trimmed}). Les pièces jointes restent désactivées.`,
+      message: `[ChatKit] URL invalide détectée (${trimmed}).`,
     };
   }
 
@@ -93,7 +92,7 @@ const ensureSecureDirectUploadUrl = (rawUrl: string): DirectUploadUrlNormalizati
     return {
       kind: "error",
       message:
-        `[ChatKit] URL de téléchargement directe non sécurisée (${trimmed}) détectée en contexte HTTPS. Utilisez une URL HTTPS ou relative pour activer les pièces jointes.`,
+        `[ChatKit] URL non sécurisée (${trimmed}) détectée en contexte HTTPS. Utilisez HTTPS ou une URL relative pour éviter le contenu mixte.`,
     };
   }
 
@@ -266,7 +265,7 @@ export function MyChat() {
     } else if (normalizedStrategy === "direct") {
       const directUploadUrl = import.meta.env.VITE_CHATKIT_DIRECT_UPLOAD_URL?.trim();
       if (directUploadUrl) {
-        const normalizedDirectUpload = ensureSecureDirectUploadUrl(directUploadUrl);
+        const normalizedDirectUpload = ensureSecureUrl(directUploadUrl);
 
         if (normalizedDirectUpload.kind === "ok") {
           if (normalizedDirectUpload.wasUpgraded) {
@@ -278,7 +277,7 @@ export function MyChat() {
           uploadStrategy = { type: "direct", uploadUrl: normalizedDirectUpload.url };
           attachmentsAreEnabled = true;
         } else {
-          console.warn(normalizedDirectUpload.message);
+          console.warn(`${normalizedDirectUpload.message} Les pièces jointes restent désactivées.`);
         }
       } else {
         console.warn(
@@ -295,7 +294,7 @@ export function MyChat() {
       if (typeof resource === "string") {
         return resource;
       }
-      if (resource instanceof URL) {
+      if (typeof URL !== "undefined" && resource instanceof URL) {
         return resource.href;
       }
       if (resource && typeof resource === "object" && "url" in resource) {
@@ -303,6 +302,78 @@ export function MyChat() {
         return typeof url === "string" ? url : null;
       }
       return null;
+    };
+
+    const normalizeFetchResource = (
+      resource: Parameters<typeof fetch>[0],
+    ):
+      | {
+          kind: "ok";
+          resource: Parameters<typeof fetch>[0];
+          wasUpgraded: boolean;
+          originalUrl: string | null;
+          normalizedUrl: string | null;
+        }
+      | { kind: "error"; message: string } => {
+      const url = resolveResourceUrl(resource);
+      if (!url) {
+        return { kind: "ok", resource, wasUpgraded: false, originalUrl: null, normalizedUrl: null };
+      }
+
+      const normalized = ensureSecureUrl(url);
+
+      if (normalized.kind === "error") {
+        return normalized;
+      }
+
+      if (normalized.url === url) {
+        return {
+          kind: "ok",
+          resource,
+          wasUpgraded: normalized.wasUpgraded,
+          originalUrl: url,
+          normalizedUrl: normalized.url,
+        };
+      }
+
+      if (typeof resource === "string") {
+        return {
+          kind: "ok",
+          resource: normalized.url,
+          wasUpgraded: normalized.wasUpgraded,
+          originalUrl: url,
+          normalizedUrl: normalized.url,
+        };
+      }
+
+      if (typeof URL !== "undefined" && resource instanceof URL) {
+        return {
+          kind: "ok",
+          resource: normalized.url,
+          wasUpgraded: normalized.wasUpgraded,
+          originalUrl: url,
+          normalizedUrl: normalized.url,
+        };
+      }
+
+      if (typeof Request !== "undefined" && resource instanceof Request) {
+        const clonedRequest = new Request(normalized.url, resource);
+        return {
+          kind: "ok",
+          resource: clonedRequest,
+          wasUpgraded: normalized.wasUpgraded,
+          originalUrl: url,
+          normalizedUrl: normalized.url,
+        };
+      }
+
+      return {
+        kind: "ok",
+        resource: normalized.url,
+        wasUpgraded: normalized.wasUpgraded,
+        originalUrl: url,
+        normalizedUrl: normalized.url,
+      };
     };
 
     const buildServerErrorMessage = (
@@ -331,9 +402,36 @@ export function MyChat() {
         headers.set("Authorization", `Bearer ${token}`);
       }
 
-      const targetUrl = resolveResourceUrl(resource);
+      const normalizedResource = normalizeFetchResource(resource);
+
+      if (normalizedResource.kind === "error") {
+        const message = `${normalizedResource.message} Cette requête a été bloquée pour éviter le contenu mixte.`;
+        console.warn(message);
+        throw new Error(message);
+      }
+
+      const {
+        resource: safeResource,
+        wasUpgraded,
+        originalUrl,
+        normalizedUrl,
+      } = normalizedResource;
+
+      const targetUrl = normalizedUrl ?? resolveResourceUrl(safeResource);
       const isDomainVerificationRequest =
         typeof targetUrl === "string" && targetUrl.includes("/domain_keys/verify");
+
+      if (
+        wasUpgraded &&
+        originalUrl &&
+        normalizedUrl &&
+        originalUrl !== normalizedUrl
+      ) {
+        console.info(
+          "[ChatKit] URL HTTP mise à niveau vers HTTPS pour éviter le contenu mixte.",
+          { initialUrl: originalUrl, upgradedUrl: normalizedUrl },
+        );
+      }
 
       if (shouldBypassDomainCheck && targetUrl?.includes("/domain_keys/verify")) {
         console.info("[ChatKit] Vérification de domaine ignorée (mode développement).");
@@ -347,7 +445,7 @@ export function MyChat() {
       }
 
       try {
-        const response = await fetch(resource, {
+        const response = await fetch(safeResource, {
           ...init,
           headers,
         });
