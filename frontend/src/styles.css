@@ -1996,6 +1996,16 @@ button {
   line-height: 1.5;
 }
 
+.settings-preferences__field {
+  max-width: 320px;
+}
+
+.settings-preferences__hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
 .settings-modal__actions {
   display: flex;
   flex-wrap: wrap;

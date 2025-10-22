@@ -24,7 +24,6 @@ import {
 } from "../features/settings/sections";
 import { useAdminUsers } from "../features/settings/useAdminUsers";
 import { useI18n } from "../i18n";
-import { LanguageSwitcher } from "./LanguageSwitcher";
 
 type NavigationItem = {
   key: string;
@@ -117,7 +116,7 @@ const useSidebarInteractions = ({
 type AppLayoutContextValue = {
   openSidebar: () => void;
   closeSidebar: () => void;
-  openSettings: () => void;
+  openSettings: (sectionId?: SettingsSectionId) => void;
   isDesktopLayout: boolean;
   isSidebarOpen: boolean;
 };
@@ -188,9 +187,15 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const settingsSections = useMemo(() => buildSettingsSections(t), [t]);
 
   useEffect(() => {
-    if (isSettingsModalOpen) {
-      setActiveSettingsSection(settingsSections[0]?.id ?? DEFAULT_SETTINGS_SECTION_ID);
+    if (!isSettingsModalOpen) {
+      return;
     }
+
+    const firstSectionId = settingsSections[0]?.id ?? DEFAULT_SETTINGS_SECTION_ID;
+    setActiveSettingsSection((current) => {
+      const isValid = settingsSections.some((section) => section.id === current);
+      return isValid ? current : firstSectionId;
+    });
   }, [isSettingsModalOpen, settingsSections]);
 
   const openSidebar = useCallback(() => {
@@ -262,14 +267,21 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     [availableApplications, closeSidebar, isDesktopLayout, navigate],
   );
 
-  const handleOpenSettings = useCallback(() => {
-    if (!user) {
-      navigate("/login");
-      return;
-    }
+  const handleOpenSettings = useCallback(
+    (sectionId?: SettingsSectionId) => {
+      if (!user) {
+        navigate("/login");
+        return;
+      }
 
-    setIsSettingsModalOpen(true);
-  }, [navigate, user]);
+      if (sectionId) {
+        setActiveSettingsSection(sectionId);
+      }
+
+      setIsSettingsModalOpen(true);
+    },
+    [navigate, setActiveSettingsSection, user],
+  );
 
   const handleSidebarLogin = useCallback(() => {
     if (!isDesktopLayout) {
@@ -294,6 +306,16 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
     navigate("/admin");
   }, [closeSidebar, isDesktopLayout, navigate]);
+
+  const handleProfileOpenSettings = useCallback(() => {
+    setIsProfileMenuOpen(false);
+
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
+
+    handleOpenSettings("preferences");
+  }, [closeSidebar, handleOpenSettings, isDesktopLayout]);
 
   const navigationItems = useMemo(
     () =>
@@ -492,7 +514,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                 </div>
               </div>
               <div className="chatkit-sidebar__actions">
-                <LanguageSwitcher tabIndex={sidebarTabIndex} />
                 {isSidebarOpen ? (
                   <button
                     type="button"
@@ -561,6 +582,16 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                     role="menu"
                     aria-hidden={!isProfileMenuOpen}
                   >
+                    <button
+                      type="button"
+                      className="chatkit-sidebar__profile-action"
+                      role="menuitem"
+                      onClick={handleProfileOpenSettings}
+                      tabIndex={isProfileMenuOpen ? 0 : -1}
+                    >
+                      <SidebarIcon name="settings" className="chatkit-sidebar__icon" />
+                      <span>{t("app.sidebar.profile.settings")}</span>
+                    </button>
                     {user.is_admin && (
                       <button
                         type="button"

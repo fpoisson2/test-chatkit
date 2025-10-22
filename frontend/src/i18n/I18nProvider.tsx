@@ -23,16 +23,21 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 
 const LANGUAGE_STORAGE_KEY = "chatkit.language";
 
-const normalizeLanguage = (value: string | null | undefined): Language => {
+const resolveLanguage = (value: string | null | undefined): Language | null => {
   if (!value) {
-    return "en";
+    return null;
   }
 
   const normalized = value.toLowerCase();
   if (normalized.startsWith("fr")) {
     return "fr";
   }
-  return "en";
+
+  if (normalized.startsWith("en")) {
+    return "en";
+  }
+
+  return null;
 };
 
 const detectInitialLanguage = (): Language => {
@@ -42,17 +47,26 @@ const detectInitialLanguage = (): Language => {
 
   try {
     const stored = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    if (stored) {
-      return normalizeLanguage(stored);
+    const storedLanguage = resolveLanguage(stored);
+    if (storedLanguage) {
+      return storedLanguage;
     }
   } catch (error) {
     console.warn("Unable to access language preference storage", error);
   }
 
   if (typeof navigator !== "undefined") {
-    const [primary] = navigator.languages ?? [navigator.language];
-    if (primary) {
-      return normalizeLanguage(primary);
+    const candidates = navigator.languages?.length
+      ? navigator.languages
+      : navigator.language
+        ? [navigator.language]
+        : [];
+
+    for (const candidate of candidates) {
+      const resolved = resolveLanguage(candidate);
+      if (resolved) {
+        return resolved;
+      }
     }
   }
 

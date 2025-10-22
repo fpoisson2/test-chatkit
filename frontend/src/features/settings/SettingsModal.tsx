@@ -1,6 +1,7 @@
 import type { AuthUser } from "../../auth";
 import type { SettingsSection, SettingsSectionId } from "./sections";
 import type { UseAdminUsersResult } from "./useAdminUsers";
+import { SettingsPreferencesSection } from "./SettingsPreferencesSection";
 import { SettingsUsersSection } from "./SettingsUsersSection";
 import { useI18n } from "../../i18n";
 
@@ -83,7 +84,10 @@ export function SettingsModal({
             </ul>
           </nav>
           <div className="settings-modal__main">
-            {activeSection ? (
+            {activeSection?.id === "preferences" ? (
+              <SettingsPreferencesSection key={activeSection.id} activeSection={activeSection} />
+            ) : null}
+            {activeSection?.id === "users" ? (
               <SettingsUsersSection
                 key={activeSection.id}
                 activeSection={activeSection}

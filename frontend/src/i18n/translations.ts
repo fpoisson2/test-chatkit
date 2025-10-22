@@ -29,6 +29,7 @@ const fr: TranslationDictionary = {
   "app.sidebar.profile.role.admin": "Administrateur",
   "app.sidebar.profile.role.user": "Utilisateur",
   "app.sidebar.profile.admin": "Administration",
+  "app.sidebar.profile.settings": "Paramètres",
   "app.sidebar.profile.logout": "Déconnexion",
   "auth.login.title": "Connexion",
   "auth.login.subtitle":
@@ -53,8 +54,17 @@ const fr: TranslationDictionary = {
   "settings.modal.subtitle": "Accédez rapidement aux sections clés de votre espace.",
   "settings.modal.close": "Fermer les paramètres",
   "settings.modal.navLabel": "Sections des paramètres",
+  "settings.sections.preferences.label": "Préférences",
+  "settings.sections.preferences.description":
+    "Personnalisez votre expérience d'utilisation de ChatKit.",
   "settings.sections.users.label": "Gestion des utilisateurs",
   "settings.sections.users.description": "Organisez les comptes membres et attribuez les bons niveaux d'accès.",
+  "settings.preferences.language.title": "Langue de l'interface",
+  "settings.preferences.language.description":
+    "Choisissez la langue affichée pour l'application et ses menus.",
+  "settings.preferences.language.label": "Langue préférée",
+  "settings.preferences.language.hint":
+    "ChatKit détecte automatiquement la langue de votre navigateur lors de votre première connexion.",
   "settings.users.accessRestricted.title": "Administration",
   "settings.users.accessRestricted.description":
     "Vous n'avez pas les droits nécessaires pour consulter la gestion des utilisateurs. Contactez un administrateur pour obtenir un accès étendu.",
@@ -187,6 +197,7 @@ const en: TranslationDictionary = {
   "app.sidebar.profile.role.admin": "Administrator",
   "app.sidebar.profile.role.user": "User",
   "app.sidebar.profile.admin": "Administration",
+  "app.sidebar.profile.settings": "Settings",
   "app.sidebar.profile.logout": "Sign out",
   "auth.login.title": "Sign in",
   "auth.login.subtitle": "Access the admin console to manage users and ChatKit sessions.",
@@ -210,8 +221,16 @@ const en: TranslationDictionary = {
   "settings.modal.subtitle": "Jump straight to the key areas of your workspace.",
   "settings.modal.close": "Close settings",
   "settings.modal.navLabel": "Settings sections",
+  "settings.sections.preferences.label": "Preferences",
+  "settings.sections.preferences.description": "Tailor the ChatKit experience to your needs.",
   "settings.sections.users.label": "User management",
   "settings.sections.users.description": "Organise member accounts and assign the right access levels.",
+  "settings.preferences.language.title": "Interface language",
+  "settings.preferences.language.description":
+    "Choose which language is used throughout the application.",
+  "settings.preferences.language.label": "Preferred language",
+  "settings.preferences.language.hint":
+    "ChatKit automatically detects your browser language the first time you sign in.",
   "settings.users.accessRestricted.title": "Administration",
   "settings.users.accessRestricted.description":
     "You don't have the permissions required to view user management. Contact an administrator for elevated access.",
