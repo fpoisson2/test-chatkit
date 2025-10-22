@@ -1,5 +1,7 @@
 import type { CSSProperties } from "react";
 
+import { useI18n } from "../../../i18n";
+
 import type { FlowEdge } from "../types";
 
 export type EdgeInspectorProps = {
@@ -9,53 +11,58 @@ export type EdgeInspectorProps = {
   onRemove: (edgeId: string) => void;
 };
 
-const EdgeInspector = ({ edge, onConditionChange, onLabelChange, onRemove }: EdgeInspectorProps) => (
-  <section aria-label="Propriétés de l'arête sélectionnée">
-    <div style={inspectorHeaderStyle}>
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
-        <span style={inspectorTitleStyle}>Connexion sélectionnée</span>
-        <span style={inspectorSubtitleStyle}>
-          {edge.source} → {edge.target}
-        </span>
+const EdgeInspector = ({ edge, onConditionChange, onLabelChange, onRemove }: EdgeInspectorProps) => {
+  const { t } = useI18n();
+  return (
+    <section aria-label={t("Propriétés de l'arête sélectionnée")}>
+      <div style={inspectorHeaderStyle}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+          <span style={inspectorTitleStyle}>{t("Connexion sélectionnée")}</span>
+          <span style={inspectorSubtitleStyle}>
+            {edge.source} → {edge.target}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => onRemove(edge.id)}
+          style={deleteButtonStyle}
+          aria-label={t("Supprimer cette connexion")}
+          title={t("Supprimer cette connexion")}
+        >
+          <TrashIcon />
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={() => onRemove(edge.id)}
-        style={deleteButtonStyle}
-        aria-label="Supprimer cette connexion"
-        title="Supprimer cette connexion"
-      >
-        <TrashIcon />
-      </button>
-    </div>
-    <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 0.75rem" }}>
-      <dt>Depuis</dt>
-      <dd>{edge.source}</dd>
-      <dt>Vers</dt>
-      <dd>{edge.target}</dd>
-    </dl>
-    <label style={fieldStyle}>
-      <span>Branche conditionnelle</span>
-      <input
-        type="text"
-        value={edge.data?.condition ?? ""}
-        onChange={(event) => onConditionChange(edge.id, event.target.value)}
-        placeholder="Laisser vide pour la branche par défaut"
-      />
-    </label>
-    <p style={{ color: "#475569", margin: "0.35rem 0 0" }}>
-      Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.
-    </p>
-    <label style={fieldStyle}>
-      <span>Libellé affiché</span>
-      <input
-        type="text"
-        value={edge.label ?? ""}
-        onChange={(event) => onLabelChange(edge.id, event.target.value)}
-      />
-    </label>
-  </section>
-);
+      <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.25rem 0.75rem" }}>
+        <dt>{t("Depuis")}</dt>
+        <dd>{edge.source}</dd>
+        <dt>{t("Vers")}</dt>
+        <dd>{edge.target}</dd>
+      </dl>
+      <label style={fieldStyle}>
+        <span>{t("Branche conditionnelle")}</span>
+        <input
+          type="text"
+          value={edge.data?.condition ?? ""}
+          onChange={(event) => onConditionChange(edge.id, event.target.value)}
+          placeholder={t("Laisser vide pour la branche par défaut")}
+        />
+      </label>
+      <p style={{ color: "#475569", margin: "0.35rem 0 0" }}>
+        {t(
+          "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.",
+        )}
+      </p>
+      <label style={fieldStyle}>
+        <span>{t("Libellé affiché")}</span>
+        <input
+          type="text"
+          value={edge.label ?? ""}
+          onChange={(event) => onLabelChange(edge.id, event.target.value)}
+        />
+      </label>
+    </section>
+  );
+};
 
 const fieldStyle: CSSProperties = {
   display: "flex",

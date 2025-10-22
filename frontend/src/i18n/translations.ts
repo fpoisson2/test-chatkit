@@ -108,6 +108,16 @@ const fr: TranslationDictionary = {
   "admin.users.error.updateUser": "Impossible de mettre à jour l'utilisateur",
   "admin.users.error.deleteUser": "Impossible de supprimer l'utilisateur",
   "admin.users.error.updatePassword": "Impossible de mettre à jour le mot de passe",
+  "Propriétés de l'arête sélectionnée": "Propriétés de l'arête sélectionnée",
+  "Connexion sélectionnée": "Connexion sélectionnée",
+  "Supprimer cette connexion": "Supprimer cette connexion",
+  "Depuis": "Depuis",
+  "Vers": "Vers",
+  "Branche conditionnelle": "Branche conditionnelle",
+  "Laisser vide pour la branche par défaut": "Laisser vide pour la branche par défaut",
+  "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.":
+    "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.",
+  "Libellé affiché": "Libellé affiché",
 };
 
 const en: TranslationDictionary = {
@@ -206,6 +216,16 @@ const en: TranslationDictionary = {
   "admin.users.error.updateUser": "Unable to update the user",
   "admin.users.error.deleteUser": "Unable to delete the user",
   "admin.users.error.updatePassword": "Unable to update the password",
+  "Propriétés de l'arête sélectionnée": "Selected edge properties",
+  "Connexion sélectionnée": "Selected connection",
+  "Supprimer cette connexion": "Delete this connection",
+  "Depuis": "From",
+  "Vers": "To",
+  "Branche conditionnelle": "Conditional branch",
+  "Laisser vide pour la branche par défaut": "Leave blank for the default branch",
+  "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.":
+    "Give the branch a unique name (e.g. approve, reject). Leave it blank to set the default branch.",
+  "Libellé affiché": "Display label",
 };
 
 export const translations: Translations = {
