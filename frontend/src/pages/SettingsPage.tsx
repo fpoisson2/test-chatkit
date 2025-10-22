@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
-import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import {
   DEFAULT_SETTINGS_SECTION_ID,
@@ -9,13 +8,9 @@ import {
   type SettingsSectionId,
 } from "../features/settings/sections";
 import { SettingsPreferencesSection } from "../features/settings/SettingsPreferencesSection";
-import { SettingsUsersSection } from "../features/settings/SettingsUsersSection";
-import { useAdminUsers } from "../features/settings/useAdminUsers";
 
 export function SettingsPage() {
   const { t } = useI18n();
-  const { user, token, logout } = useAuth();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const sections = useMemo(() => buildSettingsSections(t), [t]);
@@ -48,30 +43,6 @@ export function SettingsPage() {
 
   const activeSection =
     sections.find((section) => section.id === activeSectionId) ?? sections[0] ?? null;
-
-  const shouldLoadAdminUsers = Boolean(user?.is_admin) && activeSectionId === "users";
-
-  const handleUnauthorized = useCallback(() => {
-    logout();
-  }, [logout]);
-
-  const adminUsers = useAdminUsers({
-    token,
-    isEnabled: shouldLoadAdminUsers,
-    onUnauthorized: handleUnauthorized,
-  });
-
-  const handleGoHome = useCallback(() => {
-    navigate("/");
-  }, [navigate]);
-
-  const handleLogout = useCallback(() => {
-    logout();
-  }, [logout]);
-
-  const handleOpenWorkflows = useCallback(() => {
-    navigate("/workflows");
-  }, [navigate]);
 
   return (
     <div className="settings-page">
@@ -107,18 +78,6 @@ export function SettingsPage() {
         <div className="settings-page__main">
           {activeSection?.id === "preferences" ? (
             <SettingsPreferencesSection key={activeSection.id} activeSection={activeSection} />
-          ) : null}
-          {activeSection?.id === "users" ? (
-            <SettingsUsersSection
-              key={activeSection.id}
-              activeSection={activeSection}
-              currentUser={user}
-              onGoHome={handleGoHome}
-              onLogout={handleLogout}
-              onOpenWorkflows={handleOpenWorkflows}
-              state={adminUsers.state}
-              actions={adminUsers.actions}
-            />
           ) : null}
         </div>
       </div>

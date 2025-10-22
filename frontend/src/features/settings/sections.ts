@@ -1,4 +1,4 @@
-export type SettingsSectionId = "preferences" | "users";
+export type SettingsSectionId = "preferences";
 
 export type SettingsSectionDefinition = {
   id: SettingsSectionId;
@@ -17,11 +17,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     id: "preferences",
     labelKey: "settings.sections.preferences.label",
     descriptionKey: "settings.sections.preferences.description",
-  },
-  {
-    id: "users",
-    labelKey: "settings.sections.users.label",
-    descriptionKey: "settings.sections.users.description",
   },
 ];
 
