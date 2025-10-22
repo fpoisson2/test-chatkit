@@ -31,6 +31,13 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from chatkit.store import NotFoundError  # noqa: E402
+from chatkit.types import (  # noqa: E402
+    InferenceOptions,
+    ThreadCreateParams,
+    ThreadsCreateReq,
+    UserMessageInput,
+    UserMessageTextContent,
+)
 
 routes_chatkit = import_module("backend.app.routes.chatkit")
 
@@ -399,8 +406,13 @@ def test_demo_server_handles_attachment_creation(
         saved: dict[str, Any] = {}
 
         class _InMemoryStore:
-            def __init__(self, _session_factory: Any) -> None:
+            def __init__(
+                self,
+                _session_factory: Any,
+                workflow_service: Any | None = None,
+            ) -> None:
                 self._attachments: dict[str, Any] = {}
+                self._workflow_service = workflow_service
 
             async def save_attachment(self, attachment, context):  # type: ignore[no-untyped-def]
                 saved["last_attachment"] = attachment
@@ -474,5 +486,108 @@ def test_demo_server_handles_attachment_creation(
         )
         assert saved["last_context"] == context
         assert saved["last_attachment"].name == "demo.txt"
+
+    asyncio.run(_run())
+
+
+def test_demo_server_injects_workflow_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _run() -> None:
+        app_chatkit = import_module("backend.app.chatkit")
+        server_module = import_module("backend.app.chatkit_server.server")
+        from backend.app.chatkit_server.context import ChatKitRequestContext
+
+        captured: dict[str, Any] = {}
+
+        class _StubStore:
+            def __init__(
+                self,
+                _session_factory: Any,
+                workflow_service: Any | None = None,
+            ) -> None:
+                captured["store"] = self
+                self._workflow_service = workflow_service
+                self.saved_threads: list[Any] = []
+
+            def generate_thread_id(self, context):  # type: ignore[no-untyped-def]
+                return "thread-generated"
+
+            async def save_thread(self, thread, context):  # type: ignore[no-untyped-def]
+                self.saved_threads.append(thread)
+
+        class _StubWorkflowService:
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                self.calls = 0
+
+            def get_current(self, *args: Any, **kwargs: Any) -> Any:
+                self.calls += 1
+                workflow = SimpleNamespace(id=42, slug="active-workflow")
+                return SimpleNamespace(id=84, workflow=workflow)
+
+        async def _noop_user_message(self, *args: Any, **kwargs: Any) -> Any:
+            return SimpleNamespace(id="message-1")
+
+        async def _empty_stream(self, *args: Any, **kwargs: Any):  # type: ignore[no-untyped-def]
+            if False:  # pragma: no cover - garde pour générateur async
+                yield None
+            return
+
+        monkeypatch.setattr(server_module, "PostgresChatKitStore", _StubStore)
+        monkeypatch.setattr(server_module, "WorkflowService", _StubWorkflowService)
+        monkeypatch.setattr(
+            server_module, "_get_thread_title_agent", lambda: SimpleNamespace()
+        )
+        monkeypatch.setattr(
+            server_module, "_get_run_workflow", lambda: (lambda *a, **k: None)
+        )
+        monkeypatch.setattr(app_chatkit, "_server", None, raising=False)
+
+        monkeypatch.setattr(
+            server_module.DemoChatKitServer,
+            "_build_user_message_item",
+            _noop_user_message,
+        )
+        monkeypatch.setattr(
+            server_module.DemoChatKitServer,
+            "_process_new_thread_item_respond",
+            _empty_stream,
+        )
+
+        server = app_chatkit.get_chatkit_server()
+
+        request = ThreadsCreateReq(
+            params=ThreadCreateParams(
+                input=UserMessageInput(
+                    content=[UserMessageTextContent(text="Bonjour")],
+                    attachments=[],
+                    inference_options=InferenceOptions(),
+                )
+            )
+        )
+
+        context = ChatKitRequestContext(
+            user_id="user-1",
+            email="demo@example.com",
+            authorization=None,
+            public_base_url="https://public.example",
+        )
+
+        events = []
+        async for event in server._process_streaming_impl(request, context):
+            events.append(event)
+
+        store = captured["store"]
+        saved_threads = store.saved_threads
+        assert len(saved_threads) == 1
+        workflow_metadata = saved_threads[0].metadata.get("workflow")
+        assert workflow_metadata == {
+            "id": 42,
+            "slug": "active-workflow",
+            "definition_id": 84,
+        }
+
+        workflow_service = server._workflow_service
+        assert workflow_service.calls >= 1
+
+        assert events and events[0].type == "thread.created"
 
     asyncio.run(_run())
