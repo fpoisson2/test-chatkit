@@ -447,10 +447,21 @@ const WorkflowBuilderPage = () => {
           ...savedViewport,
           zoom: Math.max(savedViewport.zoom, effectiveMinZoom),
         };
+
+        // Apply viewport multiple times to ensure it sticks
         flow.setViewport(targetViewport, { duration: 0 });
 
-        // Verify the viewport was actually applied
+        // Reapply after a short delay to override any automatic adjustments
         setTimeout(() => {
+          flow.setViewport(targetViewport, { duration: 0 });
+        }, 10);
+
+        setTimeout(() => {
+          flow.setViewport(targetViewport, { duration: 0 });
+        }, 50);
+
+        setTimeout(() => {
+          flow.setViewport(targetViewport, { duration: 0 });
           const actualViewport = flow.getViewport();
           console.log('VIEWPORT CHECK:', {
             target: targetViewport,
@@ -458,7 +469,7 @@ const WorkflowBuilderPage = () => {
             match: Math.abs(actualViewport.x - targetViewport.x) < 1 &&
                    Math.abs(actualViewport.y - targetViewport.y) < 1
           });
-        }, 50);
+        }, 100);
       }
 
       const appliedViewport = flow.getViewport();
