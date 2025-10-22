@@ -13,6 +13,7 @@ from ..schemas import (
     WorkflowCreateRequest,
     WorkflowDefinitionResponse,
     WorkflowDefinitionUpdate,
+    WorkflowImportRequest,
     WorkflowProductionUpdate,
     WorkflowSummaryResponse,
     WorkflowUpdateRequest,
@@ -134,6 +135,40 @@ async def update_workflow(
             status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
         ) from exc
     return WorkflowSummaryResponse.model_validate(serialize_workflow_summary(workflow))
+
+
+@router.post(
+    "/api/workflows/import",
+    response_model=WorkflowDefinitionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_workflow_definition(
+    payload: WorkflowImportRequest,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> WorkflowDefinitionResponse:
+    _ensure_admin(current_user)
+    service = WorkflowService()
+    try:
+        definition = service.import_workflow(
+            workflow_id=payload.workflow_id,
+            slug=payload.slug,
+            display_name=payload.display_name,
+            description=payload.description,
+            version_name=payload.version_name,
+            mark_as_active=bool(payload.mark_as_active),
+            graph_payload=payload.graph.model_dump(),
+            session=session,
+        )
+    except WorkflowNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
+        ) from exc
+    except WorkflowValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
+        ) from exc
+    return WorkflowDefinitionResponse.model_validate(serialize_definition(definition))
 
 
 @router.delete("/api/workflows/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT)
