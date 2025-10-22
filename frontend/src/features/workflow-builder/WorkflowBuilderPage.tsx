@@ -466,6 +466,16 @@ const WorkflowBuilderPage = () => {
               });
             }
           }
+          const activeKey = viewportKeyRef.current;
+          if (activeKey) {
+            const restoredViewport = viewportMemoryRef.current.get(activeKey) ?? null;
+            if (restoredViewport && !hasUserViewportChangeRef.current) {
+              viewportRef.current = { ...restoredViewport };
+              hasUserViewportChangeRef.current = true;
+              pendingViewportRestoreRef.current = true;
+              restoreViewport();
+            }
+          }
           return;
         } catch (error) {
           if (error instanceof Error && error.name === "AbortError") {
@@ -485,7 +495,7 @@ const WorkflowBuilderPage = () => {
       isActive = false;
       controller.abort();
     };
-  }, [authHeader, backendUrl, token]);
+  }, [authHeader, backendUrl, restoreViewport, token]);
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange<FlowEdgeData>[]) => {
@@ -857,17 +867,18 @@ const WorkflowBuilderPage = () => {
       const savedViewport = viewportRef.current;
 
       if (savedViewport) {
-        flow.setViewport(
-          { ...savedViewport, zoom: Math.max(savedViewport.zoom, effectiveMinZoom) },
-          { duration: 0 },
-        );
+        const targetViewport = {
+          ...savedViewport,
+          zoom: Math.max(savedViewport.zoom, effectiveMinZoom),
+        };
+        flow.setViewport(targetViewport, { duration: 0 });
       }
 
       const appliedViewport = flow.getViewport();
 
       viewportRef.current = appliedViewport;
       const key = viewportKeyRef.current;
-      if (key) {
+      if (key && savedViewport) {
         viewportMemoryRef.current.set(key, { ...appliedViewport });
         persistViewportMemory();
       }
