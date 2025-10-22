@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 
 import { useAuth } from "../auth";
+import { useI18n } from "../i18n";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import {
@@ -15,6 +16,7 @@ const sortModels = (models: AvailableModel[]): AvailableModel[] =>
 
 export const AdminModelsPage = () => {
   const { token, logout } = useAuth();
+  const { t } = useI18n();
   const [models, setModels] = useState<AvailableModel[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +68,7 @@ export const AdminModelsPage = () => {
     }
     const trimmedName = form.name.trim();
     if (!trimmedName) {
-      setError("Indiquez l'identifiant du modèle OpenAI.");
+      setError(t("admin.models.errors.missingModelId"));
       return;
     }
 
@@ -144,7 +146,7 @@ export const AdminModelsPage = () => {
             <form className="admin-form" onSubmit={handleSubmit}>
               <div className="admin-form__row">
                 <label className="label">
-                  Identifiant du modèle*
+                  {t("admin.models.form.modelIdLabel")}
                   <input
                     className="input"
                     type="text"
@@ -153,7 +155,7 @@ export const AdminModelsPage = () => {
                     onChange={(event) =>
                       setForm((prev) => ({ ...prev, name: event.target.value }))
                     }
-                    placeholder="Ex. gpt-4.1-mini"
+                    placeholder={t("admin.models.form.modelIdPlaceholder")}
                   />
                 </label>
                 <label className="label">

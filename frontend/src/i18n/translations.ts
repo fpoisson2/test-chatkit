@@ -32,6 +32,9 @@ const fr: TranslationDictionary = {
   "app.sidebar.profile.admin": "Administration",
   "app.sidebar.profile.settings": "Paramètres",
   "app.sidebar.profile.logout": "Déconnexion",
+  "admin.models.form.modelIdLabel": "Identifiant du modèle*",
+  "admin.models.form.modelIdPlaceholder": "Ex. gpt-4.1-mini",
+  "admin.models.errors.missingModelId": "Indiquez l'identifiant du modèle.",
   "auth.login.title": "Connexion",
   "auth.login.subtitle":
     "Accédez au panneau d'administration pour gérer les utilisateurs et vos sessions ChatKit.",
@@ -113,6 +116,17 @@ const fr: TranslationDictionary = {
     "Attribuez un nom unique (ex. approuve, rejeté). Laissez vide pour définir la branche par défaut.",
   "Libellé affiché": "Libellé affiché",
   "workflowBuilder.actions.importJson": "Importer un JSON",
+  "workflowBuilder.agentInspector.modelLabel": "Modèle disponible",
+  "workflowBuilder.agentInspector.modelHelp": "Choisissez un modèle disponible pour exécuter ce bloc.",
+  "workflowBuilder.agentInspector.modelPlaceholder": "Sélectionnez un modèle",
+  "workflowBuilder.agentInspector.reasoningSuffix": " – raisonnement",
+  "workflowBuilder.agentInspector.unlistedModelWarning":
+    "Ce bloc utilise actuellement un modèle non listé ({{model}}). Sélectionnez un modèle dans la liste ci-dessus.",
+  "workflowBuilder.agentInspector.modelsLoading": "Chargement des modèles disponibles…",
+  "workflowBuilder.agentInspector.imageToolToggleHelp":
+    "Ajoute l'outil image_generation pour produire des visuels. Actuellement, seule l'API Images d'OpenAI est prise en charge.",
+  "workflowBuilder.agentInspector.imageModelHelp":
+    "Sélectionnez un modèle d'image pris en charge. Actuellement, seules les variantes OpenAI sont disponibles.",
   "workflowBuilder.save.autoSaveSuccess": "Modifications enregistrées automatiquement.",
   "workflowBuilder.save.draftDisplayName": "Brouillon",
   "workflowBuilder.save.failure": "Impossible d'enregistrer le workflow.",
@@ -213,6 +227,9 @@ const en: TranslationDictionary = {
   "app.sidebar.profile.admin": "Administration",
   "app.sidebar.profile.settings": "Settings",
   "app.sidebar.profile.logout": "Sign out",
+  "admin.models.form.modelIdLabel": "Model identifier*",
+  "admin.models.form.modelIdPlaceholder": "e.g. gpt-4.1-mini",
+  "admin.models.errors.missingModelId": "Enter the model identifier.",
   "auth.login.title": "Sign in",
   "auth.login.subtitle": "Access the admin console to manage users and ChatKit sessions.",
   "auth.login.email.label": "Email address",
@@ -291,6 +308,17 @@ const en: TranslationDictionary = {
     "Give the branch a unique name (e.g. approve, reject). Leave it blank to set the default branch.",
   "Libellé affiché": "Display label",
   "workflowBuilder.actions.importJson": "Import JSON",
+  "workflowBuilder.agentInspector.modelLabel": "Available model",
+  "workflowBuilder.agentInspector.modelHelp": "Choose a model available for this block.",
+  "workflowBuilder.agentInspector.modelPlaceholder": "Select a model",
+  "workflowBuilder.agentInspector.reasoningSuffix": " – reasoning",
+  "workflowBuilder.agentInspector.unlistedModelWarning":
+    "This block currently uses an unlisted model ({{model}}). Pick a model from the list above.",
+  "workflowBuilder.agentInspector.modelsLoading": "Loading available models…",
+  "workflowBuilder.agentInspector.imageToolToggleHelp":
+    "Enables the image_generation tool to produce visuals. At the moment, only OpenAI's Images API is supported.",
+  "workflowBuilder.agentInspector.imageModelHelp":
+    "Select a supported image model. Currently only OpenAI variants are available.",
   "workflowBuilder.save.autoSaveSuccess": "Changes saved automatically.",
   "workflowBuilder.save.draftDisplayName": "Draft",
   "workflowBuilder.save.failure": "Unable to save the workflow.",
