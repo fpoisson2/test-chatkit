@@ -333,6 +333,8 @@ const WorkflowBuilderPage = () => {
   const viewportRef = useRef<Viewport | null>(null);
   const viewportMemoryRef = useRef(new Map<string, Viewport>());
   const viewportKeyRef = useRef<string | null>(null);
+  const isViewportMemoryDirtyRef = useRef(false);
+  const viewportMemoryVersionRef = useRef(0);
   const hasUserViewportChangeRef = useRef(false);
   const pendingViewportRestoreRef = useRef(false);
   const reactFlowWrapperRef = useRef<HTMLDivElement | null>(null);
@@ -348,8 +350,13 @@ const WorkflowBuilderPage = () => {
   );
   const [minViewportZoom, setMinViewportZoom] = useState(baseMinViewportZoom);
 
+  const markViewportMemoryDirty = useCallback(() => {
+    isViewportMemoryDirtyRef.current = true;
+    viewportMemoryVersionRef.current += 1;
+  }, []);
+
   const persistViewportMemory = useCallback(() => {
-    if (!token) {
+    if (!token || !isViewportMemoryDirtyRef.current) {
       return;
     }
     const payload = Array.from(viewportMemoryRef.current.entries()).reduce<
@@ -380,6 +387,7 @@ const WorkflowBuilderPage = () => {
       backendUrl,
       "/api/workflows/viewports",
     );
+    const expectedVersion = viewportMemoryVersionRef.current;
 
     void (async () => {
       let lastError: unknown = null;
@@ -397,6 +405,9 @@ const WorkflowBuilderPage = () => {
             throw new Error(
               `Échec de la sauvegarde du viewport (${response.status})`,
             );
+          }
+          if (viewportMemoryVersionRef.current === expectedVersion) {
+            isViewportMemoryDirtyRef.current = false;
           }
           return;
         } catch (error) {
@@ -456,7 +467,6 @@ const WorkflowBuilderPage = () => {
       const key = viewportKeyRef.current;
       if (key && savedViewport) {
         viewportMemoryRef.current.set(key, { ...appliedViewport });
-        persistViewportMemory();
       }
     };
 
@@ -468,10 +478,11 @@ const WorkflowBuilderPage = () => {
     requestAnimationFrame(() => {
       requestAnimationFrame(applyViewport);
     });
-  }, [persistViewportMemory, refreshViewportConstraints]);
+  }, [refreshViewportConstraints]);
 
   useEffect(() => {
     viewportMemoryRef.current.clear();
+    isViewportMemoryDirtyRef.current = false;
     if (!token) {
       return;
     }
@@ -1158,7 +1169,6 @@ const WorkflowBuilderPage = () => {
                 reactFlowInstanceRef.current?.getViewport() ?? viewportRef.current;
               if (currentViewport) {
                 viewportMemoryRef.current.set(viewportKey, { ...currentViewport });
-                persistViewportMemory();
                 viewportRef.current = { ...currentViewport };
               }
             }
@@ -1208,7 +1218,6 @@ const WorkflowBuilderPage = () => {
     [
       authHeader,
       applySelection,
-      persistViewportMemory,
       restoreViewport,
       setEdges,
       setHasPendingChanges,
@@ -1305,8 +1314,11 @@ const WorkflowBuilderPage = () => {
             const emptyViewportKey = viewportKeyFor(workflowId, null);
             viewportKeyRef.current = emptyViewportKey;
             if (emptyViewportKey) {
-              viewportMemoryRef.current.delete(emptyViewportKey);
-              persistViewportMemory();
+              const removed = viewportMemoryRef.current.delete(emptyViewportKey);
+              if (removed) {
+                markViewportMemoryDirty();
+                persistViewportMemory();
+              }
             }
             viewportRef.current = null;
             hasUserViewportChangeRef.current = false;
@@ -1368,6 +1380,7 @@ const WorkflowBuilderPage = () => {
       authHeader,
       draftDisplayName,
       loadVersionDetail,
+      markViewportMemoryDirty,
       persistViewportMemory,
       restoreViewport,
       selectedWorkflowId,
@@ -1415,8 +1428,12 @@ const WorkflowBuilderPage = () => {
             setLoading(false);
             viewportKeyRef.current = null;
             viewportRef.current = null;
+            const hadViewports = viewportMemoryRef.current.size > 0;
             viewportMemoryRef.current.clear();
-            persistViewportMemory();
+            if (hadViewports) {
+              markViewportMemoryDirty();
+              persistViewportMemory();
+            }
             hasUserViewportChangeRef.current = false;
             pendingViewportRestoreRef.current = true;
             restoreViewport();
@@ -1471,6 +1488,7 @@ const WorkflowBuilderPage = () => {
     [
       authHeader,
       loadVersions,
+      markViewportMemoryDirty,
       persistViewportMemory,
       restoreViewport,
       selectedWorkflowId,
@@ -3304,6 +3322,7 @@ const WorkflowBuilderPage = () => {
               reactFlowInstanceRef.current?.getViewport() ?? viewportRef.current;
             if (newViewportKey && currentViewport) {
               viewportMemoryRef.current.set(newViewportKey, { ...currentViewport });
+              markViewportMemoryDirty();
               persistViewportMemory();
             }
             viewportKeyRef.current = newViewportKey;
@@ -3406,6 +3425,7 @@ const WorkflowBuilderPage = () => {
     draftDisplayName,
     formatSaveFailureWithStatus,
     loadVersions,
+    markViewportMemoryDirty,
     nodes,
     persistViewportMemory,
     saveFailureMessage,
@@ -5068,6 +5088,7 @@ const WorkflowBuilderPage = () => {
                     const key = viewportKeyRef.current;
                     if (key) {
                       viewportMemoryRef.current.set(key, { ...viewport });
+                      markViewportMemoryDirty();
                       persistViewportMemory();
                     }
                   }}
