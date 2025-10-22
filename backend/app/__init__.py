@@ -7,6 +7,7 @@ from .config import get_settings
 from .routes import (
     admin,
     auth,
+    docs,
     model_registry,
     tools,
     users,
@@ -38,6 +39,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(admin.router)
+app.include_router(docs.router)
 app.include_router(model_registry.router)
 if chatkit and hasattr(chatkit, "router"):
     app.include_router(chatkit.router)

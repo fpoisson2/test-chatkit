@@ -5,6 +5,7 @@ from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     ForeignKey,
@@ -16,6 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 # Dimension pour text-embedding-3-small d'OpenAI
 EMBEDDING_DIMENSION = 1536
@@ -23,6 +25,18 @@ EMBEDDING_DIMENSION = 1536
 
 class Base(DeclarativeBase):
     pass
+
+
+class PortableJSONB(TypeDecorator):
+    """Type JSONB utilisable avec SQLite en tests."""
+
+    impl = JSONB
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):  # type: ignore[override]
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(JSONB(astext_type=Text()))
+        return dialect.type_descriptor(JSON())
 
 
 class User(Base):
@@ -58,7 +72,7 @@ class ChatThread(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(PortableJSONB(), nullable=False)
 
 
 class ChatThreadItem(Base):
@@ -75,7 +89,7 @@ class ChatThreadItem(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(PortableJSONB(), nullable=False)
 
 
 class ChatAttachment(Base):
@@ -86,7 +100,7 @@ class ChatAttachment(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
-    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(PortableJSONB(), nullable=False)
 
 
 class AvailableModel(Base):
@@ -122,7 +136,7 @@ class VoiceSettings(Base):
     prompt_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     prompt_variables: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, default=dict
+        PortableJSONB(), nullable=False, default=dict
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -257,10 +271,10 @@ class WorkflowStep(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     parameters: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, default=dict
+        PortableJSONB(), nullable=False, default=dict
     )
     ui_metadata: Mapped[dict[str, Any]] = mapped_column(
-        "metadata", JSONB, nullable=False, default=dict
+        "metadata", PortableJSONB(), nullable=False, default=dict
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -312,7 +326,7 @@ class WorkflowTransition(Base):
     )
     condition: Mapped[str | None] = mapped_column(String(64), nullable=True)
     ui_metadata: Mapped[dict[str, Any]] = mapped_column(
-        "metadata", JSONB, nullable=False, default=dict
+        "metadata", PortableJSONB(), nullable=False, default=dict
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -351,7 +365,7 @@ class JsonVectorStore(Base):
     title: Mapped[str | None] = mapped_column(String(256), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
-        "metadata", JSONB, nullable=False, default=dict
+        "metadata", PortableJSONB(), nullable=False, default=dict
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -387,11 +401,11 @@ class JsonDocument(Base):
     )
     doc_id: Mapped[str] = mapped_column(String(255), nullable=False)
     raw_document: Mapped[dict[str, Any]] = mapped_column(
-        "raw_json", JSONB, nullable=False
+        "raw_json", PortableJSONB(), nullable=False
     )
     linearized_text: Mapped[str] = mapped_column(Text, nullable=False)
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
-        "metadata", JSONB, nullable=False, default=dict
+        "metadata", PortableJSONB(), nullable=False, default=dict
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
@@ -437,13 +451,15 @@ class JsonChunk(Base):
     )
     doc_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
-    raw_chunk: Mapped[dict[str, Any]] = mapped_column("raw_json", JSONB, nullable=False)
+    raw_chunk: Mapped[dict[str, Any]] = mapped_column(
+        "raw_json", PortableJSONB(), nullable=False
+    )
     linearized_text: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list[float]] = mapped_column(
         Vector(EMBEDDING_DIMENSION), nullable=False
     )
     metadata_json: Mapped[dict[str, Any]] = mapped_column(
-        "metadata", JSONB, nullable=False, default=dict
+        "metadata", PortableJSONB(), nullable=False, default=dict
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
