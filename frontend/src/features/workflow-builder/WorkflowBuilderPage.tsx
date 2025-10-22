@@ -288,6 +288,10 @@ const WorkflowBuilderPage = () => {
     (status: number) => t("workflowBuilder.save.failureWithStatus", { status }),
     [t],
   );
+  const authHeader = useMemo(
+    () => (token ? { Authorization: `Bearer ${token}` } : {}),
+    [token],
+  );
   const { openSidebar } = useAppLayout();
   const { setSidebarContent, clearSidebarContent } = useSidebarPortal();
   const [loading, setLoading] = useState(true);
@@ -493,7 +497,6 @@ const WorkflowBuilderPage = () => {
     [applyEdgesChange, setHasPendingChanges],
   );
 
-  const authHeader = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
   const baseMinViewportZoom = useMemo(
     () => (isMobileLayout ? MOBILE_MIN_VIEWPORT_ZOOM : DESKTOP_MIN_VIEWPORT_ZOOM),
