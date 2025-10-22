@@ -1,0 +1,24 @@
+import { HelpTooltip } from "../components/HelpTooltip";
+import styles from "../NodeInspector.module.css";
+
+type EndInspectorSectionProps = {
+  nodeId: string;
+  endMessage: string;
+  onEndMessageChange: (nodeId: string, value: string) => void;
+};
+
+export const EndInspectorSection = ({ nodeId, endMessage, onEndMessageChange }: EndInspectorSectionProps) => (
+  <label className={styles.nodeInspectorField}>
+    <span className={styles.nodeInspectorLabel}>
+      Message de fin
+      <HelpTooltip label="Ce message est utilisé comme raison de clôture lorsque ce bloc termine le fil." />
+    </span>
+    <textarea
+      value={endMessage}
+      rows={4}
+      placeholder="Texte affiché lorsque le workflow se termine sur ce bloc"
+      onChange={(event) => onEndMessageChange(nodeId, event.target.value)}
+      className={styles.nodeInspectorTextarea}
+    />
+  </label>
+);

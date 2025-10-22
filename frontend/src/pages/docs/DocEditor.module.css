@@ -1,0 +1,22 @@
+.form {
+  display: grid;
+  gap: clamp(16px, 2vw, 24px);
+}
+
+.fieldGroup {
+  display: grid;
+  gap: 12px;
+}
+
+.summaryField {
+  font-family: inherit;
+  min-height: 96px;
+}
+
+.contentField {
+  min-height: 220px;
+}
+
+.error {
+  margin: 0;
+}

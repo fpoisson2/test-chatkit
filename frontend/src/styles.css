@@ -848,6 +848,15 @@ button {
   outline-offset: 2px;
 }
 
+.chatkit-sidebar__item--active button {
+  background: rgba(15, 23, 42, 0.12);
+}
+
+.chatkit-sidebar__item--active button:hover,
+.chatkit-sidebar__item--active button:focus-visible {
+  background: rgba(15, 23, 42, 0.12);
+}
+
 .chatkit-sidebar__icon {
   flex: 0 0 24px;
   width: 24px;
