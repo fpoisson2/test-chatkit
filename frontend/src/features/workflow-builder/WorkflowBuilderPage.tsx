@@ -144,9 +144,6 @@ import {
 import styles from "./WorkflowBuilderPage.module.css";
 
 const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
-const AUTO_SAVE_SUCCESS_MESSAGE = "Modifications enregistrées automatiquement.";
-const DRAFT_DISPLAY_NAME = "Brouillon";
-
 const DESKTOP_MIN_VIEWPORT_ZOOM = 0.1;
 const MOBILE_MIN_VIEWPORT_ZOOM = 0.05;
 const MIN_ABSOLUTE_VIEWPORT_ZOOM = 0.01;
@@ -248,6 +245,13 @@ const useMediaQuery = (query: string) => {
 const WorkflowBuilderPage = () => {
   const { token, logout, user } = useAuth();
   const { t } = useI18n();
+  const autoSaveSuccessMessage = t("workflowBuilder.save.autoSaveSuccess");
+  const draftDisplayName = t("workflowBuilder.save.draftDisplayName");
+  const saveFailureMessage = t("workflowBuilder.save.failure");
+  const formatSaveFailureWithStatus = useCallback(
+    (status: number) => t("workflowBuilder.save.failureWithStatus", { status }),
+    [t],
+  );
   const { openSidebar } = useAppLayout();
   const { setSidebarContent, clearSidebarContent } = useSidebarPortal();
   const [loading, setLoading] = useState(true);
@@ -544,7 +548,7 @@ const WorkflowBuilderPage = () => {
                 const displayName = version.name?.trim() || null;
                 const labelParts: string[] = [];
                 if (isDraft) {
-                  labelParts.push(displayName ?? DRAFT_DISPLAY_NAME);
+                  labelParts.push(displayName ?? draftDisplayName);
                 } else {
                   labelParts.push(`v${version.version}`);
                   if (
@@ -1111,7 +1115,7 @@ const WorkflowBuilderPage = () => {
           if (draftSummary) {
             const normalizedDraft: WorkflowVersionSummary = {
               ...draftSummary,
-              name: DRAFT_DISPLAY_NAME,
+              name: draftDisplayName,
             };
             versionsForState = versionsForState.map((version) =>
               version.id === normalizedDraft.id ? normalizedDraft : version,
@@ -1135,7 +1139,7 @@ const WorkflowBuilderPage = () => {
                 : {
                     id: draftVersionIdRef.current,
                     workflow_id: workflowId,
-                    name: DRAFT_DISPLAY_NAME,
+                    name: draftDisplayName,
                     version: highestVersion + 1,
                     is_active: false,
                     created_at: new Date().toISOString(),
@@ -1224,6 +1228,7 @@ const WorkflowBuilderPage = () => {
     },
     [
       authHeader,
+      draftDisplayName,
       loadVersionDetail,
       restoreViewport,
       selectedWorkflowId,
@@ -3142,12 +3147,12 @@ const WorkflowBuilderPage = () => {
               body: JSON.stringify({ graph: graphPayload, mark_as_active: false }),
             });
             if (!response.ok) {
-              throw new Error(`Échec de l'enregistrement (${response.status})`);
+              throw new Error(formatSaveFailureWithStatus(response.status));
             }
             const created: WorkflowVersionResponse = await response.json();
             const summary: WorkflowVersionSummary = {
               ...versionSummaryFromResponse(created),
-              name: DRAFT_DISPLAY_NAME,
+              name: draftDisplayName,
             };
             const newViewportKey = viewportKeyFor(selectedWorkflowId, summary.id);
             const currentViewport =
@@ -3164,11 +3169,11 @@ const WorkflowBuilderPage = () => {
             lastSavedSnapshotRef.current = graphSnapshot;
             setHasPendingChanges(false);
             setSaveState("saved");
-            setSaveMessage(AUTO_SAVE_SUCCESS_MESSAGE);
+            setSaveMessage(autoSaveSuccessMessage);
             setTimeout(() => {
               setSaveState("idle");
               setSaveMessage((previous) =>
-                previous === AUTO_SAVE_SUCCESS_MESSAGE ? null : previous,
+                previous === autoSaveSuccessMessage ? null : previous,
               );
             }, 1500);
             return;
@@ -3179,7 +3184,7 @@ const WorkflowBuilderPage = () => {
             lastError =
               error instanceof Error
                 ? error
-                : new Error("Impossible d'enregistrer le workflow.");
+                : new Error(saveFailureMessage);
           }
         }
       } finally {
@@ -3187,7 +3192,7 @@ const WorkflowBuilderPage = () => {
       }
       setSaveState("error");
       setHasPendingChanges(true);
-      setSaveMessage(lastError?.message ?? "Impossible d'enregistrer le workflow.");
+      setSaveMessage(lastError?.message ?? saveFailureMessage);
       return;
     }
 
@@ -3206,12 +3211,12 @@ const WorkflowBuilderPage = () => {
           body: JSON.stringify({ graph: graphPayload }),
         });
         if (!response.ok) {
-          throw new Error(`Échec de l'enregistrement (${response.status})`);
+          throw new Error(formatSaveFailureWithStatus(response.status));
         }
         const updated: WorkflowVersionResponse = await response.json();
         const summary: WorkflowVersionSummary = {
           ...versionSummaryFromResponse(updated),
-          name: DRAFT_DISPLAY_NAME,
+          name: draftDisplayName,
         };
         draftVersionSummaryRef.current = summary;
         await loadVersions(selectedWorkflowId, summary.id, {
@@ -3221,11 +3226,11 @@ const WorkflowBuilderPage = () => {
         lastSavedSnapshotRef.current = graphSnapshot;
         setHasPendingChanges(false);
         setSaveState("saved");
-        setSaveMessage(AUTO_SAVE_SUCCESS_MESSAGE);
+        setSaveMessage(autoSaveSuccessMessage);
         setTimeout(() => {
           setSaveState("idle");
           setSaveMessage((previous) =>
-            previous === AUTO_SAVE_SUCCESS_MESSAGE ? null : previous,
+            previous === autoSaveSuccessMessage ? null : previous,
           );
         }, 1500);
         return;
@@ -3236,20 +3241,24 @@ const WorkflowBuilderPage = () => {
         lastError =
           error instanceof Error
             ? error
-            : new Error("Impossible d'enregistrer le workflow.");
+            : new Error(saveFailureMessage);
       }
     }
 
     setSaveState("error");
     setHasPendingChanges(true);
-    setSaveMessage(lastError?.message ?? "Impossible d'enregistrer le workflow.");
+    setSaveMessage(lastError?.message ?? saveFailureMessage);
   }, [
     authHeader,
+    autoSaveSuccessMessage,
     backendUrl,
     buildGraphPayload,
     conditionGraphError,
+    draftDisplayName,
+    formatSaveFailureWithStatus,
     loadVersions,
     nodes,
+    saveFailureMessage,
     selectedWorkflowId,
     versions,
   ]);
