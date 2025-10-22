@@ -21,6 +21,8 @@ from .workflows.executor import (
 )
 
 __path__ = [str((Path(__file__).resolve().parent / "chatkit").resolve())]
+if __spec__ is not None:  # pragma: no branch - défensif, dépend du chargement du module
+    __spec__.submodule_search_locations = __path__
 
 
 logger = logging.getLogger("chatkit.server")
