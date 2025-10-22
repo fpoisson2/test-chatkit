@@ -4,24 +4,32 @@ import type { SettingsSection } from "./sections";
 
 export type SettingsPreferencesSectionProps = {
   activeSection: SettingsSection;
+  hideHeader?: boolean;
 };
 
-export function SettingsPreferencesSection({ activeSection }: SettingsPreferencesSectionProps) {
+export function SettingsPreferencesSection({
+  activeSection,
+  hideHeader = false,
+}: SettingsPreferencesSectionProps) {
   const { t } = useI18n();
+  const sectionTitleId = "settings-section-preferences-title";
 
   return (
     <section
       key="preferences"
       className="settings-page__section"
-      aria-labelledby="settings-section-preferences-title"
-      id="settings-section-preferences"
+      aria-labelledby={hideHeader ? undefined : sectionTitleId}
+      aria-label={hideHeader ? activeSection.label : undefined}
+      id={`settings-section-${activeSection.id}`}
     >
-      <header className="settings-page__section-header">
-        <h3 id="settings-section-preferences-title" className="settings-page__section-title">
-          {activeSection.label}
-        </h3>
-        <p className="settings-page__section-description">{activeSection.description}</p>
-      </header>
+      {hideHeader ? null : (
+        <header className="settings-page__section-header">
+          <h3 id={sectionTitleId} className="settings-page__section-title">
+            {activeSection.label}
+          </h3>
+          <p className="settings-page__section-description">{activeSection.description}</p>
+        </header>
+      )}
       <div className="settings-page__section-body">
         <div className="settings-page__card">
           <h4 className="settings-page__card-title">{t("settings.preferences.language.title")}</h4>

@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
+import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { Modal } from "../components/Modal";
 import { useI18n } from "../i18n";
 import {
   DEFAULT_SETTINGS_SECTION_ID,
@@ -12,6 +14,7 @@ import { SettingsPreferencesSection } from "../features/settings/SettingsPrefere
 export function SettingsPage() {
   const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [isModalOpen, setModalOpen] = useState(false);
 
   const sections = useMemo(() => buildSettingsSections(t), [t]);
   const requestedSection = searchParams.get("section") as SettingsSectionId | null;
@@ -30,6 +33,22 @@ export function SettingsPage() {
     }
   }, [activeSectionId, firstSectionId, requestedSection, setSearchParams]);
 
+  const scrollToSection = useCallback((sectionId: SettingsSectionId) => {
+    window.requestAnimationFrame(() => {
+      const element = document.getElementById(`settings-section-${sectionId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!requestedSection) {
+      return;
+    }
+    scrollToSection(activeSectionId);
+  }, [activeSectionId, requestedSection, scrollToSection]);
+
   const handleSelectSection = useCallback(
     (sectionId: SettingsSectionId) => {
       if (sectionId === firstSectionId) {
@@ -37,51 +56,90 @@ export function SettingsPage() {
       } else {
         setSearchParams({ section: sectionId }, { replace: false });
       }
+      setModalOpen(false);
+      scrollToSection(sectionId);
     },
-    [firstSectionId, setSearchParams],
+    [firstSectionId, scrollToSection, setSearchParams],
   );
+
+  const handleOpenModal = useCallback(() => {
+    setModalOpen(true);
+  }, []);
+
+  const handleCloseModal = useCallback(() => {
+    setModalOpen(false);
+  }, []);
 
   const activeSection =
     sections.find((section) => section.id === activeSectionId) ?? sections[0] ?? null;
 
   return (
-    <div className="settings-page">
-      <header className="settings-page__header">
-        <div>
-          <h1 className="settings-page__title">{t("settings.page.title")}</h1>
-          <p className="settings-page__subtitle">{t("settings.page.subtitle")}</p>
-        </div>
-      </header>
-      <div className="settings-page__body">
-        <nav className="settings-page__sidebar" aria-label={t("settings.page.navLabel")}>
-          <ul className="settings-page__nav">
-            {sections.map((section) => {
-              const isActive = section.id === activeSectionId;
-              return (
-                <li key={section.id} className="settings-page__nav-item">
-                  <button
-                    type="button"
-                    className={`settings-page__nav-button${
-                      isActive ? " settings-page__nav-button--active" : ""
-                    }`}
-                    onClick={() => handleSelectSection(section.id)}
-                    aria-current={isActive ? "page" : undefined}
-                    aria-controls={`settings-section-${section.id}`}
-                  >
-                    {section.label}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
+    <>
+      <ManagementPageLayout
+        title={t("settings.page.title")}
+        actions={
+          sections.length > 0 ? (
+            <div className="settings-page__actions">
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={handleOpenModal}
+              >
+                {t("settings.modal.title")}
+              </button>
+            </div>
+          ) : null
+        }
+      >
         <div className="settings-page__main">
           {activeSection?.id === "preferences" ? (
-            <SettingsPreferencesSection key={activeSection.id} activeSection={activeSection} />
+            <SettingsPreferencesSection
+              key={activeSection.id}
+              activeSection={activeSection}
+              hideHeader
+            />
           ) : null}
         </div>
-      </div>
-    </div>
+      </ManagementPageLayout>
+      {isModalOpen ? (
+        <Modal
+          title={t("settings.modal.title")}
+          onClose={handleCloseModal}
+          footer={
+            <button
+              type="button"
+              className="button button--ghost"
+              onClick={handleCloseModal}
+            >
+              {t("settings.modal.close")}
+            </button>
+          }
+        >
+          <nav className="settings-page__modal-nav" aria-label={t("settings.modal.navLabel")}>
+            <ul className="settings-page__nav">
+              {sections.map((section) => {
+                const isActive = section.id === activeSectionId;
+                return (
+                  <li key={section.id} className="settings-page__nav-item">
+                    <button
+                      type="button"
+                      className={`settings-page__nav-button${
+                        isActive ? " settings-page__nav-button--active" : ""
+                      }`}
+                      onClick={() => handleSelectSection(section.id)}
+                      aria-current={isActive ? "page" : undefined}
+                      aria-controls={`settings-section-${section.id}`}
+                    >
+                      {section.label}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+        </Modal>
+      ) : null}
+    </>
   );
 }
 
