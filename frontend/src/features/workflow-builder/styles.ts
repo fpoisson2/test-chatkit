@@ -129,6 +129,22 @@ export const getDeployButtonStyle = (
   ...pointerState(options),
 });
 
+export const getMobileActionButtonStyle = (options?: DisabledOptions): CSSProperties => ({
+  padding: "0.85rem 1.1rem",
+  borderRadius: "0.85rem",
+  border: "1px solid var(--surface-border)",
+  background: "var(--surface-strong)",
+  color: "var(--text-color)",
+  fontWeight: 600,
+  width: "100%",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "0.5rem",
+  textAlign: "center",
+  ...pointerState(options),
+});
+
 export const getActionMenuWrapperStyle = (isMobile: boolean): CSSProperties => ({
   position: "relative",
   width: isMobile ? "100%" : "auto",
