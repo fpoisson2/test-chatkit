@@ -6,6 +6,7 @@ import { useAuth } from "./auth";
 import { MyChat } from "./MyChat";
 import { LoginPage } from "./pages/LoginPage";
 import { VoicePage } from "./pages/VoicePage";
+import { SettingsPage } from "./pages/SettingsPage";
 import WorkflowBuilderPage from "./features/workflow-builder/WorkflowBuilderPage";
 import { VectorStoresPage } from "./pages/VectorStoresPage";
 import WidgetLibraryPage from "./pages/WidgetLibraryPage";
@@ -69,6 +70,7 @@ export const App = () => (
     >
       <Route index element={<HomePage />} />
       <Route path="voice" element={<VoicePage />} />
+      <Route path="settings" element={<SettingsPage />} />
       <Route
         path="workflows"
         element={

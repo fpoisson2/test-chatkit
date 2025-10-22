@@ -12,20 +12,20 @@ export function SettingsPreferencesSection({ activeSection }: SettingsPreference
   return (
     <section
       key="preferences"
-      className="settings-modal__section"
+      className="settings-page__section"
       aria-labelledby="settings-section-preferences-title"
       id="settings-section-preferences"
     >
-      <header className="settings-modal__section-header">
-        <h3 id="settings-section-preferences-title" className="settings-modal__section-title">
+      <header className="settings-page__section-header">
+        <h3 id="settings-section-preferences-title" className="settings-page__section-title">
           {activeSection.label}
         </h3>
-        <p className="settings-modal__section-description">{activeSection.description}</p>
+        <p className="settings-page__section-description">{activeSection.description}</p>
       </header>
-      <div className="settings-modal__section-body">
-        <div className="settings-modal__card">
-          <h4 className="settings-modal__card-title">{t("settings.preferences.language.title")}</h4>
-          <p className="settings-modal__card-description">
+      <div className="settings-page__section-body">
+        <div className="settings-page__card">
+          <h4 className="settings-page__card-title">{t("settings.preferences.language.title")}</h4>
+          <p className="settings-page__card-description">
             {t("settings.preferences.language.description")}
           </p>
           <LanguageSwitcher

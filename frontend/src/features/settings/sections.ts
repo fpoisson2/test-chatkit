@@ -25,6 +25,9 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
   },
 ];
 
+export const DEFAULT_SETTINGS_SECTION_ID: SettingsSectionId =
+  SETTINGS_SECTIONS[0]?.id ?? "preferences";
+
 export const buildSettingsSections = (
   t: (key: string, params?: Record<string, unknown>) => string,
 ): SettingsSection[] =>

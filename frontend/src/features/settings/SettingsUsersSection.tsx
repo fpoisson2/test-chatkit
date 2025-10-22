@@ -36,35 +36,35 @@ export function SettingsUsersSection({
     return (
       <section
         key="users"
-        className="settings-modal__section"
+        className="settings-page__section"
         aria-labelledby="settings-section-users-title"
         id="settings-section-users"
       >
-        <header className="settings-modal__section-header">
-          <h3 id="settings-section-users-title" className="settings-modal__section-title">
+        <header className="settings-page__section-header">
+          <h3 id="settings-section-users-title" className="settings-page__section-title">
             {activeSection.label}
           </h3>
-          <p className="settings-modal__section-description">{activeSection.description}</p>
+          <p className="settings-page__section-description">{activeSection.description}</p>
         </header>
-        <div className="settings-modal__section-body">
-          <div className="settings-modal__card settings-modal__card--muted">
-            <h4 className="settings-modal__card-title">{t("settings.users.accessRestricted.title")}</h4>
-            <p className="settings-modal__card-description">
+        <div className="settings-page__section-body">
+          <div className="settings-page__card settings-page__card--muted">
+            <h4 className="settings-page__card-title">{t("settings.users.accessRestricted.title")}</h4>
+            <p className="settings-page__card-description">
               {t("settings.users.accessRestricted.description")}
             </p>
           </div>
-          <div className="settings-modal__card">
-            <h4 className="settings-modal__card-title">{t("settings.users.accessRestricted.actionsTitle")}</h4>
-            <p className="settings-modal__card-description">
+          <div className="settings-page__card">
+            <h4 className="settings-page__card-title">{t("settings.users.accessRestricted.actionsTitle")}</h4>
+            <p className="settings-page__card-description">
               {t("settings.users.accessRestricted.actionsDescription")}
             </p>
-            <div className="settings-modal__actions">
-              <button type="button" className="settings-modal__action-button" onClick={onGoHome}>
+            <div className="settings-page__actions">
+              <button type="button" className="settings-page__action-button" onClick={onGoHome}>
                 {t("settings.users.actions.goHome")}
               </button>
               <button
                 type="button"
-                className="settings-modal__action-button settings-modal__action-button--danger"
+                className="settings-page__action-button settings-page__action-button--danger"
                 onClick={onLogout}
               >
                 {t("settings.users.actions.logout")}
@@ -112,17 +112,17 @@ export function SettingsUsersSection({
   return (
     <section
       key="users"
-      className="settings-modal__section"
+      className="settings-page__section"
       aria-labelledby="settings-section-users-title"
       id="settings-section-users"
     >
-      <header className="settings-modal__section-header">
-        <h3 id="settings-section-users-title" className="settings-modal__section-title">
+      <header className="settings-page__section-header">
+        <h3 id="settings-section-users-title" className="settings-page__section-title">
           {activeSection.label}
         </h3>
-        <p className="settings-modal__section-description">{activeSection.description}</p>
+        <p className="settings-page__section-description">{activeSection.description}</p>
       </header>
-      <div className="settings-modal__section-body">
+      <div className="settings-page__section-body">
         <div className="settings-users">
           <div className="settings-users__intro">
             <div>

@@ -50,10 +50,10 @@ const fr: TranslationDictionary = {
   "voice.actions.backToChat": "← Chat texte",
   "voice.description":
     "Connectez-vous pour lancer des sessions Realtime, autoriser votre microphone et consulter les transcriptions en direct.",
-  "settings.modal.title": "Paramètres rapides",
-  "settings.modal.subtitle": "Accédez rapidement aux sections clés de votre espace.",
-  "settings.modal.close": "Fermer les paramètres",
-  "settings.modal.navLabel": "Sections des paramètres",
+  "settings.page.title": "Paramètres de ChatKit",
+  "settings.page.subtitle":
+    "Personnalisez votre expérience et gérez l'accès des membres de votre espace.",
+  "settings.page.navLabel": "Navigation des paramètres",
   "settings.sections.preferences.label": "Préférences",
   "settings.sections.preferences.description":
     "Personnalisez votre expérience d'utilisation de ChatKit.",
@@ -217,10 +217,9 @@ const en: TranslationDictionary = {
   "voice.actions.backToChat": "← Text chat",
   "voice.description":
     "Sign in to start Realtime sessions, grant microphone access, and review live transcripts.",
-  "settings.modal.title": "Quick settings",
-  "settings.modal.subtitle": "Jump straight to the key areas of your workspace.",
-  "settings.modal.close": "Close settings",
-  "settings.modal.navLabel": "Settings sections",
+  "settings.page.title": "ChatKit settings",
+  "settings.page.subtitle": "Tailor your experience and manage workspace access for your team.",
+  "settings.page.navLabel": "Settings navigation",
   "settings.sections.preferences.label": "Preferences",
   "settings.sections.preferences.description": "Tailor the ChatKit experience to your needs.",
   "settings.sections.users.label": "User management",
