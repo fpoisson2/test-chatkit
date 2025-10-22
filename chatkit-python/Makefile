@@ -1,34 +1,34 @@
-.PHONY: sync format format-check lint mypy pyright tests gen-docs build-docs serve-docs deploy-docs check
+.PHONY: install format format-check lint mypy pyright test build serve-docs deploy-docs check
 
 install:
-	uv sync --all-extras --all-packages --group dev
+	python -m pip install -e .[dev]
 
 format:
-	uv run ruff format
-	uv run ruff check --fix
+	python -m ruff format
+	python -m ruff check --fix
 
 format-check:
-	uv run ruff format --check
+	python -m ruff format --check
 
 lint:
-	uv run ruff check
+	python -m ruff check
 
 mypy:
-	uv run mypy .
+	python -m mypy .
 
 pyright:
-	uv run pyright
+	python -m pyright
 
 test:
-	PYTHONPATH=. uv run pytest
+	PYTHONPATH=. python -m pytest
 
 build:
-	uv build
+	python -m build
 
 serve-docs:
-	uv run mkdocs serve
+	mkdocs serve
 
 deploy-docs:
-	uv run mkdocs gh-deploy --force --verbose
+	mkdocs gh-deploy --force --verbose
 
 check: format-check lint pyright test
