@@ -1159,6 +1159,7 @@ const WorkflowBuilderPage = () => {
           isHydratingRef.current = true;
           lastSavedSnapshotRef.current = nextSnapshot;
           setHasPendingChanges(false);
+          console.log('Loading nodes with positions:', flowNodes.map(n => ({ id: n.id, pos: n.position })));
           setNodes(flowNodes);
           setEdges(flowEdges);
           // Reset isHydrating after a short delay to allow viewport restoration
