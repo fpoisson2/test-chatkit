@@ -172,17 +172,15 @@ class WorkflowService:
     ) -> WorkflowDefinition:
         """Charge toutes les relations nécessaires avant fermeture de session."""
 
-        definition.steps  # noqa: B018 - charge les étapes liées
-        transitions = list(
-            definition.transitions
-        )  # noqa: B018 - charge les transitions
+        steps = list(definition.steps)
+        transitions = list(definition.transitions)
         for transition in transitions:
-            transition.source_step  # noqa: B018 - charge le nœud source
-            transition.target_step  # noqa: B018 - charge le nœud cible
-        definition.workflow  # noqa: B018 - charge le workflow parent
+            _ = transition.source_step  # Force le chargement du nœud source
+            _ = transition.target_step  # Force le chargement du nœud cible
+        _ = definition.workflow  # Charge le workflow parent avant fermeture
 
         # Sanitize model_settings in all loaded steps
-        for step in definition.steps:
+        for step in steps:
             if step.parameters and isinstance(step.parameters, dict):
                 model_settings = step.parameters.get("model_settings")
                 if model_settings:
