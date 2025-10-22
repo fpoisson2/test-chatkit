@@ -1197,6 +1197,8 @@ const WorkflowBuilderPage = () => {
               if (currentViewport) {
                 viewportMemoryRef.current.set(viewportKey, { ...currentViewport });
                 viewportRef.current = { ...currentViewport };
+                // Update initialViewport so ReactFlow uses it when re-rendering
+                setInitialViewport({ ...currentViewport });
               }
             }
             hasUserViewportChangeRef.current = true;
