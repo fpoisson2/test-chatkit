@@ -97,7 +97,7 @@ from ..image_utils import (
     merge_generated_image_urls_into_payload,
     save_agent_image_file,
 )
-from ..models import WorkflowStep, WorkflowTransition
+from ..models import WorkflowDefinition, WorkflowStep, WorkflowTransition
 from ..vector_store.ingestion import (
     evaluate_state_expression,
     ingest_document,
@@ -317,6 +317,8 @@ async def run_workflow(
         | None
     ) = None,
     workflow_service: WorkflowService | None = None,
+    workflow_definition: WorkflowDefinition | None = None,
+    workflow_slug: str | None = None,
     thread_item_converter: ThreadItemConverter | None = None,
     thread_items_history: list[ThreadItem] | None = None,
     current_user_message: UserMessageItem | None = None,
@@ -396,8 +398,15 @@ async def run_workflow(
     final_output: dict[str, Any] | None = None
     last_step_context: dict[str, Any] | None = None
 
-    service = workflow_service or WorkflowService()
-    definition = service.get_current()
+    definition: WorkflowDefinition
+    if workflow_definition is not None:
+        definition = workflow_definition
+    else:
+        service = workflow_service or WorkflowService()
+        if isinstance(workflow_slug, str) and workflow_slug.strip():
+            definition = service.get_definition_by_slug(workflow_slug)
+        else:
+            definition = service.get_current()
 
     should_auto_start = resolve_start_auto_start(definition)
     if not auto_started and not initial_user_text.strip() and should_auto_start:

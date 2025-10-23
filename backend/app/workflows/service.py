@@ -402,6 +402,50 @@ class WorkflowService:
             if owns_session:
                 db.close()
 
+    def get_definition_by_slug(
+        self, slug: str, session: Session | None = None
+    ) -> WorkflowDefinition:
+        db, owns_session = self._get_session(session)
+        try:
+            normalized_slug = slug.strip()
+            if not normalized_slug:
+                raise WorkflowValidationError(
+                    "Le slug du workflow ne peut pas être vide."
+                )
+
+            defaults = self._workflow_defaults
+            if normalized_slug == defaults.default_workflow_slug:
+                workflow = self._ensure_default_workflow(db)
+            else:
+                workflow = db.scalar(
+                    select(Workflow).where(Workflow.slug == normalized_slug)
+                )
+                if workflow is None:
+                    raise WorkflowValidationError(
+                        f"Workflow introuvable pour le slug {normalized_slug!r}."
+                    )
+
+            definition = self._load_active_definition(workflow, db)
+            if definition is None:
+                raise WorkflowValidationError(
+                    "Aucune version active n'est disponible pour ce workflow."
+                )
+
+            definition = self._fully_load_definition(definition)
+            if self._needs_graph_backfill(definition):
+                logger.info(
+                    "Legacy workflow detected, backfilling default graph for slug %s",
+                    normalized_slug,
+                )
+                definition = self._backfill_legacy_definition(definition, db)
+                self._set_active_definition(workflow, definition, db)
+                db.commit()
+
+            return definition
+        finally:
+            if owns_session:
+                db.close()
+
     def update_current(
         self,
         graph_payload: dict[str, Any],
