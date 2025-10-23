@@ -12,6 +12,7 @@ type JsonVectorStoreInspectorSectionProps = {
   vectorStoreNodeDocIdExpression: string;
   vectorStoreNodeDocumentExpression: string;
   vectorStoreNodeMetadataExpression: string;
+  vectorStoreNodeBlueprintExpression: string;
   vectorStoreNodeValidationMessages: string[];
   onVectorStoreNodeConfigChange: (
     nodeId: string,
@@ -28,6 +29,7 @@ export const JsonVectorStoreInspectorSection = ({
   vectorStoreNodeDocIdExpression,
   vectorStoreNodeDocumentExpression,
   vectorStoreNodeMetadataExpression,
+  vectorStoreNodeBlueprintExpression,
   vectorStoreNodeValidationMessages,
   onVectorStoreNodeConfigChange,
 }: JsonVectorStoreInspectorSectionProps) => (
@@ -112,6 +114,23 @@ export const JsonVectorStoreInspectorSection = ({
           onVectorStoreNodeConfigChange(nodeId, { metadata_expression: event.target.value })
         }
         placeholder='Ex. {"source": "workflow"}'
+      />
+    </label>
+
+    <label className={styles.nodeInspectorField}>
+      <span className={styles.nodeInspectorLabel}>
+        Expression du blueprint de workflow (facultatif)
+        <HelpTooltip label="Retourne un objet décrivant un workflow (slug, display_name, graph.nodes et graph.edges)." />
+      </span>
+      <input
+        type="text"
+        value={vectorStoreNodeBlueprintExpression}
+        onChange={(event) =>
+          onVectorStoreNodeConfigChange(nodeId, {
+            workflow_blueprint_expression: event.target.value,
+          })
+        }
+        placeholder="Ex. input.output_parsed.workflow_blueprint"
       />
     </label>
 
