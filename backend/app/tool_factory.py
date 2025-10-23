@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from agents import FunctionTool, RunContextWrapper, WebSearchTool, function_tool
 
@@ -34,18 +34,18 @@ from pydantic import BaseModel, Field
 from chatkit.agents import AgentContext
 from chatkit.types import CustomSummary, ThoughtTask, Workflow
 
-from .chatkit import (
-    WorkflowInput,
-    WorkflowRunSummary,
-    WorkflowStepStreamUpdate,
-    WorkflowStepSummary,
-    run_workflow,
-)
 from .database import SessionLocal
 from .vector_store import JsonVectorStoreService, SearchResult
 from .weather import fetch_weather
 from .widgets import WidgetLibraryService, WidgetValidationError
 from .workflows import WorkflowService
+
+if TYPE_CHECKING:
+    from .workflows.executor import (
+        WorkflowRunSummary,
+        WorkflowStepStreamUpdate,
+        WorkflowStepSummary,
+    )
 
 logger = logging.getLogger("chatkit.server")
 
@@ -767,6 +767,8 @@ def build_workflow_tool(payload: Any) -> FunctionTool | None:
                 message = str(message)
             except Exception:  # pragma: no cover - garde-fou
                 message = ""
+
+        from .workflows.executor import WorkflowInput, run_workflow
 
         workflow_input = WorkflowInput(input_as_text=message)
 
