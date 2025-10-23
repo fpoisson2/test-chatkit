@@ -542,6 +542,10 @@ export type VectorStoreSummary = {
   documents_count: number;
 };
 
+export const WORKFLOW_VECTOR_STORE_SLUG = "chatkit-workflows";
+export const PROTECTED_VECTOR_STORE_ERROR_MESSAGE =
+  "Ce vector store est protégé et ne peut pas être supprimé.";
+
 export type VectorStoreCreatePayload = {
   slug: string;
   title?: string | null;
@@ -617,10 +621,23 @@ export const vectorStoreApi = {
   },
 
   async deleteStore(token: string | null, slug: string): Promise<void> {
-    await requestWithFallback(`/api/vector-stores/${slug}`, {
-      method: "DELETE",
-      headers: withAuthHeaders(token),
-    });
+    try {
+      await requestWithFallback(`/api/vector-stores/${slug}`, {
+        method: "DELETE",
+        headers: withAuthHeaders(token),
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 400) {
+        if (slug === WORKFLOW_VECTOR_STORE_SLUG) {
+          const detail =
+            typeof error.detail === "string"
+              ? error.detail
+              : PROTECTED_VECTOR_STORE_ERROR_MESSAGE;
+          throw new Error(detail);
+        }
+      }
+      throw error;
+    }
   },
 
   async ingestDocument(

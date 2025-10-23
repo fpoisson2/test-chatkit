@@ -26,6 +26,13 @@ from .models import (
     Workflow,
 )
 from .security import hash_password
+from .vector_store import (
+    WORKFLOW_VECTOR_STORE_DESCRIPTION,
+    WORKFLOW_VECTOR_STORE_METADATA,
+    WORKFLOW_VECTOR_STORE_SLUG,
+    WORKFLOW_VECTOR_STORE_TITLE,
+    JsonVectorStoreService,
+)
 
 logger = logging.getLogger("chatkit.server")
 settings = get_settings()
@@ -659,6 +666,29 @@ def _run_ad_hoc_migrations() -> None:
                 )
 
 
+def _ensure_protected_vector_store() -> None:
+    """Crée le vector store réservé aux workflows s'il est absent."""
+
+    with SessionLocal() as session:
+        service = JsonVectorStoreService(session)
+        existing = service.get_store(WORKFLOW_VECTOR_STORE_SLUG)
+        if existing is not None:
+            session.rollback()
+            return
+
+        logger.info(
+            "Création du vector store protégé %s pour les workflows",
+            WORKFLOW_VECTOR_STORE_SLUG,
+        )
+        service.ensure_store_exists(
+            WORKFLOW_VECTOR_STORE_SLUG,
+            title=WORKFLOW_VECTOR_STORE_TITLE,
+            description=WORKFLOW_VECTOR_STORE_DESCRIPTION,
+            metadata=dict(WORKFLOW_VECTOR_STORE_METADATA),
+        )
+        session.commit()
+
+
 def register_startup_events(app: FastAPI) -> None:
     @app.on_event("startup")
     def _on_startup() -> None:
@@ -668,6 +698,7 @@ def register_startup_events(app: FastAPI) -> None:
         _run_ad_hoc_migrations()
         Base.metadata.create_all(bind=engine)
         ensure_vector_indexes()
+        _ensure_protected_vector_store()
         if settings.admin_email and settings.admin_password:
             normalized_email = settings.admin_email.lower()
             with SessionLocal() as session:
