@@ -63,9 +63,12 @@ describe("useVoiceSession", () => {
       await result.current.startSession();
     });
 
-    expect(connectMock).toHaveBeenCalledWith({ apiKey: "sk-test", secret });
+    expect(connectMock).toHaveBeenCalledWith({ apiKey: "sk-test", secret, sessionConfig: undefined });
     expect(result.current.status).toBe("connected");
     expect(result.current.isListening).toBe(true);
+    expect(result.current.sessionId).not.toBeNull();
+    expect(result.current.source).toBe("manual");
+    expect(result.current.workflow).toBeNull();
 
     act(() => {
       realtimeHandlers.current?.onConnectionChange?.("connecting");
@@ -94,6 +97,8 @@ describe("useVoiceSession", () => {
     });
     expect(disconnectMock).toHaveBeenCalledTimes(2);
     expect(result.current.status).toBe("idle");
+    expect(result.current.sessionId).toBeNull();
+    expect(result.current.source).toBeNull();
   });
 
   it("met en cache l'historique dans le stockage local", async () => {
@@ -141,6 +146,73 @@ describe("useVoiceSession", () => {
     expect(rerenderResult.current.transcripts).toHaveLength(2);
     expect(rerenderResult.current.transcripts[0].text).toBe("Bonjour");
     unmountRerender();
+  });
+
+  it("démarre une session workflow avec le secret fourni sans persister l'historique", async () => {
+    const workflowSecret = {
+      client_secret: { value: "secret-workflow" },
+      instructions: "Décrivez", 
+      model: "gpt-workflow",
+      voice: "verse",
+    };
+
+    const workflowPayload = {
+      clientSecret: workflowSecret,
+      session: {
+        model: "gpt-workflow",
+        voice: "verse",
+        instructions: "Décrivez",
+        realtime: { start_mode: "auto", stop_mode: "manual", tools: { response: true } },
+        tool_definitions: [{ name: "ping" }],
+      },
+      step: { slug: "voice", title: "Voix" },
+      toolPermissions: { response: true, transcription: false, function_call: false },
+    } as const;
+
+    const { result } = renderHook(() => useVoiceSession());
+
+    await act(async () => {
+      await result.current.startSession({ workflow: workflowPayload });
+    });
+
+    expect(fetchSecretMock).not.toHaveBeenCalled();
+    expect(connectMock).toHaveBeenCalledWith({
+      secret: workflowSecret,
+      apiKey: "secret-workflow",
+      sessionConfig: {
+        instructions: "Décrivez",
+        voice: "verse",
+        model: "gpt-workflow",
+        toolDefinitions: workflowPayload.session.tool_definitions,
+        toolPermissions: workflowPayload.toolPermissions,
+      },
+    });
+    expect(result.current.source).toBe("workflow");
+    expect(result.current.sessionId).not.toBeNull();
+    expect(result.current.workflow?.step?.slug).toBe("voice");
+    expect(result.current.workflow?.startMode).toBe("auto");
+    expect(result.current.workflow?.stopMode).toBe("manual");
+
+    act(() => {
+      realtimeHandlers.current?.onHistoryUpdated?.([
+        {
+          type: "message",
+          itemId: "msg-user",
+          role: "user",
+          status: "completed",
+          content: [{ type: "input_text", text: "Bonjour" }],
+        },
+      ] as unknown[]);
+    });
+
+    expect(window.localStorage.getItem("chatkit:voice:history")).toBeNull();
+
+    act(() => {
+      result.current.stopSession({ clearHistory: true });
+    });
+
+    expect(result.current.workflow).toBeNull();
+    expect(result.current.source).toBeNull();
   });
 
   it("passe en erreur lorsque la récupération du secret échoue", async () => {

@@ -7,10 +7,21 @@ import { useAppLayout } from "./components/AppLayout";
 import { ChatKitHost } from "./components/my-chat/ChatKitHost";
 import { ChatSidebar } from "./components/my-chat/ChatSidebar";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
+import { VoiceOverlay } from "./components/my-chat/VoiceOverlay";
 import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useChatkitWorkflowSync } from "./hooks/useChatkitWorkflowSync";
 import { useHostedFlow } from "./hooks/useHostedFlow";
+import { useI18n } from "./i18n";
+import { useVoiceSession } from "./voice/useVoiceSession";
+import { requestMicrophoneAccess, type MicrophonePermissionState } from "./voice/microphone";
+import {
+  extractVoiceSessionEvent,
+  extractVoiceWaitState,
+  resolveVoiceStartMode,
+  resolveVoiceStopMode,
+  toWorkflowStartPayload,
+} from "./utils/voiceWorkflow";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import {
@@ -20,6 +31,7 @@ import {
 } from "./utils/chatkitThread";
 import type { WorkflowSummary } from "./types/workflows";
 import { makeApiEndpointCandidates } from "./utils/backend";
+import type { VoiceWorkflowStartPayload } from "./voice/types";
 
 type ChatConfigDebugSnapshot = {
   hostedFlow: boolean;
@@ -48,6 +60,13 @@ type ResetChatStateOptions = {
 type SecureUrlNormalizationResult =
   | { kind: "ok"; url: string; wasUpgraded: boolean }
   | { kind: "error"; message: string };
+
+type ActiveVoiceWorkflow = {
+  payload: VoiceWorkflowStartPayload;
+  threadId: string | null;
+  startMode: "manual" | "auto";
+  stopMode: "manual" | "auto";
+};
 
 const ensureSecureUrl = (rawUrl: string): SecureUrlNormalizationResult => {
   const trimmed = rawUrl.trim();
@@ -102,6 +121,7 @@ const ensureSecureUrl = (rawUrl: string): SecureUrlNormalizationResult => {
 export function MyChat() {
   const { token, user } = useAuth();
   const { openSidebar } = useAppLayout();
+  const { t } = useI18n();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
@@ -115,6 +135,25 @@ export function MyChat() {
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
+  const processedTranscriptIdsRef = useRef<Set<string>>(new Set());
+  const voiceEventKeyRef = useRef<string | null>(null);
+  const autoStartAttemptRef = useRef<string | null>(null);
+  const [voiceWorkflow, setVoiceWorkflow] = useState<ActiveVoiceWorkflow | null>(null);
+  const [microPermission, setMicroPermission] = useState<MicrophonePermissionState>("unknown");
+  const [voiceLocalError, setVoiceLocalError] = useState<string | null>(null);
+  const [isRequestingMic, setIsRequestingMic] = useState(false);
+  const [currentThreadId, setCurrentThreadId] = useState(initialThreadId);
+
+  const {
+    status: voiceStatus,
+    isListening: voiceListening,
+    transcripts: voiceTranscripts,
+    webrtcError: voiceWebrtcError,
+    startSession: startVoiceSession,
+    stopSession: stopVoiceSession,
+    clearErrors: clearVoiceErrors,
+    sessionId: voiceSessionId,
+  } = useVoiceSession();
   const resetChatState = useCallback(
     ({ workflowSlug, preserveStoredThread = false }: ResetChatStateOptions = {}) => {
       clearStoredChatKitSecret(sessionOwner);
@@ -152,6 +191,127 @@ export function MyChat() {
     }
     document.documentElement.dataset.theme = preferredColorScheme;
   }, [preferredColorScheme]);
+
+  const resetVoiceWorkflow = useCallback(
+    ({ clearSession = true, requestRefresh = false }: { clearSession?: boolean; requestRefresh?: boolean } = {}) => {
+      processedTranscriptIdsRef.current.clear();
+      voiceEventKeyRef.current = null;
+      autoStartAttemptRef.current = null;
+      setVoiceLocalError(null);
+      setIsRequestingMic(false);
+      setMicroPermission("unknown");
+      if (clearSession) {
+        clearVoiceErrors();
+        stopVoiceSession({ clearHistory: true });
+      }
+      setVoiceWorkflow(null);
+      if (requestRefresh) {
+        requestRefreshRef.current?.("[ChatKit] Rafraîchissement après session vocale");
+      }
+    },
+    [clearVoiceErrors, stopVoiceSession],
+  );
+
+  const handleVoiceSessionLog = useCallback(
+    (data: Record<string, unknown>) => {
+      const extraction = extractVoiceSessionEvent(data);
+      if (extraction) {
+        const payload = toWorkflowStartPayload(extraction.payload);
+        const serializedSecret = JSON.stringify(extraction.payload.client_secret ?? {});
+        const eventKey = JSON.stringify({
+          slug: payload.step?.slug ?? "",
+          thread: extraction.threadId ?? currentThreadId ?? "",
+          secret: serializedSecret,
+        });
+
+        if (voiceEventKeyRef.current !== eventKey) {
+          stopVoiceSession({ clearHistory: true });
+          voiceEventKeyRef.current = eventKey;
+          processedTranscriptIdsRef.current.clear();
+          autoStartAttemptRef.current = null;
+          setVoiceLocalError(null);
+          setIsRequestingMic(false);
+          setMicroPermission("unknown");
+          clearVoiceErrors();
+          if (extraction.threadId && extraction.threadId !== currentThreadId) {
+            setCurrentThreadId(extraction.threadId);
+          }
+          setVoiceWorkflow({
+            payload,
+            threadId: extraction.threadId ?? currentThreadId,
+            startMode: resolveVoiceStartMode(payload.session),
+            stopMode: resolveVoiceStopMode(payload.session),
+          });
+        }
+        return;
+      }
+
+      if (!voiceWorkflow) {
+        return;
+      }
+
+      const waitState = extractVoiceWaitState(data);
+      if (!waitState || waitState.type !== "voice") {
+        resetVoiceWorkflow({ requestRefresh: true });
+        return;
+      }
+
+      const waitSlug = typeof waitState.slug === "string" ? waitState.slug : null;
+      const currentSlug = voiceWorkflow.payload.step?.slug ?? null;
+      if (currentSlug && waitSlug && waitSlug !== currentSlug) {
+        resetVoiceWorkflow({ requestRefresh: true });
+      }
+    },
+    [
+      clearVoiceErrors,
+      currentThreadId,
+      resetVoiceWorkflow,
+      stopVoiceSession,
+      voiceWorkflow,
+    ],
+  );
+
+  const handleVoiceStart = useCallback(async () => {
+    if (!voiceWorkflow) {
+      return;
+    }
+    setVoiceLocalError(null);
+    setIsRequestingMic(true);
+    try {
+      const permission = await requestMicrophoneAccess();
+      if (permission.status === "unsupported") {
+        setMicroPermission("denied");
+        setVoiceLocalError(t("voiceOverlay.error.unsupported"));
+        return;
+      }
+      if (permission.status === "denied") {
+        setMicroPermission("denied");
+        setVoiceLocalError(t("voiceOverlay.error.permissionDenied"));
+        return;
+      }
+      if (permission.status === "error") {
+        setMicroPermission("denied");
+        setVoiceLocalError(permission.message || t("voiceOverlay.error.generic"));
+        return;
+      }
+
+      setMicroPermission("granted");
+      clearVoiceErrors();
+      await startVoiceSession({ preserveHistory: false, workflow: voiceWorkflow.payload });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t("voiceOverlay.error.generic");
+      setVoiceLocalError(message);
+    } finally {
+      setIsRequestingMic(false);
+    }
+  }, [clearVoiceErrors, startVoiceSession, t, voiceWorkflow]);
+
+  const handleVoiceStop = useCallback(() => {
+    stopVoiceSession({ clearHistory: true });
+    setVoiceLocalError(null);
+    setMicroPermission("unknown");
+    setIsRequestingMic(false);
+  }, [stopVoiceSession]);
 
   const handleWorkflowActivated = useCallback(
     (workflow: WorkflowSummary | null, { reason }: { reason: "initial" | "user" }) => {
@@ -659,6 +819,10 @@ export function MyChat() {
           console.debug("[ChatKit] thread change", { threadId });
           persistStoredThreadId(sessionOwner, threadId, activeWorkflowSlug);
           setInitialThreadId((current) => (current === threadId ? current : threadId));
+          setCurrentThreadId(threadId ?? null);
+          if (threadId !== currentThreadId) {
+            resetVoiceWorkflow();
+          }
         },
         onThreadLoadStart: ({ threadId }: { threadId: string }) => {
           console.debug("[ChatKit] thread load start", { threadId });
@@ -674,6 +838,9 @@ export function MyChat() {
             }
           }
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
+          if (entry?.data && typeof entry.data === "object") {
+            handleVoiceSessionLog(entry.data as Record<string, unknown>);
+          }
         },
       }) satisfies ChatKitOptions,
     [
@@ -687,6 +854,9 @@ export function MyChat() {
       chatInstanceKey,
       preferredColorScheme,
       reportError,
+      handleVoiceSessionLog,
+      resetVoiceWorkflow,
+      currentThreadId,
     ],
   );
 
@@ -708,12 +878,125 @@ export function MyChat() {
     };
   }, [requestRefresh]);
 
+  useEffect(() => {
+    setCurrentThreadId(initialThreadId);
+  }, [initialThreadId]);
+
+  useEffect(() => {
+    if (!voiceWorkflow) {
+      return;
+    }
+
+    const eventKey = voiceEventKeyRef.current;
+    if (!eventKey) {
+      return;
+    }
+
+    if (voiceWorkflow.startMode !== "auto") {
+      return;
+    }
+
+    if (autoStartAttemptRef.current === eventKey) {
+      return;
+    }
+
+    if (voiceStatus === "connecting" || voiceStatus === "connected") {
+      autoStartAttemptRef.current = eventKey;
+      return;
+    }
+
+    autoStartAttemptRef.current = eventKey;
+    void handleVoiceStart();
+  }, [handleVoiceStart, voiceStatus, voiceWorkflow]);
+
+  useEffect(() => {
+    if (!voiceWorkflow) {
+      return;
+    }
+
+    const activeThreadId = voiceWorkflow.threadId ?? currentThreadId;
+    const refresh = requestRefreshRef.current;
+
+    const entries = voiceTranscripts
+      .filter((entry) => entry.status === "completed" && !processedTranscriptIdsRef.current.has(entry.id))
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    if (entries.length === 0) {
+      return;
+    }
+
+    entries.forEach((entry) => {
+      processedTranscriptIdsRef.current.add(entry.id);
+
+      if (entry.role === "user") {
+        const text = entry.text.trim();
+        if (!text) {
+          return;
+        }
+
+        const payload: { text: string; newThread?: boolean } = { text };
+        if (!activeThreadId) {
+          payload.newThread = true;
+        }
+
+        void sendUserMessage(payload)
+          .then(() => {
+            refresh?.("[ChatKit] Rafraîchissement après transcription vocale utilisateur");
+          })
+          .catch((error: unknown) => {
+            processedTranscriptIdsRef.current.delete(entry.id);
+            const message =
+              error instanceof Error ? error.message : t("voiceOverlay.error.generic");
+            setVoiceLocalError(message);
+          });
+        return;
+      }
+
+      if (entry.role === "assistant") {
+        refresh?.("[ChatKit] Rafraîchissement après transcription vocale assistant");
+      }
+    });
+  }, [currentThreadId, sendUserMessage, t, voiceTranscripts, voiceWorkflow]);
+
+  useEffect(() => {
+    if (!voiceWorkflow) {
+      return;
+    }
+
+    if (voiceStatus === "idle" || voiceStatus === "error") {
+      requestRefreshRef.current?.("[ChatKit] Rafraîchissement après arrêt de session vocale");
+    }
+  }, [voiceStatus, voiceWorkflow]);
+
   const statusMessage = error ?? (isLoading ? "Initialisation de la session…" : null);
+
+  const overlayWorkflowTitle = voiceWorkflow?.payload.step?.title ?? null;
+  const voiceOverlayVisible =
+    Boolean(voiceWorkflow) ||
+    voiceStatus === "connecting" ||
+    voiceStatus === "connected" ||
+    Boolean(voiceLocalError) ||
+    Boolean(voiceWebrtcError);
 
   return (
     <>
       <ChatSidebar onWorkflowActivated={handleWorkflowActivated} />
-      <ChatKitHost control={control} chatInstanceKey={chatInstanceKey} />
+      <div className="chatkit-layout__main-surface">
+        <ChatKitHost control={control} chatInstanceKey={chatInstanceKey} />
+        <VoiceOverlay
+          visible={voiceOverlayVisible}
+          status={voiceStatus}
+          isListening={voiceListening}
+          microPermission={microPermission}
+          isRequestingMic={isRequestingMic}
+          workflowTitle={overlayWorkflowTitle}
+          onStart={handleVoiceStart}
+          onStop={handleVoiceStop}
+          errorMessage={voiceLocalError}
+          webrtcError={voiceWebrtcError}
+          transcripts={voiceTranscripts}
+        />
+      </div>
       <ChatStatusMessage message={statusMessage} isError={Boolean(error)} isLoading={isLoading} />
     </>
   );

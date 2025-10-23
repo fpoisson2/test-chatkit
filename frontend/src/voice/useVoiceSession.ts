@@ -4,10 +4,20 @@ import { RealtimeItem, RealtimeMessageItem } from "@openai/agents/realtime";
 import { useRealtimeSession } from "./useRealtimeSession";
 import { useVoiceSecret } from "./useVoiceSecret";
 import type { VoiceSessionSecret } from "./useVoiceSecret";
+import type {
+  VoiceToolPermissions,
+  VoiceWorkflowStartPayload,
+  VoiceWorkflowStepInfo,
+} from "./types";
 
-type VoiceSessionStatus = "idle" | "connecting" | "connected" | "error";
+const generateId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random()}`;
 
-type VoiceTranscript = {
+export type VoiceSessionStatus = "idle" | "connecting" | "connected" | "error";
+
+export type VoiceTranscript = {
   id: string;
   role: "user" | "assistant";
   text: string;
@@ -21,8 +31,18 @@ type VoiceSessionError = {
   timestamp: number;
 };
 
+type VoiceSessionWorkflowState = {
+  step?: VoiceWorkflowStepInfo | null;
+  startMode: "manual" | "auto";
+  stopMode: "manual" | "auto";
+  toolPermissions: VoiceToolPermissions;
+};
+
 type StartOptions = {
   preserveHistory?: boolean;
+  workflow?: VoiceWorkflowStartPayload;
+  secret?: VoiceSessionSecret;
+  toolPermissions?: VoiceToolPermissions;
 };
 
 type StopOptions = {
@@ -108,7 +128,7 @@ const buildTranscriptsFromHistory = (
 };
 
 const makeErrorEntry = (message: string): VoiceSessionError => ({
-  id: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+  id: generateId(),
   message,
   timestamp: Date.now(),
 });
@@ -149,6 +169,9 @@ export type UseVoiceSessionResult = {
   transcripts: VoiceTranscript[];
   errors: VoiceSessionError[];
   webrtcError: string | null;
+  sessionId: string | null;
+  source: "manual" | "workflow" | null;
+  workflow: VoiceSessionWorkflowState | null;
   startSession: (options?: StartOptions) => Promise<void>;
   stopSession: (options?: StopOptions) => void;
   clearErrors: () => void;
@@ -161,9 +184,13 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
   const [transcripts, setTranscripts] = useState<VoiceTranscript[]>(() => parseStoredTranscripts());
   const [errors, setErrors] = useState<VoiceSessionError[]>([]);
   const [webrtcError, setWebrtcError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionSource, setSessionSource] = useState<"manual" | "workflow" | null>(null);
+  const [workflowState, setWorkflowState] = useState<VoiceSessionWorkflowState | null>(null);
 
   const suppressEmptyHistoryRef = useRef(false);
   const startSessionRef = useRef<((options?: StartOptions) => Promise<void>) | null>(null);
+  const shouldPersistHistoryRef = useRef(true);
 
   const addError = useCallback((message: string) => {
     setErrors((prev) => {
@@ -180,14 +207,18 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
   const updateTranscriptsFromHistory = useCallback((history: RealtimeItem[]) => {
     setTranscripts((prev) => {
       const next = buildTranscriptsFromHistory(history, prev);
-      persistTranscripts(next);
+      if (shouldPersistHistoryRef.current) {
+        persistTranscripts(next);
+      }
       return next;
     });
   }, []);
 
   const resetTranscripts = useCallback(() => {
     setTranscripts(() => {
-      persistTranscripts([]);
+      if (shouldPersistHistoryRef.current) {
+        persistTranscripts([]);
+      }
       return [];
     });
   }, []);
@@ -262,6 +293,10 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       disconnect();
       setIsListening(false);
       setStatus(nextStatus);
+      setSessionId(null);
+      setSessionSource(null);
+      setWorkflowState(null);
+      shouldPersistHistoryRef.current = true;
       suppressEmptyHistoryRef.current = false;
       if (clearHistory) {
         resetTranscripts();
@@ -275,12 +310,14 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
   }, [stopSession]);
 
   const startSession = useCallback(
-    async ({ preserveHistory = false }: StartOptions = {}) => {
+    async ({ preserveHistory = false, workflow, secret, toolPermissions }: StartOptions = {}) => {
       if (status === "connecting") {
         return;
       }
 
       suppressEmptyHistoryRef.current = preserveHistory;
+      shouldPersistHistoryRef.current = !workflow;
+
       if (!preserveHistory) {
         resetTranscripts();
       }
@@ -292,19 +329,64 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       setStatus("connecting");
 
       try {
-        const secret = await fetchSecret();
-        const apiKey = resolveApiKey(secret.client_secret);
+        let resolvedSecret: VoiceSessionSecret;
+        let sessionOverrides:
+          | {
+              instructions?: string;
+              voice?: string;
+              model?: string;
+              toolDefinitions?: unknown;
+              toolPermissions?: VoiceToolPermissions;
+            }
+          | undefined;
+
+        if (workflow) {
+          resolvedSecret = workflow.clientSecret;
+          sessionOverrides = {
+            instructions: workflow.session.instructions,
+            voice: workflow.session.voice,
+            model: workflow.session.model,
+            toolDefinitions: workflow.session.tool_definitions,
+            toolPermissions: workflow.toolPermissions,
+          };
+
+          const startMode = workflow.session.realtime?.start_mode === "manual" ? "manual" : "auto";
+          const stopMode = workflow.session.realtime?.stop_mode === "manual" ? "manual" : "auto";
+          setSessionSource("workflow");
+          setWorkflowState({
+            step: workflow.step ?? null,
+            startMode,
+            stopMode,
+            toolPermissions: workflow.toolPermissions,
+          });
+        } else {
+          resolvedSecret = secret ?? (await fetchSecret());
+          sessionOverrides = toolPermissions ? { toolPermissions } : undefined;
+          setSessionSource("manual");
+          setWorkflowState(null);
+        }
+
+        const apiKey = resolveApiKey(resolvedSecret.client_secret);
         if (!apiKey) {
           throw new Error("Secret temps réel invalide renvoyé par le serveur.");
         }
 
-        await connect({ secret, apiKey });
+        await connect({
+          secret: resolvedSecret,
+          apiKey,
+          sessionConfig: sessionOverrides,
+        });
         setStatus("connected");
         setIsListening(true);
+        setSessionId(generateId());
       } catch (error) {
         disconnect();
         setIsListening(false);
         setStatus("error");
+        setSessionId(null);
+        setSessionSource(null);
+        setWorkflowState(null);
+        shouldPersistHistoryRef.current = true;
         const message = formatErrorMessage(error);
         addError(message);
         setWebrtcError(message);
@@ -333,11 +415,26 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       transcripts,
       errors,
       webrtcError,
+      sessionId,
+      source: sessionSource,
+      workflow: workflowState,
       startSession,
       stopSession,
       clearErrors,
     }),
-    [clearErrors, errors, isListening, startSession, status, stopSession, transcripts, webrtcError],
+    [
+      clearErrors,
+      errors,
+      isListening,
+      sessionId,
+      sessionSource,
+      startSession,
+      status,
+      stopSession,
+      transcripts,
+      webrtcError,
+      workflowState,
+    ],
   );
 
   return value;

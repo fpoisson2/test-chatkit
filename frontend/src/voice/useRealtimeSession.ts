@@ -18,9 +18,18 @@ type RealtimeSessionHandlers = {
   onRefreshDue?: () => void;
 };
 
+type SessionConfigOverrides = {
+  instructions?: string;
+  voice?: string;
+  model?: string;
+  toolDefinitions?: unknown;
+  toolPermissions?: Record<string, boolean>;
+};
+
 type ConnectOptions = {
   secret: VoiceSessionSecret;
   apiKey: string;
+  sessionConfig?: SessionConfigOverrides;
 };
 
 type UseRealtimeSessionResult = {
@@ -222,13 +231,66 @@ export const useRealtimeSession = (
     [],
   );
 
+  const buildSessionOverrides = useCallback(
+    (
+      secret: VoiceSessionSecret,
+      overrides?: SessionConfigOverrides,
+    ): Record<string, unknown> | null => {
+      if (!overrides) {
+        return null;
+      }
+
+      const update: Record<string, unknown> = {};
+
+      const instructions = overrides.instructions ?? secret.instructions;
+      if (instructions) {
+        update.instructions = instructions;
+      }
+
+      const voice = overrides.voice ?? secret.voice;
+      if (voice) {
+        update.voice = voice;
+      }
+
+      const model = overrides.model ?? secret.model;
+      if (model) {
+        update.model = model;
+      }
+
+      const permissions = overrides.toolPermissions ?? {};
+      if (permissions && typeof permissions.response === "boolean" && !permissions.response) {
+        update.outputModalities = ["text"];
+      }
+
+      if (permissions && typeof permissions.transcription === "boolean" && !permissions.transcription) {
+        const audioConfig: Record<string, unknown> = { transcription: null };
+        update.audio = { input: audioConfig };
+      }
+
+      if (permissions && typeof permissions.function_call === "boolean" && !permissions.function_call) {
+        update.tools = [];
+      } else if (overrides.toolDefinitions !== undefined) {
+        update.tools = overrides.toolDefinitions;
+      }
+
+      if (Object.keys(update).length === 0) {
+        return null;
+      }
+
+      update.type = "realtime";
+      return update;
+    },
+    [],
+  );
+
   const connect = useCallback(
-    async ({ secret, apiKey }: ConnectOptions) => {
+    async ({ secret, apiKey, sessionConfig }: ConnectOptions) => {
       disconnect();
 
       const agent = new RealtimeAgent({
         name: "Assistant vocal ChatKit",
-        instructions: secret.instructions,
+        instructions: sessionConfig?.instructions ?? secret.instructions,
+        voice: sessionConfig?.voice ?? secret.voice,
       });
       const session = new RealtimeSession(agent, { transport: "webrtc" });
       sessionRef.current = session;
@@ -240,13 +302,17 @@ export const useRealtimeSession = (
         if (promptUpdate) {
           applySessionUpdate(session, promptUpdate);
         }
+        const overrides = buildSessionOverrides(secret, sessionConfig);
+        if (overrides) {
+          applySessionUpdate(session, overrides);
+        }
         scheduleRefresh(secret);
       } catch (error) {
         disconnect();
         throw error;
       }
     },
-    [attachSessionListeners, disconnect, scheduleRefresh],
+    [attachSessionListeners, buildSessionOverrides, disconnect, scheduleRefresh],
   );
 
   return {
