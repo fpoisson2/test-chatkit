@@ -1,6 +1,7 @@
 """Services liés aux workflows ChatKit."""
 
 from .service import (
+    WorkflowDefinition,
     WorkflowNotFoundError,
     WorkflowService,
     WorkflowValidationError,
@@ -16,6 +17,7 @@ from .service import (
 )
 
 __all__ = [
+    "WorkflowDefinition",
     "WorkflowNotFoundError",
     "WorkflowService",
     "WorkflowVersionNotFoundError",

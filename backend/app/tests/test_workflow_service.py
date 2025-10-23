@@ -231,3 +231,103 @@ def test_update_current_normalizes_nested_workflow_slug(
         "slug": target_definition.workflow.slug
     }
 
+
+def test_import_workflow_creates_definition_from_vector_store_blueprint(
+    workflow_service: WorkflowService,
+) -> None:
+    graph_payload = {
+        "nodes": [
+            {"slug": "start", "kind": "start"},
+            {
+                "slug": "assistant",
+                "kind": "assistant_message",
+                "parameters": {"message": "Bonjour"},
+            },
+            {"slug": "end", "kind": "end"},
+        ],
+        "edges": [
+            {"source": "start", "target": "assistant"},
+            {"source": "assistant", "target": "end"},
+        ],
+    }
+
+    definition = workflow_service.import_workflow(
+        graph_payload=graph_payload,
+        slug="vector-blueprint",
+        display_name="Vector blueprint",
+        description="Importé depuis un vector store",
+        mark_as_active=True,
+    )
+
+    workflow = definition.workflow
+    assert workflow.slug == "vector-blueprint"
+    assert workflow.display_name == "Vector blueprint"
+    assert workflow.description == "Importé depuis un vector store"
+    assert workflow.active_version_id == definition.id
+    assert definition.version == 1
+    assert definition.is_active is True
+    assert definition.name == "Version importée"
+    assert [step.slug for step in definition.steps] == [
+        "start",
+        "assistant",
+        "end",
+    ]
+
+
+def test_import_workflow_updates_existing_workflow_from_vector_store_payload(
+    workflow_service: WorkflowService,
+) -> None:
+    initial_graph = {
+        "nodes": [
+            {"slug": "start", "kind": "start"},
+            {"slug": "end", "kind": "end"},
+        ],
+        "edges": [{"source": "start", "target": "end"}],
+    }
+    initial_definition = workflow_service.create_workflow(
+        slug="legacy-blueprint",
+        display_name="Legacy blueprint",
+        graph_payload=initial_graph,
+    )
+
+    updated_graph = {
+        "nodes": [
+            {"slug": "start", "kind": "start"},
+            {
+                "slug": "assistant",
+                "kind": "assistant_message",
+                "parameters": {"message": "Bonjour"},
+            },
+            {"slug": "end", "kind": "end"},
+        ],
+        "edges": [
+            {"source": "start", "target": "assistant"},
+            {"source": "assistant", "target": "end"},
+        ],
+    }
+
+    imported = workflow_service.import_workflow(
+        graph_payload=updated_graph,
+        workflow_id=initial_definition.workflow_id,
+        slug="vector-blueprint",
+        display_name="Vector blueprint v2",
+        description="Mise à jour depuis le vector store",
+        version_name="Vector import",
+        mark_as_active=True,
+    )
+
+    workflow = imported.workflow
+    assert workflow.id == initial_definition.workflow_id
+    assert workflow.slug == "vector-blueprint"
+    assert workflow.display_name == "Vector blueprint v2"
+    assert workflow.description == "Mise à jour depuis le vector store"
+    assert workflow.active_version_id == imported.id
+    assert imported.version == initial_definition.version + 1
+    assert imported.is_active is True
+    assert imported.name == "Vector import"
+    assert [step.slug for step in imported.steps] == [
+        "start",
+        "assistant",
+        "end",
+    ]
+
