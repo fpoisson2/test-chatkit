@@ -1,4 +1,3 @@
-import json
 import os
 import sys
 from dataclasses import dataclass
@@ -218,16 +217,14 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
     assert added_events, "expected a task event for the voice session"
     task_event = added_events[0]
     assert isinstance(task_event.item, TaskItem)
-    payload = json.loads(task_event.item.task.content or "{}")
-    assert payload["type"] == "voice_session.created"
-    client_secret = payload["client_secret"]
-    assert "secret-123" in json.dumps(client_secret)
-    assert payload["session"]["voice"] == "ember"
-    assert payload["tool_permissions"] == {
-        "response": True,
-        "transcription": True,
-        "function_call": False,
-    }
+    content = task_event.item.task.content
+    assert content is not None
+    assert "Session vocale initialisée" in content
+    assert "secret-123" in content
+    assert "Voix : ember" in content
+    assert "Réponses audio ✅" in content
+    assert "Fonctions ❌" in content
+    assert "Assistant vocal" in content
 
     wait_state = agent_context.thread.metadata.get(_WAIT_STATE_METADATA_KEY)
     assert isinstance(wait_state, dict)
