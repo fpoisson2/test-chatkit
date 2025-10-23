@@ -412,6 +412,7 @@ export const VoiceSessionBridge = ({
   const finalizingRef = useRef(false);
   const microphonePreflightRef = useRef(false);
   const hasRequestedGreetingRef = useRef(false);
+  const finalizeOnDisconnectRef = useRef(false);
 
   useEffect(() => {
     transcriptsRef.current = transcripts;
@@ -634,11 +635,14 @@ export const VoiceSessionBridge = ({
         setStatus("connecting");
       } else {
         setStatus((current) => (current === "error" ? current : "idle"));
+        if (finalizeOnDisconnectRef.current) {
+          finalizeOnDisconnectRef.current = false;
+          void flushTranscripts("agent_end");
+        }
       }
     },
     onAgentEnd: () => {
       setStatus("idle");
-      void flushTranscripts("agent_end");
     },
     onTransportError: (transportError) => {
       const message = formatErrorMessage(transportError) || t("voice.inline.errors.generic");
@@ -681,6 +685,7 @@ export const VoiceSessionBridge = ({
       sentTranscriptIdsRef.current.clear();
       pendingTranscriptIdsRef.current.clear();
       finalizingRef.current = false;
+      finalizeOnDisconnectRef.current = false;
 
       try {
         await ensureMicrophoneAccess();
@@ -693,6 +698,7 @@ export const VoiceSessionBridge = ({
         await connect({ secret: voiceSecret, apiKey });
         setStatus("connected");
         setNeedsUserGesture(false);
+        finalizeOnDisconnectRef.current = true;
       } catch (err) {
         disconnect();
         const bridgeError = err as BridgeError;
@@ -726,6 +732,7 @@ export const VoiceSessionBridge = ({
       setStatus("error");
       setError(t("voice.inline.errors.invalidSecret"));
       return () => {
+        finalizeOnDisconnectRef.current = false;
         disconnect();
       };
     }
@@ -733,11 +740,13 @@ export const VoiceSessionBridge = ({
     void beginSession("auto");
 
     return () => {
+      finalizeOnDisconnectRef.current = false;
       disconnect();
     };
   }, [beginSession, disconnect, t, voiceSecret]);
 
   const handleStop = useCallback(() => {
+    finalizeOnDisconnectRef.current = false;
     disconnect();
     void flushTranscripts("manual");
     setNeedsUserGesture(false);
