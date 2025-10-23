@@ -7,17 +7,20 @@ import logging
 import math
 import re
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
 from openai import OpenAI
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import EMBEDDING_DIMENSION, JsonChunk, JsonDocument, JsonVectorStore
+from ..schemas import VectorStoreWorkflowBlueprint
+from ..workflows import WorkflowService, WorkflowValidationError
 from .constants import (
     PROTECTED_VECTOR_STORE_ERROR_MESSAGE,
     WORKFLOW_VECTOR_STORE_DESCRIPTION,
@@ -25,6 +28,7 @@ from .constants import (
     WORKFLOW_VECTOR_STORE_SLUG,
     WORKFLOW_VECTOR_STORE_TITLE,
 )
+from .workflows import ingest_workflow_blueprint
 
 logger = logging.getLogger("chatkit.vector_store")
 
@@ -480,6 +484,10 @@ class JsonVectorStoreService:
         )
         self._delete_existing_document(store.id, doc_id)
 
+        workflow_blueprint_payload: Any | None = None
+        if isinstance(document_metadata, Mapping):
+            workflow_blueprint_payload = document_metadata.get("workflow_blueprint")
+
         entries = _flatten_json(payload)
         if not entries:
             entries = [{"path": "root", "value": _format_value(payload)}]
@@ -602,6 +610,50 @@ class JsonVectorStoreService:
 
         document.chunks = json_chunks
         self.session.flush()
+
+        if workflow_blueprint_payload is not None:
+            try:
+                blueprint = VectorStoreWorkflowBlueprint.model_validate(
+                    workflow_blueprint_payload
+                )
+            except ValidationError as exc:
+                logger.warning(
+                    "Blueprint de workflow invalide pour le document %s (%s): %s",
+                    doc_id,
+                    store.slug,
+                    exc,
+                )
+            else:
+                workflow_service = WorkflowService()
+                try:
+                    ingest_workflow_blueprint(
+                        workflow_service,
+                        session=self.session,
+                        blueprint=blueprint,
+                    )
+                except WorkflowValidationError as exc:
+                    logger.warning(
+                        "Import du workflow %s depuis %s/%s impossible: %s",
+                        blueprint.slug,
+                        store.slug,
+                        doc_id,
+                        exc.message,
+                    )
+                except Exception:  # pragma: no cover - erreurs inattendues
+                    logger.exception(
+                        "Erreur inattendue lors de l'import du workflow %s "
+                        "depuis %s/%s",
+                        blueprint.slug,
+                        store.slug,
+                        doc_id,
+                    )
+                else:
+                    logger.info(
+                        "Workflow %s importé depuis le document %s du vector store %s",
+                        blueprint.slug,
+                        doc_id,
+                        store.slug,
+                    )
         return document
 
     def _get_or_create_store(
