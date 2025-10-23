@@ -559,7 +559,6 @@ export type VectorStoreDocument = {
   chunk_count: number;
   created_at: string;
   updated_at: string;
-  created_workflow: WorkflowSummary | null;
 };
 
 export type VectorStoreDocumentDetail = VectorStoreDocument & {
@@ -572,13 +571,6 @@ export type VectorStoreIngestionPayload = {
   metadata: Record<string, unknown>;
   store_title?: string | null;
   store_metadata?: Record<string, unknown> | null;
-  workflow_blueprint?: {
-    slug: string;
-    display_name: string;
-    description?: string | null;
-    graph: Record<string, unknown>;
-    mark_active: boolean;
-  } | null;
 };
 
 export type VectorStoreSearchPayload = {

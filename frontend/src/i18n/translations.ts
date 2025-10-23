@@ -197,26 +197,8 @@ const fr: TranslationDictionary = {
   "workflowBuilder.deploy.modal.titlePublishDraft": "Publier les modifications ?",
   "workflowBuilder.deploy.modal.descriptionPublishDraft":
     "Créez une nouvelle version du workflow avec vos dernières modifications.",
-  "vectorStore.ingestion.createWorkflow.label": "Créer un workflow",
-  "vectorStore.ingestion.createWorkflow.slugLabel": "Slug du workflow",
-  "vectorStore.ingestion.createWorkflow.nameLabel": "Nom du workflow",
-  "vectorStore.ingestion.createWorkflow.descriptionLabel": "Description du workflow (optionnel)",
-  "vectorStore.ingestion.createWorkflow.graphLabel": "Graphe du workflow (JSON)",
-  "vectorStore.ingestion.createWorkflow.markActiveLabel": "Activer immédiatement le workflow",
-  "vectorStore.ingestion.createWorkflow.slugHelp":
-    "Utilisez des lettres minuscules, des chiffres et des tirets (ex. demo-workflow).",
-  "vectorStore.ingestion.createWorkflow.graphHelp":
-    "Structure attendue : un objet JSON avec les clés « nodes » et « edges » décrivant les blocs et connexions du workflow.",
-  "vectorStore.ingestion.createWorkflow.graphHelpExample": "{\"nodes\": [], \"edges\": []}",
-  "vectorStore.ingestion.errors.workflowSlugRequired": "Le slug du workflow est requis.",
-  "vectorStore.ingestion.errors.workflowNameRequired": "Le nom du workflow est requis.",
-  "vectorStore.ingestion.errors.workflowGraphInvalid": "Le graphe du workflow doit être un objet JSON valide.",
-  "vectorStore.ingestion.errors.workflowSlugInvalid":
-    "Le slug du workflow ne peut contenir que des lettres minuscules, des chiffres et des tirets.",
   "vectorStore.ingestion.success.document":
     "Document « {{docId}} » ingéré ({{chunkCount}} segment{{pluralSuffix}}).",
-  "vectorStore.ingestion.success.workflowCreatedPrefix": "Workflow créé :",
-  "vectorStore.ingestion.success.workflowCreatedSuffix": "(slug : {{workflowSlug}}).",
   "workflowBuilder.deploy.modal.titlePromoteSelected": "Déployer la version sélectionnée ?",
   "workflowBuilder.deploy.modal.descriptionPromoteSelected":
     "Remplace la version de production actuelle par la révision v{{version}}.",
@@ -464,26 +446,8 @@ const en: TranslationDictionary = {
   "workflowBuilder.voiceInspector.tool.functionCall": "Function calling",
   "workflowBuilder.voiceInspector.tool.functionCall.help":
     "Enable function calls to invoke custom business logic.",
-  "vectorStore.ingestion.createWorkflow.label": "Create a workflow",
-  "vectorStore.ingestion.createWorkflow.slugLabel": "Workflow slug",
-  "vectorStore.ingestion.createWorkflow.nameLabel": "Workflow name",
-  "vectorStore.ingestion.createWorkflow.descriptionLabel": "Workflow description (optional)",
-  "vectorStore.ingestion.createWorkflow.graphLabel": "Workflow graph (JSON)",
-  "vectorStore.ingestion.createWorkflow.markActiveLabel": "Activate workflow immediately",
-  "vectorStore.ingestion.createWorkflow.slugHelp":
-    "Use lowercase letters, numbers, and hyphens (e.g. demo-workflow).",
-  "vectorStore.ingestion.createWorkflow.graphHelp":
-    "Expected structure: a JSON object with \"nodes\" and \"edges\" describing the workflow.",
-  "vectorStore.ingestion.createWorkflow.graphHelpExample": "{\"nodes\": [], \"edges\": []}",
-  "vectorStore.ingestion.errors.workflowSlugRequired": "The workflow slug is required.",
-  "vectorStore.ingestion.errors.workflowNameRequired": "The workflow name is required.",
-  "vectorStore.ingestion.errors.workflowGraphInvalid": "The workflow graph must be a valid JSON object.",
-  "vectorStore.ingestion.errors.workflowSlugInvalid":
-    "The workflow slug may only contain lowercase letters, numbers, and hyphens.",
   "vectorStore.ingestion.success.document":
     "Document “{{docId}}” ingested ({{chunkCount}} segment{{pluralSuffix}}).",
-  "vectorStore.ingestion.success.workflowCreatedPrefix": "Workflow created:",
-  "vectorStore.ingestion.success.workflowCreatedSuffix": "(slug: {{workflowSlug}}).",
 };
 
 export const translations: Translations = {

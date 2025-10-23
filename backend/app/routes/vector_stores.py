@@ -18,25 +18,14 @@ from ..schemas import (
     VectorStoreSearchRequest,
     VectorStoreSearchResult,
     VectorStoreUpdateRequest,
-    WorkflowSummaryResponse,
 )
 from ..vector_store import (
     PROTECTED_VECTOR_STORE_ERROR_MESSAGE,
     WORKFLOW_VECTOR_STORE_SLUG,
     JsonVectorStoreService,
 )
-from ..vector_store.workflows import ingest_workflow_blueprint
-from ..workflows import (
-    WorkflowService,
-    WorkflowValidationError,
-    serialize_workflow_summary,
-)
 
 router = APIRouter()
-
-
-def get_workflow_service() -> WorkflowService:
-    return WorkflowService()
 
 
 def _serialize_store(
@@ -182,7 +171,6 @@ async def ingest_document(
     payload: VectorStoreDocumentIngestRequest,
     session: Session = Depends(get_session),
     _: User = Depends(require_admin),
-    workflow_service: WorkflowService = Depends(get_workflow_service),
 ) -> VectorStoreDocumentResponse:
     service = JsonVectorStoreService(session)
 
@@ -201,34 +189,6 @@ async def ingest_document(
         ) from exc
 
     chunk_count = len(document.chunks)
-    workflow_summary: WorkflowSummaryResponse | None = None
-
-    if payload.workflow_blueprint is not None:
-        try:
-            definition = ingest_workflow_blueprint(
-                workflow_service,
-                session=session,
-                blueprint=payload.workflow_blueprint,
-            )
-        except WorkflowValidationError as exc:
-            session.rollback()
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(exc),
-            ) from exc
-        except Exception:
-            session.rollback()
-            raise
-
-        workflow = definition.workflow
-        if workflow is not None:
-            metadata = dict(document.metadata_json or {})
-            metadata["workflow_id"] = workflow.id
-            metadata["workflow_slug"] = workflow.slug
-            document.metadata_json = metadata
-            workflow_summary = WorkflowSummaryResponse.model_validate(
-                serialize_workflow_summary(workflow)
-            )
 
     session.commit()
     session.refresh(document)
@@ -238,7 +198,6 @@ async def ingest_document(
         chunk_count=chunk_count,
         created_at=document.created_at,
         updated_at=document.updated_at,
-        created_workflow=workflow_summary,
     )
 
 
