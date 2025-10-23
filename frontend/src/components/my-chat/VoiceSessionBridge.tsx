@@ -287,6 +287,42 @@ export const VoiceSessionBridge = ({
   const finalizeOnDisconnectRef = useRef(false);
   const secretFetchAttemptRef = useRef(false);
 
+  const builtVoiceSecret = useMemo<VoiceSessionSecret | null>(() => {
+    const secret = buildVoiceSessionSecret(details);
+    if (!secret) {
+      console.warn("[ChatKit][VoiceBridge] Aucun client_secret fourni par le workflow", {
+        taskId: details.taskId,
+        stepSlug: details.stepSlug,
+      });
+      return null;
+    }
+
+    const realtimeKeys =
+      secret.session_config && isRecord(secret.session_config["realtime"])
+        ? Object.keys(secret.session_config["realtime"] as Record<string, unknown>)
+        : [];
+
+    console.info("[ChatKit][VoiceBridge] Secret Realtime construit", {
+      taskId: details.taskId,
+      stepSlug: details.stepSlug,
+      stepTitle: details.stepTitle,
+      model: secret.model,
+      voice: secret.voice,
+      sessionConfigKeys: secret.session_config ? Object.keys(secret.session_config) : [],
+      realtimeKeys,
+      startMode: details.realtime?.startMode ?? null,
+      stopMode: details.realtime?.stopMode ?? null,
+      toolPermissions: details.toolPermissions,
+    });
+
+    return secret;
+  }, [details]);
+
+  const voiceSecret = useMemo<VoiceSessionSecret | null>(
+    () => builtVoiceSecret ?? fallbackSecret,
+    [builtVoiceSecret, fallbackSecret],
+  );
+
   useEffect(() => {
     transcriptsRef.current = transcripts;
   }, [transcripts]);
@@ -405,42 +441,6 @@ export const VoiceSessionBridge = ({
     isFetchingSecret,
     t,
   ]);
-
-  const builtVoiceSecret = useMemo<VoiceSessionSecret | null>(() => {
-    const secret = buildVoiceSessionSecret(details);
-    if (!secret) {
-      console.warn("[ChatKit][VoiceBridge] Aucun client_secret fourni par le workflow", {
-        taskId: details.taskId,
-        stepSlug: details.stepSlug,
-      });
-      return null;
-    }
-
-    const realtimeKeys =
-      secret.session_config && isRecord(secret.session_config["realtime"])
-        ? Object.keys(secret.session_config["realtime"] as Record<string, unknown>)
-        : [];
-
-    console.info("[ChatKit][VoiceBridge] Secret Realtime construit", {
-      taskId: details.taskId,
-      stepSlug: details.stepSlug,
-      stepTitle: details.stepTitle,
-      model: secret.model,
-      voice: secret.voice,
-      sessionConfigKeys: secret.session_config ? Object.keys(secret.session_config) : [],
-      realtimeKeys,
-      startMode: details.realtime?.startMode ?? null,
-      stopMode: details.realtime?.stopMode ?? null,
-      toolPermissions: details.toolPermissions,
-    });
-
-    return secret;
-  }, [details]);
-
-  const voiceSecret = useMemo<VoiceSessionSecret | null>(
-    () => builtVoiceSecret ?? fallbackSecret,
-    [builtVoiceSecret, fallbackSecret],
-  );
 
   const toolEntries = useMemo(() => {
     const entries = Object.entries(details.toolPermissions).map(([key, allowed]) => ({
