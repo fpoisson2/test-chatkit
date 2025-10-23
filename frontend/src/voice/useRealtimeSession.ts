@@ -232,15 +232,20 @@ export const useRealtimeSession = (
         instructions: secret.instructions,
         ...(secret.voice ? { voice: secret.voice } : {}),
       });
+      const sessionModel =
+        typeof secret.model === "string" && secret.model.trim()
+          ? secret.model.trim()
+          : "gpt-4o-realtime-preview";
       const session = new RealtimeSession(agent, {
         transport: "webrtc",
+        model: sessionModel,
         ...(secret.session_config ? { config: secret.session_config } : {}),
       });
       sessionRef.current = session;
       attachSessionListeners(session);
 
       try {
-        await session.connect({ apiKey, model: secret.model });
+        await session.connect({ apiKey, model: sessionModel });
         if (secret.session_config) {
           applySessionUpdate(session, secret.session_config);
         }
