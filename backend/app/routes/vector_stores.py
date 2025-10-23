@@ -20,7 +20,11 @@ from ..schemas import (
     VectorStoreUpdateRequest,
     WorkflowSummaryResponse,
 )
-from ..vector_store import JsonVectorStoreService
+from ..vector_store import (
+    PROTECTED_VECTOR_STORE_ERROR_MESSAGE,
+    WORKFLOW_VECTOR_STORE_SLUG,
+    JsonVectorStoreService,
+)
 from ..vector_store.workflows import ingest_workflow_blueprint
 from ..workflows import (
     WorkflowService,
@@ -147,11 +151,21 @@ async def delete_vector_store(
     _: User = Depends(require_admin),
 ) -> Response:
     service = JsonVectorStoreService(session)
+    normalized_slug = store_slug.strip()
+    if normalized_slug == WORKFLOW_VECTOR_STORE_SLUG:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=PROTECTED_VECTOR_STORE_ERROR_MESSAGE,
+        )
     try:
-        service.delete_store(store_slug)
+        service.delete_store(normalized_slug)
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Magasin introuvable"
+        ) from exc
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
 
     session.commit()

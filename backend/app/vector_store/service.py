@@ -17,6 +17,13 @@ from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import EMBEDDING_DIMENSION, JsonChunk, JsonDocument, JsonVectorStore
+from .constants import (
+    PROTECTED_VECTOR_STORE_ERROR_MESSAGE,
+    WORKFLOW_VECTOR_STORE_DESCRIPTION,
+    WORKFLOW_VECTOR_STORE_METADATA,
+    WORKFLOW_VECTOR_STORE_SLUG,
+    WORKFLOW_VECTOR_STORE_TITLE,
+)
 
 logger = logging.getLogger("chatkit.vector_store")
 
@@ -350,6 +357,42 @@ class JsonVectorStoreService:
         self.session.flush()
         return store
 
+    def ensure_store_exists(
+        self,
+        slug: str,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> JsonVectorStore:
+        normalized_slug = slug.strip()
+        if not normalized_slug:
+            raise ValueError("Le slug du magasin ne peut pas être vide")
+        existing = self.get_store(normalized_slug)
+        if existing is not None:
+            return existing
+
+        default_title = title
+        default_description = description
+        default_metadata = metadata
+
+        if normalized_slug == WORKFLOW_VECTOR_STORE_SLUG:
+            if default_title is None:
+                default_title = WORKFLOW_VECTOR_STORE_TITLE
+            if default_description is None:
+                default_description = WORKFLOW_VECTOR_STORE_DESCRIPTION
+            merged_metadata: dict[str, Any] = dict(WORKFLOW_VECTOR_STORE_METADATA)
+            if metadata:
+                merged_metadata.update(metadata)
+            default_metadata = merged_metadata
+
+        return self.create_store(
+            normalized_slug,
+            title=default_title,
+            description=default_description,
+            metadata=default_metadata,
+        )
+
     def update_store(
         self,
         slug: str,
@@ -372,7 +415,11 @@ class JsonVectorStoreService:
         return store
 
     def delete_store(self, slug: str) -> None:
-        store = self.get_store(slug)
+        normalized_slug = slug.strip()
+        if normalized_slug == WORKFLOW_VECTOR_STORE_SLUG:
+            raise PermissionError(PROTECTED_VECTOR_STORE_ERROR_MESSAGE)
+
+        store = self.get_store(normalized_slug)
         if store is None:
             raise LookupError("Magasin introuvable")
         self.session.delete(store)
