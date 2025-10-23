@@ -2305,11 +2305,87 @@ async def run_workflow(
             except Exception as exc:
                 raise_step_error(current_node.slug, title or current_node.slug, exc)
 
+            secret_mapping: Mapping[str, Any] | None = None
+            if isinstance(realtime_secret, Mapping):
+                secret_mapping = realtime_secret
+
+            nested_secret = None
+            if secret_mapping is not None:
+                potential = secret_mapping.get("client_secret")
+                if isinstance(potential, Mapping):
+                    nested_secret = potential
+
+            if nested_secret is not None:
+                client_secret_payload = _json_safe_copy(nested_secret)
+                expires_at_value = (
+                    secret_mapping.get("expires_at")
+                    if isinstance(secret_mapping, Mapping)
+                    else None
+                )
+                if (
+                    expires_at_value is not None
+                    and isinstance(client_secret_payload, dict)
+                    and "expires_at" not in client_secret_payload
+                ):
+                    client_secret_payload["expires_at"] = _json_safe_copy(
+                        expires_at_value
+                    )
+            else:
+                client_secret_payload = (
+                    _json_safe_copy(secret_mapping)
+                    if isinstance(secret_mapping, Mapping)
+                    else _json_safe_copy(realtime_secret)
+                )
+
+            session_source: Mapping[str, Any] | None = None
+            if isinstance(client_secret_payload, Mapping):
+                candidate_session = client_secret_payload.get("session")
+                if isinstance(candidate_session, Mapping):
+                    session_source = candidate_session
+            if session_source is None and isinstance(secret_mapping, Mapping):
+                candidate_session = secret_mapping.get("session")
+                if isinstance(candidate_session, Mapping):
+                    session_source = candidate_session
+
+            if session_source is not None:
+                session_payload = _json_safe_copy(session_source)
+            else:
+                session_payload = {}
+
+            for key in ("voice", "model", "instructions"):
+                value = event_context.get(key)
+                if key not in session_payload and value is not None:
+                    session_payload[key] = _json_safe_copy(value)
+
+            realtime_config = event_context.get("realtime")
+            if isinstance(realtime_config, Mapping):
+                existing_realtime = session_payload.get("realtime")
+                if isinstance(existing_realtime, Mapping):
+                    merged_realtime = _json_safe_copy(existing_realtime)
+                    for r_key, r_value in realtime_config.items():
+                        if r_key not in merged_realtime:
+                            merged_realtime[r_key] = _json_safe_copy(r_value)
+                else:
+                    merged_realtime = _json_safe_copy(realtime_config)
+                session_payload["realtime"] = merged_realtime
+
+            tool_definitions = event_context.get("tool_definitions")
+            if (
+                tool_definitions is not None
+                and "tool_definitions" not in session_payload
+            ):
+                session_payload["tool_definitions"] = _json_safe_copy(
+                    tool_definitions
+                )
+
+            if not session_payload:
+                session_payload = _json_safe_copy(event_context)
+
             event_payload = {
                 "type": "voice_session.created",
                 "step": {"slug": current_node.slug, "title": title},
-                "client_secret": realtime_secret,
-                "session": event_context,
+                "client_secret": client_secret_payload,
+                "session": session_payload,
                 "tool_permissions": event_context["realtime"]["tools"],
             }
 

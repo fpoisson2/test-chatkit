@@ -166,12 +166,32 @@ def _build_agent_context() -> AgentContext[ChatKitRequestContext]:
 
 
 @pytest.mark.anyio
-async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("secret_shape", ["flat", "nested"])
+async def test_voice_agent_starts_session(
+    monkeypatch: pytest.MonkeyPatch, secret_shape: str
+) -> None:
     captured_args: dict[str, Any] = {}
 
     async def _fake_create_session(**kwargs: Any) -> dict[str, Any]:
         captured_args.update(kwargs)
-        return {"client_secret": {"value": "secret-123"}, "expires_at": "2099-01-01"}
+        session_payload = {
+            "type": "realtime",
+            "output_modalities": ["audio"],
+            "audio": {"output": {"voice": "ember"}},
+        }
+        if secret_shape == "nested":
+            return {
+                "client_secret": {
+                    "value": "secret-123",
+                    "session": session_payload,
+                },
+                "expires_at": "2099-01-01",
+            }
+        return {
+            "value": "secret-123",
+            "expires_at": "2099-01-01",
+            "session": session_payload,
+        }
 
     events: list[ThreadStreamEvent] = []
 
@@ -223,8 +243,9 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
     payload = json.loads(content)
     assert payload["type"] == "voice_session.created"
     assert payload["step"] == {"slug": "voice", "title": "Voice"}
-    assert payload["client_secret"]["client_secret"]["value"] == "secret-123"
+    assert payload["client_secret"]["value"] == "secret-123"
     assert payload["client_secret"]["expires_at"] == "2099-01-01"
+    assert payload["session"]["type"] == "realtime"
     assert payload["session"]["voice"] == "ember"
     assert payload["session"]["model"] == "gpt-voice"
     assert payload["session"]["instructions"] == "Répondez brièvement."
@@ -235,6 +256,13 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
         "transcription": True,
         "function_call": False,
     }
+    assert payload["session"]["tool_definitions"] == [
+        {
+            "type": "web_search",
+            "web_search": {"search_context_size": "small"},
+        }
+    ]
+    assert payload["session"]["audio"]["output"]["voice"] == "ember"
     assert payload["tool_permissions"] == {
         "response": True,
         "transcription": True,
