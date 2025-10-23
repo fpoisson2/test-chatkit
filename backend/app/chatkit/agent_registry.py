@@ -25,6 +25,7 @@ from ..tool_factory import (
     build_weather_tool,
     build_web_search_tool,
     build_widget_validation_tool,
+    build_workflow_tool,
 )
 
 logger = logging.getLogger("chatkit.server")
@@ -450,6 +451,79 @@ def _coerce_agent_tools(
 
             if normalized_type == "image_generation":
                 tool = build_image_generation_tool(entry)
+                if tool is not None:
+                    coerced.append(tool)
+                continue
+
+            if normalized_type == "workflow":
+                config: dict[str, Any] = {}
+                workflow_payload = entry.get("workflow")
+                if isinstance(workflow_payload, Mapping):
+                    config.update(workflow_payload)
+                elif isinstance(workflow_payload, str):
+                    slug_candidate = workflow_payload.strip()
+                    if slug_candidate:
+                        config["slug"] = slug_candidate
+                elif workflow_payload is not None:
+                    logger.warning(
+                        "Impossible de construire l'outil workflow : "
+                        "configuration invalide (%s).",
+                        entry,
+                    )
+                    continue
+
+                for key in (
+                    "slug",
+                    "workflow_slug",
+                    "initial_message",
+                    "message",
+                    "title",
+                    "workflow_title",
+                    "identifier",
+                    "workflow_identifier",
+                    "workflow_id",
+                    "id",
+                    "name",
+                    "description",
+                    "show_ui",
+                ):
+                    if key in config:
+                        continue
+                    value = entry.get(key)
+                    if value is not None:
+                        config[key] = value
+
+                slug: str | None = None
+                for candidate in (
+                    config.get("slug"),
+                    config.get("workflow_slug"),
+                ):
+                    if isinstance(candidate, str):
+                        trimmed = candidate.strip()
+                        if trimmed:
+                            slug = trimmed
+                            break
+
+                if slug is None:
+                    logger.warning(
+                        "Impossible de construire l'outil workflow : slug "
+                        "manquant (%s).",
+                        config if config else entry,
+                    )
+                    continue
+
+                config["slug"] = slug
+
+                try:
+                    tool = build_workflow_tool(config)
+                except Exception as exc:  # pragma: no cover - robustesse best effort
+                    logger.warning(
+                        "Impossible de construire l'outil workflow %r : %s",
+                        slug,
+                        exc,
+                    )
+                    continue
+
                 if tool is not None:
                     coerced.append(tool)
                 continue
