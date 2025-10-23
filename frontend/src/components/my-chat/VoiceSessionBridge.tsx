@@ -118,147 +118,20 @@ const extractExpiration = (
   return null;
 };
 
-const toFiniteNumber = (value: unknown): number | undefined => {
-  if (typeof value !== "number") {
-    return undefined;
-  }
-  return Number.isFinite(value) ? value : undefined;
-};
-
-const normalizeTurnDetection = (
+const cloneSerializableRecord = (
   value: unknown,
 ): Record<string, unknown> | undefined => {
   if (!isRecord(value)) {
     return undefined;
   }
 
-  const result: Record<string, unknown> = {};
-
-  if (typeof value.type === "string" && value.type.trim()) {
-    result.type = value.type;
-  }
-
-  const threshold = toFiniteNumber(value.threshold);
-  if (typeof threshold === "number") {
-    result.threshold = threshold;
-  }
-
-  const prefixPadding = toFiniteNumber(
-    value.prefixPaddingMs ?? value.prefix_padding_ms,
-  );
-  if (typeof prefixPadding === "number") {
-    result.prefixPaddingMs = prefixPadding;
-  }
-
-  const silenceDuration = toFiniteNumber(
-    value.silenceDurationMs ?? value.silence_duration_ms,
-  );
-  if (typeof silenceDuration === "number") {
-    result.silenceDurationMs = silenceDuration;
-  }
-
-  const idleTimeout = toFiniteNumber(
-    value.idleTimeoutMs ?? value.idle_timeout_ms,
-  );
-  if (typeof idleTimeout === "number") {
-    result.idleTimeoutMs = idleTimeout;
-  }
-
-  const createResponse = value.createResponse ?? value.create_response;
-  if (typeof createResponse === "boolean") {
-    result.createResponse = createResponse;
-  }
-
-  const interruptResponse =
-    value.interruptResponse ?? value.interrupt_response;
-  if (typeof interruptResponse === "boolean") {
-    result.interruptResponse = interruptResponse;
-  }
-
-  return Object.keys(result).length > 0 ? result : undefined;
-};
-
-const normalizeAudioInput = (
-  value: unknown,
-): Record<string, unknown> | undefined => {
-  if (!isRecord(value)) {
+  try {
+    const cloned = JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+    return Object.keys(cloned).length > 0 ? cloned : undefined;
+  } catch (error) {
+    console.warn("[ChatKit] Impossible de cloner l'objet Realtime", error);
     return undefined;
   }
-
-  const result: Record<string, unknown> = {};
-
-  if (value.format && typeof value.format === "object") {
-    result.format = value.format;
-  }
-
-  if (value.transcription !== undefined) {
-    result.transcription = value.transcription;
-  }
-
-  if (value.noiseReduction !== undefined) {
-    result.noiseReduction = value.noiseReduction;
-  } else if (value.noise_reduction !== undefined) {
-    result.noiseReduction = value.noise_reduction;
-  }
-
-  const turnDetection = normalizeTurnDetection(
-    value.turnDetection ?? value.turn_detection,
-  );
-  if (turnDetection) {
-    result.turnDetection = turnDetection;
-  }
-
-  return Object.keys(result).length > 0 ? result : undefined;
-};
-
-const normalizeAudioOutput = (
-  value: unknown,
-): Record<string, unknown> | undefined => {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const result: Record<string, unknown> = {};
-
-  if (value.format && typeof value.format === "object") {
-    result.format = value.format;
-  }
-
-  const voice = typeof value.voice === "string" ? value.voice.trim() : "";
-  if (voice) {
-    result.voice = voice;
-  }
-
-  const speed = toFiniteNumber(value.speed);
-  if (typeof speed === "number") {
-    result.speed = speed;
-  }
-
-  return Object.keys(result).length > 0 ? result : undefined;
-};
-
-const normalizeAudioConfig = (
-  value: unknown,
-): Record<string, unknown> | undefined => {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  const input = normalizeAudioInput(value.input);
-  const output = normalizeAudioOutput(value.output);
-
-  if (!input && !output) {
-    return undefined;
-  }
-
-  const result: Record<string, unknown> = {};
-  if (input) {
-    result.input = input;
-  }
-  if (output) {
-    result.output = output;
-  }
-  return result;
 };
 
 const extractRealtimeSessionConfig = (
@@ -276,50 +149,7 @@ const extractRealtimeSessionConfig = (
     return undefined;
   }
 
-  const config: Record<string, unknown> = {};
-
-  const model = typeof session.model === "string" ? session.model.trim() : "";
-  if (model) {
-    config.model = model;
-  }
-
-  const instructions =
-    typeof session.instructions === "string"
-      ? session.instructions.trim()
-      : "";
-  if (instructions) {
-    config.instructions = instructions;
-  }
-
-  const toolChoiceRaw = session.toolChoice ?? session.tool_choice;
-  const toolChoice =
-    typeof toolChoiceRaw === "string" ? toolChoiceRaw.trim() : "";
-  if (toolChoice) {
-    config.toolChoice = toolChoice;
-  }
-
-  const tools = session.tools;
-  if (Array.isArray(tools)) {
-    config.tools = tools;
-  }
-
-  const outputModalities =
-    session.outputModalities ?? session.output_modalities;
-  if (Array.isArray(outputModalities) && outputModalities.length > 0) {
-    config.outputModalities = outputModalities;
-  }
-
-  const audio = normalizeAudioConfig(session.audio);
-  if (audio) {
-    config.audio = audio;
-  }
-
-  const voice = typeof session.voice === "string" ? session.voice.trim() : "";
-  if (voice) {
-    config.voice = voice;
-  }
-
-  return Object.keys(config).length > 0 ? config : undefined;
+  return cloneSerializableRecord(session);
 };
 
 const buildVoiceSessionSecret = (
@@ -334,7 +164,45 @@ const buildVoiceSessionSecret = (
   const { session } = details;
 
   const promptVariables = session.prompt_variables;
-  const sessionConfig = extractRealtimeSessionConfig(details.clientSecret);
+  let sessionConfig = extractRealtimeSessionConfig(details.clientSecret);
+
+  const realtimeUpdate = (() => {
+    const update: Record<string, unknown> = {};
+
+    if (details.realtime) {
+      if (details.realtime.startMode) {
+        update.start_mode = details.realtime.startMode;
+      }
+      if (details.realtime.stopMode) {
+        update.stop_mode = details.realtime.stopMode;
+      }
+    }
+
+    const normalizedTools: Record<string, boolean> = {};
+    Object.entries(details.toolPermissions).forEach(([key, allowed]) => {
+      const trimmedKey = key.trim();
+      if (!trimmedKey) {
+        return;
+      }
+      normalizedTools[trimmedKey] = Boolean(allowed);
+    });
+    if (Object.keys(normalizedTools).length > 0) {
+      update.tools = normalizedTools;
+    }
+
+    return Object.keys(update).length > 0 ? update : undefined;
+  })();
+
+  if (realtimeUpdate) {
+    const baseRealtime =
+      sessionConfig && isRecord(sessionConfig["realtime"])
+        ? { ...(sessionConfig["realtime"] as Record<string, unknown>) }
+        : undefined;
+    const mergedRealtime = baseRealtime ? { ...baseRealtime, ...realtimeUpdate } : realtimeUpdate;
+    sessionConfig = sessionConfig
+      ? { ...sessionConfig, realtime: mergedRealtime }
+      : { realtime: mergedRealtime };
+  }
 
   return {
     client_secret: clientSecret,
@@ -426,10 +294,36 @@ export const VoiceSessionBridge = ({
     setNeedsUserGesture(false);
   }, [details.taskId]);
 
-  const voiceSecret = useMemo<VoiceSessionSecret | null>(
-    () => buildVoiceSessionSecret(details),
-    [details],
-  );
+  const voiceSecret = useMemo<VoiceSessionSecret | null>(() => {
+    const secret = buildVoiceSessionSecret(details);
+    if (!secret) {
+      console.error("[ChatKit][VoiceBridge] Impossible de construire le secret Realtime", {
+        taskId: details.taskId,
+        stepSlug: details.stepSlug,
+      });
+      return null;
+    }
+
+    const realtimeKeys =
+      secret.session_config && isRecord(secret.session_config["realtime"])
+        ? Object.keys(secret.session_config["realtime"] as Record<string, unknown>)
+        : [];
+
+    console.info("[ChatKit][VoiceBridge] Secret Realtime construit", {
+      taskId: details.taskId,
+      stepSlug: details.stepSlug,
+      stepTitle: details.stepTitle,
+      model: secret.model,
+      voice: secret.voice,
+      sessionConfigKeys: secret.session_config ? Object.keys(secret.session_config) : [],
+      realtimeKeys,
+      startMode: details.realtime?.startMode ?? null,
+      stopMode: details.realtime?.stopMode ?? null,
+      toolPermissions: details.toolPermissions,
+    });
+
+    return secret;
+  }, [details]);
 
   const toolEntries = useMemo(() => {
     const entries = Object.entries(details.toolPermissions).map(([key, allowed]) => ({
@@ -489,6 +383,13 @@ export const VoiceSessionBridge = ({
         payload.interrupted = true;
       }
 
+      console.info("[ChatKit][VoiceBridge] Envoi des transcriptions", {
+        taskId: details.taskId,
+        count: entries.length,
+        final,
+        reason: reason ?? null,
+      });
+
       try {
         await sendCustomAction({ type: "workflow.voice_transcripts", payload });
         if (final) {
@@ -501,6 +402,13 @@ export const VoiceSessionBridge = ({
           });
         }
       } catch (err) {
+        console.error("[ChatKit][VoiceBridge] Erreur lors de l'envoi des transcriptions", {
+          taskId: details.taskId,
+          count: entries.length,
+          final,
+          reason: reason ?? null,
+          error: err,
+        });
         entries.forEach((entry) => pendingTranscriptIdsRef.current.delete(entry.id));
         throw err;
       }
@@ -513,6 +421,11 @@ export const VoiceSessionBridge = ({
       const next = extractTranscriptsFromHistory(history);
       setTranscripts(next);
       transcriptsRef.current = next;
+
+      console.info("[ChatKit][VoiceBridge] Historique Realtime mis à jour", {
+        taskId: details.taskId,
+        entries: next.length,
+      });
 
       const completed = next.filter((entry) => entry.status === "completed");
       const unsent = completed.filter(
@@ -528,11 +441,15 @@ export const VoiceSessionBridge = ({
             err instanceof Error
               ? err.message
               : t("voice.inline.errors.submitFailed");
+          console.error("[ChatKit][VoiceBridge] Soumission automatique des transcriptions échouée", {
+            taskId: details.taskId,
+            error: err,
+          });
           setError(message);
         });
       }
     },
-    [submitTranscripts, t],
+    [details.taskId, submitTranscripts, t],
   );
 
   const flushTranscripts = useCallback(
@@ -542,6 +459,10 @@ export const VoiceSessionBridge = ({
       }
       finalizingRef.current = true;
       try {
+        console.info("[ChatKit][VoiceBridge] Flush des transcriptions demandé", {
+          taskId: details.taskId,
+          reason,
+        });
         const current = transcriptsRef.current;
         const completed = current.filter((entry) => entry.status === "completed");
         const unsent = completed.filter(
@@ -551,23 +472,40 @@ export const VoiceSessionBridge = ({
         if (unsent.length > 0) {
           unsent.forEach((entry) => pendingTranscriptIdsRef.current.add(entry.id));
           try {
+            console.info("[ChatKit][VoiceBridge] Envoi des transcriptions en attente avant finalisation", {
+              taskId: details.taskId,
+              count: unsent.length,
+            });
             await submitTranscripts(unsent);
           } catch (err) {
             const message =
               err instanceof Error
                 ? err.message
                 : t("voice.inline.errors.submitFailed");
+            console.error("[ChatKit][VoiceBridge] Échec lors du vidage des transcriptions en attente", {
+              taskId: details.taskId,
+              error: err,
+            });
             setError(message);
             return;
           }
         }
 
         if (completed.length === 0) {
+          console.info("[ChatKit][VoiceBridge] Aucune transcription finalisée à envoyer", {
+            taskId: details.taskId,
+            reason,
+          });
           onReset();
           return;
         }
 
         try {
+          console.info("[ChatKit][VoiceBridge] Finalisation des transcriptions", {
+            taskId: details.taskId,
+            count: completed.length,
+            reason,
+          });
           await submitTranscripts(completed, { final: true, reason });
           onReset();
         } catch (err) {
@@ -575,13 +513,17 @@ export const VoiceSessionBridge = ({
             err instanceof Error
               ? err.message
               : t("voice.inline.errors.submitFailed");
+          console.error("[ChatKit][VoiceBridge] Impossible de finaliser les transcriptions", {
+            taskId: details.taskId,
+            error: err,
+          });
           setError(message);
         }
       } finally {
         finalizingRef.current = false;
       }
     },
-    [onReset, submitTranscripts, t],
+    [details.taskId, onReset, submitTranscripts, t],
   );
 
   const ensureMicrophoneAccess = useCallback(async () => {
@@ -599,6 +541,9 @@ export const VoiceSessionBridge = ({
     }
 
     try {
+      console.info("[ChatKit][VoiceBridge] Demande d'accès au microphone", {
+        taskId: details.taskId,
+      });
       const stream = await mediaDevices.getUserMedia({ audio: true });
       stream.getTracks().forEach((track) => {
         try {
@@ -608,7 +553,14 @@ export const VoiceSessionBridge = ({
         }
       });
       microphonePreflightRef.current = true;
+      console.info("[ChatKit][VoiceBridge] Accès au microphone accordé", {
+        taskId: details.taskId,
+      });
     } catch (err) {
+      console.warn("[ChatKit][VoiceBridge] Échec de l'accès au microphone", {
+        taskId: details.taskId,
+        error: err,
+      });
       if (err instanceof DOMException) {
         const { name } = err;
         if (name === "NotAllowedError" || name === "SecurityError") {
@@ -624,11 +576,15 @@ export const VoiceSessionBridge = ({
       }
       throw err;
     }
-  }, [t]);
+  }, [details.taskId, t]);
 
   const { connect, disconnect, startResponse } = useRealtimeSession({
     onHistoryUpdated: handleHistoryUpdated,
     onConnectionChange: (connectionStatus) => {
+      console.info("[ChatKit][VoiceBridge] Changement de statut Realtime", {
+        taskId: details.taskId,
+        status: connectionStatus,
+      });
       if (connectionStatus === "connected") {
         setStatus("connected");
       } else if (connectionStatus === "connecting") {
@@ -642,15 +598,26 @@ export const VoiceSessionBridge = ({
       }
     },
     onAgentEnd: () => {
+      console.info("[ChatKit][VoiceBridge] Agent Realtime terminé", {
+        taskId: details.taskId,
+      });
       setStatus("idle");
     },
     onTransportError: (transportError) => {
       const message = formatErrorMessage(transportError) || t("voice.inline.errors.generic");
+      console.error("[ChatKit][VoiceBridge] Erreur de transport Realtime", {
+        taskId: details.taskId,
+        error: transportError,
+      });
       setError(message);
       setStatus("error");
     },
     onError: (sessionError) => {
       const message = formatErrorMessage(sessionError) || t("voice.inline.errors.generic");
+      console.error("[ChatKit][VoiceBridge] Erreur Realtime", {
+        taskId: details.taskId,
+        error: sessionError,
+      });
       setError(message);
       setStatus("error");
     },
@@ -663,17 +630,24 @@ export const VoiceSessionBridge = ({
     if (hasRequestedGreetingRef.current) {
       return;
     }
+    console.info("[ChatKit][VoiceBridge] Demande de réponse initiale", {
+      taskId: details.taskId,
+    });
     const started = startResponse();
     if (started) {
       hasRequestedGreetingRef.current = true;
     }
-  }, [details.toolPermissions.response, startResponse]);
+  }, [details.taskId, details.toolPermissions.response, startResponse]);
 
   const beginSession = useCallback(
     async (mode: "auto" | "manual") => {
       if (!voiceSecret) {
         setStatus("error");
         setError(t("voice.inline.errors.invalidSecret"));
+        console.error("[ChatKit][VoiceBridge] Aucun secret Realtime disponible", {
+          taskId: details.taskId,
+          mode,
+        });
         return;
       }
 
@@ -688,6 +662,12 @@ export const VoiceSessionBridge = ({
       finalizeOnDisconnectRef.current = false;
 
       try {
+        console.info("[ChatKit][VoiceBridge] Démarrage de la session Realtime", {
+          taskId: details.taskId,
+          mode,
+          startMode: details.realtime?.startMode ?? null,
+          stopMode: details.realtime?.stopMode ?? null,
+        });
         await ensureMicrophoneAccess();
 
         const apiKey = resolveVoiceSessionApiKey(voiceSecret.client_secret);
@@ -696,11 +676,22 @@ export const VoiceSessionBridge = ({
         }
 
         await connect({ secret: voiceSecret, apiKey });
+        console.info("[ChatKit][VoiceBridge] Session Realtime connectée", {
+          taskId: details.taskId,
+          mode,
+          model: voiceSecret.model,
+          voice: voiceSecret.voice,
+        });
         setStatus("connected");
         setNeedsUserGesture(false);
         finalizeOnDisconnectRef.current = true;
       } catch (err) {
         disconnect();
+        console.error("[ChatKit][VoiceBridge] Échec du démarrage de la session Realtime", {
+          taskId: details.taskId,
+          mode,
+          error: err,
+        });
         const bridgeError = err as BridgeError;
         const fallback = t("voice.inline.errors.generic");
         const message = formatErrorMessage(err) || fallback;
@@ -724,7 +715,16 @@ export const VoiceSessionBridge = ({
         setError(message);
       }
     },
-    [connect, disconnect, ensureMicrophoneAccess, t, voiceSecret],
+    [
+      connect,
+      details.realtime?.startMode,
+      details.realtime?.stopMode,
+      details.taskId,
+      disconnect,
+      ensureMicrophoneAccess,
+      t,
+      voiceSecret,
+    ],
   );
 
   useEffect(() => {
@@ -746,16 +746,22 @@ export const VoiceSessionBridge = ({
   }, [beginSession, disconnect, t, voiceSecret]);
 
   const handleStop = useCallback(() => {
+    console.info("[ChatKit][VoiceBridge] Arrêt manuel demandé", {
+      taskId: details.taskId,
+    });
     finalizeOnDisconnectRef.current = false;
     disconnect();
     void flushTranscripts("manual");
     setNeedsUserGesture(false);
-  }, [disconnect, flushTranscripts]);
+  }, [details.taskId, disconnect, flushTranscripts]);
 
   const handleManualStart = useCallback(() => {
     setNeedsUserGesture(false);
+    console.info("[ChatKit][VoiceBridge] Relance manuelle de la session", {
+      taskId: details.taskId,
+    });
     void beginSession("manual");
-  }, [beginSession]);
+  }, [beginSession, details.taskId]);
 
   const statusLabel = useMemo(() => {
     switch (status) {

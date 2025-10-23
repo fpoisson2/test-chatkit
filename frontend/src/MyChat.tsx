@@ -395,6 +395,12 @@ export function MyChat() {
       const activeSlug = waitState?.slug ?? null;
       const candidates = collectItemsFromContainer((thread as { items?: unknown }).items);
 
+      console.info("[ChatKit] Analyse du fil pour une session vocale", {
+        threadId: typeof thread.id === "string" ? thread.id : null,
+        candidates: candidates.length,
+        activeSlug,
+      });
+
       for (let index = candidates.length - 1; index >= 0; index -= 1) {
         const candidate = candidates[index];
         const voiceSession = parseVoiceSessionTaskItem(candidate);
@@ -402,9 +408,17 @@ export function MyChat() {
           continue;
         }
         if (processedVoiceTaskIdsRef.current.has(voiceSession.taskId)) {
+          console.debug("[ChatKit] Session vocale ignorée (déjà traitée)", {
+            taskId: voiceSession.taskId,
+          });
           continue;
         }
         if (activeSlug && voiceSession.stepSlug && voiceSession.stepSlug !== activeSlug) {
+          console.debug("[ChatKit] Session vocale ignorée (slug actif différent)", {
+            taskId: voiceSession.taskId,
+            stepSlug: voiceSession.stepSlug,
+            activeSlug,
+          });
           continue;
         }
         activateVoiceSession(voiceSession);
@@ -480,11 +494,16 @@ export function MyChat() {
         (!activeVoice.stepSlug || previousWait.slug === activeVoice.stepSlug);
 
       if (slugChanged) {
+        console.info("[ChatKit] Session vocale abandonnée suite à un changement de slug", {
+          previousSlug: previousWait?.slug ?? null,
+          currentSlug: currentWait?.slug ?? null,
+        });
         clearVoiceSessionState();
         return;
       }
 
       if (previousMatchesStep && !currentWait) {
+        console.info("[ChatKit] Session vocale terminée (attente supprimée)");
         clearVoiceSessionState();
       }
     },
@@ -493,11 +512,21 @@ export function MyChat() {
 
   const handleVoiceTaskLog = useCallback(
     (eventName: string, data: Record<string, unknown>) => {
+      console.info("[ChatKit] Journal voix reçu", {
+        eventName,
+        hasData: Boolean(data),
+      });
       const voiceSession = extractVoiceSessionFromLog(eventName, data);
       if (!voiceSession) {
+        console.debug("[ChatKit] Aucun secret vocal détecté dans le journal", {
+          eventName,
+        });
         return;
       }
       if (processedVoiceTaskIdsRef.current.has(voiceSession.taskId)) {
+        console.debug("[ChatKit] Session vocale ignorée (tâche déjà vue)", {
+          taskId: voiceSession.taskId,
+        });
         return;
       }
 
@@ -507,6 +536,7 @@ export function MyChat() {
   );
 
   const handleVoiceSessionReset = useCallback(() => {
+    console.info("[ChatKit] Réinitialisation de la session vocale active");
     clearVoiceSessionState();
   }, [clearVoiceSessionState]);
 
