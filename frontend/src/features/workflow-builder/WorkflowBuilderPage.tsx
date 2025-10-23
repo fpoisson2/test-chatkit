@@ -7,7 +7,6 @@ import {
   type ChangeEvent,
   type CSSProperties,
 } from "react";
-import clsx from "clsx";
 
 import ReactFlow, {
   Background,
@@ -187,6 +186,32 @@ type WorkflowViewportRecord = {
 const isValidNodeKind = (value: string): value is NodeKind =>
   Object.prototype.hasOwnProperty.call(NODE_COLORS, value);
 const isAgentKind = (kind: NodeKind): boolean => kind === "agent" || kind === "voice_agent";
+
+type ClassValue =
+  | string
+  | false
+  | null
+  | undefined
+  | Record<string, boolean | null | undefined>;
+
+const cx = (...values: ClassValue[]): string => {
+  const classes: string[] = [];
+  for (const value of values) {
+    if (!value) {
+      continue;
+    }
+    if (typeof value === "string") {
+      classes.push(value);
+      continue;
+    }
+    for (const [className, condition] of Object.entries(value)) {
+      if (condition) {
+        classes.push(className);
+      }
+    }
+  }
+  return classes.join(" ");
+};
 
 type WorkflowViewportListResponse = {
   viewports: WorkflowViewportRecord[];
@@ -1142,7 +1167,7 @@ const WorkflowBuilderPage = () => {
         onClick={isPreviewMode ? handleExitPreviewMode : handleEnterPreviewMode}
         disabled={previewDisabled}
         aria-pressed={isPreviewMode}
-        className={clsx(styles.previewToggleButton, {
+        className={cx(styles.previewToggleButton, {
           [styles.previewToggleButtonActive]: isPreviewMode,
         })}
       >
@@ -1625,8 +1650,6 @@ const WorkflowBuilderPage = () => {
                 parameters,
                 parametersText: stringifyAgentParameters(parameters),
                 parametersError: null,
-                isPreviewActive: false,
-                isPreviewDimmed: false,
                 metadata: node.metadata ?? {},
                 isPreviewActive: false,
                 isPreviewDimmed: false,
@@ -6121,7 +6144,7 @@ const WorkflowBuilderPage = () => {
     if (isMobileLayout) {
       return (
         <div
-          className={clsx(styles.blockLibraryContent, {
+          className={cx(styles.blockLibraryContent, {
             [styles.blockLibraryDisabled]: isPreviewMode,
           })}
         >
@@ -6196,7 +6219,7 @@ const WorkflowBuilderPage = () => {
     const secondaryTextColor = "var(--text-muted)";
     return (
       <div
-        className={clsx({
+        className={cx({
           [styles.blockLibraryDisabled]: isPreviewMode,
         })}
       >
@@ -6558,7 +6581,7 @@ const WorkflowBuilderPage = () => {
     shouldShowWorkflowDescription,
   ]);
 
-  const editorContainerClassName = clsx(styles.editorContainer, {
+  const editorContainerClassName = cx(styles.editorContainer, {
     [styles.editorContainerPreview]: isPreviewMode && !isMobileLayout,
     [styles.editorContainerMobilePreview]: isPreviewMode && isMobileLayout,
   });
@@ -6607,7 +6630,7 @@ const WorkflowBuilderPage = () => {
             >
               {previewBanner}
               <div
-                className={clsx(styles.editorSplit, {
+                className={cx(styles.editorSplit, {
                   [styles.editorSplitPreview]: isPreviewMode && !isMobileLayout,
                 })}
               >
