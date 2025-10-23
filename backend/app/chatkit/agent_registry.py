@@ -25,6 +25,7 @@ from ..tool_factory import (
     build_weather_tool,
     build_web_search_tool,
     build_widget_validation_tool,
+    build_workflow_tool,
 )
 
 logger = logging.getLogger("chatkit.server")
@@ -450,6 +451,40 @@ def _coerce_agent_tools(
 
             if normalized_type == "image_generation":
                 tool = build_image_generation_tool(entry)
+                if tool is not None:
+                    coerced.append(tool)
+                continue
+
+            if normalized_type == "workflow":
+                workflow_payload = entry.get("workflow")
+                if not isinstance(workflow_payload, Mapping):
+                    logger.warning(
+                        "Impossible de construire l'outil workflow : "
+                        "configuration invalide (%s).",
+                        entry,
+                    )
+                    continue
+
+                raw_slug = workflow_payload.get("slug")
+                slug = raw_slug.strip() if isinstance(raw_slug, str) else ""
+                if not slug:
+                    logger.warning(
+                        "Impossible de construire l'outil workflow : slug "
+                        "manquant (%s).",
+                        workflow_payload,
+                    )
+                    continue
+
+                try:
+                    tool = build_workflow_tool(workflow_payload)
+                except Exception as exc:  # pragma: no cover - robustesse best effort
+                    logger.warning(
+                        "Impossible de construire l'outil workflow %r : %s",
+                        slug,
+                        exc,
+                    )
+                    continue
+
                 if tool is not None:
                     coerced.append(tool)
                 continue
