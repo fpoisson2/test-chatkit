@@ -203,7 +203,13 @@ class WorkflowNodeBase(BaseModel):
     display_name: str | None = None
     agent_key: str | None = None
     is_enabled: bool = True
-    parameters: dict[str, Any] = Field(default_factory=dict)
+    parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Paramètres propres au nœud. Pour les agents, le champ optionnel "
+            "workflow peut référencer un autre workflow via un id ou un slug."
+        ),
+    )
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -259,7 +265,13 @@ class WorkflowStepResponse(BaseModel):
     agent_key: str | None
     position: int
     is_enabled: bool
-    parameters: dict[str, Any]
+    parameters: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Paramètres normalisés du nœud. Lorsqu'un agent exécute un workflow "
+            "imbriqué, parameters['workflow'] contient un identifiant ou un slug."
+        ),
+    )
     created_at: datetime.datetime
     updated_at: datetime.datetime
 

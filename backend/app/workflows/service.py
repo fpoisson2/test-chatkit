@@ -40,6 +40,47 @@ _LEGACY_STATE_SLUGS = frozenset({"maj-etat-triage", "maj-etat-validation"})
 _AGENT_NODE_KINDS = frozenset({"agent", "voice_agent"})
 
 
+def _sanitize_workflow_reference_for_serialization(
+    value: Any,
+) -> dict[str, Any] | None:
+    """Normalise une référence de workflow imbriqué pour la sérialisation."""
+
+    if not isinstance(value, Mapping):
+        return None
+
+    sanitized: dict[str, Any] = {}
+
+    raw_id = value.get("id")
+    workflow_id: int | None = None
+    if isinstance(raw_id, bool):
+        workflow_id = None
+    elif isinstance(raw_id, int):
+        workflow_id = raw_id
+    elif isinstance(raw_id, float) and math.isfinite(raw_id):
+        workflow_id = int(raw_id)
+    elif isinstance(raw_id, str):
+        trimmed_id = raw_id.strip()
+        if trimmed_id:
+            try:
+                workflow_id = int(trimmed_id)
+            except ValueError:
+                workflow_id = None
+
+    if workflow_id is not None and workflow_id > 0:
+        sanitized["id"] = workflow_id
+
+    raw_slug = value.get("slug")
+    if isinstance(raw_slug, str):
+        slug_candidate = raw_slug.strip()
+        if slug_candidate:
+            sanitized["slug"] = slug_candidate
+
+    if not sanitized:
+        return None
+
+    return sanitized
+
+
 def _coerce_auto_start(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -315,6 +356,8 @@ class WorkflowService:
         edges: list[NormalizedEdge],
         session: Session,
     ) -> WorkflowDefinition:
+        self._validate_nested_workflows_for_definition(nodes, definition.workflow)
+
         definition.transitions[:] = []
         session.flush()
         definition.steps[:] = []
@@ -597,6 +640,12 @@ class WorkflowService:
     ) -> WorkflowDefinition:
         db, owns_session = self._get_session(session)
         try:
+            # S'assure que le workflow ChatKit par défaut existe avant de créer un
+            # nouveau workflow utilisateur. Cela évite que le premier workflow
+            # créé soit rétroactivement utilisé comme valeur par défaut,
+            # ce qui perturberait la validation des références imbriquées.
+            self._ensure_default_workflow(db)
+
             existing = db.scalar(select(Workflow).where(Workflow.slug == slug))
             if existing is not None:
                 raise WorkflowValidationError("Un workflow avec ce slug existe déjà.")
@@ -1429,6 +1478,15 @@ class WorkflowService:
             parameters = self._ensure_dict(entry.get("parameters"), "paramètres")
             metadata = self._ensure_dict(entry.get("metadata"), "métadonnées")
 
+            if kind in _AGENT_NODE_KINDS and "workflow" in parameters:
+                normalized_reference = self._normalize_nested_workflow_reference(
+                    parameters.get("workflow"), node_slug=slug
+                )
+                if normalized_reference is None:
+                    parameters.pop("workflow", None)
+                else:
+                    parameters["workflow"] = normalized_reference
+
             node = NormalizedNode(
                 slug=slug,
                 kind=kind,
@@ -1596,6 +1654,109 @@ class WorkflowService:
             return value
         raise WorkflowValidationError(f"Les {label} doivent être un objet JSON.")
 
+    def _normalize_nested_workflow_reference(
+        self, value: Any, *, node_slug: str
+    ) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        if not isinstance(value, Mapping):
+            raise WorkflowValidationError(
+                "La configuration 'workflow' du nœud "
+                f"{node_slug} doit être un objet JSON."
+            )
+
+        raw_id = value.get("id")
+        workflow_id: int | None = None
+        if isinstance(raw_id, bool):
+            workflow_id = None
+        elif isinstance(raw_id, int):
+            workflow_id = raw_id
+        elif isinstance(raw_id, float) and math.isfinite(raw_id):
+            workflow_id = int(raw_id)
+        elif isinstance(raw_id, str):
+            trimmed_id = raw_id.strip()
+            if trimmed_id:
+                try:
+                    workflow_id = int(trimmed_id)
+                except ValueError as exc:  # pragma: no cover - message détaillé
+                    raise WorkflowValidationError(
+                        "L'identifiant de workflow du nœud "
+                        f"{node_slug} doit être un entier."
+                    ) from exc
+        elif raw_id is not None:
+            raise WorkflowValidationError(
+                f"L'identifiant de workflow du nœud {node_slug} est invalide."
+            )
+
+        if workflow_id is not None and workflow_id <= 0:
+            raise WorkflowValidationError(
+                "L'identifiant de workflow du nœud "
+                f"{node_slug} doit être strictement positif."
+            )
+
+        raw_slug = value.get("slug")
+        workflow_slug: str | None = None
+        if raw_slug is None:
+            workflow_slug = None
+        elif isinstance(raw_slug, str):
+            slug_candidate = raw_slug.strip()
+            if not slug_candidate:
+                raise WorkflowValidationError(
+                    "Le slug de workflow du nœud "
+                    f"{node_slug} doit être une chaîne non vide."
+                )
+            workflow_slug = slug_candidate
+        else:
+            raise WorkflowValidationError(
+                "Le slug de workflow du nœud "
+                f"{node_slug} doit être une chaîne de caractères."
+            )
+
+        if workflow_id is None and workflow_slug is None:
+            raise WorkflowValidationError(
+                f"Le nœud {node_slug} doit préciser un identifiant "
+                "ou un slug de workflow."
+            )
+
+        sanitized: dict[str, Any] = {}
+        if workflow_id is not None:
+            sanitized["id"] = workflow_id
+        if workflow_slug is not None:
+            sanitized["slug"] = workflow_slug
+        return sanitized
+
+    def _validate_nested_workflows_for_definition(
+        self, nodes: Iterable[NormalizedNode], workflow: Workflow | None
+    ) -> None:
+        if workflow is None:
+            return
+
+        workflow_id = getattr(workflow, "id", None)
+        workflow_slug = (getattr(workflow, "slug", "") or "").strip().lower()
+
+        for node in nodes:
+            if node.kind not in _AGENT_NODE_KINDS or not node.is_enabled:
+                continue
+            reference = node.parameters.get("workflow")
+            if not isinstance(reference, Mapping):
+                continue
+
+            reference_id = reference.get("id") if workflow_id is not None else None
+            if isinstance(reference_id, int) and reference_id == workflow_id:
+                raise WorkflowValidationError(
+                    f"Le nœud {node.slug} ne peut pas exécuter son propre workflow."
+                )
+
+            if workflow_slug:
+                reference_slug = reference.get("slug")
+                if (
+                    isinstance(reference_slug, str)
+                    and reference_slug.strip().lower() == workflow_slug
+                ):
+                    raise WorkflowValidationError(
+                        f"Le nœud {node.slug} ne peut pas exécuter son propre workflow."
+                    )
+
     def _validate_graph_structure(
         self, nodes: Iterable[NormalizedNode], edges: Iterable[NormalizedEdge]
     ) -> None:
@@ -1721,6 +1882,16 @@ def serialize_definition_graph(
         if not include_position_metadata:
             metadata.pop("position", None)
 
+        parameters = dict(step.parameters or {})
+        if "workflow" in parameters:
+            sanitized_reference = _sanitize_workflow_reference_for_serialization(
+                parameters.get("workflow")
+            )
+            if sanitized_reference is None:
+                parameters.pop("workflow", None)
+            else:
+                parameters["workflow"] = sanitized_reference
+
         nodes_payload.append(
             {
                 "id": step.id,
@@ -1730,7 +1901,7 @@ def serialize_definition_graph(
                 "agent_key": step.agent_key,
                 "position": step.position,
                 "is_enabled": step.is_enabled,
-                "parameters": dict(step.parameters or {}),
+                "parameters": parameters,
                 "metadata": metadata,
                 "created_at": step.created_at,
                 "updated_at": step.updated_at,
@@ -1763,19 +1934,31 @@ def serialize_definition(definition: WorkflowDefinition) -> dict[str, Any]:
 
     graph_payload = serialize_definition_graph(definition)
 
-    agent_steps = [
-        {
-            "id": step.id,
-            "agent_key": step.agent_key,
-            "position": step.position,
-            "is_enabled": step.is_enabled,
-            "parameters": dict(step.parameters or {}),
-            "created_at": step.created_at,
-            "updated_at": step.updated_at,
-        }
-        for step in sorted(definition.steps, key=lambda s: s.position)
-        if step.kind in _AGENT_NODE_KINDS
-    ]
+    agent_steps: list[dict[str, Any]] = []
+    for step in sorted(definition.steps, key=lambda s: s.position):
+        if step.kind not in _AGENT_NODE_KINDS:
+            continue
+        parameters = dict(step.parameters or {})
+        if "workflow" in parameters:
+            sanitized_reference = _sanitize_workflow_reference_for_serialization(
+                parameters.get("workflow")
+            )
+            if sanitized_reference is None:
+                parameters.pop("workflow", None)
+            else:
+                parameters["workflow"] = sanitized_reference
+
+        agent_steps.append(
+            {
+                "id": step.id,
+                "agent_key": step.agent_key,
+                "position": step.position,
+                "is_enabled": step.is_enabled,
+                "parameters": parameters,
+                "created_at": step.created_at,
+                "updated_at": step.updated_at,
+            }
+        )
 
     return {
         "id": definition.id,

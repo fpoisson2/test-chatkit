@@ -19,6 +19,7 @@ import {
   getAgentIncludeChatHistory,
   getAgentMaxOutputTokens,
   getAgentMessage,
+  getAgentNestedWorkflow,
   getAgentModel,
   getAgentReasoningEffort,
   getAgentReasoningSummary,
@@ -66,6 +67,8 @@ type UseAgentInspectorStateParams = {
 type AgentInspectorState = {
   agentMessage: string;
   agentModel: string;
+  nestedWorkflowId: number | null;
+  nestedWorkflowSlug: string;
   reasoningEffort: string;
   reasoningSummaryValue: string;
   textVerbosityValue: string;
@@ -128,6 +131,7 @@ export const useAgentInspectorState = ({
 }: UseAgentInspectorStateParams): AgentInspectorState => {
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
+  const nestedWorkflow = getAgentNestedWorkflow(parameters);
   const reasoningEffort = getAgentReasoningEffort(parameters);
   const textVerbosity = getAgentTextVerbosity(parameters).trim();
   const responseFormat = getAgentResponseFormat(parameters);
@@ -360,6 +364,8 @@ export const useAgentInspectorState = ({
   return {
     agentMessage,
     agentModel,
+    nestedWorkflowId: nestedWorkflow.id,
+    nestedWorkflowSlug: nestedWorkflow.slug,
     reasoningEffort,
     reasoningSummaryValue,
     textVerbosityValue,

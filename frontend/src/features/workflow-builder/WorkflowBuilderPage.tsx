@@ -59,6 +59,7 @@ import {
   setAgentResponseWidgetSlug,
   setAgentResponseWidgetSource,
   setAgentResponseWidgetDefinition,
+  setAgentNestedWorkflow,
   setAgentShowSearchSources,
   setAgentStorePreference,
   setAgentTemperature,
@@ -2110,6 +2111,24 @@ const WorkflowBuilderPage = () => {
       });
     },
     [isReasoningModel, updateNodeData],
+  );
+
+  const handleAgentNestedWorkflowChange = useCallback(
+    (nodeId: string, workflowId: number | null) => {
+      updateNodeData(nodeId, (data) => {
+        if (!isAgentKind(data.kind)) {
+          return data;
+        }
+        const nextParameters = setAgentNestedWorkflow(data.parameters, { id: workflowId });
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
   );
 
   const handleAgentReasoningChange = useCallback(
@@ -6053,6 +6072,7 @@ const WorkflowBuilderPage = () => {
             onDisplayNameChange={handleDisplayNameChange}
             onAgentMessageChange={handleAgentMessageChange}
             onAgentModelChange={handleAgentModelChange}
+            onAgentNestedWorkflowChange={handleAgentNestedWorkflowChange}
             onAgentReasoningChange={handleAgentReasoningChange}
             onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}
             onAgentTextVerbosityChange={handleAgentTextVerbosityChange}
@@ -6082,6 +6102,8 @@ const WorkflowBuilderPage = () => {
             onAgentWebSearchChange={handleAgentWebSearchChange}
             onAgentFileSearchChange={handleAgentFileSearchChange}
             onAgentImageGenerationChange={handleAgentImageGenerationChange}
+            workflows={workflows}
+            currentWorkflowId={selectedWorkflowId}
             onVoiceAgentVoiceChange={handleVoiceAgentVoiceChange}
             onVoiceAgentStartBehaviorChange={handleVoiceAgentStartBehaviorChange}
             onVoiceAgentStopBehaviorChange={handleVoiceAgentStopBehaviorChange}

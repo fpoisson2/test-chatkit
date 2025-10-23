@@ -20,6 +20,7 @@ from backend.app.models import Base  # noqa: E402 - import après maj du path
 from backend.app.workflows.service import (  # noqa: E402 - import après maj du path
     WorkflowService,
     WorkflowValidationError,
+    serialize_definition,
 )
 
 
@@ -102,4 +103,131 @@ def test_get_definition_by_slug_unknown_slug_raises(
 ) -> None:
     with pytest.raises(WorkflowValidationError):
         workflow_service.get_definition_by_slug("unknown-workflow")
+
+
+def test_update_current_rejects_nested_self_reference(
+    workflow_service: WorkflowService,
+) -> None:
+    current_definition = workflow_service.get_current()
+    assert current_definition.workflow_id is not None
+
+    graph_payload = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {
+                "slug": "agent", "kind": "agent", "is_enabled": True,
+                "parameters": {
+                    "workflow": {"id": current_definition.workflow_id}
+                },
+            },
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [
+            {"source": "start", "target": "agent"},
+            {"source": "agent", "target": "end"},
+        ],
+    }
+
+    with pytest.raises(WorkflowValidationError) as exc_info:
+        workflow_service.update_current(graph_payload)
+
+    assert "ne peut pas exécuter son propre workflow" in str(exc_info.value)
+
+
+def test_update_current_accepts_nested_workflow_reference(
+    workflow_service: WorkflowService,
+) -> None:
+    target_graph = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [{"source": "start", "target": "end"}],
+    }
+    target_definition = workflow_service.create_workflow(
+        slug="nested-target",
+        display_name="Nested target",
+        graph_payload=target_graph,
+    )
+
+    graph_payload = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {
+                "slug": "agent",
+                "kind": "agent",
+                "is_enabled": True,
+                "parameters": {"workflow": {"id": target_definition.workflow_id}},
+            },
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [
+            {"source": "start", "target": "agent"},
+            {"source": "agent", "target": "end"},
+        ],
+    }
+
+    updated = workflow_service.update_current(graph_payload)
+
+    agent_step = next(
+        step for step in updated.steps if step.slug == "agent"
+    )
+    assert agent_step.parameters["workflow"] == {"id": target_definition.workflow_id}
+
+    serialized = serialize_definition(updated)
+    serialized_agent = next(
+        step for step in serialized["steps"] if step["agent_key"] is None
+    )
+    assert serialized_agent["parameters"]["workflow"] == {
+        "id": target_definition.workflow_id
+    }
+
+
+def test_update_current_normalizes_nested_workflow_slug(
+    workflow_service: WorkflowService,
+) -> None:
+    target_graph = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [{"source": "start", "target": "end"}],
+    }
+    target_definition = workflow_service.create_workflow(
+        slug="nested-target-slug",
+        display_name="Nested target",
+        graph_payload=target_graph,
+    )
+
+    graph_payload = {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {
+                "slug": "agent",
+                "kind": "agent",
+                "is_enabled": True,
+                "parameters": {"workflow": {"slug": "  nested-target-slug  "}},
+            },
+            {"slug": "end", "kind": "end", "is_enabled": True},
+        ],
+        "edges": [
+            {"source": "start", "target": "agent"},
+            {"source": "agent", "target": "end"},
+        ],
+    }
+
+    updated = workflow_service.update_current(graph_payload)
+
+    agent_step = next(step for step in updated.steps if step.slug == "agent")
+    assert agent_step.parameters["workflow"] == {
+        "slug": target_definition.workflow.slug
+    }
+
+    serialized = serialize_definition(updated)
+    serialized_agent = next(
+        step for step in serialized["steps"] if step["agent_key"] is None
+    )
+    assert serialized_agent["parameters"]["workflow"] == {
+        "slug": target_definition.workflow.slug
+    }
 
