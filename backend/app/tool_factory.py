@@ -8,7 +8,7 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-from agents import FunctionTool, WebSearchTool, function_tool
+from agents import FunctionTool, RunContextWrapper, WebSearchTool, function_tool
 
 try:  # pragma: no cover - dépend des versions du SDK Agents
     from agents.tool import ImageGeneration as _AgentImageGenerationConfig
@@ -31,10 +31,21 @@ except ImportError:  # pragma: no cover - compatibilité avec les anciennes vers
 
 from pydantic import BaseModel, Field
 
+from chatkit.agents import AgentContext
+from chatkit.types import CustomSummary, ThoughtTask, Workflow
+
+from .chatkit import (
+    WorkflowInput,
+    WorkflowRunSummary,
+    WorkflowStepStreamUpdate,
+    WorkflowStepSummary,
+    run_workflow,
+)
 from .database import SessionLocal
 from .vector_store import JsonVectorStoreService, SearchResult
 from .weather import fetch_weather
 from .widgets import WidgetLibraryService, WidgetValidationError
+from .workflows import WorkflowService
 
 logger = logging.getLogger("chatkit.server")
 
@@ -592,6 +603,337 @@ def build_weather_tool(payload: Any) -> FunctionTool | None:
     return tool
 
 
+def build_workflow_tool(payload: Any) -> FunctionTool | None:
+    """Construit un outil permettant de lancer un workflow ChatKit.
+
+    Le payload accepte notamment :
+
+    - ``slug`` (*str*) : identifiant du workflow à exécuter.
+    - ``initial_message`` (*str*, optionnel) : message utilisateur transmis par défaut
+      si l'appel du tool n'en fournit pas.
+    - ``title`` (*str*, optionnel) : titre affiché dans l'UI lors de l'exécution.
+    - ``identifier`` (*str*, optionnel) : identifiant affiché avec le titre dans l'UI.
+    - ``name`` / ``description`` (*str*, optionnels) : métadonnées de l'outil exposées
+      au modèle.
+    """
+
+    if isinstance(payload, FunctionTool):
+        return payload
+
+    config: Mapping[str, Any]
+    if isinstance(payload, Mapping):
+        config = payload
+    else:
+        config = {}
+
+    slug: str | None = None
+    if isinstance(payload, str):
+        slug = payload.strip()
+    if not slug:
+        raw_slug = config.get("slug") or config.get("workflow_slug")
+        if isinstance(raw_slug, str) and raw_slug.strip():
+            slug = raw_slug.strip()
+
+    if not slug:
+        logger.warning("Impossible de construire l'outil workflow : slug manquant.")
+        return None
+
+    default_message = config.get("initial_message") or config.get("message")
+    if isinstance(default_message, str):
+        default_message = default_message
+    elif default_message is None:
+        default_message = ""
+    else:
+        default_message = str(default_message)
+
+    raw_name = config.get("name")
+    if isinstance(raw_name, str) and raw_name.strip():
+        tool_name = raw_name.strip()
+    else:
+        sanitized_slug = "".join(
+            ch if ch.isalnum() else "_" for ch in slug.lower()
+        ).strip("_")
+        tool_name = f"run_{sanitized_slug or 'workflow'}"
+
+    raw_description = config.get("description")
+    if isinstance(raw_description, str) and raw_description.strip():
+        description = raw_description.strip()
+    else:
+        description = f"Exécute le workflow '{slug}' configuré côté serveur."
+
+    raw_title = config.get("title") or config.get("workflow_title")
+    workflow_title = raw_title.strip() if isinstance(raw_title, str) else None
+    if workflow_title:
+        workflow_title = workflow_title.strip()
+
+    raw_identifier = (
+        config.get("identifier")
+        or config.get("workflow_identifier")
+        or config.get("workflow_id")
+        or config.get("id")
+    )
+    workflow_identifier = (
+        raw_identifier.strip() if isinstance(raw_identifier, str) else None
+    )
+
+    show_ui = True
+    if "show_ui" in config:
+        raw_show_ui = config.get("show_ui")
+        if isinstance(raw_show_ui, str):
+            normalized_flag = raw_show_ui.strip().lower()
+            show_ui = normalized_flag not in {"", "false", "0", "no", "off"}
+        else:
+            show_ui = bool(raw_show_ui)
+
+    workflow_service = WorkflowService()
+
+    def _summary_title() -> str | None:
+        title = workflow_title.strip() if isinstance(workflow_title, str) else None
+        identifier = (
+            workflow_identifier.strip()
+            if isinstance(workflow_identifier, str)
+            else None
+        )
+        if title and identifier:
+            return f"{title} · {identifier}"
+        if identifier:
+            return identifier
+        if title:
+            return title
+        return slug
+
+    def _serialize_final_output(payload: Any) -> str | None:
+        if payload is None:
+            return None
+        if isinstance(payload, str):
+            normalized = payload.strip()
+            return normalized or payload
+        try:
+            return json.dumps(payload, ensure_ascii=False, indent=2)
+        except TypeError:
+            try:
+                return str(payload)
+            except Exception:  # pragma: no cover - garde-fou
+                return None
+
+    def _summary_to_text(summary: WorkflowRunSummary) -> str:
+        sections: list[str] = []
+        for index, step in enumerate(summary.steps, start=1):
+            title = step.title or f"Étape {index}"
+            if isinstance(step.output, str):
+                content = step.output.strip()
+            else:
+                content = step.output
+            if not content:
+                content = "(aucune sortie)"
+            sections.append(f"Étape {index} – {title}\n{content}")
+
+        final_output = _serialize_final_output(summary.final_output)
+        if final_output:
+            sections.append(f"Sortie finale :\n{final_output}")
+
+        end_state = summary.end_state
+        if end_state is not None:
+            status_bits: list[str] = []
+            if end_state.status_type:
+                status_bits.append(end_state.status_type)
+            reason = end_state.status_reason or end_state.message
+            if reason:
+                status_bits.append(reason)
+            status_label = " – ".join(status_bits) if status_bits else "terminé"
+            sections.append(f"État final ({end_state.slug}) : {status_label}")
+        elif summary.final_node_slug:
+            sections.append(
+                f"Nœud de fin atteint : {summary.final_node_slug}"
+            )
+
+        if not sections:
+            return "Le workflow s'est terminé sans étape exécutée."
+        return "\n\n".join(sections)
+
+    @function_tool(
+        name_override=tool_name,
+        description_override=description,
+        strict_mode=False,
+    )
+    async def _run_configured_workflow(
+        ctx: RunContextWrapper[AgentContext],
+        initial_message: str | None = None,
+    ) -> str:
+        agent_context = ctx.context
+        message = initial_message if initial_message is not None else default_message
+        if not isinstance(message, str):
+            try:
+                message = str(message)
+            except Exception:  # pragma: no cover - garde-fou
+                message = ""
+
+        workflow_input = WorkflowInput(input_as_text=message)
+
+        workflow_started = agent_context.workflow_item is not None
+        task_indices: dict[str, int] = {}
+        task_texts: dict[str, str] = {}
+
+        async def _ensure_workflow_started() -> None:
+            nonlocal workflow_started
+            if not show_ui:
+                return
+            if workflow_started and agent_context.workflow_item is not None:
+                return
+            if agent_context.workflow_item is not None:
+                workflow_started = True
+                return
+            summary_title = _summary_title()
+            summary_payload = (
+                CustomSummary(title=summary_title)
+                if summary_title is not None
+                else None
+            )
+            workflow_model = Workflow(
+                type="reasoning",
+                tasks=[],
+                summary=summary_payload,
+                expanded=True,
+            )
+            try:
+                await agent_context.start_workflow(workflow_model)
+            except Exception as exc:  # pragma: no cover - robustesse best effort
+                logger.debug(
+                    "Impossible de démarrer le workflow côté UI (%s)",
+                    slug,
+                    exc_info=exc,
+                )
+            else:
+                workflow_started = True
+
+        async def _upsert_task(
+            key: str,
+            *,
+            title: str,
+            content: str,
+            status: str,
+        ) -> None:
+            if not show_ui:
+                return
+            await _ensure_workflow_started()
+            if agent_context.workflow_item is None:
+                return
+
+            existing_index = task_indices.get(key)
+            task_payload = ThoughtTask(
+                title=title,
+                content=content,
+                status_indicator=status,
+            )
+            try:
+                if existing_index is None:
+                    await agent_context.add_workflow_task(task_payload)
+                    workflow_item = agent_context.workflow_item
+                    if workflow_item is not None:
+                        index = len(workflow_item.workflow.tasks) - 1
+                        task_indices[key] = index
+                else:
+                    await agent_context.update_workflow_task(
+                        task_payload, existing_index
+                    )
+            except Exception as exc:  # pragma: no cover - progression best effort
+                logger.debug(
+                    "Impossible de synchroniser la tâche %s du workflow",
+                    key,
+                    exc_info=exc,
+                )
+
+        async def _handle_step_stream(update: WorkflowStepStreamUpdate) -> None:
+            if not show_ui:
+                return
+            title = update.title or f"Étape {update.index}"
+            current = task_texts.get(update.key, "")
+            if update.delta:
+                current += update.delta
+            elif update.text:
+                current = update.text
+            task_texts[update.key] = current
+            display_text = current if current.strip() else "En cours..."
+            await _upsert_task(
+                update.key,
+                title=title,
+                content=display_text,
+                status="loading",
+            )
+
+        async def _handle_step_completion(
+            summary: WorkflowStepSummary, index: int
+        ) -> None:
+            if not show_ui:
+                return
+            title = summary.title or f"Étape {index}"
+            if isinstance(summary.output, str):
+                text = summary.output.strip()
+            else:
+                text = summary.output
+            if not text:
+                text = "(aucune sortie)"
+            task_texts[summary.key] = text
+            await _upsert_task(
+                summary.key,
+                title=title,
+                content=text,
+                status="complete",
+            )
+
+        workflow_completed = False
+        try:
+            summary = await run_workflow(
+                workflow_input,
+                agent_context=agent_context,
+                on_step=_handle_step_completion,
+                on_step_stream=_handle_step_stream if show_ui else None,
+                on_stream_event=agent_context.stream,
+                workflow_service=workflow_service,
+                workflow_slug=slug,
+            )
+            result_text = _summary_to_text(summary)
+            if show_ui and agent_context.workflow_item is not None:
+                final_title = _summary_title()
+                if summary.steps and not final_title:
+                    final_title = summary.steps[-1].title or slug
+                summary_payload = (
+                    CustomSummary(title=final_title)
+                    if final_title is not None
+                    else None
+                )
+                try:
+                    await agent_context.end_workflow(
+                        summary=summary_payload,
+                        expanded=True,
+                    )
+                except Exception as exc:  # pragma: no cover - best effort
+                    logger.debug(
+                        "Impossible de terminer le workflow côté UI (%s)",
+                        slug,
+                        exc_info=exc,
+                    )
+                else:
+                    workflow_completed = True
+            return result_text
+        finally:
+            if (
+                show_ui
+                and not workflow_completed
+                and agent_context.workflow_item is not None
+            ):
+                try:
+                    await agent_context.end_workflow(expanded=True)
+                except Exception as exc:  # pragma: no cover - best effort
+                    logger.debug(
+                        "Impossible de finaliser le workflow côté UI (%s)",
+                        slug,
+                        exc_info=exc,
+                    )
+
+    return _run_configured_workflow
+
+
 def build_widget_validation_tool(payload: Any) -> FunctionTool | None:
     """Construit un FunctionTool pointant vers validate_widget_definition."""
 
@@ -635,6 +977,7 @@ __all__ = [
     "build_file_search_tool",
     "build_image_generation_tool",
     "build_weather_tool",
+    "build_workflow_tool",
     "build_web_search_tool",
     "build_widget_validation_tool",
     "sanitize_web_search_user_location",
