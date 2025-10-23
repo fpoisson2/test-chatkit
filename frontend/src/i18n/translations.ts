@@ -55,6 +55,7 @@ const fr: TranslationDictionary = {
   "voice.description":
     "Connectez-vous pour lancer des sessions Realtime, autoriser votre microphone et consulter les transcriptions en direct.",
   "voice.inline.subtitle": "La session vocale est active pour ce bloc du workflow.",
+  "voice.inline.start": "Démarrer l'écoute",
   "voice.inline.stop": "Arrêter la session",
   "voice.inline.status.idle": "En veille",
   "voice.inline.status.connecting": "Initialisation…",
@@ -289,6 +290,7 @@ const en: TranslationDictionary = {
   "voice.description":
     "Sign in to start Realtime sessions, grant microphone access, and review live transcripts.",
   "voice.inline.subtitle": "The voice session is active for this workflow step.",
+  "voice.inline.start": "Start listening",
   "voice.inline.stop": "Stop session",
   "voice.inline.status.idle": "Idle",
   "voice.inline.status.connecting": "Connecting…",

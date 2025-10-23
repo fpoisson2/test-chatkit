@@ -47,6 +47,10 @@ type VoiceSessionStatus = "idle" | "connecting" | "connected" | "error";
 
 const TOOL_ORDER = ["response", "transcription", "function_call"] as const;
 
+type BridgeErrorCode = "microphone_denied" | "media_unavailable";
+
+type BridgeError = Error & { code?: BridgeErrorCode };
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -400,6 +404,7 @@ export const VoiceSessionBridge = ({
   const [status, setStatus] = useState<VoiceSessionStatus>("connecting");
   const [error, setError] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<VoiceTranscriptEntry[]>([]);
+  const [needsUserGesture, setNeedsUserGesture] = useState(false);
 
   const transcriptsRef = useRef<VoiceTranscriptEntry[]>([]);
   const sentTranscriptIdsRef = useRef<Set<string>>(new Set());
@@ -414,6 +419,10 @@ export const VoiceSessionBridge = ({
 
   useEffect(() => {
     hasRequestedGreetingRef.current = false;
+  }, [details.taskId]);
+
+  useEffect(() => {
+    setNeedsUserGesture(false);
   }, [details.taskId]);
 
   const voiceSecret = useMemo<VoiceSessionSecret | null>(
@@ -602,10 +611,14 @@ export const VoiceSessionBridge = ({
       if (err instanceof DOMException) {
         const { name } = err;
         if (name === "NotAllowedError" || name === "SecurityError") {
-          throw new Error(t("voice.inline.errors.microphoneDenied"));
+          throw Object.assign(new Error(t("voice.inline.errors.microphoneDenied")), {
+            code: "microphone_denied" as const,
+          });
         }
         if (name === "NotFoundError" || name === "OverconstrainedError") {
-          throw new Error(t("voice.inline.errors.mediaUnavailable"));
+          throw Object.assign(new Error(t("voice.inline.errors.mediaUnavailable")), {
+            code: "media_unavailable" as const,
+          });
         }
       }
       throw err;
@@ -652,16 +665,15 @@ export const VoiceSessionBridge = ({
     }
   }, [details.toolPermissions.response, startResponse]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const start = async () => {
+  const beginSession = useCallback(
+    async (mode: "auto" | "manual") => {
       if (!voiceSecret) {
         setStatus("error");
         setError(t("voice.inline.errors.invalidSecret"));
         return;
       }
 
+      hasRequestedGreetingRef.current = false;
       setError(null);
       setStatus("connecting");
       setTranscripts([]);
@@ -679,34 +691,62 @@ export const VoiceSessionBridge = ({
         }
 
         await connect({ secret: voiceSecret, apiKey });
-
-        if (!cancelled) {
-          setStatus("connected");
-          requestInitialResponse();
-        }
+        setStatus("connected");
+        setNeedsUserGesture(false);
       } catch (err) {
-        if (cancelled) {
-          return;
-        }
+        disconnect();
+        const bridgeError = err as BridgeError;
         const fallback = t("voice.inline.errors.generic");
         const message = formatErrorMessage(err) || fallback;
-        setError(message);
-        setStatus("error");
-      }
-    };
 
-    void start();
+        if (bridgeError?.code === "microphone_denied") {
+          setNeedsUserGesture(true);
+          setStatus(mode === "auto" ? "idle" : "error");
+          setError(message);
+          return;
+        }
+
+        if (bridgeError?.code === "media_unavailable") {
+          setNeedsUserGesture(false);
+          setStatus("error");
+          setError(message);
+          return;
+        }
+
+        setNeedsUserGesture(false);
+        setStatus("error");
+        setError(message);
+      }
+    },
+    [connect, disconnect, ensureMicrophoneAccess, t, voiceSecret],
+  );
+
+  useEffect(() => {
+    if (!voiceSecret) {
+      setStatus("error");
+      setError(t("voice.inline.errors.invalidSecret"));
+      return () => {
+        disconnect();
+      };
+    }
+
+    void beginSession("auto");
 
     return () => {
-      cancelled = true;
       disconnect();
     };
-  }, [connect, disconnect, ensureMicrophoneAccess, requestInitialResponse, t, voiceSecret]);
+  }, [beginSession, disconnect, t, voiceSecret]);
 
   const handleStop = useCallback(() => {
     disconnect();
     void flushTranscripts("manual");
+    setNeedsUserGesture(false);
   }, [disconnect, flushTranscripts]);
+
+  const handleManualStart = useCallback(() => {
+    setNeedsUserGesture(false);
+    void beginSession("manual");
+  }, [beginSession]);
 
   const statusLabel = useMemo(() => {
     switch (status) {
@@ -752,6 +792,7 @@ export const VoiceSessionBridge = ({
     model: details.session.model || "—",
     voice: details.session.voice || "—",
   });
+  const showStartButton = needsUserGesture;
 
   return (
     <section className="voice-session-panel" aria-live="polite">
@@ -761,6 +802,18 @@ export const VoiceSessionBridge = ({
           <p className="voice-session-panel__subtitle">{subtitle}</p>
         </div>
         <div className="voice-session-panel__actions">
+          {showStartButton && (
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                handleManualStart();
+              }}
+              disabled={status === "connecting"}
+            >
+              {t("voice.inline.start")}
+            </button>
+          )}
           <button
             type="button"
             className="button button--ghost"
