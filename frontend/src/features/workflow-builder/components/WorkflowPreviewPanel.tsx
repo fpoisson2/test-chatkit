@@ -51,6 +51,22 @@ const buildWorkflowLabel = (workflow: WorkflowSummary | null, t: ReturnType<type
   return workflow.display_name?.trim() || workflow.slug || t("workflowBuilder.preview.untitled");
 };
 
+const resolveDomainKey = () => {
+  const rawDomainKey = import.meta.env.VITE_CHATKIT_DOMAIN_KEY?.trim();
+  if (rawDomainKey) {
+    return rawDomainKey;
+  }
+
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1" || host === "::1"
+    ? "domain_pk_localhost_dev"
+    : undefined;
+};
+
 const buildVersionLabel = (
   version: WorkflowVersionResponse | null,
   t: ReturnType<typeof useI18n>["t"],
@@ -114,6 +130,7 @@ export function WorkflowPreviewPanel({
 
       const [fallbackUrl] = endpointCandidates;
       const customApiUrl = fallbackUrl || "/api/chatkit";
+      const domainKey = resolveDomainKey();
 
       const authFetch: typeof fetch = async (resource, init) => {
         const headers = new Headers(init?.headers ?? {});
@@ -136,7 +153,7 @@ export function WorkflowPreviewPanel({
         return response;
       };
 
-      return { url: customApiUrl, fetch: authFetch } satisfies ChatKitOptions["api"];
+      return { url: customApiUrl, fetch: authFetch, ...(domainKey ? { domainKey } : {}) } as ChatKitOptions["api"];
     },
     [endpointCandidates, getClientSecret, hostedFlowEnabled, token],
   );
@@ -163,7 +180,24 @@ export function WorkflowPreviewPanel({
         theme: {
           colorScheme: preferredColorScheme,
           radius: "pill",
-          density: "comfortable",
+          density: "normal",
+          typography: {
+            baseSize: 16,
+            fontFamily:
+              '"OpenAI Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif',
+            fontFamilyMono:
+              'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace',
+            fontSources: [
+              {
+                family: "OpenAI Sans",
+                src: "https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Regular.woff2",
+                weight: 400,
+                style: "normal",
+                display: "swap",
+              },
+              // ...and 7 more font sources
+            ],
+          },
         },
         composer: {
           placeholder: t("workflowBuilder.preview.composerPlaceholder"),
