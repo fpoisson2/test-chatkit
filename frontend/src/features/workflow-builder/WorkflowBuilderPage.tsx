@@ -24,6 +24,8 @@ import ReactFlow, {
 
 import "reactflow/dist/style.css";
 
+import { Copy, PenSquare, Redo2, Undo2 } from "lucide-react";
+
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
@@ -98,7 +100,11 @@ import {
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
-import { parseWorkflowImport, WorkflowImportError } from "./importWorkflow";
+import {
+  parseWorkflowImport,
+  WorkflowImportError,
+  type ParsedWorkflowImport,
+} from "./importWorkflow";
 import type {
   AgentParameters,
   FileSearchConfig,
@@ -3347,6 +3353,240 @@ const WorkflowBuilderPage = () => {
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
 
+  type InsertGraphResult =
+    | { success: true; nodeIds: string[]; edgeIds: string[] }
+    | { success: false; reason: "nothing_to_insert" | "error" };
+
+  const insertGraphElements = useCallback(
+    (
+      graph: ParsedWorkflowImport["graph"],
+      options: {
+        computeTargetCenter?: (
+          selectionCenter: { x: number; y: number },
+        ) => { x: number; y: number } | null;
+      } = {},
+    ): InsertGraphResult => {
+      try {
+        const { nodes: importedNodes, edges: importedEdges } = graph;
+
+        const existingNodes = nodesRef.current;
+        const existingEdges = edgesRef.current;
+
+        const existingNodeIds = new Set(existingNodes.map((node) => node.id));
+        const existingNodeSlugs = new Set(existingNodes.map((node) => node.data.slug));
+        const tempNodeIds = new Set<string>();
+        const slugUsage = new Map<string, number>();
+        const slugMapping = new Map<string, string>();
+        const startNodeExists = existingNodes.some((node) => node.data.kind === "start");
+
+        const nodesToInsert: FlowNode[] = [];
+
+        for (const node of importedNodes) {
+          if (!isValidNodeKind(node.kind)) {
+            continue;
+          }
+          const kind = node.kind;
+          if (kind === "start" && startNodeExists) {
+            continue;
+          }
+
+          const baseSlug = node.slug;
+          let nextSlug = baseSlug;
+          let suffix = slugUsage.get(baseSlug) ?? 0;
+          while (
+            existingNodeIds.has(nextSlug) ||
+            existingNodeSlugs.has(nextSlug) ||
+            tempNodeIds.has(nextSlug)
+          ) {
+            suffix += 1;
+            nextSlug = `${baseSlug}-${suffix}`;
+          }
+          slugUsage.set(baseSlug, suffix);
+          tempNodeIds.add(nextSlug);
+          existingNodeIds.add(nextSlug);
+          existingNodeSlugs.add(nextSlug);
+          slugMapping.set(node.slug, nextSlug);
+
+          const position = extractPosition(node.metadata) ?? { x: 0, y: 0 };
+          const displayName = node.display_name ?? humanizeSlug(node.slug);
+          const agentKey = kind === "agent" ? node.agent_key ?? null : null;
+          const parameters =
+            kind === "agent"
+              ? resolveAgentParameters(agentKey, node.parameters)
+              : kind === "state"
+                ? resolveStateParameters(node.slug, node.parameters)
+                : kind === "json_vector_store"
+                  ? setVectorStoreNodeConfig({}, getVectorStoreNodeConfig(node.parameters))
+                  : kind === "widget"
+                    ? resolveWidgetNodeParameters(node.parameters)
+                    : resolveAgentParameters(null, node.parameters);
+
+          const metadata = { ...(node.metadata ?? {}) };
+
+          nodesToInsert.push({
+            id: nextSlug,
+            position: { x: position.x, y: position.y },
+            data: {
+              slug: nextSlug,
+              kind,
+              displayName,
+              label: displayName,
+              isEnabled: node.is_enabled ?? true,
+              agentKey,
+              parameters,
+              parametersText: stringifyAgentParameters(parameters),
+              parametersError: null,
+              metadata,
+            },
+            draggable: true,
+            selected: false,
+            style: buildNodeStyle(kind, { isSelected: false }),
+          });
+        }
+
+        if (nodesToInsert.length === 0) {
+          return { success: false, reason: "nothing_to_insert" };
+        }
+
+        let minX = Number.POSITIVE_INFINITY;
+        let maxX = Number.NEGATIVE_INFINITY;
+        let minY = Number.POSITIVE_INFINITY;
+        let maxY = Number.NEGATIVE_INFINITY;
+
+        for (const node of nodesToInsert) {
+          minX = Math.min(minX, node.position.x);
+          maxX = Math.max(maxX, node.position.x);
+          minY = Math.min(minY, node.position.y);
+          maxY = Math.max(maxY, node.position.y);
+        }
+
+        if (!Number.isFinite(minX) || !Number.isFinite(maxX)) {
+          minX = 0;
+          maxX = 0;
+        }
+        if (!Number.isFinite(minY) || !Number.isFinite(maxY)) {
+          minY = 0;
+          maxY = 0;
+        }
+
+        const selectionCenter = {
+          x: (minX + maxX) / 2,
+          y: (minY + maxY) / 2,
+        };
+
+        let targetCenter: { x: number; y: number } | null = null;
+
+        if (options.computeTargetCenter) {
+          targetCenter = options.computeTargetCenter(selectionCenter);
+        }
+
+        if (!targetCenter) {
+          if (reactFlowInstanceRef.current && typeof window !== "undefined") {
+            const wrapper = reactFlowWrapperRef.current;
+            const rect = wrapper?.getBoundingClientRect();
+            const clientPoint = rect
+              ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+              : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+            try {
+              targetCenter = reactFlowInstanceRef.current.project(clientPoint);
+            } catch (error) {
+              console.error(error);
+            }
+          }
+        }
+
+        if (!targetCenter) {
+          const viewport = reactFlowInstanceRef.current?.getViewport() ?? viewportRef.current;
+          const wrapper = reactFlowWrapperRef.current;
+          const width = wrapper?.clientWidth ?? 0;
+          const height = wrapper?.clientHeight ?? 0;
+          if (viewport) {
+            targetCenter = {
+              x: (width / 2 - viewport.x) / viewport.zoom,
+              y: (height / 2 - viewport.y) / viewport.zoom,
+            };
+          } else {
+            targetCenter = { x: selectionCenter.x, y: selectionCenter.y };
+          }
+        }
+
+        const offsetX = targetCenter.x - selectionCenter.x;
+        const offsetY = targetCenter.y - selectionCenter.y;
+
+        const adjustedNodes = nodesToInsert.map((node) => {
+          const x = node.position.x + offsetX;
+          const y = node.position.y + offsetY;
+          return {
+            ...node,
+            position: { x, y },
+            data: {
+              ...node.data,
+              metadata: { ...node.data.metadata, position: { x, y } },
+            },
+          } satisfies FlowNode;
+        });
+
+        const existingEdgeIds = new Set(existingEdges.map((edge) => edge.id));
+        const tempEdgeIds = new Set<string>();
+        const edgesToInsert: FlowEdge[] = [];
+
+        for (const edge of importedEdges) {
+          const source = slugMapping.get(edge.source);
+          const target = slugMapping.get(edge.target);
+          if (!source || !target) {
+            continue;
+          }
+          const baseId = `${source}-${target}`;
+          let candidateId = baseId;
+          let suffix = 1;
+          while (existingEdgeIds.has(candidateId) || tempEdgeIds.has(candidateId)) {
+            candidateId = `${baseId}-${suffix}`;
+            suffix += 1;
+          }
+          tempEdgeIds.add(candidateId);
+          existingEdgeIds.add(candidateId);
+          const metadataLabel = edge.metadata?.label;
+          const labelText =
+            metadataLabel != null && String(metadataLabel).trim()
+              ? String(metadataLabel).trim()
+              : edge.condition ?? "";
+          edgesToInsert.push({
+            id: candidateId,
+            source,
+            target,
+            label: labelText,
+            data: {
+              condition: edge.condition ?? null,
+              metadata: edge.metadata ?? {},
+            },
+            markerEnd: defaultEdgeOptions.markerEnd
+              ? { ...defaultEdgeOptions.markerEnd }
+              : { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
+            style: buildEdgeStyle({ isSelected: false }),
+          });
+        }
+
+        const newNodeIds = adjustedNodes.map((node) => node.id);
+        const newEdgeIds = edgesToInsert.map((edge) => edge.id);
+
+        setNodes((current) => [...current, ...adjustedNodes]);
+        setEdges((current) => [...current, ...edgesToInsert]);
+        setHasPendingChanges(true);
+        applySelection({
+          nodeIds: newNodeIds,
+          edgeIds: newEdgeIds,
+          primaryNodeId: newNodeIds[0] ?? null,
+        });
+
+        return { success: true, nodeIds: newNodeIds, edgeIds: newEdgeIds };
+      } catch (error) {
+        console.error(error);
+        return { success: false, reason: "error" };
+      }
+    },
+    [applySelection, setEdges, setHasPendingChanges, setNodes],
+  );
+
   const resetCopySequence = useCallback(() => {
     copySequenceRef.current.count = 0;
     copySequenceRef.current.lastTimestamp = 0;
@@ -3517,217 +3757,18 @@ const WorkflowBuilderPage = () => {
         return false;
       }
 
-      const importedNodes = parsed.graph.nodes;
-      const importedEdges = parsed.graph.edges;
-
-      const existingNodes = nodesRef.current;
-      const existingEdges = edgesRef.current;
-
-      const existingNodeIds = new Set(existingNodes.map((node) => node.id));
-      const existingNodeSlugs = new Set(existingNodes.map((node) => node.data.slug));
-      const tempNodeIds = new Set<string>();
-      const slugUsage = new Map<string, number>();
-      const slugMapping = new Map<string, string>();
-      const startNodeExists = existingNodes.some((node) => node.data.kind === "start");
-
-      const nodesToInsert: FlowNode[] = [];
-
-      for (const node of importedNodes) {
-        if (!Object.prototype.hasOwnProperty.call(NODE_COLORS, node.kind)) {
-          continue;
-        }
-        const kind = node.kind as NodeKind;
-        if (kind === "start" && startNodeExists) {
-          continue;
-        }
-
-        const baseSlug = node.slug;
-        let nextSlug = baseSlug;
-        let suffix = slugUsage.get(baseSlug) ?? 0;
-        while (
-          existingNodeIds.has(nextSlug) ||
-          existingNodeSlugs.has(nextSlug) ||
-          tempNodeIds.has(nextSlug)
-        ) {
-          suffix += 1;
-          nextSlug = `${baseSlug}-${suffix}`;
-        }
-        slugUsage.set(baseSlug, suffix);
-        tempNodeIds.add(nextSlug);
-        existingNodeIds.add(nextSlug);
-        existingNodeSlugs.add(nextSlug);
-        slugMapping.set(node.slug, nextSlug);
-
-        const position = extractPosition(node.metadata) ?? { x: 0, y: 0 };
-        const displayName = node.display_name ?? humanizeSlug(node.slug);
-        const agentKey = kind === "agent" ? node.agent_key ?? null : null;
-        const parameters =
-          kind === "agent"
-            ? resolveAgentParameters(agentKey, node.parameters)
-            : kind === "state"
-              ? resolveStateParameters(node.slug, node.parameters)
-              : kind === "json_vector_store"
-                ? setVectorStoreNodeConfig(
-                    {},
-                    getVectorStoreNodeConfig(node.parameters),
-                  )
-                : kind === "widget"
-                  ? resolveWidgetNodeParameters(node.parameters)
-                  : resolveAgentParameters(null, node.parameters);
-
-        const metadata = { ...(node.metadata ?? {}) };
-
-        nodesToInsert.push({
-          id: nextSlug,
-          position: { x: position.x, y: position.y },
-          data: {
-            slug: nextSlug,
-            kind,
-            displayName,
-            label: displayName,
-            isEnabled: node.is_enabled ?? true,
-            agentKey,
-            parameters,
-            parametersText: stringifyAgentParameters(parameters),
-            parametersError: null,
-            metadata,
-          },
-          draggable: true,
-          selected: false,
-          style: buildNodeStyle(kind, { isSelected: false }),
-        });
-      }
-
-      if (nodesToInsert.length === 0) {
+      const result = insertGraphElements(parsed.graph);
+      if (!result.success) {
         setSaveState("error");
-        setSaveMessage(t("workflowBuilder.clipboard.pasteNothing"));
+        setSaveMessage(
+          result.reason === "nothing_to_insert"
+            ? t("workflowBuilder.clipboard.pasteNothing")
+            : t("workflowBuilder.clipboard.pasteError"),
+        );
         setTimeout(() => setSaveState("idle"), 1500);
         return false;
       }
 
-      let minX = Number.POSITIVE_INFINITY;
-      let maxX = Number.NEGATIVE_INFINITY;
-      let minY = Number.POSITIVE_INFINITY;
-      let maxY = Number.NEGATIVE_INFINITY;
-
-      for (const node of nodesToInsert) {
-        minX = Math.min(minX, node.position.x);
-        maxX = Math.max(maxX, node.position.x);
-        minY = Math.min(minY, node.position.y);
-        maxY = Math.max(maxY, node.position.y);
-      }
-
-      if (!Number.isFinite(minX) || !Number.isFinite(maxX)) {
-        minX = 0;
-        maxX = 0;
-      }
-      if (!Number.isFinite(minY) || !Number.isFinite(maxY)) {
-        minY = 0;
-        maxY = 0;
-      }
-
-      const selectionCenter = {
-        x: (minX + maxX) / 2,
-        y: (minY + maxY) / 2,
-      };
-
-      let targetCenter: { x: number; y: number } | null = null;
-
-      if (reactFlowInstanceRef.current && typeof window !== "undefined") {
-        const wrapper = reactFlowWrapperRef.current;
-        const rect = wrapper?.getBoundingClientRect();
-        const clientPoint = rect
-          ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
-          : { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-        try {
-          targetCenter = reactFlowInstanceRef.current.project(clientPoint);
-        } catch (error) {
-          console.error(error);
-        }
-      }
-
-      if (!targetCenter) {
-        const viewport = reactFlowInstanceRef.current?.getViewport() ?? viewportRef.current;
-        const wrapper = reactFlowWrapperRef.current;
-        const width = wrapper?.clientWidth ?? 0;
-        const height = wrapper?.clientHeight ?? 0;
-        if (viewport) {
-          targetCenter = {
-            x: (width / 2 - viewport.x) / viewport.zoom,
-            y: (height / 2 - viewport.y) / viewport.zoom,
-          };
-        } else {
-          targetCenter = { x: selectionCenter.x, y: selectionCenter.y };
-        }
-      }
-
-      const offsetX = targetCenter.x - selectionCenter.x;
-      const offsetY = targetCenter.y - selectionCenter.y;
-
-      const adjustedNodes = nodesToInsert.map((node) => {
-        const x = node.position.x + offsetX;
-        const y = node.position.y + offsetY;
-        return {
-          ...node,
-          position: { x, y },
-          data: {
-            ...node.data,
-            metadata: { ...node.data.metadata, position: { x, y } },
-          },
-        } satisfies FlowNode;
-      });
-
-      const existingEdgeIds = new Set(existingEdges.map((edge) => edge.id));
-      const tempEdgeIds = new Set<string>();
-      const edgesToInsert: FlowEdge[] = [];
-
-      for (const edge of importedEdges) {
-        const source = slugMapping.get(edge.source);
-        const target = slugMapping.get(edge.target);
-        if (!source || !target) {
-          continue;
-        }
-        const baseId = `${source}-${target}`;
-        let candidateId = baseId;
-        let suffix = 1;
-        while (existingEdgeIds.has(candidateId) || tempEdgeIds.has(candidateId)) {
-          candidateId = `${baseId}-${suffix}`;
-          suffix += 1;
-        }
-        tempEdgeIds.add(candidateId);
-        existingEdgeIds.add(candidateId);
-        const metadataLabel = edge.metadata?.label;
-        const labelText =
-          metadataLabel != null && String(metadataLabel).trim()
-            ? String(metadataLabel).trim()
-            : edge.condition ?? "";
-        edgesToInsert.push({
-          id: candidateId,
-          source,
-          target,
-          label: labelText,
-          data: {
-            condition: edge.condition ?? null,
-            metadata: edge.metadata ?? {},
-          },
-          markerEnd: defaultEdgeOptions.markerEnd
-            ? { ...defaultEdgeOptions.markerEnd }
-            : { type: MarkerType.ArrowClosed, color: "var(--text-color)" },
-          style: buildEdgeStyle({ isSelected: false }),
-        });
-      }
-
-      const newNodeIds = adjustedNodes.map((node) => node.id);
-      const newEdgeIds = edgesToInsert.map((edge) => edge.id);
-
-      setNodes((current) => [...current, ...adjustedNodes]);
-      setEdges((current) => [...current, ...edgesToInsert]);
-      setHasPendingChanges(true);
-      applySelection({
-        nodeIds: newNodeIds,
-        edgeIds: newEdgeIds,
-        primaryNodeId: newNodeIds[0] ?? null,
-      });
       setSaveState("saved");
       setSaveMessage(t("workflowBuilder.clipboard.pasteSuccess"));
       setTimeout(() => setSaveState("idle"), 1500);
@@ -3739,13 +3780,74 @@ const WorkflowBuilderPage = () => {
       setTimeout(() => setSaveState("idle"), 1500);
       return false;
     }
-  }, [
-    applySelection,
-    setEdges,
-    setHasPendingChanges,
-    setNodes,
-    t,
-  ]);
+  }, [insertGraphElements, t]);
+
+  const handleDuplicateSelection = useCallback((): boolean => {
+    const selectedNodeIds = new Set(selectedNodeIdsRef.current);
+    const selectedEdgeIds = new Set(selectedEdgeIdsRef.current);
+
+    for (const edge of edgesRef.current) {
+      if (selectedEdgeIds.has(edge.id)) {
+        selectedNodeIds.add(edge.source);
+        selectedNodeIds.add(edge.target);
+      }
+    }
+
+    if (selectedNodeIds.size === 0) {
+      setSaveState("error");
+      setSaveMessage(t("workflowBuilder.duplicate.empty"));
+      setTimeout(() => setSaveState("idle"), 1500);
+      return false;
+    }
+
+    const nodesToDuplicate = nodesRef.current.filter((node) => selectedNodeIds.has(node.id));
+    if (nodesToDuplicate.length === 0) {
+      setSaveState("error");
+      setSaveMessage(t("workflowBuilder.duplicate.empty"));
+      setTimeout(() => setSaveState("idle"), 1500);
+      return false;
+    }
+
+    const edgesToDuplicate = edgesRef.current.filter(
+      (edge) => selectedNodeIds.has(edge.source) && selectedNodeIds.has(edge.target),
+    );
+
+    const payload = buildGraphPayloadFrom(nodesToDuplicate, edgesToDuplicate);
+
+    let parsed: ParsedWorkflowImport;
+    try {
+      parsed = parseWorkflowImport(JSON.stringify({ graph: payload }));
+    } catch (error) {
+      console.error(error);
+      setSaveState("error");
+      setSaveMessage(t("workflowBuilder.duplicate.error"));
+      setTimeout(() => setSaveState("idle"), 1500);
+      return false;
+    }
+
+    const result = insertGraphElements(parsed.graph, {
+      computeTargetCenter: (selectionCenter) => ({
+        x: selectionCenter.x + 80,
+        y: selectionCenter.y + 80,
+      }),
+    });
+
+    if (!result.success) {
+      setSaveState("error");
+      setSaveMessage(
+        result.reason === "nothing_to_insert"
+          ? t("workflowBuilder.duplicate.empty")
+          : t("workflowBuilder.duplicate.error"),
+      );
+      setTimeout(() => setSaveState("idle"), 1500);
+      return false;
+    }
+
+    setSaveState("saved");
+    setSaveMessage(t("workflowBuilder.duplicate.success"));
+    setTimeout(() => setSaveState("idle"), 1500);
+    return true;
+  }, [insertGraphElements, t]);
 
   const restoreGraphFromSnapshot = useCallback(
     (snapshot: string): boolean => {
@@ -5809,6 +5911,10 @@ const WorkflowBuilderPage = () => {
   };
 
   const hasSelectedElement = Boolean(selectedNode || selectedEdge);
+  const workflowBusy = loading || isImporting || isExporting;
+  const canDuplicateSelection = hasSelectedElement && !workflowBusy;
+  const canUndoHistory = !workflowBusy && historyRef.current.past.length > 0;
+  const canRedoHistory = !workflowBusy && historyRef.current.future.length > 0;
   const showPropertiesPanel = hasSelectedElement && (!isMobileLayout || isPropertiesPanelOpen);
 
   const versionIdToPromote = useMemo(
@@ -6231,19 +6337,79 @@ const WorkflowBuilderPage = () => {
                   </aside>
                 </div>
               ) : null}
-              <button
-                type="button"
-                ref={blockLibraryToggleRef}
-                className={styles.mobileToggleButton}
-                onClick={toggleBlockLibrary}
-                aria-controls={blockLibraryId}
-                aria-expanded={isBlockLibraryOpen}
-              >
-                <span aria-hidden="true">{isBlockLibraryOpen ? "×" : "+"}</span>
-                <span className={styles.srOnly}>
-                  {isBlockLibraryOpen ? "Fermer la bibliothèque de blocs" : "Ouvrir la bibliothèque de blocs"}
-                </span>
-              </button>
+              <div className={styles.mobileActionStack}>
+                <button
+                  type="button"
+                  className={styles.mobileActionButton}
+                  onClick={() => {
+                    redoHistory();
+                  }}
+                  disabled={!canRedoHistory}
+                >
+                  <Redo2 aria-hidden="true" size={20} />
+                  <span className={styles.srOnly}>
+                    {t("workflowBuilder.mobileActions.redo")}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.mobileActionButton}
+                  onClick={() => {
+                    undoHistory();
+                  }}
+                  disabled={!canUndoHistory}
+                >
+                  <Undo2 aria-hidden="true" size={20} />
+                  <span className={styles.srOnly}>
+                    {t("workflowBuilder.mobileActions.undo")}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.mobileActionButton}
+                  onClick={() => {
+                    handleDuplicateSelection();
+                  }}
+                  disabled={!canDuplicateSelection}
+                >
+                  <Copy aria-hidden="true" size={20} />
+                  <span className={styles.srOnly}>
+                    {t("workflowBuilder.mobileActions.duplicate")}
+                  </span>
+                </button>
+                {hasSelectedElement ? (
+                  <button
+                    type="button"
+                    ref={propertiesPanelToggleRef}
+                    className={styles.mobileActionButton}
+                    onClick={
+                      isPropertiesPanelOpen ? handleClosePropertiesPanel : handleOpenPropertiesPanel
+                    }
+                    aria-controls={propertiesPanelId}
+                    aria-expanded={isPropertiesPanelOpen}
+                  >
+                    <PenSquare aria-hidden="true" size={20} />
+                    <span className={styles.srOnly}>
+                      {t("workflowBuilder.mobileActions.properties")}
+                    </span>
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  ref={blockLibraryToggleRef}
+                  className={styles.mobileToggleButton}
+                  onClick={toggleBlockLibrary}
+                  aria-controls={blockLibraryId}
+                  aria-expanded={isBlockLibraryOpen}
+                >
+                  <span aria-hidden="true">{isBlockLibraryOpen ? "×" : "+"}</span>
+                  <span className={styles.srOnly}>
+                    {isBlockLibraryOpen
+                      ? "Fermer la bibliothèque de blocs"
+                      : "Ouvrir la bibliothèque de blocs"}
+                  </span>
+                </button>
+              </div>
             </>
           ) : (
             <aside
@@ -6255,18 +6421,6 @@ const WorkflowBuilderPage = () => {
               {renderBlockLibraryContent()}
             </aside>
           )}
-          {isMobileLayout && hasSelectedElement ? (
-            <button
-              type="button"
-              ref={propertiesPanelToggleRef}
-              className={styles.propertiesToggleButton}
-              onClick={isPropertiesPanelOpen ? handleClosePropertiesPanel : handleOpenPropertiesPanel}
-              aria-controls={propertiesPanelId}
-              aria-expanded={isPropertiesPanelOpen}
-            >
-              {isPropertiesPanelOpen ? "Masquer les propriétés" : "Propriétés du bloc"}
-            </button>
-          ) : null}
           {showPropertiesPanel ? (
             isMobileLayout ? (
               <div
