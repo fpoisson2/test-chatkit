@@ -79,6 +79,8 @@ export type FlowNodeData = {
   parametersText: string;
   parametersError: string | null;
   metadata: Record<string, unknown>;
+  isPreviewActive?: boolean;
+  isPreviewDimmed?: boolean;
 };
 
 export type FlowEdgeData = {

@@ -7,6 +7,7 @@ import {
   type ChangeEvent,
   type CSSProperties,
 } from "react";
+
 import ReactFlow, {
   Background,
   Controls,
@@ -15,6 +16,7 @@ import ReactFlow, {
   addEdge,
   type Connection,
   type EdgeChange,
+  type NodeChange,
   type ReactFlowInstance,
   ReactFlowProvider,
   type Viewport,
@@ -101,6 +103,7 @@ import {
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
+import { WorkflowPreviewPanel } from "./components/WorkflowPreviewPanel";
 import {
   parseWorkflowImport,
   WorkflowImportError,
@@ -184,6 +187,32 @@ type WorkflowViewportRecord = {
 const isValidNodeKind = (value: string): value is NodeKind =>
   Object.prototype.hasOwnProperty.call(NODE_COLORS, value);
 const isAgentKind = (kind: NodeKind): boolean => kind === "agent" || kind === "voice_agent";
+
+type ClassValue =
+  | string
+  | false
+  | null
+  | undefined
+  | Record<string, boolean | null | undefined>;
+
+const cx = (...values: ClassValue[]): string => {
+  const classes: string[] = [];
+  for (const value of values) {
+    if (!value) {
+      continue;
+    }
+    if (typeof value === "string") {
+      classes.push(value);
+      continue;
+    }
+    for (const [className, condition] of Object.entries(value)) {
+      if (condition) {
+        classes.push(className);
+      }
+    }
+  }
+  return classes.join(" ");
+};
 
 type WorkflowViewportListResponse = {
   viewports: WorkflowViewportRecord[];
@@ -334,19 +363,80 @@ const WorkflowBuilderPage = () => {
   );
   const { openSidebar } = useAppLayout();
   const { setSidebarContent, clearSidebarContent } = useSidebarPortal();
+
+  const ensurePreviewDefaults = useCallback((data: FlowNodeData): FlowNodeData => {
+    const hasActive = typeof data.isPreviewActive === "boolean";
+    const hasDimmed = typeof data.isPreviewDimmed === "boolean";
+    if (hasActive && hasDimmed) {
+      return data;
+    }
+    return {
+      ...data,
+      isPreviewActive: hasActive ? data.isPreviewActive : false,
+      isPreviewDimmed: hasDimmed ? data.isPreviewDimmed : false,
+    } satisfies FlowNodeData;
+  }, []);
+
+  const getNodeClassName = useCallback(
+    (data: FlowNodeData) => {
+      const classNames: string[] = [styles.flowNode];
+      if (data.isPreviewActive) {
+        classNames.push(styles.flowNodePreviewActive);
+      }
+      if (data.isPreviewDimmed) {
+        classNames.push(styles.flowNodePreviewDimmed);
+      }
+      return classNames.join(" ");
+    },
+    [],
+  );
+
+  const decorateNode = useCallback(
+    (node: FlowNode): FlowNode => {
+      const dataWithDefaults = ensurePreviewDefaults(node.data);
+      return {
+        ...node,
+        data: dataWithDefaults,
+        className: getNodeClassName(dataWithDefaults),
+        style: buildNodeStyle(dataWithDefaults.kind, {
+          isSelected: node.selected ?? false,
+          isPreviewActive: Boolean(dataWithDefaults.isPreviewActive),
+          isPreviewDimmed: Boolean(dataWithDefaults.isPreviewDimmed),
+        }),
+      } satisfies FlowNode;
+    },
+    [ensurePreviewDefaults, getNodeClassName, buildNodeStyle],
+  );
+
+  const decorateNodes = useCallback(
+    (list: FlowNode[]): FlowNode[] => list.map(decorateNode),
+    [decorateNode],
+  );
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>([]);
   const [edges, setEdges, applyEdgesChange] = useEdgesState<FlowEdgeData>([]);
+  const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [activePreviewStepSlug, setActivePreviewStepSlug] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
+  const [selectedVersionDetail, setSelectedVersionDetail] = useState<WorkflowVersionResponse | null>(null);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(null);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
+  const updateHasPendingChanges = useCallback(
+    (value: boolean | ((previous: boolean) => boolean)) => {
+      if (isPreviewMode) {
+        return;
+      }
+      setHasPendingChanges(value);
+    },
+    [isPreviewMode],
+  );
   const [vectorStores, setVectorStores] = useState<VectorStoreSummary[]>([]);
   const [vectorStoresLoading, setVectorStoresLoading] = useState(false);
   const [vectorStoresError, setVectorStoresError] = useState<string | null>(null);
@@ -367,6 +457,42 @@ const WorkflowBuilderPage = () => {
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const draftVersionIdRef = useRef<number | null>(null);
   const draftVersionSummaryRef = useRef<WorkflowVersionSummary | null>(null);
+
+  useEffect(() => {
+    if (!isPreviewMode) {
+      setActivePreviewStepSlug(null);
+    }
+  }, [isPreviewMode]);
+
+  useEffect(() => {
+    setNodes((current) => {
+      let changed = false;
+      const nextNodes = current.map((node) => {
+        const dataWithDefaults = ensurePreviewDefaults(node.data);
+        const isActive =
+          isPreviewMode &&
+          activePreviewStepSlug != null &&
+          dataWithDefaults.slug === activePreviewStepSlug;
+        const isDimmed = isPreviewMode && !isActive;
+        if (
+          dataWithDefaults.isPreviewActive === isActive &&
+          dataWithDefaults.isPreviewDimmed === isDimmed
+        ) {
+          return node;
+        }
+        changed = true;
+        return decorateNode({
+          ...node,
+          data: {
+            ...dataWithDefaults,
+            isPreviewActive: isActive,
+            isPreviewDimmed: isDimmed,
+          },
+        });
+      });
+      return changed ? nextNodes : current;
+    });
+  }, [activePreviewStepSlug, decorateNode, ensurePreviewDefaults, isPreviewMode, setNodes]);
   const selectedVersionIdRef = useRef<number | null>(null);
   const isCreatingDraftRef = useRef(false);
   const isHydratingRef = useRef(false);
@@ -637,14 +763,27 @@ const WorkflowBuilderPage = () => {
     };
   }, [authHeader, backendUrl, restoreViewport, token]);
 
+  const handleNodesChange = useCallback(
+    (changes: NodeChange<FlowNodeData>[]) => {
+      if (isPreviewMode) {
+        return;
+      }
+      onNodesChange(changes);
+    },
+    [isPreviewMode, onNodesChange],
+  );
+
   const handleEdgesChange = useCallback(
     (changes: EdgeChange<FlowEdgeData>[]) => {
+      if (isPreviewMode) {
+        return;
+      }
       if (changes.some((change) => change.type !== "select")) {
-        setHasPendingChanges(true);
+        updateHasPendingChanges(true);
       }
       applyEdgesChange(changes);
     },
-    [applyEdgesChange, setHasPendingChanges],
+    [applyEdgesChange, isPreviewMode, updateHasPendingChanges],
   );
 
   const [isBlockLibraryOpen, setBlockLibraryOpen] = useState<boolean>(() => !isMobileLayout);
@@ -857,8 +996,13 @@ const WorkflowBuilderPage = () => {
 
       setNodes((currentNodes) =>
         currentNodes.map((node) => {
+          const dataWithDefaults = ensurePreviewDefaults(node.data);
           const isSelected = nodeIdSet.has(node.id);
-          const nextStyle = buildNodeStyle(node.data.kind, { isSelected });
+          const nextStyle = buildNodeStyle(dataWithDefaults.kind, {
+            isSelected,
+            isPreviewActive: Boolean(dataWithDefaults.isPreviewActive),
+            isPreviewDimmed: Boolean(dataWithDefaults.isPreviewDimmed),
+          });
           const currentStyle = node.style ?? {};
           const hasSameSelection = (node.selected ?? false) === isSelected;
           const hasSameStyle =
@@ -868,15 +1012,19 @@ const WorkflowBuilderPage = () => {
                 Object.prototype.hasOwnProperty.call(currentStyle, key) &&
                 (currentStyle as Record<string, unknown>)[key] === value,
             );
+          const nextClassName = getNodeClassName(dataWithDefaults);
+          const hasSameClassName = node.className === nextClassName;
 
-          if (hasSameSelection && hasSameStyle) {
+          if (hasSameSelection && hasSameStyle && hasSameClassName) {
             return node;
           }
 
           return {
             ...node,
+            data: dataWithDefaults,
             selected: isSelected,
             style: nextStyle,
+            className: nextClassName,
           } satisfies FlowNode;
         })
       );
@@ -950,6 +1098,46 @@ const WorkflowBuilderPage = () => {
       </div>
     ) : null;
 
+  const handleEnterPreviewMode = useCallback(() => {
+    if (isPreviewMode) {
+      return;
+    }
+    setIsMobileActionsOpen(false);
+    setBlockLibraryOpen(false);
+    setPropertiesPanelOpen(false);
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    applySelection({ nodeIds: [], edgeIds: [] });
+    setIsPreviewMode(true);
+  }, [
+    applySelection,
+    isPreviewMode,
+    setBlockLibraryOpen,
+    setIsMobileActionsOpen,
+    setPropertiesPanelOpen,
+    setSelectedEdgeId,
+    setSelectedNodeId,
+  ]);
+
+  const handleExitPreviewMode = useCallback(() => {
+    if (!isPreviewMode) {
+      return;
+    }
+    setIsMobileActionsOpen(false);
+    setIsPreviewMode(false);
+    setActivePreviewStepSlug(null);
+  }, [isPreviewMode, setActivePreviewStepSlug]);
+
+  const handlePreviewActiveStepChange = useCallback(
+    (slug: string | null) => {
+      if (!isPreviewMode) {
+        return;
+      }
+      setActivePreviewStepSlug(slug);
+    },
+    [isPreviewMode, setActivePreviewStepSlug],
+  );
+
   const renderHeaderControls = () => {
     const importDisabled = loading || isImporting;
     const exportDisabled =
@@ -962,6 +1150,31 @@ const WorkflowBuilderPage = () => {
     const exportLabel = isExporting
       ? t("workflowBuilder.export.preparing")
       : t("workflowBuilder.actions.exportJson");
+    const previewLabel = isPreviewMode
+      ? t("workflowBuilder.preview.exit")
+      : t("workflowBuilder.preview.enter");
+    const previewDisabled = isPreviewMode
+      ? false
+      : loading ||
+        loadError !== null ||
+        !selectedWorkflowId ||
+        isImporting ||
+        isExporting ||
+        isDeploying;
+
+    const previewToggleButton = (
+      <button
+        type="button"
+        onClick={isPreviewMode ? handleExitPreviewMode : handleEnterPreviewMode}
+        disabled={previewDisabled}
+        aria-pressed={isPreviewMode}
+        className={cx(styles.previewToggleButton, {
+          [styles.previewToggleButtonActive]: isPreviewMode,
+        })}
+      >
+        {previewLabel}
+      </button>
+    );
 
     const versionSelect = (
       <div style={getHeaderLayoutStyle(isMobileLayout)}>
@@ -1096,6 +1309,23 @@ const WorkflowBuilderPage = () => {
                       type="button"
                       role="menuitem"
                       onClick={() => {
+                        if (isPreviewMode) {
+                          handleExitPreviewMode();
+                        } else {
+                          handleEnterPreviewMode();
+                        }
+                        closeMobileActions();
+                      }}
+                      disabled={previewDisabled}
+                      aria-pressed={isPreviewMode}
+                      style={getMobileActionButtonStyle({ disabled: previewDisabled })}
+                    >
+                      {previewLabel}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
                         handleTriggerImport();
                         closeMobileActions();
                       }}
@@ -1144,6 +1374,7 @@ const WorkflowBuilderPage = () => {
       <>
         {versionSelect}
         <div style={getHeaderActionAreaStyle(false)}>
+          {previewToggleButton}
           <button
             type="button"
             onClick={handleTriggerImport}
@@ -1387,6 +1618,7 @@ const WorkflowBuilderPage = () => {
             throw new Error(`Échec du chargement de la version (${response.status})`);
           }
           const data: WorkflowVersionResponse = await response.json();
+          setSelectedVersionDetail(data);
           const flowNodes = data.graph.nodes.map<FlowNode>((node, index) => {
             const positionFromMetadata = extractPosition(node.metadata);
             const displayName = node.display_name ?? humanizeSlug(node.slug);
@@ -1396,17 +1628,17 @@ const WorkflowBuilderPage = () => {
                 ? resolveAgentParameters(agentKey, node.parameters)
                 : node.kind === "voice_agent"
                   ? resolveVoiceAgentParameters(node.parameters)
-                : node.kind === "state"
-                  ? resolveStateParameters(node.slug, node.parameters)
-                  : node.kind === "json_vector_store"
-                    ? setVectorStoreNodeConfig(
-                        {},
-                        getVectorStoreNodeConfig(node.parameters),
-                      )
-                    : node.kind === "widget"
-                      ? resolveWidgetNodeParameters(node.parameters)
-                      : resolveAgentParameters(null, node.parameters);
-            return {
+                  : node.kind === "state"
+                    ? resolveStateParameters(node.slug, node.parameters)
+                    : node.kind === "json_vector_store"
+                      ? setVectorStoreNodeConfig(
+                          {},
+                          getVectorStoreNodeConfig(node.parameters),
+                        )
+                      : node.kind === "widget"
+                        ? resolveWidgetNodeParameters(node.parameters)
+                        : resolveAgentParameters(null, node.parameters);
+            const baseNode: FlowNode = {
               id: node.slug,
               position: positionFromMetadata ?? { x: 150 * index, y: 120 * index },
               data: {
@@ -1420,11 +1652,13 @@ const WorkflowBuilderPage = () => {
                 parametersText: stringifyAgentParameters(parameters),
                 parametersError: null,
                 metadata: node.metadata ?? {},
+                isPreviewActive: false,
+                isPreviewDimmed: false,
               },
               draggable: true,
               selected: false,
-              style: buildNodeStyle(node.kind, { isSelected: false }),
             } satisfies FlowNode;
+            return decorateNode(baseNode);
           });
           const flowEdges = data.graph.edges.map<FlowEdge>((edge) => ({
             id: String(edge.id ?? `${edge.source}-${edge.target}-${Math.random()}`),
@@ -1443,7 +1677,7 @@ const WorkflowBuilderPage = () => {
           const nextSnapshot = JSON.stringify(buildGraphPayloadFrom(flowNodes, flowEdges));
           isHydratingRef.current = true;
           lastSavedSnapshotRef.current = nextSnapshot;
-          setHasPendingChanges(false);
+          updateHasPendingChanges(false);
           if (background) {
             historyRef.current.isRestoring = true;
             historyRef.current.pendingSnapshot = null;
@@ -1523,6 +1757,7 @@ const WorkflowBuilderPage = () => {
       if (lastError) {
         setLoadError(lastError.message);
       }
+      setSelectedVersionDetail(null);
       if (!background) {
         setLoading(false);
       }
@@ -1536,7 +1771,7 @@ const WorkflowBuilderPage = () => {
       resetHistory,
       restoreViewport,
       setEdges,
-      setHasPendingChanges,
+      updateHasPendingChanges,
       setNodes,
     ],
   );
@@ -1628,7 +1863,7 @@ const WorkflowBuilderPage = () => {
             const emptySnapshot = JSON.stringify(buildGraphPayloadFrom([], []));
             lastSavedSnapshotRef.current = emptySnapshot;
             resetHistory(emptySnapshot);
-            setHasPendingChanges(false);
+            updateHasPendingChanges(false);
             if (!background) {
               setLoading(false);
             }
@@ -1705,7 +1940,7 @@ const WorkflowBuilderPage = () => {
       selectedWorkflowId,
       selectedVersionId,
       setEdges,
-      setHasPendingChanges,
+      updateHasPendingChanges,
       setNodes,
     ],
   );
@@ -1748,7 +1983,7 @@ const WorkflowBuilderPage = () => {
             const emptySnapshot = JSON.stringify(buildGraphPayloadFrom([], []));
             lastSavedSnapshotRef.current = emptySnapshot;
             resetHistory(emptySnapshot);
-            setHasPendingChanges(false);
+            updateHasPendingChanges(false);
             setLoading(false);
             viewportKeyRef.current = null;
             viewportRef.current = null;
@@ -1813,7 +2048,7 @@ const WorkflowBuilderPage = () => {
       restoreViewport,
       selectedWorkflowId,
       setEdges,
-      setHasPendingChanges,
+      updateHasPendingChanges,
       setNodes,
     ],
   );
@@ -1824,6 +2059,9 @@ const WorkflowBuilderPage = () => {
 
   const onConnect = useCallback(
     (connection: Connection) => {
+      if (isPreviewMode) {
+        return;
+      }
       setEdges((current) =>
         addEdge<FlowEdgeData>(
           {
@@ -1839,9 +2077,9 @@ const WorkflowBuilderPage = () => {
           current
         )
       );
-      setHasPendingChanges(true);
+      updateHasPendingChanges(true);
     },
-    [setEdges, setHasPendingChanges]
+    [isPreviewMode, setEdges, updateHasPendingChanges]
   );
 
   const selectedNode = useMemo(
@@ -1854,22 +2092,40 @@ const WorkflowBuilderPage = () => {
     [edges, selectedEdgeId]
   );
 
-  const handleNodeClick = useCallback((_: unknown, node: FlowNode) => {
-    setSelectedNodeId(node.id);
-    setSelectedEdgeId(null);
-  }, []);
+  const handleNodeClick = useCallback(
+    (_: unknown, node: FlowNode) => {
+      if (isPreviewMode) {
+        return;
+      }
+      setSelectedNodeId(node.id);
+      setSelectedEdgeId(null);
+    },
+    [isPreviewMode],
+  );
 
-  const handleEdgeClick = useCallback((_: unknown, edge: FlowEdge) => {
-    setSelectedEdgeId(edge.id);
-    setSelectedNodeId(null);
-  }, []);
+  const handleEdgeClick = useCallback(
+    (_: unknown, edge: FlowEdge) => {
+      if (isPreviewMode) {
+        return;
+      }
+      setSelectedEdgeId(edge.id);
+      setSelectedNodeId(null);
+    },
+    [isPreviewMode],
+  );
 
   const handleClearSelection = useCallback(() => {
+    if (isPreviewMode) {
+      return;
+    }
     applySelection({ nodeIds: [], edgeIds: [] });
-  }, [applySelection]);
+  }, [applySelection, isPreviewMode]);
 
   const handleSelectionChange = useCallback(
     ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: FlowNode[]; edges: FlowEdge[] }) => {
+      if (isPreviewMode) {
+        return;
+      }
       applySelection({
         nodeIds: selectedNodes.map((node) => node.id),
         edgeIds: selectedEdges.map((edge) => edge.id),
@@ -1877,14 +2133,20 @@ const WorkflowBuilderPage = () => {
         primaryEdgeId: selectedEdgeIdRef.current,
       });
     },
-    [applySelection]
+    [applySelection, isPreviewMode]
   );
 
   const handleNodeDragStart = useCallback(() => {
+    if (isPreviewMode) {
+      return;
+    }
     isNodeDragInProgressRef.current = true;
-  }, []);
+  }, [isPreviewMode]);
 
   const handleNodeDragStop = useCallback(() => {
+    if (isPreviewMode) {
+      return;
+    }
     isNodeDragInProgressRef.current = false;
     const history = historyRef.current;
     const pending = history.pendingSnapshot;
@@ -1899,7 +2161,7 @@ const WorkflowBuilderPage = () => {
       history.last = pending;
     }
     history.pendingSnapshot = null;
-  }, []);
+  }, [isPreviewMode]);
 
   const handleClosePropertiesPanel = useCallback(() => {
     if (isMobileLayout) {
@@ -1917,11 +2179,14 @@ const WorkflowBuilderPage = () => {
   }, [handleClearSelection, isMobileLayout]);
 
   const handleOpenPropertiesPanel = useCallback(() => {
+    if (isPreviewMode) {
+      return;
+    }
     if (!selectedNode && !selectedEdge) {
       return;
     }
     setPropertiesPanelOpen(true);
-  }, [selectedEdge, selectedNode]);
+  }, [isPreviewMode, selectedEdge, selectedNode]);
 
   const selectedElementKey = selectedNodeId ?? selectedEdgeId ?? null;
 
@@ -1984,21 +2249,24 @@ const WorkflowBuilderPage = () => {
 
   const updateNodeData = useCallback(
     (nodeId: string, updater: (data: FlowNodeData) => FlowNodeData) => {
+      if (isPreviewMode) {
+        return;
+      }
       setNodes((current) =>
         current.map((node) => {
           if (node.id !== nodeId) {
             return node;
           }
-          const nextData = updater(node.data);
-          return {
+          const currentData = ensurePreviewDefaults(node.data);
+          const nextData = ensurePreviewDefaults(updater(currentData));
+          return decorateNode({
             ...node,
             data: nextData,
-            style: buildNodeStyle(nextData.kind, { isSelected: node.selected ?? false }),
-          } satisfies FlowNode;
+          });
         })
       );
     },
-    [setNodes]
+    [decorateNode, ensurePreviewDefaults, isPreviewMode, setNodes]
   );
 
   const handleDisplayNameChange = useCallback(
@@ -2928,6 +3196,9 @@ const WorkflowBuilderPage = () => {
 
   const handleConditionChange = useCallback(
     (edgeId: string, value: string) => {
+      if (isPreviewMode) {
+        return;
+      }
       setEdges((current) =>
         current.map((edge) =>
           edge.id === edgeId
@@ -2939,13 +3210,16 @@ const WorkflowBuilderPage = () => {
             : edge
         )
       );
-      setHasPendingChanges(true);
+      updateHasPendingChanges(true);
     },
-    [setEdges, setHasPendingChanges]
+    [isPreviewMode, setEdges, updateHasPendingChanges]
   );
 
   const handleEdgeLabelChange = useCallback(
     (edgeId: string, value: string) => {
+      if (isPreviewMode) {
+        return;
+      }
       setEdges((current) =>
         current.map((edge) =>
           edge.id === edgeId
@@ -2960,9 +3234,9 @@ const WorkflowBuilderPage = () => {
             : edge
         )
       );
-      setHasPendingChanges(true);
+      updateHasPendingChanges(true);
     },
-    [setEdges, setHasPendingChanges]
+    [isPreviewMode, setEdges, updateHasPendingChanges]
   );
 
   const removeElements = useCallback(
@@ -2973,6 +3247,9 @@ const WorkflowBuilderPage = () => {
       nodeIds?: Iterable<string>;
       edgeIds?: Iterable<string>;
     }) => {
+      if (isPreviewMode) {
+        return;
+      }
       const nodeIdSet = new Set(nodeIds);
       const edgeIdSet = new Set(edgeIds);
 
@@ -3063,44 +3340,53 @@ const WorkflowBuilderPage = () => {
 
   const handleRemoveNode = useCallback(
     (nodeId: string) => {
+      if (isPreviewMode) {
+        return;
+      }
       removeElements({ nodeIds: [nodeId] });
-      setHasPendingChanges(true);
+      updateHasPendingChanges(true);
       if (selectedNodeId === nodeId) {
         setSelectedNodeId(null);
       }
     },
-    [removeElements, selectedNodeId, setHasPendingChanges]
+    [isPreviewMode, removeElements, selectedNodeId, updateHasPendingChanges]
   );
 
   const handleRemoveEdge = useCallback(
     (edgeId: string) => {
+      if (isPreviewMode) {
+        return;
+      }
       removeElements({ edgeIds: [edgeId] });
       setEdges((currentEdges) => currentEdges.filter((edge) => edge.id !== edgeId));
-      setHasPendingChanges(true);
+      updateHasPendingChanges(true);
       if (selectedEdgeId === edgeId) {
         setSelectedEdgeId(null);
       }
     },
-    [removeElements, selectedEdgeId, setEdges, setHasPendingChanges]
+    [isPreviewMode, removeElements, selectedEdgeId, setEdges, updateHasPendingChanges]
   );
 
   const addNodeToGraph = useCallback(
     (node: FlowNode) => {
-      setNodes((current) => [
-        ...current.map((existing) => ({
-          ...existing,
-          selected: false,
-          style: buildNodeStyle(existing.data.kind, { isSelected: false }),
-        })),
-        {
+      setNodes((current) => {
+        const cleared = current.map((existing) =>
+          decorateNode({
+            ...existing,
+            data: ensurePreviewDefaults(existing.data),
+            selected: false,
+          }),
+        );
+        const prepared = decorateNode({
           ...node,
+          data: ensurePreviewDefaults(node.data),
           selected: true,
-          style: buildNodeStyle(node.data.kind, { isSelected: true }),
-        },
-      ]);
+        });
+        return [...cleared, prepared];
+      });
       applySelection({ nodeIds: [node.id], primaryNodeId: node.id });
     },
-    [applySelection, setNodes]
+    [applySelection, decorateNode, ensurePreviewDefaults, setNodes]
   );
 
   const handleAddAgentNode = useCallback(() => {
@@ -3118,11 +3404,12 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
         metadata: {},
         label: humanizeSlug(slug),
       },
       draggable: true,
-      style: buildNodeStyle("agent", { isSelected: true }),
     };
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -3144,10 +3431,11 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("voice_agent", { isSelected: true }),
     } satisfies FlowNode;
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -3168,10 +3456,11 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("condition", { isSelected: true }),
     };
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -3192,10 +3481,11 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("state", { isSelected: true }),
     };
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -3216,10 +3506,11 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("watch", { isSelected: true }),
     } satisfies FlowNode;
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -3240,10 +3531,11 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("transform", { isSelected: true }),
     };
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -3264,10 +3556,11 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("wait_for_user_input", { isSelected: true }),
     } satisfies FlowNode;
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -3288,10 +3581,11 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("assistant_message", { isSelected: true }),
     } satisfies FlowNode;
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -3312,10 +3606,11 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("user_message", { isSelected: true }),
     } satisfies FlowNode;
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -3337,10 +3632,11 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("json_vector_store", { isSelected: true }),
     };
     addNodeToGraph(newNode);
   }, [addNodeToGraph, vectorStores]);
@@ -3361,10 +3657,11 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("widget", { isSelected: true }),
     } satisfies FlowNode;
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -3385,10 +3682,11 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
-      style: buildNodeStyle("end", { isSelected: true }),
     };
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
@@ -3466,7 +3764,7 @@ const WorkflowBuilderPage = () => {
           nodesToInsert.push({
             id: nextSlug,
             position: { x: position.x, y: position.y },
-            data: {
+            data: ensurePreviewDefaults({
               slug: nextSlug,
               kind,
               displayName,
@@ -3477,10 +3775,9 @@ const WorkflowBuilderPage = () => {
               parametersText: stringifyAgentParameters(parameters),
               parametersError: null,
               metadata,
-            },
+            }),
             draggable: true,
             selected: false,
-            style: buildNodeStyle(kind, { isSelected: false }),
           });
         }
 
@@ -3556,14 +3853,14 @@ const WorkflowBuilderPage = () => {
         const adjustedNodes = nodesToInsert.map((node) => {
           const x = node.position.x + offsetX;
           const y = node.position.y + offsetY;
-          return {
+          return decorateNode({
             ...node,
             position: { x, y },
-            data: {
+            data: ensurePreviewDefaults({
               ...node.data,
               metadata: { ...node.data.metadata, position: { x, y } },
-            },
-          } satisfies FlowNode;
+            }),
+          });
         });
 
         const existingEdgeIds = new Set(existingEdges.map((edge) => edge.id));
@@ -3611,7 +3908,7 @@ const WorkflowBuilderPage = () => {
 
         setNodes((current) => [...current, ...adjustedNodes]);
         setEdges((current) => [...current, ...edgesToInsert]);
-        setHasPendingChanges(true);
+        updateHasPendingChanges(true);
         applySelection({
           nodeIds: newNodeIds,
           edgeIds: newEdgeIds,
@@ -3624,7 +3921,7 @@ const WorkflowBuilderPage = () => {
         return { success: false, reason: "error" };
       }
     },
-    [applySelection, setEdges, setHasPendingChanges, setNodes],
+    [applySelection, isPreviewMode, setEdges, updateHasPendingChanges, setNodes],
   );
 
   const resetCopySequence = useCallback(() => {
@@ -3820,9 +4117,12 @@ const WorkflowBuilderPage = () => {
       setTimeout(() => setSaveState("idle"), 1500);
       return false;
     }
-  }, [insertGraphElements, t]);
+  }, [insertGraphElements, isPreviewMode, t]);
 
   const handleDuplicateSelection = useCallback((): boolean => {
+    if (isPreviewMode) {
+      return false;
+    }
     const selectedNodeIds = new Set(selectedNodeIdsRef.current);
     const selectedEdgeIds = new Set(selectedEdgeIdsRef.current);
 
@@ -3918,25 +4218,26 @@ const WorkflowBuilderPage = () => {
                 : kind === "widget"
                   ? resolveWidgetNodeParameters(node.parameters)
                   : resolveAgentParameters(null, node.parameters);
-        accumulator.push({
-          id: node.slug,
-          position,
-          data: {
-            slug: node.slug,
-            kind,
-            displayName,
-            label: displayName,
-            isEnabled: node.is_enabled ?? true,
-            agentKey,
-            parameters,
-            parametersText: stringifyAgentParameters(parameters),
-            parametersError: null,
-            metadata: node.metadata ?? {},
-          },
-          draggable: true,
-          selected: false,
-          style: buildNodeStyle(kind, { isSelected: false }),
-        });
+        accumulator.push(
+          decorateNode({
+            id: node.slug,
+            position,
+            data: ensurePreviewDefaults({
+              slug: node.slug,
+              kind,
+              displayName,
+              label: displayName,
+              isEnabled: node.is_enabled ?? true,
+              agentKey,
+              parameters,
+              parametersText: stringifyAgentParameters(parameters),
+              parametersError: null,
+              metadata: node.metadata ?? {},
+            }),
+            draggable: true,
+            selected: false,
+          }),
+        );
         return accumulator;
       }, []);
 
@@ -3971,6 +4272,9 @@ const WorkflowBuilderPage = () => {
   );
 
   const undoHistory = useCallback((): boolean => {
+    if (isPreviewMode) {
+      return false;
+    }
     const history = historyRef.current;
     if (history.past.length === 0 || !history.last) {
       return false;
@@ -3991,9 +4295,12 @@ const WorkflowBuilderPage = () => {
     history.last = previousSnapshot;
     history.pendingSnapshot = null;
     return true;
-  }, [restoreGraphFromSnapshot]);
+  }, [isPreviewMode, restoreGraphFromSnapshot]);
 
   const redoHistory = useCallback((): boolean => {
+    if (isPreviewMode) {
+      return false;
+    }
     const history = historyRef.current;
     if (history.future.length === 0) {
       return false;
@@ -4014,7 +4321,7 @@ const WorkflowBuilderPage = () => {
     history.last = nextSnapshot;
     history.pendingSnapshot = null;
     return true;
-  }, [restoreGraphFromSnapshot]);
+  }, [isPreviewMode, restoreGraphFromSnapshot]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -4039,7 +4346,7 @@ const WorkflowBuilderPage = () => {
       const isCtrlOrMeta = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
       const now = Date.now();
-      const workflowBusy = loading || isImporting || isExporting;
+      const workflowBusy = loading || isImporting || isExporting || isPreviewMode;
 
       if (isCtrlOrMeta && key === "c") {
         const previousTimestamp = copySequenceRef.current.lastTimestamp;
@@ -4128,6 +4435,10 @@ const WorkflowBuilderPage = () => {
       }
 
       if (event.key === "Delete") {
+        if (isPreviewMode) {
+          resetCopySequence();
+          return;
+        }
         const hasSelection =
           selectedNodeIdsRef.current.size > 0 || selectedEdgeIdsRef.current.size > 0;
         if (!hasSelection) {
@@ -4157,6 +4468,7 @@ const WorkflowBuilderPage = () => {
     copySelectionToClipboard,
     isExporting,
     isImporting,
+    isPreviewMode,
     loading,
     pasteClipboardGraph,
     redoHistory,
@@ -4421,7 +4733,7 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     if (!selectedWorkflowId) {
       lastSavedSnapshotRef.current = null;
-      setHasPendingChanges(false);
+      updateHasPendingChanges(false);
       return;
     }
 
@@ -4432,11 +4744,11 @@ const WorkflowBuilderPage = () => {
 
     if (!lastSavedSnapshotRef.current) {
       lastSavedSnapshotRef.current = graphSnapshot;
-      setHasPendingChanges(false);
+      updateHasPendingChanges(false);
       return;
     }
 
-    setHasPendingChanges(graphSnapshot !== lastSavedSnapshotRef.current);
+    updateHasPendingChanges(graphSnapshot !== lastSavedSnapshotRef.current);
   }, [graphSnapshot, selectedWorkflowId]);
 
   const handleSave = useCallback(async () => {
@@ -4544,7 +4856,7 @@ const WorkflowBuilderPage = () => {
               }, 300);
             }
             lastSavedSnapshotRef.current = graphSnapshot;
-            setHasPendingChanges(false);
+            updateHasPendingChanges(false);
             setSaveState("saved");
             setSaveMessage(autoSaveSuccessMessage);
             setTimeout(() => {
@@ -4568,7 +4880,7 @@ const WorkflowBuilderPage = () => {
         isCreatingDraftRef.current = false;
       }
       setSaveState("error");
-      setHasPendingChanges(true);
+      updateHasPendingChanges(true);
       setSaveMessage(lastError?.message ?? saveFailureMessage);
       return;
     }
@@ -4625,7 +4937,7 @@ const WorkflowBuilderPage = () => {
           }, 300);
         }
         lastSavedSnapshotRef.current = graphSnapshot;
-        setHasPendingChanges(false);
+        updateHasPendingChanges(false);
         setSaveState("saved");
         setSaveMessage(autoSaveSuccessMessage);
         setTimeout(() => {
@@ -4647,7 +4959,7 @@ const WorkflowBuilderPage = () => {
     }
 
     setSaveState("error");
-    setHasPendingChanges(true);
+    updateHasPendingChanges(true);
     setSaveMessage(lastError?.message ?? saveFailureMessage);
   }, [
     authHeader,
@@ -5047,7 +5359,7 @@ const WorkflowBuilderPage = () => {
         await loadVersions(selectedWorkflowId, promoted.id);
         await loadWorkflows({ selectWorkflowId: selectedWorkflowId, selectVersionId: promoted.id });
         lastSavedSnapshotRef.current = graphSnapshot;
-        setHasPendingChanges(false);
+        updateHasPendingChanges(false);
         setSaveState("saved");
         setSaveMessage(
           deployToProduction
@@ -5353,6 +5665,14 @@ const WorkflowBuilderPage = () => {
   }, [conditionGraphError]);
 
   useEffect(() => {
+    if (isPreviewMode) {
+      if (autoSaveTimeoutRef.current !== null) {
+        clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = null;
+      }
+      return;
+    }
+
     if (isPropertiesPanelOpen) {
       if (autoSaveTimeoutRef.current !== null) {
         clearTimeout(autoSaveTimeoutRef.current);
@@ -5394,6 +5714,7 @@ const WorkflowBuilderPage = () => {
     disableSave,
     handleSave,
     hasPendingChanges,
+    isPreviewMode,
     isPropertiesPanelOpen,
     loading,
     saveState,
@@ -5841,7 +6162,11 @@ const WorkflowBuilderPage = () => {
   const renderBlockLibraryContent = () => {
     if (isMobileLayout) {
       return (
-        <div className={styles.blockLibraryContent}>
+        <div
+          className={cx(styles.blockLibraryContent, {
+            [styles.blockLibraryDisabled]: isPreviewMode,
+          })}
+        >
           <div
             ref={(element) => {
               blockLibraryScrollRef.current = element;
@@ -5854,7 +6179,7 @@ const WorkflowBuilderPage = () => {
             aria-label="Blocs disponibles"
           >
             {blockLibraryItems.map((item) => {
-              const disabled = loading || !selectedWorkflowId;
+              const disabled = loading || !selectedWorkflowId || isPreviewMode;
               return (
                 <div
                   key={item.key}
@@ -5912,7 +6237,11 @@ const WorkflowBuilderPage = () => {
     const primaryTextColor = "var(--text-color)";
     const secondaryTextColor = "var(--text-muted)";
     return (
-      <div>
+      <div
+        className={cx({
+          [styles.blockLibraryDisabled]: isPreviewMode,
+        })}
+      >
         <div
           style={{
             marginBottom: "0.5rem",
@@ -5925,7 +6254,7 @@ const WorkflowBuilderPage = () => {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           {blockLibraryItems.map((item) => {
-            const disabled = loading || !selectedWorkflowId;
+            const disabled = loading || !selectedWorkflowId || isPreviewMode;
             return (
               <button
                 key={item.key}
@@ -5961,11 +6290,12 @@ const WorkflowBuilderPage = () => {
     );
   };
 
-  const hasSelectedElement = Boolean(selectedNode || selectedEdge);
   const workflowBusy = loading || isImporting || isExporting;
+  const editingLocked = isPreviewMode;
+  const hasSelectedElement = !editingLocked && Boolean(selectedNode || selectedEdge);
   const canDuplicateSelection = hasSelectedElement && !workflowBusy;
-  const canUndoHistory = !workflowBusy && historyRef.current.past.length > 0;
-  const canRedoHistory = !workflowBusy && historyRef.current.future.length > 0;
+  const canUndoHistory = !workflowBusy && !editingLocked && historyRef.current.past.length > 0;
+  const canRedoHistory = !workflowBusy && !editingLocked && historyRef.current.future.length > 0;
   const showPropertiesPanel = hasSelectedElement && (!isMobileLayout || isPropertiesPanelOpen);
 
   const versionIdToPromote = useMemo(
@@ -6273,6 +6603,17 @@ const WorkflowBuilderPage = () => {
     shouldShowWorkflowDescription,
   ]);
 
+  const editorContainerClassName = cx(styles.editorContainer, {
+    [styles.editorContainerPreview]: isPreviewMode && !isMobileLayout,
+    [styles.editorContainerMobilePreview]: isPreviewMode && isMobileLayout,
+  });
+
+  const previewBanner = isPreviewMode ? (
+    <div className={styles.previewBanner} role="status">
+      <span>{t("workflowBuilder.preview.banner")}</span>
+    </div>
+  ) : null;
+
   return (
     <ReactFlowProvider>
       <div
@@ -6306,66 +6647,97 @@ const WorkflowBuilderPage = () => {
             <div
               ref={reactFlowContainerRef}
               style={editorContainerStyle}
+              className={editorContainerClassName}
               aria-label="Éditeur visuel du workflow"
             >
-              {loading ? (
-                <div style={loadingStyle}>Chargement du workflow…</div>
-              ) : loadError ? (
-                <div style={loadingStyle} role="alert">
-                  {loadError}
+              {previewBanner}
+              <div
+                className={cx(styles.editorSplit, {
+                  [styles.editorSplitPreview]: isPreviewMode && !isMobileLayout,
+                })}
+              >
+                <div className={styles.flowViewport}>
+                  {loading ? (
+                    <div style={loadingStyle}>Chargement du workflow…</div>
+                  ) : loadError ? (
+                    <div style={loadingStyle} role="alert">
+                      {loadError}
+                    </div>
+                  ) : (
+                    <ReactFlow
+                      nodes={nodes}
+                      edges={edges}
+                      onNodesChange={handleNodesChange}
+                      onEdgesChange={handleEdgesChange}
+                      onNodeDragStart={handleNodeDragStart}
+                      onNodeDragStop={handleNodeDragStop}
+                      onNodeClick={handleNodeClick}
+                      onEdgeClick={handleEdgeClick}
+                      onPaneClick={handleClearSelection}
+                      onConnect={onConnect}
+                      defaultEdgeOptions={defaultEdgeOptions}
+                      connectionLineStyle={connectionLineStyle}
+                      selectionOnDrag={!isMobileLayout && !isPreviewMode}
+                      elementsSelectable={!isPreviewMode}
+                      nodesDraggable={!isPreviewMode}
+                      nodesConnectable={!isPreviewMode}
+                      panOnDrag={isMobileLayout ? true : [1, 2]}
+                      multiSelectionKeyCode={['Meta', 'Control']}
+                      onSelectionChange={handleSelectionChange}
+                      style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
+                      minZoom={minViewportZoom}
+                      defaultViewport={initialViewport}
+                      fitView={false}
+                      onInit={(instance) => {
+                        reactFlowInstanceRef.current = instance;
+                        refreshViewportConstraints(instance);
+                        if (pendingViewportRestoreRef.current) {
+                          restoreViewport();
+                        }
+                      }}
+                      onMoveEnd={(_, viewport) => {
+                        if (isHydratingRef.current) {
+                          return;
+                        }
+                        viewportRef.current = viewport;
+                        hasUserViewportChangeRef.current = true;
+                        const key = viewportKeyRef.current;
+                        if (key) {
+                          viewportMemoryRef.current.set(key, { ...viewport });
+                          persistViewportMemory();
+                        }
+                      }}
+                    >
+                      <Background gap={18} size={1} />
+                      {!isMobileLayout ? (
+                        <MiniMap
+                          nodeStrokeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
+                          nodeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
+                        />
+                      ) : null}
+                      <Controls />
+                    </ReactFlow>
+                  )}
                 </div>
-              ) : (
-                <ReactFlow
-                  nodes={nodes}
-                  edges={edges}
-                  onNodesChange={onNodesChange}
-                  onEdgesChange={handleEdgesChange}
-                  onNodeDragStart={handleNodeDragStart}
-                  onNodeDragStop={handleNodeDragStop}
-                  onNodeClick={handleNodeClick}
-                  onEdgeClick={handleEdgeClick}
-                  onPaneClick={handleClearSelection}
-                  onConnect={onConnect}
-                  defaultEdgeOptions={defaultEdgeOptions}
-                  connectionLineStyle={connectionLineStyle}
-                  selectionOnDrag={!isMobileLayout}
-                  panOnDrag={isMobileLayout ? true : [1, 2]}
-                  multiSelectionKeyCode={['Meta', 'Control']}
-                  onSelectionChange={handleSelectionChange}
-                  style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
-                  minZoom={minViewportZoom}
-                  defaultViewport={initialViewport}
-                  fitView={false}
-                  onInit={(instance) => {
-                    reactFlowInstanceRef.current = instance;
-                    refreshViewportConstraints(instance);
-                    if (pendingViewportRestoreRef.current) {
-                      restoreViewport();
-                    }
-                  }}
-                  onMoveEnd={(_, viewport) => {
-                    if (isHydratingRef.current) {
-                      return;
-                    }
-                    viewportRef.current = viewport;
-                    hasUserViewportChangeRef.current = true;
-                    const key = viewportKeyRef.current;
-                    if (key) {
-                      viewportMemoryRef.current.set(key, { ...viewport });
-                      persistViewportMemory();
-                    }
-                  }}
-                >
-                  <Background gap={18} size={1} />
-                  {!isMobileLayout ? (
-                    <MiniMap
-                      nodeStrokeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
-                      nodeColor={(node) => NODE_COLORS[(node.data as FlowNodeData).kind]}
-                    />
-                  ) : null}
-                  <Controls />
-                </ReactFlow>
-              )}
+                {!isMobileLayout && isPreviewMode ? (
+                  <WorkflowPreviewPanel
+                    workflow={selectedWorkflow}
+                    version={selectedVersionDetail}
+                    onActiveStepChange={handlePreviewActiveStepChange}
+                    onExitPreview={handleExitPreviewMode}
+                  />
+                ) : null}
+              </div>
+              {isMobileLayout && isPreviewMode ? (
+                <div className={styles.previewOverlay} role="dialog" aria-modal="true">
+                  <WorkflowPreviewPanel
+                    workflow={selectedWorkflow}
+                    version={selectedVersionDetail}
+                    onActiveStepChange={handlePreviewActiveStepChange}
+                    onExitPreview={handleExitPreviewMode}
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
           {isMobileLayout ? (
@@ -6453,6 +6825,7 @@ const WorkflowBuilderPage = () => {
                   ref={blockLibraryToggleRef}
                   className={styles.mobileToggleButton}
                   onClick={toggleBlockLibrary}
+                  disabled={isPreviewMode}
                   aria-controls={blockLibraryId}
                   aria-expanded={isBlockLibraryOpen}
                 >
