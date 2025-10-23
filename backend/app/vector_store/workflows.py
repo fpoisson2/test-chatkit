@@ -7,13 +7,9 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import Workflow
+from ..models import Workflow, WorkflowDefinition
 from ..schemas import VectorStoreWorkflowBlueprint
-from ..workflows import (
-    WorkflowDefinition,
-    WorkflowService,
-    WorkflowValidationError,
-)
+from ..workflows import WorkflowService, WorkflowValidationError
 
 
 def _normalize_optional_text(value: str | None) -> str | None:
