@@ -4,6 +4,7 @@ import type { ChatKitOptions } from "@openai/chatkit";
 import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
 import { ChatKitHost } from "./components/my-chat/ChatKitHost";
+import { VoiceSessionBridge, type VoiceSessionDetails } from "./components/my-chat/VoiceSessionBridge";
 import { ChatSidebar } from "./components/my-chat/ChatSidebar";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
 import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
@@ -98,6 +99,235 @@ const ensureSecureUrl = (rawUrl: string): SecureUrlNormalizationResult => {
   return { kind: "ok", url: parsed.toString(), wasUpgraded: false };
 };
 
+const VOICE_WAIT_STATE_METADATA_KEY = "workflow_wait_for_user_input";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const normalizePromptVariables = (value: unknown): Record<string, string> | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const result: Record<string, string> = {};
+
+  Object.entries(value).forEach(([key, raw]) => {
+    const trimmedKey = key.trim();
+    if (!trimmedKey) {
+      return;
+    }
+
+    if (typeof raw === "string") {
+      result[trimmedKey] = raw;
+      return;
+    }
+
+    if (typeof raw === "number" || typeof raw === "boolean") {
+      result[trimmedKey] = String(raw);
+    }
+  });
+
+  return Object.keys(result).length > 0 ? result : undefined;
+};
+
+const normalizeToolPermissions = (value: unknown): Record<string, boolean> => {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  const result: Record<string, boolean> = {};
+
+  Object.entries(value).forEach(([key, raw]) => {
+    const trimmedKey = key.trim();
+    if (!trimmedKey) {
+      return;
+    }
+    result[trimmedKey] = Boolean(raw);
+  });
+
+  return result;
+};
+
+const normalizeVoiceSessionConfig = (
+  input: unknown,
+): VoiceSessionDetails["session"] => {
+  if (!isRecord(input)) {
+    return {
+      model: "",
+      voice: "",
+      instructions: "",
+      prompt_id: null,
+      prompt_version: null,
+    };
+  }
+
+  const model = typeof input.model === "string" ? input.model : "";
+  const voice = typeof input.voice === "string" ? input.voice : "";
+  const instructions = typeof input.instructions === "string" ? input.instructions : "";
+  const promptIdRaw = input.prompt_id;
+  const promptVersionRaw = input.prompt_version;
+  const prompt_id =
+    typeof promptIdRaw === "string" && promptIdRaw.trim() ? promptIdRaw.trim() : null;
+  const prompt_version =
+    typeof promptVersionRaw === "string" && promptVersionRaw.trim()
+      ? promptVersionRaw.trim()
+      : null;
+  const promptVariables = normalizePromptVariables(input.prompt_variables);
+
+  const result: VoiceSessionDetails["session"] = {
+    model,
+    voice,
+    instructions,
+    prompt_id,
+    prompt_version,
+  };
+
+  if (promptVariables) {
+    result.prompt_variables = promptVariables;
+  }
+
+  return result;
+};
+
+const extractVoiceWaitState = (thread: unknown): { slug: string | null } | null => {
+  if (!isRecord(thread)) {
+    return null;
+  }
+
+  const metadata = thread.metadata;
+  if (!isRecord(metadata)) {
+    return null;
+  }
+
+  const waitState = metadata[VOICE_WAIT_STATE_METADATA_KEY];
+  if (!isRecord(waitState)) {
+    return null;
+  }
+
+  const typeValue = waitState.type;
+  if (typeof typeValue !== "string" || typeValue.trim().toLowerCase() !== "voice") {
+    return null;
+  }
+
+  const slugRaw = waitState.slug;
+  const slug = typeof slugRaw === "string" && slugRaw.trim() ? slugRaw.trim() : null;
+
+  return { slug };
+};
+
+const collectItemsFromContainer = (value: unknown): Record<string, unknown>[] => {
+  if (Array.isArray(value)) {
+    return value.filter((entry): entry is Record<string, unknown> => isRecord(entry));
+  }
+
+  if (isRecord(value)) {
+    const result: Record<string, unknown>[] = [];
+    const added = value["added"];
+    if (Array.isArray(added)) {
+      added.forEach((entry) => {
+        if (isRecord(entry)) {
+          result.push(entry);
+        }
+      });
+    }
+    return result;
+  }
+
+  return [];
+};
+
+const parseVoiceSessionTaskItem = (
+  item: Record<string, unknown>,
+): VoiceSessionDetails | null => {
+  if (item.type !== "task") {
+    return null;
+  }
+
+  const idRaw = item.id;
+  const trimmedId = typeof idRaw === "string" ? idRaw.trim() : "";
+  if (!trimmedId) {
+    return null;
+  }
+
+  const taskId = trimmedId;
+
+  const task = item.task;
+  if (!isRecord(task)) {
+    return null;
+  }
+
+  const content = task.content;
+  if (typeof content !== "string") {
+    return null;
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(content);
+  } catch {
+    return null;
+  }
+
+  if (!isRecord(payload) || payload.type !== "voice_session.created") {
+    return null;
+  }
+
+  const rawStep = isRecord(payload.step) ? payload.step : undefined;
+  const rawSlug = rawStep?.slug;
+  const rawTitle = rawStep?.title;
+
+  const stepSlug =
+    typeof rawSlug === "string" && rawSlug.trim() ? rawSlug.trim() : null;
+  const stepTitle =
+    typeof rawTitle === "string" && rawTitle.trim() ? rawTitle.trim() : null;
+
+  const session = normalizeVoiceSessionConfig(payload.session);
+  const rawSession = isRecord(payload.session) ? payload.session : undefined;
+  const fallbackPermissions = rawSession && isRecord(rawSession["realtime"])
+    ? (rawSession["realtime"] as Record<string, unknown>)["tools"]
+    : undefined;
+
+  const toolPermissions = normalizeToolPermissions(
+    payload.tool_permissions ?? fallbackPermissions,
+  );
+
+  return {
+    taskId,
+    stepSlug,
+    stepTitle,
+    clientSecret: payload.client_secret,
+    session,
+    toolPermissions,
+  };
+};
+
+const extractVoiceSessionFromLog = (
+  entryName: string,
+  data: Record<string, unknown>,
+): VoiceSessionDetails | null => {
+  const candidates: Record<string, unknown>[] = [];
+
+  if (entryName === "thread.item.added" && isRecord(data.item)) {
+    candidates.push(data.item);
+  }
+
+  candidates.push(...collectItemsFromContainer(data.items));
+
+  const delta = data.delta;
+  if (isRecord(delta)) {
+    candidates.push(...collectItemsFromContainer(delta.items));
+  }
+
+  for (const candidate of candidates) {
+    const voiceSession = parseVoiceSessionTaskItem(candidate);
+    if (voiceSession) {
+      return voiceSession;
+    }
+  }
+
+  return null;
+};
+
 export function MyChat() {
   const { token, user } = useAuth();
   const { openSidebar } = useAppLayout();
@@ -114,8 +344,17 @@ export function MyChat() {
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
+  const [voiceSessionDetails, setVoiceSessionDetails] = useState<VoiceSessionDetails | null>(null);
+  const voiceSessionRef = useRef<VoiceSessionDetails | null>(null);
+  const processedVoiceTaskIdsRef = useRef<Set<string>>(new Set());
+  const clearVoiceSessionState = useCallback(() => {
+    voiceSessionRef.current = null;
+    setVoiceSessionDetails(null);
+  }, []);
   const resetChatState = useCallback(
     ({ workflowSlug, preserveStoredThread = false }: ResetChatStateOptions = {}) => {
+      clearVoiceSessionState();
+      processedVoiceTaskIdsRef.current.clear();
       clearStoredChatKitSecret(sessionOwner);
 
       const resolvedWorkflowSlug = workflowSlug ?? activeWorkflowSlug;
@@ -131,7 +370,7 @@ export function MyChat() {
       setInitialThreadId(nextInitialThreadId);
       setChatInstanceKey((value) => value + 1);
     },
-    [activeWorkflowSlug, sessionOwner],
+    [activeWorkflowSlug, clearVoiceSessionState, sessionOwner],
   );
 
   const { hostedFlowEnabled, disableHostedFlow } = useHostedFlow({
@@ -144,6 +383,66 @@ export function MyChat() {
     hostedFlowEnabled,
     disableHostedFlow,
   });
+
+  useEffect(() => {
+    voiceSessionRef.current = voiceSessionDetails;
+  }, [voiceSessionDetails]);
+
+  const handleThreadSnapshotUpdate = useCallback(
+    (thread: Record<string, unknown>) => {
+      const previousSnapshot = lastThreadSnapshotRef.current;
+      lastThreadSnapshotRef.current = thread;
+
+      const activeVoice = voiceSessionRef.current;
+      if (!activeVoice) {
+        return;
+      }
+
+      const previousWait = extractVoiceWaitState(previousSnapshot);
+      const currentWait = extractVoiceWaitState(thread);
+
+      const previousMatchesStep =
+        previousWait && (!activeVoice.stepSlug || previousWait.slug === activeVoice.stepSlug);
+
+      const slugChanged =
+        previousWait &&
+        currentWait &&
+        previousWait.slug !== currentWait.slug &&
+        (!activeVoice.stepSlug || previousWait.slug === activeVoice.stepSlug);
+
+      if (slugChanged) {
+        clearVoiceSessionState();
+        return;
+      }
+
+      if (previousMatchesStep && !currentWait) {
+        clearVoiceSessionState();
+      }
+    },
+    [clearVoiceSessionState],
+  );
+
+  const handleVoiceTaskLog = useCallback(
+    (eventName: string, data: Record<string, unknown>) => {
+      const voiceSession = extractVoiceSessionFromLog(eventName, data);
+      if (!voiceSession) {
+        return;
+      }
+      if (processedVoiceTaskIdsRef.current.has(voiceSession.taskId)) {
+        return;
+      }
+
+      processedVoiceTaskIdsRef.current.add(voiceSession.taskId);
+      voiceSessionRef.current = voiceSession;
+      setVoiceSessionDetails(voiceSession);
+      console.info("[ChatKit] Voice session created", voiceSession);
+    },
+    [setVoiceSessionDetails],
+  );
+
+  const handleVoiceSessionReset = useCallback(() => {
+    clearVoiceSessionState();
+  }, [clearVoiceSessionState]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -174,12 +473,14 @@ export function MyChat() {
     if (previousOwner && previousOwner !== sessionOwner) {
       clearStoredChatKitSecret(previousOwner);
       clearStoredThreadId(previousOwner, activeWorkflowSlug);
+      clearVoiceSessionState();
+      processedVoiceTaskIdsRef.current.clear();
     }
     previousSessionOwnerRef.current = sessionOwner;
 
     const storedThreadId = loadStoredThreadId(sessionOwner, activeWorkflowSlug);
     setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
-  }, [activeWorkflowSlug, sessionOwner]);
+  }, [activeWorkflowSlug, clearVoiceSessionState, sessionOwner]);
 
   
 
@@ -668,9 +969,13 @@ export function MyChat() {
         onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
           if (entry?.data && typeof entry.data === "object") {
             const data = entry.data as Record<string, unknown>;
-            if ("thread" in data && data.thread) {
-              lastThreadSnapshotRef.current = data.thread as Record<string, unknown>;
+            const threadCandidate = data.thread;
+            if (isRecord(threadCandidate)) {
+              handleThreadSnapshotUpdate(threadCandidate);
+            } else if (threadCandidate) {
+              lastThreadSnapshotRef.current = threadCandidate as Record<string, unknown>;
             }
+            handleVoiceTaskLog(entry.name, data);
           }
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
         },
@@ -686,6 +991,8 @@ export function MyChat() {
       chatInstanceKey,
       preferredColorScheme,
       reportError,
+      handleThreadSnapshotUpdate,
+      handleVoiceTaskLog,
     ],
   );
 
@@ -710,6 +1017,9 @@ export function MyChat() {
     <>
       <ChatSidebar onWorkflowActivated={handleWorkflowActivated} />
       <ChatKitHost control={control} chatInstanceKey={chatInstanceKey} />
+      {voiceSessionDetails && (
+        <VoiceSessionBridge details={voiceSessionDetails} onReset={handleVoiceSessionReset} />
+      )}
       <ChatStatusMessage message={statusMessage} isError={Boolean(error)} isLoading={isLoading} />
     </>
   );

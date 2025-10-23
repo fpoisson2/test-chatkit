@@ -47,7 +47,9 @@ const formatErrorMessage = (error: unknown): string => {
   }
 };
 
-const resolveApiKey = (clientSecret: VoiceSessionSecret["client_secret"]): string | null => {
+export const resolveVoiceSessionApiKey = (
+  clientSecret: VoiceSessionSecret["client_secret"],
+): string | null => {
   if (typeof clientSecret === "string") {
     return clientSecret;
   }
@@ -293,7 +295,7 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
 
       try {
         const secret = await fetchSecret();
-        const apiKey = resolveApiKey(secret.client_secret);
+        const apiKey = resolveVoiceSessionApiKey(secret.client_secret);
         if (!apiKey) {
           throw new Error("Secret temps réel invalide renvoyé par le serveur.");
         }

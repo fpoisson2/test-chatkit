@@ -259,6 +259,95 @@ button {
   min-height: 0;
 }
 
+.voice-session-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: clamp(20px, 3vw, 28px);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.voice-session-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.voice-session-panel__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.voice-session-panel__title {
+  margin: 0;
+  font-size: clamp(1.1rem, 2.2vw, 1.35rem);
+  font-weight: 600;
+}
+
+.voice-session-panel__subtitle {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  max-width: 560px;
+}
+
+.voice-session-panel__actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.voice-session-panel__status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.voice-session-panel__tools {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.voice-session-panel__tools-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.voice-session-panel__tools-empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.voice-session-panel__tools-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.voice-session-panel__tool-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.voice-session-panel__tool-name {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
 .chatkit-status {
   position: fixed;
   right: clamp(16px, 4vw, 32px);
