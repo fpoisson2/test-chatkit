@@ -16,9 +16,47 @@ import {
   VectorStoreSearchPayload,
   VectorStoreSearchResult,
   VectorStoreSummary,
+  WORKFLOW_VECTOR_STORE_SLUG,
   isUnauthorizedError,
   vectorStoreApi,
 } from "../utils/backend";
+
+type BaseDocumentDefaults = {
+  docId: string;
+  document: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+};
+
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const extractBaseDocumentDefaults = (
+  metadata: Record<string, unknown>,
+): BaseDocumentDefaults | null => {
+  const baseDocument = metadata.base_document;
+  if (!isPlainRecord(baseDocument)) {
+    return null;
+  }
+
+  const docIdRaw = baseDocument.doc_id;
+  if (typeof docIdRaw !== "string" || !docIdRaw.trim()) {
+    return null;
+  }
+
+  const documentValue = baseDocument.document;
+  if (!isPlainRecord(documentValue)) {
+    return null;
+  }
+
+  const metadataValue = baseDocument.metadata;
+  const metadataRecord = isPlainRecord(metadataValue) ? metadataValue : undefined;
+
+  return {
+    docId: docIdRaw.trim(),
+    document: documentValue,
+    metadata: metadataRecord,
+  };
+};
 
 const sortStores = (stores: VectorStoreSummary[]): VectorStoreSummary[] =>
   [...stores].sort((a, b) => b.updated_at.localeCompare(a.updated_at));
@@ -43,6 +81,11 @@ export const VectorStoresPage = () => {
   const [documents, setDocuments] = useState<VectorStoreDocument[]>([]);
   const [documentsError, setDocumentsError] = useState<string | null>(null);
   const [documentsLoading, setDocumentsLoading] = useState(false);
+
+  const ingestionDefaults =
+    selectedStore && selectedStore.slug === WORKFLOW_VECTOR_STORE_SLUG
+      ? extractBaseDocumentDefaults(selectedStore.metadata)
+      : null;
 
   const refreshStores = useCallback(async () => {
     if (!token) {
@@ -184,26 +227,7 @@ export const VectorStoresPage = () => {
         chunkCount: document.chunk_count,
         pluralSuffix,
       });
-      const createdWorkflow = document.created_workflow;
-      if (createdWorkflow?.slug) {
-        const workflowSlug = createdWorkflow.slug.trim();
-        if (workflowSlug) {
-          const workflowName = createdWorkflow.display_name?.trim() || workflowSlug;
-          const workflowLinkHref = `/workflows/${encodeURIComponent(workflowSlug)}`;
-          setSuccess(
-            <>
-              {baseMessage}{" "}
-              {t("vectorStore.ingestion.success.workflowCreatedPrefix")}{" "}
-              <a href={workflowLinkHref}>{workflowName}</a>{" "}
-              {t("vectorStore.ingestion.success.workflowCreatedSuffix", { workflowSlug })}
-            </>,
-          );
-        } else {
-          setSuccess(baseMessage);
-        }
-      } else {
-        setSuccess(baseMessage);
-      }
+      setSuccess(baseMessage);
       setShowIngestionModal(false);
       await refreshStores();
     } catch (err) {
@@ -344,9 +368,12 @@ export const VectorStoresPage = () => {
       {showIngestionModal && selectedStore ? (
         <Modal title={`Ingestion dans « ${selectedStore.slug} »`} onClose={() => setShowIngestionModal(false)} size="lg">
           <VectorStoreIngestionForm
+            key={selectedStore.slug}
             onSubmit={handleIngestion}
             onCancel={() => setShowIngestionModal(false)}
-            defaultDocId=""
+            defaultDocId={ingestionDefaults?.docId ?? ""}
+            defaultDocument={ingestionDefaults?.document ?? null}
+            defaultMetadata={ingestionDefaults?.metadata ?? null}
           />
         </Modal>
       ) : null}

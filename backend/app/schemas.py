@@ -537,7 +537,6 @@ class VectorStoreDocumentIngestRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     store_title: str | None = None
     store_metadata: dict[str, Any] | None = None
-    workflow_blueprint: VectorStoreWorkflowBlueprint | None = None
 
 
 class VectorStoreDocumentResponse(BaseModel):
@@ -546,7 +545,6 @@ class VectorStoreDocumentResponse(BaseModel):
     chunk_count: int
     created_at: datetime.datetime
     updated_at: datetime.datetime
-    created_workflow: WorkflowSummaryResponse | None = None
 
 
 class VectorStoreDocumentDetailResponse(VectorStoreDocumentResponse):

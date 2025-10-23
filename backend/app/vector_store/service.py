@@ -8,6 +8,7 @@ import math
 import re
 from collections import Counter
 from collections.abc import Iterable, Sequence
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
@@ -381,7 +382,7 @@ class JsonVectorStoreService:
                 default_title = WORKFLOW_VECTOR_STORE_TITLE
             if default_description is None:
                 default_description = WORKFLOW_VECTOR_STORE_DESCRIPTION
-            merged_metadata: dict[str, Any] = dict(WORKFLOW_VECTOR_STORE_METADATA)
+            merged_metadata: dict[str, Any] = deepcopy(WORKFLOW_VECTOR_STORE_METADATA)
             if metadata:
                 merged_metadata.update(metadata)
             default_metadata = merged_metadata
