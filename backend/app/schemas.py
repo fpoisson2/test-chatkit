@@ -523,12 +523,21 @@ class VectorStoreResponse(BaseModel):
     documents_count: int = 0
 
 
+class VectorStoreWorkflowBlueprint(BaseModel):
+    slug: str
+    display_name: str
+    description: str | None = None
+    graph: dict[str, Any]
+    mark_active: bool = False
+
+
 class VectorStoreDocumentIngestRequest(BaseModel):
     doc_id: str
     document: dict[str, Any]
     metadata: dict[str, Any] = Field(default_factory=dict)
     store_title: str | None = None
     store_metadata: dict[str, Any] | None = None
+    workflow_blueprint: VectorStoreWorkflowBlueprint | None = None
 
 
 class VectorStoreDocumentResponse(BaseModel):
@@ -537,6 +546,7 @@ class VectorStoreDocumentResponse(BaseModel):
     chunk_count: int
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    created_workflow: WorkflowSummaryResponse | None = None
 
 
 class VectorStoreDocumentDetailResponse(VectorStoreDocumentResponse):

@@ -197,6 +197,15 @@ const fr: TranslationDictionary = {
   "workflowBuilder.deploy.modal.titlePublishDraft": "Publier les modifications ?",
   "workflowBuilder.deploy.modal.descriptionPublishDraft":
     "Créez une nouvelle version du workflow avec vos dernières modifications.",
+  "vectorStore.ingestion.createWorkflow.label": "Créer un workflow",
+  "vectorStore.ingestion.createWorkflow.slugLabel": "Slug du workflow",
+  "vectorStore.ingestion.createWorkflow.nameLabel": "Nom du workflow",
+  "vectorStore.ingestion.createWorkflow.descriptionLabel": "Description du workflow (optionnel)",
+  "vectorStore.ingestion.createWorkflow.graphLabel": "Graphe du workflow (JSON)",
+  "vectorStore.ingestion.createWorkflow.markActiveLabel": "Activer immédiatement le workflow",
+  "vectorStore.ingestion.errors.workflowSlugRequired": "Le slug du workflow est requis.",
+  "vectorStore.ingestion.errors.workflowNameRequired": "Le nom du workflow est requis.",
+  "vectorStore.ingestion.errors.workflowGraphInvalid": "Le graphe du workflow doit être un objet JSON valide.",
   "workflowBuilder.deploy.modal.titlePromoteSelected": "Déployer la version sélectionnée ?",
   "workflowBuilder.deploy.modal.descriptionPromoteSelected":
     "Remplace la version de production actuelle par la révision v{{version}}.",
@@ -444,6 +453,15 @@ const en: TranslationDictionary = {
   "workflowBuilder.voiceInspector.tool.functionCall": "Function calling",
   "workflowBuilder.voiceInspector.tool.functionCall.help":
     "Enable function calls to invoke custom business logic.",
+  "vectorStore.ingestion.createWorkflow.label": "Create a workflow",
+  "vectorStore.ingestion.createWorkflow.slugLabel": "Workflow slug",
+  "vectorStore.ingestion.createWorkflow.nameLabel": "Workflow name",
+  "vectorStore.ingestion.createWorkflow.descriptionLabel": "Workflow description (optional)",
+  "vectorStore.ingestion.createWorkflow.graphLabel": "Workflow graph (JSON)",
+  "vectorStore.ingestion.createWorkflow.markActiveLabel": "Activate workflow immediately",
+  "vectorStore.ingestion.errors.workflowSlugRequired": "The workflow slug is required.",
+  "vectorStore.ingestion.errors.workflowNameRequired": "The workflow name is required.",
+  "vectorStore.ingestion.errors.workflowGraphInvalid": "The workflow graph must be a valid JSON object.",
 };
 
 export const translations: Translations = {

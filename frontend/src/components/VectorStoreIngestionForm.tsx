@@ -1,6 +1,7 @@
 import { ChangeEvent, FormEvent, useState } from "react";
 
 import type { VectorStoreIngestionPayload } from "../utils/backend";
+import { useI18n } from "../i18n";
 
 type VectorStoreIngestionFormProps = {
   onSubmit: (payload: VectorStoreIngestionPayload) => Promise<void>;
@@ -15,11 +16,18 @@ export const VectorStoreIngestionForm = ({
   onCancel,
   defaultDocId = "",
 }: VectorStoreIngestionFormProps) => {
+  const { t } = useI18n();
   const [docId, setDocId] = useState(defaultDocId);
   const [documentInput, setDocumentInput] = useState("{}");
   const [metadataInput, setMetadataInput] = useState("{}");
   const [storeTitle, setStoreTitle] = useState("");
   const [storeMetadataInput, setStoreMetadataInput] = useState("");
+  const [shouldCreateWorkflow, setShouldCreateWorkflow] = useState(false);
+  const [workflowSlug, setWorkflowSlug] = useState("");
+  const [workflowName, setWorkflowName] = useState("");
+  const [workflowDescription, setWorkflowDescription] = useState("");
+  const [workflowGraphInput, setWorkflowGraphInput] = useState("{}");
+  const [workflowMarkActive, setWorkflowMarkActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setSubmitting] = useState(false);
 
@@ -79,15 +87,54 @@ export const VectorStoreIngestionForm = ({
       }
     }
 
+    let workflowBlueprint: VectorStoreIngestionPayload["workflow_blueprint"] | undefined;
+    if (shouldCreateWorkflow) {
+      const slugValue = workflowSlug.trim();
+      if (!slugValue) {
+        setError(t("vectorStore.ingestion.errors.workflowSlugRequired"));
+        return;
+      }
+
+      const nameValue = workflowName.trim();
+      if (!nameValue) {
+        setError(t("vectorStore.ingestion.errors.workflowNameRequired"));
+        return;
+      }
+
+      let graphPayload: Record<string, unknown>;
+      try {
+        const parsedGraph = JSON.parse(workflowGraphInput) as unknown;
+        if (!parsedGraph || typeof parsedGraph !== "object" || Array.isArray(parsedGraph)) {
+          throw new Error("Le graphe doit être un objet JSON");
+        }
+        graphPayload = parsedGraph as Record<string, unknown>;
+      } catch {
+        setError(t("vectorStore.ingestion.errors.workflowGraphInvalid"));
+        return;
+      }
+
+      workflowBlueprint = {
+        slug: slugValue,
+        display_name: nameValue,
+        description: workflowDescription.trim() || undefined,
+        graph: graphPayload,
+        mark_active: workflowMarkActive,
+      };
+    }
+
     setSubmitting(true);
     try {
-      await onSubmit({
+      const ingestionPayload: VectorStoreIngestionPayload = {
         doc_id: docId.trim(),
         document: documentPayload,
         metadata,
         store_title: storeTitle.trim() || undefined,
         store_metadata: storeMetadata ?? undefined,
-      });
+      };
+      if (workflowBlueprint) {
+        ingestionPayload.workflow_blueprint = workflowBlueprint;
+      }
+      await onSubmit(ingestionPayload);
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -160,6 +207,63 @@ export const VectorStoreIngestionForm = ({
           />
         </label>
       </details>
+      <label className="checkbox-field">
+        <input
+          type="checkbox"
+          checked={shouldCreateWorkflow}
+          onChange={(event) => setShouldCreateWorkflow(event.target.checked)}
+        />
+        {t("vectorStore.ingestion.createWorkflow.label")}
+      </label>
+      {shouldCreateWorkflow ? (
+        <>
+          <label className="label">
+            {t("vectorStore.ingestion.createWorkflow.slugLabel")}
+            <input
+              className="input"
+              type="text"
+              value={workflowSlug}
+              onChange={(event) => setWorkflowSlug(event.target.value)}
+            />
+          </label>
+          <label className="label">
+            {t("vectorStore.ingestion.createWorkflow.nameLabel")}
+            <input
+              className="input"
+              type="text"
+              value={workflowName}
+              onChange={(event) => setWorkflowName(event.target.value)}
+            />
+          </label>
+          <label className="label">
+            {t("vectorStore.ingestion.createWorkflow.descriptionLabel")}
+            <textarea
+              className="textarea"
+              rows={2}
+              value={workflowDescription}
+              onChange={(event) => setWorkflowDescription(event.target.value)}
+            />
+          </label>
+          <label className="label">
+            {t("vectorStore.ingestion.createWorkflow.graphLabel")}
+            <textarea
+              className="textarea"
+              rows={6}
+              value={workflowGraphInput}
+              onChange={(event) => setWorkflowGraphInput(event.target.value)}
+              spellCheck={false}
+            />
+          </label>
+          <label className="checkbox-field">
+            <input
+              type="checkbox"
+              checked={workflowMarkActive}
+              onChange={(event) => setWorkflowMarkActive(event.target.checked)}
+            />
+            {t("vectorStore.ingestion.createWorkflow.markActiveLabel")}
+          </label>
+        </>
+      ) : null}
       <div className="admin-form__actions">
         <button className="button button--subtle" type="button" onClick={onCancel} disabled={isSubmitting}>
           Annuler

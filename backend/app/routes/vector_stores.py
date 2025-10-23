@@ -18,8 +18,14 @@ from ..schemas import (
     VectorStoreSearchRequest,
     VectorStoreSearchResult,
     VectorStoreUpdateRequest,
+    WorkflowSummaryResponse,
 )
 from ..vector_store import JsonVectorStoreService
+from ..workflows import (
+    WorkflowService,
+    WorkflowValidationError,
+    serialize_workflow_summary,
+)
 
 router = APIRouter()
 
@@ -159,6 +165,31 @@ async def ingest_document(
     _: User = Depends(require_admin),
 ) -> VectorStoreDocumentResponse:
     service = JsonVectorStoreService(session)
+    workflow_summary: WorkflowSummaryResponse | None = None
+
+    if payload.workflow_blueprint is not None:
+        workflow_service = WorkflowService()
+        blueprint = payload.workflow_blueprint
+        try:
+            definition = workflow_service.import_workflow(
+                graph_payload=blueprint.graph,
+                session=session,
+                slug=blueprint.slug,
+                display_name=blueprint.display_name,
+                description=blueprint.description,
+                mark_as_active=blueprint.mark_active,
+            )
+        except WorkflowValidationError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+        workflow = definition.workflow
+        if workflow is not None:
+            workflow_summary = WorkflowSummaryResponse.model_validate(
+                serialize_workflow_summary(workflow)
+            )
+
     try:
         document = service.ingest(
             store_slug,
@@ -182,6 +213,7 @@ async def ingest_document(
         chunk_count=chunk_count,
         created_at=document.created_at,
         updated_at=document.updated_at,
+        created_workflow=workflow_summary,
     )
 
 
