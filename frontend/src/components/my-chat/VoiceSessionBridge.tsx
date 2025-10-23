@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "../../i18n";
 import { useRealtimeSession } from "../../voice/useRealtimeSession";
+import { useVoiceSecret } from "../../voice/useVoiceSecret";
 import type { VoiceSessionSecret } from "../../voice/useVoiceSecret";
 import { resolveVoiceSessionApiKey } from "../../voice/useVoiceSession";
 import type { RealtimeItem, RealtimeMessageItem } from "@openai/agents/realtime";
@@ -273,6 +274,9 @@ export const VoiceSessionBridge = ({
   const [error, setError] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<VoiceTranscriptEntry[]>([]);
   const [needsUserGesture, setNeedsUserGesture] = useState(false);
+  const { fetchSecret } = useVoiceSecret();
+  const [fallbackSecret, setFallbackSecret] = useState<VoiceSessionSecret | null>(null);
+  const [isFetchingSecret, setIsFetchingSecret] = useState(false);
 
   const transcriptsRef = useRef<VoiceTranscriptEntry[]>([]);
   const sentTranscriptIdsRef = useRef<Set<string>>(new Set());
@@ -281,6 +285,7 @@ export const VoiceSessionBridge = ({
   const microphonePreflightRef = useRef(false);
   const hasRequestedGreetingRef = useRef(false);
   const finalizeOnDisconnectRef = useRef(false);
+  const secretFetchAttemptRef = useRef(false);
 
   useEffect(() => {
     transcriptsRef.current = transcripts;
@@ -291,13 +296,120 @@ export const VoiceSessionBridge = ({
   }, [details.taskId]);
 
   useEffect(() => {
+    secretFetchAttemptRef.current = false;
+    setFallbackSecret(null);
+    setIsFetchingSecret(false);
+  }, [details.taskId]);
+
+  useEffect(() => {
     setNeedsUserGesture(false);
   }, [details.taskId]);
 
-  const voiceSecret = useMemo<VoiceSessionSecret | null>(() => {
+  useEffect(() => {
+    if (builtVoiceSecret || fallbackSecret || isFetchingSecret || secretFetchAttemptRef.current) {
+      return;
+    }
+
+    const overrides = {
+      model: details.session.model,
+      instructions: details.session.instructions,
+      voice: details.session.voice,
+    };
+
+    secretFetchAttemptRef.current = true;
+    setIsFetchingSecret(true);
+    console.info("[ChatKit][VoiceBridge] Aucun secret Realtime fourni, appel API backend", {
+      taskId: details.taskId,
+      stepSlug: details.stepSlug,
+      stepTitle: details.stepTitle,
+      overrides,
+    });
+
+    let cancelled = false;
+
+    fetchSecret(overrides)
+      .then((secret) => {
+        if (cancelled) {
+          return;
+        }
+
+        const normalizedClientSecret =
+          (secret as { client_secret?: VoiceSessionSecret["client_secret"] }).client_secret ?? secret;
+
+        const fallbackSession: VoiceSessionDetails["session"] = {
+          ...details.session,
+          model: secret.model || details.session.model,
+          voice: secret.voice || details.session.voice,
+          instructions: secret.instructions || details.session.instructions,
+          prompt_id: secret.prompt_id ?? details.session.prompt_id,
+          prompt_version: secret.prompt_version ?? details.session.prompt_version,
+          ...(secret.prompt_variables && Object.keys(secret.prompt_variables).length > 0
+            ? { prompt_variables: secret.prompt_variables }
+            : details.session.prompt_variables
+            ? { prompt_variables: details.session.prompt_variables }
+            : {}),
+        };
+
+        const fallbackDetails: VoiceSessionDetails = {
+          ...details,
+          clientSecret: normalizedClientSecret,
+          session: fallbackSession,
+        };
+
+        const resolved = buildVoiceSessionSecret(fallbackDetails);
+
+        if (!resolved) {
+          console.error("[ChatKit][VoiceBridge] Secret Realtime backend invalide", {
+            taskId: details.taskId,
+            stepSlug: details.stepSlug,
+          });
+          setError(t("voice.inline.errors.invalidSecret"));
+          setStatus("error");
+          return;
+        }
+
+        console.info("[ChatKit][VoiceBridge] Secret Realtime récupéré via le backend", {
+          taskId: details.taskId,
+          stepSlug: details.stepSlug,
+        });
+        setFallbackSecret(resolved);
+        setError(null);
+      })
+      .catch((err) => {
+        if (cancelled) {
+          return;
+        }
+        const message = formatErrorMessage(err) || t("voice.inline.errors.generic");
+        console.error("[ChatKit][VoiceBridge] Échec de la récupération du secret vocal via le backend", {
+          taskId: details.taskId,
+          stepSlug: details.stepSlug,
+          error: err,
+        });
+        setError(message);
+        setStatus("error");
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsFetchingSecret(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    builtVoiceSecret,
+    details,
+    fallbackSecret,
+    fetchSecret,
+    isFetchingSecret,
+    t,
+  ]);
+
+  const builtVoiceSecret = useMemo<VoiceSessionSecret | null>(() => {
     const secret = buildVoiceSessionSecret(details);
     if (!secret) {
-      console.error("[ChatKit][VoiceBridge] Impossible de construire le secret Realtime", {
+      console.warn("[ChatKit][VoiceBridge] Aucun client_secret fourni par le workflow", {
         taskId: details.taskId,
         stepSlug: details.stepSlug,
       });
@@ -324,6 +436,11 @@ export const VoiceSessionBridge = ({
 
     return secret;
   }, [details]);
+
+  const voiceSecret = useMemo<VoiceSessionSecret | null>(
+    () => builtVoiceSecret ?? fallbackSecret,
+    [builtVoiceSecret, fallbackSecret],
+  );
 
   const toolEntries = useMemo(() => {
     const entries = Object.entries(details.toolPermissions).map(([key, allowed]) => ({
@@ -729,8 +846,16 @@ export const VoiceSessionBridge = ({
 
   useEffect(() => {
     if (!voiceSecret) {
-      setStatus("error");
-      setError(t("voice.inline.errors.invalidSecret"));
+      if (isFetchingSecret) {
+        console.info("[ChatKit][VoiceBridge] En attente d'un secret Realtime utilisable", {
+          taskId: details.taskId,
+        });
+        setError(null);
+        setStatus((current) => (current === "connecting" ? current : "connecting"));
+      } else {
+        setStatus("error");
+        setError((current) => current ?? t("voice.inline.errors.invalidSecret"));
+      }
       return () => {
         finalizeOnDisconnectRef.current = false;
         disconnect();
@@ -743,7 +868,7 @@ export const VoiceSessionBridge = ({
       finalizeOnDisconnectRef.current = false;
       disconnect();
     };
-  }, [beginSession, disconnect, t, voiceSecret]);
+  }, [beginSession, details.taskId, disconnect, isFetchingSecret, t, voiceSecret]);
 
   const handleStop = useCallback(() => {
     console.info("[ChatKit][VoiceBridge] Arrêt manuel demandé", {
@@ -760,8 +885,13 @@ export const VoiceSessionBridge = ({
     console.info("[ChatKit][VoiceBridge] Relance manuelle de la session", {
       taskId: details.taskId,
     });
+    if (!voiceSecret && !isFetchingSecret) {
+      secretFetchAttemptRef.current = false;
+      setStatus("connecting");
+      setError(null);
+    }
     void beginSession("manual");
-  }, [beginSession, details.taskId]);
+  }, [beginSession, details.taskId, isFetchingSecret, voiceSecret]);
 
   const statusLabel = useMemo(() => {
     switch (status) {
