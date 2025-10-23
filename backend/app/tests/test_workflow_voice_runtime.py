@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -219,12 +220,26 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
     assert isinstance(task_event.item, TaskItem)
     content = task_event.item.task.content
     assert content is not None
-    assert "Session vocale initialisée" in content
-    assert "secret-123" in content
-    assert "Voix : ember" in content
-    assert "Réponses audio ✅" in content
-    assert "Fonctions ❌" in content
-    assert "Assistant vocal" in content
+    payload = json.loads(content)
+    assert payload["type"] == "voice_session.created"
+    assert payload["step"] == {"slug": "voice", "title": "Voice"}
+    assert payload["client_secret"]["client_secret"]["value"] == "secret-123"
+    assert payload["client_secret"]["expires_at"] == "2099-01-01"
+    assert payload["session"]["voice"] == "ember"
+    assert payload["session"]["model"] == "gpt-voice"
+    assert payload["session"]["instructions"] == "Répondez brièvement."
+    assert payload["session"]["realtime"]["start_mode"] == "auto"
+    assert payload["session"]["realtime"]["stop_mode"] == "manual"
+    assert payload["session"]["realtime"]["tools"] == {
+        "response": True,
+        "transcription": True,
+        "function_call": False,
+    }
+    assert payload["tool_permissions"] == {
+        "response": True,
+        "transcription": True,
+        "function_call": False,
+    }
 
     wait_state = agent_context.thread.metadata.get(_WAIT_STATE_METADATA_KEY)
     assert isinstance(wait_state, dict)

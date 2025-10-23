@@ -118,134 +118,6 @@ from .service import (
 logger = logging.getLogger("chatkit.server")
 
 AGENT_NODE_KINDS = frozenset({"agent", "voice_agent"})
-
-_VOICE_START_LABELS = {
-    "manual": "Démarrage manuel",
-    "auto": "Démarrage automatique",
-}
-
-_VOICE_STOP_LABELS = {
-    "manual": "Arrêt manuel",
-    "auto": "Arrêt automatique",
-}
-
-_VOICE_TOOL_LABELS: tuple[tuple[str, str], ...] = (
-    ("response", "Réponses audio"),
-    ("transcription", "Transcriptions"),
-    ("function_call", "Fonctions"),
-)
-
-
-def _truncate_text(value: str, limit: int) -> str:
-    stripped = value.strip()
-    if len(stripped) <= limit:
-        return stripped
-    if limit <= 1:
-        return stripped[:limit]
-    return f"{stripped[: limit - 1].rstrip()}…"
-
-
-def _extract_client_secret_info(secret: Any) -> tuple[str | None, str | None]:
-    if isinstance(secret, Mapping):
-        value: str | None = None
-        expires: str | None = None
-
-        nested_secret = secret.get("client_secret")
-        if isinstance(nested_secret, Mapping):
-            nested_value = nested_secret.get("value")
-            if isinstance(nested_value, str) and nested_value.strip():
-                value = nested_value.strip()
-            nested_expiry = nested_secret.get("expires_at")
-            if isinstance(nested_expiry, str) and nested_expiry.strip():
-                expires = nested_expiry.strip()
-        elif isinstance(nested_secret, str) and nested_secret.strip():
-            value = nested_secret.strip()
-
-        if value is None:
-            direct_value = secret.get("value")
-            if isinstance(direct_value, str) and direct_value.strip():
-                value = direct_value.strip()
-
-        direct_expiry = secret.get("expires_at")
-        if isinstance(direct_expiry, str) and direct_expiry.strip():
-            expires = direct_expiry.strip()
-
-        return value, expires
-
-    if isinstance(secret, str) and secret.strip():
-        return secret.strip(), None
-
-    return None, None
-
-
-def _format_voice_tools(tools: Mapping[str, Any]) -> str | None:
-    parts: list[str] = []
-    for key, label in _VOICE_TOOL_LABELS:
-        enabled = bool(tools.get(key))
-        parts.append(f"{label} {'✅' if enabled else '❌'}")
-    if parts:
-        return " · ".join(parts)
-    return None
-
-
-def _format_voice_session_task_content(
-    *,
-    voice_context: Mapping[str, Any],
-    client_secret: str | None,
-    secret_expires_at: str | None,
-) -> str:
-    lines: list[str] = ["Session vocale initialisée."]
-
-    details: list[str] = []
-    model = voice_context.get("model")
-    if isinstance(model, str) and model.strip():
-        details.append(f"• Modèle : {model.strip()}")
-
-    voice = voice_context.get("voice")
-    if isinstance(voice, str) and voice.strip():
-        details.append(f"• Voix : {voice.strip()}")
-
-    realtime = voice_context.get("realtime")
-    if isinstance(realtime, Mapping):
-        start_mode = realtime.get("start_mode")
-        if isinstance(start_mode, str):
-            start_label = _VOICE_START_LABELS.get(start_mode.strip())
-            if start_label:
-                details.append(f"• Démarrage : {start_label}")
-
-        stop_mode = realtime.get("stop_mode")
-        if isinstance(stop_mode, str):
-            stop_label = _VOICE_STOP_LABELS.get(stop_mode.strip())
-            if stop_label:
-                details.append(f"• Arrêt : {stop_label}")
-
-        tools = realtime.get("tools")
-        if isinstance(tools, Mapping):
-            formatted_tools = _format_voice_tools(tools)
-            if formatted_tools:
-                details.append(f"• Outils : {formatted_tools}")
-
-    if client_secret:
-        details.append(f"• Secret client : {client_secret}")
-    if secret_expires_at:
-        details.append(f"• Expiration du secret : {secret_expires_at}")
-
-    if details:
-        lines.append("")
-        lines.extend(details)
-
-    instructions = voice_context.get("instructions")
-    if isinstance(instructions, str):
-        trimmed = instructions.strip()
-        if trimmed:
-            lines.append("")
-            lines.append("Instructions :")
-            lines.append(_truncate_text(trimmed, 400))
-
-    lines.append("")
-    lines.append("Ouvrez l'onglet « Assistant vocal » pour rejoindre cette session.")
-
-    return "\n".join(lines).strip()
 AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
 
 # ---------------------------------------------------------------------------
@@ -2433,14 +2305,13 @@ async def run_workflow(
             except Exception as exc:
                 raise_step_error(current_node.slug, title or current_node.slug, exc)
 
-            secret_value, secret_expires_at = _extract_client_secret_info(
-                realtime_secret
-            )
-            task_content = _format_voice_session_task_content(
-                voice_context=voice_context,
-                client_secret=secret_value,
-                secret_expires_at=secret_expires_at,
-            )
+            event_payload = {
+                "type": "voice_session.created",
+                "step": {"slug": current_node.slug, "title": title},
+                "client_secret": realtime_secret,
+                "session": event_context,
+                "tool_permissions": event_context["realtime"]["tools"],
+            }
 
             if on_stream_event is not None and agent_context.thread is not None:
                 task_item = TaskItem(
@@ -2449,7 +2320,7 @@ async def run_workflow(
                     created_at=datetime.now(),
                     task=CustomTask(
                         title=title,
-                        content=task_content,
+                        content=json.dumps(event_payload, ensure_ascii=False),
                     ),
                 )
                 await on_stream_event(ThreadItemAddedEvent(item=task_item))
