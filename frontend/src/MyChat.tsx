@@ -340,6 +340,9 @@ export function MyChat() {
     loadStoredThreadId(sessionOwner, activeWorkflowSlug),
   );
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(() =>
+    loadStoredThreadId(sessionOwner, activeWorkflowSlug),
+  );
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
@@ -393,6 +396,11 @@ export function MyChat() {
       const previousSnapshot = lastThreadSnapshotRef.current;
       lastThreadSnapshotRef.current = thread;
 
+      const threadId = typeof thread.id === "string" ? thread.id : null;
+      if (threadId) {
+        setActiveThreadId((current) => (current === threadId ? current : threadId));
+      }
+
       const activeVoice = voiceSessionRef.current;
       if (!activeVoice) {
         return;
@@ -419,7 +427,7 @@ export function MyChat() {
         clearVoiceSessionState();
       }
     },
-    [clearVoiceSessionState],
+    [clearVoiceSessionState, setActiveThreadId],
   );
 
   const handleVoiceTaskLog = useCallback(
@@ -480,6 +488,7 @@ export function MyChat() {
 
     const storedThreadId = loadStoredThreadId(sessionOwner, activeWorkflowSlug);
     setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
+    setActiveThreadId((current) => (current === storedThreadId ? current : storedThreadId));
   }, [activeWorkflowSlug, clearVoiceSessionState, sessionOwner]);
 
   
@@ -957,14 +966,20 @@ export function MyChat() {
         },
         onThreadChange: ({ threadId }: { threadId: string | null }) => {
           console.debug("[ChatKit] thread change", { threadId });
-          persistStoredThreadId(sessionOwner, threadId, activeWorkflowSlug);
+          if (threadId) {
+            persistStoredThreadId(sessionOwner, threadId, activeWorkflowSlug);
+          } else {
+            clearStoredThreadId(sessionOwner, activeWorkflowSlug);
+          }
           setInitialThreadId((current) => (current === threadId ? current : threadId));
+          setActiveThreadId(threadId);
         },
         onThreadLoadStart: ({ threadId }: { threadId: string }) => {
           console.debug("[ChatKit] thread load start", { threadId });
         },
         onThreadLoadEnd: ({ threadId }: { threadId: string }) => {
           console.debug("[ChatKit] thread load end", { threadId });
+          setActiveThreadId((current) => (current === threadId ? current : threadId));
         },
         onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
           if (entry?.data && typeof entry.data === "object") {
@@ -996,7 +1011,7 @@ export function MyChat() {
     ],
   );
 
-  const { control, requestRefresh } = useWorkflowChatSession({
+  const { control, requestRefresh, sendCustomAction } = useWorkflowChatSession({
     chatkitOptions,
     token,
     activeWorkflow,
@@ -1018,7 +1033,12 @@ export function MyChat() {
       <ChatSidebar onWorkflowActivated={handleWorkflowActivated} />
       <ChatKitHost control={control} chatInstanceKey={chatInstanceKey} />
       {voiceSessionDetails && (
-        <VoiceSessionBridge details={voiceSessionDetails} onReset={handleVoiceSessionReset} />
+        <VoiceSessionBridge
+          details={voiceSessionDetails}
+          onReset={handleVoiceSessionReset}
+          threadId={activeThreadId}
+          sendCustomAction={sendCustomAction}
+        />
       )}
       <ChatStatusMessage message={statusMessage} isError={Boolean(error)} isLoading={isLoading} />
     </>

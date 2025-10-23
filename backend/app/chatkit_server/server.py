@@ -6,7 +6,7 @@ import asyncio
 import base64
 import logging
 import re
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -88,8 +88,10 @@ from .actions import (
 from .context import (
     AutoStartConfiguration,
     ChatKitRequestContext,
+    _get_wait_state_metadata,
     _normalize_user_text,
     _resolve_user_input_text,
+    _set_wait_state_metadata,
 )
 from .widget_waiters import WidgetWaiterRegistry
 from .workflow_runner import (
@@ -695,6 +697,248 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
         thread.title = normalized_title
 
+    async def _handle_voice_transcripts_action(
+        self,
+        thread: ThreadMetadata,
+        payload: Mapping[str, Any] | None,
+        context: ChatKitRequestContext,
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        if not isinstance(payload, Mapping):
+            logger.warning(
+                "Action voix ignorée pour le fil %s : charge utile invalide.",
+                thread.id,
+            )
+            if False:  # pragma: no cover - satisfait l'interface AsyncIterator
+                yield None
+            return
+
+        transcripts_payload = payload.get("transcripts")
+        append = bool(payload.get("append", True))
+        final = bool(payload.get("final"))
+        interrupted = bool(payload.get("interrupted"))
+
+        if not isinstance(transcripts_payload, Sequence) or isinstance(
+            transcripts_payload,
+            (str | bytes | bytearray),
+        ):
+            if not final and not interrupted:
+                logger.warning(
+                    "Transcriptions manquantes dans l'action voix pour le fil %s.",
+                    thread.id,
+                )
+            if False:  # pragma: no cover - satisfait l'interface AsyncIterator
+                yield None
+            return
+
+        normalized_transcripts: list[dict[str, Any]] = []
+        for entry in transcripts_payload:
+            if not isinstance(entry, Mapping):
+                continue
+            role_raw = entry.get("role")
+            text_raw = entry.get("text")
+            if not isinstance(role_raw, str) or not isinstance(text_raw, str):
+                continue
+            role = role_raw.strip().lower()
+            text = text_raw.strip()
+            if role not in {"user", "assistant"} or not text:
+                continue
+            normalized_entry: dict[str, Any] = {"role": role, "text": text}
+            status_raw = entry.get("status")
+            if isinstance(status_raw, str) and status_raw.strip():
+                normalized_entry["status"] = status_raw.strip()
+            normalized_transcripts.append(normalized_entry)
+
+        if append and not normalized_transcripts:
+            logger.debug(
+                "Aucune nouvelle transcription vocale à traiter pour le fil %s.",
+                thread.id,
+            )
+            return
+
+        wait_state = _get_wait_state_metadata(thread) or {}
+        step_slug_raw = payload.get("step_slug") or payload.get("stepSlug")
+        if isinstance(step_slug_raw, str):
+            step_slug = step_slug_raw.strip()
+            if step_slug:
+                existing_slug = wait_state.get("slug")
+                if existing_slug and existing_slug != step_slug:
+                    logger.warning(
+                        "Le bloc vocal actif (%s) diffère de la charge reçue (%s) "
+                        "pour le fil %s.",
+                        existing_slug,
+                        step_slug,
+                        thread.id,
+                    )
+                wait_state.setdefault("slug", step_slug)
+
+        existing_transcripts = wait_state.get("voice_transcripts")
+        if isinstance(existing_transcripts, list):
+            accumulated = list(existing_transcripts)
+        else:
+            accumulated = []
+
+        if append:
+            accumulated.extend(normalized_transcripts)
+        else:
+            accumulated = list(normalized_transcripts)
+
+        wait_state["voice_transcripts"] = accumulated
+
+        streamed_transcripts = wait_state.get("voice_transcripts_streamed")
+        if isinstance(streamed_transcripts, list):
+            streamed = list(streamed_transcripts)
+        else:
+            streamed = []
+
+        if append:
+            streamed.extend(normalized_transcripts)
+        else:
+            streamed = list(accumulated)
+
+        wait_state["voice_transcripts_streamed"] = streamed
+
+        _set_wait_state_metadata(thread, wait_state)
+
+        try:
+            await self.store.save_thread(thread, context=context)
+        except Exception as exc:  # pragma: no cover - dépend du stockage
+            logger.exception(
+                "Impossible de sauvegarder l'état vocal pour le fil %s",
+                thread.id,
+                exc_info=exc,
+            )
+            if False:  # pragma: no cover - satisfait l'interface AsyncIterator
+                yield None
+            return
+
+        if append and normalized_transcripts:
+            async for event in self._stream_voice_transcripts(
+                thread, normalized_transcripts, context
+            ):
+                yield event
+
+        if final:
+            async for event in self._resume_voice_workflow(thread, context):
+                yield event
+            return
+
+        if interrupted and not normalized_transcripts:
+            logger.info(
+                "Session vocale interrompue pour le fil %s "
+                "(aucune transcription envoyée)",
+                thread.id,
+            )
+            return
+
+    async def _stream_voice_transcripts(
+        self,
+        thread: ThreadMetadata,
+        transcripts: Sequence[Mapping[str, Any]],
+        context: ChatKitRequestContext,
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        for entry in transcripts:
+            role = entry.get("role")
+            text = entry.get("text")
+            if not isinstance(role, str) or not isinstance(text, str):
+                continue
+
+            created_at = datetime.now()
+            if role == "user":
+                item = UserMessageItem(
+                    id=self.store.generate_item_id("message", thread, context),
+                    thread_id=thread.id,
+                    created_at=created_at,
+                    content=[UserMessageTextContent(text=text)],
+                    attachments=[],
+                    quoted_text=None,
+                    inference_options=InferenceOptions(),
+                )
+            else:
+                item = AssistantMessageItem(
+                    id=self.store.generate_item_id("message", thread, context),
+                    thread_id=thread.id,
+                    created_at=created_at,
+                    content=[AssistantMessageContent(text=text)],
+                )
+
+            try:
+                await self.store.add_thread_item(
+                    thread.id, item, context=context
+                )
+            except Exception as exc:  # pragma: no cover - dépend du stockage
+                logger.exception(
+                    "Impossible d'enregistrer la transcription vocale sur le fil %s",
+                    thread.id,
+                    exc_info=exc,
+                )
+                continue
+
+            yield ThreadItemAddedEvent(item=item)
+            yield ThreadItemDoneEvent(item=item)
+
+    async def _resume_voice_workflow(
+        self,
+        thread: ThreadMetadata,
+        context: ChatKitRequestContext,
+    ) -> AsyncIterator[ThreadStreamEvent]:
+        try:
+            history = await self.store.load_thread_items(
+                thread.id,
+                after=None,
+                limit=1000,
+                order="asc",
+                context=context,
+            )
+        except NotFoundError as exc:  # pragma: no cover - robustesse stockage
+            logger.exception(
+                "Impossible de recharger l'historique du fil vocal %s",
+                thread.id,
+                exc_info=exc,
+            )
+            if False:  # pragma: no cover - satisfait l'interface AsyncIterator
+                yield None
+            return
+
+        agent_context = AgentContext(
+            thread=thread,
+            store=self.store,
+            request_context=context,
+        )
+
+        event_queue: asyncio.Queue[Any] = asyncio.Queue()
+
+        workflow_input = WorkflowInput(
+            input_as_text="",
+            auto_start_was_triggered=False,
+            auto_start_assistant_message=None,
+            source_item_id=None,
+        )
+
+        workflow_result = _WorkflowStreamResult(
+            runner=self._execute_workflow(
+                thread=thread,
+                agent_context=agent_context,
+                workflow_input=workflow_input,
+                event_queue=event_queue,
+                thread_items_history=history.data,
+                thread_item_converter=self._thread_item_converter.for_context(
+                    context
+                ),
+                input_user_message=None,
+            ),
+            event_queue=event_queue,
+        )
+
+        try:
+            async for event in workflow_result.stream_events():
+                yield event
+        except asyncio.CancelledError:  # pragma: no cover - déconnexion client
+            logger.info(
+                "Streaming interrompu lors de la reprise du bloc vocal %s",
+                thread.id,
+            )
+            return
+
     async def action(
         self,
         thread: ThreadMetadata,
@@ -703,6 +947,13 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         context: ChatKitRequestContext,
     ) -> AsyncIterator[ThreadStreamEvent]:
         payload = action.payload if isinstance(action.payload, Mapping) else None
+        if action.type == "workflow.voice_transcripts":
+            async for event in self._handle_voice_transcripts_action(
+                thread, payload, context
+            ):
+                yield event
+            return
+
         if not payload:
             logger.warning(
                 "Action %s ignorée pour le fil %s : charge utile invalide.",

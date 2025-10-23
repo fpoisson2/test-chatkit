@@ -118,6 +118,42 @@ from .service import (
 logger = logging.getLogger("chatkit.server")
 
 AGENT_NODE_KINDS = frozenset({"agent", "voice_agent"})
+
+
+def _normalize_transcript_sequence(payload: Any) -> list[tuple[str, str]]:
+    if isinstance(payload, Sequence) and not isinstance(
+        payload,
+        (str | bytes | bytearray),
+    ):
+        result: list[tuple[str, str]] = []
+        for entry in payload:
+            if not isinstance(entry, Mapping):
+                continue
+            role_raw = entry.get("role")
+            text_raw = entry.get("text")
+            if not isinstance(role_raw, str) or not isinstance(text_raw, str):
+                continue
+            role = role_raw.strip().lower()
+            text = text_raw.strip()
+            if role and text:
+                result.append((role, text))
+        return result
+    return []
+
+
+def _transcript_sequences_match(first: Any, second: Any) -> bool:
+    normalized_first = _normalize_transcript_sequence(first)
+    normalized_second = _normalize_transcript_sequence(second)
+    if len(normalized_first) != len(normalized_second):
+        return False
+    return all(
+        left == right
+        for left, right in zip(
+            normalized_first,
+            normalized_second,
+            strict=True,
+        )
+    )
 AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
 
 # ---------------------------------------------------------------------------
@@ -2148,6 +2184,13 @@ async def run_workflow(
                     transcripts_payload if is_sequence and not is_textual else []
                 )
 
+                suppress_stream_events = _transcript_sequences_match(
+                    voice_wait_state.get("voice_transcripts_streamed")
+                    if isinstance(voice_wait_state, Mapping)
+                    else None,
+                    transcripts_payload,
+                )
+
                 for entry in iterable:
                     if not isinstance(entry, Mapping):
                         continue
@@ -2185,7 +2228,8 @@ async def run_workflow(
                             }
                         )
                         if (
-                            on_stream_event is not None
+                            not suppress_stream_events
+                            and on_stream_event is not None
                             and agent_context.thread is not None
                         ):
                             user_item = UserMessageItem(
@@ -2216,7 +2260,8 @@ async def run_workflow(
                             }
                         )
                         if (
-                            on_stream_event is not None
+                            not suppress_stream_events
+                            and on_stream_event is not None
                             and agent_context.thread is not None
                         ):
                             assistant_item = AssistantMessageItem(

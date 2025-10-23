@@ -25,7 +25,7 @@ export const useWorkflowChatSession = ({
   initialThreadId,
   reportError,
 }: UseWorkflowChatSessionOptions): UseWorkflowChatSessionResult => {
-  const { control, fetchUpdates, sendUserMessage } = useChatKit(chatkitOptions);
+  const { control, fetchUpdates, sendUserMessage, sendCustomAction } = useChatKit(chatkitOptions);
 
   const { chatkitWorkflowInfo, requestRefresh } = useChatkitWorkflowSync({
     token,
@@ -41,10 +41,11 @@ export const useWorkflowChatSession = ({
       control,
       fetchUpdates,
       sendUserMessage,
+      sendCustomAction,
       requestRefresh,
       chatkitWorkflowInfo,
     }),
-    [chatkitWorkflowInfo, control, fetchUpdates, requestRefresh, sendUserMessage],
+    [chatkitWorkflowInfo, control, fetchUpdates, requestRefresh, sendCustomAction, sendUserMessage],
   );
 };
 

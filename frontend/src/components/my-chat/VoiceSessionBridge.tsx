@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "../../i18n";
 import { useRealtimeSession } from "../../voice/useRealtimeSession";
 import type { VoiceSessionSecret } from "../../voice/useVoiceSecret";
 import { resolveVoiceSessionApiKey } from "../../voice/useVoiceSession";
+import type { RealtimeItem, RealtimeMessageItem } from "@openai/agents/realtime";
 
 export type VoiceSessionDetails = {
   taskId: string;
@@ -24,6 +25,18 @@ export type VoiceSessionDetails = {
 type VoiceSessionBridgeProps = {
   details: VoiceSessionDetails;
   onReset: () => void;
+  threadId: string | null;
+  sendCustomAction: ((
+    action: { type: string; payload?: Record<string, unknown> },
+    itemId?: string,
+  ) => Promise<void>) | null;
+};
+
+type VoiceTranscriptEntry = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  status: "in_progress" | "completed" | "incomplete";
 };
 
 type VoiceSessionStatus = "idle" | "connecting" | "connected" | "error";
@@ -342,10 +355,57 @@ const formatErrorMessage = (error: unknown): string => {
   }
 };
 
-export const VoiceSessionBridge = ({ details, onReset }: VoiceSessionBridgeProps) => {
+const isMessageItem = (item: RealtimeItem): item is RealtimeMessageItem => item.type === "message";
+
+const collectTextFromMessage = (item: RealtimeMessageItem): string => {
+  return item.content
+    .map((part) => {
+      if (part.type === "input_text" || part.type === "output_text") {
+        return part.text;
+      }
+      if ("transcript" in part && part.transcript) {
+        return part.transcript;
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+};
+
+const extractTranscriptsFromHistory = (history: RealtimeItem[]): VoiceTranscriptEntry[] => {
+  return history
+    .filter(isMessageItem)
+    .filter((item) => item.role === "user" || item.role === "assistant")
+    .map((item) => ({
+      id: item.itemId,
+      role: item.role as "user" | "assistant",
+      text: collectTextFromMessage(item),
+      status: item.status,
+    }))
+    .filter((entry) => entry.text);
+};
+
+export const VoiceSessionBridge = ({
+  details,
+  onReset,
+  threadId,
+  sendCustomAction,
+}: VoiceSessionBridgeProps) => {
   const { t } = useI18n();
   const [status, setStatus] = useState<VoiceSessionStatus>("connecting");
   const [error, setError] = useState<string | null>(null);
+  const [transcripts, setTranscripts] = useState<VoiceTranscriptEntry[]>([]);
+
+  const transcriptsRef = useRef<VoiceTranscriptEntry[]>([]);
+  const sentTranscriptIdsRef = useRef<Set<string>>(new Set());
+  const pendingTranscriptIdsRef = useRef<Set<string>>(new Set());
+  const finalizingRef = useRef(false);
+  const microphonePreflightRef = useRef(false);
+
+  useEffect(() => {
+    transcriptsRef.current = transcripts;
+  }, [transcripts]);
 
   const voiceSecret = useMemo<VoiceSessionSecret | null>(
     () => buildVoiceSessionSecret(details),
@@ -377,7 +437,174 @@ export const VoiceSessionBridge = ({ details, onReset }: VoiceSessionBridgeProps
     return entries;
   }, [details.toolPermissions]);
 
+  const submitTranscripts = useCallback(
+    async (
+      entries: VoiceTranscriptEntry[],
+      { final = false, reason }: { final?: boolean; reason?: "agent_end" | "manual" } = {},
+    ) => {
+      if (!sendCustomAction) {
+        console.warn("[ChatKit] Impossible d'envoyer les transcriptions vocales sans action personnalisée.");
+        return;
+      }
+      if (!threadId) {
+        console.warn("[ChatKit] Impossible d'envoyer les transcriptions vocales sans fil actif.");
+        return;
+      }
+      if (!final && entries.length === 0) {
+        return;
+      }
+
+      const payload: Record<string, unknown> = {
+        transcripts: entries.map((entry) => ({
+          role: entry.role,
+          text: entry.text,
+          status: entry.status,
+        })),
+        step_slug: details.stepSlug ?? undefined,
+        task_id: details.taskId,
+        append: !final,
+        final,
+      };
+
+      if (reason === "manual") {
+        payload.interrupted = true;
+      }
+
+      try {
+        await sendCustomAction({ type: "workflow.voice_transcripts", payload });
+        if (final) {
+          entries.forEach((entry) => sentTranscriptIdsRef.current.add(entry.id));
+          pendingTranscriptIdsRef.current.clear();
+        } else {
+          entries.forEach((entry) => {
+            sentTranscriptIdsRef.current.add(entry.id);
+            pendingTranscriptIdsRef.current.delete(entry.id);
+          });
+        }
+      } catch (err) {
+        entries.forEach((entry) => pendingTranscriptIdsRef.current.delete(entry.id));
+        throw err;
+      }
+    },
+    [details.stepSlug, details.taskId, sendCustomAction, threadId],
+  );
+
+  const handleHistoryUpdated = useCallback(
+    (history: RealtimeItem[]) => {
+      const next = extractTranscriptsFromHistory(history);
+      setTranscripts(next);
+      transcriptsRef.current = next;
+
+      const completed = next.filter((entry) => entry.status === "completed");
+      const unsent = completed.filter(
+        (entry) =>
+          !sentTranscriptIdsRef.current.has(entry.id) &&
+          !pendingTranscriptIdsRef.current.has(entry.id),
+      );
+
+      if (unsent.length > 0) {
+        unsent.forEach((entry) => pendingTranscriptIdsRef.current.add(entry.id));
+        void submitTranscripts(unsent).catch((err) => {
+          const message =
+            err instanceof Error
+              ? err.message
+              : t("voice.inline.errors.submitFailed");
+          setError(message);
+        });
+      }
+    },
+    [submitTranscripts, t],
+  );
+
+  const flushTranscripts = useCallback(
+    async (reason: "agent_end" | "manual") => {
+      if (finalizingRef.current) {
+        return;
+      }
+      finalizingRef.current = true;
+      try {
+        const current = transcriptsRef.current;
+        const completed = current.filter((entry) => entry.status === "completed");
+        const unsent = completed.filter(
+          (entry) => !sentTranscriptIdsRef.current.has(entry.id),
+        );
+
+        if (unsent.length > 0) {
+          unsent.forEach((entry) => pendingTranscriptIdsRef.current.add(entry.id));
+          try {
+            await submitTranscripts(unsent);
+          } catch (err) {
+            const message =
+              err instanceof Error
+                ? err.message
+                : t("voice.inline.errors.submitFailed");
+            setError(message);
+            return;
+          }
+        }
+
+        if (completed.length === 0) {
+          onReset();
+          return;
+        }
+
+        try {
+          await submitTranscripts(completed, { final: true, reason });
+          onReset();
+        } catch (err) {
+          const message =
+            err instanceof Error
+              ? err.message
+              : t("voice.inline.errors.submitFailed");
+          setError(message);
+        }
+      } finally {
+        finalizingRef.current = false;
+      }
+    },
+    [onReset, submitTranscripts, t],
+  );
+
+  const ensureMicrophoneAccess = useCallback(async () => {
+    if (microphonePreflightRef.current) {
+      return;
+    }
+
+    if (typeof navigator === "undefined") {
+      throw new Error(t("voice.inline.errors.mediaUnavailable"));
+    }
+
+    const { mediaDevices } = navigator;
+    if (!mediaDevices || typeof mediaDevices.getUserMedia !== "function") {
+      throw new Error(t("voice.inline.errors.mediaUnavailable"));
+    }
+
+    try {
+      const stream = await mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {
+          // Ignorer les erreurs de nettoyage du micro : le navigateur s'en charge.
+        }
+      });
+      microphonePreflightRef.current = true;
+    } catch (err) {
+      if (err instanceof DOMException) {
+        const { name } = err;
+        if (name === "NotAllowedError" || name === "SecurityError") {
+          throw new Error(t("voice.inline.errors.microphoneDenied"));
+        }
+        if (name === "NotFoundError" || name === "OverconstrainedError") {
+          throw new Error(t("voice.inline.errors.mediaUnavailable"));
+        }
+      }
+      throw err;
+    }
+  }, [t]);
+
   const { connect, disconnect } = useRealtimeSession({
+    onHistoryUpdated: handleHistoryUpdated,
     onConnectionChange: (connectionStatus) => {
       if (connectionStatus === "connected") {
         setStatus("connected");
@@ -389,7 +616,7 @@ export const VoiceSessionBridge = ({ details, onReset }: VoiceSessionBridgeProps
     },
     onAgentEnd: () => {
       setStatus("idle");
-      onReset();
+      void flushTranscripts("agent_end");
     },
     onTransportError: (transportError) => {
       const message = formatErrorMessage(transportError) || t("voice.inline.errors.generic");
@@ -413,10 +640,17 @@ export const VoiceSessionBridge = ({ details, onReset }: VoiceSessionBridgeProps
         return;
       }
 
-      setStatus("connecting");
       setError(null);
+      setStatus("connecting");
+      setTranscripts([]);
+      transcriptsRef.current = [];
+      sentTranscriptIdsRef.current.clear();
+      pendingTranscriptIdsRef.current.clear();
+      finalizingRef.current = false;
 
       try {
+        await ensureMicrophoneAccess();
+
         const apiKey = resolveVoiceSessionApiKey(voiceSecret.client_secret);
         if (!apiKey) {
           throw new Error(t("voice.inline.errors.invalidSecret"));
@@ -444,12 +678,12 @@ export const VoiceSessionBridge = ({ details, onReset }: VoiceSessionBridgeProps
       cancelled = true;
       disconnect();
     };
-  }, [connect, disconnect, t, voiceSecret]);
+  }, [connect, disconnect, ensureMicrophoneAccess, t, voiceSecret]);
 
   const handleStop = useCallback(() => {
     disconnect();
-    onReset();
-  }, [disconnect, onReset]);
+    void flushTranscripts("manual");
+  }, [disconnect, flushTranscripts]);
 
   const statusLabel = useMemo(() => {
     switch (status) {
