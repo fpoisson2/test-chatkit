@@ -135,6 +135,30 @@ const cloneSerializableRecord = (
   }
 };
 
+const sanitizeSessionConfig = (
+  session: Record<string, unknown>,
+): Record<string, unknown> | undefined => {
+  const config: Record<string, unknown> = {};
+
+  const audio = cloneSerializableRecord(session["audio"]);
+  if (audio) {
+    config.audio = audio;
+  }
+
+  const outputModalitiesRaw =
+    session["output_modalities"] ?? session["outputModalities"] ?? session["modalities"];
+  if (Array.isArray(outputModalitiesRaw)) {
+    const normalized = outputModalitiesRaw
+      .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+      .filter((entry) => entry.length > 0);
+    if (normalized.length > 0) {
+      config.output_modalities = normalized;
+    }
+  }
+
+  return Object.keys(config).length > 0 ? config : undefined;
+};
+
 const extractRealtimeSessionConfig = (
   payload: unknown,
 ): Record<string, unknown> | undefined => {
@@ -150,7 +174,7 @@ const extractRealtimeSessionConfig = (
     return undefined;
   }
 
-  return cloneSerializableRecord(session);
+  return sanitizeSessionConfig(session);
 };
 
 const buildVoiceSessionSecret = (
