@@ -7,9 +7,11 @@ import {
   DEFAULT_VOICE_AGENT_START_BEHAVIOR,
   DEFAULT_VOICE_AGENT_STOP_BEHAVIOR,
   DEFAULT_VOICE_AGENT_VOICE,
+  getAgentNestedWorkflow,
   getWidgetNodeConfig,
   resolveVoiceAgentParameters,
   resolveWidgetNodeParameters,
+  setAgentNestedWorkflow,
   setWidgetNodeDefinitionExpression,
   setWidgetNodeSlug,
   setWidgetNodeSource,
@@ -58,6 +60,32 @@ describe("widget_source override", () => {
     const resolved = resolveWidgetNodeParameters(initial);
     expect(resolved).toEqual({ widget_source: "variable" });
     expect(getWidgetNodeConfig(resolved).source).toBe("variable");
+  });
+});
+
+describe("nested workflow helpers", () => {
+  it("normalise les références extraites des paramètres", () => {
+    const reference = getAgentNestedWorkflow({
+      workflow: { id: 42, slug: "  nested-flow  " },
+    });
+
+    expect(reference).toEqual({ id: 42, slug: "nested-flow" });
+  });
+
+  it("supprime la configuration lorsque aucun identifiant n'est fourni", () => {
+    const initial: AgentParameters = { foo: "bar" };
+    const withoutWorkflow = setAgentNestedWorkflow(initial, {
+      id: null,
+      slug: "  ",
+    });
+
+    expect(withoutWorkflow).toEqual({ foo: "bar" });
+  });
+
+  it("enregistre un slug nettoyé lorsqu'il est fourni sans identifiant", () => {
+    const next = setAgentNestedWorkflow({}, { slug: "  nested-flow  " });
+
+    expect(next).toEqual({ workflow: { slug: "nested-flow" } });
   });
 });
 

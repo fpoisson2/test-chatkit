@@ -12,6 +12,7 @@ import type {
   FlowNode,
   ImageGenerationToolConfig,
   WebSearchConfig,
+  WorkflowSummary,
 } from "../../../types";
 import {
   DEFAULT_IMAGE_TOOL_CONFIG,
@@ -35,6 +36,8 @@ type AgentInspectorSectionProps = {
   nodeId: string;
   parameters: FlowNode["data"]["parameters"];
   token: string | null;
+  workflows: WorkflowSummary[];
+  currentWorkflowId: number | null;
   availableModels: AvailableModel[];
   availableModelsLoading: boolean;
   availableModelsError: string | null;
@@ -47,6 +50,7 @@ type AgentInspectorSectionProps = {
   vectorStoresError: string | null;
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onAgentModelChange: (nodeId: string, value: string) => void;
+  onAgentNestedWorkflowChange: (nodeId: string, workflowId: number | null) => void;
   onAgentReasoningChange: (nodeId: string, value: string) => void;
   onAgentReasoningSummaryChange: (nodeId: string, value: string) => void;
   onAgentTextVerbosityChange: (nodeId: string, value: string) => void;
@@ -84,6 +88,8 @@ export const AgentInspectorSection = ({
   nodeId,
   parameters,
   token,
+  workflows,
+  currentWorkflowId,
   availableModels,
   availableModelsLoading,
   availableModelsError,
@@ -96,6 +102,7 @@ export const AgentInspectorSection = ({
   vectorStoresError,
   onAgentMessageChange,
   onAgentModelChange,
+  onAgentNestedWorkflowChange,
   onAgentReasoningChange,
   onAgentReasoningSummaryChange,
   onAgentTextVerbosityChange,
@@ -122,6 +129,8 @@ export const AgentInspectorSection = ({
   const {
     agentMessage,
     agentModel,
+    nestedWorkflowId,
+    nestedWorkflowSlug,
     reasoningEffort,
     reasoningSummaryValue,
     textVerbosityValue,
@@ -184,8 +193,54 @@ export const AgentInspectorSection = ({
   const { t } = useI18n();
   const widgetSelectId = useId();
 
+  const availableNestedWorkflows = workflows.filter(
+    (workflow) => workflow.id !== currentWorkflowId,
+  );
+  const selectedNestedWorkflow = workflows.find(
+    (workflow) => workflow.id === nestedWorkflowId,
+  );
+  const nestedWorkflowMissing = nestedWorkflowId != null && !selectedNestedWorkflow;
+
   return (
     <>
+      <label className={styles.nodeInspectorInlineField}>
+        <span className={styles.nodeInspectorLabel}>
+          {t("workflowBuilder.agentInspector.nestedWorkflowLabel")}
+          <HelpTooltip label={t("workflowBuilder.agentInspector.nestedWorkflowHelp")} />
+        </span>
+        <select
+          value={nestedWorkflowId != null ? String(nestedWorkflowId) : ""}
+          onChange={(event) => {
+            const value = event.target.value.trim();
+            if (!value) {
+              onAgentNestedWorkflowChange(nodeId, null);
+              return;
+            }
+            const parsed = Number(value);
+            onAgentNestedWorkflowChange(nodeId, Number.isFinite(parsed) ? parsed : null);
+          }}
+        >
+          <option value="">{t("workflowBuilder.agentInspector.nestedWorkflowNoneOption")}</option>
+          {availableNestedWorkflows.map((workflow) => (
+            <option key={workflow.id} value={workflow.id}>
+              {workflow.display_name?.trim() || workflow.slug}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {nestedWorkflowMissing ? (
+        <p className={styles.nodeInspectorErrorTextSpaced}>
+          {t("workflowBuilder.agentInspector.nestedWorkflowMissing")}
+        </p>
+      ) : null}
+
+      {nestedWorkflowId == null && nestedWorkflowSlug ? (
+        <p className={styles.nodeInspectorMutedTextSpaced}>
+          {t("workflowBuilder.agentInspector.nestedWorkflowSlugInfo", { slug: nestedWorkflowSlug })}
+        </p>
+      ) : null}
+
       <label className={styles.nodeInspectorField}>
         <span>Message système</span>
         <textarea

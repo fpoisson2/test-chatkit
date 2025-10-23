@@ -120,6 +120,14 @@ const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.modelHelp": "Choisissez un modèle disponible pour exécuter ce bloc.",
   "workflowBuilder.agentInspector.modelPlaceholder": "Sélectionnez un modèle",
   "workflowBuilder.agentInspector.reasoningSuffix": " – raisonnement",
+  "workflowBuilder.agentInspector.nestedWorkflowLabel": "Workflow imbriqué",
+  "workflowBuilder.agentInspector.nestedWorkflowHelp":
+    "Sélectionnez un workflow existant à exécuter à la place de cet agent.",
+  "workflowBuilder.agentInspector.nestedWorkflowNoneOption": "Aucun (utiliser l'agent)",
+  "workflowBuilder.agentInspector.nestedWorkflowMissing":
+    "Le workflow sélectionné n'est plus disponible.",
+  "workflowBuilder.agentInspector.nestedWorkflowSlugInfo":
+    "Workflow sélectionné via le slug « {{slug}} ».",
   "workflowBuilder.agentInspector.unlistedModelWarning":
     "Ce bloc utilise actuellement un modèle non listé ({{model}}). Sélectionnez un modèle dans la liste ci-dessus.",
   "workflowBuilder.agentInspector.modelsLoading": "Chargement des modèles disponibles…",
@@ -319,6 +327,14 @@ const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.modelHelp": "Choose a model available for this block.",
   "workflowBuilder.agentInspector.modelPlaceholder": "Select a model",
   "workflowBuilder.agentInspector.reasoningSuffix": " – reasoning",
+  "workflowBuilder.agentInspector.nestedWorkflowLabel": "Nested workflow",
+  "workflowBuilder.agentInspector.nestedWorkflowHelp":
+    "Choose another workflow to run instead of this agent.",
+  "workflowBuilder.agentInspector.nestedWorkflowNoneOption": "None (use agent configuration)",
+  "workflowBuilder.agentInspector.nestedWorkflowMissing":
+    "The selected workflow is no longer available.",
+  "workflowBuilder.agentInspector.nestedWorkflowSlugInfo":
+    "Workflow selected via slug \"{{slug}}\".",
   "workflowBuilder.agentInspector.unlistedModelWarning":
     "This block currently uses an unlisted model ({{model}}). Pick a model from the list above.",
   "workflowBuilder.agentInspector.modelsLoading": "Loading available models…",

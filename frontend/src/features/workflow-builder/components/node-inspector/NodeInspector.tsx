@@ -38,6 +38,7 @@ import type {
   VoiceAgentStopBehavior,
   WebSearchConfig,
   WidgetVariableAssignment,
+  WorkflowSummary,
 } from "../../types";
 import { labelForKind } from "../../utils";
 import { TrashIcon } from "./components/TrashIcon";
@@ -62,6 +63,7 @@ export type NodeInspectorProps = {
   onDisplayNameChange: (nodeId: string, value: string) => void;
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onAgentModelChange: (nodeId: string, value: string) => void;
+  onAgentNestedWorkflowChange: (nodeId: string, workflowId: number | null) => void;
   onAgentReasoningChange: (nodeId: string, value: string) => void;
   onAgentReasoningSummaryChange: (nodeId: string, value: string) => void;
   onAgentTextVerbosityChange: (nodeId: string, value: string) => void;
@@ -93,6 +95,8 @@ export type NodeInspectorProps = {
   onAgentWebSearchChange: (nodeId: string, config: WebSearchConfig | null) => void;
   onAgentFileSearchChange: (nodeId: string, config: FileSearchConfig | null) => void;
   onAgentImageGenerationChange: (nodeId: string, config: ImageGenerationToolConfig | null) => void;
+  workflows: WorkflowSummary[];
+  currentWorkflowId: number | null;
   onVoiceAgentVoiceChange: (nodeId: string, value: string) => void;
   onVoiceAgentStartBehaviorChange: (
     nodeId: string,
@@ -152,6 +156,7 @@ const NodeInspector = ({
   onDisplayNameChange,
   onAgentMessageChange,
   onAgentModelChange,
+  onAgentNestedWorkflowChange,
   onAgentReasoningChange,
   onAgentReasoningSummaryChange,
   onAgentTextVerbosityChange,
@@ -177,6 +182,8 @@ const NodeInspector = ({
   onAgentWebSearchChange,
   onAgentFileSearchChange,
   onAgentImageGenerationChange,
+  workflows,
+  currentWorkflowId,
   onVoiceAgentVoiceChange,
   onVoiceAgentStartBehaviorChange,
   onVoiceAgentStopBehaviorChange,
@@ -401,22 +408,25 @@ const NodeInspector = ({
       ) : null}
 
       {kind === "agent" ? (
-        <AgentInspectorSection
-          nodeId={node.id}
-          parameters={parameters}
-          token={token}
-          availableModels={availableModels}
-          availableModelsLoading={availableModelsLoading}
-          availableModelsError={availableModelsError}
-          isReasoningModel={isReasoningModel}
-          widgets={widgets}
+          <AgentInspectorSection
+            nodeId={node.id}
+            parameters={parameters}
+            token={token}
+            workflows={workflows}
+            currentWorkflowId={currentWorkflowId}
+            availableModels={availableModels}
+            availableModelsLoading={availableModelsLoading}
+            availableModelsError={availableModelsError}
+            isReasoningModel={isReasoningModel}
+            widgets={widgets}
           widgetsLoading={widgetsLoading}
           widgetsError={widgetsError}
           vectorStores={vectorStores}
           vectorStoresLoading={vectorStoresLoading}
           vectorStoresError={vectorStoresError}
-          onAgentMessageChange={onAgentMessageChange}
-          onAgentModelChange={onAgentModelChange}
+            onAgentMessageChange={onAgentMessageChange}
+            onAgentModelChange={onAgentModelChange}
+            onAgentNestedWorkflowChange={onAgentNestedWorkflowChange}
           onAgentReasoningChange={onAgentReasoningChange}
           onAgentReasoningSummaryChange={onAgentReasoningSummaryChange}
           onAgentTextVerbosityChange={onAgentTextVerbosityChange}

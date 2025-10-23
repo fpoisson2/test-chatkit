@@ -106,7 +106,10 @@ from ..vector_store.ingestion import (
 )
 from ..widgets import WidgetLibraryService
 from .service import (
+    WorkflowNotFoundError,
     WorkflowService,
+    WorkflowValidationError,
+    WorkflowVersionNotFoundError,
     resolve_start_auto_start,
     resolve_start_auto_start_assistant_message,
     resolve_start_auto_start_message,
@@ -221,6 +224,8 @@ class WorkflowRunSummary:
     final_output: dict[str, Any] | None
     final_node_slug: str | None = None
     end_state: WorkflowEndState | None = None
+    last_context: dict[str, Any] | None = None
+    state: dict[str, Any] | None = None
 
 
 @dataclass
@@ -242,10 +247,10 @@ class WorkflowExecutionError(RuntimeError):
         steps: list[WorkflowStepSummary],
     ) -> None:
         super().__init__(str(original_error))
-        self.step = step
-        self.title = title
-        self.original_error = original_error
-        self.steps = steps
+        object.__setattr__(self, "step", step)
+        object.__setattr__(self, "title", title)
+        object.__setattr__(self, "original_error", original_error)
+        object.__setattr__(self, "steps", steps)
 
     def __str__(self) -> str:
         return f"{self.title} ({self.step}) : {self.original_error}"
@@ -322,6 +327,7 @@ async def run_workflow(
     thread_item_converter: ThreadItemConverter | None = None,
     thread_items_history: list[ThreadItem] | None = None,
     current_user_message: UserMessageItem | None = None,
+    workflow_call_stack: tuple[tuple[str, str | int], ...] | None = None,
 ) -> WorkflowRunSummary:
     workflow_payload = workflow_input.model_dump()
     steps: list[WorkflowStepSummary] = []
@@ -398,15 +404,25 @@ async def run_workflow(
     final_output: dict[str, Any] | None = None
     last_step_context: dict[str, Any] | None = None
 
+    service = workflow_service or WorkflowService()
+
     definition: WorkflowDefinition
     if workflow_definition is not None:
         definition = workflow_definition
     else:
-        service = workflow_service or WorkflowService()
         if isinstance(workflow_slug, str) and workflow_slug.strip():
             definition = service.get_definition_by_slug(workflow_slug)
         else:
             definition = service.get_current()
+
+    if workflow_call_stack is None:
+        identifiers: list[tuple[str, str | int]] = []
+        if definition.workflow_id is not None:
+            identifiers.append(("id", int(definition.workflow_id)))
+        workflow_slug_value = getattr(definition.workflow, "slug", None)
+        if isinstance(workflow_slug_value, str) and workflow_slug_value.strip():
+            identifiers.append(("slug", workflow_slug_value.strip().lower()))
+        workflow_call_stack = tuple(identifiers)
 
     should_auto_start = resolve_start_auto_start(definition)
     if not auto_started and not initial_user_text.strip() and should_auto_start:
@@ -535,6 +551,10 @@ async def run_workflow(
             _register_widget_config(step)
 
     agent_instances: dict[str, Agent] = {}
+    nested_workflow_configs: dict[str, dict[str, Any]] = {}
+    nested_workflow_definition_cache: dict[
+        tuple[str, str | int], WorkflowDefinition
+    ] = {}
     for step in agent_steps_ordered:
         logger.debug(
             "Paramètres bruts du step %s: %s",
@@ -551,6 +571,16 @@ async def run_workflow(
             continue
 
         widget_config = _register_widget_config(step)
+
+        workflow_reference = (step.parameters or {}).get("workflow")
+        if step.kind == "agent" and isinstance(workflow_reference, Mapping):
+            nested_workflow_configs[step.slug] = dict(workflow_reference)
+            logger.info(
+                "Étape %s configurée pour un workflow imbriqué : %s",
+                step.slug,
+                workflow_reference,
+            )
+            continue
 
         agent_key = (step.agent_key or "").strip()
         builder = AGENT_BUILDERS.get(agent_key)
@@ -601,6 +631,58 @@ async def run_workflow(
             agent_instances[step.slug] = _build_custom_agent(overrides)
         else:
             agent_instances[step.slug] = builder(overrides)
+
+    def _load_nested_workflow_definition(
+        reference: Mapping[str, Any]
+    ) -> WorkflowDefinition:
+        workflow_id_candidate = reference.get("id")
+        slug_candidate = reference.get("slug")
+        errors: list[str] = []
+
+        if isinstance(workflow_id_candidate, int) and workflow_id_candidate > 0:
+            cache_key = ("id", workflow_id_candidate)
+            cached_definition = nested_workflow_definition_cache.get(cache_key)
+            if cached_definition is not None:
+                return cached_definition
+
+            try:
+                workflow = service.get_workflow(workflow_id_candidate)
+            except WorkflowNotFoundError:
+                errors.append(f"id={workflow_id_candidate}")
+            else:
+                version_id = getattr(workflow, "active_version_id", None)
+                if version_id is None:
+                    raise RuntimeError(
+                        f"Le workflow imbriqué {workflow_id_candidate} "
+                        "n'a pas de version active."
+                    )
+                try:
+                    definition = service.get_version(workflow_id_candidate, version_id)
+                except WorkflowVersionNotFoundError as exc:
+                    raise RuntimeError(
+                        "Version active introuvable pour le workflow "
+                        f"{workflow_id_candidate}."
+                    ) from exc
+                nested_workflow_definition_cache[cache_key] = definition
+                return definition
+
+        if isinstance(slug_candidate, str):
+            normalized_slug = slug_candidate.strip()
+            if normalized_slug:
+                cache_key = ("slug", normalized_slug)
+                cached_definition = nested_workflow_definition_cache.get(cache_key)
+                if cached_definition is not None:
+                    return cached_definition
+                try:
+                    definition = service.get_definition_by_slug(normalized_slug)
+                except WorkflowValidationError:
+                    errors.append(f"slug={normalized_slug}")
+                else:
+                    nested_workflow_definition_cache[cache_key] = definition
+                    return definition
+
+        details = ", ".join(errors) if errors else "configuration inconnue"
+        raise RuntimeError(f"Workflow imbriqué introuvable ({details}).")
 
     edges_by_source: dict[str, list[WorkflowTransition]] = {}
     for transition in transitions:
@@ -2433,6 +2515,231 @@ async def run_workflow(
             current_slug = transition.target_step.slug
             continue
 
+        if (
+            current_node.kind in AGENT_NODE_KINDS
+            and current_node.slug in nested_workflow_configs
+        ):
+            title = _node_title(current_node)
+            widget_config = widget_configs_by_step.get(current_node.slug)
+            reference = nested_workflow_configs[current_node.slug]
+
+            try:
+                nested_definition = _load_nested_workflow_definition(reference)
+            except Exception as exc:  # pragma: no cover - accès base de données
+                raise_step_error(current_node.slug, title or current_node.slug, exc)
+
+            nested_identifiers: list[tuple[str, str | int]] = []
+            nested_workflow_id = getattr(nested_definition, "workflow_id", None)
+            if isinstance(nested_workflow_id, int) and nested_workflow_id > 0:
+                nested_identifiers.append(("id", nested_workflow_id))
+            nested_workflow_slug_raw = getattr(
+                getattr(nested_definition, "workflow", None), "slug", None
+            )
+            normalized_nested_slug: str | None = None
+            if (
+                isinstance(nested_workflow_slug_raw, str)
+                and nested_workflow_slug_raw.strip()
+            ):
+                normalized_nested_slug = nested_workflow_slug_raw.strip().lower()
+                nested_identifiers.append(("slug", normalized_nested_slug))
+
+            for identifier in nested_identifiers:
+                if identifier in workflow_call_stack:
+                    raise_step_error(
+                        current_node.slug,
+                        title or current_node.slug,
+                        RuntimeError("Cycle de workflow imbriqué détecté."),
+                    )
+
+            nested_call_stack = workflow_call_stack + tuple(
+                identifier
+                for identifier in nested_identifiers
+                if identifier not in workflow_call_stack
+            )
+
+            try:
+                nested_summary = await run_workflow(
+                    workflow_input,
+                    agent_context=agent_context,
+                    on_step=on_step,
+                    on_step_stream=on_step_stream,
+                    on_stream_event=on_stream_event,
+                    on_widget_step=on_widget_step,
+                    workflow_service=service,
+                    workflow_definition=nested_definition,
+                    workflow_call_stack=nested_call_stack,
+                    thread_item_converter=thread_item_converter,
+                    thread_items_history=thread_items_history,
+                    current_user_message=current_user_message,
+                )
+            except WorkflowExecutionError as exc:
+                raise_step_error(current_node.slug, title or current_node.slug, exc)
+            except Exception as exc:  # pragma: no cover - garde défensive
+                raise_step_error(current_node.slug, title or current_node.slug, exc)
+
+            if nested_summary.steps:
+                steps.extend(nested_summary.steps)
+
+            nested_context = dict(nested_summary.last_context or {})
+            display_payload = _resolve_watch_payload(
+                nested_context, nested_summary.steps
+            )
+            output_candidate = nested_context.get("output")
+            if output_candidate is None:
+                output_candidate = nested_summary.final_output
+            if output_candidate is None:
+                output_candidate = display_payload
+            parsed, text_output = _structured_output_as_json(
+                output_candidate if output_candidate is not None else ""
+            )
+            generated_urls_raw = nested_context.get("generated_image_urls")
+            sanitized_image_urls = (
+                [url for url in generated_urls_raw if isinstance(url, str)]
+                if isinstance(generated_urls_raw, list)
+                else []
+            )
+            output_text = append_generated_image_links(
+                text_output, sanitized_image_urls
+            )
+
+            nested_context.setdefault("output", output_candidate)
+            nested_context.setdefault("output_parsed", parsed)
+            nested_context.setdefault("output_structured", parsed)
+            nested_context["output_text"] = output_text
+            if sanitized_image_urls:
+                nested_context["generated_image_urls"] = sanitized_image_urls
+
+            workflow_key = normalized_nested_slug or nested_workflow_id
+            workflow_identifier = (
+                f"workflow:{workflow_key}"
+                if workflow_key is not None
+                else current_node.slug
+            )
+            nested_context.setdefault("agent_key", workflow_identifier)
+            last_step_context = nested_context
+
+            state["last_agent_key"] = workflow_identifier
+            state["last_agent_output"] = last_step_context.get("output")
+            state["last_agent_output_text"] = last_step_context.get("output_text")
+            structured_candidate = last_step_context.get("output_structured")
+            if hasattr(structured_candidate, "model_dump"):
+                try:
+                    structured_candidate = structured_candidate.model_dump(
+                        by_alias=True
+                    )
+                except TypeError:
+                    structured_candidate = structured_candidate.model_dump()
+            elif hasattr(structured_candidate, "dict"):
+                try:
+                    structured_candidate = structured_candidate.dict(by_alias=True)
+                except TypeError:
+                    structured_candidate = structured_candidate.dict()
+            elif structured_candidate is not None and not isinstance(
+                structured_candidate, dict | list | str
+            ):
+                structured_candidate = str(structured_candidate)
+            state["last_agent_output_structured"] = structured_candidate
+
+            generated_urls = last_step_context.get("generated_image_urls")
+            if isinstance(generated_urls, list):
+                state["last_generated_image_urls"] = [
+                    url for url in generated_urls if isinstance(url, str)
+                ]
+            else:
+                state.pop("last_generated_image_urls", None)
+
+            if output_text.strip():
+                conversation_history.append(
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "output_text", "text": output_text.strip()},
+                        ],
+                    }
+                )
+
+            workflow_payload: dict[str, Any] = {
+                "id": nested_workflow_id,
+                "slug": nested_workflow_slug_raw,
+                "version_id": getattr(nested_definition, "id", None),
+                "version": getattr(nested_definition, "version", None),
+            }
+            if nested_summary.end_state is not None:
+                workflow_payload["end_state"] = {
+                    "slug": nested_summary.end_state.slug,
+                    "status_type": nested_summary.end_state.status_type,
+                    "status_reason": nested_summary.end_state.status_reason,
+                    "message": nested_summary.end_state.message,
+                }
+
+            last_step_context.setdefault("workflow", workflow_payload)
+
+            await record_step(
+                current_node.slug,
+                title,
+                {
+                    "workflow": workflow_payload,
+                    "output": last_step_context.get("output"),
+                },
+            )
+
+            await ingest_workflow_step(
+                config=(current_node.parameters or {}).get("vector_store_ingestion"),
+                step_slug=current_node.slug,
+                step_title=title,
+                step_context=last_step_context,
+                state=state,
+                default_input_context=last_step_context,
+                session_factory=SessionLocal,
+            )
+
+            if widget_config is not None:
+                rendered_widget = await _stream_response_widget(
+                    widget_config,
+                    step_slug=current_node.slug,
+                    step_title=title,
+                    step_context=last_step_context,
+                )
+                widget_identifier = (
+                    widget_config.slug
+                    if widget_config.source == "library"
+                    else widget_config.definition_expression
+                ) or current_node.slug
+                augmented_context = dict(last_step_context or {})
+                augmented_context.setdefault("widget", widget_identifier)
+                if widget_config.source == "library" and widget_config.slug:
+                    augmented_context.setdefault("widget_slug", widget_config.slug)
+                elif (
+                    widget_config.source == "variable"
+                    and widget_config.definition_expression
+                ):
+                    augmented_context.setdefault(
+                        "widget_expression", widget_config.definition_expression
+                    )
+                if rendered_widget is not None:
+                    augmented_context["widget_definition"] = rendered_widget
+
+                if on_widget_step is not None and _should_wait_for_widget_action(
+                    current_node.kind, widget_config
+                ):
+                    result = await on_widget_step(current_node, widget_config)
+                    if result is not None:
+                        augmented_context["action"] = dict(result)
+
+                last_step_context = augmented_context
+
+            if nested_summary.end_state is not None:
+                final_end_state = nested_summary.end_state
+                if nested_summary.end_state.status_type == "waiting":
+                    final_node_slug = current_node.slug
+                    break
+
+            transition = _next_edge(current_slug)
+            if transition is None:
+                break
+            current_slug = transition.target_step.slug
+            continue
+
         if current_node.kind not in AGENT_NODE_KINDS:
             raise WorkflowExecutionError(
                 "configuration",
@@ -2686,9 +2993,18 @@ async def run_workflow(
             list(steps),
         )
 
+    if final_output is None and isinstance(last_step_context, Mapping):
+        candidate_output = last_step_context.get("output")
+        if candidate_output is not None:
+            final_output = candidate_output
+
     return WorkflowRunSummary(
         steps=steps,
         final_output=final_output,
         final_node_slug=final_node_slug,
         end_state=final_end_state,
+        last_context=copy.deepcopy(last_step_context)
+        if last_step_context is not None
+        else None,
+        state=copy.deepcopy(state),
     )

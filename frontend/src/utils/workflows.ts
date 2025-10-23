@@ -48,6 +48,57 @@ const stripEmpty = (value: Record<string, unknown>): AgentParameters => {
   return value;
 };
 
+const sanitizeWorkflowReference = (
+  reference: Record<string, unknown>,
+): { id: number | null; slug: string } => {
+  const rawId = reference.id;
+  const id = typeof rawId === "number" && Number.isInteger(rawId) && rawId > 0 ? rawId : null;
+  const rawSlug = reference.slug;
+  const slug = typeof rawSlug === "string" ? rawSlug.trim() : "";
+  return { id, slug };
+};
+
+export const getAgentNestedWorkflow = (
+  parameters: AgentParameters | null | undefined,
+): { id: number | null; slug: string } => {
+  if (!parameters) {
+    return { id: null, slug: "" };
+  }
+  const reference = (parameters as Record<string, unknown>).workflow;
+  if (isPlainRecord(reference)) {
+    return sanitizeWorkflowReference(reference as Record<string, unknown>);
+  }
+  return { id: null, slug: "" };
+};
+
+export const setAgentNestedWorkflow = (
+  parameters: AgentParameters,
+  reference: { id?: number | null; slug?: string | null },
+): AgentParameters => {
+  const next = { ...parameters } as Record<string, unknown>;
+  const idCandidate = reference.id;
+  const slugCandidate = reference.slug;
+
+  const hasId = typeof idCandidate === "number" && Number.isInteger(idCandidate) && idCandidate > 0;
+  const slug = typeof slugCandidate === "string" ? slugCandidate.trim() : "";
+
+  if (!hasId && !slug) {
+    delete next.workflow;
+    return stripEmpty(next);
+  }
+
+  const payload: Record<string, unknown> = {};
+  if (hasId && typeof idCandidate === "number") {
+    payload.id = idCandidate;
+  }
+  if (slug) {
+    payload.slug = slug;
+  }
+
+  next.workflow = payload;
+  return stripEmpty(next);
+};
+
 export const getEndMessage = (parameters: AgentParameters | null | undefined): string => {
   if (!parameters) {
     return "";
