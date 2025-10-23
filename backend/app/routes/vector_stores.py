@@ -21,6 +21,7 @@ from ..schemas import (
     WorkflowSummaryResponse,
 )
 from ..vector_store import JsonVectorStoreService
+from ..vector_store.workflows import ingest_workflow_blueprint
 from ..workflows import (
     WorkflowService,
     WorkflowValidationError,
@@ -28,6 +29,10 @@ from ..workflows import (
 )
 
 router = APIRouter()
+
+
+def get_workflow_service() -> WorkflowService:
+    return WorkflowService()
 
 
 def _serialize_store(
@@ -163,32 +168,9 @@ async def ingest_document(
     payload: VectorStoreDocumentIngestRequest,
     session: Session = Depends(get_session),
     _: User = Depends(require_admin),
+    workflow_service: WorkflowService = Depends(get_workflow_service),
 ) -> VectorStoreDocumentResponse:
     service = JsonVectorStoreService(session)
-    workflow_summary: WorkflowSummaryResponse | None = None
-
-    if payload.workflow_blueprint is not None:
-        workflow_service = WorkflowService()
-        blueprint = payload.workflow_blueprint
-        try:
-            definition = workflow_service.import_workflow(
-                graph_payload=blueprint.graph,
-                session=session,
-                slug=blueprint.slug,
-                display_name=blueprint.display_name,
-                description=blueprint.description,
-                mark_as_active=blueprint.mark_active,
-            )
-        except WorkflowValidationError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(exc),
-            ) from exc
-        workflow = definition.workflow
-        if workflow is not None:
-            workflow_summary = WorkflowSummaryResponse.model_validate(
-                serialize_workflow_summary(workflow)
-            )
 
     try:
         document = service.ingest(
@@ -205,6 +187,35 @@ async def ingest_document(
         ) from exc
 
     chunk_count = len(document.chunks)
+    workflow_summary: WorkflowSummaryResponse | None = None
+
+    if payload.workflow_blueprint is not None:
+        try:
+            definition = ingest_workflow_blueprint(
+                workflow_service,
+                session=session,
+                blueprint=payload.workflow_blueprint,
+            )
+        except WorkflowValidationError as exc:
+            session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+        except Exception:
+            session.rollback()
+            raise
+
+        workflow = definition.workflow
+        if workflow is not None:
+            metadata = dict(document.metadata_json or {})
+            metadata["workflow_id"] = workflow.id
+            metadata["workflow_slug"] = workflow.slug
+            document.metadata_json = metadata
+            workflow_summary = WorkflowSummaryResponse.model_validate(
+                serialize_workflow_summary(workflow)
+            )
+
     session.commit()
     session.refresh(document)
     return VectorStoreDocumentResponse(
