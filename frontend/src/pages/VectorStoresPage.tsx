@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { useAuth } from "../auth";
 import { Modal } from "../components/Modal";
@@ -9,6 +9,7 @@ import { VectorStoreSearchForm } from "../components/VectorStoreSearchForm";
 import { VectorStoreSearchResults } from "../components/VectorStoreSearchResults";
 import { VectorStoreTable } from "../components/VectorStoreTable";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { useI18n } from "../i18n";
 import {
   VectorStoreDocument,
   VectorStoreDocumentDetail,
@@ -24,10 +25,11 @@ const sortStores = (stores: VectorStoreSummary[]): VectorStoreSummary[] =>
 
 export const VectorStoresPage = () => {
   const { token, logout } = useAuth();
+  const { t } = useI18n();
   const [stores, setStores] = useState<VectorStoreSummary[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [success, setSuccess] = useState<ReactNode>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedStore, setSelectedStore] = useState<VectorStoreSummary | null>(null);
   const [showIngestionModal, setShowIngestionModal] = useState(false);
@@ -176,9 +178,32 @@ export const VectorStoresPage = () => {
     }
     try {
       const document = await vectorStoreApi.ingestDocument(token, selectedStore.slug, payload);
-      setSuccess(
-        `Document « ${document.doc_id} » ingéré (${document.chunk_count} segment${document.chunk_count > 1 ? "s" : ""}).`,
-      );
+      const pluralSuffix = document.chunk_count > 1 ? "s" : "";
+      const baseMessage = t("vectorStore.ingestion.success.document", {
+        docId: document.doc_id,
+        chunkCount: document.chunk_count,
+        pluralSuffix,
+      });
+      const createdWorkflow = document.created_workflow;
+      if (createdWorkflow?.slug) {
+        const workflowSlug = createdWorkflow.slug.trim();
+        if (workflowSlug) {
+          const workflowName = createdWorkflow.display_name?.trim() || workflowSlug;
+          const workflowLinkHref = `/workflows/${encodeURIComponent(workflowSlug)}`;
+          setSuccess(
+            <>
+              {baseMessage}{" "}
+              {t("vectorStore.ingestion.success.workflowCreatedPrefix")}{" "}
+              <a href={workflowLinkHref}>{workflowName}</a>{" "}
+              {t("vectorStore.ingestion.success.workflowCreatedSuffix", { workflowSlug })}
+            </>,
+          );
+        } else {
+          setSuccess(baseMessage);
+        }
+      } else {
+        setSuccess(baseMessage);
+      }
       setShowIngestionModal(false);
       await refreshStores();
     } catch (err) {
