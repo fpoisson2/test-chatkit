@@ -189,6 +189,29 @@ const normalizeVoiceSessionConfig = (
   return result;
 };
 
+const toRealtimeMode = (value: unknown, fallback: "manual" | "auto"): "manual" | "auto" => {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "auto" || normalized === "manual") {
+      return normalized;
+    }
+  }
+  return fallback;
+};
+
+const normalizeRealtimeConfig = (
+  input: unknown,
+): VoiceSessionDetails["realtime"] => {
+  if (!isRecord(input)) {
+    return null;
+  }
+
+  const startMode = toRealtimeMode(input.start_mode ?? input.startMode, "manual");
+  const stopMode = toRealtimeMode(input.stop_mode ?? input.stopMode, "auto");
+
+  return { startMode, stopMode };
+};
+
 const extractVoiceWaitState = (thread: unknown): { slug: string | null } | null => {
   if (!isRecord(thread)) {
     return null;
@@ -287,6 +310,8 @@ const parseVoiceSessionTaskItem = (
     ? (rawSession["realtime"] as Record<string, unknown>)["tools"]
     : undefined;
 
+  const realtimeConfig = normalizeRealtimeConfig(rawSession?.realtime ?? payload.realtime);
+
   const toolPermissions = normalizeToolPermissions(
     payload.tool_permissions ?? fallbackPermissions,
   );
@@ -297,6 +322,7 @@ const parseVoiceSessionTaskItem = (
     stepTitle,
     clientSecret: payload.client_secret,
     session,
+    realtime: realtimeConfig,
     toolPermissions,
   };
 };
@@ -350,10 +376,43 @@ export function MyChat() {
   const [voiceSessionDetails, setVoiceSessionDetails] = useState<VoiceSessionDetails | null>(null);
   const voiceSessionRef = useRef<VoiceSessionDetails | null>(null);
   const processedVoiceTaskIdsRef = useRef<Set<string>>(new Set());
+  const activateVoiceSession = useCallback(
+    (voiceSession: VoiceSessionDetails) => {
+      processedVoiceTaskIdsRef.current.add(voiceSession.taskId);
+      voiceSessionRef.current = voiceSession;
+      setVoiceSessionDetails(voiceSession);
+      console.info("[ChatKit] Voice session created", voiceSession);
+    },
+    [setVoiceSessionDetails],
+  );
   const clearVoiceSessionState = useCallback(() => {
     voiceSessionRef.current = null;
     setVoiceSessionDetails(null);
   }, []);
+  const maybeActivateVoiceSessionFromThread = useCallback(
+    (thread: Record<string, unknown>) => {
+      const waitState = extractVoiceWaitState(thread);
+      const activeSlug = waitState?.slug ?? null;
+      const candidates = collectItemsFromContainer((thread as { items?: unknown }).items);
+
+      for (let index = candidates.length - 1; index >= 0; index -= 1) {
+        const candidate = candidates[index];
+        const voiceSession = parseVoiceSessionTaskItem(candidate);
+        if (!voiceSession) {
+          continue;
+        }
+        if (processedVoiceTaskIdsRef.current.has(voiceSession.taskId)) {
+          continue;
+        }
+        if (activeSlug && voiceSession.stepSlug && voiceSession.stepSlug !== activeSlug) {
+          continue;
+        }
+        activateVoiceSession(voiceSession);
+        break;
+      }
+    },
+    [activateVoiceSession],
+  );
   const resetChatState = useCallback(
     ({ workflowSlug, preserveStoredThread = false }: ResetChatStateOptions = {}) => {
       clearVoiceSessionState();
@@ -396,6 +455,8 @@ export function MyChat() {
       const previousSnapshot = lastThreadSnapshotRef.current;
       lastThreadSnapshotRef.current = thread;
 
+      maybeActivateVoiceSessionFromThread(thread);
+
       const threadId = typeof thread.id === "string" ? thread.id : null;
       if (threadId) {
         setActiveThreadId((current) => (current === threadId ? current : threadId));
@@ -427,7 +488,7 @@ export function MyChat() {
         clearVoiceSessionState();
       }
     },
-    [clearVoiceSessionState, setActiveThreadId],
+    [clearVoiceSessionState, maybeActivateVoiceSessionFromThread, setActiveThreadId],
   );
 
   const handleVoiceTaskLog = useCallback(
@@ -440,12 +501,9 @@ export function MyChat() {
         return;
       }
 
-      processedVoiceTaskIdsRef.current.add(voiceSession.taskId);
-      voiceSessionRef.current = voiceSession;
-      setVoiceSessionDetails(voiceSession);
-      console.info("[ChatKit] Voice session created", voiceSession);
+      activateVoiceSession(voiceSession);
     },
-    [setVoiceSessionDetails],
+    [activateVoiceSession],
   );
 
   const handleVoiceSessionReset = useCallback(() => {

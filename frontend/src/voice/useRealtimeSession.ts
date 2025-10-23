@@ -26,6 +26,7 @@ type ConnectOptions = {
 type UseRealtimeSessionResult = {
   connect: (options: ConnectOptions) => Promise<void>;
   disconnect: () => void;
+  startResponse: () => boolean;
 };
 
 const buildPromptUpdate = (secret: VoiceSessionSecret): Record<string, unknown> | null => {
@@ -256,9 +257,25 @@ export const useRealtimeSession = (
     [attachSessionListeners, disconnect, scheduleRefresh],
   );
 
+  const startResponse = useCallback((): boolean => {
+    const session = sessionRef.current;
+    if (!session) {
+      return false;
+    }
+    try {
+      const transport = session.transport as { sendEvent?: (event: Record<string, unknown>) => void };
+      transport.sendEvent?.({ type: "response.create" });
+      return true;
+    } catch (error) {
+      handlersRef.current.onError?.(error);
+      return false;
+    }
+  }, []);
+
   return {
     connect,
     disconnect,
+    startResponse,
   };
 };
 

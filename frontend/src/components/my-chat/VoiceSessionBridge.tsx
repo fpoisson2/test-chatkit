@@ -19,6 +19,10 @@ export type VoiceSessionDetails = {
     prompt_version: string | null;
     prompt_variables?: Record<string, string>;
   };
+  realtime: {
+    startMode: "manual" | "auto";
+    stopMode: "manual" | "auto";
+  } | null;
   toolPermissions: Record<string, boolean>;
 };
 
@@ -402,10 +406,15 @@ export const VoiceSessionBridge = ({
   const pendingTranscriptIdsRef = useRef<Set<string>>(new Set());
   const finalizingRef = useRef(false);
   const microphonePreflightRef = useRef(false);
+  const hasRequestedGreetingRef = useRef(false);
 
   useEffect(() => {
     transcriptsRef.current = transcripts;
   }, [transcripts]);
+
+  useEffect(() => {
+    hasRequestedGreetingRef.current = false;
+  }, [details.taskId]);
 
   const voiceSecret = useMemo<VoiceSessionSecret | null>(
     () => buildVoiceSessionSecret(details),
@@ -603,7 +612,7 @@ export const VoiceSessionBridge = ({
     }
   }, [t]);
 
-  const { connect, disconnect } = useRealtimeSession({
+  const { connect, disconnect, startResponse } = useRealtimeSession({
     onHistoryUpdated: handleHistoryUpdated,
     onConnectionChange: (connectionStatus) => {
       if (connectionStatus === "connected") {
@@ -629,6 +638,19 @@ export const VoiceSessionBridge = ({
       setStatus("error");
     },
   });
+
+  const requestInitialResponse = useCallback(() => {
+    if (!details.toolPermissions.response) {
+      return;
+    }
+    if (hasRequestedGreetingRef.current) {
+      return;
+    }
+    const started = startResponse();
+    if (started) {
+      hasRequestedGreetingRef.current = true;
+    }
+  }, [details.toolPermissions.response, startResponse]);
 
   useEffect(() => {
     let cancelled = false;
@@ -660,6 +682,7 @@ export const VoiceSessionBridge = ({
 
         if (!cancelled) {
           setStatus("connected");
+          requestInitialResponse();
         }
       } catch (err) {
         if (cancelled) {
@@ -678,7 +701,7 @@ export const VoiceSessionBridge = ({
       cancelled = true;
       disconnect();
     };
-  }, [connect, disconnect, ensureMicrophoneAccess, t, voiceSecret]);
+  }, [connect, disconnect, ensureMicrophoneAccess, requestInitialResponse, t, voiceSecret]);
 
   const handleStop = useCallback(() => {
     disconnect();
@@ -697,6 +720,12 @@ export const VoiceSessionBridge = ({
         return t("voice.inline.status.idle");
     }
   }, [status, t]);
+
+  useEffect(() => {
+    if (status === "connected") {
+      requestInitialResponse();
+    }
+  }, [requestInitialResponse, status]);
 
   const statusClassName = useMemo(() => {
     switch (status) {
