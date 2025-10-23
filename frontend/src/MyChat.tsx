@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useChatKit } from "@openai/chatkit-react";
 import type { ChatKitOptions } from "@openai/chatkit";
 
 import { useAuth } from "./auth";
@@ -9,8 +8,8 @@ import { ChatSidebar } from "./components/my-chat/ChatSidebar";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
 import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
-import { useChatkitWorkflowSync } from "./hooks/useChatkitWorkflowSync";
 import { useHostedFlow } from "./hooks/useHostedFlow";
+import { useWorkflowChatSession } from "./hooks/useWorkflowChatSession";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import {
@@ -690,13 +689,10 @@ export function MyChat() {
     ],
   );
 
-  const { control, fetchUpdates, sendUserMessage } = useChatKit(chatkitOptions);
-
-  const { requestRefresh } = useChatkitWorkflowSync({
+  const { control, requestRefresh } = useWorkflowChatSession({
+    chatkitOptions,
     token,
     activeWorkflow,
-    fetchUpdates,
-    sendUserMessage,
     initialThreadId,
     reportError,
   });

@@ -146,14 +146,18 @@ export const prepareNodeParametersForSave = (
 
 export const buildNodeStyle = (
   kind: NodeKind,
-  options: { isSelected?: boolean } = {},
+  options: { isSelected?: boolean; isPreviewActive?: boolean; isPreviewDimmed?: boolean } = {},
 ): CSSProperties => {
-  const { isSelected = false } = options;
+  const {
+    isSelected = false,
+    isPreviewActive = false,
+    isPreviewDimmed = false,
+  } = options;
   const baseShadow = "var(--shadow-soft)";
   const selectionRingColor = "rgba(255, 255, 255, 0.92)";
   const haloShadow = `0 0 0 6px ${NODE_GLOW_COLORS[kind]}`;
   const ringShadow = `0 0 0 2px ${selectionRingColor}`;
-  return {
+  const style: CSSProperties = {
     padding: "0.75rem 1rem",
     borderRadius: "0.75rem",
     border: `2px solid ${NODE_COLORS[kind]}`,
@@ -163,10 +167,27 @@ export const buildNodeStyle = (
     minWidth: 160,
     textAlign: "center",
     overflow: "visible",
-    boxShadow: isSelected
-      ? `${baseShadow}, ${ringShadow}, ${haloShadow}`
-      : baseShadow,
+    transition: "transform 0.2s ease, opacity 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease",
   };
+
+  if (isSelected) {
+    style.boxShadow = `${baseShadow}, ${ringShadow}, ${haloShadow}`;
+  } else if (isPreviewActive) {
+    style.boxShadow = `${baseShadow}, ${haloShadow}`;
+  } else {
+    style.boxShadow = baseShadow;
+  }
+
+  if (isPreviewDimmed) {
+    style.opacity = 0.45;
+    style.filter = "grayscale(0.3)";
+  }
+
+  if (isPreviewActive && !isSelected) {
+    style.transform = "scale(1.02)";
+  }
+
+  return style;
 };
 
 export const labelForKind = (kind: NodeKind) => {
