@@ -229,13 +229,20 @@ export const useRealtimeSession = (
       const agent = new RealtimeAgent({
         name: "Assistant vocal ChatKit",
         instructions: secret.instructions,
+        ...(secret.voice ? { voice: secret.voice } : {}),
       });
-      const session = new RealtimeSession(agent, { transport: "webrtc" });
+      const session = new RealtimeSession(agent, {
+        transport: "webrtc",
+        ...(secret.session_config ? { config: secret.session_config } : {}),
+      });
       sessionRef.current = session;
       attachSessionListeners(session);
 
       try {
         await session.connect({ apiKey, model: secret.model });
+        if (secret.session_config) {
+          applySessionUpdate(session, secret.session_config);
+        }
         const promptUpdate = buildPromptUpdate(secret);
         if (promptUpdate) {
           applySessionUpdate(session, promptUpdate);

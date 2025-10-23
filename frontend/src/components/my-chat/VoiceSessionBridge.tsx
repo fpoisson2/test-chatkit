@@ -97,6 +97,210 @@ const extractExpiration = (
   return null;
 };
 
+const toFiniteNumber = (value: unknown): number | undefined => {
+  if (typeof value !== "number") {
+    return undefined;
+  }
+  return Number.isFinite(value) ? value : undefined;
+};
+
+const normalizeTurnDetection = (
+  value: unknown,
+): Record<string, unknown> | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const result: Record<string, unknown> = {};
+
+  if (typeof value.type === "string" && value.type.trim()) {
+    result.type = value.type;
+  }
+
+  const threshold = toFiniteNumber(value.threshold);
+  if (typeof threshold === "number") {
+    result.threshold = threshold;
+  }
+
+  const prefixPadding = toFiniteNumber(
+    value.prefixPaddingMs ?? value.prefix_padding_ms,
+  );
+  if (typeof prefixPadding === "number") {
+    result.prefixPaddingMs = prefixPadding;
+  }
+
+  const silenceDuration = toFiniteNumber(
+    value.silenceDurationMs ?? value.silence_duration_ms,
+  );
+  if (typeof silenceDuration === "number") {
+    result.silenceDurationMs = silenceDuration;
+  }
+
+  const idleTimeout = toFiniteNumber(
+    value.idleTimeoutMs ?? value.idle_timeout_ms,
+  );
+  if (typeof idleTimeout === "number") {
+    result.idleTimeoutMs = idleTimeout;
+  }
+
+  const createResponse = value.createResponse ?? value.create_response;
+  if (typeof createResponse === "boolean") {
+    result.createResponse = createResponse;
+  }
+
+  const interruptResponse =
+    value.interruptResponse ?? value.interrupt_response;
+  if (typeof interruptResponse === "boolean") {
+    result.interruptResponse = interruptResponse;
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+};
+
+const normalizeAudioInput = (
+  value: unknown,
+): Record<string, unknown> | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const result: Record<string, unknown> = {};
+
+  if (value.format && typeof value.format === "object") {
+    result.format = value.format;
+  }
+
+  if (value.transcription !== undefined) {
+    result.transcription = value.transcription;
+  }
+
+  if (value.noiseReduction !== undefined) {
+    result.noiseReduction = value.noiseReduction;
+  } else if (value.noise_reduction !== undefined) {
+    result.noiseReduction = value.noise_reduction;
+  }
+
+  const turnDetection = normalizeTurnDetection(
+    value.turnDetection ?? value.turn_detection,
+  );
+  if (turnDetection) {
+    result.turnDetection = turnDetection;
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+};
+
+const normalizeAudioOutput = (
+  value: unknown,
+): Record<string, unknown> | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const result: Record<string, unknown> = {};
+
+  if (value.format && typeof value.format === "object") {
+    result.format = value.format;
+  }
+
+  const voice = typeof value.voice === "string" ? value.voice.trim() : "";
+  if (voice) {
+    result.voice = voice;
+  }
+
+  const speed = toFiniteNumber(value.speed);
+  if (typeof speed === "number") {
+    result.speed = speed;
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined;
+};
+
+const normalizeAudioConfig = (
+  value: unknown,
+): Record<string, unknown> | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const input = normalizeAudioInput(value.input);
+  const output = normalizeAudioOutput(value.output);
+
+  if (!input && !output) {
+    return undefined;
+  }
+
+  const result: Record<string, unknown> = {};
+  if (input) {
+    result.input = input;
+  }
+  if (output) {
+    result.output = output;
+  }
+  return result;
+};
+
+const extractRealtimeSessionConfig = (
+  payload: unknown,
+): Record<string, unknown> | undefined => {
+  if (!isRecord(payload)) {
+    return undefined;
+  }
+
+  const session = isRecord(payload.session)
+    ? (payload.session as Record<string, unknown>)
+    : payload;
+
+  if (!isRecord(session)) {
+    return undefined;
+  }
+
+  const config: Record<string, unknown> = {};
+
+  const model = typeof session.model === "string" ? session.model.trim() : "";
+  if (model) {
+    config.model = model;
+  }
+
+  const instructions =
+    typeof session.instructions === "string"
+      ? session.instructions.trim()
+      : "";
+  if (instructions) {
+    config.instructions = instructions;
+  }
+
+  const toolChoiceRaw = session.toolChoice ?? session.tool_choice;
+  const toolChoice =
+    typeof toolChoiceRaw === "string" ? toolChoiceRaw.trim() : "";
+  if (toolChoice) {
+    config.toolChoice = toolChoice;
+  }
+
+  const tools = session.tools;
+  if (Array.isArray(tools)) {
+    config.tools = tools;
+  }
+
+  const outputModalities =
+    session.outputModalities ?? session.output_modalities;
+  if (Array.isArray(outputModalities) && outputModalities.length > 0) {
+    config.outputModalities = outputModalities;
+  }
+
+  const audio = normalizeAudioConfig(session.audio);
+  if (audio) {
+    config.audio = audio;
+  }
+
+  const voice = typeof session.voice === "string" ? session.voice.trim() : "";
+  if (voice) {
+    config.voice = voice;
+  }
+
+  return Object.keys(config).length > 0 ? config : undefined;
+};
+
 const buildVoiceSessionSecret = (
   details: VoiceSessionDetails,
 ): VoiceSessionSecret | null => {
@@ -109,6 +313,7 @@ const buildVoiceSessionSecret = (
   const { session } = details;
 
   const promptVariables = session.prompt_variables;
+  const sessionConfig = extractRealtimeSessionConfig(details.clientSecret);
 
   return {
     client_secret: clientSecret,
@@ -119,6 +324,7 @@ const buildVoiceSessionSecret = (
     prompt_id: session.prompt_id,
     prompt_version: session.prompt_version,
     prompt_variables: promptVariables && Object.keys(promptVariables).length > 0 ? promptVariables : undefined,
+    session_config: sessionConfig,
   } satisfies VoiceSessionSecret;
 };
 

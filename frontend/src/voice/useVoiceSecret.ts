@@ -42,6 +42,7 @@ export type VoiceSessionSecret = {
   prompt_id?: string | null;
   prompt_version?: string | null;
   prompt_variables?: Record<string, string>;
+  session_config?: Record<string, unknown>;
 };
 
 type UseVoiceSecretResult = {
