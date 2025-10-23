@@ -5,7 +5,7 @@ import json
 import logging
 import re
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -293,6 +293,130 @@ def _to_mapping(
     return None
 
 
+def _normalize_workflow_blueprint(
+    value: Any,
+    *,
+    step_slug: str,
+) -> dict[str, Any] | None:
+    if value is None:
+        return None
+
+    if hasattr(value, "model_dump"):
+        try:
+            value = value.model_dump(by_alias=True)  # type: ignore[call-arg]
+        except TypeError:
+            value = value.model_dump()
+    elif hasattr(value, "dict"):
+        try:
+            value = value.dict(by_alias=True)  # type: ignore[call-arg]
+        except TypeError:
+            value = value.dict()
+
+    if isinstance(value, str):
+        trimmed = value.strip()
+        if not trimmed:
+            return None
+        try:
+            decoded = json.loads(trimmed)
+        except json.JSONDecodeError as exc:
+            logger.warning(
+                "Le blueprint calculé pour %s doit être un JSON valide (erreur: %s)",
+                step_slug,
+                str(exc),
+            )
+            return None
+        value = decoded
+
+    if not isinstance(value, Mapping):
+        logger.warning(
+            "Le blueprint de workflow calculé pour %s doit être un objet JSON.",
+            step_slug,
+        )
+        return None
+
+    mapping = dict(value)
+
+    slug_raw = mapping.get("slug")
+    slug = str(slug_raw).strip() if isinstance(slug_raw, str) else ""
+    if not slug:
+        logger.warning(
+            "Le blueprint de workflow calculé pour %s doit contenir un slug non vide.",
+            step_slug,
+        )
+        return None
+
+    display_name_raw = mapping.get("display_name")
+    display_name = (
+        str(display_name_raw).strip()
+        if isinstance(display_name_raw, str)
+        else ""
+    )
+    if not display_name:
+        logger.warning(
+            "Le blueprint de workflow calculé pour %s doit contenir un nom à afficher.",
+            step_slug,
+        )
+        return None
+
+    graph_raw = mapping.get("graph")
+    if hasattr(graph_raw, "model_dump"):
+        try:
+            graph_raw = graph_raw.model_dump(by_alias=True)  # type: ignore[call-arg]
+        except TypeError:
+            graph_raw = graph_raw.model_dump()
+    elif hasattr(graph_raw, "dict"):
+        try:
+            graph_raw = graph_raw.dict(by_alias=True)  # type: ignore[call-arg]
+        except TypeError:
+            graph_raw = graph_raw.dict()
+
+    if not isinstance(graph_raw, Mapping):
+        logger.warning(
+            "Le blueprint calculé pour %s doit contenir un objet 'graph'.",
+            step_slug,
+        )
+        return None
+
+    graph = dict(graph_raw)
+    nodes_value = graph.get("nodes")
+    edges_value = graph.get("edges")
+
+    if not isinstance(nodes_value, Sequence) or isinstance(nodes_value, str | bytes):
+        logger.warning(
+            "Le graphe du blueprint calculé pour %s doit définir une liste 'nodes'.",
+            step_slug,
+        )
+        return None
+
+    if not isinstance(edges_value, Sequence) or isinstance(edges_value, str | bytes):
+        logger.warning(
+            "Le graphe du blueprint calculé pour %s doit définir une liste 'edges'.",
+            step_slug,
+        )
+        return None
+
+    graph["nodes"] = list(nodes_value)
+    graph["edges"] = list(edges_value)
+
+    description_raw = mapping.get("description")
+    description: str | None = None
+    if isinstance(description_raw, str):
+        description = description_raw.strip() or None
+    elif description_raw is not None:
+        description = str(description_raw).strip() or None
+
+    normalized: dict[str, Any] = {
+        "slug": slug,
+        "display_name": display_name,
+        "graph": graph,
+        "mark_active": bool(mapping.get("mark_active")),
+    }
+    if description:
+        normalized["description"] = description
+
+    return normalized
+
+
 def _ingest_vector_store_document(
     slug: str,
     doc_id: str,
@@ -497,6 +621,40 @@ async def ingest_workflow_step(
         else ""
     )
 
+    workflow_blueprint_expression_raw = config.get("workflow_blueprint_expression")
+    workflow_blueprint_expression = (
+        workflow_blueprint_expression_raw.strip()
+        if isinstance(workflow_blueprint_expression_raw, str)
+        else ""
+    )
+
+    workflow_blueprint: dict[str, Any] | None = None
+    if workflow_blueprint_expression:
+        try:
+            workflow_blueprint_value = evaluate_state_expression(
+                workflow_blueprint_expression,
+                state=state,
+                default_input_context=default_input_context,
+                input_context=step_context,
+            )
+        except Exception as exc:  # pragma: no cover - dépend des expressions fournies
+            logger.exception(
+                "Impossible d'évaluer l'expression de blueprint '%s' pour %s",
+                workflow_blueprint_expression,
+                step_slug,
+                exc_info=exc,
+            )
+        else:
+            workflow_blueprint = _normalize_workflow_blueprint(
+                workflow_blueprint_value,
+                step_slug=step_slug,
+            )
+    elif "workflow_blueprint" in config:
+        workflow_blueprint = _normalize_workflow_blueprint(
+            config.get("workflow_blueprint"),
+            step_slug=step_slug,
+        )
+
     if metadata_expression:
         try:
             metadata_value = evaluate_state_expression(
@@ -525,6 +683,9 @@ async def ingest_workflow_step(
                     "Les métadonnées calculées pour %s doivent être un objet JSON.",
                     step_slug,
                 )
+
+    if workflow_blueprint is not None:
+        metadata["workflow_blueprint"] = workflow_blueprint
 
     logger.info(
         "Ingestion du résultat JSON de %s dans le vector store %s (doc_id=%s)",

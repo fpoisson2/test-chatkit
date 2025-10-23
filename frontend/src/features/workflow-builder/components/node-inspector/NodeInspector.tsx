@@ -253,6 +253,8 @@ const NodeInspector = ({
   const vectorStoreNodeDocIdExpression = vectorStoreNodeConfig.doc_id_expression.trim();
   const vectorStoreNodeDocumentExpression = vectorStoreNodeConfig.document_expression.trim();
   const vectorStoreNodeMetadataExpression = vectorStoreNodeConfig.metadata_expression.trim();
+  const vectorStoreNodeBlueprintExpression =
+    vectorStoreNodeConfig.workflow_blueprint_expression.trim();
 
   const vectorStoreNodeExists =
     vectorStoreNodeSlug.length > 0 && vectorStores.some((store) => store.slug === vectorStoreNodeSlug);
@@ -475,6 +477,7 @@ const NodeInspector = ({
           vectorStoreNodeDocIdExpression={vectorStoreNodeDocIdExpression}
           vectorStoreNodeDocumentExpression={vectorStoreNodeDocumentExpression}
           vectorStoreNodeMetadataExpression={vectorStoreNodeMetadataExpression}
+          vectorStoreNodeBlueprintExpression={vectorStoreNodeBlueprintExpression}
           vectorStoreNodeValidationMessages={vectorStoreNodeValidationMessages}
           onVectorStoreNodeConfigChange={onVectorStoreNodeConfigChange}
         />

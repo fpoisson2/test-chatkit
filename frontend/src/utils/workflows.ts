@@ -1858,6 +1858,7 @@ export type AgentVectorStoreIngestionConfig = {
   doc_id_expression: string;
   document_expression: string;
   metadata_expression: string;
+  workflow_blueprint_expression: string;
 };
 
 export type VectorStoreNodeConfig = {
@@ -1865,6 +1866,7 @@ export type VectorStoreNodeConfig = {
   doc_id_expression: string;
   document_expression: string;
   metadata_expression: string;
+  workflow_blueprint_expression: string;
 };
 
 export const getAgentVectorStoreIngestion = (
@@ -1886,8 +1888,18 @@ export const getAgentVectorStoreIngestion = (
     typeof documentCandidate === "string" ? documentCandidate.trim() : "";
   const metadataExpression =
     typeof raw.metadata_expression === "string" ? raw.metadata_expression.trim() : "";
+  const workflowBlueprintExpression =
+    typeof raw.workflow_blueprint_expression === "string"
+      ? raw.workflow_blueprint_expression.trim()
+      : "";
 
-  if (!slug && !docIdExpression && !documentExpression && !metadataExpression) {
+  if (
+    !slug &&
+    !docIdExpression &&
+    !documentExpression &&
+    !metadataExpression &&
+    !workflowBlueprintExpression
+  ) {
     return null;
   }
 
@@ -1896,6 +1908,7 @@ export const getAgentVectorStoreIngestion = (
     doc_id_expression: docIdExpression,
     document_expression: documentExpression,
     metadata_expression: metadataExpression,
+    workflow_blueprint_expression: workflowBlueprintExpression,
   };
 };
 
@@ -1913,8 +1926,9 @@ export const setAgentVectorStoreIngestion = (
   const docId = config.doc_id_expression.trim();
   const document = config.document_expression.trim();
   const metadata = config.metadata_expression.trim();
+  const workflowBlueprint = config.workflow_blueprint_expression.trim();
 
-  if (!slug && !docId && !document && !metadata) {
+  if (!slug && !docId && !document && !metadata && !workflowBlueprint) {
     delete next.vector_store_ingestion;
     return next as AgentParameters;
   }
@@ -1926,6 +1940,9 @@ export const setAgentVectorStoreIngestion = (
   };
   if (metadata) {
     payload.metadata_expression = metadata;
+  }
+  if (workflowBlueprint) {
+    payload.workflow_blueprint_expression = workflowBlueprint;
   }
   next.vector_store_ingestion = payload;
   return next as AgentParameters;
@@ -1943,6 +1960,7 @@ export const getVectorStoreNodeConfig = (
       doc_id_expression: "",
       document_expression: "",
       metadata_expression: "",
+      workflow_blueprint_expression: "",
     };
   }
 
@@ -1966,12 +1984,18 @@ export const getVectorStoreNodeConfig = (
     typeof raw.metadata_expression === "string"
       ? raw.metadata_expression
       : undefined;
+  const workflowBlueprint =
+    typeof raw.workflow_blueprint_expression === "string"
+      ? raw.workflow_blueprint_expression
+      : undefined;
 
   return {
     vector_store_slug: sanitizeVectorStoreNodeValue(slug),
     doc_id_expression: sanitizeVectorStoreNodeValue(docIdCandidate),
     document_expression: sanitizeVectorStoreNodeValue(documentCandidate),
     metadata_expression: sanitizeVectorStoreNodeValue(metadata),
+    workflow_blueprint_expression:
+      sanitizeVectorStoreNodeValue(workflowBlueprint),
   };
 };
 
@@ -1993,6 +2017,10 @@ export const setVectorStoreNodeConfig = (
     metadata_expression: sanitizeVectorStoreNodeValue(
       updates.metadata_expression ?? current.metadata_expression,
     ),
+    workflow_blueprint_expression: sanitizeVectorStoreNodeValue(
+      updates.workflow_blueprint_expression ??
+        current.workflow_blueprint_expression,
+    ),
   };
 
   const payload: Record<string, string> = {
@@ -2003,6 +2031,9 @@ export const setVectorStoreNodeConfig = (
 
   if (next.metadata_expression) {
     payload.metadata_expression = next.metadata_expression;
+  }
+  if (next.workflow_blueprint_expression) {
+    payload.workflow_blueprint_expression = next.workflow_blueprint_expression;
   }
 
   return payload as AgentParameters;
@@ -2020,6 +2051,8 @@ export const createVectorStoreNodeParameters = (
       document_expression:
         overrides.document_expression ?? "input.output_parsed",
       metadata_expression: overrides.metadata_expression ?? "",
+      workflow_blueprint_expression:
+        overrides.workflow_blueprint_expression ?? "",
     },
   );
 
