@@ -945,6 +945,23 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
 
             converter = thread_item_converter or self._thread_item_converter
 
+            workflow_slug: str | None = None
+            workflow_definition = None
+            thread_metadata = (
+                thread.metadata if isinstance(thread.metadata, Mapping) else {}
+            )
+            if isinstance(thread_metadata, Mapping):
+                workflow_info = thread_metadata.get("workflow")
+                if isinstance(workflow_info, Mapping):
+                    raw_slug = workflow_info.get("slug")
+                    if isinstance(raw_slug, str):
+                        candidate = raw_slug.strip()
+                        if candidate:
+                            workflow_slug = candidate
+
+            if workflow_slug is None:
+                workflow_definition = self._workflow_service.get_current()
+
             summary = await self._run_workflow(
                 workflow_input,
                 agent_context=agent_context,
@@ -953,6 +970,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 on_stream_event=on_stream_event,
                 on_widget_step=on_widget_step,
                 workflow_service=self._workflow_service,
+                workflow_definition=workflow_definition,
+                workflow_slug=workflow_slug,
                 thread_item_converter=converter,
                 thread_items_history=thread_items_history,
                 current_user_message=input_user_message,
