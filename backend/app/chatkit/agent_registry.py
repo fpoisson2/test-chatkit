@@ -456,8 +456,15 @@ def _coerce_agent_tools(
                 continue
 
             if normalized_type == "workflow":
+                config: dict[str, Any] = {}
                 workflow_payload = entry.get("workflow")
-                if not isinstance(workflow_payload, Mapping):
+                if isinstance(workflow_payload, Mapping):
+                    config.update(workflow_payload)
+                elif isinstance(workflow_payload, str):
+                    slug_candidate = workflow_payload.strip()
+                    if slug_candidate:
+                        config["slug"] = slug_candidate
+                elif workflow_payload is not None:
                     logger.warning(
                         "Impossible de construire l'outil workflow : "
                         "configuration invalide (%s).",
@@ -465,18 +472,50 @@ def _coerce_agent_tools(
                     )
                     continue
 
-                raw_slug = workflow_payload.get("slug")
-                slug = raw_slug.strip() if isinstance(raw_slug, str) else ""
-                if not slug:
+                for key in (
+                    "slug",
+                    "workflow_slug",
+                    "initial_message",
+                    "message",
+                    "title",
+                    "workflow_title",
+                    "identifier",
+                    "workflow_identifier",
+                    "workflow_id",
+                    "id",
+                    "name",
+                    "description",
+                    "show_ui",
+                ):
+                    if key in config:
+                        continue
+                    value = entry.get(key)
+                    if value is not None:
+                        config[key] = value
+
+                slug: str | None = None
+                for candidate in (
+                    config.get("slug"),
+                    config.get("workflow_slug"),
+                ):
+                    if isinstance(candidate, str):
+                        trimmed = candidate.strip()
+                        if trimmed:
+                            slug = trimmed
+                            break
+
+                if slug is None:
                     logger.warning(
                         "Impossible de construire l'outil workflow : slug "
                         "manquant (%s).",
-                        workflow_payload,
+                        config if config else entry,
                     )
                     continue
 
+                config["slug"] = slug
+
                 try:
-                    tool = build_workflow_tool(workflow_payload)
+                    tool = build_workflow_tool(config)
                 except Exception as exc:  # pragma: no cover - robustesse best effort
                     logger.warning(
                         "Impossible de construire l'outil workflow %r : %s",
