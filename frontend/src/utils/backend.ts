@@ -181,6 +181,18 @@ export type VoiceSettingsUpdatePayload = {
   prompt_variables?: Record<string, string>;
 };
 
+export type AppSettings = {
+  thread_title_prompt: string;
+  default_thread_title_prompt: string;
+  is_custom_thread_title_prompt: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type AppSettingsUpdatePayload = {
+  thread_title_prompt: string | null;
+};
+
 export type ChatKitWorkflowInfo = {
   workflow_id: number;
   workflow_slug: string | null;
@@ -227,6 +239,27 @@ export const adminApi = {
     if (!response.ok && response.status !== 204) {
       throw new ApiError("Échec de la suppression", { status: response.status });
     }
+  },
+};
+
+export const appSettingsApi = {
+  async get(token: string | null): Promise<AppSettings> {
+    const response = await requestWithFallback("/api/admin/app-settings", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async update(
+    token: string | null,
+    payload: AppSettingsUpdatePayload,
+  ): Promise<AppSettings> {
+    const response = await requestWithFallback("/api/admin/app-settings", {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
   },
 };
 

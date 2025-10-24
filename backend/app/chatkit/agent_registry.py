@@ -12,12 +12,14 @@ from agents import Agent, ModelSettings, WebSearchTool
 from agents.tool import ComputerTool
 from pydantic import BaseModel, Field, create_model
 
+from ..admin_settings import resolve_thread_title_prompt
 from ..chatkit_server.actions import (
     _patch_model_json_schema,
     _remove_additional_properties_from_schema,
     _sanitize_widget_field_name,
     _StrictSchemaBase,
 )
+from ..config import DEFAULT_THREAD_TITLE_PROMPT
 from ..database import SessionLocal
 from ..token_sanitizer import sanitize_model_like
 from ..tool_factory import (
@@ -810,14 +812,14 @@ def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
 
 
 def _build_thread_title_agent() -> Agent:
+    try:
+        instructions = resolve_thread_title_prompt()
+    except Exception:  # pragma: no cover - configuration best effort
+        instructions = DEFAULT_THREAD_TITLE_PROMPT
     base_kwargs: dict[str, Any] = {
         "name": "TitreFil",
         "model": "gpt-5-nano",
-        "instructions": (
-            """Propose un titre court et descriptif en français pour un nouveau fil
-de discussion.
-Utilise au maximum 6 mots."""
-        ),
+        "instructions": instructions,
         "model_settings": _model_settings(store=True),
     }
     return _instantiate_agent(_build_agent_kwargs(base_kwargs, None))

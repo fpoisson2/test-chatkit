@@ -32,9 +32,45 @@ const fr: TranslationDictionary = {
   "app.sidebar.profile.admin": "Administration",
   "app.sidebar.profile.settings": "Paramètres",
   "app.sidebar.profile.logout": "Déconnexion",
+  "admin.tabs.users": "Gestion des utilisateurs",
+  "admin.tabs.voice": "Paramètres du mode voix",
+  "admin.tabs.models": "Modèles disponibles",
+  "admin.tabs.settings": "Paramètres généraux",
+  "admin.tabs.sectionTitle": "Administration",
+  "admin.tabs.navigationLabel": "Navigation du panneau d'administration",
   "admin.models.form.modelIdLabel": "Identifiant du modèle*",
   "admin.models.form.modelIdPlaceholder": "Ex. gpt-4.1-mini",
   "admin.models.errors.missingModelId": "Indiquez l'identifiant du modèle.",
+  "admin.appSettings.page.title": "Paramètres généraux",
+  "admin.appSettings.page.subtitle":
+    "Contrôlez le comportement global de ChatKit.",
+  "admin.appSettings.threadTitle.cardTitle": "Prompt des titres automatiques",
+  "admin.appSettings.threadTitle.cardDescription":
+    "Personnalisez le prompt utilisé pour nommer automatiquement les fils de discussion.",
+  "admin.appSettings.threadTitle.fieldLabel": "Prompt pour les titres de fils",
+  "admin.appSettings.threadTitle.placeholder":
+    "Décrivez les instructions pour générer un titre de fil…",
+  "admin.appSettings.threadTitle.hint":
+    "Le prompt doit contenir des instructions claires en français.",
+  "admin.appSettings.threadTitle.status.custom":
+    "Un prompt personnalisé est actuellement appliqué.",
+  "admin.appSettings.threadTitle.status.default":
+    "Le prompt par défaut est utilisé.",
+  "admin.appSettings.threadTitle.defaultLabel": "Prompt par défaut",
+  "admin.appSettings.success.saved": "Paramètres enregistrés avec succès.",
+  "admin.appSettings.success.reset": "Le prompt par défaut est rétabli.",
+  "admin.appSettings.errors.loadFailed":
+    "Impossible de charger les paramètres généraux.",
+  "admin.appSettings.errors.saveFailed":
+    "Impossible d'enregistrer le prompt personnalisé.",
+  "admin.appSettings.errors.resetFailed":
+    "Impossible de réinitialiser le prompt.",
+  "admin.appSettings.errors.promptRequired":
+    "Le prompt doit contenir au moins un caractère.",
+  "admin.appSettings.errors.sessionExpired":
+    "Session expirée, veuillez vous reconnecter.",
+  "admin.appSettings.actions.save": "Enregistrer le prompt",
+  "admin.appSettings.actions.reset": "Revenir au prompt par défaut",
   "auth.login.title": "Connexion",
   "auth.login.subtitle":
     "Accédez au panneau d'administration pour gérer les utilisateurs et vos sessions ChatKit.",
@@ -276,9 +312,41 @@ const en: TranslationDictionary = {
   "app.sidebar.profile.admin": "Administration",
   "app.sidebar.profile.settings": "Settings",
   "app.sidebar.profile.logout": "Sign out",
+  "admin.tabs.users": "User management",
+  "admin.tabs.voice": "Voice mode settings",
+  "admin.tabs.models": "Available models",
+  "admin.tabs.settings": "General settings",
+  "admin.tabs.sectionTitle": "Administration",
+  "admin.tabs.navigationLabel": "Administration navigation",
   "admin.models.form.modelIdLabel": "Model identifier*",
   "admin.models.form.modelIdPlaceholder": "e.g. gpt-4.1-mini",
   "admin.models.errors.missingModelId": "Enter the model identifier.",
+  "admin.appSettings.page.title": "General settings",
+  "admin.appSettings.page.subtitle": "Control ChatKit's global behaviour.",
+  "admin.appSettings.threadTitle.cardTitle": "Automatic thread titles prompt",
+  "admin.appSettings.threadTitle.cardDescription":
+    "Customize the prompt used to name chat threads automatically.",
+  "admin.appSettings.threadTitle.fieldLabel": "Thread title prompt",
+  "admin.appSettings.threadTitle.placeholder":
+    "Describe the instructions to generate a thread title…",
+  "admin.appSettings.threadTitle.hint":
+    "Provide concise instructions for the assistant.",
+  "admin.appSettings.threadTitle.status.custom":
+    "A custom prompt is currently active.",
+  "admin.appSettings.threadTitle.status.default":
+    "The default prompt is in use.",
+  "admin.appSettings.threadTitle.defaultLabel": "Default prompt",
+  "admin.appSettings.success.saved": "Settings saved successfully.",
+  "admin.appSettings.success.reset": "Default prompt restored.",
+  "admin.appSettings.errors.loadFailed": "Unable to load general settings.",
+  "admin.appSettings.errors.saveFailed": "Unable to save the custom prompt.",
+  "admin.appSettings.errors.resetFailed": "Unable to reset the prompt.",
+  "admin.appSettings.errors.promptRequired":
+    "The prompt must contain at least one character.",
+  "admin.appSettings.errors.sessionExpired":
+    "Session expired, please sign in again.",
+  "admin.appSettings.actions.save": "Save prompt",
+  "admin.appSettings.actions.reset": "Revert to default prompt",
   "auth.login.title": "Sign in",
   "auth.login.subtitle": "Access the admin console to manage users and ChatKit sessions.",
   "auth.login.email.label": "Email address",

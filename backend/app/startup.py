@@ -19,6 +19,7 @@ from .docs import DocumentationService
 from .model_providers import configure_model_provider
 from .models import (
     EMBEDDING_DIMENSION,
+    AppSettings,
     AvailableModel,
     Base,
     User,
@@ -53,6 +54,11 @@ def _run_ad_hoc_migrations() -> None:
             logger.info("Création de la table voice_settings manquante")
             VoiceSettings.__table__.create(bind=connection)
             table_names.add("voice_settings")
+
+        if "app_settings" not in table_names:
+            logger.info("Création de la table app_settings manquante")
+            AppSettings.__table__.create(bind=connection)
+            table_names.add("app_settings")
 
         # Migration de la dimension des vecteurs dans json_chunks
         if "json_chunks" in table_names:
