@@ -1043,7 +1043,42 @@ def build_workflow_tool(payload: Any) -> FunctionTool | None:
         ctx: RunContextWrapper[AgentContext],
         initial_message: str | None = None,
     ) -> str:
-        agent_context = ctx.context
+        context_payload = getattr(ctx, "context", None)
+        step_context: Mapping[str, Any] | None = None
+
+        if isinstance(context_payload, AgentContext):
+            agent_context = context_payload
+        else:
+            agent_context = getattr(context_payload, "agent_context", None)
+            candidate_step_context = getattr(context_payload, "step_context", None)
+            if isinstance(candidate_step_context, Mapping):
+                step_context = candidate_step_context
+            elif isinstance(context_payload, Mapping):
+                step_context = context_payload
+
+        if not isinstance(agent_context, AgentContext):
+            fallback_context = getattr(ctx, "agent_context", None)
+            if isinstance(fallback_context, AgentContext):
+                agent_context = fallback_context
+
+        if not isinstance(agent_context, AgentContext):
+            raise RuntimeError(
+                "Contexte agent indisponible pour l'exécution du workflow."
+            )
+
+        if step_context:
+            try:
+                logger.debug(
+                    "Contexte précédent fourni à l'outil workflow %s : %s",
+                    slug,
+                    json.dumps(step_context, ensure_ascii=False, default=str),
+                )
+            except TypeError:
+                logger.debug(
+                    "Contexte précédent fourni à l'outil workflow %s non sérialisable",
+                    slug,
+                )
+
         message = initial_message if initial_message is not None else default_message
         if not isinstance(message, str):
             try:

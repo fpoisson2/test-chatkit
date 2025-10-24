@@ -256,6 +256,38 @@ class WorkflowExecutionError(RuntimeError):
         return f"{self.title} ({self.step}) : {self.original_error}"
 
 
+class WorkflowAgentRunContext(Mapping[str, Any]):
+    """Context transmis aux tools d'agent lors d'une étape de workflow.
+
+    Il combine l'``AgentContext`` actuel et, si disponible, le contexte de
+    l'étape précédente pour conserver la compatibilité avec les usages existants
+    reposant sur un dictionnaire.
+    """
+
+    def __init__(
+        self,
+        *,
+        agent_context: AgentContext[Any],
+        step_context: Mapping[str, Any] | None = None,
+    ) -> None:
+        self.agent_context = agent_context
+        self.step_context: dict[str, Any] = (
+            dict(step_context) if isinstance(step_context, Mapping) else {}
+        )
+
+    def __getitem__(self, key: str) -> Any:
+        return self.step_context[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.step_context)
+
+    def __len__(self) -> int:
+        return len(self.step_context)
+
+    def get(self, key: str, default: Any | None = None) -> Any:
+        return self.step_context.get(key, default)
+
+
 def _format_step_output(payload: Any) -> str:
     if payload is None:
         return "(aucune sortie)"
@@ -1765,11 +1797,19 @@ async def run_workflow(
                     "response_format mémorisé.",
                     getattr(agent, "name", "<inconnu>"),
                 )
+        if isinstance(run_context, WorkflowAgentRunContext):
+            runner_context = run_context
+        else:
+            runner_context = WorkflowAgentRunContext(
+                agent_context=agent_context,
+                step_context=run_context if isinstance(run_context, Mapping) else None,
+            )
+
         result = Runner.run_streamed(
             agent,
             input=[*conversation_history],
             run_config=_workflow_run_config(response_format_override),
-            context=run_context,
+            context=runner_context,
             previous_response_id=getattr(
                 agent_context, "previous_response_id", None
             ),

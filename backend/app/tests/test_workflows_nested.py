@@ -1,5 +1,8 @@
+import asyncio
+import json
 import os
 import sys
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from importlib import import_module
@@ -434,3 +437,117 @@ async def test_run_workflow_reuses_previous_response_id(
     saved_threads = getattr(context.store, "saved_threads", [])
     assert saved_threads
     assert saved_threads[-1].metadata.get("previous_response_id") == "resp-2"
+
+
+@pytest.mark.anyio
+async def test_workflow_tool_emits_ui_events(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agents.tool_context import ToolContext
+    from backend.app import tool_factory
+    from backend.app.workflows import executor as executor_module
+    from backend.app.workflows.executor import (
+        WorkflowAgentRunContext,
+        WorkflowRunSummary,
+        WorkflowStepStreamUpdate,
+        WorkflowStepSummary,
+    )
+
+    from chatkit.types import (
+        ThreadItemAddedEvent,
+        ThreadItemDoneEvent,
+        ThreadItemUpdated,
+        WorkflowTaskAdded,
+        WorkflowTaskUpdated,
+    )
+
+    agent_context = _build_agent_context()
+    step_context = {"previous": "value"}
+    context_wrapper = WorkflowAgentRunContext(
+        agent_context=agent_context,
+        step_context=step_context,
+    )
+
+    assert context_wrapper.agent_context is agent_context
+    assert context_wrapper.get("previous") == "value"
+
+    captured: dict[str, Any] = {}
+
+    async def _fake_run_workflow(
+        workflow_input: Any,
+        *,
+        agent_context: AgentContext,
+        on_step: Callable[[WorkflowStepSummary, int], Awaitable[None]] | None,
+        on_step_stream: Callable[[WorkflowStepStreamUpdate], Awaitable[None]] | None,
+        on_stream_event: Callable[[Any], Awaitable[None]] | None,
+        workflow_service: Any,
+        workflow_slug: str,
+        **_kwargs: Any,
+    ) -> WorkflowRunSummary:
+        captured["agent_context"] = agent_context
+        if on_step_stream is not None:
+            await on_step_stream(
+                WorkflowStepStreamUpdate(
+                    key="step-1",
+                    title="Étape test",
+                    index=1,
+                    delta="Bonjour",
+                    text="Bonjour",
+                )
+            )
+        summary_step = WorkflowStepSummary(
+            key="step-1",
+            title="Étape test",
+            output="Sortie finale",
+        )
+        if on_step is not None:
+            await on_step(summary_step, 1)
+        return WorkflowRunSummary(
+            steps=[summary_step],
+            final_output={"result": "ok"},
+            final_node_slug="end",
+            end_state=None,
+            last_context={"output": "Sortie finale"},
+            state={"last_agent_output_text": "Sortie finale"},
+        )
+
+    fake_service = SimpleNamespace()
+    monkeypatch.setattr(tool_factory, "WorkflowService", lambda: fake_service)
+    monkeypatch.setattr(executor_module, "run_workflow", _fake_run_workflow)
+
+    tool = tool_factory.build_workflow_tool(
+        {"slug": "child-workflow", "show_ui": True, "name": "child_workflow"}
+    )
+
+    tool_arguments = json.dumps({"initial_message": "Bonjour"})
+    tool_context = ToolContext(
+        context=context_wrapper,
+        tool_name=tool.name,
+        tool_call_id="call-1",
+        tool_arguments=tool_arguments,
+    )
+
+    result = await tool.on_invoke_tool(tool_context, tool_arguments)
+
+    assert "Étape 1" in result
+    assert captured["agent_context"] is agent_context
+
+    events: list[Any] = []
+    while True:
+        try:
+            events.append(agent_context._events.get_nowait())
+        except asyncio.QueueEmpty:
+            break
+
+    assert any(isinstance(event, ThreadItemAddedEvent) for event in events)
+    assert any(
+        isinstance(event, ThreadItemUpdated)
+        and isinstance(getattr(event, "update", None), WorkflowTaskAdded)
+        for event in events
+    )
+    assert any(
+        isinstance(event, ThreadItemUpdated)
+        and isinstance(getattr(event, "update", None), WorkflowTaskUpdated)
+        for event in events
+    )
+    assert any(isinstance(event, ThreadItemDoneEvent) for event in events)
+
+    assert agent_context.workflow_item is None
