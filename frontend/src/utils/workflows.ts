@@ -15,6 +15,17 @@ export type ComputerUseConfig = {
   start_url?: string;
 };
 
+export type WorkflowToolConfig = {
+  slug: string;
+  name?: string;
+  description?: string;
+  title?: string;
+  identifier?: string;
+  workflowId?: number | null;
+  showUi?: boolean;
+  initialMessage?: string;
+};
+
 export const DEFAULT_END_MESSAGE = "Workflow terminé";
 
 export const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
@@ -2249,6 +2260,324 @@ const buildWorkflowValidationFunctionToolEntry = (): Record<string, unknown> => 
   },
 });
 
+const WORKFLOW_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
+const toOptionalString = (value: unknown): string | undefined => {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+};
+
+const normalizeWorkflowToolNameCandidate = (
+  candidate: string | undefined,
+): string | undefined => {
+  if (!candidate) {
+    return undefined;
+  }
+
+  if (WORKFLOW_TOOL_NAME_PATTERN.test(candidate)) {
+    return candidate;
+  }
+
+  const normalized = candidate.normalize("NFKD");
+  const withoutMarks = normalized.replace(/[\u0300-\u036f]/g, "");
+  const replaced = withoutMarks.replace(/[^a-zA-Z0-9_-]+/g, "_");
+  const collapsed = replaced.replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+
+  if (collapsed && WORKFLOW_TOOL_NAME_PATTERN.test(collapsed)) {
+    return collapsed;
+  }
+
+  return undefined;
+};
+
+const toOptionalBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) {
+      return undefined;
+    }
+    if (truthyStrings.has(normalized)) {
+      return true;
+    }
+    if (falsyStrings.has(normalized)) {
+      return false;
+    }
+  }
+  return undefined;
+};
+
+const toOptionalInteger = (value: unknown): number | undefined => {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) {
+      return undefined;
+    }
+    const parsed = Number.parseInt(normalized, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return undefined;
+};
+
+const extractWorkflowToolConfig = (value: unknown): WorkflowToolConfig | null => {
+  if (!isPlainRecord(value)) {
+    return null;
+  }
+
+  const entry = value as Record<string, unknown>;
+  const typeCandidate = entry.type ?? entry.tool ?? entry.kind;
+  const workflowPayload = isPlainRecord(entry.workflow)
+    ? (entry.workflow as Record<string, unknown>)
+    : undefined;
+
+  const isWorkflowTool =
+    (typeof typeCandidate === "string" && typeCandidate.trim().toLowerCase() === "workflow") ||
+    Boolean(workflowPayload);
+
+  if (!isWorkflowTool) {
+    return null;
+  }
+
+  const slugCandidates: unknown[] = [];
+  if (workflowPayload) {
+    slugCandidates.push(workflowPayload.slug, workflowPayload.workflow_slug);
+  }
+  slugCandidates.push(entry.slug, entry.workflow_slug);
+
+  let slug: string | undefined;
+  for (const candidate of slugCandidates) {
+    const sanitized = toOptionalString(candidate);
+    if (sanitized) {
+      slug = sanitized;
+      break;
+    }
+  }
+
+  if (!slug) {
+    return null;
+  }
+
+  const config: WorkflowToolConfig = { slug };
+
+  const name = toOptionalString(entry.name);
+  if (name) {
+    config.name = name;
+  }
+
+  const descriptionCandidates = [entry.description, workflowPayload?.description];
+  for (const candidate of descriptionCandidates) {
+    const description = toOptionalString(candidate);
+    if (description) {
+      config.description = description;
+      break;
+    }
+  }
+
+  const titleCandidates = [
+    entry.title,
+    entry.workflow_title,
+    workflowPayload?.title,
+    workflowPayload?.workflow_title,
+  ];
+  for (const candidate of titleCandidates) {
+    const title = toOptionalString(candidate);
+    if (title) {
+      config.title = title;
+      break;
+    }
+  }
+
+  const identifierCandidates = [
+    entry.identifier,
+    entry.workflow_identifier,
+    workflowPayload?.identifier,
+    workflowPayload?.workflow_identifier,
+  ];
+  for (const candidate of identifierCandidates) {
+    const identifier = toOptionalString(candidate);
+    if (identifier) {
+      config.identifier = identifier;
+      break;
+    }
+  }
+
+  const workflowIdCandidates = [
+    entry.workflow_id,
+    workflowPayload?.workflow_id,
+    workflowPayload?.id,
+    entry.id,
+  ];
+  for (const candidate of workflowIdCandidates) {
+    const workflowId = toOptionalInteger(candidate);
+    if (workflowId != null) {
+      config.workflowId = workflowId;
+      if (!config.identifier) {
+        config.identifier = String(workflowId);
+      }
+      break;
+    }
+  }
+
+  const showUiCandidates = [entry.show_ui, workflowPayload?.show_ui];
+  for (const candidate of showUiCandidates) {
+    const showUi = toOptionalBoolean(candidate);
+    if (showUi !== undefined) {
+      config.showUi = showUi;
+      break;
+    }
+  }
+
+  const initialMessageCandidates = [
+    entry.initial_message,
+    entry.message,
+    workflowPayload?.initial_message,
+    workflowPayload?.message,
+  ];
+  for (const candidate of initialMessageCandidates) {
+    const initialMessage = toOptionalString(candidate);
+    if (initialMessage) {
+      config.initialMessage = initialMessage;
+      break;
+    }
+  }
+
+  return config;
+};
+
+const sanitizeWorkflowToolConfig = (
+  config: WorkflowToolConfig | null | undefined,
+): WorkflowToolConfig | null => {
+  if (!config) {
+    return null;
+  }
+
+  const slug = toOptionalString(config.slug);
+  if (!slug) {
+    return null;
+  }
+
+  const sanitized: WorkflowToolConfig = { slug };
+
+  const workflowIdNameCandidate =
+    typeof config.workflowId === "number" && Number.isInteger(config.workflowId)
+      ? `workflow_${config.workflowId}`
+      : undefined;
+
+  const toolNameCandidates = [
+    toOptionalString(config.name),
+    toOptionalString(config.identifier),
+    slug,
+    workflowIdNameCandidate,
+  ];
+
+  for (const candidate of toolNameCandidates) {
+    const normalized = normalizeWorkflowToolNameCandidate(candidate);
+    if (normalized) {
+      sanitized.name = normalized;
+      break;
+    }
+  }
+
+  if (!sanitized.name) {
+    sanitized.name =
+      normalizeWorkflowToolNameCandidate(slug) ??
+      normalizeWorkflowToolNameCandidate(`workflow_${slug}`) ??
+      "workflow_tool";
+  }
+
+  const description = toOptionalString(config.description);
+  if (description) {
+    sanitized.description = description;
+  }
+
+  const title = toOptionalString(config.title);
+  if (title) {
+    sanitized.title = title;
+  }
+
+  const identifier = toOptionalString(config.identifier);
+  if (identifier) {
+    sanitized.identifier = identifier;
+  }
+
+  const workflowId = toOptionalInteger(config.workflowId);
+  if (workflowId != null) {
+    sanitized.workflowId = workflowId;
+  }
+
+  if (config.showUi !== undefined) {
+    sanitized.showUi = Boolean(config.showUi);
+  }
+
+  const initialMessage = toOptionalString(config.initialMessage);
+  if (initialMessage) {
+    sanitized.initialMessage = initialMessage;
+  }
+
+  return sanitized;
+};
+
+const buildWorkflowToolEntry = (
+  config: WorkflowToolConfig,
+): Record<string, unknown> => {
+  const entry: Record<string, unknown> = {
+    type: "workflow",
+    slug: config.slug,
+  };
+
+  const workflowPayload: Record<string, unknown> = { slug: config.slug };
+
+  if (config.name) {
+    entry.name = config.name;
+  }
+
+  if (config.description) {
+    entry.description = config.description;
+  }
+
+  if (config.title) {
+    entry.title = config.title;
+    workflowPayload.title = config.title;
+    workflowPayload.workflow_title = config.title;
+  }
+
+  if (config.identifier) {
+    entry.identifier = config.identifier;
+    workflowPayload.identifier = config.identifier;
+    workflowPayload.workflow_identifier = config.identifier;
+  }
+
+  if (config.workflowId != null) {
+    entry.workflow_id = config.workflowId;
+    workflowPayload.workflow_id = config.workflowId;
+    workflowPayload.id = config.workflowId;
+  }
+
+  if (config.showUi !== undefined) {
+    entry.show_ui = config.showUi;
+    workflowPayload.show_ui = config.showUi;
+  }
+
+  if (config.initialMessage) {
+    entry.initial_message = config.initialMessage;
+    workflowPayload.initial_message = config.initialMessage;
+  }
+
+  entry.workflow = workflowPayload;
+
+  return entry;
+};
+
 const sanitizeWebSearchConfig = (config: WebSearchConfig | null): WebSearchConfig | null => {
   if (!config) {
     return null;
@@ -2410,6 +2739,65 @@ export const getAgentFileSearchConfig = (
     return { vector_store_slug: slug };
   }
   return null;
+};
+
+export const getAgentWorkflowTools = (
+  parameters: AgentParameters | null | undefined,
+): WorkflowToolConfig[] => {
+  if (!parameters) {
+    return [];
+  }
+
+  const tools = (parameters as Record<string, unknown>).tools;
+  if (!Array.isArray(tools)) {
+    return [];
+  }
+
+  const configs: WorkflowToolConfig[] = [];
+  for (const tool of tools) {
+    const config = extractWorkflowToolConfig(tool);
+    if (config) {
+      configs.push(config);
+    }
+  }
+
+  return configs;
+};
+
+export const setAgentWorkflowTools = (
+  parameters: AgentParameters,
+  configs: WorkflowToolConfig[],
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const tools = Array.isArray(next.tools)
+    ? ([...(next.tools as unknown[])] as unknown[])
+    : [];
+
+  const preservedTools = tools.filter((tool) => !extractWorkflowToolConfig(tool));
+
+  const normalized = new Map<string, WorkflowToolConfig>();
+  configs.forEach((config) => {
+    const sanitized = sanitizeWorkflowToolConfig(config);
+    if (!sanitized) {
+      return;
+    }
+    normalized.set(sanitized.slug, sanitized);
+  });
+
+  const sanitizedConfigs = Array.from(normalized.values()).sort((a, b) =>
+    a.slug.localeCompare(b.slug),
+  );
+
+  if (sanitizedConfigs.length === 0) {
+    if (preservedTools.length === 0) {
+      const { tools: _ignored, ...rest } = next as Record<string, unknown>;
+      return stripEmpty(rest);
+    }
+    return { ...next, tools: preservedTools };
+  }
+
+  const workflowEntries = sanitizedConfigs.map(buildWorkflowToolEntry);
+  return { ...next, tools: [...preservedTools, ...workflowEntries] };
 };
 
 export const getAgentComputerUseConfig = (

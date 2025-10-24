@@ -80,6 +80,7 @@ const renderSection = (overrides: Partial<Parameters<typeof AgentInspectorSectio
         onAgentWeatherToolChange={vi.fn()}
         onAgentWidgetValidationToolChange={vi.fn()}
         onAgentWorkflowValidationToolChange={vi.fn()}
+        onAgentWorkflowToolToggle={vi.fn()}
         {...overrides}
       />
     </I18nProvider>,
@@ -123,5 +124,16 @@ describe("AgentInspectorSection", () => {
     await userEvent.click(toggle);
 
     expect(onAgentWorkflowValidationToolChange).toHaveBeenCalledWith("agent-1", true);
+  });
+
+  it("calls onAgentWorkflowToolToggle when enabling a workflow tool", async () => {
+    const onAgentWorkflowToolToggle = vi.fn();
+    renderSection({ onAgentWorkflowToolToggle });
+
+    const toggle = screen.getByRole("switch", { name: "Secondary" });
+
+    await userEvent.click(toggle);
+
+    expect(onAgentWorkflowToolToggle).toHaveBeenCalledWith("agent-1", "secondary", true);
   });
 });

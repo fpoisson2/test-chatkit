@@ -43,6 +43,7 @@ import {
 import { resolveAgentParameters, resolveStateParameters } from "../../utils/agentPresets";
 import {
   getAgentFileSearchConfig,
+  getAgentWorkflowTools,
   getAgentResponseFormat,
   setAgentContinueOnError,
   setAgentDisplayResponseInChat,
@@ -69,6 +70,7 @@ import {
   setAgentTopP,
   setAgentWeatherToolEnabled,
   setAgentWorkflowValidationToolEnabled,
+  setAgentWorkflowTools,
   setAgentWidgetValidationToolEnabled,
   setAgentWebSearchConfig,
   setVoiceAgentVoice,
@@ -102,6 +104,7 @@ import {
   setWidgetNodeVariables,
   createVoiceAgentParameters,
   resolveVoiceAgentParameters,
+  type WorkflowToolConfig,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
@@ -3026,6 +3029,63 @@ const WorkflowBuilderPage = () => {
       });
     },
     [updateNodeData],
+  );
+
+  const handleAgentWorkflowToolToggle = useCallback(
+    (nodeId: string, slug: string, enabled: boolean) => {
+      const normalizedSlug = slug.trim();
+      if (!normalizedSlug) {
+        return;
+      }
+
+      updateNodeData(nodeId, (data) => {
+        if (!isAgentKind(data.kind)) {
+          return data;
+        }
+
+        const existingConfigs = getAgentWorkflowTools(data.parameters);
+        const remainingConfigs = existingConfigs.filter(
+          (config) => config.slug !== normalizedSlug,
+        );
+
+        let nextConfigs = remainingConfigs;
+        if (enabled) {
+          const workflow = workflows.find(
+            (candidate) => candidate.slug === normalizedSlug,
+          );
+          if (!workflow) {
+            return data;
+          }
+
+          const displayName = workflow.display_name?.trim();
+          const enriched: WorkflowToolConfig = {
+            slug: workflow.slug,
+            name: workflow.slug,
+            identifier: workflow.slug,
+            workflowId: workflow.id,
+          };
+
+          if (displayName) {
+            enriched.title = displayName;
+          }
+
+          if (workflow.description?.trim()) {
+            enriched.description = workflow.description.trim();
+          }
+
+          nextConfigs = [...remainingConfigs, enriched];
+        }
+
+        const nextParameters = setAgentWorkflowTools(data.parameters, nextConfigs);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData, workflows],
   );
 
   const handleVoiceAgentVoiceChange = useCallback(
@@ -6500,6 +6560,7 @@ const WorkflowBuilderPage = () => {
             onAgentWorkflowValidationToolChange={
               handleAgentWorkflowValidationToolChange
             }
+            onAgentWorkflowToolToggle={handleAgentWorkflowToolToggle}
             vectorStores={vectorStores}
             vectorStoresLoading={vectorStoresLoading}
             vectorStoresError={vectorStoresError}

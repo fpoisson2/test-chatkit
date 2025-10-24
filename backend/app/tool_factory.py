@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
+import unicodedata
 from collections.abc import Mapping
 from dataclasses import field
 from typing import TYPE_CHECKING, Any
@@ -58,6 +60,34 @@ ImageGenerationTool = _AgentImageGenerationTool
 _SUPPORTED_IMAGE_OUTPUT_FORMATS = frozenset({"png", "jpeg", "webp"})
 
 _WEATHER_FUNCTION_TOOL_ALIASES = {"fetch_weather", "get_weather"}
+
+_WORKFLOW_TOOL_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
+def _normalize_workflow_tool_name(candidate: Any) -> str | None:
+    """Normalise un nom de tool workflow pour satisfaire le pattern OpenAI."""
+
+    if not isinstance(candidate, str):
+        return None
+
+    trimmed = candidate.strip()
+    if not trimmed:
+        return None
+
+    if _WORKFLOW_TOOL_NAME_PATTERN.fullmatch(trimmed):
+        return trimmed
+
+    normalized = unicodedata.normalize("NFKD", trimmed)
+    without_marks = "".join(
+        ch for ch in normalized if unicodedata.category(ch) != "Mn"
+    )
+    replaced = re.sub(r"[^0-9A-Za-z_-]+", "_", without_marks)
+    collapsed = re.sub(r"_+", "_", replaced).strip("_")
+
+    if collapsed and _WORKFLOW_TOOL_NAME_PATTERN.fullmatch(collapsed):
+        return collapsed
+
+    return None
 _WEATHER_FUNCTION_TOOL_DEFAULT_DESCRIPTION = (
     "Récupère les conditions météorologiques actuelles via le service Python interne."
 )
@@ -876,14 +906,37 @@ def build_workflow_tool(payload: Any) -> FunctionTool | None:
     else:
         default_message = str(default_message)
 
-    raw_name = config.get("name")
-    if isinstance(raw_name, str) and raw_name.strip():
-        tool_name = raw_name.strip()
-    else:
-        sanitized_slug = "".join(
-            ch if ch.isalnum() else "_" for ch in slug.lower()
-        ).strip("_")
-        tool_name = f"run_{sanitized_slug or 'workflow'}"
+    name_candidates: list[Any] = [
+        config.get("name"),
+        config.get("identifier"),
+        config.get("workflow_identifier"),
+    ]
+
+    workflow_id_candidate = config.get("workflow_id") or config.get("id")
+    if isinstance(workflow_id_candidate, int) and workflow_id_candidate > 0:
+        name_candidates.append(f"workflow_{workflow_id_candidate}")
+    elif isinstance(workflow_id_candidate, str):
+        trimmed_id = workflow_id_candidate.strip()
+        if trimmed_id:
+            name_candidates.append(trimmed_id)
+
+    name_candidates.extend([slug, f"workflow_{slug}"])
+
+    tool_name: str | None = None
+    for candidate in name_candidates:
+        normalized_name = _normalize_workflow_tool_name(candidate)
+        if normalized_name:
+            tool_name = normalized_name
+            break
+
+    if tool_name is None:
+        sanitized_slug = re.sub(r"[^0-9A-Za-z_-]+", "_", slug.lower()).strip("_")
+        fallback_name = f"run_{sanitized_slug or 'workflow'}"
+        tool_name = (
+            fallback_name
+            if _WORKFLOW_TOOL_NAME_PATTERN.fullmatch(fallback_name)
+            else "workflow_tool"
+        )
 
     raw_description = config.get("description")
     if isinstance(raw_description, str) and raw_description.strip():
