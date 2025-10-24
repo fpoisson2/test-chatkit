@@ -11,3 +11,4 @@
 /frontend/dist
 *.pyc
 /.pip-cache
+logs/

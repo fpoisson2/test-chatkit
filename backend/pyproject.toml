@@ -4,16 +4,15 @@ version = "0.1.0"
 description = "ChatKit FastAPI session backend and React scaffold"
 requires-python = ">=3.10"
 dependencies = [
-    "agents[litellm]",
     "fastapi",
     "openai",
     "openai-agents[litellm]",
-    "openai-chatkit @ file:../chatkit-python",
+    "openai-chatkit @ file:///home/fpoisson/Documents/GitHub/test-chatkit/chatkit-python",
     "uvicorn[standard]",
     "python-dotenv",
     "httpx",
     "sqlalchemy",
-    "psycopg[binary]",
+    "psycopg2-binary",
     "PyJWT",
     "email-validator",
     "pgvector",
@@ -58,6 +57,9 @@ files = ["app", "tests", "server.py"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
 
 [build-system]
 requires = ["hatchling"]

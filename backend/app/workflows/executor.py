@@ -2340,6 +2340,7 @@ async def run_workflow(
                 "slug": current_node.slug,
                 "input_item_id": current_input_item_id,
                 "type": "voice",
+                "voice_event": event_payload,  # Stocker l'événement pour que le frontend puisse le récupérer
             }
             conversation_snapshot = _clone_conversation_history_snapshot(
                 conversation_history

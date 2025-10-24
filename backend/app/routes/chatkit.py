@@ -42,6 +42,10 @@ from ..chatkit_sessions import (
     proxy_chatkit_request,
     summarize_payload_shape,
 )
+from ..chatkit_server.context import (
+    _get_wait_state_metadata,
+    _set_wait_state_metadata,
+)
 from ..config import get_settings
 from ..database import get_session
 from ..dependencies import get_current_user, get_optional_user
@@ -362,6 +366,194 @@ async def create_voice_session(
         prompt_version=voice_settings.prompt_version,
         prompt_variables=voice_settings.prompt_variables,
     )
+
+
+@router.get("/api/chatkit/voice/pending/{thread_id}")
+async def get_pending_voice_session(
+    thread_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """Récupère une session vocale en attente pour le thread donné."""
+    try:
+        server = get_chatkit_server()
+    except (ModuleNotFoundError, ImportError) as exc:
+        logger.error("SDK ChatKit introuvable", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "ChatKit SDK introuvable"},
+        ) from exc
+
+    # Créer le context pour le store
+    context = _build_request_context(current_user, request)
+
+    try:
+        # Charger le thread depuis le store
+        thread = await server.store.load_thread(thread_id, context)
+    except NotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Thread introuvable"},
+        )
+    except Exception as exc:
+        logger.exception("Erreur lors de la récupération du thread", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "Erreur lors de la récupération du thread"},
+        ) from exc
+
+    # Récupérer le wait_state metadata
+    wait_state = _get_wait_state_metadata(thread)
+
+    if not wait_state:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Aucune session en attente"},
+        )
+
+    # Vérifier si c'est une session vocale
+    if wait_state.get("type") != "voice":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Aucune session vocale en attente"},
+        )
+
+    # Récupérer l'événement voice
+    voice_event = wait_state.get("voice_event")
+    if not voice_event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Événement vocal introuvable"},
+        )
+
+    # Vérifier si l'événement a déjà été consommé
+    if wait_state.get("voice_event_consumed"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Session vocale déjà démarrée"},
+        )
+
+    # Marquer l'événement comme consommé pour éviter les redémarrages
+    updated_wait_state = dict(wait_state)
+    updated_wait_state["voice_event_consumed"] = True
+    _set_wait_state_metadata(thread, updated_wait_state)
+
+    # Sauvegarder le thread avec les métadonnées mises à jour
+    try:
+        await server.store.save_thread(thread, context)
+    except Exception as exc:
+        logger.exception("Erreur lors de la sauvegarde du thread", exc_info=exc)
+        # Continue quand même pour ne pas bloquer le démarrage de la session
+
+    logger.info(
+        "Session vocale en attente récupérée (user=%s, thread=%s)",
+        current_user.id,
+        thread_id,
+    )
+
+    return voice_event
+
+
+@router.post("/api/chatkit/voice/transcripts/{thread_id}")
+async def submit_voice_transcripts(
+    thread_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """Soumet les transcriptions vocales pour continuer le workflow."""
+    try:
+        server = get_chatkit_server()
+    except (ModuleNotFoundError, ImportError) as exc:
+        logger.error("SDK ChatKit introuvable", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "ChatKit SDK introuvable"},
+        ) from exc
+
+    # Récupérer les transcriptions du body
+    try:
+        body = await request.json()
+        transcripts = body.get("transcripts", [])
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "Corps de requête invalide"},
+        ) from exc
+
+    if not isinstance(transcripts, list):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "Les transcriptions doivent être une liste"},
+        )
+
+    # Créer le context pour le store
+    context = _build_request_context(current_user, request)
+
+    try:
+        # Charger le thread depuis le store
+        thread = await server.store.load_thread(thread_id, context)
+    except NotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Thread introuvable"},
+        )
+    except Exception as exc:
+        logger.exception("Erreur lors de la récupération du thread", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "Erreur lors de la récupération du thread"},
+        ) from exc
+
+    # Récupérer le wait_state metadata
+    wait_state = _get_wait_state_metadata(thread)
+
+    if not wait_state or wait_state.get("type") != "voice":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Aucune session vocale en attente"},
+        )
+
+    # Mettre à jour le wait_state avec les transcriptions
+    updated_wait_state = dict(wait_state)
+    updated_wait_state["voice_transcripts"] = transcripts
+    _set_wait_state_metadata(thread, updated_wait_state)
+
+    # Sauvegarder le thread
+    try:
+        await server.store.save_thread(thread, context)
+    except Exception as exc:
+        logger.exception("Erreur lors de la sauvegarde des transcriptions", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "Erreur lors de la sauvegarde des transcriptions"},
+        ) from exc
+
+    logger.info(
+        "Transcriptions vocales soumises (user=%s, thread=%s, count=%d)",
+        current_user.id,
+        thread_id,
+        len(transcripts),
+    )
+
+    # Déclencher la continuation du workflow en soumettant un message vide
+    # Cela forcera le workflow à réévaluer le wait_state et continuer
+    try:
+        await server.post(
+            {
+                "type": "user_message",
+                "thread_id": thread_id,
+                "message": {"content": []},
+            },
+            context,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Échec du déclenchement de la continuation du workflow",
+            exc_info=exc,
+        )
+        # Ne pas échouer si on ne peut pas déclencher - le prochain message le fera
+
+    return {"status": "ok", "transcripts_count": len(transcripts)}
 
 
 @router.api_route(
