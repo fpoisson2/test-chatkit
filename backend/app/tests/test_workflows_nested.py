@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from agents import Agent
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
 CHATKIT_SDK_ROOT = ROOT_DIR / "chatkit-python"
@@ -78,6 +79,7 @@ class _Transition:
 class _DummyStore:
     def __init__(self) -> None:
         self._counter = 0
+        self.saved_threads: list[ThreadMetadata] = []
 
     def generate_item_id(
         self, item_type: str, thread: ThreadMetadata, context: Any
@@ -88,6 +90,11 @@ class _DummyStore:
     def generate_thread_id(self, context: Any) -> str:
         self._counter += 1
         return f"thread-{self._counter}"
+
+    async def save_thread(
+        self, thread: ThreadMetadata, context: Any
+    ) -> None:  # pragma: no cover - simple stockage en mémoire
+        self.saved_threads.append(thread.model_copy(deep=True))
 
 
 def _build_agent_context() -> AgentContext[Any]:
@@ -318,3 +325,112 @@ async def test_nested_workflow_conversation_history_propagates() -> None:
         )
         for entry in conversation_history
     )
+
+
+@pytest.mark.anyio
+async def test_run_workflow_reuses_previous_response_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor_module = import_module("backend.app.workflows.executor")
+
+    recorded_previous_ids: list[str | None] = []
+    call_counter = {"value": 0}
+
+    class _StubRunItem:
+        def __init__(self, label: str) -> None:
+            self._label = label
+
+        def to_input_item(self) -> dict[str, Any]:
+            return {
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": f"Sortie {self._label}",
+                    }
+                ],
+            }
+
+    class _StubRunResult:
+        def __init__(self, response_id: str) -> None:
+            self.last_response_id = response_id
+            self.new_items = [_StubRunItem(response_id)]
+            self.final_output = {"message": f"output-{response_id}"}
+
+    def _fake_run_streamed(cls, *args, **kwargs):
+        recorded_previous_ids.append(kwargs.get("previous_response_id"))
+        call_counter["value"] += 1
+        return _StubRunResult(f"resp-{call_counter['value']}")
+
+    async def _fake_stream_agent_response(*_args, **_kwargs):
+        if False:  # pragma: no cover - générateur artificiel
+            yield None
+        return
+
+    async def _fake_ingest_workflow_step(*_args, **_kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(
+        executor_module.Runner,
+        "run_streamed",
+        classmethod(_fake_run_streamed),
+    )
+    monkeypatch.setattr(
+        executor_module,
+        "stream_agent_response",
+        _fake_stream_agent_response,
+    )
+    monkeypatch.setattr(
+        executor_module,
+        "ingest_workflow_step",
+        _fake_ingest_workflow_step,
+    )
+
+    from backend.app.chatkit.agent_registry import AGENT_BUILDERS
+
+    def _build_test_agent(_overrides: dict[str, Any] | None = None) -> Agent:
+        return Agent(name="Test agent", model="gpt-4o-mini")
+
+    monkeypatch.setitem(AGENT_BUILDERS, "agent", _build_test_agent)
+
+    start = _Step(slug="start", kind="start", position=1)
+    agent_step = _Step(
+        slug="agent",
+        kind="agent",
+        position=2,
+        agent_key="agent",
+    )
+    end = _Step(slug="end", kind="end", position=3)
+    transitions = [
+        _Transition(source_step=start, target_step=agent_step, id=1),
+        _Transition(source_step=agent_step, target_step=end, id=2),
+    ]
+    definition = _build_definition(
+        workflow_id=99,
+        slug="response-loop",
+        steps=[start, agent_step, end],
+        transitions=transitions,
+        version_id=990,
+    )
+    service = _FakeWorkflowService([definition])
+
+    context = _build_agent_context()
+    context.previous_response_id = "initial-response"
+
+    payload = WorkflowInput(
+        input_as_text="Bonjour",
+        auto_start_was_triggered=False,
+        auto_start_assistant_message=None,
+        source_item_id=None,
+    )
+
+    await run_workflow(payload, agent_context=context, workflow_service=service)
+    await run_workflow(payload, agent_context=context, workflow_service=service)
+
+    assert recorded_previous_ids == ["initial-response", "resp-1"]
+    assert context.previous_response_id == "resp-2"
+    assert context.thread.metadata.get("previous_response_id") == "resp-2"
+    saved_threads = getattr(context.store, "saved_threads", [])
+    assert saved_threads
+    assert saved_threads[-1].metadata.get("previous_response_id") == "resp-2"

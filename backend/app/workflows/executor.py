@@ -1723,6 +1723,9 @@ async def run_workflow(
             input=[*conversation_history],
             run_config=_workflow_run_config(response_format_override),
             context=run_context,
+            previous_response_id=getattr(
+                agent_context, "previous_response_id", None
+            ),
         )
         try:
             async for event in stream_agent_response(agent_context, result):
@@ -1751,6 +1754,44 @@ async def run_workflow(
                 await _inspect_event_for_images(event)
         except Exception as exc:  # pragma: no cover
             raise_step_error(step_key, title, exc)
+
+        last_response_id = getattr(result, "last_response_id", None)
+        if last_response_id is not None:
+            agent_context.previous_response_id = last_response_id
+            thread_metadata = getattr(agent_context, "thread", None)
+            should_persist_thread = False
+            if thread_metadata is not None:
+                existing_metadata = getattr(thread_metadata, "metadata", None)
+                if isinstance(existing_metadata, Mapping):
+                    stored_response_id = existing_metadata.get("previous_response_id")
+                    if stored_response_id != last_response_id:
+                        existing_metadata["previous_response_id"] = last_response_id
+                        should_persist_thread = True
+                else:
+                    thread_metadata.metadata = {
+                        "previous_response_id": last_response_id
+                    }
+                    should_persist_thread = True
+
+            store = getattr(agent_context, "store", None)
+            request_context = getattr(agent_context, "request_context", None)
+            if (
+                should_persist_thread
+                and store is not None
+                and request_context is not None
+                and hasattr(store, "save_thread")
+            ):
+                try:
+                    await store.save_thread(  # type: ignore[arg-type]
+                        thread_metadata,
+                        context=request_context,
+                    )
+                except Exception as exc:  # pragma: no cover - persistance best effort
+                    logger.warning(
+                        "Impossible d'enregistrer previous_response_id pour le fil %s",
+                        getattr(thread_metadata, "id", "<inconnu>"),
+                        exc_info=exc,
+                    )
 
         conversation_history.extend([item.to_input_item() for item in result.new_items])
         if result.new_items:
@@ -2148,9 +2189,12 @@ async def run_workflow(
                     transcripts_payload if is_sequence and not is_textual else []
                 )
 
-                # Vérifier si les messages ont déjà été créés (via l'endpoint /transcripts)
-                # Si oui, ne pas les créer à nouveau pour éviter les doublons
-                voice_messages_created = voice_wait_state.get("voice_messages_created", False)
+                # Vérifier si les messages ont déjà été créés (via l'endpoint
+                # /transcripts). Si oui, ne pas les créer à nouveau pour éviter
+                # les doublons.
+                voice_messages_created = voice_wait_state.get(
+                    "voice_messages_created", False
+                )
 
                 for entry in iterable:
                     if not isinstance(entry, Mapping):
@@ -2348,7 +2392,8 @@ async def run_workflow(
                 "slug": current_node.slug,
                 "input_item_id": current_input_item_id,
                 "type": "voice",
-                "voice_event": event_payload,  # Stocker l'événement pour que le frontend puisse le récupérer
+                # Stocker l'événement pour que le frontend puisse le récupérer.
+                "voice_event": event_payload,
             }
             conversation_snapshot = _clone_conversation_history_snapshot(
                 conversation_history
@@ -2667,14 +2712,20 @@ async def run_workflow(
                 should_append_output_text = True
                 if conversation_history:
                     last_entry = conversation_history[-1]
-                    if isinstance(last_entry, Mapping) and last_entry.get("role") == "assistant":
+                    if (
+                        isinstance(last_entry, Mapping)
+                        and last_entry.get("role") == "assistant"
+                    ):
                         contents = last_entry.get("content")
                         if isinstance(contents, Sequence):
                             for content_item in contents:
                                 if not isinstance(content_item, Mapping):
                                     continue
                                 text_value = content_item.get("text")
-                                if isinstance(text_value, str) and text_value.strip() == output_text.strip():
+                                if (
+                                    isinstance(text_value, str)
+                                    and text_value.strip() == output_text.strip()
+                                ):
                                     should_append_output_text = False
                                     break
                 if should_append_output_text:
