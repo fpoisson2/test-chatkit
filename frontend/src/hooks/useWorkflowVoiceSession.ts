@@ -444,9 +444,9 @@ export const useWorkflowVoiceSession = ({
         disconnect();
         setIsListening(false);
         setStatus("error");
-        const message =
-          error instanceof Error ? error.message : "Impossible de démarrer la session vocale";
-        onError?.(message);
+        if (error instanceof Error && error.message) {
+          onError?.(error.message);
+        }
         console.error("[WorkflowVoiceSession] Failed to start voice session:", error);
       }
     },
@@ -501,11 +501,13 @@ export const useWorkflowVoiceSession = ({
         }
 
         if (!finalized) {
-          onError?.("Impossible de finaliser la session vocale");
+          console.warn("[WorkflowVoiceSession] Voice session could not be finalized");
         }
       } catch (error) {
         console.error("[WorkflowVoiceSession] Failed to finalize voice session:", error);
-        onError?.("Erreur lors de la finalisation de la session vocale");
+        if (error instanceof Error && error.message) {
+          onError?.(error.message);
+        }
       }
     }
 
