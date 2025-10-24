@@ -154,6 +154,9 @@ export function MyChat() {
   const { stopVoiceSession, status: voiceStatus, isListening: voiceIsListening } = useWorkflowVoiceSession({
     threadId: initialThreadId,
     onError: reportError,
+    onTranscriptsUpdated: () => {
+      requestRefreshRef.current?.("[Voice] Nouvelles transcriptions");
+    },
   });
 
   // Garder stopVoiceSession dans un ref pour éviter les dépendances circulaires

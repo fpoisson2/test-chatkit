@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import logging
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import (
     APIRouter,
@@ -19,6 +22,13 @@ from sqlalchemy.orm import Session
 
 try:  # pragma: no cover - dépendance optionnelle pour les tests
     from chatkit.server import StreamingResult
+    from chatkit.types import (
+        AssistantMessageContent,
+        AssistantMessageItem,
+        InferenceOptions,
+        UserMessageItem,
+        UserMessageTextContent,
+    )
 except (
     ModuleNotFoundError
 ):  # pragma: no cover - utilisé uniquement quand ChatKit n'est pas installé
@@ -27,6 +37,8 @@ except (
         """Bouchon minimal utilisé lorsque le SDK ChatKit n'est pas disponible."""
 
         pass
+
+    AssistantMessageContent = AssistantMessageItem = InferenceOptions = UserMessageItem = UserMessageTextContent = None  # type: ignore[assignment]
 
 
 if TYPE_CHECKING:  # pragma: no cover - uniquement pour l'auto-complétion
@@ -460,7 +472,7 @@ async def submit_voice_transcripts(
     request: Request,
     current_user: User = Depends(get_current_user),
 ):
-    """Soumet les transcriptions vocales pour continuer le workflow."""
+    """Ajoute des transcriptions vocales au thread en temps réel (sans déclencher la continuation du workflow)."""
     try:
         server = get_chatkit_server()
     except (ModuleNotFoundError, ImportError) as exc:
@@ -480,11 +492,176 @@ async def submit_voice_transcripts(
             detail={"error": "Corps de requête invalide"},
         ) from exc
 
-    if not isinstance(transcripts, list):
+    # Créer le context pour le store
+    context = _build_request_context(current_user, request)
+
+    try:
+        # Charger le thread depuis le store
+        thread = await server.store.load_thread(thread_id, context)
+    except NotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Thread introuvable"},
+        )
+    except Exception as exc:
+        logger.exception("Erreur lors de la récupération du thread", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "Erreur lors de la récupération du thread"},
+        ) from exc
+
+    # Vérifier qu'une session vocale est active
+    wait_state = _get_wait_state_metadata(thread)
+    if not wait_state or wait_state.get("type") != "voice":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "Aucune session vocale en attente"},
+        )
+
+    if not all(
+        (
+            AssistantMessageContent,
+            AssistantMessageItem,
+            InferenceOptions,
+            UserMessageItem,
+            UserMessageTextContent,
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error": "ChatKit SDK incomplet: types de messages indisponibles"},
+        )
+
+    # Créer les messages directement dans le thread et accumuler les transcriptions
+    messages_added = 0
+    new_wait_state_transcripts: list[dict[str, Any]] = []
+    for transcript in transcripts:
+        if not isinstance(transcript, dict):
+            continue
+
+        role_raw = transcript.get("role")
+        if isinstance(role_raw, str):
+            normalized_role = role_raw.strip().lower()
+        else:
+            normalized_role = ""
+
+        text_raw = transcript.get("text")
+        text = text_raw.strip() if isinstance(text_raw, str) else ""
+        if not text or normalized_role not in {"user", "assistant"}:
+            continue
+
+        status_raw = transcript.get("status")
+        normalized_status = status_raw.strip() if isinstance(status_raw, str) else None
+
+        now = datetime.now(timezone.utc)
+        item_id = f"msg_{uuid.uuid4()}"
+
+        wait_state_entry: dict[str, Any] = {
+            key: value for key, value in transcript.items() if key not in {"role", "text"}
+        }
+        wait_state_entry["role"] = normalized_role
+        wait_state_entry["text"] = text
+        if normalized_status:
+            wait_state_entry["status"] = normalized_status
+        elif "status" in wait_state_entry:
+            del wait_state_entry["status"]
+
+        if normalized_role == "user":
+            user_message = UserMessageItem(
+                id=item_id,
+                thread_id=thread_id,
+                created_at=now,
+                content=[UserMessageTextContent(text=text)],
+                attachments=[],
+                inference_options=InferenceOptions(),
+                quoted_text=None,
+            )
+            await server.store.add_thread_item(thread_id, user_message, context)
+        else:
+            assistant_message = AssistantMessageItem(
+                id=item_id,
+                thread_id=thread_id,
+                created_at=now,
+                content=[AssistantMessageContent(text=text)],
+            )
+            await server.store.add_thread_item(thread_id, assistant_message, context)
+
+        messages_added += 1
+        new_wait_state_transcripts.append(wait_state_entry)
+
+    if new_wait_state_transcripts:
+        existing_transcripts = wait_state.get("voice_transcripts")
+        accumulated: list[dict[str, Any]] = []
+        if isinstance(existing_transcripts, list):
+            for entry in existing_transcripts:
+                if not isinstance(entry, dict):
+                    continue
+                role_entry = entry.get("role")
+                text_entry = entry.get("text")
+                status_entry = entry.get("status")
+                if not isinstance(role_entry, str) or not isinstance(text_entry, str):
+                    continue
+                normalized_entry: dict[str, Any] = dict(entry)
+                normalized_entry["role"] = role_entry.strip().lower()
+                normalized_entry["text"] = text_entry.strip()
+                if isinstance(status_entry, str) and status_entry.strip():
+                    normalized_entry["status"] = status_entry.strip()
+                elif "status" in normalized_entry:
+                    del normalized_entry["status"]
+                accumulated.append(normalized_entry)
+
+        accumulated.extend(new_wait_state_transcripts)
+        updated_wait_state = dict(wait_state)
+        updated_wait_state["voice_transcripts"] = accumulated
+        _set_wait_state_metadata(thread, updated_wait_state)
+
+        try:
+            await server.store.save_thread(thread, context)
+        except Exception as exc:
+            logger.exception(
+                "Erreur lors de la sauvegarde des métadonnées de transcription", exc_info=exc
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"error": "Erreur lors de la mise à jour des métadonnées"},
+            ) from exc
+
+    if messages_added > 0:
+        logger.info(
+            "Transcriptions ajoutées au thread (user=%s, thread=%s, messages=%d)",
+            current_user.id,
+            thread_id,
+            messages_added,
+        )
+
+    return {"status": "ok", "messages_added": messages_added}
+
+
+@router.post("/api/chatkit/voice/finalize/{thread_id}")
+async def finalize_voice_session(
+    thread_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """Finalise la session vocale avec les transcriptions et déclenche la continuation du workflow."""
+    try:
+        server = get_chatkit_server()
+    except (ModuleNotFoundError, ImportError) as exc:
+        logger.error("SDK ChatKit introuvable", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "ChatKit SDK introuvable"},
+        ) from exc
+
+    # Récupérer les transcriptions du body (peut être vide si déjà envoyées via /transcripts)
+    try:
+        body = await request.json()
+        transcripts = body.get("transcripts", [])
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"error": "Les transcriptions doivent être une liste"},
-        )
+            detail={"error": "Corps de requête invalide"},
+        ) from exc
 
     # Créer le context pour le store
     context = _build_request_context(current_user, request)
@@ -513,12 +690,16 @@ async def submit_voice_transcripts(
             detail={"error": "Aucune session vocale en attente"},
         )
 
-    # Mettre à jour le wait_state avec les transcriptions
+    # Marquer que les messages vocaux ont déjà été créés (via /transcripts)
+    # Le workflow ne devra donc pas les créer à nouveau
     updated_wait_state = dict(wait_state)
-    updated_wait_state["voice_transcripts"] = transcripts
+    updated_wait_state["voice_messages_created"] = True
+    if transcripts:
+        # Si des transcriptions sont quand même envoyées (pour retrocompatibilité), les stocker
+        updated_wait_state["voice_transcripts"] = transcripts
     _set_wait_state_metadata(thread, updated_wait_state)
 
-    # Sauvegarder le thread
+    # Sauvegarder le thread avec les transcriptions
     try:
         await server.store.save_thread(thread, context)
     except Exception as exc:
@@ -529,31 +710,63 @@ async def submit_voice_transcripts(
         ) from exc
 
     logger.info(
-        "Transcriptions vocales soumises (user=%s, thread=%s, count=%d)",
+        "Finalisation de la session vocale (user=%s, thread=%s)",
         current_user.id,
         thread_id,
-        len(transcripts),
     )
 
-    # Déclencher la continuation du workflow en soumettant un message vide
+    # Déclencher la continuation du workflow avec un message vide
     # Cela forcera le workflow à réévaluer le wait_state et continuer
-    try:
-        await server.post(
-            {
-                "type": "user_message",
+    post_callable = getattr(server, "post", None)
+    if callable(post_callable):
+        try:
+            await post_callable(
+                {
+                    "type": "user_message",
+                    "thread_id": thread_id,
+                    "message": {"content": []},
+                },
+                context,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Échec du déclenchement de la continuation du workflow",
+                exc_info=exc,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"error": "Erreur lors de la continuation du workflow"},
+            ) from exc
+    else:
+        resume_request = {
+            "type": "threads.add_user_message",
+            "params": {
                 "thread_id": thread_id,
-                "message": {"content": []},
+                "input": {
+                    "content": [],
+                    "attachments": [],
+                    "quoted_text": None,
+                    "inference_options": {},
+                },
             },
-            context,
-        )
-    except Exception as exc:
-        logger.warning(
-            "Échec du déclenchement de la continuation du workflow",
-            exc_info=exc,
-        )
-        # Ne pas échouer si on ne peut pas déclencher - le prochain message le fera
+        }
+        try:
+            result = await server.process(json.dumps(resume_request), context)
+            if isinstance(result, StreamingResult):
+                async for _ in result:
+                    pass
+        except Exception as exc:
+            logger.warning(
+                "Impossible de reprendre le workflow via ChatKitServer.process pour le thread %s",
+                thread_id,
+                exc_info=exc,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"error": "Erreur lors de la continuation du workflow"},
+            ) from exc
 
-    return {"status": "ok", "transcripts_count": len(transcripts)}
+    return {"status": "ok"}
 
 
 @router.api_route(

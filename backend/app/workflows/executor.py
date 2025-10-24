@@ -2148,6 +2148,10 @@ async def run_workflow(
                     transcripts_payload if is_sequence and not is_textual else []
                 )
 
+                # Vérifier si les messages ont déjà été créés (via l'endpoint /transcripts)
+                # Si oui, ne pas les créer à nouveau pour éviter les doublons
+                voice_messages_created = voice_wait_state.get("voice_messages_created", False)
+
                 for entry in iterable:
                     if not isinstance(entry, Mapping):
                         continue
@@ -2184,8 +2188,10 @@ async def run_workflow(
                                 ],
                             }
                         )
+                        # Ne créer le message que s'il n'a pas déjà été ajouté au thread
                         if (
-                            on_stream_event is not None
+                            not voice_messages_created
+                            and on_stream_event is not None
                             and agent_context.thread is not None
                         ):
                             user_item = UserMessageItem(
@@ -2215,8 +2221,10 @@ async def run_workflow(
                                 ],
                             }
                         )
+                        # Ne créer le message que s'il n'a pas déjà été ajouté au thread
                         if (
-                            on_stream_event is not None
+                            not voice_messages_created
+                            and on_stream_event is not None
                             and agent_context.thread is not None
                         ):
                             assistant_item = AssistantMessageItem(

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { RealtimeItem } from "@openai/agents/realtime";
 
 import { useAuth } from "../auth";
+import { makeApiEndpointCandidates } from "../utils/backend";
 import { useRealtimeSession } from "../voice/useRealtimeSession";
 import type { VoiceSessionSecret } from "../voice/useVoiceSecret";
 
@@ -30,6 +32,26 @@ type VoiceSessionEventPayload = {
 type UseWorkflowVoiceSessionParams = {
   threadId: string | null;
   onError?: (message: string) => void;
+  onTranscriptsUpdated?: () => void;
+};
+
+type TranscriptEntry = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  status?: string;
+};
+
+type TranscriptPayload = {
+  role: "user" | "assistant";
+  text: string;
+  status?: string;
+};
+
+type TranscriptSnapshot = {
+  payload: TranscriptPayload[];
+  userSignature: string;
+  assistantSignature: string;
 };
 
 const POLL_INTERVAL_MS = 2000; // Poll every 2 seconds
@@ -64,32 +86,51 @@ const resolveExpiresAt = (
 export const useWorkflowVoiceSession = ({
   threadId,
   onError,
+  onTranscriptsUpdated,
 }: UseWorkflowVoiceSessionParams) => {
   const { token } = useAuth();
   const [status, setStatus] = useState<VoiceSessionStatus>("idle");
   const [isListening, setIsListening] = useState(false);
+  const [transcripts, setTranscripts] = useState<TranscriptEntry[]>([]);
   const processedSessionsRef = useRef<Set<string>>(new Set());
   const currentSessionRef = useRef<string | null>(null);
   const pollingIntervalRef = useRef<number | null>(null);
-  const conversationHistoryRef = useRef<Array<{ role: string; text: string }>>([]);
-  const transcriptsSentRef = useRef(false);
+  const conversationHistoryRef = useRef<TranscriptEntry[]>([]);
+  const lastSubmittedSignaturesRef = useRef<{ user: string | null; assistant: string | null }>({
+    user: null,
+    assistant: null,
+  });
+  const pendingSnapshotRef = useRef<TranscriptSnapshot | null>(null);
+  const pendingForceRef = useRef(false);
+  const uploadInFlightRef = useRef(false);
 
-  const handleHistoryUpdated = useCallback(
-    (history: Array<{ role?: string; formatted?: { transcript?: string; text?: string } }>) => {
-      // Collecter les transcriptions de la conversation vocale
-      const transcripts: Array<{ role: string; text: string }> = [];
-
-      for (const item of history) {
-        const role = item.role;
-        const text = item.formatted?.transcript || item.formatted?.text;
-
-        if (role && text && (role === "user" || role === "assistant")) {
-          transcripts.push({ role, text });
-        }
+  const createSnapshot = useCallback(
+    (entries: TranscriptEntry[]): TranscriptSnapshot | null => {
+      if (entries.length === 0) {
+        return null;
       }
 
-      conversationHistoryRef.current = transcripts;
-      console.log("[WorkflowVoiceSession] History updated:", transcripts.length, "items");
+      const payload: TranscriptPayload[] = entries.map(({ role, text, status }) => {
+        const normalizedStatus =
+          typeof status === "string" ? status.trim() : "";
+        if (normalizedStatus.length > 0) {
+          return { role, text, status: normalizedStatus };
+        }
+        return { role, text };
+      });
+
+      const userSignature = JSON.stringify(
+        payload.filter((entry) => entry.role === "user"),
+      );
+      const assistantSignature = JSON.stringify(
+        payload.filter((entry) => entry.role === "assistant"),
+      );
+
+      return {
+        payload,
+        userSignature,
+        assistantSignature,
+      };
     },
     [],
   );
@@ -135,6 +176,232 @@ export const useWorkflowVoiceSession = ({
     [onError],
   );
 
+  const sendTranscripts = useCallback(
+    async (options?: { force?: boolean }) => {
+      if (!threadId || !token) {
+        return;
+      }
+
+      const transcripts = conversationHistoryRef.current;
+      if (transcripts.length === 0) {
+        console.log("[WorkflowVoiceSession] No transcripts to send");
+        lastSubmittedSignaturesRef.current = { user: null, assistant: null };
+        pendingSnapshotRef.current = null;
+        pendingForceRef.current = false;
+        return;
+      }
+
+      const snapshot = createSnapshot(transcripts);
+      if (!snapshot) {
+        return;
+      }
+
+      const force = options?.force ?? false;
+
+      const hasUserTranscript = snapshot.payload.some(
+        (entry) => entry.role === "user" && entry.text.trim().length > 0,
+      );
+      if (!hasUserTranscript && !force) {
+        console.log(
+          "[WorkflowVoiceSession] Skipping transcript submission (no user utterances yet)",
+        );
+        lastSubmittedSignaturesRef.current = { user: null, assistant: null };
+        pendingSnapshotRef.current = null;
+        pendingForceRef.current = false;
+        return;
+      }
+
+      const { userSignature, assistantSignature } = snapshot;
+      const { user: lastUserSignature, assistant: lastAssistantSignature } =
+        lastSubmittedSignaturesRef.current;
+
+      const hasUserChanges = userSignature !== lastUserSignature;
+      const hasAssistantChanges = assistantSignature !== lastAssistantSignature;
+
+      if (!force) {
+        if (!hasUserChanges && !hasAssistantChanges) {
+          return;
+        }
+        if (!hasUserChanges) {
+          return;
+        }
+      }
+
+      if (uploadInFlightRef.current) {
+        pendingSnapshotRef.current = snapshot;
+        pendingForceRef.current = force || pendingForceRef.current;
+        return;
+      }
+
+      uploadInFlightRef.current = true;
+      pendingSnapshotRef.current = null;
+      pendingForceRef.current = false;
+
+      try {
+        console.log(
+          "[WorkflowVoiceSession] Sending transcripts:",
+          snapshot.payload.length,
+          "items",
+        );
+
+        const path = `/api/chatkit/voice/transcripts/${threadId}`;
+        const backendUrl = import.meta.env.VITE_BACKEND_URL ?? "";
+        const endpoints = makeApiEndpointCandidates(backendUrl, path);
+
+        let lastError: Error | null = null;
+        for (const endpoint of endpoints) {
+          const isRelative = endpoint.startsWith("/");
+          try {
+            const response = await fetch(endpoint, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ transcripts: snapshot.payload }),
+            });
+
+            if (response.ok) {
+              const result = await response.json();
+              lastSubmittedSignaturesRef.current = {
+                user: userSignature,
+                assistant: assistantSignature,
+              };
+              console.log(
+                "[WorkflowVoiceSession] Transcripts sent successfully:",
+                result,
+              );
+
+              // Appeler le callback pour rafraîchir ChatKit
+              onTranscriptsUpdated?.();
+
+              lastError = null;
+              break;
+            }
+
+            if (response.status === 404 && isRelative && endpoints.length > 1) {
+              lastError = new Error(`Failed to send transcripts: ${response.status}`);
+              continue;
+            }
+
+            if (response.status === 404) {
+              console.info(
+                "[WorkflowVoiceSession] Transcript upload skipped (no pending voice session)",
+              );
+              lastSubmittedSignaturesRef.current = {
+                user: userSignature,
+                assistant: assistantSignature,
+              };
+              lastError = null;
+              break;
+            }
+
+            throw new Error(`Failed to send transcripts: ${response.status}`);
+          } catch (error) {
+            lastError = error instanceof Error ? error : new Error("Erreur réseau");
+            if (!isRelative || endpoints.length === 1) {
+              break;
+            }
+          }
+        }
+
+        if (lastError) {
+          throw lastError;
+        }
+      } catch (error) {
+        console.error("[WorkflowVoiceSession] Failed to send transcripts:", error);
+        pendingSnapshotRef.current = snapshot;
+        pendingForceRef.current = force || pendingForceRef.current;
+        onError?.("Impossible d'envoyer les transcriptions");
+      } finally {
+        uploadInFlightRef.current = false;
+        const nextSnapshot = pendingSnapshotRef.current;
+        const nextForce = pendingForceRef.current;
+        pendingSnapshotRef.current = null;
+        pendingForceRef.current = false;
+        if (nextSnapshot) {
+          void sendTranscripts({ force: nextForce });
+        }
+      }
+    },
+    [threadId, token, onError, onTranscriptsUpdated, createSnapshot],
+  );
+
+  const handleHistoryUpdated = useCallback(
+    (history: RealtimeItem[]) => {
+      // Collecter les transcriptions de la conversation vocale
+      const transcriptsById = new Map<string, TranscriptEntry>();
+      const order: string[] = [];
+
+      for (const item of history) {
+        if (item.type !== "message") {
+          continue;
+        }
+
+        const role = item.role;
+        if (role !== "user" && role !== "assistant") {
+          continue;
+        }
+
+        // Ignorer les éléments non terminés pour éviter les doublons ou brouillons
+        const statusRaw =
+          typeof (item as { status?: unknown }).status === "string"
+            ? ((item as { status: string }).status || "").trim()
+            : undefined;
+        if (statusRaw && statusRaw !== "completed") {
+          continue;
+        }
+
+        const textParts: string[] = [];
+        for (const part of item.content ?? []) {
+          if (
+            (part.type === "input_text" || part.type === "output_text") &&
+            typeof part.text === "string" &&
+            part.text.trim().length > 0
+          ) {
+            textParts.push(part.text.trim());
+          } else if (
+            (part.type === "input_audio" || part.type === "output_audio") &&
+            typeof part.transcript === "string" &&
+            part.transcript.trim().length > 0
+          ) {
+            textParts.push(part.transcript.trim());
+          }
+        }
+
+        if (textParts.length > 0) {
+          const text = textParts.join("\n");
+          const identifier =
+            typeof (item as { id?: unknown }).id === "string" &&
+            (item as { id: string }).id.trim().length > 0
+              ? (item as { id: string }).id
+              : `${role}-${order.length}`;
+
+          if (!transcriptsById.has(identifier)) {
+            order.push(identifier);
+          }
+
+          transcriptsById.set(identifier, {
+            id: identifier,
+            role,
+            text,
+            status: statusRaw,
+          });
+        }
+      }
+
+      const transcripts = order
+        .map((identifier) => transcriptsById.get(identifier))
+        .filter((entry): entry is TranscriptEntry => Boolean(entry));
+
+      conversationHistoryRef.current = transcripts;
+      setTranscripts(transcripts);
+      console.log("[WorkflowVoiceSession] History updated:", transcripts.length, "items");
+      void sendTranscripts();
+    },
+    [sendTranscripts],
+  );
+
   const { connect, disconnect } = useRealtimeSession({
     onHistoryUpdated: handleHistoryUpdated,
     onConnectionChange: handleConnectionChange,
@@ -163,7 +430,11 @@ export const useWorkflowVoiceSession = ({
       processedSessionsRef.current.add(sessionId);
       currentSessionRef.current = sessionId;
       conversationHistoryRef.current = [];
-      transcriptsSentRef.current = false;
+      setTranscripts([]);
+      lastSubmittedSignaturesRef.current = { user: null, assistant: null };
+      pendingSnapshotRef.current = null;
+      pendingForceRef.current = false;
+      uploadInFlightRef.current = false;
 
       setStatus("connecting");
 
@@ -205,55 +476,73 @@ export const useWorkflowVoiceSession = ({
     [connect, disconnect, onError],
   );
 
-  const sendTranscripts = useCallback(async () => {
-    if (!threadId || !token || transcriptsSentRef.current) {
-      return;
-    }
-
-    const transcripts = conversationHistoryRef.current;
-    if (transcripts.length === 0) {
-      console.log("[WorkflowVoiceSession] No transcripts to send");
-      return;
-    }
-
-    transcriptsSentRef.current = true;
-
-    try {
-      console.log("[WorkflowVoiceSession] Sending transcripts:", transcripts.length, "items");
-
-      const response = await fetch(`/api/chatkit/voice/transcripts/${threadId}`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ transcripts }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to send transcripts: ${response.status}`);
-      }
-
-      const result = await response.json();
-      console.log("[WorkflowVoiceSession] Transcripts sent successfully:", result);
-    } catch (error) {
-      console.error("[WorkflowVoiceSession] Failed to send transcripts:", error);
-      transcriptsSentRef.current = false; // Réessayer si échec
-      onError?.("Impossible d'envoyer les transcriptions");
-    }
-  }, [threadId, token, onError]);
-
   const stopVoiceSession = useCallback(async () => {
-    // Envoyer les transcriptions avant de déconnecter
-    await sendTranscripts();
+    // Finaliser la session vocale (déclencher la continuation du workflow)
+    if (threadId && token) {
+      try {
+        const path = `/api/chatkit/voice/finalize/${threadId}`;
+        const backendUrl = import.meta.env.VITE_BACKEND_URL ?? "";
+        const endpoints = makeApiEndpointCandidates(backendUrl, path);
+
+        let finalized = false;
+        for (const endpoint of endpoints) {
+          const isRelative = endpoint.startsWith("/");
+          try {
+            const response = await fetch(endpoint, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ transcripts: [] }), // Les transcriptions ont déjà été envoyées
+            });
+
+            if (response.ok) {
+              console.log("[WorkflowVoiceSession] Voice session finalized successfully");
+              finalized = true;
+              break;
+            }
+
+            if (response.status === 404 && isRelative && endpoints.length > 1) {
+              continue;
+            }
+
+            if (response.status === 404) {
+              console.info("[WorkflowVoiceSession] No pending voice session to finalize");
+              finalized = true;
+              break;
+            }
+
+            console.warn(`[WorkflowVoiceSession] Failed to finalize voice session: ${response.status}`);
+            break;
+          } catch (error) {
+            console.error("[WorkflowVoiceSession] Error finalizing voice session:", error);
+            if (!isRelative || endpoints.length === 1) {
+              break;
+            }
+          }
+        }
+
+        if (!finalized) {
+          onError?.("Impossible de finaliser la session vocale");
+        }
+      } catch (error) {
+        console.error("[WorkflowVoiceSession] Failed to finalize voice session:", error);
+        onError?.("Erreur lors de la finalisation de la session vocale");
+      }
+    }
 
     disconnect();
     setIsListening(false);
     setStatus("idle");
     currentSessionRef.current = null;
     conversationHistoryRef.current = [];
-    transcriptsSentRef.current = false;
-  }, [disconnect, sendTranscripts]);
+    setTranscripts([]);
+    lastSubmittedSignaturesRef.current = { user: null, assistant: null };
+    pendingSnapshotRef.current = null;
+    pendingForceRef.current = false;
+    uploadInFlightRef.current = false;
+  }, [disconnect, threadId, token, onError]);
 
   // Poll for pending voice sessions
   useEffect(() => {
@@ -320,7 +609,8 @@ export const useWorkflowVoiceSession = ({
     stopVoiceSession,
     status,
     isListening,
+    transcripts,
   };
 };
 
-export type { UseWorkflowVoiceSessionParams, VoiceSessionStatus };
+export type { UseWorkflowVoiceSessionParams, VoiceSessionStatus, TranscriptEntry };
