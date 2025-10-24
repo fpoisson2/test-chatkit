@@ -13,6 +13,7 @@ COPY backend/requirements.txt backend/pyproject.toml /tmp/backend/
 RUN pip install --upgrade pip \
     && cd /tmp/backend \
     && pip install --no-cache-dir -r requirements.txt \
+    && python -m playwright install --with-deps chromium \
     && rm -rf /tmp/backend /tmp/chatkit-python \
     && cd /app
 

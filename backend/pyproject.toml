@@ -17,6 +17,7 @@ dependencies = [
     "PyJWT",
     "email-validator",
     "pgvector",
+    "playwright",
 ]
 
 [project.optional-dependencies]

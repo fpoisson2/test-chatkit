@@ -14,6 +14,7 @@ import {
 import {
   getAgentContinueOnError,
   getAgentDisplayResponseInChat,
+  getAgentComputerUseConfig,
   getAgentFileSearchConfig,
   getAgentImageGenerationConfig,
   getAgentIncludeChatHistory,
@@ -40,6 +41,7 @@ import type {
   WebSearchConfig,
 } from "../../../types";
 import {
+  DEFAULT_COMPUTER_USE_CONFIG,
   DEFAULT_IMAGE_TOOL_CONFIG,
   DEFAULT_JSON_SCHEMA_TEXT,
   isTestEnvironment,
@@ -87,6 +89,12 @@ type AgentInspectorState = {
   fileSearchConfig: ReturnType<typeof getAgentFileSearchConfig>;
   fileSearchEnabled: boolean;
   fileSearchValidationMessage: string | null;
+  computerUseConfig: ReturnType<typeof getAgentComputerUseConfig>;
+  computerUseEnabled: boolean;
+  computerUseDisplayWidthValue: string;
+  computerUseDisplayHeightValue: string;
+  computerUseEnvironmentValue: string;
+  computerUseStartUrlValue: string;
   imageGenerationConfig: ImageGenerationToolConfig | null;
   imageGenerationEnabled: boolean;
   imageModelValue: string;
@@ -153,6 +161,8 @@ export const useAgentInspectorState = ({
   const webSearchEnabled = Boolean(webSearchConfig);
   const fileSearchConfig = getAgentFileSearchConfig(parameters);
   const fileSearchEnabled = Boolean(fileSearchConfig);
+  const computerUseConfig = getAgentComputerUseConfig(parameters);
+  const computerUseEnabled = Boolean(computerUseConfig);
   const imageGenerationConfig = getAgentImageGenerationConfig(parameters);
   const imageGenerationEnabled = Boolean(imageGenerationConfig);
 
@@ -202,6 +212,16 @@ export const useAgentInspectorState = ({
 
   const selectedVectorStoreSlug = fileSearchConfig?.vector_store_slug ?? "";
   const trimmedVectorStoreSlug = selectedVectorStoreSlug.trim();
+
+  const computerUseDisplayWidthValue = String(
+    computerUseConfig?.display_width ?? DEFAULT_COMPUTER_USE_CONFIG.display_width,
+  );
+  const computerUseDisplayHeightValue = String(
+    computerUseConfig?.display_height ?? DEFAULT_COMPUTER_USE_CONFIG.display_height,
+  );
+  const computerUseEnvironmentValue =
+    computerUseConfig?.environment ?? DEFAULT_COMPUTER_USE_CONFIG.environment;
+  const computerUseStartUrlValue = computerUseConfig?.start_url ?? "";
   const selectedVectorStoreExists =
     trimmedVectorStoreSlug.length > 0 &&
     vectorStores.some((store) => store.slug === trimmedVectorStoreSlug);
@@ -387,6 +407,12 @@ export const useAgentInspectorState = ({
     fileSearchConfig,
     fileSearchEnabled,
     fileSearchValidationMessage,
+    computerUseConfig,
+    computerUseEnabled,
+    computerUseDisplayWidthValue,
+    computerUseDisplayHeightValue,
+    computerUseEnvironmentValue,
+    computerUseStartUrlValue,
     imageGenerationConfig,
     imageGenerationEnabled,
     imageModelValue,

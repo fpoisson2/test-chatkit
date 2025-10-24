@@ -52,6 +52,7 @@ import {
   setAgentMaxOutputTokens,
   setAgentMessage,
   setAgentModel,
+  setAgentComputerUseConfig,
   setAgentReasoningEffort,
   setAgentReasoningSummary,
   setAgentTextVerbosity,
@@ -112,6 +113,7 @@ import {
 } from "./importWorkflow";
 import type {
   AgentParameters,
+  ComputerUseConfig,
   FileSearchConfig,
   ImageGenerationToolConfig,
   FlowEdge,
@@ -2896,6 +2898,24 @@ const WorkflowBuilderPage = () => {
           return data;
         }
         const nextParameters = setAgentImageGenerationConfig(data.parameters, config);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleAgentComputerUseChange = useCallback(
+    (nodeId: string, config: ComputerUseConfig | null) => {
+      updateNodeData(nodeId, (data) => {
+        if (!isAgentKind(data.kind)) {
+          return data;
+        }
+        const nextParameters = setAgentComputerUseConfig(data.parameters, config);
         return {
           ...data,
           parameters: nextParameters,
@@ -6454,6 +6474,7 @@ const WorkflowBuilderPage = () => {
             onAgentWebSearchChange={handleAgentWebSearchChange}
             onAgentFileSearchChange={handleAgentFileSearchChange}
             onAgentImageGenerationChange={handleAgentImageGenerationChange}
+            onAgentComputerUseChange={handleAgentComputerUseChange}
             workflows={workflows}
             currentWorkflowId={selectedWorkflowId}
             onVoiceAgentVoiceChange={handleVoiceAgentVoiceChange}

@@ -9,6 +9,8 @@ from types import ModuleType
 from typing import Any
 
 import pytest
+from agents.computer import AsyncComputer
+from agents.tool import ComputerTool
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
 if str(ROOT_DIR) not in sys.path:
@@ -30,6 +32,7 @@ def _import_agent_registry(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     def _noop(*_args: Any, **_kwargs: Any) -> Any:
         return None
 
+    tool_factory_stub.build_computer_use_tool = _noop
     tool_factory_stub.build_file_search_tool = _noop
     tool_factory_stub.build_image_generation_tool = _noop
     tool_factory_stub.build_weather_tool = _noop
@@ -178,3 +181,104 @@ def test_coerce_agent_tools_logs_error_when_builder_fails(
 
     assert result == []
     assert "Workflow introuvable" in caplog.text
+
+
+class _DummyComputer(AsyncComputer):
+    @property
+    def environment(self) -> str:
+        return "browser"
+
+    @property
+    def dimensions(self) -> tuple[int, int]:
+        return (1024, 768)
+
+    async def screenshot(self) -> str:
+        return "data:image/png;base64,"
+
+    async def click(self, x: int, y: int, button: str) -> None:  # pragma: no cover
+        return None
+
+    async def double_click(self, x: int, y: int) -> None:  # pragma: no cover
+        return None
+
+    async def scroll(
+        self, x: int, y: int, scroll_x: int, scroll_y: int
+    ) -> None:  # pragma: no cover
+        return None
+
+    async def type(self, text: str) -> None:  # pragma: no cover
+        return None
+
+    async def wait(self) -> None:  # pragma: no cover
+        return None
+
+    async def move(self, x: int, y: int) -> None:  # pragma: no cover
+        return None
+
+    async def keypress(self, keys: list[str]) -> None:  # pragma: no cover
+        return None
+
+    async def drag(self, path: list[tuple[int, int]]) -> None:  # pragma: no cover
+        return None
+
+
+def test_build_agent_kwargs_sets_truncation_for_computer_tool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent_registry = _import_agent_registry(monkeypatch)
+
+    computer_tool = ComputerTool(computer=_DummyComputer())
+
+    monkeypatch.setattr(
+        agent_registry,
+        "build_computer_use_tool",
+        lambda *_args, **_kwargs: computer_tool,
+    )
+
+    overrides = {
+        "tools": [
+            {
+                "type": "computer_use",
+                "computer_use": {"display_width": 800, "display_height": 600},
+            }
+        ],
+        "model_settings": agent_registry.ModelSettings(truncation="disabled"),
+    }
+
+    result = agent_registry._build_agent_kwargs({"name": "Base"}, overrides)
+
+    settings = result["model_settings"]
+    assert isinstance(settings, agent_registry.ModelSettings)
+    assert settings.truncation == "auto"
+    assert result["tools"] == [computer_tool]
+
+
+def test_build_agent_kwargs_adds_model_settings_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent_registry = _import_agent_registry(monkeypatch)
+
+    computer_tool = ComputerTool(computer=_DummyComputer())
+
+    monkeypatch.setattr(
+        agent_registry,
+        "build_computer_use_tool",
+        lambda *_args, **_kwargs: computer_tool,
+    )
+
+    result = agent_registry._build_agent_kwargs(
+        {"name": "Base"},
+        {
+            "tools": [
+                {
+                    "type": "computer_use_preview",
+                    "computer_use": {"environment": "browser"},
+                }
+            ]
+        },
+    )
+
+    settings = result["model_settings"]
+    assert isinstance(settings, agent_registry.ModelSettings)
+    assert settings.truncation == "auto"
+    assert result["tools"] == [computer_tool]

@@ -8,6 +8,13 @@ export type ImageGenerationToolConfig = {
   output_format?: string;
 };
 
+export type ComputerUseConfig = {
+  display_width: number;
+  display_height: number;
+  environment: string;
+  start_url?: string;
+};
+
 export const DEFAULT_END_MESSAGE = "Workflow terminé";
 
 export const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
@@ -2062,6 +2069,87 @@ const isWebSearchTool = (value: unknown): value is Record<string, unknown> =>
 const isFileSearchTool = (value: unknown): value is Record<string, unknown> =>
   isPlainRecord(value) && value.type === "file_search";
 
+const isComputerUseTool = (value: unknown): value is Record<string, unknown> => {
+  if (!isPlainRecord(value)) {
+    return false;
+  }
+  const rawType = value.type;
+  if (typeof rawType !== "string") {
+    return false;
+  }
+  const normalized = rawType.trim().toLowerCase();
+  return normalized === "computer_use" || normalized === "computer_use_preview";
+};
+
+const DEFAULT_COMPUTER_USE_WIDTH = 1024;
+const DEFAULT_COMPUTER_USE_HEIGHT = 768;
+const SUPPORTED_COMPUTER_ENVIRONMENTS = new Set([
+  "browser",
+  "mac",
+  "windows",
+  "ubuntu",
+]);
+
+const sanitizeComputerDimension = (value: unknown, fallback: number): number => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const rounded = Math.round(value);
+    return Math.min(Math.max(rounded, 1), 4096);
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed) {
+      const parsed = Number.parseFloat(trimmed);
+      if (Number.isFinite(parsed)) {
+        const rounded = Math.round(parsed);
+        if (rounded > 0) {
+          return Math.min(rounded, 4096);
+        }
+      }
+    }
+  }
+  return fallback;
+};
+
+const sanitizeComputerEnvironment = (value: unknown): string => {
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized && SUPPORTED_COMPUTER_ENVIRONMENTS.has(normalized)) {
+      return normalized;
+    }
+  }
+  return "browser";
+};
+
+const sanitizeComputerUseConfig = (
+  config: ComputerUseConfig | null | undefined,
+): ComputerUseConfig | null => {
+  if (!config) {
+    return null;
+  }
+
+  const width = sanitizeComputerDimension(
+    config.display_width,
+    DEFAULT_COMPUTER_USE_WIDTH,
+  );
+  const height = sanitizeComputerDimension(
+    config.display_height,
+    DEFAULT_COMPUTER_USE_HEIGHT,
+  );
+  const environment = sanitizeComputerEnvironment(config.environment);
+
+  const payload: ComputerUseConfig = {
+    display_width: width,
+    display_height: height,
+    environment,
+  };
+
+  if (typeof config.start_url === "string" && config.start_url.trim()) {
+    payload.start_url = config.start_url.trim();
+  }
+
+  return payload;
+};
+
 const WEATHER_FUNCTION_TOOL_NAME = "fetch_weather";
 
 const WEATHER_FUNCTION_TOOL_DESCRIPTION =
@@ -2324,6 +2412,64 @@ export const getAgentFileSearchConfig = (
   return null;
 };
 
+export const getAgentComputerUseConfig = (
+  parameters: AgentParameters | null | undefined,
+): ComputerUseConfig | null => {
+  if (!parameters) {
+    return null;
+  }
+  const tools = (parameters as Record<string, unknown>).tools;
+  if (!Array.isArray(tools)) {
+    return null;
+  }
+
+  for (const tool of tools) {
+    if (!isComputerUseTool(tool)) {
+      continue;
+    }
+
+    const source = isPlainRecord(tool.computer_use)
+      ? (tool.computer_use as Record<string, unknown>)
+      : isPlainRecord(tool.computer_use_preview)
+        ? (tool.computer_use_preview as Record<string, unknown>)
+        : (tool as Record<string, unknown>);
+
+    if (!isPlainRecord(source)) {
+      continue;
+    }
+
+    const width = sanitizeComputerDimension(
+      (source as Record<string, unknown>).display_width,
+      DEFAULT_COMPUTER_USE_WIDTH,
+    );
+    const height = sanitizeComputerDimension(
+      (source as Record<string, unknown>).display_height,
+      DEFAULT_COMPUTER_USE_HEIGHT,
+    );
+    const environment = sanitizeComputerEnvironment(
+      (source as Record<string, unknown>).environment,
+    );
+
+    const result: ComputerUseConfig = {
+      display_width: width,
+      display_height: height,
+      environment,
+    };
+
+    const startUrlCandidate =
+      (source as Record<string, unknown>).start_url ??
+      (source as Record<string, unknown>).initial_url ??
+      (source as Record<string, unknown>).url;
+    if (typeof startUrlCandidate === "string" && startUrlCandidate.trim()) {
+      result.start_url = startUrlCandidate.trim();
+    }
+
+    return result;
+  }
+
+  return null;
+};
+
 export const getAgentImageGenerationConfig = (
   parameters: AgentParameters | null | undefined,
 ): ImageGenerationToolConfig | null => {
@@ -2415,6 +2561,32 @@ export const setAgentFileSearchConfig = (
   }
 
   const toolEntry: Record<string, unknown> = { type: "file_search", file_search: sanitized };
+  return { ...next, tools: [...tools, toolEntry] };
+};
+
+export const setAgentComputerUseConfig = (
+  parameters: AgentParameters,
+  config: ComputerUseConfig | null,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const sanitized = sanitizeComputerUseConfig(config);
+  const tools = Array.isArray(next.tools)
+    ? (next.tools as unknown[]).filter((tool) => !isComputerUseTool(tool))
+    : [];
+
+  if (!sanitized) {
+    if (tools.length === 0) {
+      const { tools: _ignored, ...rest } = next;
+      return stripEmpty(rest);
+    }
+    return { ...next, tools };
+  }
+
+  const toolEntry: Record<string, unknown> = {
+    type: "computer_use",
+    computer_use: sanitized,
+  };
+
   return { ...next, tools: [...tools, toolEntry] };
 };
 

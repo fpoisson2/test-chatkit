@@ -135,6 +135,20 @@ const fr: TranslationDictionary = {
     "Ajoute l'outil image_generation pour produire des visuels. Actuellement, seule l'API Images d'OpenAI est prise en charge.",
   "workflowBuilder.agentInspector.imageModelHelp":
     "Sélectionnez un modèle d'image pris en charge. Actuellement, seules les variantes OpenAI sont disponibles.",
+  "workflowBuilder.agentInspector.computerUseToggle": "Activer l'outil computer-use",
+  "workflowBuilder.agentInspector.computerUseToggleHelp":
+    "Autorise l'agent à contrôler un ordinateur hébergé, en démarrant un navigateur dédié.",
+  "workflowBuilder.agentInspector.computerUseWidthLabel": "Largeur de l'écran (px)",
+  "workflowBuilder.agentInspector.computerUseHeightLabel": "Hauteur de l'écran (px)",
+  "workflowBuilder.agentInspector.computerUseEnvironmentLabel": "Environnement",
+  "workflowBuilder.agentInspector.computerUseEnvironment.browser": "Navigateur",
+  "workflowBuilder.agentInspector.computerUseEnvironment.mac": "macOS",
+  "workflowBuilder.agentInspector.computerUseEnvironment.windows": "Windows",
+  "workflowBuilder.agentInspector.computerUseEnvironment.ubuntu": "Ubuntu",
+  "workflowBuilder.agentInspector.computerUseStartUrlLabel": "URL initiale (optionnel)",
+  "workflowBuilder.agentInspector.computerUseStartUrlHelp":
+    "Charge cette URL dès le démarrage de la session contrôlée (laisser vide pour utiliser la page par défaut).",
+  "workflowBuilder.agentInspector.computerUseStartUrlPlaceholder": "https://exemple.com",
   "workflowBuilder.save.autoSaveSuccess": "Modifications enregistrées automatiquement.",
   "workflowBuilder.save.draftDisplayName": "Brouillon",
   "workflowBuilder.save.failure": "Impossible d'enregistrer le workflow.",
@@ -353,6 +367,20 @@ const en: TranslationDictionary = {
     "Enables the image_generation tool to produce visuals. At the moment, only OpenAI's Images API is supported.",
   "workflowBuilder.agentInspector.imageModelHelp":
     "Select a supported image model. Currently only OpenAI variants are available.",
+  "workflowBuilder.agentInspector.computerUseToggle": "Enable computer-use tool",
+  "workflowBuilder.agentInspector.computerUseToggleHelp":
+    "Allows the agent to control a hosted computer, launching a dedicated browser.",
+  "workflowBuilder.agentInspector.computerUseWidthLabel": "Screen width (px)",
+  "workflowBuilder.agentInspector.computerUseHeightLabel": "Screen height (px)",
+  "workflowBuilder.agentInspector.computerUseEnvironmentLabel": "Environment",
+  "workflowBuilder.agentInspector.computerUseEnvironment.browser": "Browser",
+  "workflowBuilder.agentInspector.computerUseEnvironment.mac": "macOS",
+  "workflowBuilder.agentInspector.computerUseEnvironment.windows": "Windows",
+  "workflowBuilder.agentInspector.computerUseEnvironment.ubuntu": "Ubuntu",
+  "workflowBuilder.agentInspector.computerUseStartUrlLabel": "Initial URL (optional)",
+  "workflowBuilder.agentInspector.computerUseStartUrlHelp":
+    "Load this address as soon as the controlled session starts (leave blank for the default page).",
+  "workflowBuilder.agentInspector.computerUseStartUrlPlaceholder": "https://example.com",
   "workflowBuilder.save.autoSaveSuccess": "Changes saved automatically.",
   "workflowBuilder.save.draftDisplayName": "Draft",
   "workflowBuilder.save.failure": "Unable to save the workflow.",

@@ -27,6 +27,7 @@ import {
   getWaitForUserInputMessage,
 } from "../../../../utils/workflows";
 import type {
+  ComputerUseConfig,
   FileSearchConfig,
   FlowNode,
   ImageGenerationToolConfig,
@@ -95,6 +96,7 @@ export type NodeInspectorProps = {
   onAgentWebSearchChange: (nodeId: string, config: WebSearchConfig | null) => void;
   onAgentFileSearchChange: (nodeId: string, config: FileSearchConfig | null) => void;
   onAgentImageGenerationChange: (nodeId: string, config: ImageGenerationToolConfig | null) => void;
+  onAgentComputerUseChange: (nodeId: string, config: ComputerUseConfig | null) => void;
   workflows: WorkflowSummary[];
   currentWorkflowId: number | null;
   onVoiceAgentVoiceChange: (nodeId: string, value: string) => void;
@@ -183,6 +185,7 @@ const NodeInspector = ({
   onAgentWebSearchChange,
   onAgentFileSearchChange,
   onAgentImageGenerationChange,
+  onAgentComputerUseChange,
   workflows,
   currentWorkflowId,
   onVoiceAgentVoiceChange,
@@ -451,6 +454,7 @@ const NodeInspector = ({
           onAgentWebSearchChange={onAgentWebSearchChange}
           onAgentFileSearchChange={onAgentFileSearchChange}
           onAgentImageGenerationChange={onAgentImageGenerationChange}
+          onAgentComputerUseChange={onAgentComputerUseChange}
           onAgentWeatherToolChange={onAgentWeatherToolChange}
           onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
           onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}

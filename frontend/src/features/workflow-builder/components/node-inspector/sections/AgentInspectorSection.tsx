@@ -8,6 +8,7 @@ import type {
 import { collectWidgetBindings } from "../../../../../utils/widgetPreview";
 import { useI18n } from "../../../../../i18n";
 import type {
+  ComputerUseConfig,
   FileSearchConfig,
   FlowNode,
   ImageGenerationToolConfig,
@@ -17,6 +18,8 @@ import type {
 import {
   DEFAULT_IMAGE_TOOL_CONFIG,
   DEFAULT_WEB_SEARCH_CONFIG,
+  DEFAULT_COMPUTER_USE_CONFIG,
+  COMPUTER_USE_ENVIRONMENTS,
   IMAGE_TOOL_BACKGROUNDS,
   IMAGE_TOOL_MODELS,
   IMAGE_TOOL_OUTPUT_FORMATS,
@@ -80,6 +83,10 @@ type AgentInspectorSectionProps = {
     nodeId: string,
     config: ImageGenerationToolConfig | null,
   ) => void;
+  onAgentComputerUseChange: (
+    nodeId: string,
+    config: ComputerUseConfig | null,
+  ) => void;
   onAgentWeatherToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
@@ -124,6 +131,7 @@ export const AgentInspectorSection = ({
   onAgentWebSearchChange,
   onAgentFileSearchChange,
   onAgentImageGenerationChange,
+  onAgentComputerUseChange,
   onAgentWeatherToolChange,
   onAgentWidgetValidationToolChange,
   onAgentWorkflowValidationToolChange,
@@ -150,6 +158,12 @@ export const AgentInspectorSection = ({
     fileSearchConfig,
     fileSearchEnabled,
     fileSearchValidationMessage,
+    computerUseConfig,
+    computerUseEnabled,
+    computerUseDisplayWidthValue,
+    computerUseDisplayHeightValue,
+    computerUseEnvironmentValue,
+    computerUseStartUrlValue,
     imageGenerationConfig,
     imageGenerationEnabled,
     imageModelValue,
@@ -195,6 +209,46 @@ export const AgentInspectorSection = ({
 
   const { t } = useI18n();
   const widgetSelectId = useId();
+
+  const parseDimension = (value: string, fallback: number): number => {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.min(parsed, 4096);
+    }
+    return fallback;
+  };
+
+  const handleComputerUseFieldChange = (updates: {
+    display_width?: string;
+    display_height?: string;
+    environment?: string;
+    start_url?: string;
+  }) => {
+    const base = computerUseConfig ?? { ...DEFAULT_COMPUTER_USE_CONFIG };
+    const nextWidth = parseDimension(
+      updates.display_width ?? computerUseDisplayWidthValue,
+      base.display_width,
+    );
+    const nextHeight = parseDimension(
+      updates.display_height ?? computerUseDisplayHeightValue,
+      base.display_height,
+    );
+    const envCandidate = (updates.environment ?? computerUseEnvironmentValue).trim().toLowerCase();
+    const normalizedEnvironment = COMPUTER_USE_ENVIRONMENTS.includes(envCandidate as (typeof COMPUTER_USE_ENVIRONMENTS)[number])
+      ? (envCandidate as ComputerUseConfig["environment"])
+      : base.environment;
+    const startUrlCandidate = updates.start_url ?? computerUseStartUrlValue;
+    const payload: ComputerUseConfig = {
+      display_width: nextWidth,
+      display_height: nextHeight,
+      environment: normalizedEnvironment,
+    };
+    const trimmedUrl = startUrlCandidate.trim();
+    if (trimmedUrl) {
+      payload.start_url = trimmedUrl;
+    }
+    onAgentComputerUseChange(nodeId, payload);
+  };
 
   const availableNestedWorkflows = workflows.filter(
     (workflow) => workflow.id !== currentWorkflowId,
@@ -718,6 +772,85 @@ export const AgentInspectorSection = ({
               </label>
             )}
           </>
+        ) : null}
+
+        <ToggleRow
+          label={t("workflowBuilder.agentInspector.computerUseToggle")}
+          checked={computerUseEnabled}
+          onChange={(next) =>
+            onAgentComputerUseChange(
+              nodeId,
+              next ? computerUseConfig ?? { ...DEFAULT_COMPUTER_USE_CONFIG } : null,
+            )
+          }
+          help={t("workflowBuilder.agentInspector.computerUseToggleHelp")}
+        />
+
+        {computerUseEnabled ? (
+          <div className={styles.nodeInspectorPanelInnerAccent}>
+            <label className={styles.nodeInspectorInlineField}>
+              <span className={styles.nodeInspectorLabel}>
+                {t("workflowBuilder.agentInspector.computerUseWidthLabel")}
+              </span>
+              <input
+                type="number"
+                min={1}
+                value={computerUseDisplayWidthValue}
+                onChange={(event) =>
+                  handleComputerUseFieldChange({ display_width: event.target.value })
+                }
+              />
+            </label>
+
+            <label className={styles.nodeInspectorInlineField}>
+              <span className={styles.nodeInspectorLabel}>
+                {t("workflowBuilder.agentInspector.computerUseHeightLabel")}
+              </span>
+              <input
+                type="number"
+                min={1}
+                value={computerUseDisplayHeightValue}
+                onChange={(event) =>
+                  handleComputerUseFieldChange({ display_height: event.target.value })
+                }
+              />
+            </label>
+
+            <label className={styles.nodeInspectorInlineField}>
+              <span className={styles.nodeInspectorLabel}>
+                {t("workflowBuilder.agentInspector.computerUseEnvironmentLabel")}
+              </span>
+              <select
+                value={computerUseEnvironmentValue}
+                onChange={(event) =>
+                  handleComputerUseFieldChange({ environment: event.target.value })
+                }
+              >
+                {COMPUTER_USE_ENVIRONMENTS.map((environment) => (
+                  <option key={environment} value={environment}>
+                    {t(
+                      `workflowBuilder.agentInspector.computerUseEnvironment.${environment}`,
+                    )}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className={styles.nodeInspectorField}>
+              <span className={styles.nodeInspectorLabel}>
+                {t("workflowBuilder.agentInspector.computerUseStartUrlLabel")}
+                <HelpTooltip label={t("workflowBuilder.agentInspector.computerUseStartUrlHelp")} />
+              </span>
+              <input
+                type="text"
+                value={computerUseStartUrlValue}
+                onChange={(event) =>
+                  handleComputerUseFieldChange({ start_url: event.target.value })
+                }
+                placeholder={t("workflowBuilder.agentInspector.computerUseStartUrlPlaceholder")}
+              />
+            </label>
+          </div>
         ) : null}
 
         <ToggleRow

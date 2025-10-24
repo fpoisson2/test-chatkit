@@ -1,4 +1,5 @@
 import type {
+  ComputerUseConfig,
   ImageGenerationToolConfig,
   VoiceAgentTool,
   WebSearchConfig,
@@ -58,6 +59,19 @@ export const DEFAULT_IMAGE_TOOL_CONFIG: ImageGenerationToolConfig = {
   background: "auto",
   output_format: "auto",
 };
+
+export const DEFAULT_COMPUTER_USE_CONFIG: ComputerUseConfig = {
+  display_width: 1024,
+  display_height: 768,
+  environment: "browser",
+};
+
+export const COMPUTER_USE_ENVIRONMENTS = [
+  "browser",
+  "mac",
+  "windows",
+  "ubuntu",
+] as const;
 
 export const WEB_SEARCH_LOCATION_LABELS = {
   city: "Ville",
