@@ -1,8 +1,7 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 
 import { useVoiceSession } from "./useVoiceSession";
-
-type MicrophonePermissionState = "unknown" | "granted" | "denied";
+import { useMicrophoneAccess } from "./useMicrophoneAccess";
 
 const formatTimestamp = (timestamp: number) =>
   new Date(timestamp).toLocaleTimeString(undefined, {
@@ -14,9 +13,13 @@ const formatTimestamp = (timestamp: number) =>
 export const VoiceChat = () => {
   const { startSession, stopSession, status, isListening, transcripts, errors, webrtcError, clearErrors } =
     useVoiceSession();
-  const [microPermission, setMicroPermission] = useState<MicrophonePermissionState>("unknown");
-  const [localError, setLocalError] = useState<string | null>(null);
-  const [isRequestingMic, setIsRequestingMic] = useState(false);
+  const {
+    permission: microPermission,
+    error: microphoneError,
+    isRequesting: isRequestingMic,
+    requestPermission,
+    resetError: resetMicrophoneError,
+  } = useMicrophoneAccess();
 
   const statusLabel = useMemo(() => {
     switch (status) {
@@ -32,30 +35,12 @@ export const VoiceChat = () => {
   }, [status]);
 
   const handleStart = useCallback(async () => {
-    setLocalError(null);
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      setLocalError("Accès au microphone non supporté sur ce navigateur.");
+    const granted = await requestPermission();
+    if (!granted) {
       return;
     }
-
-    setIsRequestingMic(true);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
-      setMicroPermission("granted");
-      await startSession({ preserveHistory: false });
-    } catch (error) {
-      if (error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError")) {
-        setMicroPermission("denied");
-        setLocalError("Permission microphone refusée.");
-        return;
-      }
-      const message = error instanceof Error ? error.message : "Impossible d'activer le microphone.";
-      setLocalError(message);
-    } finally {
-      setIsRequestingMic(false);
-    }
-  }, [startSession]);
+    await startSession({ preserveHistory: false });
+  }, [requestPermission, startSession]);
 
   const handleStop = useCallback(() => {
     stopSession();
@@ -106,9 +91,9 @@ export const VoiceChat = () => {
         )}
       </div>
 
-      {(webrtcError || localError) && (
+      {(webrtcError || microphoneError) && (
         <div className="alert alert--danger" role="status">
-          {localError || webrtcError}
+          {microphoneError || webrtcError}
         </div>
       )}
 
@@ -121,7 +106,7 @@ export const VoiceChat = () => {
               type="button"
               onClick={() => {
                 clearErrors();
-                setLocalError(null);
+                resetMicrophoneError();
               }}
             >
               Effacer

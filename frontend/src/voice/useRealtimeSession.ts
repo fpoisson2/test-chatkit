@@ -21,6 +21,7 @@ type RealtimeSessionHandlers = {
 type ConnectOptions = {
   secret: VoiceSessionSecret;
   apiKey: string;
+  sessionUpdate?: Record<string, unknown> | null;
 };
 
 type UseRealtimeSessionResult = {
@@ -223,7 +224,7 @@ export const useRealtimeSession = (
   );
 
   const connect = useCallback(
-    async ({ secret, apiKey }: ConnectOptions) => {
+    async ({ secret, apiKey, sessionUpdate }: ConnectOptions) => {
       disconnect();
 
       const agent = new RealtimeAgent({
@@ -237,6 +238,9 @@ export const useRealtimeSession = (
       try {
         await session.connect({ apiKey, model: secret.model });
         const promptUpdate = buildPromptUpdate(secret);
+        if (sessionUpdate && Object.keys(sessionUpdate).length > 0) {
+          applySessionUpdate(session, sessionUpdate);
+        }
         if (promptUpdate) {
           applySessionUpdate(session, promptUpdate);
         }

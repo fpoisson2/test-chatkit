@@ -10,6 +10,11 @@ import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useHostedFlow } from "./hooks/useHostedFlow";
 import { useWorkflowChatSession } from "./hooks/useWorkflowChatSession";
+import {
+  useWorkflowVoiceSession,
+  type WorkflowVoiceTaskPayload,
+  type WorkflowVoiceMetadata,
+} from "./hooks/useWorkflowVoiceSession";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import {
@@ -96,6 +101,75 @@ const ensureSecureUrl = (rawUrl: string): SecureUrlNormalizationResult => {
   }
 
   return { kind: "ok", url: parsed.toString(), wasUpgraded: false };
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const extractWorkflowVoiceTask = (item: unknown): WorkflowVoiceTaskPayload | null => {
+  if (!isRecord(item)) {
+    return null;
+  }
+  const type = item.type;
+  if (type !== "task") {
+    return null;
+  }
+  const task = isRecord(item.task) ? item.task : null;
+  if (!task) {
+    return null;
+  }
+  const content = task.content;
+  if (typeof content !== "string" || !content.trim()) {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    return null;
+  }
+
+  if (!isRecord(parsed) || parsed.type !== "voice_session.created") {
+    return null;
+  }
+
+  const clientSecret = parsed.client_secret as WorkflowVoiceTaskPayload["client_secret"] | undefined;
+  if (!clientSecret) {
+    return null;
+  }
+
+  const session = isRecord(parsed.session)
+    ? (parsed.session as WorkflowVoiceTaskPayload["session"])
+    : ({} as WorkflowVoiceTaskPayload["session"]);
+
+  const toolPermissions = isRecord(parsed.tool_permissions)
+    ? (parsed.tool_permissions as Record<string, boolean>)
+    : undefined;
+
+  return {
+    taskId: typeof item.id === "string" ? item.id : null,
+    client_secret: clientSecret,
+    session,
+    tool_permissions: toolPermissions,
+  };
+};
+
+const extractWorkflowVoiceMetadata = (thread: unknown): WorkflowVoiceMetadata => {
+  if (!isRecord(thread)) {
+    return { waitState: null, state: null };
+  }
+  const metadata = isRecord(thread.metadata) ? thread.metadata : null;
+  if (!metadata) {
+    return { waitState: null, state: null };
+  }
+  const workflow = isRecord(metadata.chatkit_workflow) ? metadata.chatkit_workflow : null;
+  if (!workflow) {
+    return { waitState: null, state: null };
+  }
+  const waitState = "pending_wait_state" in workflow ? workflow.pending_wait_state : null;
+  const state = "state" in workflow ? workflow.state : null;
+  return { waitState, state };
 };
 
 export function MyChat() {
@@ -570,6 +644,10 @@ export function MyChat() {
     [attachmentsEnabled],
   );
 
+  const { startFromTask: startWorkflowVoiceSession, syncWorkflowMetadata } = useWorkflowVoiceSession({
+    reportError,
+  });
+
   const chatkitOptions = useMemo(
     () =>
       ({
@@ -666,11 +744,29 @@ export function MyChat() {
           console.debug("[ChatKit] thread load end", { threadId });
         },
         onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
+          let metadataHandled = false;
           if (entry?.data && typeof entry.data === "object") {
             const data = entry.data as Record<string, unknown>;
             if ("thread" in data && data.thread) {
-              lastThreadSnapshotRef.current = data.thread as Record<string, unknown>;
+              const thread = data.thread;
+              if (isRecord(thread)) {
+                lastThreadSnapshotRef.current = thread;
+                const items = Array.isArray(thread.items) ? (thread.items as unknown[]) : [];
+                items.forEach((item) => {
+                  const voiceTask = extractWorkflowVoiceTask(item);
+                  if (voiceTask) {
+                    void startWorkflowVoiceSession(voiceTask);
+                  }
+                });
+                syncWorkflowMetadata(extractWorkflowVoiceMetadata(thread));
+                metadataHandled = true;
+              } else {
+                lastThreadSnapshotRef.current = thread as Record<string, unknown>;
+              }
             }
+          }
+          if (!metadataHandled) {
+            syncWorkflowMetadata({ waitState: null, state: null });
           }
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
         },
