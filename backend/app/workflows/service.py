@@ -161,6 +161,252 @@ def resolve_start_auto_start_assistant_message(
 
 
 @dataclass(slots=True, frozen=True)
+class TelephonyRouteOverrides:
+    """Overrides optionnels fournis par la configuration téléphonie."""
+
+    model: str | None
+    voice: str | None
+    instructions: str | None
+    prompt_variables: dict[str, str]
+
+
+@dataclass(slots=True, frozen=True)
+class TelephonyRouteConfig:
+    """Décrit une route de départ téléphonie."""
+
+    label: str | None
+    workflow_slug: str | None
+    workflow_id: int | None
+    phone_numbers: tuple[str, ...]
+    prefixes: tuple[str, ...]
+    overrides: TelephonyRouteOverrides
+    metadata: dict[str, Any]
+    priority: int
+    is_default: bool = False
+
+
+@dataclass(slots=True, frozen=True)
+class TelephonyStartConfiguration:
+    """Configuration complète des routes téléphonie pour le bloc start."""
+
+    routes: tuple[TelephonyRouteConfig, ...]
+    default_route: TelephonyRouteConfig | None
+
+
+def _normalize_phone_token(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    if not candidate:
+        return None
+    normalized = "".join(
+        ch for ch in candidate if ch.isdigit() or ch in {"+", "#", "*"}
+    )
+    return normalized or None
+
+
+def _normalize_phone_collection(value: Any) -> tuple[str, ...]:
+    if isinstance(value, Mapping):
+        return ()
+    if isinstance(value, str):
+        normalized = _normalize_phone_token(value)
+        return (normalized,) if normalized else ()
+    if not isinstance(value, Sequence):
+        return ()
+    tokens: list[str] = []
+    for item in value:
+        normalized = _normalize_phone_token(item)
+        if normalized:
+            tokens.append(normalized)
+    return tuple(dict.fromkeys(tokens))
+
+
+def _normalize_label(value: Any) -> str | None:
+    if isinstance(value, str):
+        candidate = value.strip()
+        if candidate:
+            return candidate
+    return None
+
+
+def _normalize_prompt_variables_payload(payload: Any) -> dict[str, str]:
+    if not isinstance(payload, Mapping):
+        return {}
+    normalized: dict[str, str] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str):
+            continue
+        trimmed_key = key.strip()
+        if not trimmed_key:
+            continue
+        if value is None:
+            normalized[trimmed_key] = ""
+        elif isinstance(value, str):
+            normalized[trimmed_key] = value
+        else:
+            normalized[trimmed_key] = str(value)
+    return normalized
+
+
+def _normalize_route_overrides(payload: Any) -> TelephonyRouteOverrides:
+    if not isinstance(payload, Mapping):
+        return TelephonyRouteOverrides(None, None, None, {})
+
+    def _sanitize_text(key: str) -> str | None:
+        value = payload.get(key)
+        if not isinstance(value, str):
+            return None
+        candidate = value.strip()
+        return candidate or None
+
+    prompt_variables = _normalize_prompt_variables_payload(
+        payload.get("prompt_variables")
+    )
+    return TelephonyRouteOverrides(
+        _sanitize_text("model"),
+        _sanitize_text("voice"),
+        _sanitize_text("instructions"),
+        prompt_variables,
+    )
+
+
+def _normalize_workflow_reference(payload: Any) -> tuple[str | None, int | None]:
+    if isinstance(payload, Mapping):
+        slug = payload.get("slug")
+        slug_value = slug.strip() if isinstance(slug, str) else None
+        workflow_id_raw = payload.get("id")
+    else:
+        slug_value = payload.strip() if isinstance(payload, str) else None
+        workflow_id_raw = None
+
+    workflow_id: int | None = None
+    if isinstance(workflow_id_raw, bool):
+        workflow_id = None
+    elif isinstance(workflow_id_raw, int):
+        workflow_id = workflow_id_raw if workflow_id_raw > 0 else None
+    elif isinstance(workflow_id_raw, float) and math.isfinite(workflow_id_raw):
+        candidate_id = int(workflow_id_raw)
+        workflow_id = candidate_id if candidate_id > 0 else None
+    elif isinstance(workflow_id_raw, str):
+        candidate = workflow_id_raw.strip()
+        if candidate:
+            try:
+                workflow_id = int(candidate)
+            except ValueError:
+                workflow_id = None
+
+    return slug_value, workflow_id
+
+
+def _normalize_route_payload(
+    payload: Any,
+    *,
+    priority: int,
+    is_default: bool = False,
+) -> TelephonyRouteConfig | None:
+    if not isinstance(payload, Mapping):
+        return None
+
+    label = _normalize_label(payload.get("label"))
+    overrides = _normalize_route_overrides(payload.get("overrides"))
+    metadata_raw = payload.get("metadata")
+    metadata = dict(metadata_raw) if isinstance(metadata_raw, Mapping) else {}
+
+    workflow_payload = payload.get("workflow")
+    slug, workflow_id = _normalize_workflow_reference(workflow_payload)
+    if slug is None and workflow_id is None:
+        slug, workflow_id = _normalize_workflow_reference(payload.get("workflow_slug"))
+        if slug is None and workflow_id is None:
+            workflow_id_raw = payload.get("workflow_id")
+            if isinstance(workflow_id_raw, int) and workflow_id_raw > 0:
+                workflow_id = workflow_id_raw
+
+    phone_numbers = _normalize_phone_collection(payload.get("phone_numbers"))
+    if not phone_numbers:
+        single_number = _normalize_phone_token(payload.get("phone_number"))
+        if single_number:
+            phone_numbers = (single_number,)
+
+    prefixes = _normalize_phone_collection(payload.get("prefixes"))
+    if not prefixes:
+        single_prefix = _normalize_phone_token(payload.get("prefix"))
+        if single_prefix:
+            prefixes = (single_prefix,)
+
+    if not is_default and not phone_numbers and not prefixes:
+        return None
+
+    return TelephonyRouteConfig(
+        label=label,
+        workflow_slug=slug,
+        workflow_id=workflow_id,
+        phone_numbers=phone_numbers,
+        prefixes=prefixes,
+        overrides=overrides,
+        metadata=metadata,
+        priority=priority,
+        is_default=is_default,
+    )
+
+
+def resolve_start_telephony_config(
+    definition: WorkflowDefinition,
+) -> TelephonyStartConfiguration | None:
+    """Retourne la configuration téléphonie du bloc start."""
+
+    start_step: WorkflowStep | None = None
+    for step in definition.steps:
+        if getattr(step, "kind", None) != "start":
+            continue
+        if not getattr(step, "is_enabled", True):
+            continue
+        start_step = step
+        break
+
+    if start_step is None:
+        return None
+
+    parameters = getattr(start_step, "parameters", None)
+    if not isinstance(parameters, Mapping):
+        return None
+
+    telephony_payload = parameters.get("telephony")
+    if not isinstance(telephony_payload, Mapping):
+        return None
+
+    raw_routes = telephony_payload.get("routes")
+    routes_payload = raw_routes if isinstance(raw_routes, Sequence) else []
+
+    routes: list[TelephonyRouteConfig] = []
+    priority = 0
+    for entry in routes_payload:
+        route = _normalize_route_payload(entry, priority=priority)
+        priority += 1
+        if route is None:
+            continue
+        routes.append(route)
+
+    default_payload = telephony_payload.get("default")
+    default_route = _normalize_route_payload(
+        default_payload, priority=priority, is_default=True
+    )
+
+    if default_route is None:
+        fallback_entry = telephony_payload.get("fallback")
+        default_route = _normalize_route_payload(
+            fallback_entry, priority=priority, is_default=True
+        )
+
+    if not routes and default_route is None:
+        return None
+
+    return TelephonyStartConfiguration(
+        routes=tuple(routes),
+        default_route=default_route,
+    )
+
+
+@dataclass(slots=True, frozen=True)
 class NormalizedNode:
     slug: str
     kind: str
