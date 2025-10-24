@@ -10,7 +10,11 @@ import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useHostedFlow } from "./hooks/useHostedFlow";
 import { useWorkflowChatSession } from "./hooks/useWorkflowChatSession";
-import { useWorkflowVoiceSession } from "./hooks/useWorkflowVoiceSession";
+import {
+  useWorkflowVoiceSession,
+  type UseWorkflowVoiceSessionOptions,
+  type WorkflowVoiceSessionBackendResponse,
+} from "./hooks/useWorkflowVoiceSession";
 import { useI18n } from "./i18n";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
@@ -112,11 +116,13 @@ export function MyChat() {
   const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
     loadStoredThreadId(sessionOwner, activeWorkflowSlug),
   );
+  const [currentThreadId, setCurrentThreadId] = useState<string | null>(initialThreadId);
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
+  const backendUrl = import.meta.env.VITE_BACKEND_URL?.trim() ?? "";
   const resetChatState = useCallback(
     ({ workflowSlug, preserveStoredThread = false }: ResetChatStateOptions = {}) => {
       clearStoredChatKitSecret(sessionOwner);
@@ -132,6 +138,7 @@ export function MyChat() {
         ? loadStoredThreadId(sessionOwner, resolvedWorkflowSlug)
         : null;
       setInitialThreadId(nextInitialThreadId);
+      setCurrentThreadId(nextInitialThreadId);
       setChatInstanceKey((value) => value + 1);
     },
     [activeWorkflowSlug, sessionOwner],
@@ -148,7 +155,9 @@ export function MyChat() {
     disableHostedFlow,
   });
 
-  const workflowVoice = useWorkflowVoiceSession();
+  const workflowVoice = useWorkflowVoiceSession({
+    resolveSession: resolveWorkflowVoiceSession,
+  });
   const {
     handleLogEvent: handleVoiceLogEvent,
     stopSession: stopWorkflowVoiceSession,
@@ -194,11 +203,13 @@ export function MyChat() {
 
     const storedThreadId = loadStoredThreadId(sessionOwner, activeWorkflowSlug);
     setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
+    setCurrentThreadId((current) => (current === storedThreadId ? current : storedThreadId));
   }, [activeWorkflowSlug, sessionOwner]);
 
   useEffect(() => {
     stopWorkflowVoiceSession();
-  }, [activeWorkflow?.id, stopWorkflowVoiceSession]);
+    setCurrentThreadId(initialThreadId);
+  }, [activeWorkflow?.id, initialThreadId, stopWorkflowVoiceSession]);
 
   useEffect(() => {
     if (voiceTranscripts.length > 0) {
@@ -246,7 +257,6 @@ export function MyChat() {
     }
 
     const explicitCustomUrl = import.meta.env.VITE_CHATKIT_API_URL?.trim();
-    const backendUrl = import.meta.env.VITE_BACKEND_URL?.trim() ?? "";
     const endpointCandidates = makeApiEndpointCandidates(backendUrl, "/api/chatkit");
     const [defaultRelativeUrl] = endpointCandidates;
     const customApiUrl = explicitCustomUrl || defaultRelativeUrl || "/api/chatkit";
@@ -572,6 +582,80 @@ export function MyChat() {
     token,
   ]);
 
+  const resolveWorkflowVoiceSession = useCallback(
+    async ({
+      payload: _payload,
+      metadataSlug: _metadataSlug,
+      metadataTitle: _metadataTitle,
+    }: Parameters<
+      NonNullable<UseWorkflowVoiceSessionOptions["resolveSession"]>
+    >[0]): Promise<WorkflowVoiceSessionBackendResponse | null> => {
+      if (!token) {
+        throw new Error(
+          "Authentification requise pour démarrer la session vocale du workflow.",
+        );
+      }
+      if (!currentThreadId) {
+        throw new Error(
+          "Aucun fil de conversation actif pour la session vocale du workflow.",
+        );
+      }
+
+      const encodedThreadId = encodeURIComponent(currentThreadId);
+      const candidates = makeApiEndpointCandidates(
+        backendUrl,
+        `/api/chatkit/workflows/${encodedThreadId}/voice/session`,
+      );
+
+      let lastError: Error | null = null;
+      for (const candidate of candidates) {
+        try {
+          const response = await fetch(candidate, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          if (!response.ok) {
+            const detail = await response.text().catch(() => "");
+            const message = detail.trim()
+              ? `${response.status} ${response.statusText} – ${detail.trim()}`
+              : `${response.status} ${response.statusText}`;
+            const error = new Error(
+              `Échec de la récupération de la session vocale (${message}).`,
+            );
+            if (candidate.startsWith("/") && candidates.length > 1) {
+              lastError = error;
+              continue;
+            }
+            throw error;
+          }
+
+          const data = (await response.json()) as WorkflowVoiceSessionBackendResponse;
+          return data;
+        } catch (error) {
+          const normalized =
+            error instanceof Error
+              ? error
+              : new Error("Impossible de récupérer la session vocale du workflow.");
+          if (candidate.startsWith("/") && candidates.length > 1) {
+            lastError = normalized;
+            continue;
+          }
+          throw normalized;
+        }
+      }
+
+      if (lastError) {
+        throw lastError;
+      }
+
+      return null;
+    },
+    [backendUrl, currentThreadId, token],
+  );
+
   const debugSignature = useMemo(() => JSON.stringify(debugSnapshot), [debugSnapshot]);
 
   useEffect(() => {
@@ -683,6 +767,7 @@ export function MyChat() {
           console.debug("[ChatKit] thread change", { threadId });
           persistStoredThreadId(sessionOwner, threadId, activeWorkflowSlug);
           setInitialThreadId((current) => (current === threadId ? current : threadId));
+          setCurrentThreadId((current) => (current === threadId ? current : threadId));
         },
         onThreadLoadStart: ({ threadId }: { threadId: string }) => {
           console.debug("[ChatKit] thread load start", { threadId });

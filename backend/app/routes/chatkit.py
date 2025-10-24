@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import copy
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import (
     APIRouter,
@@ -61,6 +63,7 @@ from ..workflows import (
     resolve_start_auto_start_assistant_message,
     resolve_start_auto_start_message,
 )
+from ..chatkit_server.context import _get_wait_state_metadata
 
 router = APIRouter()
 
@@ -72,6 +75,49 @@ def get_chatkit_server():
     from ..chatkit import get_chatkit_server as _get_chatkit_server
 
     return _get_chatkit_server()
+
+
+def _as_non_empty_str(value: Any) -> str | None:
+    if isinstance(value, str):
+        candidate = value.strip()
+        if candidate:
+            return candidate
+    return None
+
+
+def _normalize_tool_permissions(value: Mapping[str, Any] | None) -> dict[str, bool]:
+    if not value:
+        return {}
+    normalized: dict[str, bool] = {}
+    for key, raw in value.items():
+        if not isinstance(key, str):
+            continue
+        if isinstance(raw, bool):
+            normalized[key] = raw
+            continue
+        if isinstance(raw, (int, float)) and raw in (0, 1):
+            normalized[key] = bool(raw)
+            continue
+        if isinstance(raw, str):
+            lowered = raw.strip().lower()
+            if lowered in {"true", "1", "yes", "on"}:
+                normalized[key] = True
+            elif lowered in {"false", "0", "no", "off"}:
+                normalized[key] = False
+    return normalized
+
+
+def _normalize_prompt_variables(value: Any) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        return {}
+    result: dict[str, str] = {}
+    for key, raw in value.items():
+        if not isinstance(key, str) or not isinstance(raw, str):
+            continue
+        trimmed_key = key.strip()
+        if trimmed_key:
+            result[trimmed_key] = raw
+    return result
 
 
 def _build_request_context(
@@ -361,6 +407,135 @@ async def create_voice_session(
         prompt_id=voice_settings.prompt_id,
         prompt_version=voice_settings.prompt_version,
         prompt_variables=voice_settings.prompt_variables,
+    )
+
+
+@router.post(
+    "/api/chatkit/workflows/{thread_id}/voice/session",
+    response_model=VoiceSessionResponse,
+)
+async def create_workflow_voice_session(
+    thread_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        server = get_chatkit_server()
+    except ModuleNotFoundError as exc:  # pragma: no cover - dépendance optionnelle absente
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ChatKit n'est pas disponible",
+        ) from exc
+    except ImportError as exc:  # pragma: no cover - dépendances du SDK incompatibles
+        logger.exception("Erreur lors de l'import du serveur ChatKit", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ChatKit n'est pas disponible",
+        ) from exc
+
+    context = _build_request_context(current_user, request)
+
+    try:
+        thread = await server.store.load_thread(thread_id, context)
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Thread introuvable",
+        ) from exc
+
+    wait_state = _get_wait_state_metadata(thread)
+    if not wait_state or wait_state.get("type") != "voice":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Aucune session vocale en attente pour ce thread",
+        )
+
+    state_snapshot = wait_state.get("state") if isinstance(wait_state, Mapping) else None
+    voice_session_state = (
+        state_snapshot.get("last_voice_session")
+        if isinstance(state_snapshot, Mapping)
+        else None
+    )
+    if not isinstance(voice_session_state, Mapping):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Configuration vocale introuvable pour ce thread",
+        )
+
+    voice_context = copy.deepcopy(dict(voice_session_state))
+    realtime_config_raw = voice_context.get("realtime")
+    realtime_config = (
+        copy.deepcopy(dict(realtime_config_raw))
+        if isinstance(realtime_config_raw, Mapping)
+        else {}
+    )
+    tool_permissions = _normalize_tool_permissions(
+        realtime_config.get("tools") if isinstance(realtime_config, Mapping) else None
+    )
+
+    settings = get_settings()
+
+    resolved_instructions = (
+        _as_non_empty_str(voice_context.get("instructions"))
+        or settings.chatkit_realtime_instructions
+    )
+    resolved_model = (
+        _as_non_empty_str(voice_context.get("model"))
+        or settings.chatkit_realtime_model
+    )
+    resolved_voice = (
+        _as_non_empty_str(voice_context.get("voice"))
+        or settings.chatkit_realtime_voice
+    )
+
+    if not resolved_model:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Modèle Realtime manquant pour la session vocale du workflow",
+        )
+
+    user_id = f"user:{current_user.id}"
+
+    secret_payload = await create_realtime_voice_session(
+        user_id=user_id,
+        model=resolved_model,
+        instructions=resolved_instructions,
+    )
+
+    parser = SessionSecretParser()
+    parsed_secret = parser.parse(secret_payload)
+    if parsed_secret.raw is None:
+        summary = summarize_payload_shape(secret_payload)
+        logger.error(
+            "Client secret introuvable dans la réponse Realtime (workflow) : %s",
+            summary,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "ChatKit Realtime response missing client_secret",
+                "payload_summary": summary,
+            },
+        )
+
+    prompt_id = _as_non_empty_str(voice_context.get("prompt_id"))
+    prompt_version = _as_non_empty_str(voice_context.get("prompt_version"))
+    prompt_variables = _normalize_prompt_variables(voice_context.get("prompt_variables"))
+
+    session_config = copy.deepcopy(voice_context)
+    session_config["realtime"] = realtime_config
+
+    return VoiceSessionResponse(
+        client_secret=parsed_secret.raw,
+        expires_at=parsed_secret.expires_at_isoformat(),
+        model=resolved_model,
+        instructions=resolved_instructions,
+        voice=resolved_voice,
+        prompt_id=prompt_id,
+        prompt_version=prompt_version,
+        prompt_variables=prompt_variables,
+        session=session_config,
+        tool_permissions=tool_permissions,
     )
 
 

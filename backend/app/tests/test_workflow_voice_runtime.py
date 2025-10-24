@@ -167,22 +167,11 @@ def _build_agent_context() -> AgentContext[ChatKitRequestContext]:
 
 @pytest.mark.anyio
 async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured_args: dict[str, Any] = {}
-
-    async def _fake_create_session(**kwargs: Any) -> dict[str, Any]:
-        captured_args.update(kwargs)
-        return {"client_secret": {"value": "secret-123"}, "expires_at": "2099-01-01"}
-
     events: list[ThreadStreamEvent] = []
 
     async def _on_stream(event: ThreadStreamEvent) -> None:
         events.append(event)
 
-    monkeypatch.setattr(
-        executor_module,
-        "create_realtime_voice_session",
-        _fake_create_session,
-    )
     monkeypatch.setattr(executor_module, "get_settings", lambda: _FakeSettings())
 
     agent_context = _build_agent_context()
@@ -206,12 +195,6 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
     assert summary.end_state.slug == "voice"
     assert summary.end_state.status_type == "waiting"
 
-    assert captured_args == {
-        "user_id": "user-123",
-        "model": "gpt-voice",
-        "instructions": "Répondez brièvement.",
-    }
-
     added_events = [
         event for event in events if isinstance(event, ThreadItemAddedEvent)
     ]
@@ -220,8 +203,6 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
     assert isinstance(task_event.item, TaskItem)
     payload = json.loads(task_event.item.task.content or "{}")
     assert payload["type"] == "voice_session.created"
-    client_secret = payload["client_secret"]
-    assert "secret-123" in json.dumps(client_secret)
     assert payload["session"]["voice"] == "ember"
     assert payload["tool_permissions"] == {
         "response": True,
@@ -233,20 +214,27 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
     assert isinstance(wait_state, dict)
     assert wait_state.get("slug") == "voice"
     assert wait_state.get("type") == "voice"
+    state_snapshot = wait_state.get("state")
+    assert isinstance(state_snapshot, dict)
+    assert state_snapshot.get("voice_session_active") is True
+    voice_state = state_snapshot.get("last_voice_session")
+    assert isinstance(voice_state, dict)
+    assert voice_state.get("model") == "gpt-voice"
+    assert voice_state.get("voice") == "ember"
+    assert voice_state.get("instructions") == "Répondez brièvement."
+    realtime = voice_state.get("realtime")
+    assert isinstance(realtime, dict)
+    assert realtime.get("tools") == {
+        "response": True,
+        "transcription": True,
+        "function_call": False,
+    }
 
 
 @pytest.mark.anyio
 async def test_voice_agent_processes_transcripts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def _fake_create_session(**_: Any) -> dict[str, Any]:
-        return {"client_secret": {"value": "secret"}, "expires_at": "2099"}
-
-    monkeypatch.setattr(
-        executor_module,
-        "create_realtime_voice_session",
-        _fake_create_session,
-    )
     monkeypatch.setattr(executor_module, "get_settings", lambda: _FakeSettings())
 
     agent_context = _build_agent_context()
@@ -279,16 +267,6 @@ async def test_voice_agent_processes_transcripts(
 
     async def _on_stream(event: ThreadStreamEvent) -> None:
         events.append(event)
-
-    # Replace create session with sentinel to ensure it is not invoked again
-    async def _fail_create_session(**kwargs: Any) -> dict[str, Any]:  # pragma: no cover
-        raise AssertionError("create_realtime_voice_session should not be called")
-
-    monkeypatch.setattr(
-        executor_module,
-        "create_realtime_voice_session",
-        _fail_create_session,
-    )
 
     resume_input = WorkflowInput(
         input_as_text="",

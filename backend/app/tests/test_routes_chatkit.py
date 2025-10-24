@@ -32,14 +32,23 @@ if str(ROOT_DIR) not in sys.path:
 
 from chatkit.store import NotFoundError  # noqa: E402
 from chatkit.types import (  # noqa: E402
+    ActiveStatus,
     InferenceOptions,
     ThreadCreateParams,
+    ThreadMetadata,
     ThreadsCreateReq,
     UserMessageInput,
     UserMessageTextContent,
 )
 
+from backend.app.chatkit_server.context import _WAIT_STATE_METADATA_KEY  # noqa: E402
+
 routes_chatkit = import_module("backend.app.routes.chatkit")
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
 
 
 class _StubUser:
@@ -142,6 +151,126 @@ def test_chatkit_endpoint_uses_forwarded_headers_when_env_not_overridden(
         assert context.public_base_url == "https://public.example"
 
     asyncio.run(_run())
+
+
+@pytest.mark.anyio
+async def test_create_workflow_voice_session_returns_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_args: dict[str, Any] = {}
+
+    async def _fake_create_session(**kwargs: Any) -> dict[str, Any]:
+        captured_args.update(kwargs)
+        return {"client_secret": {"value": "secret-workflow"}}
+
+    voice_context = {
+        "model": "gpt-voice",
+        "voice": "ember",
+        "instructions": "Répondez brièvement.",
+        "realtime": {
+            "start_mode": "auto",
+            "stop_mode": "manual",
+            "tools": {
+                "response": True,
+                "transcription": True,
+                "function_call": False,
+            },
+        },
+        "prompt_id": "prompt-1",
+        "prompt_version": "2",
+        "prompt_variables": {"topic": "finance"},
+    }
+
+    wait_state = {
+        "slug": "voice",
+        "type": "voice",
+        "state": {
+            "voice_session_active": True,
+            "last_voice_session": voice_context,
+        },
+    }
+
+    thread_metadata = ThreadMetadata(
+        id="thread-voice",
+        created_at=datetime.now(),
+        status=ActiveStatus(),
+        metadata={_WAIT_STATE_METADATA_KEY: wait_state},
+    )
+
+    class _StubStore:
+        async def load_thread(self, thread_id: str, context: Any) -> ThreadMetadata:
+            assert thread_id == "thread-voice"
+            assert getattr(context, "user_id", None) == str(_StubUser.id)
+            return thread_metadata
+
+    class _StubServer:
+        store = _StubStore()
+
+    monkeypatch.setattr(routes_chatkit, "get_chatkit_server", lambda: _StubServer())
+    monkeypatch.setattr(
+        routes_chatkit,
+        "create_realtime_voice_session",
+        _fake_create_session,
+    )
+
+    request = _StubRequest()
+    result = await routes_chatkit.create_workflow_voice_session(
+        "thread-voice",
+        request,
+        current_user=_StubUser(),
+    )
+
+    assert captured_args == {
+        "user_id": "user:user-1",
+        "model": "gpt-voice",
+        "instructions": "Répondez brièvement.",
+    }
+    assert result.client_secret == {"value": "secret-workflow"}
+    assert result.model == "gpt-voice"
+    assert result.instructions == "Répondez brièvement."
+    assert result.voice == "ember"
+    assert result.prompt_id == "prompt-1"
+    assert result.prompt_version == "2"
+    assert result.prompt_variables == {"topic": "finance"}
+    assert result.tool_permissions == {
+        "response": True,
+        "transcription": True,
+        "function_call": False,
+    }
+    assert isinstance(result.session, dict)
+    assert result.session.get("model") == "gpt-voice"
+    assert result.session.get("voice") == "ember"
+    assert result.session.get("realtime") == voice_context["realtime"]
+
+
+@pytest.mark.anyio
+async def test_create_workflow_voice_session_missing_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _StubStore:
+        async def load_thread(self, thread_id: str, context: Any) -> ThreadMetadata:
+            return ThreadMetadata(
+                id=thread_id,
+                created_at=datetime.now(),
+                status=ActiveStatus(),
+                metadata={},
+            )
+
+    class _StubServer:
+        store = _StubStore()
+
+    monkeypatch.setattr(routes_chatkit, "get_chatkit_server", lambda: _StubServer())
+
+    request = _StubRequest()
+    with pytest.raises(HTTPException) as excinfo:
+        await routes_chatkit.create_workflow_voice_session(
+            "thread-missing",
+            request,
+            current_user=_StubUser(),
+        )
+
+    assert excinfo.value.status_code == status.HTTP_409_CONFLICT
+    assert "Aucune session vocale" in str(excinfo.value.detail)
 
 
 def test_chatkit_endpoint_prefers_configured_public_base_url(

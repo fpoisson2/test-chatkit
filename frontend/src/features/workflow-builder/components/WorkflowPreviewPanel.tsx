@@ -9,7 +9,11 @@ import { usePreferredColorScheme } from "../../../hooks/usePreferredColorScheme"
 import { useChatkitSession } from "../../../hooks/useChatkitSession";
 import { useHostedFlow } from "../../../hooks/useHostedFlow";
 import { useWorkflowChatSession } from "../../../hooks/useWorkflowChatSession";
-import { useWorkflowVoiceSession } from "../../../hooks/useWorkflowVoiceSession";
+import {
+  useWorkflowVoiceSession,
+  type UseWorkflowVoiceSessionOptions,
+  type WorkflowVoiceSessionBackendResponse,
+} from "../../../hooks/useWorkflowVoiceSession";
 import type { WorkflowSummary } from "../../../types/workflows";
 import { makeApiEndpointCandidates } from "../../../utils/backend";
 import { getOrCreateDeviceId } from "../../../utils/device";
@@ -103,6 +107,7 @@ export function WorkflowPreviewPanel({
   const [initialThreadId, setInitialThreadId] = useState<string | null>(null);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
   const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
+  const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
 
   const { getClientSecret, isLoading, error, reportError, resetError } = useChatkitSession({
     sessionOwner,
@@ -111,7 +116,9 @@ export function WorkflowPreviewPanel({
     disableHostedFlow,
   });
 
-  const workflowVoice = useWorkflowVoiceSession();
+  const workflowVoice = useWorkflowVoiceSession({
+    resolveSession: resolveWorkflowVoiceSession,
+  });
   const {
     handleLogEvent: handleVoiceLogEvent,
     stopSession: stopWorkflowVoiceSession,
@@ -127,6 +134,7 @@ export function WorkflowPreviewPanel({
     stopWorkflowVoiceSession();
     clearStoredChatKitSecret(sessionOwner);
     setInitialThreadId(null);
+    setCurrentThreadId(null);
     setChatInstanceKey((value) => value + 1);
     onActiveStepChange(null);
   }, [onActiveStepChange, sessionOwner, stopWorkflowVoiceSession, workflowId, versionId]);
@@ -140,6 +148,80 @@ export function WorkflowPreviewPanel({
   const endpointCandidates = useMemo(
     () => makeApiEndpointCandidates(backendUrl, "/api/chatkit"),
     [backendUrl],
+  );
+
+  const resolveWorkflowVoiceSession = useCallback(
+    async ({
+      payload: _payload,
+      metadataSlug: _metadataSlug,
+      metadataTitle: _metadataTitle,
+    }: Parameters<
+      NonNullable<UseWorkflowVoiceSessionOptions["resolveSession"]>
+    >[0]): Promise<WorkflowVoiceSessionBackendResponse | null> => {
+      if (!token) {
+        throw new Error(
+          "Authentification requise pour démarrer la session vocale du workflow.",
+        );
+      }
+      if (!currentThreadId) {
+        throw new Error(
+          "Aucun fil de conversation actif pour la session vocale du workflow.",
+        );
+      }
+
+      const encodedThreadId = encodeURIComponent(currentThreadId);
+      const candidates = makeApiEndpointCandidates(
+        backendUrl,
+        `/api/chatkit/workflows/${encodedThreadId}/voice/session`,
+      );
+
+      let lastError: Error | null = null;
+      for (const candidate of candidates) {
+        try {
+          const response = await fetch(candidate, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          if (!response.ok) {
+            const detail = await response.text().catch(() => "");
+            const message = detail.trim()
+              ? `${response.status} ${response.statusText} – ${detail.trim()}`
+              : `${response.status} ${response.statusText}`;
+            const error = new Error(
+              `Échec de la récupération de la session vocale (${message}).`,
+            );
+            if (candidate.startsWith("/") && candidates.length > 1) {
+              lastError = error;
+              continue;
+            }
+            throw error;
+          }
+
+          const data = (await response.json()) as WorkflowVoiceSessionBackendResponse;
+          return data;
+        } catch (error) {
+          const normalized =
+            error instanceof Error
+              ? error
+              : new Error("Impossible de récupérer la session vocale du workflow.");
+          if (candidate.startsWith("/") && candidates.length > 1) {
+            lastError = normalized;
+            continue;
+          }
+          throw normalized;
+        }
+      }
+
+      if (lastError) {
+        throw lastError;
+      }
+
+      return null;
+    },
+    [backendUrl, currentThreadId, token],
   );
 
   const resolveApiConfig = useCallback(
@@ -235,6 +317,7 @@ export function WorkflowPreviewPanel({
         },
         onThreadChange: ({ threadId }: ThreadChangePayload) => {
           setInitialThreadId(threadId);
+          setCurrentThreadId(threadId);
         },
         onLog: handleLog,
       }) satisfies ChatKitOptions,

@@ -67,7 +67,6 @@ from ..chatkit.agent_registry import (
     _build_custom_agent,
     _create_response_format_from_pydantic,
 )
-from ..chatkit_realtime import create_realtime_voice_session
 from ..chatkit_server.actions import (
     _apply_widget_variable_values,
     _collect_widget_bindings,
@@ -2287,28 +2286,9 @@ async def run_workflow(
                 current_slug = transition.target_step.slug
                 continue
 
-            request_context = getattr(agent_context, "request_context", None)
-            user_id = None
-            if request_context is not None:
-                user_id = getattr(request_context, "user_id", None)
-            if not isinstance(user_id, str) or not user_id.strip():
-                thread_meta = getattr(agent_context, "thread", None)
-                fallback_id = getattr(thread_meta, "id", None)
-                user_id = str(fallback_id or "voice-user")
-
-            try:
-                realtime_secret = await create_realtime_voice_session(
-                    user_id=user_id,
-                    model=event_context["model"],
-                    instructions=event_context["instructions"],
-                )
-            except Exception as exc:
-                raise_step_error(current_node.slug, title or current_node.slug, exc)
-
             event_payload = {
                 "type": "voice_session.created",
                 "step": {"slug": current_node.slug, "title": title},
-                "client_secret": realtime_secret,
                 "session": event_context,
                 "tool_permissions": event_context["realtime"]["tools"],
             }

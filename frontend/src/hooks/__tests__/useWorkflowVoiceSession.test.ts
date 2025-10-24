@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { WorkflowVoiceSessionBackendResponse } from "../useWorkflowVoiceSession";
 import type { VoiceSessionSecret } from "../../voice/useVoiceSecret";
 
 type MockHandlers = {
@@ -169,6 +170,51 @@ describe("useWorkflowVoiceSession", () => {
         instructions: "Parlez-moi",
       }),
     );
+  });
+
+  it("fetches the voice secret via the resolver when the payload omits it", async () => {
+    const resolver = vi.fn(
+      async () =>
+        ({
+          client_secret: { value: "sk-fetched" },
+          model: "gpt-voice",
+          instructions: "Parlez-moi",
+          voice: "alloy",
+          session: {
+            model: "gpt-voice",
+            voice: "alloy",
+            instructions: "Parlez-moi",
+            realtime: { start_mode: "auto", stop_mode: "manual" },
+          },
+          tool_permissions: { transcription: true },
+        }) satisfies WorkflowVoiceSessionBackendResponse,
+    );
+
+    const { result } = renderHook(() =>
+      useWorkflowVoiceSession({ resolveSession: resolver }),
+    );
+
+    await act(async () => {
+      await result.current.handleLogEvent({
+        name: "workflow.task.created",
+        data: {
+          task: {
+            metadata: { step_slug: "voice-step" },
+            content: JSON.stringify({
+              type: "voice_session.created",
+              session: { realtime: { start_mode: "auto", stop_mode: "manual" } },
+            }),
+          },
+        },
+      });
+    });
+
+    expect(resolver).toHaveBeenCalledTimes(1);
+    expect(getUserMediaMock).toHaveBeenCalledWith({ audio: true });
+    const callArgs = connectMock.mock.calls[0]?.[0];
+    expect(callArgs?.apiKey).toBe("sk-fetched");
+    expect(callArgs?.secret.model).toBe("gpt-voice");
+    expect(callArgs?.secret.instructions).toBe("Parlez-moi");
   });
 
   it("supports pre-parsed task content objects", async () => {

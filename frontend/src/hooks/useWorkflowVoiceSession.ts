@@ -71,6 +71,29 @@ type VoiceSessionCreatedPayload = {
   tool_permissions?: Record<string, unknown> | null;
 };
 
+export type WorkflowVoiceSessionBackendResponse = {
+  client_secret: WorkflowVoiceSecretPayload | string;
+  expires_at?: string | null;
+  model: string;
+  instructions: string;
+  voice: string;
+  prompt_id?: string | null;
+  prompt_version?: string | null;
+  prompt_variables?: Record<string, string> | null;
+  session?: WorkflowVoiceSessionPayloadSession | null;
+  tool_permissions?: Record<string, boolean> | null;
+};
+
+type ResolveWorkflowVoiceSession = (params: {
+  payload: VoiceSessionCreatedPayload;
+  metadataSlug: string | null;
+  metadataTitle: string | null;
+}) => Promise<WorkflowVoiceSessionBackendResponse | null>;
+
+export type UseWorkflowVoiceSessionOptions = {
+  resolveSession?: ResolveWorkflowVoiceSession;
+};
+
 type ActiveVoiceSession = {
   slug: string | null;
   title: string | null;
@@ -591,7 +614,9 @@ const requestMicrophoneAccess = async (): Promise<{
   }
 };
 
-export const useWorkflowVoiceSession = (): UseWorkflowVoiceSessionResult => {
+export const useWorkflowVoiceSession = (
+  options: UseWorkflowVoiceSessionOptions = {},
+): UseWorkflowVoiceSessionResult => {
   const [status, setStatus] = useState<VoiceSessionStatus>("idle");
   const [isListening, setIsListening] = useState(false);
   const [transcripts, setTranscripts] = useState<VoiceTranscript[]>([]);
@@ -607,6 +632,13 @@ export const useWorkflowVoiceSession = (): UseWorkflowVoiceSessionResult => {
   const activeSecretRef = useRef<VoiceSessionSecret | null>(null);
   const startAttemptRef = useRef(0);
   const suppressEmptyHistoryRef = useRef(false);
+  const resolveSessionRef = useRef<ResolveWorkflowVoiceSession | null>(
+    options.resolveSession ?? null,
+  );
+
+  useEffect(() => {
+    resolveSessionRef.current = options.resolveSession ?? null;
+  }, [options.resolveSession]);
 
   const handleHistoryUpdated = useCallback(
     (history: RealtimeItem[]) => {
@@ -710,17 +742,89 @@ export const useWorkflowVoiceSession = (): UseWorkflowVoiceSessionResult => {
     ) => {
       stopSession({ preserveTranscripts: false });
 
-      if (!payload.client_secret) {
-        setLocalError("Secret vocal manquant dans l'évènement du workflow.");
-        setStatus("error");
-        return;
-      }
+      const resolver = resolveSessionRef.current;
+      let derivedPayload = payload;
+      let normalized = payload.client_secret
+        ? buildVoiceSecretFromPayload(payload)
+        : null;
 
-      const normalized = buildVoiceSecretFromPayload(payload);
       if (!normalized) {
-        setLocalError("Secret temps réel invalide reçu pour la session vocale du workflow.");
-        setStatus("error");
-        return;
+        if (!payload.client_secret && !resolver) {
+          setLocalError("Secret vocal manquant dans l'évènement du workflow.");
+          setStatus("error");
+          return;
+        }
+
+        if (resolver) {
+          let resolvedResponse: WorkflowVoiceSessionBackendResponse | null = null;
+          try {
+            resolvedResponse = await resolver({ payload, metadataSlug, metadataTitle });
+          } catch (error) {
+            setLocalError(formatErrorMessage(error));
+            setStatus("error");
+            return;
+          }
+
+          if (!resolvedResponse) {
+            setLocalError("Impossible de récupérer la session vocale du workflow.");
+            setStatus("error");
+            return;
+          }
+
+          const payloadSessionRecord = toRecord(payload.session ?? null);
+          const sessionForPayload: WorkflowVoiceSessionPayloadSession =
+            (resolvedResponse.session as WorkflowVoiceSessionPayloadSession) ??
+            payload.session ?? {
+              model: resolvedResponse.model,
+              voice: resolvedResponse.voice,
+              instructions: resolvedResponse.instructions,
+              realtime: payloadSessionRecord
+                ? toRecord(payloadSessionRecord["realtime"]) ?? null
+                : null,
+              prompt_id: resolvedResponse.prompt_id ?? undefined,
+              prompt_version: resolvedResponse.prompt_version ?? undefined,
+              prompt_variables: resolvedResponse.prompt_variables ?? undefined,
+            };
+
+          const responsePayload: VoiceSessionCreatedPayload = {
+            type: payload.type,
+            step: payload.step,
+            client_secret: resolvedResponse.client_secret,
+            session: sessionForPayload,
+            tool_permissions:
+              resolvedResponse.tool_permissions ?? payload.tool_permissions ?? null,
+          };
+
+          normalized = buildVoiceSecretFromPayload(responsePayload);
+          if (!normalized) {
+            setLocalError(
+              "Secret temps réel invalide reçu pour la session vocale du workflow.",
+            );
+            setStatus("error");
+            return;
+          }
+
+          derivedPayload = responsePayload;
+
+          if (resolvedResponse.expires_at) {
+            normalized.secret.expires_at = resolvedResponse.expires_at;
+          }
+          if (resolvedResponse.prompt_id) {
+            normalized.secret.prompt_id = resolvedResponse.prompt_id;
+          }
+          if (resolvedResponse.prompt_version) {
+            normalized.secret.prompt_version = resolvedResponse.prompt_version;
+          }
+          if (resolvedResponse.prompt_variables) {
+            normalized.secret.prompt_variables = resolvedResponse.prompt_variables;
+          }
+        } else {
+          setLocalError(
+            "Secret temps réel invalide reçu pour la session vocale du workflow.",
+          );
+          setStatus("error");
+          return;
+        }
       }
 
       const { secret, sessionConfig } = normalized;
@@ -737,9 +841,9 @@ export const useWorkflowVoiceSession = (): UseWorkflowVoiceSessionResult => {
 
       activeSecretRef.current = secret;
 
-      const slug = metadataSlug ?? extractStepSlug(payload.step ?? null);
-      const title = metadataTitle ?? extractStepTitle(payload.step ?? null);
-      const normalizedTools = extractToolPermissionsFromPayload(payload);
+      const slug = metadataSlug ?? extractStepSlug(derivedPayload.step ?? null);
+      const title = metadataTitle ?? extractStepTitle(derivedPayload.step ?? null);
+      const normalizedTools = extractToolPermissionsFromPayload(derivedPayload);
 
       activeSessionRef.current = {
         slug,
@@ -873,4 +977,8 @@ export const useWorkflowVoiceSession = (): UseWorkflowVoiceSessionResult => {
   );
 };
 
-export type { MicrophonePermissionState };
+export type {
+  MicrophonePermissionState,
+  UseWorkflowVoiceSessionOptions,
+  WorkflowVoiceSessionBackendResponse,
+};

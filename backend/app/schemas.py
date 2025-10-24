@@ -39,6 +39,8 @@ class VoiceSessionResponse(BaseModel):
     prompt_id: str | None = None
     prompt_version: str | None = None
     prompt_variables: dict[str, str] = Field(default_factory=dict)
+    session: dict[str, Any] | None = None
+    tool_permissions: dict[str, bool] = Field(default_factory=dict)
 
 
 class ChatKitWorkflowResponse(BaseModel):
