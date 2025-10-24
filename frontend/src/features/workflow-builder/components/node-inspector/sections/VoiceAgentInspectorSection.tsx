@@ -4,6 +4,7 @@ import type {
   VoiceAgentTool,
   VoiceAgentStartBehavior,
   VoiceAgentStopBehavior,
+  WorkflowSummary,
 } from "../../../types";
 import {
   VOICE_AGENT_START_BEHAVIOR_OPTIONS,
@@ -13,6 +14,7 @@ import {
 import { ToggleRow } from "../components/ToggleRow";
 import styles from "../NodeInspector.module.css";
 import { useVoiceAgentInspectorState } from "../hooks/useVoiceAgentInspectorState";
+import { ToolSettingsPanel } from "./ToolSettingsPanel";
 
 type VoiceAgentInspectorSectionProps = {
   nodeId: string;
@@ -29,6 +31,12 @@ type VoiceAgentInspectorSectionProps = {
     behavior: VoiceAgentStopBehavior,
   ) => void;
   onVoiceAgentToolChange: (nodeId: string, tool: VoiceAgentTool, enabled: boolean) => void;
+  workflows: WorkflowSummary[];
+  currentWorkflowId: number | null;
+  onAgentWeatherToolChange: (nodeId: string, enabled: boolean) => void;
+  onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
+  onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
+  onAgentWorkflowToolToggle: (nodeId: string, slug: string, enabled: boolean) => void;
 };
 
 export const VoiceAgentInspectorSection = ({
@@ -40,6 +48,12 @@ export const VoiceAgentInspectorSection = ({
   onVoiceAgentStartBehaviorChange,
   onVoiceAgentStopBehaviorChange,
   onVoiceAgentToolChange,
+  workflows,
+  currentWorkflowId,
+  onAgentWeatherToolChange,
+  onAgentWidgetValidationToolChange,
+  onAgentWorkflowValidationToolChange,
+  onAgentWorkflowToolToggle,
 }: VoiceAgentInspectorSectionProps) => {
   const { t } = useI18n();
   const { voiceModel, voiceId, instructions, startBehavior, stopBehavior, tools } =
@@ -124,9 +138,9 @@ export const VoiceAgentInspectorSection = ({
       </label>
 
       <div className={styles.nodeInspectorPanel}>
-        <span className={styles.nodeInspectorLabel}>
+        <strong className={styles.nodeInspectorSectionTitle}>
           {t("workflowBuilder.voiceInspector.toolsLabel")}
-        </span>
+        </strong>
         {VOICE_AGENT_TOOL_DEFINITIONS.map((definition) => (
           <ToggleRow
             key={definition.key}
@@ -136,6 +150,16 @@ export const VoiceAgentInspectorSection = ({
             onChange={(checked) => onVoiceAgentToolChange(nodeId, definition.key, checked)}
           />
         ))}
+        <ToolSettingsPanel
+          nodeId={nodeId}
+          parameters={parameters}
+          workflows={workflows}
+          currentWorkflowId={currentWorkflowId}
+          onAgentWeatherToolChange={onAgentWeatherToolChange}
+          onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
+          onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
+          onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
+        />
       </div>
     </>
   );

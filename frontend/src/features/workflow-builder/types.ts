@@ -108,5 +108,6 @@ export type {
   VoiceAgentTool,
   VoiceAgentStartBehavior,
   VoiceAgentStopBehavior,
+  WorkflowToolConfig,
 } from "../../utils/workflows";
 export type { WorkflowSummary, WorkflowVersionSummary } from "../../types/workflows";

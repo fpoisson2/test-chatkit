@@ -474,6 +474,12 @@ const NodeInspector = ({
           onVoiceAgentStartBehaviorChange={onVoiceAgentStartBehaviorChange}
           onVoiceAgentStopBehaviorChange={onVoiceAgentStopBehaviorChange}
           onVoiceAgentToolChange={onVoiceAgentToolChange}
+          workflows={workflows}
+          currentWorkflowId={currentWorkflowId}
+          onAgentWeatherToolChange={onAgentWeatherToolChange}
+          onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
+          onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
+          onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
         />
       ) : null}
 
