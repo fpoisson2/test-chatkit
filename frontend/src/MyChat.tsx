@@ -6,10 +6,13 @@ import { useAppLayout } from "./components/AppLayout";
 import { ChatKitHost } from "./components/my-chat/ChatKitHost";
 import { ChatSidebar } from "./components/my-chat/ChatSidebar";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
+import { WorkflowVoiceSessionPanel } from "./components/my-chat/WorkflowVoiceSessionPanel";
 import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useHostedFlow } from "./hooks/useHostedFlow";
 import { useWorkflowChatSession } from "./hooks/useWorkflowChatSession";
+import { useWorkflowVoiceAgent } from "./voice/useWorkflowVoiceAgent";
+import type { VoiceSessionSecret } from "./voice/useVoiceSecret";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import {
@@ -38,6 +41,130 @@ type WeatherToolCall = {
 };
 
 type ClientToolCall = WeatherToolCall;
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const toBooleanRecord = (value: unknown): Record<string, boolean> => {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+  const result: Record<string, boolean> = {};
+  Object.entries(value).forEach(([key, raw]) => {
+    const normalizedKey = typeof key === "string" ? key.trim() : "";
+    if (!normalizedKey) {
+      return;
+    }
+    result[normalizedKey] = Boolean(raw);
+  });
+  return result;
+};
+
+type VoiceActivationPayload = {
+  threadId: string | null;
+  taskId: string | null;
+  stepSlug: string | null;
+  stepTitle: string | null;
+  secret: VoiceSessionSecret | null;
+  model: string;
+  voice: string;
+  instructions: string;
+  realtime: {
+    startMode: "manual" | "auto";
+    stopMode: "manual" | "auto";
+    toolPermissions: Record<string, boolean>;
+  };
+};
+
+const extractVoiceSessionActivation = (
+  snapshot: unknown,
+  fallbackThreadId: string | null,
+): VoiceActivationPayload | null => {
+  if (!isPlainObject(snapshot)) {
+    return null;
+  }
+
+  const items = Array.isArray(snapshot.items) ? snapshot.items : [];
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (!isPlainObject(item)) {
+      continue;
+    }
+    const type = typeof item.type === "string" ? item.type : "";
+    if (type !== "task") {
+      continue;
+    }
+
+    const task = isPlainObject(item.task) ? item.task : null;
+    if (!task) {
+      continue;
+    }
+
+    const content = task.content;
+    if (typeof content !== "string") {
+      continue;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      continue;
+    }
+
+    if (!isPlainObject(parsed) || parsed.type !== "voice_session.created") {
+      continue;
+    }
+
+    const clientSecret = parsed.client_secret as VoiceSessionSecret | null;
+    if (!clientSecret) {
+      continue;
+    }
+
+    const step = isPlainObject(parsed.step) ? parsed.step : {};
+    const session = isPlainObject(parsed.session) ? parsed.session : {};
+    const realtimeSource = isPlainObject(session.realtime) ? session.realtime : {};
+    const toolPermissionsSource = isPlainObject(parsed.tool_permissions)
+      ? parsed.tool_permissions
+      : isPlainObject(realtimeSource.tools)
+      ? realtimeSource.tools
+      : {};
+
+    const startModeRaw =
+      typeof realtimeSource.start_mode === "string"
+        ? realtimeSource.start_mode.trim().toLowerCase()
+        : "";
+    const stopModeRaw =
+      typeof realtimeSource.stop_mode === "string"
+        ? realtimeSource.stop_mode.trim().toLowerCase()
+        : "";
+
+    const threadId =
+      typeof snapshot.id === "string"
+        ? snapshot.id
+        : typeof parsed.thread_id === "string"
+        ? parsed.thread_id
+        : fallbackThreadId;
+
+    return {
+      threadId: threadId ?? null,
+      taskId: typeof item.id === "string" ? item.id : null,
+      stepSlug: typeof step.slug === "string" ? step.slug : null,
+      stepTitle: typeof step.title === "string" ? step.title : null,
+      secret: clientSecret,
+      model: typeof session.model === "string" ? session.model : "",
+      voice: typeof session.voice === "string" ? session.voice : "",
+      instructions: typeof session.instructions === "string" ? session.instructions : "",
+      realtime: {
+        startMode: startModeRaw === "auto" ? "auto" : "manual",
+        stopMode: stopModeRaw === "manual" ? "manual" : "auto",
+        toolPermissions: toBooleanRecord(toolPermissionsSource),
+      },
+    };
+  }
+
+  return null;
+};
 
 type ResetChatStateOptions = {
   workflowSlug?: string | null;
@@ -109,11 +236,34 @@ export function MyChat() {
   const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
     loadStoredThreadId(sessionOwner, activeWorkflowSlug),
   );
+  const [currentThreadId, setCurrentThreadId] = useState<string | null>(initialThreadId);
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
+  const handleVoiceSubmissionRefresh = useCallback(async () => {
+    const refresh = requestRefreshRef.current;
+    if (!refresh) {
+      return;
+    }
+    try {
+      await refresh("[ChatKit] Rafraîchissement après session vocale");
+    } catch (refreshError) {
+      if (import.meta.env.DEV) {
+        console.warn(
+          "[ChatKit] Rafraîchissement après session vocale impossible",
+          refreshError,
+        );
+      }
+    }
+  }, []);
+  const voiceAgent = useWorkflowVoiceAgent({
+    token,
+    onTranscriptsSubmitted: handleVoiceSubmissionRefresh,
+  });
+  const { activate: activateVoiceSession, deactivate: deactivateVoiceSession } = voiceAgent;
+
   const resetChatState = useCallback(
     ({ workflowSlug, preserveStoredThread = false }: ResetChatStateOptions = {}) => {
       clearStoredChatKitSecret(sessionOwner);
@@ -124,14 +274,16 @@ export function MyChat() {
       }
 
       lastThreadSnapshotRef.current = null;
+      deactivateVoiceSession();
 
       const nextInitialThreadId = preserveStoredThread
         ? loadStoredThreadId(sessionOwner, resolvedWorkflowSlug)
         : null;
       setInitialThreadId(nextInitialThreadId);
+      setCurrentThreadId(nextInitialThreadId);
       setChatInstanceKey((value) => value + 1);
     },
-    [activeWorkflowSlug, sessionOwner],
+    [activeWorkflowSlug, deactivateVoiceSession, sessionOwner],
   );
 
   const { hostedFlowEnabled, disableHostedFlow } = useHostedFlow({
@@ -151,6 +303,10 @@ export function MyChat() {
     }
     document.documentElement.dataset.theme = preferredColorScheme;
   }, [preferredColorScheme]);
+
+  useEffect(() => {
+    setCurrentThreadId((current) => (current === initialThreadId ? current : initialThreadId));
+  }, [initialThreadId]);
 
   const handleWorkflowActivated = useCallback(
     (workflow: WorkflowSummary | null, { reason }: { reason: "initial" | "user" }) => {
@@ -174,12 +330,14 @@ export function MyChat() {
     if (previousOwner && previousOwner !== sessionOwner) {
       clearStoredChatKitSecret(previousOwner);
       clearStoredThreadId(previousOwner, activeWorkflowSlug);
+      deactivateVoiceSession();
     }
     previousSessionOwnerRef.current = sessionOwner;
 
     const storedThreadId = loadStoredThreadId(sessionOwner, activeWorkflowSlug);
     setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
-  }, [activeWorkflowSlug, sessionOwner]);
+    setCurrentThreadId((current) => (current === storedThreadId ? current : storedThreadId));
+  }, [activeWorkflowSlug, deactivateVoiceSession, sessionOwner]);
 
   
 
@@ -658,6 +816,7 @@ export function MyChat() {
           console.debug("[ChatKit] thread change", { threadId });
           persistStoredThreadId(sessionOwner, threadId, activeWorkflowSlug);
           setInitialThreadId((current) => (current === threadId ? current : threadId));
+          setCurrentThreadId((current) => (current === threadId ? current : threadId));
         },
         onThreadLoadStart: ({ threadId }: { threadId: string }) => {
           console.debug("[ChatKit] thread load start", { threadId });
@@ -669,15 +828,22 @@ export function MyChat() {
           if (entry?.data && typeof entry.data === "object") {
             const data = entry.data as Record<string, unknown>;
             if ("thread" in data && data.thread) {
-              lastThreadSnapshotRef.current = data.thread as Record<string, unknown>;
+              const threadSnapshot = data.thread as Record<string, unknown>;
+              lastThreadSnapshotRef.current = threadSnapshot;
+              const activation = extractVoiceSessionActivation(threadSnapshot, currentThreadId);
+              if (activation) {
+                activateVoiceSession(activation);
+              }
             }
           }
           console.debug("[ChatKit] log", entry.name, entry.data ?? {});
         },
       }) satisfies ChatKitOptions,
     [
+      activateVoiceSession,
       apiConfig,
       attachmentsConfig,
+      currentThreadId,
       initialThreadId,
       openSidebar,
       sessionOwner,
@@ -686,6 +852,7 @@ export function MyChat() {
       chatInstanceKey,
       preferredColorScheme,
       reportError,
+      resetError,
     ],
   );
 
@@ -710,6 +877,7 @@ export function MyChat() {
     <>
       <ChatSidebar onWorkflowActivated={handleWorkflowActivated} />
       <ChatKitHost control={control} chatInstanceKey={chatInstanceKey} />
+      <WorkflowVoiceSessionPanel voiceAgent={voiceAgent} />
       <ChatStatusMessage message={statusMessage} isError={Boolean(error)} isLoading={isLoading} />
     </>
   );

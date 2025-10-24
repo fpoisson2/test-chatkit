@@ -4,6 +4,8 @@ import datetime
 import math
 from typing import Any
 
+from typing import Any, Literal
+
 from pydantic import BaseModel, EmailStr, Field, constr, field_validator
 
 
@@ -39,6 +41,59 @@ class VoiceSessionResponse(BaseModel):
     prompt_id: str | None = None
     prompt_version: str | None = None
     prompt_variables: dict[str, str] = Field(default_factory=dict)
+
+
+class VoiceTranscriptEntry(BaseModel):
+    role: Literal["user", "assistant"]
+    text: str
+    status: str | None = None
+
+    @field_validator("text")
+    @classmethod
+    def _normalize_text(cls, value: str) -> str:
+        sanitized = value.strip()
+        if not sanitized:
+            raise ValueError("Le texte de transcription ne peut pas être vide.")
+        return sanitized
+
+    @field_validator("status")
+    @classmethod
+    def _normalize_status(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        candidate = value.strip()
+        return candidate or None
+
+
+class VoiceTranscriptsSubmitRequest(BaseModel):
+    thread_id: str
+    step_slug: str | None = None
+    voice_transcripts: list[VoiceTranscriptEntry]
+
+    @field_validator("thread_id")
+    @classmethod
+    def _validate_thread_id(cls, value: str) -> str:
+        candidate = value.strip()
+        if not candidate:
+            raise ValueError("L'identifiant du fil est requis.")
+        return candidate
+
+    @field_validator("step_slug")
+    @classmethod
+    def _normalize_step_slug(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        candidate = value.strip()
+        return candidate or None
+
+    @field_validator("voice_transcripts")
+    @classmethod
+    def _ensure_transcripts(
+        cls, value: list[VoiceTranscriptEntry]
+    ) -> list[VoiceTranscriptEntry]:
+        if not value:
+            raise ValueError("Au moins une transcription est requise.")
+        return value
 
 
 class ChatKitWorkflowResponse(BaseModel):

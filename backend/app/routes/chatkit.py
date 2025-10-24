@@ -36,6 +36,7 @@ from chatkit.store import NotFoundError
 
 from ..attachment_store import AttachmentUploadError
 from ..chatkit_realtime import create_realtime_voice_session
+from ..chatkit_server.context import _get_wait_state_metadata, _set_wait_state_metadata
 from ..chatkit_sessions import (
     SessionSecretParser,
     create_chatkit_session,
@@ -52,6 +53,7 @@ from ..schemas import (
     SessionRequest,
     VoiceSessionRequest,
     VoiceSessionResponse,
+    VoiceTranscriptsSubmitRequest,
 )
 from ..security import decode_agent_image_token
 from ..voice_settings import get_or_create_voice_settings
@@ -362,6 +364,75 @@ async def create_voice_session(
         prompt_version=voice_settings.prompt_version,
         prompt_variables=voice_settings.prompt_variables,
     )
+
+
+@router.post(
+    "/api/chatkit/workflow/voice-transcripts",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def submit_voice_transcripts(
+    payload: VoiceTranscriptsSubmitRequest,
+    current_user: User = Depends(get_current_user),
+):
+    server = get_chatkit_server()
+    context = _build_request_context(current_user, None)
+
+    try:
+        thread = await server.store.load_thread(payload.thread_id, context)
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation introuvable",
+        ) from exc
+
+    wait_state = _get_wait_state_metadata(thread)
+    if wait_state is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Aucune session vocale en attente pour ce fil.",
+        )
+
+    if payload.step_slug:
+        waiting_slug = wait_state.get("slug")
+        if (
+            isinstance(waiting_slug, str)
+            and waiting_slug.strip()
+            and waiting_slug.strip() != payload.step_slug
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="La session vocale active ne correspond plus à l'étape demandée.",
+            )
+
+    normalized_transcripts: list[dict[str, str]] = []
+    for entry in payload.voice_transcripts:
+        transcript_entry: dict[str, str] = {
+            "role": entry.role,
+            "text": entry.text,
+        }
+        if entry.status:
+            transcript_entry["status"] = entry.status
+        normalized_transcripts.append(transcript_entry)
+
+    if not normalized_transcripts:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Aucune transcription valide fournie.",
+        )
+
+    updated_wait_state = dict(wait_state)
+    updated_wait_state["voice_transcripts"] = normalized_transcripts
+    _set_wait_state_metadata(thread, updated_wait_state)
+
+    try:
+        await server.store.save_thread(thread, context)
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Conversation introuvable",
+        ) from exc
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.api_route(

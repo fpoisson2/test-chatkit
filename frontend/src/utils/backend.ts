@@ -193,6 +193,18 @@ export type ChatKitWorkflowInfo = {
   updated_at: string;
 };
 
+export type VoiceTranscriptSubmission = {
+  role: "user" | "assistant";
+  text: string;
+  status?: string | null;
+};
+
+export type SubmitVoiceTranscriptsPayload = {
+  thread_id: string;
+  step_slug?: string | null;
+  voice_transcripts: VoiceTranscriptSubmission[];
+};
+
 export const adminApi = {
   async listUsers(token: string | null): Promise<EditableUser[]> {
     const response = await requestWithFallback("/api/admin/users", {
@@ -236,6 +248,17 @@ export const chatkitApi = {
       headers: withAuthHeaders(token),
     });
     return response.json();
+  },
+
+  async submitVoiceTranscripts(
+    token: string | null,
+    payload: SubmitVoiceTranscriptsPayload,
+  ): Promise<void> {
+    await requestWithFallback("/api/chatkit/workflow/voice-transcripts", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
   },
 };
 
