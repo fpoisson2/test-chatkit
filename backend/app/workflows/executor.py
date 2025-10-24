@@ -27,6 +27,7 @@ from agents import (
     Runner,
     TResponseInputItem,
 )
+from agents.items import RunItem, ToolCallOutputItem
 from pydantic import BaseModel
 
 from chatkit.agents import (
@@ -116,6 +117,100 @@ from .service import (
 )
 
 logger = logging.getLogger("chatkit.server")
+
+
+def _iter_computer_screenshots(
+    items: Sequence[RunItem],
+) -> Iterator[tuple[ToolCallOutputItem, str]]:
+    """Yield computer-use tool outputs that include screenshots."""
+
+    for item in items:
+        if not isinstance(item, ToolCallOutputItem):
+            continue
+        raw_item = getattr(item, "raw_item", None)
+        if getattr(raw_item, "type", None) != "computer_call_output":
+            continue
+        output = getattr(raw_item, "output", None)
+        image_url = getattr(output, "image_url", None)
+        if not image_url and isinstance(item.output, str):
+            image_url = item.output
+        if isinstance(image_url, str) and image_url.strip():
+            yield item, image_url
+
+
+async def _broadcast_computer_screenshots(
+    items: Sequence[RunItem],
+    *,
+    agent_context: AgentContext[Any],
+    metadata_for_images: Mapping[str, Any],
+    on_stream_event: Callable[[ThreadStreamEvent], Awaitable[None]] | None,
+    conversation_history: list[Any],
+) -> list[str]:
+    """Persist computer-use screenshots and broadcast them as assistant messages."""
+
+    stored_urls: list[str] = []
+    base_url = metadata_for_images.get("backend_public_base_url") or get_settings().backend_public_base_url
+
+    for tool_item, image_url in _iter_computer_screenshots(items):
+        effective_url = image_url
+        header, _, b64_payload = image_url.partition(",")
+        if image_url.startswith("data:") and b64_payload:
+            media_type = header[5:] if header.startswith("data:") else ""
+            format_hint = None
+            if "/" in media_type:
+                format_hint = media_type.split("/")[-1].split(";")[0]
+            raw_identifier = getattr(tool_item.raw_item, "id", None) or getattr(
+                tool_item.raw_item, "call_id", None
+            )
+            if not isinstance(raw_identifier, str) or not raw_identifier.strip():
+                raw_identifier = f"computer-screenshot-{uuid.uuid4().hex}"
+            safe_identifier = re.sub(r"[^a-zA-Z0-9._-]", "-", raw_identifier)
+            try:
+                _, relative_url = save_agent_image_file(
+                    safe_identifier,
+                    b64_payload,
+                    output_format=format_hint,
+                )
+            except Exception:  # pragma: no cover - robustesse face aux erreurs inattendues
+                logger.exception("Impossible d'enregistrer la capture d'écran %s", safe_identifier)
+                relative_url = None
+            if relative_url:
+                if base_url:
+                    effective_url = build_agent_image_absolute_url(
+                        relative_url,
+                        base_url=base_url,
+                    )
+                else:
+                    effective_url = relative_url
+        message_text = (
+            "Capture d'écran du mode computer-use." "\n\n![Capture d'écran](%s)"
+        ) % effective_url
+
+        if on_stream_event is not None:
+            assistant_item = AssistantMessageItem(
+                id=agent_context.generate_id("message"),
+                thread_id=agent_context.thread.id,
+                created_at=datetime.now(),
+                content=[AssistantMessageContent(text=message_text)],
+            )
+            await on_stream_event(ThreadItemAddedEvent(item=assistant_item))
+            await on_stream_event(ThreadItemDoneEvent(item=assistant_item))
+
+        conversation_history.append(
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": message_text,
+                    }
+                ],
+            }
+        )
+        stored_urls.append(effective_url)
+
+    return stored_urls
+
 
 AGENT_NODE_KINDS = frozenset({"agent", "voice_agent"})
 AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
@@ -1751,6 +1846,15 @@ async def run_workflow(
                 await _inspect_event_for_images(event)
         except Exception as exc:  # pragma: no cover
             raise_step_error(step_key, title, exc)
+
+        if result.new_items:
+            await _broadcast_computer_screenshots(
+                result.new_items,
+                agent_context=agent_context,
+                metadata_for_images=metadata_for_images,
+                on_stream_event=on_stream_event,
+                conversation_history=conversation_history,
+            )
 
         conversation_history.extend([item.to_input_item() for item in result.new_items])
         if result.new_items:
