@@ -181,8 +181,12 @@ const extractSlugFromLogData = (
   return null;
 };
 
-const parseVoiceSessionTask = (
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object";
+
+const tryParseVoiceSessionTask = (
   task: unknown,
+  metadataFallback: unknown,
 ): {
   payload: VoiceSessionCreatedPayload;
   metadataSlug: string | null;
@@ -193,15 +197,24 @@ const parseVoiceSessionTask = (
   }
 
   const taskLog = task as WorkflowTaskLog;
-  const { content } = taskLog;
-  if (typeof content !== "string") {
-    return null;
-  }
+  const metadataSource =
+    taskLog.metadata ?? (isRecord(metadataFallback) ? metadataFallback : null);
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
+  const metadataSlug = extractSlugFromMetadata(metadataSource ?? null);
+  const metadataTitle = extractTitleFromMetadata(metadataSource ?? null);
+
+  const { content } = taskLog;
+  let parsed: unknown = null;
+
+  if (typeof content === "string") {
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      return null;
+    }
+  } else if (isRecord(content)) {
+    parsed = content;
+  } else {
     return null;
   }
 
@@ -215,14 +228,71 @@ const parseVoiceSessionTask = (
     return null;
   }
 
-  const metadataSlug = extractSlugFromMetadata(taskLog.metadata ?? null);
-  const metadataTitle = extractTitleFromMetadata(taskLog.metadata ?? null);
-
   return {
     payload,
     metadataSlug,
     metadataTitle,
   };
+};
+
+const extractVoiceTaskFromLogData = (
+  data: unknown,
+): {
+  payload: VoiceSessionCreatedPayload;
+  metadataSlug: string | null;
+  metadataTitle: string | null;
+} | null => {
+  if (!isRecord(data)) {
+    return null;
+  }
+
+  const candidates: Array<{ task: unknown; metadata: unknown }> = [];
+
+  if ("task" in data) {
+    const candidate = (data as Record<string, unknown>).task;
+    candidates.push({
+      task: candidate,
+      metadata:
+        (isRecord(candidate) ? (candidate as WorkflowTaskLog).metadata : null) ??
+        (data as Record<string, unknown>).metadata ??
+        null,
+    });
+  }
+
+  const maybeTaskItem = (data as Record<string, unknown>).task_item;
+  if (isRecord(maybeTaskItem) && "task" in maybeTaskItem) {
+    candidates.push({
+      task: maybeTaskItem.task,
+      metadata: maybeTaskItem.metadata ?? (data as Record<string, unknown>).metadata ?? null,
+    });
+  }
+
+  const maybeItem = (data as Record<string, unknown>).item;
+  if (isRecord(maybeItem)) {
+    if ("task" in maybeItem) {
+      candidates.push({
+        task: maybeItem.task,
+        metadata: maybeItem.metadata ?? (data as Record<string, unknown>).metadata ?? null,
+      });
+    }
+
+    const nestedTaskItem = maybeItem.task_item;
+    if (isRecord(nestedTaskItem) && "task" in nestedTaskItem) {
+      candidates.push({
+        task: nestedTaskItem.task,
+        metadata: nestedTaskItem.metadata ?? maybeItem.metadata ?? null,
+      });
+    }
+  }
+
+  for (const candidate of candidates) {
+    const parsed = tryParseVoiceSessionTask(candidate.task, candidate.metadata);
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  return null;
 };
 
 const requestMicrophoneAccess = async (): Promise<{
@@ -472,21 +542,18 @@ export const useWorkflowVoiceSession = (): UseWorkflowVoiceSessionResult => {
         return;
       }
 
-      if (name.startsWith("workflow.task")) {
-        const task = data?.task;
-        const parsed = parseVoiceSessionTask(task);
-        if (parsed) {
-          const { payload, metadataSlug, metadataTitle } = parsed;
-          const typeValue = asNonEmptyString(payload.type);
-          if (typeValue === "voice_session.created") {
-            await startFromPayload(payload, { metadataSlug, metadataTitle });
-            return;
-          }
+      const voiceTask = extractVoiceTaskFromLogData(data ?? null);
+      if (voiceTask) {
+        const { payload, metadataSlug, metadataTitle } = voiceTask;
+        const typeValue = asNonEmptyString(payload.type);
+        if (typeValue === "voice_session.created") {
+          await startFromPayload(payload, { metadataSlug, metadataTitle });
+          return;
+        }
 
-          if (typeValue && typeValue.startsWith("voice_session.")) {
-            stopSession();
-            return;
-          }
+        if (typeValue && typeValue.startsWith("voice_session.")) {
+          stopSession();
+          return;
         }
       }
 

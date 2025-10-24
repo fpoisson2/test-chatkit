@@ -114,6 +114,75 @@ describe("useWorkflowVoiceSession", () => {
     expect(result.current.transcripts[0]?.text).toBe("Bonjour");
   });
 
+  it("connects when the voice task is nested in a thread item log", async () => {
+    const secret: VoiceSessionSecret = {
+      client_secret: { value: "sk-workflow" },
+      expires_at: null,
+      instructions: "Parlez-moi",
+      model: "gpt-voice",
+      voice: "alloy",
+    };
+
+    const payload = {
+      type: "voice_session.created",
+      client_secret: secret,
+      tool_permissions: { response: true, transcription: true },
+    };
+
+    const { result } = renderHook(() => useWorkflowVoiceSession());
+
+    await act(async () => {
+      await result.current.handleLogEvent({
+        name: "thread.item.created",
+        data: {
+          item: {
+            type: "task",
+            metadata: { step_slug: "voice-step" },
+            task: {
+              content: JSON.stringify(payload),
+              metadata: { step_slug: "voice-step" },
+            },
+          },
+        },
+      });
+    });
+
+    expect(getUserMediaMock).toHaveBeenCalledWith({ audio: true });
+    expect(connectMock).toHaveBeenCalledWith({ secret, apiKey: "sk-workflow" });
+  });
+
+  it("supports pre-parsed task content objects", async () => {
+    const secret: VoiceSessionSecret = {
+      client_secret: { value: "sk-workflow" },
+      expires_at: null,
+      instructions: "Parlez-moi",
+      model: "gpt-voice",
+      voice: "alloy",
+    };
+
+    const payload = {
+      type: "voice_session.created",
+      client_secret: secret,
+    };
+
+    const { result } = renderHook(() => useWorkflowVoiceSession());
+
+    await act(async () => {
+      await result.current.handleLogEvent({
+        name: "workflow.task.created",
+        data: {
+          task: {
+            metadata: { step_slug: "voice-step" },
+            content: payload,
+          },
+        },
+      });
+    });
+
+    expect(getUserMediaMock).toHaveBeenCalledWith({ audio: true });
+    expect(connectMock).toHaveBeenCalledWith({ secret, apiKey: "sk-workflow" });
+  });
+
   it("stops the realtime session when the workflow run finishes", async () => {
     const secret: VoiceSessionSecret = {
       client_secret: "sk-workflow",
