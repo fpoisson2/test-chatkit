@@ -8,15 +8,18 @@ import {
   DEFAULT_VOICE_AGENT_STOP_BEHAVIOR,
   DEFAULT_VOICE_AGENT_VOICE,
   getAgentNestedWorkflow,
+  getAgentWorkflowTools,
   getWidgetNodeConfig,
   resolveVoiceAgentParameters,
   resolveWidgetNodeParameters,
   setAgentNestedWorkflow,
+  setAgentWorkflowTools,
   setWidgetNodeDefinitionExpression,
   setWidgetNodeSlug,
   setWidgetNodeSource,
   getAgentWorkflowValidationToolEnabled,
   setAgentWorkflowValidationToolEnabled,
+  type WorkflowToolConfig,
 } from "../workflows";
 
 describe("widget_source override", () => {
@@ -192,6 +195,72 @@ describe("workflow validation tool helpers", () => {
             "Valide un graphe de workflow ChatKit et retourne la version normalisée.",
         },
       },
+    ]);
+  });
+});
+
+describe("workflow tool helpers", () => {
+  it("extracts workflow configurations from parameters", () => {
+    const parameters: AgentParameters = {
+      tools: [
+        {
+          type: "workflow",
+          slug: "support",
+          name: "Support",
+          description: "Handle support conversations",
+          workflow: { slug: "support", title: "Support" },
+        },
+      ],
+    };
+
+    expect(getAgentWorkflowTools(parameters)).toEqual([
+      expect.objectContaining({
+        slug: "support",
+        name: "Support",
+        description: "Handle support conversations",
+        title: "Support",
+      }),
+    ]);
+  });
+
+  it("preserves other tools when setting workflow tools", () => {
+    const parameters: AgentParameters = {
+      tools: [
+        {
+          type: "function",
+          function: { name: "fetch_weather" },
+        },
+      ],
+    };
+
+    const configs: WorkflowToolConfig[] = [
+      { slug: "support", name: "Support" },
+      { slug: "billing", name: "Billing" },
+    ];
+
+    const next = setAgentWorkflowTools(parameters, configs);
+
+    expect(next.tools).toHaveLength(3);
+    expect(next.tools?.[0]).toEqual(parameters.tools?.[0]);
+    expect(getAgentWorkflowTools(next).map((config) => config.slug)).toEqual([
+      "billing",
+      "support",
+    ]);
+  });
+
+  it("removes workflow tools when the configuration list is empty", () => {
+    const parameters: AgentParameters = {
+      tools: [
+        { type: "workflow", slug: "support", workflow: { slug: "support" } },
+        { type: "function", function: { name: "fetch_weather" } },
+      ],
+    };
+
+    const next = setAgentWorkflowTools(parameters, []);
+
+    expect(getAgentWorkflowTools(next)).toEqual([]);
+    expect(next.tools).toEqual([
+      { type: "function", function: { name: "fetch_weather" } },
     ]);
   });
 });

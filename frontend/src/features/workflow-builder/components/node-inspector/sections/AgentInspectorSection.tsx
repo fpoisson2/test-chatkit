@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 
 import type {
   AvailableModel,
@@ -90,6 +90,7 @@ type AgentInspectorSectionProps = {
   onAgentWeatherToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
+  onAgentWorkflowToolToggle: (nodeId: string, slug: string, enabled: boolean) => void;
 };
 
 export const AgentInspectorSection = ({
@@ -135,6 +136,7 @@ export const AgentInspectorSection = ({
   onAgentWeatherToolChange,
   onAgentWidgetValidationToolChange,
   onAgentWorkflowValidationToolChange,
+  onAgentWorkflowToolToggle,
 }: AgentInspectorSectionProps) => {
   const {
     agentMessage,
@@ -175,6 +177,7 @@ export const AgentInspectorSection = ({
     weatherFunctionEnabled,
     widgetValidationFunctionEnabled,
     workflowValidationFunctionEnabled,
+    workflowToolSlugs,
     selectedVectorStoreSlug,
     matchedModel,
     selectedModelOption,
@@ -257,6 +260,17 @@ export const AgentInspectorSection = ({
     (workflow) => workflow.id === nestedWorkflowId,
   );
   const nestedWorkflowMissing = nestedWorkflowId != null && !selectedNestedWorkflow;
+  const workflowToolSlugSet = useMemo(
+    () => new Set(workflowToolSlugs),
+    [workflowToolSlugs],
+  );
+  const availableWorkflowToolSlugs = useMemo(
+    () => new Set(availableNestedWorkflows.map((workflow) => workflow.slug)),
+    [availableNestedWorkflows],
+  );
+  const missingWorkflowToolSlugs = workflowToolSlugs.filter(
+    (slug) => !availableWorkflowToolSlugs.has(slug),
+  );
 
   return (
     <>
@@ -988,6 +1002,47 @@ export const AgentInspectorSection = ({
             onChange={(next) => onAgentWorkflowValidationToolChange(nodeId, next)}
             help="Ajoute l'outil validate_workflow_graph pour vérifier un graphe de workflow."
           />
+          <div>
+            <strong className={styles.nodeInspectorSectionTitleSmall}>
+              {t("workflowBuilder.agentInspector.workflowToolsTitle")}
+            </strong>
+            <p className={styles.nodeInspectorHintTextTight}>
+              {t("workflowBuilder.agentInspector.workflowToolsDescription")}
+            </p>
+            {availableNestedWorkflows.length > 0 ? (
+              <div className={styles.nodeInspectorToggleGroup}>
+                {availableNestedWorkflows.map((workflow) => {
+                  const slug = workflow.slug;
+                  const label = workflow.display_name?.trim() || slug;
+                  return (
+                    <ToggleRow
+                      key={workflow.id}
+                      label={label}
+                      checked={workflowToolSlugSet.has(slug)}
+                      onChange={(next) => onAgentWorkflowToolToggle(nodeId, slug, next)}
+                      help={t(
+                        "workflowBuilder.agentInspector.workflowToolsToggleHelp",
+                        { slug },
+                      )}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <p className={styles.nodeInspectorEmptyLabel}>
+                {t("workflowBuilder.agentInspector.workflowToolsEmpty")}
+              </p>
+            )}
+            {missingWorkflowToolSlugs.length > 0 ? (
+              <div className={styles.nodeInspectorInfoMessage}>
+                {missingWorkflowToolSlugs.map((slug) => (
+                  <div key={slug}>
+                    {t("workflowBuilder.agentInspector.workflowToolsMissing", { slug })}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </>

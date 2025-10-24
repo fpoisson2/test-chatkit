@@ -134,6 +134,7 @@ export type NodeInspectorProps = {
   onAgentWeatherToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
+  onAgentWorkflowToolToggle: (nodeId: string, slug: string, enabled: boolean) => void;
   vectorStores: VectorStoreSummary[];
   vectorStoresLoading: boolean;
   vectorStoresError: string | null;
@@ -207,6 +208,7 @@ const NodeInspector = ({
   onAgentWeatherToolChange,
   onAgentWidgetValidationToolChange,
   onAgentWorkflowValidationToolChange,
+  onAgentWorkflowToolToggle,
   vectorStores,
   vectorStoresLoading,
   vectorStoresError,
@@ -458,6 +460,7 @@ const NodeInspector = ({
           onAgentWeatherToolChange={onAgentWeatherToolChange}
           onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
           onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
+          onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
         />
       ) : null}
 

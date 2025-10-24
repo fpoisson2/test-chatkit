@@ -130,6 +130,15 @@ const fr: TranslationDictionary = {
     "Workflow sélectionné via le slug « {{slug}} ».",
   "workflowBuilder.agentInspector.unlistedModelWarning":
     "Ce bloc utilise actuellement un modèle non listé ({{model}}). Sélectionnez un modèle dans la liste ci-dessus.",
+  "workflowBuilder.agentInspector.workflowToolsTitle": "Workflows ChatKit",
+  "workflowBuilder.agentInspector.workflowToolsDescription":
+    "Expose ces workflows comme des tools que l'agent peut appeler via des function calls.",
+  "workflowBuilder.agentInspector.workflowToolsToggleHelp":
+    "Ajoute le workflow « {{slug}} » comme outil appelable.",
+  "workflowBuilder.agentInspector.workflowToolsEmpty":
+    "Aucun autre workflow disponible pour être ajouté comme outil.",
+  "workflowBuilder.agentInspector.workflowToolsMissing":
+    "Le workflow « {{slug}} » n'est plus disponible. Retirez-le de la configuration.",
   "workflowBuilder.agentInspector.modelsLoading": "Chargement des modèles disponibles…",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Ajoute l'outil image_generation pour produire des visuels. Actuellement, seule l'API Images d'OpenAI est prise en charge.",
@@ -362,6 +371,15 @@ const en: TranslationDictionary = {
     "Workflow selected via slug \"{{slug}}\".",
   "workflowBuilder.agentInspector.unlistedModelWarning":
     "This block currently uses an unlisted model ({{model}}). Pick a model from the list above.",
+  "workflowBuilder.agentInspector.workflowToolsTitle": "ChatKit workflows",
+  "workflowBuilder.agentInspector.workflowToolsDescription":
+    "Expose these workflows as tools that the agent can call through function calls.",
+  "workflowBuilder.agentInspector.workflowToolsToggleHelp":
+    "Expose the \"{{slug}}\" workflow as a callable tool.",
+  "workflowBuilder.agentInspector.workflowToolsEmpty":
+    "No other workflows are available to expose as tools.",
+  "workflowBuilder.agentInspector.workflowToolsMissing":
+    "The \"{{slug}}\" workflow is no longer available. Remove it from the configuration.",
   "workflowBuilder.agentInspector.modelsLoading": "Loading available models…",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Enables the image_generation tool to produce visuals. At the moment, only OpenAI's Images API is supported.",
