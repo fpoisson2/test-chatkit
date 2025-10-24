@@ -10,6 +10,8 @@ import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useHostedFlow } from "./hooks/useHostedFlow";
 import { useWorkflowChatSession } from "./hooks/useWorkflowChatSession";
+import { useWorkflowVoiceSession } from "./hooks/useWorkflowVoiceSession";
+import { useI18n } from "./i18n";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import {
@@ -100,6 +102,7 @@ const ensureSecureUrl = (rawUrl: string): SecureUrlNormalizationResult => {
 
 export function MyChat() {
   const { token, user } = useAuth();
+  const { t } = useI18n();
   const { openSidebar } = useAppLayout();
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
@@ -145,6 +148,18 @@ export function MyChat() {
     disableHostedFlow,
   });
 
+  const workflowVoice = useWorkflowVoiceSession();
+  const {
+    handleLogEvent: handleVoiceLogEvent,
+    stopSession: stopWorkflowVoiceSession,
+    status: voiceStatus,
+    error: voiceError,
+    isRequestingMic: voiceIsRequestingMic,
+    activeStepSlug: voiceStepSlug,
+    activeStepTitle: voiceStepTitle,
+    transcripts: voiceTranscripts,
+  } = workflowVoice;
+
   useEffect(() => {
     if (typeof document === "undefined") {
       return;
@@ -180,6 +195,16 @@ export function MyChat() {
     const storedThreadId = loadStoredThreadId(sessionOwner, activeWorkflowSlug);
     setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
   }, [activeWorkflowSlug, sessionOwner]);
+
+  useEffect(() => {
+    stopWorkflowVoiceSession();
+  }, [activeWorkflow?.id, stopWorkflowVoiceSession]);
+
+  useEffect(() => {
+    if (voiceTranscripts.length > 0) {
+      console.debug("[Voice] transcripts", voiceTranscripts);
+    }
+  }, [voiceTranscripts]);
 
   
 
@@ -666,6 +691,7 @@ export function MyChat() {
           console.debug("[ChatKit] thread load end", { threadId });
         },
         onLog: (entry: { name: string; data?: Record<string, unknown> }) => {
+          void handleVoiceLogEvent(entry);
           if (entry?.data && typeof entry.data === "object") {
             const data = entry.data as Record<string, unknown>;
             if ("thread" in data && data.thread) {
@@ -686,6 +712,7 @@ export function MyChat() {
       chatInstanceKey,
       preferredColorScheme,
       reportError,
+      handleVoiceLogEvent,
     ],
   );
 
@@ -704,13 +731,50 @@ export function MyChat() {
     };
   }, [requestRefresh]);
 
-  const statusMessage = error ?? (isLoading ? "Initialisation de la session…" : null);
+  const voiceStatusMessage = useMemo(() => {
+    if (voiceError) {
+      return voiceError;
+    }
+    if (voiceIsRequestingMic) {
+      return t("voiceSession.status.requestingMicrophone");
+    }
+    if (voiceStatus === "connecting") {
+      return t("voiceSession.status.connecting");
+    }
+    if (voiceStatus === "connected") {
+      const label = voiceStepTitle?.trim() || voiceStepSlug?.trim() || "";
+      if (label) {
+        return t("voiceSession.status.connectedWithStep", { step: label });
+      }
+      return t("voiceSession.status.connected");
+    }
+    return null;
+  }, [t, voiceError, voiceIsRequestingMic, voiceStatus, voiceStepSlug, voiceStepTitle]);
+
+  const statusMessage = useMemo(() => {
+    if (error) {
+      return error;
+    }
+    if (voiceStatusMessage) {
+      return voiceStatusMessage;
+    }
+    if (isLoading) {
+      return "Initialisation de la session…";
+    }
+    return null;
+  }, [error, isLoading, voiceStatusMessage]);
+
+  const isStatusError = Boolean(error || voiceError);
+  const isStatusLoading =
+    Boolean(statusMessage) &&
+    !isStatusError &&
+    ((isLoading && !error) || (voiceStatusMessage && (voiceStatus === "connecting" || voiceIsRequestingMic)));
 
   return (
     <>
       <ChatSidebar onWorkflowActivated={handleWorkflowActivated} />
       <ChatKitHost control={control} chatInstanceKey={chatInstanceKey} />
-      <ChatStatusMessage message={statusMessage} isError={Boolean(error)} isLoading={isLoading} />
+      <ChatStatusMessage message={statusMessage} isError={isStatusError} isLoading={isStatusLoading} />
     </>
   );
 }

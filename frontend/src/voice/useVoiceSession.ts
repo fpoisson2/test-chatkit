@@ -5,9 +5,9 @@ import { useRealtimeSession } from "./useRealtimeSession";
 import { useVoiceSecret } from "./useVoiceSecret";
 import type { VoiceSessionSecret } from "./useVoiceSecret";
 
-type VoiceSessionStatus = "idle" | "connecting" | "connected" | "error";
+export type VoiceSessionStatus = "idle" | "connecting" | "connected" | "error";
 
-type VoiceTranscript = {
+export type VoiceTranscript = {
   id: string;
   role: "user" | "assistant";
   text: string;
@@ -47,7 +47,7 @@ const formatErrorMessage = (error: unknown): string => {
   }
 };
 
-const resolveApiKey = (clientSecret: VoiceSessionSecret["client_secret"]): string | null => {
+export const resolveApiKey = (clientSecret: VoiceSessionSecret["client_secret"]): string | null => {
   if (typeof clientSecret === "string") {
     return clientSecret;
   }
@@ -76,7 +76,7 @@ const collectTextFromMessage = (item: RealtimeMessageItem): string => {
     .trim();
 };
 
-const buildTranscriptsFromHistory = (
+export const buildTranscriptsFromHistory = (
   history: RealtimeItem[],
   previous: VoiceTranscript[],
 ): VoiceTranscript[] => {

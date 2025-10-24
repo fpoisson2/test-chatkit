@@ -54,6 +54,10 @@ const fr: TranslationDictionary = {
   "voice.actions.backToChat": "← Chat texte",
   "voice.description":
     "Connectez-vous pour lancer des sessions Realtime, autoriser votre microphone et consulter les transcriptions en direct.",
+  "voiceSession.status.requestingMicrophone": "Demande d'accès au microphone…",
+  "voiceSession.status.connecting": "Connexion vocale en cours…",
+  "voiceSession.status.connected": "Session vocale active.",
+  "voiceSession.status.connectedWithStep": "Session vocale active – {{step}}",
   "settings.page.title": "Paramètres",
   "settings.page.subtitle":
     "Personnalisez votre expérience d'utilisation de ChatKit.",
@@ -274,6 +278,10 @@ const en: TranslationDictionary = {
   "voice.actions.backToChat": "← Text chat",
   "voice.description":
     "Sign in to start Realtime sessions, grant microphone access, and review live transcripts.",
+  "voiceSession.status.requestingMicrophone": "Requesting microphone access…",
+  "voiceSession.status.connecting": "Connecting to voice session…",
+  "voiceSession.status.connected": "Voice session active.",
+  "voiceSession.status.connectedWithStep": "Voice session active – {{step}}",
   "settings.page.title": "Settings",
   "settings.page.subtitle": "Tailor the ChatKit experience to your needs.",
   "settings.page.navLabel": "Settings navigation",

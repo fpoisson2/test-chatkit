@@ -9,6 +9,7 @@ import { usePreferredColorScheme } from "../../../hooks/usePreferredColorScheme"
 import { useChatkitSession } from "../../../hooks/useChatkitSession";
 import { useHostedFlow } from "../../../hooks/useHostedFlow";
 import { useWorkflowChatSession } from "../../../hooks/useWorkflowChatSession";
+import { useWorkflowVoiceSession } from "../../../hooks/useWorkflowVoiceSession";
 import type { WorkflowSummary } from "../../../types/workflows";
 import { makeApiEndpointCandidates } from "../../../utils/backend";
 import { getOrCreateDeviceId } from "../../../utils/device";
@@ -110,12 +111,31 @@ export function WorkflowPreviewPanel({
     disableHostedFlow,
   });
 
+  const workflowVoice = useWorkflowVoiceSession();
+  const {
+    handleLogEvent: handleVoiceLogEvent,
+    stopSession: stopWorkflowVoiceSession,
+    status: voiceStatus,
+    error: voiceError,
+    isRequestingMic: voiceIsRequestingMic,
+    activeStepSlug: voiceStepSlug,
+    activeStepTitle: voiceStepTitle,
+    transcripts: voiceTranscripts,
+  } = workflowVoice;
+
   useEffect(() => {
+    stopWorkflowVoiceSession();
     clearStoredChatKitSecret(sessionOwner);
     setInitialThreadId(null);
     setChatInstanceKey((value) => value + 1);
     onActiveStepChange(null);
-  }, [onActiveStepChange, sessionOwner, workflowId, versionId]);
+  }, [onActiveStepChange, sessionOwner, stopWorkflowVoiceSession, workflowId, versionId]);
+
+  useEffect(() => {
+    if (voiceTranscripts.length > 0) {
+      console.debug("[WorkflowPreview] voice transcripts", voiceTranscripts);
+    }
+  }, [voiceTranscripts]);
 
   const endpointCandidates = useMemo(
     () => makeApiEndpointCandidates(backendUrl, "/api/chatkit"),
@@ -160,6 +180,7 @@ export function WorkflowPreviewPanel({
 
   const handleLog = useCallback(
     ({ name, data }: WorkflowLogEntry) => {
+      void handleVoiceLogEvent({ name, data });
       if (!name.startsWith("workflow.task")) {
         return;
       }
@@ -169,7 +190,7 @@ export function WorkflowPreviewPanel({
       const slug = typeof metadata?.step_slug === "string" ? metadata.step_slug : null;
       onActiveStepChange(slug);
     },
-    [onActiveStepChange],
+    [handleVoiceLogEvent, onActiveStepChange],
   );
 
   const chatkitOptions = useMemo(
@@ -243,7 +264,44 @@ export function WorkflowPreviewPanel({
     };
   }, [requestRefresh]);
 
-  const statusMessage = error ?? (isLoading ? t("workflowBuilder.preview.initializing") : null);
+  const voiceStatusMessage = useMemo(() => {
+    if (voiceError) {
+      return voiceError;
+    }
+    if (voiceIsRequestingMic) {
+      return t("voiceSession.status.requestingMicrophone");
+    }
+    if (voiceStatus === "connecting") {
+      return t("voiceSession.status.connecting");
+    }
+    if (voiceStatus === "connected") {
+      const label = voiceStepTitle?.trim() || voiceStepSlug?.trim() || "";
+      if (label) {
+        return t("voiceSession.status.connectedWithStep", { step: label });
+      }
+      return t("voiceSession.status.connected");
+    }
+    return null;
+  }, [t, voiceError, voiceIsRequestingMic, voiceStatus, voiceStepSlug, voiceStepTitle]);
+
+  const statusMessage = useMemo(() => {
+    if (error) {
+      return error;
+    }
+    if (voiceStatusMessage) {
+      return voiceStatusMessage;
+    }
+    if (isLoading) {
+      return t("workflowBuilder.preview.initializing");
+    }
+    return null;
+  }, [error, isLoading, t, voiceStatusMessage]);
+
+  const isStatusError = Boolean(error || voiceError);
+  const isStatusLoading =
+    Boolean(statusMessage) &&
+    !isStatusError &&
+    ((isLoading && !error) || (voiceStatusMessage && (voiceStatus === "connecting" || voiceIsRequestingMic)));
 
   const workflowLabel = buildWorkflowLabel(workflow, t);
   const versionLabel = buildVersionLabel(version, t);
@@ -267,7 +325,7 @@ export function WorkflowPreviewPanel({
       <div className={styles.previewPanelBody}>
         <ChatKitHost control={control} chatInstanceKey={chatInstanceKey} />
       </div>
-      <ChatStatusMessage message={statusMessage} isError={Boolean(error)} isLoading={isLoading} />
+      <ChatStatusMessage message={statusMessage} isError={isStatusError} isLoading={isStatusLoading} />
     </aside>
   );
 }
