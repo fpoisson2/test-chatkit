@@ -19,6 +19,13 @@ import {
   setWidgetNodeSource,
   getAgentWorkflowValidationToolEnabled,
   setAgentWorkflowValidationToolEnabled,
+  getStartTelephonyRoutes,
+  setStartTelephonyRoutes,
+  getStartTelephonyWorkflow,
+  setStartTelephonyWorkflow,
+  getStartTelephonyRealtimeOverrides,
+  setStartTelephonyRealtimeOverrides,
+  resolveStartParameters,
   type WorkflowToolConfig,
 } from "../workflows";
 
@@ -91,6 +98,145 @@ describe("nested workflow helpers", () => {
     const next = setAgentNestedWorkflow({}, { slug: "  nested-flow  " });
 
     expect(next).toEqual({ workflow: { slug: "nested-flow" } });
+  });
+});
+
+describe("start telephony helpers", () => {
+  it("normalise les numéros extraits des paramètres", () => {
+    const parameters: AgentParameters = {
+      telephony: {
+        routes: ["  +33123456789  ", "+14155551234", ""],
+      },
+    };
+
+    expect(getStartTelephonyRoutes(parameters)).toEqual([
+      "+33123456789",
+      "+14155551234",
+    ]);
+  });
+
+  it("met à jour les numéros de téléphonie en supprimant les doublons", () => {
+    const initial: AgentParameters = {};
+
+    const updated = setStartTelephonyRoutes(initial, [
+      "  +33123456789  ",
+      "+33123456789",
+      "",
+    ]);
+
+    expect(updated).toEqual({ telephony: { routes: ["+33123456789"] } });
+
+    const cleared = setStartTelephonyRoutes(updated, []);
+    expect(cleared).toEqual({});
+  });
+
+  it("normalise la cible workflow de la configuration téléphonie", () => {
+    const parameters: AgentParameters = {
+      telephony: {
+        workflow: { id: 7, slug: "  voice-start  " },
+      },
+    };
+
+    expect(getStartTelephonyWorkflow(parameters)).toEqual({
+      id: 7,
+      slug: "voice-start",
+    });
+  });
+
+  it("enregistre et efface la cible workflow de la configuration téléphonie", () => {
+    const initial: AgentParameters = {};
+
+    const configured = setStartTelephonyWorkflow(initial, {
+      id: 12,
+      slug: "  voice-start  ",
+    });
+
+    expect(configured).toEqual({
+      telephony: {
+        workflow: { id: 12, slug: "voice-start" },
+      },
+    });
+
+    const cleared = setStartTelephonyWorkflow(configured, { id: null, slug: "   " });
+    expect(cleared).toEqual({});
+  });
+
+  it("normalise les overrides realtime", () => {
+    const parameters: AgentParameters = {
+      telephony: {
+        realtime: {
+          model: "  gpt-4o-realtime-preview  ",
+          voice: "  alloy  ",
+          start_mode: "invalid",
+          stop_mode: "auto",
+        },
+      },
+    };
+
+    expect(getStartTelephonyRealtimeOverrides(parameters)).toEqual({
+      model: "gpt-4o-realtime-preview",
+      voice: "alloy",
+      start_mode: null,
+      stop_mode: "auto",
+    });
+  });
+
+  it("met à jour et efface les overrides realtime", () => {
+    const initial: AgentParameters = {};
+
+    const configured = setStartTelephonyRealtimeOverrides(initial, {
+      model: "  gpt-4o  ",
+      voice: "alloy",
+      start_mode: "auto",
+    });
+
+    expect(configured).toEqual({
+      telephony: {
+        realtime: {
+          model: "gpt-4o",
+          voice: "alloy",
+          start_mode: "auto",
+        },
+      },
+    });
+
+    const cleared = setStartTelephonyRealtimeOverrides(configured, {
+      model: "",
+      voice: "",
+      start_mode: null,
+      stop_mode: null,
+    });
+
+    expect(cleared).toEqual({});
+  });
+
+  it("normalise l'ensemble des paramètres start", () => {
+    const raw: AgentParameters = {
+      auto_start: "true",
+      auto_start_user_message: "  Bonjour  ",
+      telephony: {
+        routes: ["  +33123456789  ", ""],
+        workflow: { slug: "  voice-start  " },
+        realtime: {
+          model: "  gpt-4o  ",
+          stop_mode: "invalid",
+        },
+      },
+    };
+
+    const resolved = resolveStartParameters(raw);
+
+    expect(resolved).toEqual({
+      auto_start: true,
+      auto_start_user_message: "Bonjour",
+      telephony: {
+        routes: ["+33123456789"],
+        workflow: { slug: "voice-start" },
+        realtime: {
+          model: "gpt-4o",
+        },
+      },
+    });
   });
 });
 

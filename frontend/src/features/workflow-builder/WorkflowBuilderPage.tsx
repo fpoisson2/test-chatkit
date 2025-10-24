@@ -81,6 +81,9 @@ import {
   setStartAutoRun,
   setStartAutoRunMessage,
   setStartAutoRunAssistantMessage,
+  setStartTelephonyRoutes,
+  setStartTelephonyWorkflow,
+  setStartTelephonyRealtimeOverrides,
   setConditionMode,
   setConditionPath,
   setConditionValue,
@@ -104,7 +107,9 @@ import {
   setWidgetNodeVariables,
   createVoiceAgentParameters,
   resolveVoiceAgentParameters,
+  resolveStartParameters,
   type WorkflowToolConfig,
+  type StartTelephonyRealtimeOverrides,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
@@ -1643,7 +1648,9 @@ const WorkflowBuilderPage = () => {
                         )
                       : node.kind === "widget"
                         ? resolveWidgetNodeParameters(node.parameters)
-                        : resolveAgentParameters(null, node.parameters);
+                        : node.kind === "start"
+                          ? resolveStartParameters(node.parameters)
+                          : resolveAgentParameters(null, node.parameters);
             const baseNode: FlowNode = {
               id: node.slug,
               position: positionFromMetadata ?? { x: 150 * index, y: 120 * index },
@@ -2334,6 +2341,63 @@ const WorkflowBuilderPage = () => {
         const nextParameters = setStartAutoRunAssistantMessage(
           data.parameters,
           value,
+        );
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleStartTelephonyRoutesChange = useCallback(
+    (nodeId: string, routes: string[]) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "start") {
+          return data;
+        }
+        const nextParameters = setStartTelephonyRoutes(data.parameters, routes);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleStartTelephonyWorkflowChange = useCallback(
+    (nodeId: string, reference: { id?: number | null; slug?: string | null }) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "start") {
+          return data;
+        }
+        const nextParameters = setStartTelephonyWorkflow(data.parameters, reference);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleStartTelephonyRealtimeChange = useCallback(
+    (nodeId: string, overrides: Partial<StartTelephonyRealtimeOverrides>) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "start") {
+          return data;
+        }
+        const nextParameters = setStartTelephonyRealtimeOverrides(
+          data.parameters,
+          overrides,
         );
         return {
           ...data,
@@ -3859,7 +3923,9 @@ const WorkflowBuilderPage = () => {
                   ? setVectorStoreNodeConfig({}, getVectorStoreNodeConfig(node.parameters))
                   : kind === "widget"
                     ? resolveWidgetNodeParameters(node.parameters)
-                    : resolveAgentParameters(null, node.parameters);
+                    : kind === "start"
+                      ? resolveStartParameters(node.parameters)
+                      : resolveAgentParameters(null, node.parameters);
 
           const metadata = { ...(node.metadata ?? {}) };
 
@@ -4319,7 +4385,9 @@ const WorkflowBuilderPage = () => {
                 ? setVectorStoreNodeConfig({}, getVectorStoreNodeConfig(node.parameters))
                 : kind === "widget"
                   ? resolveWidgetNodeParameters(node.parameters)
-                  : resolveAgentParameters(null, node.parameters);
+                  : kind === "start"
+                    ? resolveStartParameters(node.parameters)
+                    : resolveAgentParameters(null, node.parameters);
         accumulator.push(
           decorateNode({
             id: node.slug,
@@ -6548,6 +6616,9 @@ const WorkflowBuilderPage = () => {
             onStartAutoRunAssistantMessageChange={
               handleStartAutoRunAssistantMessageChange
             }
+            onStartTelephonyRoutesChange={handleStartTelephonyRoutesChange}
+            onStartTelephonyWorkflowChange={handleStartTelephonyWorkflowChange}
+            onStartTelephonyRealtimeChange={handleStartTelephonyRealtimeChange}
             onConditionPathChange={handleConditionPathChange}
             onConditionModeChange={handleConditionModeChange}
             onConditionValueChange={handleConditionValueChange}
