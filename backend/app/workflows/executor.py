@@ -1723,6 +1723,9 @@ async def run_workflow(
             input=[*conversation_history],
             run_config=_workflow_run_config(response_format_override),
             context=run_context,
+            previous_response_id=getattr(
+                agent_context, "previous_response_id", None
+            ),
         )
         try:
             async for event in stream_agent_response(agent_context, result):
@@ -1751,6 +1754,10 @@ async def run_workflow(
                 await _inspect_event_for_images(event)
         except Exception as exc:  # pragma: no cover
             raise_step_error(step_key, title, exc)
+
+        last_response_id = getattr(result, "last_response_id", None)
+        if last_response_id is not None:
+            agent_context.previous_response_id = last_response_id
 
         conversation_history.extend([item.to_input_item() for item in result.new_items])
         if result.new_items:
