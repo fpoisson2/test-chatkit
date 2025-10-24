@@ -79,6 +79,7 @@ class _Transition:
 class _DummyStore:
     def __init__(self) -> None:
         self._counter = 0
+        self.saved_threads: list[ThreadMetadata] = []
 
     def generate_item_id(
         self, item_type: str, thread: ThreadMetadata, context: Any
@@ -89,6 +90,11 @@ class _DummyStore:
     def generate_thread_id(self, context: Any) -> str:
         self._counter += 1
         return f"thread-{self._counter}"
+
+    async def save_thread(
+        self, thread: ThreadMetadata, context: Any
+    ) -> None:  # pragma: no cover - simple stockage en mémoire
+        self.saved_threads.append(thread.model_copy(deep=True))
 
 
 def _build_agent_context() -> AgentContext[Any]:
@@ -424,3 +430,7 @@ async def test_run_workflow_reuses_previous_response_id(
 
     assert recorded_previous_ids == ["initial-response", "resp-1"]
     assert context.previous_response_id == "resp-2"
+    assert context.thread.metadata.get("previous_response_id") == "resp-2"
+    saved_threads = getattr(context.store, "saved_threads", [])
+    assert saved_threads
+    assert saved_threads[-1].metadata.get("previous_response_id") == "resp-2"

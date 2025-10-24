@@ -595,6 +595,12 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             store=self.store,
             request_context=context,
         )
+        thread_metadata = (
+            thread.metadata if isinstance(thread.metadata, Mapping) else {}
+        )
+        previous_response_id = thread_metadata.get("previous_response_id")
+        if isinstance(previous_response_id, str):
+            agent_context.previous_response_id = previous_response_id
 
         event_queue: asyncio.Queue[Any] = asyncio.Queue()
 
@@ -1024,7 +1030,8 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             if end_state is not None:
                 if waiting_state:
                     logger.info(
-                        "Workflow en attente pour le fil %s via le nœud %s (statut=%s, raison=%s)",
+                        "Workflow en attente pour le fil %s via le nœud %s "
+                        "(statut=%s, raison=%s)",
                         thread.id,
                         end_state.slug,
                         (
