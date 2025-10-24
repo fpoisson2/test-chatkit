@@ -94,6 +94,12 @@ export type FlowEdge = Edge<FlowEdgeData>;
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
 
+export type AgentNestedWorkflowSelection = {
+  mode: "local" | "hosted";
+  workflowId: number | null;
+  workflowSlug: string;
+};
+
 export type {
   AgentParameters,
   AgentVectorStoreIngestionConfig,

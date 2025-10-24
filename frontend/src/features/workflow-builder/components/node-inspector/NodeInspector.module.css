@@ -200,6 +200,41 @@
   gap: 0.5rem;
 }
 
+.nodeInspectorInputGroupTight {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.nodeInspectorRadioGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.nodeInspectorRadioOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 500;
+  color: var(--color-text-strong);
+}
+
+.nodeInspectorRadioOption input[type="radio"] {
+  accent-color: #2563eb;
+}
+
+.nodeInspectorSubField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.nodeInspectorSubLabel {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-strong);
+}
+
 .nodeInspectorPanelInner {
   border: 1px solid rgba(148, 163, 184, 0.35);
   border-radius: 0.65rem;

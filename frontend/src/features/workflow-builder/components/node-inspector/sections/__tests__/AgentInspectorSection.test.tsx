@@ -91,12 +91,13 @@ const renderSection = (overrides: Partial<Parameters<typeof AgentInspectorSectio
 describe("AgentInspectorSection", () => {
   it("calls onAgentNestedWorkflowChange when selecting a workflow", async () => {
     const { onAgentNestedWorkflowChange } = renderSection();
-    const label = screen.getByText(/Nested workflow/i).closest("label");
-    expect(label).not.toBeNull();
-    const select = label?.querySelector("select");
-    expect(select).not.toBeNull();
-    await userEvent.selectOptions(select as HTMLSelectElement, "2");
-    expect(onAgentNestedWorkflowChange).toHaveBeenCalledWith("agent-1", 2);
+    const select = screen.getByRole("combobox", { name: /workflow/i });
+    await userEvent.selectOptions(select, "2");
+    expect(onAgentNestedWorkflowChange).toHaveBeenLastCalledWith("agent-1", {
+      mode: "local",
+      workflowId: 2,
+      workflowSlug: "secondary",
+    });
   });
 
   it("shows slug information when configuration only specifies a slug", () => {
@@ -111,6 +112,45 @@ describe("AgentInspectorSection", () => {
     expect(
       screen.getByText(/The selected workflow is no longer available\./i),
     ).toBeInTheDocument();
+  });
+
+  it("persists slug information when switching to a hosted workflow", async () => {
+    const { onAgentNestedWorkflowChange } = renderSection({
+      parameters: { workflow: { id: 2, slug: "secondary" } },
+    });
+
+    const radios = screen.getAllByRole("radio");
+    expect(radios.length).toBeGreaterThanOrEqual(2);
+    const hostedRadio =
+      radios.find((radio) => /hosted|hébergé/i.test(radio.parentElement?.textContent ?? "")) ??
+      radios[1];
+    await userEvent.click(hostedRadio);
+
+    expect(onAgentNestedWorkflowChange).toHaveBeenLastCalledWith("agent-1", {
+      mode: "hosted",
+      workflowId: 2,
+      workflowSlug: "secondary",
+    });
+
+    const hostedIdInput = screen.getByLabelText(/identifiant du workflow|workflow id/i);
+    await userEvent.clear(hostedIdInput);
+    await userEvent.type(hostedIdInput, "123");
+
+    expect(onAgentNestedWorkflowChange).toHaveBeenLastCalledWith("agent-1", {
+      mode: "hosted",
+      workflowId: 123,
+      workflowSlug: "secondary",
+    });
+
+    const hostedSlugInput = screen.getByLabelText(/slug du workflow|workflow slug/i);
+    await userEvent.clear(hostedSlugInput);
+    await userEvent.type(hostedSlugInput, "remote-workflow");
+
+    expect(onAgentNestedWorkflowChange).toHaveBeenLastCalledWith("agent-1", {
+      mode: "hosted",
+      workflowId: 123,
+      workflowSlug: "remote-workflow",
+    });
   });
 
   it("calls onAgentWorkflowValidationToolChange when toggled", async () => {
