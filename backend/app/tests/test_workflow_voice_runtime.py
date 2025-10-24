@@ -209,7 +209,23 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
     assert captured_args == {
         "user_id": "user-123",
         "model": "gpt-voice",
+        "voice": "ember",
         "instructions": "Répondez brièvement.",
+        "realtime": {
+            "start_mode": "auto",
+            "stop_mode": "manual",
+            "tools": {
+                "response": True,
+                "transcription": True,
+                "function_call": False,
+            },
+        },
+        "tools": [
+            {
+                "type": "web_search",
+                "web_search": {"search_context_size": "small"},
+            }
+        ],
     }
 
     added_events = [
@@ -228,6 +244,13 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
         "transcription": True,
         "function_call": False,
     }
+    assert payload["session"].get("tools") == [
+        {"type": "web_search", "web_search": {"search_context_size": "small"}}
+    ]
+    assert payload["session"].get("tool_definitions") == payload["session"].get(
+        "tools"
+    )
+    assert payload["session"].get("tool_metadata") == [{"type": "web_search"}]
 
     wait_state = agent_context.thread.metadata.get(_WAIT_STATE_METADATA_KEY)
     assert isinstance(wait_state, dict)

@@ -892,7 +892,47 @@ async def run_workflow(
         }
 
         tool_definitions = params.get("tools")
-        sanitized_tools = _json_safe_copy(tool_definitions)
+        sanitized_candidate = _json_safe_copy(tool_definitions)
+        sanitized_tools = (
+            sanitized_candidate if isinstance(sanitized_candidate, list) else []
+        )
+
+        def _summarize_tool(entry: Any) -> dict[str, Any] | None:
+            if not isinstance(entry, Mapping):
+                return None
+            summary: dict[str, Any] = {}
+            tool_type = entry.get("type")
+            if isinstance(tool_type, str) and tool_type.strip():
+                summary["type"] = tool_type.strip()
+            name_value = entry.get("name")
+            if isinstance(name_value, str) and name_value.strip():
+                summary["name"] = name_value.strip()
+            title_value = entry.get("title") or entry.get("workflow_title")
+            if isinstance(title_value, str) and title_value.strip():
+                summary["title"] = title_value.strip()
+            identifier_value = entry.get("identifier") or entry.get(
+                "workflow_identifier"
+            )
+            if isinstance(identifier_value, str) and identifier_value.strip():
+                summary["identifier"] = identifier_value.strip()
+            description_value = entry.get("description")
+            if isinstance(description_value, str) and description_value.strip():
+                summary["description"] = description_value.strip()
+            workflow_ref = entry.get("workflow")
+            if isinstance(workflow_ref, Mapping):
+                workflow_slug = workflow_ref.get("slug")
+                if isinstance(workflow_slug, str) and workflow_slug.strip():
+                    summary["workflow_slug"] = workflow_slug.strip()
+                workflow_id = workflow_ref.get("id") or workflow_ref.get("workflow_id")
+                if isinstance(workflow_id, int) and workflow_id > 0:
+                    summary["workflow_id"] = workflow_id
+            return summary or None
+
+        tool_metadata = [
+            summary
+            for summary in (_summarize_tool(entry) for entry in sanitized_tools)
+            if summary
+        ]
 
         voice_context = {
             "model": voice_model,
@@ -901,14 +941,21 @@ async def run_workflow(
             "realtime": realtime_config,
             "tools": sanitized_tools,
         }
+        if tool_metadata:
+            voice_context["tool_metadata"] = tool_metadata
 
-        return voice_context, {
+        event_context = {
             "model": voice_model,
             "voice": voice_id,
             "instructions": instructions,
             "realtime": realtime_config,
+            "tools": sanitized_tools,
             "tool_definitions": sanitized_tools,
         }
+        if tool_metadata:
+            event_context["tool_metadata"] = tool_metadata
+
+        return voice_context, event_context
 
     def _resolve_user_message(step: WorkflowStep) -> str:
         raw_params = step.parameters or {}
@@ -2352,7 +2399,10 @@ async def run_workflow(
                 realtime_secret = await create_realtime_voice_session(
                     user_id=user_id,
                     model=event_context["model"],
+                    voice=event_context.get("voice"),
                     instructions=event_context["instructions"],
+                    realtime=event_context.get("realtime"),
+                    tools=event_context.get("tools"),
                 )
             except Exception as exc:
                 raise_step_error(current_node.slug, title or current_node.slug, exc)

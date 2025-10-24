@@ -126,6 +126,50 @@ def test_normalize_graph_voice_agent_validates_supported_keys() -> None:
     assert "Agent inconnu" in str(excinfo.value)
 
 
+def test_normalize_graph_voice_agent_accepts_tools() -> None:
+    service = WorkflowService(
+        session_factory=lambda: None,
+        workflow_defaults=_build_defaults(),
+    )
+
+    nodes, _edges = service._normalize_graph(  # type: ignore[attr-defined]
+        {
+            "nodes": [
+                {"slug": "start", "kind": "start", "is_enabled": True},
+                {
+                    "slug": "voice",
+                    "kind": "voice_agent",
+                    "agent_key": "voice-writer",
+                    "is_enabled": True,
+                    "parameters": {
+                        "tools": [
+                            {
+                                "type": "workflow",
+                                "workflow": {"slug": "  demo-voice  ", "id": "12"},
+                                "title": "Demo workflow",
+                            }
+                        ]
+                    },
+                },
+                {"slug": "end", "kind": "end", "is_enabled": True},
+            ],
+            "edges": [
+                {"source": "start", "target": "voice"},
+                {"source": "voice", "target": "end"},
+            ],
+        }
+    )
+
+    voice_node = next(node for node in nodes if node.slug == "voice")
+    parameters = (
+        voice_node.parameters if isinstance(voice_node.parameters, dict) else {}
+    )
+    tools = parameters.get("tools")
+    assert isinstance(tools, list)
+    assert tools and tools[0]["type"] == "workflow"
+    assert tools[0]["workflow"] == {"slug": "demo-voice", "id": 12}
+
+
 @dataclass
 class _Step:
     id: int
@@ -172,7 +216,12 @@ def test_serialize_definition_includes_voice_agent_step() -> None:
         kind="voice_agent",
         position=2,
         is_enabled=True,
-        parameters={"mode": "voice"},
+        parameters={
+            "mode": "voice",
+            "tools": [
+                {"type": "workflow", "workflow": {"slug": "demo", "id": 7}}
+            ],
+        },
         created_at=timestamp,
         updated_at=timestamp,
         display_name="Voice agent",
@@ -245,7 +294,12 @@ def test_serialize_definition_includes_voice_agent_step() -> None:
             "agent_key": "voice-writer",
             "position": 2,
             "is_enabled": True,
-            "parameters": {"mode": "voice"},
+            "parameters": {
+                "mode": "voice",
+                "tools": [
+                    {"type": "workflow", "workflow": {"slug": "demo", "id": 7}}
+                ],
+            },
             "created_at": timestamp,
             "updated_at": timestamp,
         }

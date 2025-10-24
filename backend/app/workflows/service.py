@@ -3,10 +3,11 @@ from __future__ import annotations
 import datetime
 import logging
 import math
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from pydantic import BaseModel
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
@@ -1507,6 +1508,15 @@ class WorkflowService:
                 else:
                     parameters["workflow"] = normalized_reference
 
+            if kind in _AGENT_NODE_KINDS and "tools" in parameters:
+                normalized_tools = self._normalize_agent_tools(
+                    parameters.get("tools"), node_slug=f"{slug}.tools"
+                )
+                if normalized_tools is None:
+                    parameters.pop("tools", None)
+                else:
+                    parameters["tools"] = normalized_tools
+
             node = NormalizedNode(
                 slug=slug,
                 kind=kind,
@@ -1666,12 +1676,15 @@ class WorkflowService:
     def _ensure_dict(self, value: Any, label: str) -> dict[str, Any]:
         if value is None:
             return {}
-        if isinstance(value, dict):
-            sanitized, _removed = sanitize_value(value)
+        if isinstance(value, BaseModel):
+            value = value.model_dump()
+        if isinstance(value, Mapping):
+            candidate = dict(value)
+            sanitized, _removed = sanitize_value(candidate)
             if isinstance(sanitized, dict):
                 return sanitized
             # Par sécurité, revenir à l'objet d'origine si la structure change.
-            return value
+            return candidate
         raise WorkflowValidationError(f"Les {label} doivent être un objet JSON.")
 
     def _normalize_nested_workflow_reference(
@@ -1679,6 +1692,8 @@ class WorkflowService:
     ) -> dict[str, Any] | None:
         if value is None:
             return None
+        if isinstance(value, BaseModel):
+            value = value.model_dump()
         if not isinstance(value, Mapping):
             raise WorkflowValidationError(
                 "La configuration 'workflow' du nœud "
@@ -1744,6 +1759,68 @@ class WorkflowService:
         if workflow_slug is not None:
             sanitized["slug"] = workflow_slug
         return sanitized
+
+    def _normalize_agent_tools(
+        self, value: Any, *, node_slug: str
+    ) -> list[dict[str, Any]] | None:
+        if value is None:
+            return None
+        if isinstance(value, BaseModel):
+            value = value.model_dump()
+        if not isinstance(value, Sequence) or isinstance(
+            value, str | bytes | bytearray
+        ):
+            raise WorkflowValidationError(
+                "Les outils du nœud "
+                f"{node_slug} doivent être fournis sous forme de liste."
+            )
+
+        normalized: list[dict[str, Any]] = []
+        for index, entry in enumerate(value, start=1):
+            tool_label = f"{node_slug}[{index}]"
+            current = entry
+            if isinstance(current, BaseModel):
+                current = current.model_dump()
+
+            if isinstance(current, Mapping):
+                sanitized = dict(current)
+
+                tool_type = sanitized.get("type")
+                if isinstance(tool_type, str) and tool_type.strip():
+                    sanitized["type"] = tool_type.strip()
+                else:
+                    for alias in ("tool", "name"):
+                        alias_value = sanitized.get(alias)
+                        if isinstance(alias_value, str) and alias_value.strip():
+                            sanitized["type"] = alias_value.strip()
+                            break
+
+                workflow_payload = sanitized.get("workflow")
+                if isinstance(workflow_payload, BaseModel):
+                    workflow_payload = workflow_payload.model_dump()
+                elif isinstance(workflow_payload, str):
+                    trimmed = workflow_payload.strip()
+                    workflow_payload = {"slug": trimmed} if trimmed else None
+
+                if workflow_payload is not None:
+                    normalized_reference = self._normalize_nested_workflow_reference(
+                        workflow_payload, node_slug=tool_label
+                    )
+                    if normalized_reference is None:
+                        sanitized.pop("workflow", None)
+                    else:
+                        sanitized["workflow"] = normalized_reference
+
+                normalized.append(sanitized)
+                continue
+
+            sanitized_value, _removed = sanitize_value(current)
+            if isinstance(sanitized_value, Mapping):
+                normalized.append(dict(sanitized_value))
+            elif sanitized_value is not None:
+                normalized.append(sanitized_value)
+
+        return normalized
 
     def _validate_nested_workflows_for_definition(
         self, nodes: Iterable[NormalizedNode], workflow: Workflow | None
