@@ -4,7 +4,7 @@ import datetime
 import math
 from typing import Any
 
-from pydantic import BaseModel, EmailStr, Field, constr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, constr, field_validator
 
 
 class SessionRequest(BaseModel):
@@ -209,6 +209,70 @@ KNOWN_WORKFLOW_NODE_KINDS = (
 )
 
 
+class WorkflowAgentWorkflowReference(BaseModel):
+    """Référence à un workflow exécuté par un outil d'agent."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: int | None = Field(
+        default=None,
+        gt=0,
+        description="Identifiant numérique du workflow cible (facultatif).",
+    )
+    slug: constr(strip_whitespace=True, min_length=1) | None = Field(
+        default=None,
+        description="Slug du workflow cible (facultatif).",
+    )
+
+
+class WorkflowAgentToolDefinition(BaseModel):
+    """Déclaration d'un outil accessible par un agent (texte ou vocal)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    type: constr(strip_whitespace=True, min_length=1) | None = Field(
+        default=None,
+        description=(
+            "Type d'outil (ex. workflow, web_search, file_search, computer_use, "
+            "function)."
+        ),
+    )
+    workflow: WorkflowAgentWorkflowReference | None = Field(
+        default=None,
+        description=(
+            "Référence au workflow exécuté lorsque l'outil est de type "
+            "workflow."
+        ),
+    )
+    function: dict[str, Any] | None = Field(
+        default=None,
+        description="Déclaration brute d'une fonction OpenAI (outils function_call).",
+    )
+    agent: dict[str, Any] | None = Field(
+        default=None,
+        description="Configuration d'un agent imbriqué si supporté.",
+    )
+    metadata: dict[str, Any] | None = Field(
+        default=None,
+        description="Métadonnées complémentaires laissées libres pour le frontend.",
+    )
+
+
+class WorkflowNodeParameters(BaseModel):
+    """Paramètres d'un nœud de workflow, incluant la déclaration d'outils."""
+
+    model_config = ConfigDict(extra="allow")
+
+    tools: list[WorkflowAgentToolDefinition] | None = Field(
+        default=None,
+        description=(
+            "Liste d'outils accessibles pour l'agent. Chaque entrée reprend la "
+            "structure déjà utilisée pour les agents texte (type, workflow, "
+            "function, etc.)."
+        ),
+    )
+
+
 class WorkflowNodeBase(BaseModel):
     slug: str
     kind: str = Field(
@@ -222,8 +286,8 @@ class WorkflowNodeBase(BaseModel):
     display_name: str | None = None
     agent_key: str | None = None
     is_enabled: bool = True
-    parameters: dict[str, Any] = Field(
-        default_factory=dict,
+    parameters: WorkflowNodeParameters = Field(
+        default_factory=WorkflowNodeParameters,
         description=(
             "Paramètres propres au nœud. Pour les agents, le champ optionnel "
             "workflow peut référencer un autre workflow via un id ou un slug."
@@ -284,8 +348,8 @@ class WorkflowStepResponse(BaseModel):
     agent_key: str | None
     position: int
     is_enabled: bool
-    parameters: dict[str, Any] = Field(
-        default_factory=dict,
+    parameters: WorkflowNodeParameters = Field(
+        default_factory=WorkflowNodeParameters,
         description=(
             "Paramètres normalisés du nœud. Lorsqu'un agent exécute un workflow "
             "imbriqué, parameters['workflow'] contient un identifiant ou un slug."

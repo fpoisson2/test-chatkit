@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import httpx
@@ -17,17 +18,26 @@ async def create_realtime_voice_session(
     user_id: str,
     model: str,
     instructions: str,
+    voice: str | None = None,
+    realtime: Mapping[str, Any] | None = None,
+    tools: Sequence[Any] | None = None,
 ) -> dict[str, Any]:
     """Crée un client_secret Realtime pour une session vocale."""
 
     settings = get_settings()
-    payload = {
-        "session": {
-            "type": "realtime",
-            "instructions": instructions,
-            "model": model,
-        },
+    session_payload: dict[str, Any] = {
+        "type": "realtime",
+        "instructions": instructions,
+        "model": model,
     }
+    if isinstance(voice, str) and voice.strip():
+        session_payload["voice"] = voice.strip()
+    if isinstance(realtime, Mapping):
+        session_payload["realtime"] = dict(realtime)
+    if tools:
+        session_payload["tools"] = list(tools)
+
+    payload = {"session": session_payload}
 
     sanitized_request, removed_request = sanitize_value(payload)
     if removed_request:
