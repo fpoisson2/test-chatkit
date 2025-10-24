@@ -32,6 +32,7 @@ import {
   getAgentTopP,
   getAgentWeatherToolEnabled,
   getAgentWebSearchConfig,
+  getAgentWorkflowValidationToolEnabled,
   getAgentWidgetValidationToolEnabled,
 } from "../../../../../utils/workflows";
 import type {
@@ -104,6 +105,7 @@ type AgentInspectorState = {
   updateImageTool: (updates: Partial<ImageGenerationToolConfig>) => void;
   weatherFunctionEnabled: boolean;
   widgetValidationFunctionEnabled: boolean;
+  workflowValidationFunctionEnabled: boolean;
   selectedVectorStoreSlug: string;
   matchedModel: AvailableModel | undefined;
   selectedModelOption: string;
@@ -205,6 +207,8 @@ export const useAgentInspectorState = ({
 
   const weatherFunctionEnabled = getAgentWeatherToolEnabled(parameters);
   const widgetValidationFunctionEnabled = getAgentWidgetValidationToolEnabled(parameters);
+  const workflowValidationFunctionEnabled =
+    getAgentWorkflowValidationToolEnabled(parameters);
 
   const selectedVectorStoreSlug = fileSearchConfig?.vector_store_slug ?? "";
   const trimmedVectorStoreSlug = selectedVectorStoreSlug.trim();
@@ -419,6 +423,7 @@ export const useAgentInspectorState = ({
     updateImageTool,
     weatherFunctionEnabled,
     widgetValidationFunctionEnabled,
+    workflowValidationFunctionEnabled,
     selectedVectorStoreSlug,
     matchedModel,
     selectedModelOption,

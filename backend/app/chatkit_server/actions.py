@@ -17,6 +17,103 @@ from ..widgets import WidgetLibraryService
 logger = logging.getLogger("chatkit.server")
 
 
+_PYTHON_TYPE_TO_JSON: dict[type[Any], str] = {
+    str: "string",
+    int: "integer",
+    float: "number",
+    bool: "boolean",
+    type(None): "null",
+    list: "array",
+    dict: "object",
+}
+
+
+def _infer_json_type(value: Any) -> str | None:
+    """Retourne le type JSON Schema correspondant à une valeur Python."""
+
+    for py_type, json_type in _PYTHON_TYPE_TO_JSON.items():
+        try:
+            if isinstance(value, py_type):
+                return json_type
+        except TypeError:  # pragma: no cover - cas exotiques non hashables
+            continue
+    return None
+
+
+def _ensure_schema_type_information(schema: dict[str, Any]) -> None:
+    """Ajoute une clé ``type`` lorsqu'elle peut être déduite d'un schéma."""
+
+    if not isinstance(schema, dict):
+        return
+
+    # Traiter récursivement les sous-structures avant de déduire le type.
+    properties = schema.get("properties")
+    if isinstance(properties, dict):
+        for prop_schema in properties.values():
+            if isinstance(prop_schema, dict):
+                _ensure_schema_type_information(prop_schema)
+
+    items = schema.get("items")
+    if isinstance(items, dict):
+        _ensure_schema_type_information(items)
+
+    for key in ("allOf", "anyOf", "oneOf"):
+        options = schema.get(key)
+        if isinstance(options, list):
+            for option in options:
+                if isinstance(option, dict):
+                    _ensure_schema_type_information(option)
+
+    if schema.get("type"):
+        return
+
+    candidate_types: list[str] = []
+
+    def _merge_type(value: Any) -> None:
+        if isinstance(value, list):
+            for entry in value:
+                if isinstance(entry, str) and entry not in candidate_types:
+                    candidate_types.append(entry)
+        elif isinstance(value, str) and value not in candidate_types:
+            candidate_types.append(value)
+
+    for key in ("anyOf", "oneOf", "allOf"):
+        options = schema.get(key)
+        if not isinstance(options, list):
+            continue
+        for option in options:
+            if not isinstance(option, dict):
+                continue
+            opt_type = option.get("type")
+            if opt_type:
+                _merge_type(opt_type)
+            elif "const" in option:
+                inferred = _infer_json_type(option.get("const"))
+                if inferred:
+                    _merge_type(inferred)
+            elif "enum" in option and isinstance(option["enum"], list):
+                for enum_value in option["enum"]:
+                    inferred = _infer_json_type(enum_value)
+                    if inferred:
+                        _merge_type(inferred)
+
+    if not candidate_types:
+        if "enum" in schema and isinstance(schema["enum"], list):
+            for enum_value in schema["enum"]:
+                inferred = _infer_json_type(enum_value)
+                if inferred:
+                    _merge_type(inferred)
+        if "const" in schema:
+            inferred = _infer_json_type(schema.get("const"))
+            if inferred:
+                _merge_type(inferred)
+
+    if candidate_types:
+        schema["type"] = (
+            candidate_types[0] if len(candidate_types) == 1 else candidate_types
+        )
+
+
 def _remove_additional_properties_from_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """
     Supprime récursivement 'additionalProperties' d'un schéma JSON.
@@ -60,6 +157,8 @@ def _remove_additional_properties_from_schema(schema: dict[str, Any]) -> dict[st
             for sub_schema in schema[key]:
                 if isinstance(sub_schema, dict):
                     _remove_additional_properties_from_schema(sub_schema)
+
+    _ensure_schema_type_information(schema)
 
     return schema
 

@@ -2580,6 +2580,12 @@ async def run_workflow(
             if nested_summary.steps:
                 steps.extend(nested_summary.steps)
 
+            nested_history = _clone_conversation_history_snapshot(
+                (nested_summary.state or {}).get("conversation_history")
+            )
+            if nested_history:
+                conversation_history.extend(nested_history)
+
             nested_context = dict(nested_summary.last_context or {})
             display_payload = _resolve_watch_payload(
                 nested_context, nested_summary.steps
@@ -2649,14 +2655,28 @@ async def run_workflow(
                 state.pop("last_generated_image_urls", None)
 
             if output_text.strip():
-                conversation_history.append(
-                    {
-                        "role": "assistant",
-                        "content": [
-                            {"type": "output_text", "text": output_text.strip()},
-                        ],
-                    }
-                )
+                should_append_output_text = True
+                if conversation_history:
+                    last_entry = conversation_history[-1]
+                    if isinstance(last_entry, Mapping) and last_entry.get("role") == "assistant":
+                        contents = last_entry.get("content")
+                        if isinstance(contents, Sequence):
+                            for content_item in contents:
+                                if not isinstance(content_item, Mapping):
+                                    continue
+                                text_value = content_item.get("text")
+                                if isinstance(text_value, str) and text_value.strip() == output_text.strip():
+                                    should_append_output_text = False
+                                    break
+                if should_append_output_text:
+                    conversation_history.append(
+                        {
+                            "role": "assistant",
+                            "content": [
+                                {"type": "output_text", "text": output_text.strip()},
+                            ],
+                        }
+                    )
 
             workflow_payload: dict[str, Any] = {
                 "id": nested_workflow_id,
@@ -2997,6 +3017,12 @@ async def run_workflow(
         candidate_output = last_step_context.get("output")
         if candidate_output is not None:
             final_output = candidate_output
+
+    conversation_snapshot = _clone_conversation_history_snapshot(conversation_history)
+    if conversation_snapshot:
+        state["conversation_history"] = conversation_snapshot
+    else:
+        state.pop("conversation_history", None)
 
     return WorkflowRunSummary(
         steps=steps,

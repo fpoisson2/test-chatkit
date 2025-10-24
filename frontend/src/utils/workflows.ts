@@ -2160,6 +2160,11 @@ const WIDGET_VALIDATION_FUNCTION_TOOL_NAME = "validate_widget";
 const WIDGET_VALIDATION_FUNCTION_TOOL_DESCRIPTION =
   "Valide une définition de widget ChatKit et retourne la version normalisée.";
 
+const WORKFLOW_VALIDATION_FUNCTION_TOOL_NAME = "validate_workflow_graph";
+
+const WORKFLOW_VALIDATION_FUNCTION_TOOL_DESCRIPTION =
+  "Valide un graphe de workflow ChatKit et retourne la version normalisée.";
+
 const isFunctionTool = (value: unknown): value is Record<string, unknown> =>
   isPlainRecord(value) && typeof value.type === "string" && value.type.trim().toLowerCase() === "function";
 
@@ -2216,6 +2221,31 @@ const buildWidgetValidationFunctionToolEntry = (): Record<string, unknown> => ({
   function: {
     name: WIDGET_VALIDATION_FUNCTION_TOOL_NAME,
     description: WIDGET_VALIDATION_FUNCTION_TOOL_DESCRIPTION,
+  },
+});
+
+const isWorkflowValidationFunctionTool = (value: unknown): boolean => {
+  if (!isFunctionTool(value)) {
+    return false;
+  }
+  const payload = getFunctionToolPayload(value);
+  if (!payload) {
+    return false;
+  }
+  const nameCandidate = payload.name ?? payload.id ?? payload.function_name;
+  if (typeof nameCandidate !== "string") {
+    return false;
+  }
+  return (
+    nameCandidate.trim().toLowerCase() === WORKFLOW_VALIDATION_FUNCTION_TOOL_NAME
+  );
+};
+
+const buildWorkflowValidationFunctionToolEntry = (): Record<string, unknown> => ({
+  type: "function",
+  function: {
+    name: WORKFLOW_VALIDATION_FUNCTION_TOOL_NAME,
+    description: WORKFLOW_VALIDATION_FUNCTION_TOOL_DESCRIPTION,
   },
 });
 
@@ -2651,5 +2681,41 @@ export const setAgentWidgetValidationToolEnabled = (
   }
 
   const toolEntry = buildWidgetValidationFunctionToolEntry();
+  return { ...next, tools: [...tools, toolEntry] };
+};
+
+export const getAgentWorkflowValidationToolEnabled = (
+  parameters: AgentParameters | null | undefined,
+): boolean => {
+  if (!parameters) {
+    return false;
+  }
+  const tools = (parameters as Record<string, unknown>).tools;
+  if (!Array.isArray(tools)) {
+    return false;
+  }
+  return tools.some((tool) => isWorkflowValidationFunctionTool(tool));
+};
+
+export const setAgentWorkflowValidationToolEnabled = (
+  parameters: AgentParameters,
+  enabled: boolean,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const tools = Array.isArray(next.tools)
+    ? (next.tools as unknown[]).filter(
+        (tool) => !isWorkflowValidationFunctionTool(tool),
+      )
+    : [];
+
+  if (!enabled) {
+    if (tools.length === 0) {
+      const { tools: _ignored, ...rest } = next;
+      return stripEmpty(rest);
+    }
+    return { ...next, tools };
+  }
+
+  const toolEntry = buildWorkflowValidationFunctionToolEntry();
   return { ...next, tools: [...tools, toolEntry] };
 };

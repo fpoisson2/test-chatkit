@@ -68,6 +68,7 @@ import {
   setAgentTemperature,
   setAgentTopP,
   setAgentWeatherToolEnabled,
+  setAgentWorkflowValidationToolEnabled,
   setAgentWidgetValidationToolEnabled,
   setAgentWebSearchConfig,
   setVoiceAgentVoice,
@@ -2992,6 +2993,27 @@ const WorkflowBuilderPage = () => {
           return data;
         }
         const nextParameters = setAgentWidgetValidationToolEnabled(
+          data.parameters,
+          enabled,
+        );
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleAgentWorkflowValidationToolChange = useCallback(
+    (nodeId: string, enabled: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (!isAgentKind(data.kind)) {
+          return data;
+        }
+        const nextParameters = setAgentWorkflowValidationToolEnabled(
           data.parameters,
           enabled,
         );
@@ -6475,6 +6497,9 @@ const WorkflowBuilderPage = () => {
             isReasoningModel={isReasoningModel}
             onAgentWeatherToolChange={handleAgentWeatherToolChange}
             onAgentWidgetValidationToolChange={handleAgentWidgetValidationToolChange}
+            onAgentWorkflowValidationToolChange={
+              handleAgentWorkflowValidationToolChange
+            }
             vectorStores={vectorStores}
             vectorStoresLoading={vectorStoresLoading}
             vectorStoresError={vectorStoresError}
