@@ -125,6 +125,59 @@ AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class _VoicePreferenceOverrides:
+    model: str | None
+    instructions: str | None
+    voice: str | None
+    prompt_variables: dict[str, str]
+
+    def is_empty(self) -> bool:
+        return not (
+            (self.model and self.model.strip())
+            or (self.instructions and self.instructions.strip())
+            or (self.voice and self.voice.strip())
+            or self.prompt_variables
+        )
+
+
+def _extract_voice_overrides(
+    agent_context: AgentContext[Any],
+) -> _VoicePreferenceOverrides | None:
+    request_context = getattr(agent_context, "request_context", None)
+    if request_context is None:
+        return None
+
+    model = getattr(request_context, "voice_model", None)
+    instructions = getattr(request_context, "voice_instructions", None)
+    voice = getattr(request_context, "voice_voice", None)
+    prompt_variables_raw = getattr(
+        request_context, "voice_prompt_variables", None
+    )
+    if isinstance(prompt_variables_raw, Mapping):
+        prompt_variables = {
+            str(key).strip(): "" if value is None else str(value)
+            for key, value in prompt_variables_raw.items()
+            if isinstance(key, str) and key.strip()
+        }
+    else:
+        prompt_variables = {}
+
+    sanitized_model = model if isinstance(model, str) and model.strip() else None
+    sanitized_instructions = (
+        instructions if isinstance(instructions, str) and instructions.strip() else None
+    )
+    sanitized_voice = voice if isinstance(voice, str) and voice.strip() else None
+    overrides = _VoicePreferenceOverrides(
+        sanitized_model,
+        sanitized_instructions,
+        sanitized_voice,
+        prompt_variables,
+    )
+
+    return None if overrides.is_empty() else overrides
+
+
 async def _build_user_message_history_items(
     *,
     converter: ThreadItemConverter | None,
@@ -376,6 +429,8 @@ async def run_workflow(
         _get_wait_state_metadata(thread) if thread is not None else None
     )
     resume_from_wait_slug: str | None = None
+
+    voice_overrides = _extract_voice_overrides(agent_context)
 
     if pending_wait_state:
         restored_history = _clone_conversation_history_snapshot(
@@ -866,28 +921,51 @@ async def run_workflow(
 
     def _resolve_voice_agent_configuration(
         step: WorkflowStep,
+        *,
+        overrides: _VoicePreferenceOverrides | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         params_raw = step.parameters or {}
         params = params_raw if isinstance(params_raw, Mapping) else {}
 
         settings = get_settings()
 
-        def _sanitize_text(value: Any, *, fallback: str) -> str:
+        def _sanitize_text(value: Any) -> str:
             if isinstance(value, str):
                 candidate = value.strip()
                 if candidate:
                     return candidate
+            return ""
+
+        def _resolve_value(
+            key: str,
+            *,
+            override_value: str | None,
+            fallback: str,
+        ) -> str:
+            override_candidate = (
+                override_value.strip() if isinstance(override_value, str) else None
+            )
+            if override_candidate:
+                return override_candidate
+            step_candidate = _sanitize_text(params.get(key))
+            if step_candidate:
+                return step_candidate
             return fallback
 
-        voice_model = _sanitize_text(
-            params.get("model"), fallback=settings.chatkit_realtime_model
+        voice_model = _resolve_value(
+            "model",
+            override_value=getattr(overrides, "model", None),
+            fallback=settings.chatkit_realtime_model,
         )
-        instructions = _sanitize_text(
-            params.get("instructions"),
+        instructions = _resolve_value(
+            "instructions",
+            override_value=getattr(overrides, "instructions", None),
             fallback=settings.chatkit_realtime_instructions,
         )
-        voice_id = _sanitize_text(
-            params.get("voice"), fallback=settings.chatkit_realtime_voice
+        voice_id = _resolve_value(
+            "voice",
+            override_value=getattr(overrides, "voice", None),
+            fallback=settings.chatkit_realtime_voice,
         )
 
         realtime_raw = params.get("realtime")
@@ -975,6 +1053,11 @@ async def run_workflow(
         }
         if tool_metadata:
             voice_context["tool_metadata"] = tool_metadata
+        prompt_variables: dict[str, str] = {}
+        if overrides is not None and overrides.prompt_variables:
+            prompt_variables = dict(overrides.prompt_variables)
+        if prompt_variables:
+            voice_context["prompt_variables"] = prompt_variables
 
         event_context = {
             "model": voice_model,
@@ -986,6 +1069,8 @@ async def run_workflow(
         }
         if tool_metadata:
             event_context["tool_metadata"] = tool_metadata
+        if prompt_variables:
+            event_context["prompt_variables"] = prompt_variables
 
         return voice_context, event_context
 
@@ -2241,7 +2326,8 @@ async def run_workflow(
             title = _node_title(current_node)
             try:
                 voice_context, event_context = _resolve_voice_agent_configuration(
-                    current_node
+                    current_node,
+                    overrides=voice_overrides,
                 )
             except Exception as exc:
                 raise_step_error(current_node.slug, title or current_node.slug, exc)
