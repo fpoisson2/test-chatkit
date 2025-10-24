@@ -24,6 +24,7 @@ from agents import (
     RunResultStreaming,
     StreamEvent,
     ToolCallItem,
+    ToolCallOutputItem,
 )
 from agents._run_impl import QueueCompleteSentinel
 from openai.types.responses import (
@@ -58,6 +59,7 @@ from openai.types.responses.response_function_web_search import (
     ActionSearch,
     ActionSearchSource,
 )
+from openai.types.responses.response_input_item_param import FunctionCallOutput
 from openai.types.responses.response_output_item import ImageGenerationCall
 from openai.types.responses.response_output_text import (
     AnnotationFileCitation as ResponsesAnnotationFileCitation,
@@ -1299,6 +1301,83 @@ async def test_stream_agent_response_tracks_web_search_tasks():
         for source in search_task_completed.update.task.sources
     )
     assert mock_store.add_thread_item.await_count == 1
+
+
+async def test_stream_agent_response_streams_tool_events_from_run_items():
+    mock_store.add_thread_item.reset_mock()
+    context = AgentContext(
+        previous_response_id=None, thread=thread, store=mock_store, request_context=None
+    )
+    result = make_result()
+
+    call_item = ResponseFunctionToolCallItem(
+        id="call_item",
+        call_id="call_1",
+        name="lookup_weather",
+        arguments="{\"city\": \"Paris\"}",
+        status="in_progress",
+        type="function_call",
+    )
+    result.add_event(
+        RunItemStreamEvent(
+            name="tool_called",
+            item=ToolCallItem(agent=Agent(name="Assistant"), raw_item=call_item),
+        )
+    )
+
+    call_output = FunctionCallOutput(
+        type="function_call_output",
+        call_id=call_item.call_id,
+        output="{\"forecast\": \"sunny\"}",
+        status="completed",
+    )
+    result.add_event(
+        RunItemStreamEvent(
+            name="tool_output",
+            item=ToolCallOutputItem(
+                agent=Agent(name="Assistant"),
+                raw_item=call_output,
+                output={"forecast": "sunny"},
+            ),
+        )
+    )
+
+    result.done()
+
+    events = await all_events(stream_agent_response(context, result))
+
+    workflow_added = next(
+        (
+            event
+            for event in events
+            if isinstance(event, ThreadItemAddedEvent)
+            and event.item.type == "workflow"
+        ),
+        None,
+    )
+    assert workflow_added is not None
+
+    function_events = [
+        event
+        for event in events
+        if isinstance(event, ThreadItemUpdated)
+        and isinstance(getattr(event.update, "task", None), CustomTask)
+        and getattr(event.update.task, "title", None) == "lookup_weather"
+    ]
+    assert function_events, "Expected function call task events"
+
+    final_update = next(
+        (
+            event
+            for event in reversed(function_events)
+            if isinstance(event.update, WorkflowTaskUpdated)
+        ),
+        None,
+    )
+    assert final_update is not None
+    assert final_update.update.task.status_indicator == "complete"
+    assert final_update.update.task.content is not None
+    assert "sunny" in final_update.update.task.content
 
 
 async def test_stream_agent_response_streams_function_calls_with_reasoning():

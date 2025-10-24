@@ -666,6 +666,11 @@ async def stream_agent_response(
     function_tasks: dict[str, FunctionTaskTracker] = {}
     function_tasks_by_call_id: dict[str, FunctionTaskTracker] = {}
 
+    def _get_value(raw: Any, key: str) -> Any:
+        if isinstance(raw, dict):
+            return raw.get(key)
+        return getattr(raw, key, None)
+
     # check if the last item in the thread was a workflow or a client tool call
     # if it was a client tool call, check if the second last item was a workflow
     # if either was, continue the workflow
@@ -1088,24 +1093,76 @@ async def stream_agent_response(
                 continue
 
             if event.type == "run_item_stream_event":
-                event = event.item
+                run_item_event = event
+                event_item = run_item_event.item
                 if (
-                    event.type == "tool_call_item"
-                    and event.raw_item.type == "function_call"
+                    run_item_event.name == "tool_called"
+                    and event_item.type == "tool_call_item"
                 ):
-                    current_tool_call = event.raw_item.call_id
-                    current_item_id = event.raw_item.id
-                    assert current_item_id
-                    produced_items.add(current_item_id)
+                    raw_item = event_item.raw_item
+                    if _get_value(raw_item, "type") == "function_call":
+                        current_tool_call = _get_value(raw_item, "call_id")
+                        current_item_id = _get_value(raw_item, "id")
+                        if current_item_id:
+                            produced_items.add(current_item_id)
+                        tracker, task_added, workflow_events = ensure_function_task(
+                            _get_value(raw_item, "id") or "",
+                            name=_get_value(raw_item, "name"),
+                            call_id=_get_value(raw_item, "call_id"),
+                        )
+                        for workflow_event in workflow_events:
+                            yield workflow_event
+                        updated = apply_function_task_updates(
+                            tracker,
+                            status=_get_value(raw_item, "status"),
+                            arguments=_get_value(raw_item, "arguments"),
+                            name=_get_value(raw_item, "name"),
+                        )
+                        if ctx.workflow_item and (task_added or updated):
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            update_cls = (
+                                WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=update_cls(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
+                    elif _get_value(raw_item, "type") == "web_search_call":
+                        for search_event in upsert_search_task(
+                            cast(ResponseFunctionWebSearch, raw_item),
+                            status="loading",
+                        ):
+                            yield search_event
                 elif (
-                    event.type == "tool_call_item"
-                    and event.raw_item.type == "web_search_call"
+                    run_item_event.name == "tool_output"
+                    and event_item.type == "tool_call_output_item"
                 ):
-                    for search_event in upsert_search_task(
-                        cast(ResponseFunctionWebSearch, event.raw_item),
-                        status="loading",
-                    ):
-                        yield search_event
+                    raw_item = event_item.raw_item
+                    call_id = _get_value(raw_item, "call_id")
+                    tracker = get_function_task_by_call_id(call_id)
+                    if tracker is not None:
+                        status = _get_value(raw_item, "status")
+                        updated = apply_function_task_updates(
+                            tracker,
+                            status=status,
+                            output=getattr(event_item, "output", None),
+                        )
+                        if ctx.workflow_item and updated:
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=WorkflowTaskUpdated(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
                 continue
 
             if event.type != "raw_response_event":
