@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import struct
+import zlib
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -26,6 +28,14 @@ except Exception:  # pragma: no cover - compatibilité sans Playwright
 
 class HostedBrowserError(RuntimeError):
     """Raised when the hosted browser cannot be started."""
+
+
+def _png_chunk(chunk_type: bytes, data: bytes) -> bytes:
+    """Build a PNG chunk from its type and payload."""
+
+    length = struct.pack(">I", len(data))
+    crc = struct.pack(">I", zlib.crc32(chunk_type + data) & 0xFFFFFFFF)
+    return length + chunk_type + data + crc
 
 
 def _normalize_button(button: Button) -> str:
@@ -266,52 +276,109 @@ class _FallbackDriver(_BaseBrowserDriver):
         self._ready = False
         self._typed = ""
         self._last_action = "Initialisation du navigateur simulé"
+        self._placeholder_cache: str | None = None
 
     async def ensure_ready(self) -> None:
+        if self._ready:
+            return
         self._ready = True
         if self.start_url:
             self._last_action = f"Chargement simulé de {self.start_url}"
+            self._placeholder_cache = None
 
     async def screenshot(self) -> str:
         await self.ensure_ready()
-        # PNG 1x1 blanc : iVBOR... représente un simple pixel blanc.
-        pixel = (
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAFAAHi/mQ0AAAAAElFTkSuQmCC"
+        if self._placeholder_cache is None:
+            self._placeholder_cache = self._build_placeholder_screenshot()
+        return self._placeholder_cache
+
+    def _build_placeholder_screenshot(self) -> str:
+        width = max(1, min(self.width, 1024))
+        height = max(1, min(self.height, 1024))
+
+        accent_row = b"\x00" + b"\x33\x66\x99" * width
+        base_row = b"\x00" + b"\xf5\xf5\xf5" * width
+        raw_rows = [
+            accent_row if y < min(6, height) else base_row
+            for y in range(height)
+        ]
+        raw_image = b"".join(raw_rows)
+        compressed = zlib.compress(raw_image, level=6)
+
+        header = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+
+        metadata_parts: list[str] = []
+        if self.start_url:
+            metadata_parts.append(f"URL: {self.start_url}")
+        if self._last_action:
+            metadata_parts.append(f"Action: {self._last_action}")
+        if self._typed:
+            metadata_parts.append(f"Saisie: {self._typed[-40:]}")
+
+        chunks = [
+            b"\x89PNG\r\n\x1a\n",
+            _png_chunk(b"IHDR", header),
+        ]
+
+        if metadata_parts:
+            try:
+                metadata = " | ".join(metadata_parts)
+                encoded = metadata.encode("utf-8", errors="replace")[:1024]
+                chunks.append(
+                    _png_chunk(b"tEXt", b"ChatKit placeholder\x00" + encoded)
+                )
+            except Exception:  # pragma: no cover - encodage dépend des entrées
+                logger.debug("Impossible d'encoder les métadonnées du placeholder")
+
+        chunks.extend(
+            (
+                _png_chunk(b"IDAT", compressed),
+                _png_chunk(b"IEND", b""),
+            )
         )
-        return pixel
+
+        return base64.b64encode(b"".join(chunks)).decode("ascii")
+
+    def _remember_action(self, description: str) -> None:
+        self._last_action = description
+        self._placeholder_cache = None
 
     async def click(self, x: int, y: int, button: Button) -> None:
-        self._last_action = f"Clic {button} en ({x}, {y})"
+        self._remember_action(f"Clic {button} en ({x}, {y})")
 
     async def double_click(self, x: int, y: int) -> None:
-        self._last_action = f"Double clic en ({x}, {y})"
+        self._remember_action(f"Double clic en ({x}, {y})")
 
     async def scroll(self, x: int, y: int, scroll_x: int, scroll_y: int) -> None:
-        self._last_action = (
+        self._remember_action(
             f"Défilement depuis ({x}, {y}) de ({scroll_x}, {scroll_y})"
         )
 
     async def move(self, x: int, y: int) -> None:
-        self._last_action = f"Déplacement curseur vers ({x}, {y})"
+        self._remember_action(f"Déplacement curseur vers ({x}, {y})")
 
     async def type(self, text: str) -> None:
-        self._typed += text
-        self._last_action = f"Saisie de {len(text)} caractères"
+        if not text:
+            return
+        self._typed = (self._typed + text)[-256:]
+        self._remember_action(f"Saisie de {len(text)} caractères")
 
     async def keypress(self, keys: Sequence[str]) -> None:
         if keys:
-            self._last_action = f"Touches pressées: {', '.join(keys)}"
+            joined = ", ".join(keys)
+            self._remember_action(f"Touches pressées: {joined}")
 
     async def drag(self, path: Sequence[tuple[int, int]]) -> None:
         if path:
-            self._last_action = f"Glisser de {path[0]} vers {path[-1]}"
+            self._remember_action(f"Glisser de {path[0]} vers {path[-1]}")
 
     async def wait(self) -> None:
-        self._last_action = "Attente simulée"
+        self._remember_action("Attente simulée")
         await asyncio.sleep(0.5)
 
     async def close(self) -> None:
         self._ready = False
+        self._placeholder_cache = None
 
 
 class HostedBrowser(AsyncComputer):
