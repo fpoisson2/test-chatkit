@@ -94,7 +94,19 @@ describe("useWorkflowVoiceSession", () => {
     });
 
     expect(getUserMediaMock).toHaveBeenCalledWith({ audio: true });
-    expect(connectMock).toHaveBeenCalledWith({ secret, apiKey: "sk-workflow" });
+    const callArgs = connectMock.mock.calls[0]?.[0];
+    expect(callArgs).toMatchObject({ apiKey: "sk-workflow" });
+    expect(callArgs?.secret).toEqual(
+      expect.objectContaining({
+        client_secret: { value: "sk-workflow" },
+        model: "gpt-voice",
+        instructions: "Parlez-moi",
+      }),
+    );
+    expect(callArgs?.sessionConfig).toEqual(
+      expect.objectContaining({ realtime: { start_mode: "auto", stop_mode: "auto" } }),
+    );
+    expect(result.current.toolPermissions).toEqual({ transcription: true });
     expect(result.current.status).toBe("connected");
     expect(result.current.activeStepSlug).toBe("voice-step");
 
@@ -148,7 +160,15 @@ describe("useWorkflowVoiceSession", () => {
     });
 
     expect(getUserMediaMock).toHaveBeenCalledWith({ audio: true });
-    expect(connectMock).toHaveBeenCalledWith({ secret, apiKey: "sk-workflow" });
+    const callArgs = connectMock.mock.calls[0]?.[0];
+    expect(callArgs).toMatchObject({ apiKey: "sk-workflow" });
+    expect(callArgs?.secret).toEqual(
+      expect.objectContaining({
+        client_secret: { value: "sk-workflow" },
+        model: "gpt-voice",
+        instructions: "Parlez-moi",
+      }),
+    );
   });
 
   it("supports pre-parsed task content objects", async () => {
@@ -180,7 +200,15 @@ describe("useWorkflowVoiceSession", () => {
     });
 
     expect(getUserMediaMock).toHaveBeenCalledWith({ audio: true });
-    expect(connectMock).toHaveBeenCalledWith({ secret, apiKey: "sk-workflow" });
+    const callArgs = connectMock.mock.calls[0]?.[0];
+    expect(callArgs).toMatchObject({ apiKey: "sk-workflow" });
+    expect(callArgs?.secret).toEqual(
+      expect.objectContaining({
+        client_secret: { value: "sk-workflow" },
+        model: "gpt-voice",
+        instructions: "Parlez-moi",
+      }),
+    );
   });
 
   it("connects when the log data is already the voice payload", async () => {
@@ -208,8 +236,89 @@ describe("useWorkflowVoiceSession", () => {
     });
 
     expect(getUserMediaMock).toHaveBeenCalledWith({ audio: true });
-    expect(connectMock).toHaveBeenCalledWith({ secret, apiKey: "sk-workflow" });
+    const callArgs = connectMock.mock.calls[0]?.[0];
+    expect(callArgs).toMatchObject({ apiKey: "sk-workflow" });
+    expect(callArgs?.secret).toEqual(
+      expect.objectContaining({
+        client_secret: { value: "sk-workflow" },
+        model: "gpt-voice",
+        instructions: "Parlez-moi",
+      }),
+    );
     expect(result.current.activeStepSlug).toBe("voice-step");
+  });
+
+  it("normalizes workflow payload secrets using session metadata", async () => {
+    const payload = {
+      type: "voice_session.created",
+      client_secret: { value: "ek_workflow", expires_at: 1_761_296_240 },
+      session: {
+        model: "gpt-realtime",
+        instructions: "Assistant vocal ChatKit",
+        voice: "ember",
+        realtime: { tools: { response: true, transcription: true } },
+      },
+    };
+
+    const { result } = renderHook(() => useWorkflowVoiceSession());
+
+    await act(async () => {
+      await result.current.handleLogEvent({
+        name: "workflow.task.created",
+        data: { task: { content: JSON.stringify(payload) } },
+      });
+    });
+
+    const callArgs = connectMock.mock.calls[0]?.[0];
+    expect(callArgs).toMatchObject({ apiKey: "ek_workflow" });
+    expect(callArgs?.secret).toEqual(
+      expect.objectContaining({
+        client_secret: { value: "ek_workflow" },
+        model: "gpt-realtime",
+        instructions: "Assistant vocal ChatKit",
+        voice: "ember",
+      }),
+    );
+    expect(typeof callArgs?.secret.expires_at).toBe("string");
+    expect(callArgs?.sessionConfig).toEqual(
+      expect.objectContaining({ realtime: { tools: { response: true, transcription: true } } }),
+    );
+    expect(result.current.toolPermissions).toEqual({ response: true, transcription: true });
+  });
+
+  it("reuses the realtime secret and session config when a refresh is due", async () => {
+    const payload = {
+      type: "voice_session.created",
+      client_secret: { value: "ek_refresh" },
+      session: {
+        model: "gpt-realtime",
+        instructions: "Assistant vocal ChatKit",
+        realtime: { tools: { response: true } },
+      },
+    };
+
+    const { result } = renderHook(() => useWorkflowVoiceSession());
+
+    await act(async () => {
+      await result.current.handleLogEvent({
+        name: "workflow.task.created",
+        data: { task: { content: JSON.stringify(payload) } },
+      });
+    });
+
+    const initialCall = connectMock.mock.calls[0]?.[0];
+    expect(initialCall).toBeDefined();
+    connectMock.mockClear();
+
+    await act(async () => {
+      realtimeHandlers.current?.onRefreshDue?.();
+      await Promise.resolve();
+    });
+
+    const refreshCall = connectMock.mock.calls[0]?.[0];
+    expect(refreshCall).toMatchObject({ apiKey: "ek_refresh" });
+    expect(refreshCall?.secret).toEqual(initialCall?.secret);
+    expect(refreshCall?.sessionConfig).toEqual(initialCall?.sessionConfig);
   });
 
   it("stops the realtime session when the workflow run finishes", async () => {

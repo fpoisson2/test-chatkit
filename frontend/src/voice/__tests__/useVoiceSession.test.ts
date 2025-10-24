@@ -63,7 +63,8 @@ describe("useVoiceSession", () => {
       await result.current.startSession();
     });
 
-    expect(connectMock).toHaveBeenCalledWith({ apiKey: "sk-test", secret });
+    const callArgs = connectMock.mock.calls[0]?.[0];
+    expect(callArgs).toMatchObject({ apiKey: "sk-test", secret });
     expect(result.current.status).toBe("connected");
     expect(result.current.isListening).toBe(true);
 

@@ -27,17 +27,46 @@ type WorkflowStepInfo = {
   title?: unknown;
 } | null;
 
+type WorkflowVoiceSessionRealtimeConfig = {
+  start_mode?: unknown;
+  stop_mode?: unknown;
+  tools?: Record<string, unknown> | null;
+};
+
+type WorkflowVoiceSessionAudioConfig = {
+  output?: Record<string, unknown> | null;
+  input?: Record<string, unknown> | null;
+};
+
+type WorkflowVoiceSessionPayloadSession = {
+  model?: unknown;
+  voice?: unknown;
+  instructions?: unknown;
+  realtime?: WorkflowVoiceSessionRealtimeConfig | null;
+  audio?: WorkflowVoiceSessionAudioConfig | null;
+  prompt_id?: unknown;
+  prompt_version?: unknown;
+  prompt_variables?: Record<string, unknown> | null;
+  [key: string]: unknown;
+} | null;
+
+type WorkflowVoiceSecretPayload = {
+  value?: unknown;
+  client_secret?: unknown;
+  expires_at?: unknown;
+  instructions?: unknown;
+  model?: unknown;
+  voice?: unknown;
+  prompt_id?: unknown;
+  prompt_version?: unknown;
+  prompt_variables?: Record<string, unknown> | null;
+  session?: WorkflowVoiceSessionPayloadSession;
+} & Record<string, unknown>;
+
 type VoiceSessionCreatedPayload = {
   type: string;
-  client_secret?: VoiceSessionSecret | null;
-  session?: {
-    realtime?: {
-      start_mode?: unknown;
-      stop_mode?: unknown;
-      tools?: Record<string, unknown> | null;
-    } | null;
-    [key: string]: unknown;
-  } | null;
+  client_secret?: WorkflowVoiceSecretPayload | string | null;
+  session?: WorkflowVoiceSessionPayloadSession;
   step?: WorkflowStepInfo;
   tool_permissions?: Record<string, unknown> | null;
 };
@@ -47,6 +76,7 @@ type ActiveVoiceSession = {
   title: string | null;
   toolPermissions: Record<string, boolean> | null;
   secret: VoiceSessionSecret;
+  sessionConfig: Record<string, unknown> | null;
 };
 
 type StopSessionOptions = {
@@ -86,6 +116,9 @@ const STOP_EVENT_NAMES = new Set([
   "workflow.step.canceled",
   "workflow.step.stopped",
 ]);
+
+const DEFAULT_VOICE_INSTRUCTIONS = "Assistant vocal ChatKit";
+const DEFAULT_VOICE_NAME = "alloy";
 
 const asNonEmptyString = (value: unknown): string | null => {
   if (typeof value !== "string") {
@@ -152,6 +185,217 @@ const normalizeToolPermissions = (
     }
   });
   return Object.keys(result).length > 0 ? result : null;
+};
+
+const normalizePromptVariables = (
+  value: Record<string, unknown> | null | undefined,
+): Record<string, string> | null => {
+  if (!value) {
+    return null;
+  }
+  const result: Record<string, string> = {};
+  Object.entries(value).forEach(([key, raw]) => {
+    if (typeof raw === "string") {
+      const trimmedKey = key.trim();
+      if (trimmedKey) {
+        result[trimmedKey] = raw;
+      }
+    }
+  });
+  return Object.keys(result).length > 0 ? result : null;
+};
+
+const normalizeExpiresAt = (value: unknown): string | null => {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const ms = value > 1e12 ? value : value * 1000;
+    try {
+      return new Date(ms).toISOString();
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+const toRecord = (value: unknown): Record<string, unknown> | null =>
+  isRecord(value) ? (value as Record<string, unknown>) : null;
+
+const extractVoiceFromSession = (session: Record<string, unknown> | null): string | null => {
+  if (!session) {
+    return null;
+  }
+  const audioValue = session["audio"];
+  const audio = toRecord(audioValue);
+  if (!audio) {
+    return null;
+  }
+  const output = toRecord(audio["output"]);
+  if (!output) {
+    return null;
+  }
+  return asNonEmptyString(output["voice"]);
+};
+
+const extractClientSecretValue = (value: unknown): string | null => {
+  if (typeof value === "string") {
+    return asNonEmptyString(value);
+  }
+  const record = toRecord(value);
+  if (!record) {
+    return null;
+  }
+  const direct = asNonEmptyString(record["client_secret"]);
+  if (direct) {
+    return direct;
+  }
+  const nested = toRecord(record["client_secret"]);
+  if (nested) {
+    const nestedValue = asNonEmptyString(nested["value"]);
+    if (nestedValue) {
+      return nestedValue;
+    }
+  }
+  const valueField = asNonEmptyString(record["value"]);
+  if (valueField) {
+    return valueField;
+  }
+  return null;
+};
+
+const sanitizeSessionConfig = (
+  primary: WorkflowVoiceSessionPayloadSession,
+  fallback: unknown,
+): Record<string, unknown> | null => {
+  const candidate = toRecord(primary) ?? toRecord(fallback);
+  if (!candidate) {
+    return null;
+  }
+  return { ...candidate };
+};
+
+const buildVoiceSecretFromPayload = (
+  payload: VoiceSessionCreatedPayload,
+): { secret: VoiceSessionSecret; sessionConfig: Record<string, unknown> | null } | null => {
+  const rawSecret = payload.client_secret;
+  if (!rawSecret) {
+    return null;
+  }
+
+  let secretRecord: Record<string, unknown> | null = null;
+  if (typeof rawSecret === "string") {
+    secretRecord = null;
+  } else {
+    secretRecord = toRecord(rawSecret);
+  }
+
+  const clientSecretValue =
+    typeof rawSecret === "string"
+      ? asNonEmptyString(rawSecret)
+      : extractClientSecretValue(secretRecord ?? rawSecret);
+
+  if (!clientSecretValue) {
+    return null;
+  }
+
+  const secretSession = secretRecord ? toRecord(secretRecord["session"]) : null;
+  const payloadSession = toRecord(payload.session ?? null);
+  const sessionConfig = sanitizeSessionConfig(payload.session ?? null, secretSession);
+
+  const instructions =
+    asNonEmptyString(payloadSession?.["instructions"]) ??
+    asNonEmptyString(secretSession?.["instructions"]) ??
+    asNonEmptyString(secretRecord?.["instructions"]) ??
+    DEFAULT_VOICE_INSTRUCTIONS;
+
+  const model =
+    asNonEmptyString(payloadSession?.["model"]) ??
+    asNonEmptyString(secretSession?.["model"]) ??
+    asNonEmptyString(secretRecord?.["model"]);
+
+  if (!model) {
+    return null;
+  }
+
+  const voice =
+    asNonEmptyString(payloadSession?.["voice"]) ??
+    extractVoiceFromSession(payloadSession) ??
+    asNonEmptyString(secretSession?.["voice"]) ??
+    extractVoiceFromSession(secretSession) ??
+    asNonEmptyString(secretRecord?.["voice"]) ??
+    DEFAULT_VOICE_NAME;
+
+  const promptId =
+    asNonEmptyString(secretRecord?.["prompt_id"]) ??
+    asNonEmptyString(payloadSession?.["prompt_id"]) ??
+    asNonEmptyString(secretSession?.["prompt_id"]);
+
+  const promptVersion =
+    asNonEmptyString(secretRecord?.["prompt_version"]) ??
+    asNonEmptyString(payloadSession?.["prompt_version"]) ??
+    asNonEmptyString(secretSession?.["prompt_version"]);
+
+  const promptVariables =
+    normalizePromptVariables(secretRecord?.["prompt_variables"] as Record<string, unknown> | undefined) ??
+    normalizePromptVariables(payloadSession?.["prompt_variables"] as Record<string, unknown> | undefined) ??
+    normalizePromptVariables(secretSession?.["prompt_variables"] as Record<string, unknown> | undefined);
+
+  const expiresAt =
+    normalizeExpiresAt(secretRecord?.["expires_at"]) ?? normalizeExpiresAt(secretSession?.["expires_at"]);
+
+  const secret: VoiceSessionSecret = {
+    client_secret: { value: clientSecretValue },
+    instructions,
+    model,
+    voice,
+  };
+
+  if (typeof expiresAt === "string") {
+    secret.expires_at = expiresAt;
+  }
+  if (promptId) {
+    secret.prompt_id = promptId;
+  }
+  if (promptVersion) {
+    secret.prompt_version = promptVersion;
+  }
+  if (promptVariables) {
+    secret.prompt_variables = promptVariables;
+  }
+
+  return { secret, sessionConfig };
+};
+
+const extractRealtimeTools = (session: Record<string, unknown> | null): Record<string, unknown> | null => {
+  if (!session) {
+    return null;
+  }
+  const realtime = toRecord(session["realtime"]);
+  if (!realtime) {
+    return null;
+  }
+  const tools = toRecord(realtime["tools"]);
+  return tools ?? null;
+};
+
+const extractToolPermissionsFromPayload = (
+  payload: VoiceSessionCreatedPayload,
+): Record<string, boolean> | null => {
+  const direct = normalizeToolPermissions(payload.tool_permissions);
+  if (direct) {
+    return direct;
+  }
+
+  const payloadSession = toRecord(payload.session ?? null);
+  const secretRecord = toRecord(payload.client_secret ?? null);
+  const secretSession = secretRecord ? toRecord(secretRecord["session"]) : null;
+
+  return (
+    normalizeToolPermissions(extractRealtimeTools(payloadSession ?? null)) ??
+    normalizeToolPermissions(extractRealtimeTools(secretSession))
+  );
 };
 
 const extractSlugFromLogData = (
@@ -418,15 +662,16 @@ export const useWorkflowVoiceSession = (): UseWorkflowVoiceSessionResult => {
     onTransportError: handleTransportError,
     onError: handleSessionError,
     onRefreshDue: () => {
+      const activeSession = activeSessionRef.current;
       const secret = activeSecretRef.current;
-      if (!secret) {
+      if (!secret || !activeSession) {
         return;
       }
       const apiKey = resolveApiKey(secret.client_secret);
       if (!apiKey) {
         return;
       }
-      void connect({ secret, apiKey }).catch((error) => {
+      void connect({ secret, apiKey, sessionConfig: activeSession.sessionConfig }).catch((error) => {
         const message = formatErrorMessage(error);
         setWebrtcError(message);
         setLocalError(message);
@@ -465,12 +710,20 @@ export const useWorkflowVoiceSession = (): UseWorkflowVoiceSessionResult => {
     ) => {
       stopSession({ preserveTranscripts: false });
 
-      const secret = payload.client_secret ?? null;
-      if (!secret) {
+      if (!payload.client_secret) {
         setLocalError("Secret vocal manquant dans l'évènement du workflow.");
         setStatus("error");
         return;
       }
+
+      const normalized = buildVoiceSecretFromPayload(payload);
+      if (!normalized) {
+        setLocalError("Secret temps réel invalide reçu pour la session vocale du workflow.");
+        setStatus("error");
+        return;
+      }
+
+      const { secret, sessionConfig } = normalized;
 
       const apiKey = resolveApiKey(secret.client_secret);
       if (!apiKey) {
@@ -486,13 +739,14 @@ export const useWorkflowVoiceSession = (): UseWorkflowVoiceSessionResult => {
 
       const slug = metadataSlug ?? extractStepSlug(payload.step ?? null);
       const title = metadataTitle ?? extractStepTitle(payload.step ?? null);
-      const normalizedTools = normalizeToolPermissions(payload.tool_permissions);
+      const normalizedTools = extractToolPermissionsFromPayload(payload);
 
       activeSessionRef.current = {
         slug,
         title,
         toolPermissions: normalizedTools,
         secret,
+        sessionConfig,
       };
 
       setActiveStepSlug(slug);
@@ -522,7 +776,7 @@ export const useWorkflowVoiceSession = (): UseWorkflowVoiceSessionResult => {
       }
 
       try {
-        await connect({ secret, apiKey });
+        await connect({ secret, apiKey, sessionConfig });
         if (startAttemptRef.current !== attemptId) {
           return;
         }

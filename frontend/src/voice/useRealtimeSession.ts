@@ -6,6 +6,9 @@ import type { VoiceSessionSecret } from "./useVoiceSecret";
 const SECRET_REFRESH_BUFFER_MS = 60_000;
 const SECRET_MIN_REFRESH_DELAY_MS = 10_000;
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object";
+
 type RealtimeConnectionStatus = "connected" | "connecting" | "disconnected";
 
 type RealtimeSessionHandlers = {
@@ -21,6 +24,7 @@ type RealtimeSessionHandlers = {
 type ConnectOptions = {
   secret: VoiceSessionSecret;
   apiKey: string;
+  sessionConfig?: Record<string, unknown> | null;
 };
 
 type UseRealtimeSessionResult = {
@@ -223,7 +227,7 @@ export const useRealtimeSession = (
   );
 
   const connect = useCallback(
-    async ({ secret, apiKey }: ConnectOptions) => {
+    async ({ secret, apiKey, sessionConfig }: ConnectOptions) => {
       disconnect();
 
       const agent = new RealtimeAgent({
@@ -239,6 +243,9 @@ export const useRealtimeSession = (
         const promptUpdate = buildPromptUpdate(secret);
         if (promptUpdate) {
           applySessionUpdate(session, promptUpdate);
+        }
+        if (sessionConfig && isRecord(sessionConfig)) {
+          applySessionUpdate(session, sessionConfig);
         }
         scheduleRefresh(secret);
       } catch (error) {
