@@ -10,6 +10,7 @@ import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
 import { useHostedFlow } from "./hooks/useHostedFlow";
 import { useWorkflowChatSession } from "./hooks/useWorkflowChatSession";
+import { useWorkflowVoiceSession } from "./hooks/useWorkflowVoiceSession";
 import { getOrCreateDeviceId } from "./utils/device";
 import { clearStoredChatKitSecret } from "./utils/chatkitSession";
 import {
@@ -114,6 +115,8 @@ export function MyChat() {
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
+  const stopVoiceSessionRef = useRef<(() => void) | null>(null);
+
   const resetChatState = useCallback(
     ({ workflowSlug, preserveStoredThread = false }: ResetChatStateOptions = {}) => {
       clearStoredChatKitSecret(sessionOwner);
@@ -130,6 +133,9 @@ export function MyChat() {
         : null;
       setInitialThreadId(nextInitialThreadId);
       setChatInstanceKey((value) => value + 1);
+
+      // Arrêter la session vocale si elle est en cours
+      stopVoiceSessionRef.current?.();
     },
     [activeWorkflowSlug, sessionOwner],
   );
@@ -144,6 +150,19 @@ export function MyChat() {
     hostedFlowEnabled,
     disableHostedFlow,
   });
+
+  const { stopVoiceSession, status: voiceStatus, isListening: voiceIsListening } = useWorkflowVoiceSession({
+    threadId: initialThreadId,
+    onError: reportError,
+    onTranscriptsUpdated: () => {
+      requestRefreshRef.current?.("[Voice] Nouvelles transcriptions");
+    },
+  });
+
+  // Garder stopVoiceSession dans un ref pour éviter les dépendances circulaires
+  useEffect(() => {
+    stopVoiceSessionRef.current = stopVoiceSession;
+  }, [stopVoiceSession]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -706,11 +725,66 @@ export function MyChat() {
 
   const statusMessage = error ?? (isLoading ? "Initialisation de la session…" : null);
 
+  const voiceStatusMessage = voiceStatus === "connected"
+    ? `Session vocale active${voiceIsListening ? " - En écoute" : ""}`
+    : voiceStatus === "connecting"
+    ? "Connexion audio en cours..."
+    : null;
+
   return (
     <>
       <ChatSidebar onWorkflowActivated={handleWorkflowActivated} />
       <ChatKitHost control={control} chatInstanceKey={chatInstanceKey} />
       <ChatStatusMessage message={statusMessage} isError={Boolean(error)} isLoading={isLoading} />
+      {voiceStatusMessage && (
+        <div style={{
+          position: "fixed",
+          bottom: "20px",
+          right: "20px",
+          padding: "12px 16px",
+          background: voiceStatus === "connected" ? "#10a37f" : "#ff9800",
+          color: "white",
+          borderRadius: "8px",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+          fontSize: "14px",
+          fontWeight: 500,
+          zIndex: 1000,
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+        }}>
+          <span style={{
+            width: "8px",
+            height: "8px",
+            borderRadius: "50%",
+            background: "white",
+            animation: voiceIsListening ? "pulse 1.5s infinite" : "none",
+          }} />
+          {voiceStatusMessage}
+          <button
+            type="button"
+            onClick={stopVoiceSession}
+            style={{
+              marginLeft: "8px",
+              padding: "4px 8px",
+              background: "rgba(255,255,255,0.2)",
+              border: "none",
+              borderRadius: "4px",
+              color: "white",
+              cursor: "pointer",
+              fontSize: "12px",
+            }}
+          >
+            Arrêter
+          </button>
+        </div>
+      )}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.5; transform: scale(1.2); }
+        }
+      `}</style>
     </>
   );
 }

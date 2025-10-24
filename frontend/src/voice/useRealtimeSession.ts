@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import { RealtimeAgent, RealtimeItem, RealtimeSession, TransportEvent } from "@openai/agents/realtime";
+import { RealtimeAgent, RealtimeItem, RealtimeSession, TransportEvent, tool } from "@openai/agents/realtime";
 
 import type { VoiceSessionSecret } from "./useVoiceSecret";
 
@@ -16,6 +16,7 @@ type RealtimeSessionHandlers = {
   onAgentEnd?: () => void;
   onError?: (error: unknown) => void;
   onRefreshDue?: () => void;
+  onEndSession?: () => void;
 };
 
 type ConnectOptions = {

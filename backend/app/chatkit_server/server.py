@@ -980,6 +980,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             end_state = summary.end_state
             applied_status = False
             cleaned_reason: str | None = None
+            waiting_state = False
             if end_state is not None:
                 end_message = self._settings.workflow_defaults.default_end_message
                 status_type_raw = (end_state.status_type or "closed").strip().lower()
@@ -996,6 +997,7 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                     applied_status = True
                 elif status_type_raw == "waiting":
                     thread.status = ActiveStatus()
+                    waiting_state = True
                     applied_status = True
                 elif status_type_raw == "active":
                     thread.status = ActiveStatus()
@@ -1020,18 +1022,31 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
                 )
             )
             if end_state is not None:
-                logger.info(
-                    "Workflow terminé pour le fil %s via le nœud %s (statut=%s, "
-                    "raison=%s)",
-                    thread.id,
-                    end_state.slug,
-                    (
-                        getattr(thread.status, "type", "inconnu")
-                        if applied_status
-                        else "inconnu"
-                    ),
-                    cleaned_reason or end_message,
-                )
+                if waiting_state:
+                    logger.info(
+                        "Workflow en attente pour le fil %s via le nœud %s (statut=%s, raison=%s)",
+                        thread.id,
+                        end_state.slug,
+                        (
+                            getattr(thread.status, "type", "inconnu")
+                            if applied_status
+                            else "inconnu"
+                        ),
+                        cleaned_reason or end_message,
+                    )
+                else:
+                    logger.info(
+                        "Workflow terminé pour le fil %s via le nœud %s (statut=%s, "
+                        "raison=%s)",
+                        thread.id,
+                        end_state.slug,
+                        (
+                            getattr(thread.status, "type", "inconnu")
+                            if applied_status
+                            else "inconnu"
+                        ),
+                        cleaned_reason or end_message,
+                    )
             else:
                 logger.info(
                     "Workflow terminé pour le fil %s sans bloc de fin (nœud final: %s)",
