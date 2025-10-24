@@ -76,6 +76,7 @@ def test_hosted_browser_playwright_debug_url(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("CHATKIT_HOSTED_BROWSER_HEADLESS", "false")
     monkeypatch.setenv("CHATKIT_HOSTED_BROWSER_DEBUG_PORT", "9333")
     monkeypatch.setenv("CHATKIT_HOSTED_BROWSER_DEBUG_HOST", "0.0.0.0")
+    monkeypatch.setenv("DISPLAY", ":1")
 
     class _StubPage:
         async def goto(self, *args, **kwargs) -> None:  # pragma: no cover - non utilisé
@@ -128,6 +129,7 @@ def test_hosted_browser_playwright_debug_url(monkeypatch: pytest.MonkeyPatch) ->
         return _StubAsyncPlaywright()
 
     monkeypatch.setattr(hosted_browser, "async_playwright", _fake_async_playwright)
+    monkeypatch.setattr(hosted_browser.shutil, "which", lambda _bin: "/usr/bin/Xvfb")
 
     async def _run() -> None:
         browser = hosted_browser.HostedBrowser(
@@ -149,6 +151,131 @@ def test_hosted_browser_playwright_debug_url(monkeypatch: pytest.MonkeyPatch) ->
 
     asyncio.run(_run())
 
+
+def test_hosted_browser_headful_without_display_spawns_xvfb(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CHATKIT_HOSTED_BROWSER_HEADLESS", "false")
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.setattr(hosted_browser.shutil, "which", lambda _bin: "/usr/bin/Xvfb")
+
+    class _StubPage:
+        async def goto(self, *_args, **_kwargs) -> None:
+            return None
+
+        async def screenshot(self, **_kwargs) -> bytes:
+            return b"stub-png"
+
+    class _StubContext:
+        def __init__(self) -> None:
+            self._page = _StubPage()
+
+        async def new_page(self) -> _StubPage:
+            return self._page
+
+        async def close(self) -> None:
+            return None
+
+    class _StubBrowser:
+        def __init__(self) -> None:
+            self.context = _StubContext()
+
+        async def new_context(self, **_kwargs) -> _StubContext:
+            return self.context
+
+        async def close(self) -> None:
+            return None
+
+    class _StubChromium:
+        def __init__(self) -> None:
+            self.launch_kwargs: dict[str, object] | None = None
+
+        async def launch(self, **kwargs) -> _StubBrowser:
+            self.launch_kwargs = kwargs
+            return _StubBrowser()
+
+    stub_chromium = _StubChromium()
+
+    class _StubAsyncPlaywright:
+        def __init__(self) -> None:
+            self.chromium = stub_chromium
+
+        async def __aenter__(self) -> _StubAsyncPlaywright:
+            return self
+
+        async def __aexit__(self, *_exc_info) -> None:
+            return None
+
+    def _fake_async_playwright() -> _StubAsyncPlaywright:
+        return _StubAsyncPlaywright()
+
+    monkeypatch.setattr(hosted_browser, "async_playwright", _fake_async_playwright)
+
+    xvfb_calls: list[tuple[tuple[str, ...], dict[str, object]]] = []
+    xvfb_processes: list[_StubProcess] = []
+
+    class _StubStream:
+        async def read(self) -> bytes:
+            return b""
+
+    class _StubProcess:
+        def __init__(self, args: tuple[str, ...], kwargs: dict[str, object]) -> None:
+            self.args = args
+            self.kwargs = kwargs
+            self.returncode: int | None = None
+            self.stderr = _StubStream()
+            self._terminated = False
+
+        def terminate(self) -> None:
+            self._terminated = True
+            self.returncode = 0
+
+        async def wait(self) -> int:
+            if self.returncode is None:
+                self.returncode = 0
+            return self.returncode
+
+        def kill(self) -> None:
+            self._terminated = True
+            self.returncode = -9
+
+    async def _fake_subprocess_exec(*args, **kwargs):
+        if args and args[0] == "Xvfb":
+            call = (tuple(args), kwargs)
+            xvfb_calls.append(call)
+            process = _StubProcess(tuple(args), kwargs)
+            xvfb_processes.append(process)
+            return process
+        raise AssertionError("unexpected subprocess execution")
+
+    monkeypatch.setattr(
+        hosted_browser.asyncio,
+        "create_subprocess_exec",
+        _fake_subprocess_exec,
+    )
+
+    async def _run() -> None:
+        browser = hosted_browser.HostedBrowser(
+            width=800,
+            height=600,
+            environment="browser",
+        )
+        try:
+            await browser.screenshot()
+            assert len(xvfb_calls) == 1
+            args, _kwargs = xvfb_calls[0]
+            assert args[0] == "Xvfb"
+            assert "-screen" in args
+            assert stub_chromium.launch_kwargs is not None
+            env = stub_chromium.launch_kwargs.get("env")
+            assert isinstance(env, dict)
+            assert env.get("DISPLAY") == ":99"
+        finally:
+            await browser.close()
+            assert xvfb_processes
+            assert xvfb_processes[0]._terminated is True
+
+    asyncio.run(_run())
 
 def test_hosted_browser_installs_browsers_when_missing(
     monkeypatch: pytest.MonkeyPatch,

@@ -6,10 +6,11 @@ import asyncio
 import base64
 import logging
 import os
+import shutil
 import struct
 import sys
 import zlib
-from asyncio.subprocess import PIPE
+from asyncio.subprocess import DEVNULL, PIPE
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -142,6 +143,10 @@ class _PlaywrightDriver(_BaseBrowserDriver):
         self._ready = False
         self._debug_url: str | None = None
         self._install_attempted = False
+        self._xvfb_process: asyncio.subprocess.Process | None = None
+        self._original_display = os.getenv("DISPLAY")
+        self._display = self._original_display
+        self._display_overridden = False
 
         headless_env = os.getenv("CHATKIT_HOSTED_BROWSER_HEADLESS")
         if headless_env is None:
@@ -189,6 +194,8 @@ class _PlaywrightDriver(_BaseBrowserDriver):
         self._playwright_manager = async_playwright()
         self._playwright = await self._playwright_manager.__aenter__()
 
+        await self._prepare_display()
+
         browser_args = [
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
@@ -199,9 +206,14 @@ class _PlaywrightDriver(_BaseBrowserDriver):
             launch_args.append(f"--remote-debugging-address={self._debug_host}")
             launch_args.append(f"--remote-debugging-port={self._debug_port}")
 
+        launch_env = os.environ.copy()
+        if self._display:
+            launch_env["DISPLAY"] = self._display
+
         self._browser = await self._playwright.chromium.launch(
             headless=self._headless,
             args=launch_args,
+            env=launch_env,
         )
         self._context = await self._browser.new_context(
             viewport={"width": self.width, "height": self.height},
@@ -232,6 +244,89 @@ class _PlaywrightDriver(_BaseBrowserDriver):
                 "DevTools Chrome accessibles pour le navigateur hébergé : %s",
                 self._debug_url,
             )
+
+    async def _prepare_display(self) -> None:
+        if self._headless:
+            return
+
+        if self._display:
+            return
+
+        xvfb_bin = os.getenv("CHATKIT_HOSTED_BROWSER_XVFB_BIN", "Xvfb")
+        if shutil.which(xvfb_bin) is None:
+            logger.warning(
+                "Mode visible demandé mais aucun serveur X n'est disponible ; "
+                "activation du mode headless"
+            )
+            self._headless = True
+            return
+
+        display = os.getenv("CHATKIT_HOSTED_BROWSER_XVFB_DISPLAY", ":99")
+        screen_id = os.getenv("CHATKIT_HOSTED_BROWSER_XVFB_SCREEN", "0")
+        resolution = os.getenv(
+            "CHATKIT_HOSTED_BROWSER_XVFB_RESOLUTION",
+            f"{self.width}x{self.height}x24",
+        )
+
+        try:
+            self._xvfb_process = await asyncio.create_subprocess_exec(
+                xvfb_bin,
+                display,
+                "-screen",
+                screen_id,
+                resolution,
+                "-nolisten",
+                "tcp",
+                stdout=DEVNULL,
+                stderr=PIPE,
+            )
+        except FileNotFoundError:
+            logger.warning(
+                "Exécutable %s introuvable pour lancer Xvfb ; "
+                "activation du mode headless",
+                xvfb_bin,
+            )
+            self._headless = True
+            self._xvfb_process = None
+            return
+        except Exception as exc:  # pragma: no cover - dépend du système
+            logger.warning(
+                "Impossible de lancer Xvfb (%s) : %s ; activation du mode headless",
+                xvfb_bin,
+                exc,
+            )
+            self._headless = True
+            self._xvfb_process = None
+            return
+
+        await asyncio.sleep(0.1)
+
+        if self._xvfb_process.returncode is not None:
+            stderr = (
+                await self._xvfb_process.stderr.read()
+                if self._xvfb_process.stderr
+                else b""
+            )
+            logger.warning(
+                "Xvfb s'est terminé immédiatement (code=%s, stderr=%s) ; "
+                "activation du mode headless",
+                self._xvfb_process.returncode,
+                stderr.decode("utf-8", errors="ignore").strip(),
+            )
+            self._headless = True
+            self._xvfb_process = None
+            return
+
+        self._display = display
+        os.environ["DISPLAY"] = display
+        self._display_overridden = True
+        logger.info(
+            "Serveur X virtuel démarré pour le navigateur hébergé sur %s (%s %s %s)",
+            display,
+            xvfb_bin,
+            screen_id,
+            resolution,
+        )
 
     async def _handle_launch_failure(self, exc: Exception) -> bool:
         await self.close()
@@ -406,6 +501,21 @@ class _PlaywrightDriver(_BaseBrowserDriver):
             self._playwright_manager = None
             self._playwright = None
             self._ready = False
+        if self._display_overridden:
+            if self._original_display is None:
+                os.environ.pop("DISPLAY", None)
+            else:
+                os.environ["DISPLAY"] = self._original_display
+            self._display = self._original_display
+            self._display_overridden = False
+        if self._xvfb_process is not None:
+            if self._xvfb_process.returncode is None:
+                self._xvfb_process.terminate()
+                try:
+                    await asyncio.wait_for(self._xvfb_process.wait(), timeout=5)
+                except asyncio.TimeoutError:  # pragma: no cover - dépend du système
+                    self._xvfb_process.kill()
+            self._xvfb_process = None
 
     def debug_url(self) -> str | None:
         return self._debug_url
