@@ -70,3 +70,81 @@ def test_hosted_browser_fallback_produces_png(monkeypatch: pytest.MonkeyPatch) -
             await browser.close()
 
     asyncio.run(_run())
+
+
+def test_hosted_browser_playwright_debug_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CHATKIT_HOSTED_BROWSER_HEADLESS", "false")
+    monkeypatch.setenv("CHATKIT_HOSTED_BROWSER_DEBUG_PORT", "9333")
+    monkeypatch.setenv("CHATKIT_HOSTED_BROWSER_DEBUG_HOST", "0.0.0.0")
+
+    class _StubPage:
+        async def goto(self, *args, **kwargs) -> None:  # pragma: no cover - non utilisé
+            return None
+
+        async def screenshot(self, **_kwargs) -> bytes:
+            return b"stub-png"
+
+    class _StubContext:
+        def __init__(self) -> None:
+            self._page = _StubPage()
+
+        async def new_page(self) -> _StubPage:
+            return self._page
+
+        async def close(self) -> None:  # pragma: no cover - aucun effet
+            return None
+
+    class _StubBrowser:
+        def __init__(self) -> None:
+            self.context = _StubContext()
+
+        async def new_context(self, **_kwargs) -> _StubContext:
+            return self.context
+
+        async def close(self) -> None:  # pragma: no cover - aucun effet
+            return None
+
+    class _StubChromium:
+        def __init__(self) -> None:
+            self.launch_kwargs: dict[str, object] | None = None
+
+        async def launch(self, **kwargs) -> _StubBrowser:
+            self.launch_kwargs = kwargs
+            return _StubBrowser()
+
+    stub_chromium = _StubChromium()
+
+    class _StubAsyncPlaywright:
+        def __init__(self) -> None:
+            self.chromium = stub_chromium
+
+        async def __aenter__(self) -> _StubAsyncPlaywright:
+            return self
+
+        async def __aexit__(self, *_exc_info) -> None:
+            return None
+
+    def _fake_async_playwright() -> _StubAsyncPlaywright:
+        return _StubAsyncPlaywright()
+
+    monkeypatch.setattr(hosted_browser, "async_playwright", _fake_async_playwright)
+
+    async def _run() -> None:
+        browser = hosted_browser.HostedBrowser(
+            width=800,
+            height=600,
+            environment="browser",
+        )
+        try:
+            await browser.screenshot()
+            assert stub_chromium.launch_kwargs is not None
+            assert stub_chromium.launch_kwargs.get("headless") is False
+            launch_args = stub_chromium.launch_kwargs.get("args")
+            assert isinstance(launch_args, list)
+            assert "--remote-debugging-address=0.0.0.0" in launch_args
+            assert "--remote-debugging-port=9333" in launch_args
+            assert browser.debug_url == "http://0.0.0.0:9333"
+        finally:
+            await browser.close()
+
+    asyncio.run(_run())

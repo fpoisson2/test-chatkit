@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import os
 import struct
 import zlib
 from collections.abc import Sequence
@@ -86,6 +87,9 @@ class _BaseBrowserDriver:
     height: int
     start_url: str | None
 
+    def debug_url(self) -> str | None:
+        return None
+
     async def ensure_ready(self) -> None:
         raise NotImplementedError
 
@@ -134,6 +138,34 @@ class _PlaywrightDriver(_BaseBrowserDriver):
         self._context: BrowserContext | None = None
         self._page: Page | None = None
         self._ready = False
+        self._debug_url: str | None = None
+
+        headless_env = os.getenv("CHATKIT_HOSTED_BROWSER_HEADLESS")
+        if headless_env is None:
+            self._headless = True
+        else:
+            self._headless = headless_env.strip().lower() not in {
+                "0",
+                "false",
+                "no",
+                "off",
+            }
+
+        debug_host = os.getenv("CHATKIT_HOSTED_BROWSER_DEBUG_HOST", "127.0.0.1")
+        debug_port_raw = os.getenv("CHATKIT_HOSTED_BROWSER_DEBUG_PORT")
+        self._debug_host = debug_host
+        try:
+            parsed = int(debug_port_raw) if debug_port_raw else None
+        except ValueError:
+            parsed = None
+        if parsed is not None and not (0 < parsed < 65536):
+            logger.warning(
+                "Port de débogage Playwright invalide (%s), "
+                "désactivation de l'inspection",
+                debug_port_raw,
+            )
+            parsed = None
+        self._debug_port = parsed
 
     async def ensure_ready(self) -> None:
         if self._ready:
@@ -148,9 +180,14 @@ class _PlaywrightDriver(_BaseBrowserDriver):
                     "--disable-dev-shm-usage",
                     "--no-sandbox",
                 ]
+                launch_args = list(browser_args)
+                if self._debug_port is not None:
+                    launch_args.append(f"--remote-debugging-address={self._debug_host}")
+                    launch_args.append(f"--remote-debugging-port={self._debug_port}")
+
                 self._browser = await self._playwright.chromium.launch(
-                    headless=True,
-                    args=browser_args,
+                    headless=self._headless,
+                    args=launch_args,
                 )
                 self._context = await self._browser.new_context(
                     viewport={"width": self.width, "height": self.height},
@@ -171,6 +208,16 @@ class _PlaywrightDriver(_BaseBrowserDriver):
                             exc,
                         )
                 self._ready = True
+                if not self._headless:
+                    logger.info(
+                        "Navigateur Playwright lancé en mode visible (headless=False)",
+                    )
+                if self._debug_port is not None:
+                    self._debug_url = f"http://{self._debug_host}:{self._debug_port}"
+                    logger.info(
+                        "DevTools Chrome accessibles pour le navigateur hébergé : %s",
+                        self._debug_url,
+                    )
             except Exception as exc:  # pragma: no cover - dépend des environnements
                 await self.close()
                 raise HostedBrowserError(
@@ -264,6 +311,9 @@ class _PlaywrightDriver(_BaseBrowserDriver):
         finally:
             self._playwright = None
             self._ready = False
+
+    def debug_url(self) -> str | None:
+        return self._debug_url
 
 
 @dataclass
@@ -380,6 +430,9 @@ class _FallbackDriver(_BaseBrowserDriver):
         self._ready = False
         self._placeholder_cache = None
 
+    def debug_url(self) -> str | None:
+        return None
+
 
 class HostedBrowser(AsyncComputer):
     """AsyncComputer implementation that launches a hosted browser instance."""
@@ -411,6 +464,13 @@ class HostedBrowser(AsyncComputer):
     @property
     def dimensions(self) -> tuple[int, int]:
         return (self._width, self._height)
+
+    @property
+    def debug_url(self) -> str | None:
+        driver = self._driver
+        if driver is None:
+            return None
+        return driver.debug_url()
 
     async def _get_driver(self) -> _BaseBrowserDriver:
         if self._driver is not None:
