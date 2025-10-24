@@ -192,7 +192,9 @@ type WorkflowViewportRecord = {
 
 const isValidNodeKind = (value: string): value is NodeKind =>
   Object.prototype.hasOwnProperty.call(NODE_COLORS, value);
-const isAgentKind = (kind: NodeKind): boolean => kind === "agent" || kind === "voice_agent";
+type AgentLikeKind = Extract<NodeKind, "agent" | "voice_agent">;
+const isAgentKind = (kind: NodeKind): kind is AgentLikeKind =>
+  kind === "agent" || kind === "voice_agent";
 
 type ClassValue =
   | string

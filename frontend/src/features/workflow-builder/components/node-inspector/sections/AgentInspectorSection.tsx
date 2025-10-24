@@ -34,6 +34,7 @@ import { useAgentInspectorState } from "../hooks/useAgentInspectorState";
 import { HelpTooltip } from "../components/HelpTooltip";
 import { ToggleRow } from "../components/ToggleRow";
 import styles from "../NodeInspector.module.css";
+import { ToolSettingsPanel } from "./ToolSettingsPanel";
 
 type AgentInspectorSectionProps = {
   nodeId: string;
@@ -174,10 +175,6 @@ export const AgentInspectorSection = ({
     imageBackgroundValue,
     imageOutputFormatValue,
     updateImageTool,
-    weatherFunctionEnabled,
-    widgetValidationFunctionEnabled,
-    workflowValidationFunctionEnabled,
-    workflowToolSlugs,
     selectedVectorStoreSlug,
     matchedModel,
     selectedModelOption,
@@ -260,18 +257,6 @@ export const AgentInspectorSection = ({
     (workflow) => workflow.id === nestedWorkflowId,
   );
   const nestedWorkflowMissing = nestedWorkflowId != null && !selectedNestedWorkflow;
-  const workflowToolSlugSet = useMemo(
-    () => new Set(workflowToolSlugs),
-    [workflowToolSlugs],
-  );
-  const availableWorkflowToolSlugs = useMemo(
-    () => new Set(availableNestedWorkflows.map((workflow) => workflow.slug)),
-    [availableNestedWorkflows],
-  );
-  const missingWorkflowToolSlugs = workflowToolSlugs.filter(
-    (slug) => !availableWorkflowToolSlugs.has(slug),
-  );
-
   return (
     <>
       <label className={styles.nodeInspectorInlineField}>
@@ -982,68 +967,16 @@ export const AgentInspectorSection = ({
           </div>
         ) : null}
 
-        <div className={styles.nodeInspectorPanelInnerAccentTight}>
-          <strong className={styles.nodeInspectorSectionTitleSmall}>Function tool</strong>
-          <ToggleRow
-            label="Autoriser la fonction météo Python"
-            checked={weatherFunctionEnabled}
-            onChange={(next) => onAgentWeatherToolChange(nodeId, next)}
-            help="Ajoute l'outil fetch_weather pour récupérer la météo via le backend."
-          />
-          <ToggleRow
-            label="Autoriser la fonction de validation de widget"
-            checked={widgetValidationFunctionEnabled}
-            onChange={(next) => onAgentWidgetValidationToolChange(nodeId, next)}
-            help="Ajoute l'outil validate_widget pour vérifier une définition de widget ChatKit."
-          />
-          <ToggleRow
-            label="Autoriser la fonction de validation de workflow"
-            checked={workflowValidationFunctionEnabled}
-            onChange={(next) => onAgentWorkflowValidationToolChange(nodeId, next)}
-            help="Ajoute l'outil validate_workflow_graph pour vérifier un graphe de workflow."
-          />
-          <div>
-            <strong className={styles.nodeInspectorSectionTitleSmall}>
-              {t("workflowBuilder.agentInspector.workflowToolsTitle")}
-            </strong>
-            <p className={styles.nodeInspectorHintTextTight}>
-              {t("workflowBuilder.agentInspector.workflowToolsDescription")}
-            </p>
-            {availableNestedWorkflows.length > 0 ? (
-              <div className={styles.nodeInspectorToggleGroup}>
-                {availableNestedWorkflows.map((workflow) => {
-                  const slug = workflow.slug;
-                  const label = workflow.display_name?.trim() || slug;
-                  return (
-                    <ToggleRow
-                      key={workflow.id}
-                      label={label}
-                      checked={workflowToolSlugSet.has(slug)}
-                      onChange={(next) => onAgentWorkflowToolToggle(nodeId, slug, next)}
-                      help={t(
-                        "workflowBuilder.agentInspector.workflowToolsToggleHelp",
-                        { slug },
-                      )}
-                    />
-                  );
-                })}
-              </div>
-            ) : (
-              <p className={styles.nodeInspectorEmptyLabel}>
-                {t("workflowBuilder.agentInspector.workflowToolsEmpty")}
-              </p>
-            )}
-            {missingWorkflowToolSlugs.length > 0 ? (
-              <div className={styles.nodeInspectorInfoMessage}>
-                {missingWorkflowToolSlugs.map((slug) => (
-                  <div key={slug}>
-                    {t("workflowBuilder.agentInspector.workflowToolsMissing", { slug })}
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </div>
+        <ToolSettingsPanel
+          nodeId={nodeId}
+          parameters={parameters}
+          workflows={workflows}
+          currentWorkflowId={currentWorkflowId}
+          onAgentWeatherToolChange={onAgentWeatherToolChange}
+          onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
+          onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
+          onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
+        />
       </div>
     </>
   );
