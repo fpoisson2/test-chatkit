@@ -148,3 +148,101 @@ def test_hosted_browser_playwright_debug_url(monkeypatch: pytest.MonkeyPatch) ->
             await browser.close()
 
     asyncio.run(_run())
+
+
+def test_hosted_browser_installs_browsers_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _StubPage:
+        async def screenshot(self, **_kwargs) -> bytes:
+            return b"stub-png"
+
+        async def goto(self, *_args, **_kwargs) -> None:
+            return None
+
+    class _StubContext:
+        def __init__(self) -> None:
+            self._page = _StubPage()
+
+        async def new_page(self) -> _StubPage:
+            return self._page
+
+        async def close(self) -> None:
+            return None
+
+    class _StubBrowser:
+        def __init__(self) -> None:
+            self.context = _StubContext()
+
+        async def new_context(self, **_kwargs) -> _StubContext:
+            return self.context
+
+        async def close(self) -> None:
+            return None
+
+    class _FailingChromium:
+        def __init__(self) -> None:
+            self.launch_calls = 0
+
+        async def launch(self, **_kwargs) -> _StubBrowser:
+            self.launch_calls += 1
+            if self.launch_calls == 1:
+                raise RuntimeError("executable missing")
+            return _StubBrowser()
+
+    failing_chromium = _FailingChromium()
+
+    class _StubAsyncPlaywright:
+        def __init__(self) -> None:
+            self.chromium = failing_chromium
+
+        async def __aenter__(self) -> _StubAsyncPlaywright:
+            return self
+
+        async def __aexit__(self, *_exc_info) -> None:
+            return None
+
+    manager_calls = 0
+
+    def _fake_async_playwright() -> _StubAsyncPlaywright:
+        nonlocal manager_calls
+        manager_calls += 1
+        return _StubAsyncPlaywright()
+
+    monkeypatch.setattr(hosted_browser, "async_playwright", _fake_async_playwright)
+
+    install_args: list[tuple[tuple[str, ...], dict[str, object]]] = []
+
+    class _Process:
+        returncode = 0
+
+        async def communicate(self) -> tuple[bytes, bytes]:
+            return b"ok", b""
+
+    async def _fake_subprocess_exec(*args: str, **kwargs: object) -> _Process:
+        install_args.append((args, kwargs))
+        return _Process()
+
+    monkeypatch.setattr(
+        hosted_browser.asyncio,
+        "create_subprocess_exec",
+        _fake_subprocess_exec,
+    )
+
+    async def _run() -> None:
+        browser = hosted_browser.HostedBrowser(
+            width=800,
+            height=600,
+            environment="browser",
+        )
+        try:
+            image = await browser.screenshot()
+            assert base64.b64decode(image, validate=True) == b"stub-png"
+        finally:
+            await browser.close()
+
+    asyncio.run(_run())
+
+    assert install_args, "playwright installation should have been attempted"
+    assert failing_chromium.launch_calls == 2
+    assert manager_calls == 2

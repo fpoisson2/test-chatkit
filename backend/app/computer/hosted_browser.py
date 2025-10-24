@@ -7,7 +7,9 @@ import base64
 import logging
 import os
 import struct
+import sys
 import zlib
+from asyncio.subprocess import PIPE
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -132,13 +134,14 @@ class _PlaywrightDriver(_BaseBrowserDriver):
         self.height = height
         self.start_url = start_url
         self._lock = asyncio.Lock()
-        self._playwright_manager = async_playwright()
+        self._playwright_manager = None
         self._playwright = None
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
         self._ready = False
         self._debug_url: str | None = None
+        self._install_attempted = False
 
         headless_env = os.getenv("CHATKIT_HOSTED_BROWSER_HEADLESS")
         if headless_env is None:
@@ -174,55 +177,146 @@ class _PlaywrightDriver(_BaseBrowserDriver):
             if self._ready:
                 return
             try:
-                self._playwright = await self._playwright_manager.__aenter__()
-                browser_args = [
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--no-sandbox",
-                ]
-                launch_args = list(browser_args)
-                if self._debug_port is not None:
-                    launch_args.append(f"--remote-debugging-address={self._debug_host}")
-                    launch_args.append(f"--remote-debugging-port={self._debug_port}")
-
-                self._browser = await self._playwright.chromium.launch(
-                    headless=self._headless,
-                    args=launch_args,
-                )
-                self._context = await self._browser.new_context(
-                    viewport={"width": self.width, "height": self.height},
-                    accept_downloads=False,
-                )
-                self._page = await self._context.new_page()
-                if self.start_url:
-                    try:
-                        await self._page.goto(
-                            self.start_url,
-                            wait_until="domcontentloaded",
-                            timeout=30_000,
-                        )
-                    except Exception as exc:  # pragma: no cover - robuste en production
-                        logger.warning(
-                            "Échec du chargement de l'URL initiale %s : %s",
-                            self.start_url,
-                            exc,
-                        )
-                self._ready = True
-                if not self._headless:
-                    logger.info(
-                        "Navigateur Playwright lancé en mode visible (headless=False)",
-                    )
-                if self._debug_port is not None:
-                    self._debug_url = f"http://{self._debug_host}:{self._debug_port}"
-                    logger.info(
-                        "DevTools Chrome accessibles pour le navigateur hébergé : %s",
-                        self._debug_url,
-                    )
+                await self._launch_playwright()
             except Exception as exc:  # pragma: no cover - dépend des environnements
-                await self.close()
+                if await self._handle_launch_failure(exc):
+                    return
                 raise HostedBrowserError(
                     "Impossible de démarrer le navigateur Playwright"
                 ) from exc
+
+    async def _launch_playwright(self) -> None:
+        self._playwright_manager = async_playwright()
+        self._playwright = await self._playwright_manager.__aenter__()
+
+        browser_args = [
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--no-sandbox",
+        ]
+        launch_args = list(browser_args)
+        if self._debug_port is not None:
+            launch_args.append(f"--remote-debugging-address={self._debug_host}")
+            launch_args.append(f"--remote-debugging-port={self._debug_port}")
+
+        self._browser = await self._playwright.chromium.launch(
+            headless=self._headless,
+            args=launch_args,
+        )
+        self._context = await self._browser.new_context(
+            viewport={"width": self.width, "height": self.height},
+            accept_downloads=False,
+        )
+        self._page = await self._context.new_page()
+        if self.start_url:
+            try:
+                await self._page.goto(
+                    self.start_url,
+                    wait_until="domcontentloaded",
+                    timeout=30_000,
+                )
+            except Exception as exc:  # pragma: no cover - robuste en production
+                logger.warning(
+                    "Échec du chargement de l'URL initiale %s : %s",
+                    self.start_url,
+                    exc,
+                )
+        self._ready = True
+        if not self._headless:
+            logger.info(
+                "Navigateur Playwright lancé en mode visible (headless=False)",
+            )
+        if self._debug_port is not None:
+            self._debug_url = f"http://{self._debug_host}:{self._debug_port}"
+            logger.info(
+                "DevTools Chrome accessibles pour le navigateur hébergé : %s",
+                self._debug_url,
+            )
+
+    async def _handle_launch_failure(self, exc: Exception) -> bool:
+        await self.close()
+        if self._install_attempted:
+            logger.warning(
+                (
+                    "Échec du démarrage du navigateur Playwright malgré "
+                    "l'installation automatique : %s"
+                ),
+                exc,
+            )
+            return False
+
+        if not await self._install_playwright():
+            logger.warning(
+                "Impossible d'installer automatiquement Playwright : %s",
+                exc,
+            )
+            self._install_attempted = True
+            return False
+
+        self._install_attempted = True
+        try:
+            await self._launch_playwright()
+            logger.info("Navigateur Playwright relancé après installation automatique")
+            return True
+        except Exception as retry_exc:  # pragma: no cover - dépend des environnements
+            await self.close()
+            logger.warning(
+                (
+                    "Relance du navigateur Playwright après installation "
+                    "échouée : %s"
+                ),
+                retry_exc,
+            )
+            return False
+
+    async def _install_playwright(self) -> bool:
+        install_args = [
+            sys.executable,
+            "-m",
+            "playwright",
+            "install",
+        ]
+
+        install_with_deps = os.getenv("CHATKIT_HOSTED_BROWSER_INSTALL_WITH_DEPS")
+        if install_with_deps is None or install_with_deps.strip().lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }:
+            install_args.append("--with-deps")
+
+        install_args.append("chromium")
+
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *install_args,
+                stdout=PIPE,
+                stderr=PIPE,
+            )
+        except Exception as proc_error:  # pragma: no cover - dépend du système
+            logger.warning(
+                "Lancement de l'installation Playwright impossible : %s",
+                proc_error,
+            )
+            return False
+
+        stdout, stderr = await process.communicate()
+        if process.returncode != 0:
+            stderr_text = stderr.decode("utf-8", errors="ignore").strip()
+            logger.warning(
+                "Installation Playwright (code %s) en échec : %s",
+                process.returncode,
+                stderr_text,
+            )
+            return False
+
+        stdout_text = stdout.decode("utf-8", errors="ignore").strip()
+        if stdout_text:
+            logger.info("Installation automatique Playwright réussie : %s", stdout_text)
+        else:  # pragma: no cover - absence de sortie
+            logger.info("Installation automatique Playwright réussie")
+        return True
 
     def _require_page(self) -> Page:
         if not self._page:
@@ -306,9 +400,10 @@ class _PlaywrightDriver(_BaseBrowserDriver):
         finally:
             self._browser = None
         try:
-            if self._playwright is not None:
+            if self._playwright_manager is not None:
                 await self._playwright_manager.__aexit__(None, None, None)
         finally:
+            self._playwright_manager = None
             self._playwright = None
             self._ready = False
 
