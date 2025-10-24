@@ -82,6 +82,7 @@ type AgentInspectorSectionProps = {
   ) => void;
   onAgentWeatherToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
+  onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
 };
 
 export const AgentInspectorSection = ({
@@ -125,6 +126,7 @@ export const AgentInspectorSection = ({
   onAgentImageGenerationChange,
   onAgentWeatherToolChange,
   onAgentWidgetValidationToolChange,
+  onAgentWorkflowValidationToolChange,
 }: AgentInspectorSectionProps) => {
   const {
     agentMessage,
@@ -158,6 +160,7 @@ export const AgentInspectorSection = ({
     updateImageTool,
     weatherFunctionEnabled,
     widgetValidationFunctionEnabled,
+    workflowValidationFunctionEnabled,
     selectedVectorStoreSlug,
     matchedModel,
     selectedModelOption,
@@ -845,6 +848,12 @@ export const AgentInspectorSection = ({
             checked={widgetValidationFunctionEnabled}
             onChange={(next) => onAgentWidgetValidationToolChange(nodeId, next)}
             help="Ajoute l'outil validate_widget pour vérifier une définition de widget ChatKit."
+          />
+          <ToggleRow
+            label="Autoriser la fonction de validation de workflow"
+            checked={workflowValidationFunctionEnabled}
+            onChange={(next) => onAgentWorkflowValidationToolChange(nodeId, next)}
+            help="Ajoute l'outil validate_workflow_graph pour vérifier un graphe de workflow."
           />
         </div>
       </div>

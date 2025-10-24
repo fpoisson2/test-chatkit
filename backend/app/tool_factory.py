@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Mapping
+from dataclasses import field
 from typing import TYPE_CHECKING, Any
 
 from agents import FunctionTool, RunContextWrapper, WebSearchTool, function_tool
@@ -30,6 +31,7 @@ except ImportError:  # pragma: no cover - compatibilité avec les anciennes vers
     ImageGenerationParam = None  # type: ignore[assignment]
 
 from pydantic import BaseModel, Field
+from pydantic.dataclasses import dataclass as pydantic_dataclass
 
 from chatkit.agents import AgentContext
 from chatkit.types import CustomSummary, ThoughtTask, Workflow
@@ -38,7 +40,7 @@ from .database import SessionLocal
 from .vector_store import JsonVectorStoreService, SearchResult
 from .weather import fetch_weather
 from .widgets import WidgetLibraryService, WidgetValidationError
-from .workflows import WorkflowService
+from .workflows import WorkflowService, WorkflowValidationError
 
 if TYPE_CHECKING:
     from .workflows.executor import (
@@ -66,6 +68,16 @@ _WIDGET_VALIDATION_TOOL_ALIASES = {
 _WIDGET_VALIDATION_TOOL_DEFAULT_DESCRIPTION = (
     "Valide une définition de widget ChatKit et renvoie la version "
     "normalisée ainsi que les erreurs éventuelles."
+)
+
+_WORKFLOW_VALIDATION_TOOL_ALIASES = {
+    "validate_workflow_graph",
+    "workflow_validation",
+    "validate_workflow",
+}
+_WORKFLOW_VALIDATION_TOOL_DEFAULT_DESCRIPTION = (
+    "Valide la configuration d'un graphe de workflow ChatKit et "
+    "renvoie la version normalisée ainsi que les erreurs éventuelles."
 )
 
 
@@ -492,6 +504,15 @@ class WidgetValidationResult(BaseModel):
     )
 
 
+@pydantic_dataclass
+class WorkflowValidationResult:
+    """Représente le résultat structuré de la validation d'un workflow."""
+
+    valid: bool
+    normalized_graph: dict[str, Any] | None = None
+    errors: list[str] = field(default_factory=list)
+
+
 def validate_widget_definition(
     definition: Mapping[str, Any] | str,
 ) -> WidgetValidationResult:
@@ -599,6 +620,117 @@ def build_weather_tool(payload: Any) -> FunctionTool | None:
             return None
 
     tool = function_tool(name_override=name_override)(fetch_weather)
+    tool.description = description
+    return tool
+
+
+def validate_workflow_graph(
+    graph: Mapping[str, Any] | str,
+) -> WorkflowValidationResult:
+    """Valide un graphe de workflow et retourne un rapport structuré."""
+
+    parsed_graph: Any = graph
+
+    if isinstance(graph, Mapping):
+        parsed_graph = dict(graph)
+    elif isinstance(graph, str):
+        candidate = graph.strip()
+        if not candidate:
+            return WorkflowValidationResult(
+                valid=False,
+                errors=["Le graphe de workflow fourni est vide."],
+            )
+        try:
+            parsed_graph = json.loads(candidate)
+        except json.JSONDecodeError as exc:
+            location = (
+                f" (ligne {exc.lineno}, colonne {exc.colno})" if exc.lineno else ""
+            )
+            return WorkflowValidationResult(
+                valid=False,
+                errors=[f"JSON invalide : {exc.msg}{location}"],
+            )
+        except Exception as exc:  # pragma: no cover - garde-fou
+            logger.exception(
+                "Erreur inattendue lors du décodage du graphe de workflow", exc_info=exc
+            )
+            return WorkflowValidationResult(
+                valid=False,
+                errors=[
+                    "Une erreur inattendue est survenue lors de la lecture du JSON."
+                ],
+            )
+    else:
+        return WorkflowValidationResult(
+            valid=False,
+            errors=[
+                "Le graphe de workflow doit être fourni sous forme de chaîne JSON "
+                "ou d'objet JSON.",
+            ],
+        )
+
+    if not isinstance(parsed_graph, Mapping):
+        return WorkflowValidationResult(
+            valid=False,
+            errors=["Le graphe de workflow doit être un objet JSON."],
+        )
+
+    try:
+        service = WorkflowService()
+        normalized_graph = service.validate_graph_payload(dict(parsed_graph))
+    except WorkflowValidationError as exc:
+        return WorkflowValidationResult(valid=False, errors=[exc.message])
+    except Exception as exc:  # pragma: no cover - garde-fou
+        logger.exception(
+            "Erreur inattendue lors de la validation du workflow", exc_info=exc
+        )
+        return WorkflowValidationResult(
+            valid=False,
+            errors=[
+                "Une erreur inattendue est survenue lors de la validation du workflow.",
+            ],
+        )
+
+    return WorkflowValidationResult(valid=True, normalized_graph=normalized_graph)
+
+
+def build_workflow_validation_tool(payload: Any) -> FunctionTool | None:
+    """Construit un FunctionTool pointant vers validate_workflow_graph."""
+
+    name_override = "validate_workflow_graph"
+    description = _WORKFLOW_VALIDATION_TOOL_DEFAULT_DESCRIPTION
+
+    if isinstance(payload, FunctionTool):
+        tool_name = getattr(payload, "name", None)
+        if isinstance(tool_name, str) and tool_name.strip():
+            name_override = tool_name.strip()
+        tool_description = getattr(payload, "description", None)
+        if isinstance(tool_description, str) and tool_description.strip():
+            description = tool_description.strip()
+        return payload
+
+    if isinstance(payload, dict):
+        raw_name = payload.get("name") or payload.get("id")
+        if isinstance(raw_name, str) and raw_name.strip():
+            candidate = raw_name.strip()
+            if candidate.lower() in _WORKFLOW_VALIDATION_TOOL_ALIASES:
+                name_override = candidate
+            else:
+                return None
+
+        raw_description = payload.get("description")
+        if isinstance(raw_description, str) and raw_description.strip():
+            description = raw_description.strip()
+    elif isinstance(payload, str) and payload.strip():
+        candidate = payload.strip()
+        if candidate.lower() in _WORKFLOW_VALIDATION_TOOL_ALIASES:
+            name_override = candidate
+        else:
+            return None
+
+    tool = function_tool(name_override=name_override, strict_mode=False)(
+        validate_workflow_graph
+    )
     tool.description = description
     return tool
 
@@ -976,12 +1108,15 @@ __all__ = [
     "ImageGeneration",
     "ImageGenerationTool",
     "WidgetValidationResult",
+    "WorkflowValidationResult",
     "build_file_search_tool",
     "build_image_generation_tool",
     "build_weather_tool",
     "build_workflow_tool",
+    "build_workflow_validation_tool",
     "build_web_search_tool",
     "build_widget_validation_tool",
     "sanitize_web_search_user_location",
+    "validate_workflow_graph",
     "validate_widget_definition",
 ]
