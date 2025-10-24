@@ -6,13 +6,46 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..admin_settings import (
+    get_thread_title_prompt_override,
+    serialize_admin_settings,
+    update_admin_settings,
+)
 from ..database import get_session
 from ..dependencies import require_admin
 from ..models import User
-from ..schemas import UserCreate, UserResponse, UserUpdate
+from ..schemas import (
+    AppSettingsResponse,
+    AppSettingsUpdateRequest,
+    UserCreate,
+    UserResponse,
+    UserUpdate,
+)
 from ..security import hash_password
 
 router = APIRouter()
+
+
+@router.get("/api/admin/app-settings", response_model=AppSettingsResponse)
+async def get_app_settings(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    override = get_thread_title_prompt_override(session)
+    payload = serialize_admin_settings(override)
+    return AppSettingsResponse.model_validate(payload)
+
+
+@router.patch("/api/admin/app-settings", response_model=AppSettingsResponse)
+async def patch_app_settings(
+    payload: AppSettingsUpdateRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    update_admin_settings(session, thread_title_prompt=payload.thread_title_prompt)
+    override = get_thread_title_prompt_override(session)
+    serialized = serialize_admin_settings(override)
+    return AppSettingsResponse.model_validate(serialized)
 
 
 @router.get("/api/admin/users", response_model=list[UserResponse])

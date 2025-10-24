@@ -15,6 +15,12 @@ from dotenv import load_dotenv
 logger = logging.getLogger("chatkit.settings")
 
 
+DEFAULT_THREAD_TITLE_PROMPT = (
+    "Propose un titre court et descriptif en français pour un nouveau fil de "
+    "discussion. Utilise au maximum 6 mots."
+)
+
+
 @dataclass(frozen=True)
 class WorkflowDefaults:
     """Configuration par défaut pour le workflow ChatKit."""
@@ -110,6 +116,8 @@ class Settings:
             depuis un fichier JSON).
         docs_seed_documents: Définitions de documents à ingérer automatiquement
             lors du démarrage du serveur.
+        thread_title_prompt: Prompt utilisé pour générer automatiquement les titres
+            de fil.
     """
 
     allowed_origins: list[str]
@@ -134,6 +142,7 @@ class Settings:
     agent_image_token_ttl_seconds: int
     workflow_defaults: WorkflowDefaults
     docs_seed_documents: tuple[dict[str, Any], ...]
+    thread_title_prompt: str
 
     @property
     def chatkit_api_base(self) -> str:
@@ -377,6 +386,10 @@ class Settings:
                 env.get("WORKFLOW_DEFAULTS_PATH")
             ),
             docs_seed_documents=cls._load_docs_seed(env.get("DOCS_SEED_PATH")),
+            thread_title_prompt=(
+                get_stripped("CHATKIT_THREAD_TITLE_PROMPT")
+                or DEFAULT_THREAD_TITLE_PROMPT
+            ),
         )
 
 

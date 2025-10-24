@@ -101,6 +101,25 @@ class VoiceSettingsUpdateRequest(BaseModel):
     )
 
 
+class AppSettingsResponse(BaseModel):
+    thread_title_prompt: str
+    default_thread_title_prompt: str
+    is_custom_thread_title_prompt: bool
+    created_at: datetime.datetime | None = None
+    updated_at: datetime.datetime | None = None
+
+
+class AppSettingsUpdateRequest(BaseModel):
+    thread_title_prompt: str | None = Field(
+        default=None,
+        description=(
+            "Prompt personnalisé pour les titres de fils. Laisser vide pour revenir "
+            "à la valeur par défaut."
+        ),
+        max_length=4000,
+    )
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str

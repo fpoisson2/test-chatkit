@@ -18,6 +18,7 @@ config_module = importlib.util.module_from_spec(CONFIG_SPEC)
 sys.modules[CONFIG_SPEC.name] = config_module
 CONFIG_SPEC.loader.exec_module(config_module)
 Settings = config_module.Settings
+DEFAULT_THREAD_TITLE_PROMPT = config_module.DEFAULT_THREAD_TITLE_PROMPT
 
 
 def _base_env() -> dict[str, str]:
@@ -38,6 +39,7 @@ def test_settings_openai_provider_requires_key() -> None:
     assert settings.model_api_key == "sk-test"
     assert settings.openai_api_key == "sk-test"
     assert settings.model_api_base == "https://api.openai.com"
+    assert settings.thread_title_prompt == DEFAULT_THREAD_TITLE_PROMPT
 
 
 def test_settings_openai_provider_missing_key_raises() -> None:
@@ -65,3 +67,18 @@ def test_settings_litellm_provider_uses_alternative_key() -> None:
     assert settings.openai_api_key is None
     assert settings.model_api_base == "http://localhost:4000"
     assert settings.chatkit_api_base == "http://localhost:4000"
+    assert settings.thread_title_prompt == DEFAULT_THREAD_TITLE_PROMPT
+
+
+def test_settings_thread_title_prompt_override() -> None:
+    env = _base_env()
+    env.update(
+        {
+            "OPENAI_API_KEY": "sk-test",
+            "CHATKIT_THREAD_TITLE_PROMPT": "Titre personnalisé",
+        }
+    )
+
+    settings = Settings.from_env(env)
+
+    assert settings.thread_title_prompt == "Titre personnalisé"

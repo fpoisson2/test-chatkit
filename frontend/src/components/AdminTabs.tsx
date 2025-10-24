@@ -2,24 +2,25 @@ import { MouseEvent, useCallback, useEffect, useMemo } from "react";
 import { NavLink } from "react-router-dom";
 
 import { useAppLayout, useSidebarPortal } from "./AppLayout";
+import { useI18n } from "../i18n";
+
+type AdminTabKey = "users" | "voice" | "models" | "settings";
 
 type AdminTabsProps = {
-  activeTab: "users" | "voice" | "models";
+  activeTab: AdminTabKey;
 };
 
-const tabs = [
-  { key: "users" as const, to: "/admin", label: "Gestion des utilisateurs" },
-  {
-    key: "voice" as const,
-    to: "/admin/voice",
-    label: "Paramètres du mode voix",
-  },
-  { key: "models" as const, to: "/admin/models", label: "Modèles disponibles" },
+const TAB_DEFINITIONS: { key: AdminTabKey; to: string; labelKey: string }[] = [
+  { key: "users", to: "/admin", labelKey: "admin.tabs.users" },
+  { key: "voice", to: "/admin/voice", labelKey: "admin.tabs.voice" },
+  { key: "models", to: "/admin/models", labelKey: "admin.tabs.models" },
+  { key: "settings", to: "/admin/settings", labelKey: "admin.tabs.settings" },
 ];
 
 export const AdminTabs = ({ activeTab }: AdminTabsProps) => {
   const { setSidebarContent, clearSidebarContent } = useSidebarPortal();
   const { closeSidebar, isDesktopLayout } = useAppLayout();
+  const { t } = useI18n();
 
   const handleNavLinkClick = useCallback(
     (event: MouseEvent<HTMLAnchorElement>) => {
@@ -41,14 +42,26 @@ export const AdminTabs = ({ activeTab }: AdminTabsProps) => {
     [closeSidebar, isDesktopLayout],
   );
 
+  const tabs = useMemo(
+    () =>
+      TAB_DEFINITIONS.map((tab) => ({
+        ...tab,
+        label: t(tab.labelKey),
+      })),
+    [t],
+  );
+
+  const navigationLabel = t("admin.tabs.navigationLabel");
+  const sectionTitle = t("admin.tabs.sectionTitle");
+
   const sidebarContent = useMemo(
     () => (
       <section
         className="chatkit-sidebar__section"
-        aria-label="Navigation du panneau d'administration"
+        aria-label={navigationLabel}
       >
         <div className="chatkit-sidebar__section-header">
-          <h2 className="chatkit-sidebar__section-title">Administration</h2>
+          <h2 className="chatkit-sidebar__section-title">{sectionTitle}</h2>
         </div>
         <ul className="chatkit-sidebar__nav-list">
           {tabs.map((tab) => (
@@ -72,7 +85,7 @@ export const AdminTabs = ({ activeTab }: AdminTabsProps) => {
         </ul>
       </section>
     ),
-    [activeTab, handleNavLinkClick],
+    [activeTab, handleNavLinkClick, navigationLabel, sectionTitle, tabs],
   );
 
   useEffect(() => {

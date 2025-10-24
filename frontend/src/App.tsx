@@ -12,6 +12,7 @@ import { VectorStoresPage } from "./pages/VectorStoresPage";
 import WidgetLibraryPage from "./pages/WidgetLibraryPage";
 import { AdminPage } from "./pages/AdminPage";
 import { AdminModelsPage } from "./pages/AdminModelsPage";
+import { AdminAppSettingsPage } from "./pages/AdminAppSettingsPage";
 import { AdminVoicePage } from "./pages/AdminVoicePage";
 import { DocsPage } from "./pages/docs/DocsPage";
 import { DocDetail } from "./pages/docs/DocDetail";
@@ -116,6 +117,16 @@ export const App = () => (
         <RequireAdmin>
           <AppLayout>
             <AdminVoicePage />
+          </AppLayout>
+        </RequireAdmin>
+      }
+    />
+    <Route
+      path="/admin/settings"
+      element={
+        <RequireAdmin>
+          <AppLayout>
+            <AdminAppSettingsPage />
           </AppLayout>
         </RequireAdmin>
       }
