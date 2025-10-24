@@ -282,3 +282,39 @@ async def test_nested_workflow_cycle_detection_raises() -> None:
         )
 
     assert "Cycle de workflow" in str(exc_info.value)
+
+
+@pytest.mark.anyio
+async def test_nested_workflow_conversation_history_propagates() -> None:
+    nested_definition = _nested_workflow_definition("Nested response", workflow_id=2)
+    parent_definition = _parent_definition(
+        workflow_id=1,
+        nested_reference={"id": nested_definition.workflow_id},
+    )
+    service = _FakeWorkflowService([parent_definition, nested_definition])
+
+    summary = await run_workflow(
+        WorkflowInput(
+            input_as_text="Bonjour",
+            auto_start_was_triggered=False,
+            auto_start_assistant_message=None,
+            source_item_id=None,
+        ),
+        agent_context=_build_agent_context(),
+        workflow_service=service,
+    )
+
+    assert summary.state is not None
+    conversation_history = summary.state.get("conversation_history")
+    assert isinstance(conversation_history, list)
+    assert any(
+        isinstance(entry, dict)
+        and entry.get("role") == "assistant"
+        and any(
+            isinstance(content_item, dict)
+            and isinstance(content_item.get("text"), str)
+            and "Nested response" in content_item.get("text", "")
+            for content_item in entry.get("content", [])
+        )
+        for entry in conversation_history
+    )
