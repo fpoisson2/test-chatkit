@@ -20,6 +20,7 @@ from ..chatkit_server.actions import (
 from ..database import SessionLocal
 from ..token_sanitizer import sanitize_model_like
 from ..tool_factory import (
+    build_computer_use_tool,
     build_file_search_tool,
     build_image_generation_tool,
     build_weather_tool,
@@ -451,6 +452,12 @@ def _coerce_agent_tools(
 
             if normalized_type == "image_generation":
                 tool = build_image_generation_tool(entry)
+                if tool is not None:
+                    coerced.append(tool)
+                continue
+
+            if normalized_type in {"computer_use", "computer_use_preview"}:
+                tool = build_computer_use_tool(entry)
                 if tool is not None:
                     coerced.append(tool)
                 continue
