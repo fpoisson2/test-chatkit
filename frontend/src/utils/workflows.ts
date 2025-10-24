@@ -382,6 +382,134 @@ export const setStartAutoRunAssistantMessage = (
   return stripEmpty(next as Record<string, unknown>);
 };
 
+const cloneStartTelephonyConfig = (
+  value: unknown,
+): Record<string, unknown> => {
+  if (!isPlainRecord(value)) {
+    return {};
+  }
+  return { ...(value as Record<string, unknown>) };
+};
+
+const updateStartTelephonyConfig = (
+  parameters: AgentParameters,
+  updater: (current: Record<string, unknown>) => Record<string, unknown>,
+): AgentParameters => {
+  const base = { ...parameters } as Record<string, unknown>;
+  const current = cloneStartTelephonyConfig((base as Record<string, unknown>).telephony);
+  const updated = updater(current);
+
+  if (Object.keys(updated).length === 0) {
+    delete base.telephony;
+    return stripEmpty(base);
+  }
+
+  base.telephony = updated;
+  return stripEmpty(base);
+};
+
+export const getStartTelephonyRoutes = (
+  parameters: AgentParameters | null | undefined,
+): string[] => {
+  if (!parameters) {
+    return [];
+  }
+
+  const telephony = cloneStartTelephonyConfig(
+    (parameters as Record<string, unknown>).telephony,
+  );
+
+  const routes = telephony.routes;
+  if (!Array.isArray(routes)) {
+    return [];
+  }
+
+  const normalized: string[] = [];
+  for (const entry of routes) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+    const trimmed = entry.trim();
+    if (!trimmed) {
+      continue;
+    }
+    normalized.push(trimmed);
+  }
+
+  return normalized;
+};
+
+export const setStartTelephonyRoutes = (
+  parameters: AgentParameters,
+  routes: string[],
+): AgentParameters => {
+  const normalized = Array.from(
+    new Set(
+      routes
+        .map((route) => route.trim())
+        .filter((route) => route.length > 0),
+    ),
+  );
+
+  return updateStartTelephonyConfig(parameters, (current) => {
+    if (normalized.length === 0) {
+      const { routes: _ignored, ...rest } = current;
+      return rest;
+    }
+    return { ...current, routes: normalized };
+  });
+};
+
+export type StartTelephonyWorkflowReference = { id: number | null; slug: string };
+
+export const getStartTelephonyWorkflow = (
+  parameters: AgentParameters | null | undefined,
+): StartTelephonyWorkflowReference => {
+  if (!parameters) {
+    return { id: null, slug: "" };
+  }
+
+  const telephony = cloneStartTelephonyConfig(
+    (parameters as Record<string, unknown>).telephony,
+  );
+  const workflow = telephony.workflow;
+  if (isPlainRecord(workflow)) {
+    return sanitizeWorkflowReference(workflow as Record<string, unknown>);
+  }
+
+  return { id: null, slug: "" };
+};
+
+export const setStartTelephonyWorkflow = (
+  parameters: AgentParameters,
+  reference: { id?: number | null; slug?: string | null },
+): AgentParameters =>
+  updateStartTelephonyConfig(parameters, (current) => {
+    const idCandidate = reference.id;
+    const slugCandidate = reference.slug;
+
+    const hasId =
+      typeof idCandidate === "number" &&
+      Number.isInteger(idCandidate) &&
+      idCandidate > 0;
+    const slug = typeof slugCandidate === "string" ? slugCandidate.trim() : "";
+
+    if (!hasId && !slug) {
+      const { workflow: _ignored, ...rest } = current;
+      return rest;
+    }
+
+    const payload: Record<string, unknown> = {};
+    if (hasId && typeof idCandidate === "number") {
+      payload.id = idCandidate;
+    }
+    if (slug) {
+      payload.slug = slug;
+    }
+
+    return { ...current, workflow: payload };
+  });
+
 export const setConditionPath = (
   parameters: AgentParameters,
   path: string,
@@ -861,6 +989,125 @@ export const setVoiceAgentToolEnabled = (
     tools[tool] = Boolean(enabled);
     return { ...current, tools };
   });
+
+export type StartTelephonyRealtimeOverrides = {
+  model: string;
+  voice: string;
+  start_mode: VoiceAgentStartBehavior | null;
+  stop_mode: VoiceAgentStopBehavior | null;
+};
+
+const normalizeTelephonyRealtime = (
+  value: unknown,
+): Record<string, unknown> => {
+  if (!isPlainRecord(value)) {
+    return {};
+  }
+  return { ...(value as Record<string, unknown>) };
+};
+
+export const getStartTelephonyRealtimeOverrides = (
+  parameters: AgentParameters | null | undefined,
+): StartTelephonyRealtimeOverrides => {
+  if (!parameters) {
+    return { model: "", voice: "", start_mode: null, stop_mode: null };
+  }
+
+  const telephony = cloneStartTelephonyConfig(
+    (parameters as Record<string, unknown>).telephony,
+  );
+  const realtime = normalizeTelephonyRealtime(telephony.realtime);
+
+  const model = typeof realtime.model === "string" ? realtime.model.trim() : "";
+  const voice = typeof realtime.voice === "string" ? realtime.voice.trim() : "";
+  const startMode = isVoiceAgentStartBehavior(realtime.start_mode)
+    ? (realtime.start_mode as VoiceAgentStartBehavior)
+    : null;
+  const stopMode = isVoiceAgentStopBehavior(realtime.stop_mode)
+    ? (realtime.stop_mode as VoiceAgentStopBehavior)
+    : null;
+
+  return { model, voice, start_mode: startMode, stop_mode: stopMode };
+};
+
+export const setStartTelephonyRealtimeOverrides = (
+  parameters: AgentParameters,
+  overrides: Partial<StartTelephonyRealtimeOverrides>,
+): AgentParameters =>
+  updateStartTelephonyConfig(parameters, (current) => {
+    const realtime = normalizeTelephonyRealtime(current.realtime);
+
+    if (Object.prototype.hasOwnProperty.call(overrides, "model")) {
+      const modelValue = overrides.model;
+      const trimmed = typeof modelValue === "string" ? modelValue.trim() : "";
+      if (trimmed) {
+        realtime.model = trimmed;
+      } else {
+        delete realtime.model;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(overrides, "voice")) {
+      const voiceValue = overrides.voice;
+      const trimmed = typeof voiceValue === "string" ? voiceValue.trim() : "";
+      if (trimmed) {
+        realtime.voice = trimmed;
+      } else {
+        delete realtime.voice;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(overrides, "start_mode")) {
+      const startModeValue = overrides.start_mode;
+      if (isVoiceAgentStartBehavior(startModeValue)) {
+        realtime.start_mode = startModeValue;
+      } else {
+        delete realtime.start_mode;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(overrides, "stop_mode")) {
+      const stopModeValue = overrides.stop_mode;
+      if (isVoiceAgentStopBehavior(stopModeValue)) {
+        realtime.stop_mode = stopModeValue;
+      } else {
+        delete realtime.stop_mode;
+      }
+    }
+
+    if (Object.keys(realtime).length === 0) {
+      const { realtime: _ignored, ...rest } = current;
+      return rest;
+    }
+
+    return { ...current, realtime };
+  });
+
+export const resolveStartParameters = (
+  rawParameters: AgentParameters | null | undefined,
+): AgentParameters => {
+  const base = isPlainRecord(rawParameters)
+    ? ({ ...(rawParameters as AgentParameters) } as AgentParameters)
+    : ({} as AgentParameters);
+
+  let result = base;
+
+  result = setStartAutoRun(result, getStartAutoRun(rawParameters));
+  result = setStartAutoRunMessage(result, getStartAutoRunMessage(rawParameters));
+  result = setStartAutoRunAssistantMessage(
+    result,
+    getStartAutoRunAssistantMessage(rawParameters),
+  );
+
+  result = setStartTelephonyRoutes(result, getStartTelephonyRoutes(rawParameters));
+  result = setStartTelephonyWorkflow(result, getStartTelephonyWorkflow(rawParameters));
+  result = setStartTelephonyRealtimeOverrides(
+    result,
+    getStartTelephonyRealtimeOverrides(rawParameters),
+  );
+
+  return result;
+};
 
 export const resolveVoiceAgentParameters = (
   rawParameters: AgentParameters | null | undefined,

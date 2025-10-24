@@ -21,10 +21,14 @@ import {
   getStartAutoRun,
   getStartAutoRunAssistantMessage,
   getStartAutoRunMessage,
+  getStartTelephonyRoutes,
+  getStartTelephonyWorkflow,
+  getStartTelephonyRealtimeOverrides,
   getStateAssignments,
   getUserMessage,
   getVectorStoreNodeConfig,
   getWaitForUserInputMessage,
+  type StartTelephonyRealtimeOverrides,
 } from "../../../../utils/workflows";
 import type {
   ComputerUseConfig,
@@ -124,6 +128,15 @@ export type NodeInspectorProps = {
   onStartAutoRunChange: (nodeId: string, value: boolean) => void;
   onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
   onStartAutoRunAssistantMessageChange: (nodeId: string, value: string) => void;
+  onStartTelephonyRoutesChange: (nodeId: string, routes: string[]) => void;
+  onStartTelephonyWorkflowChange: (
+    nodeId: string,
+    reference: { id?: number | null; slug?: string | null },
+  ) => void;
+  onStartTelephonyRealtimeChange: (
+    nodeId: string,
+    overrides: Partial<StartTelephonyRealtimeOverrides>,
+  ) => void;
   onConditionPathChange: (nodeId: string, value: string) => void;
   onConditionModeChange: (nodeId: string, value: string) => void;
   onConditionValueChange: (nodeId: string, value: string) => void;
@@ -198,6 +211,9 @@ const NodeInspector = ({
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
   onStartAutoRunAssistantMessageChange,
+  onStartTelephonyRoutesChange,
+  onStartTelephonyWorkflowChange,
+  onStartTelephonyRealtimeChange,
   onConditionPathChange,
   onConditionModeChange,
   onConditionValueChange,
@@ -250,6 +266,16 @@ const NodeInspector = ({
   const startAutoRunMessage = kind === "start" ? getStartAutoRunMessage(parameters) : "";
   const startAutoRunAssistantMessage =
     kind === "start" ? getStartAutoRunAssistantMessage(parameters) : "";
+
+  const startTelephonyRoutes = kind === "start" ? getStartTelephonyRoutes(parameters) : [];
+  const startTelephonyWorkflow =
+    kind === "start"
+      ? getStartTelephonyWorkflow(parameters)
+      : { id: null, slug: "" };
+  const startTelephonyRealtime: StartTelephonyRealtimeOverrides =
+    kind === "start"
+      ? getStartTelephonyRealtimeOverrides(parameters)
+      : { model: "", voice: "", start_mode: null, stop_mode: null };
 
   const conditionPath = kind === "condition" ? getConditionPath(parameters) : "";
   const conditionMode = kind === "condition" ? getConditionMode(parameters) : "truthy";
@@ -343,9 +369,15 @@ const NodeInspector = ({
           startAutoRun={startAutoRun}
           startAutoRunMessage={startAutoRunMessage}
           startAutoRunAssistantMessage={startAutoRunAssistantMessage}
+          startTelephonyRoutes={startTelephonyRoutes}
+          startTelephonyWorkflow={startTelephonyWorkflow}
+          startTelephonyRealtime={startTelephonyRealtime}
           onStartAutoRunChange={onStartAutoRunChange}
           onStartAutoRunMessageChange={onStartAutoRunMessageChange}
           onStartAutoRunAssistantMessageChange={onStartAutoRunAssistantMessageChange}
+          onStartTelephonyRoutesChange={onStartTelephonyRoutesChange}
+          onStartTelephonyWorkflowChange={onStartTelephonyWorkflowChange}
+          onStartTelephonyRealtimeChange={onStartTelephonyRealtimeChange}
         />
       ) : null}
 

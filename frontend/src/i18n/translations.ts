@@ -194,6 +194,50 @@ const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.computerUseStartUrlHelp":
     "Charge cette URL dès le démarrage de la session contrôlée (laisser vide pour utiliser la page par défaut).",
   "workflowBuilder.agentInspector.computerUseStartUrlPlaceholder": "https://exemple.com",
+  "workflowBuilder.startInspector.autoRunLabel": "Démarrer automatiquement",
+  "workflowBuilder.startInspector.autoRunHelp":
+    "Exécute immédiatement le workflow lors de l'ouverture d'un fil, même sans message utilisateur.",
+  "workflowBuilder.startInspector.autoRunUserMessageLabel": "Message utilisateur initial",
+  "workflowBuilder.startInspector.autoRunUserMessagePlaceholder":
+    "Ex. Bonjour, voici les informations de départ… (facultatif)",
+  "workflowBuilder.startInspector.autoRunUserMessageHint":
+    "Ce message est transmis à l'agent lorsqu'un fil démarre sans saisie utilisateur. Saisir un message assistant ci-dessous effacera automatiquement ce contenu.",
+  "workflowBuilder.startInspector.autoRunAssistantMessageLabel": "Message assistant initial",
+  "workflowBuilder.startInspector.autoRunAssistantMessagePlaceholder":
+    "Ex. Bonjour, je suis votre assistant… (facultatif)",
+  "workflowBuilder.startInspector.autoRunAssistantMessageHint":
+    "Ce message est diffusé en tant que première réponse de l'assistant lorsque le démarrage automatique est déclenché. Ajoutez un message utilisateur ci-dessus pour désactiver cette réponse.",
+  "workflowBuilder.startInspector.telephonySectionTitle": "Téléphonie",
+  "workflowBuilder.startInspector.telephonySectionDescription":
+    "Configurez les numéros entrants et les overrides Realtime appliqués à ce bloc de démarrage.",
+  "workflowBuilder.startInspector.telephonyRoutesLabel": "Numéros entrants",
+  "workflowBuilder.startInspector.telephonyRoutesPlaceholder": "Saisir un numéro par ligne…",
+  "workflowBuilder.startInspector.telephonyRoutesHelp":
+    "Utilisez le format E.164 (ex. +33123456789). Laissez vide pour désactiver la redirection téléphonique.",
+  "workflowBuilder.startInspector.telephonyRoutesError": "Numéros non conformes : {{list}}",
+  "workflowBuilder.startInspector.telephonyWorkflowSlugLabel": "Slug du workflow cible",
+  "workflowBuilder.startInspector.telephonyWorkflowSlugHelp":
+    "Slug du workflow à exécuter lorsque l'appel est reçu sur l'un des numéros ci-dessus.",
+  "workflowBuilder.startInspector.telephonyWorkflowSlugError":
+    "Indiquez un slug pour le workflow cible.",
+  "workflowBuilder.startInspector.telephonyWorkflowIdLabel": "Identifiant du workflow (optionnel)",
+  "workflowBuilder.startInspector.telephonyWorkflowIdHelp":
+    "Renseignez l'identifiant interne du workflow pour lever toute ambiguïté sur le slug.",
+  "workflowBuilder.startInspector.telephonyWorkflowIdError":
+    "L'identifiant doit être un entier positif.",
+  "workflowBuilder.startInspector.telephonyRealtimeTitle": "Overrides Realtime",
+  "workflowBuilder.startInspector.telephonyRealtimeDescription":
+    "Ces paramètres surchargent la configuration Realtime lorsque le workflow démarre depuis un numéro de téléphone.",
+  "workflowBuilder.startInspector.telephonyRealtimeModelLabel": "Modèle Realtime",
+  "workflowBuilder.startInspector.telephonyRealtimeModelHelp":
+    "Laissez vide pour utiliser le modèle défini sur le workflow.",
+  "workflowBuilder.startInspector.telephonyRealtimeVoiceLabel": "Voix Realtime",
+  "workflowBuilder.startInspector.telephonyRealtimeVoiceHelp":
+    "Laissez vide pour conserver la voix configurée sur le workflow.",
+  "workflowBuilder.startInspector.telephonyRealtimeStartLabel": "Mode de démarrage",
+  "workflowBuilder.startInspector.telephonyRealtimeStartDefault": "Comportement par défaut",
+  "workflowBuilder.startInspector.telephonyRealtimeStopLabel": "Mode d'arrêt",
+  "workflowBuilder.startInspector.telephonyRealtimeStopDefault": "Comportement par défaut",
   "workflowBuilder.save.autoSaveSuccess": "Modifications enregistrées automatiquement.",
   "workflowBuilder.save.draftDisplayName": "Brouillon",
   "workflowBuilder.save.failure": "Impossible d'enregistrer le workflow.",
@@ -467,6 +511,49 @@ const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.computerUseStartUrlHelp":
     "Load this address as soon as the controlled session starts (leave blank for the default page).",
   "workflowBuilder.agentInspector.computerUseStartUrlPlaceholder": "https://example.com",
+  "workflowBuilder.startInspector.autoRunLabel": "Start automatically",
+  "workflowBuilder.startInspector.autoRunHelp":
+    "Runs the workflow as soon as a thread opens, even without a user message.",
+  "workflowBuilder.startInspector.autoRunUserMessageLabel": "Initial user message",
+  "workflowBuilder.startInspector.autoRunUserMessagePlaceholder":
+    "e.g. Hello, here is the starting context… (optional)",
+  "workflowBuilder.startInspector.autoRunUserMessageHint":
+    "This message is sent to the agent when a thread starts without user input. Entering an assistant message below clears it automatically.",
+  "workflowBuilder.startInspector.autoRunAssistantMessageLabel": "Initial assistant message",
+  "workflowBuilder.startInspector.autoRunAssistantMessagePlaceholder":
+    "e.g. Hello, I'm your assistant… (optional)",
+  "workflowBuilder.startInspector.autoRunAssistantMessageHint":
+    "This message is delivered as the assistant's first reply when auto-start triggers. Add a user message above to disable it.",
+  "workflowBuilder.startInspector.telephonySectionTitle": "Telephony",
+  "workflowBuilder.startInspector.telephonySectionDescription":
+    "Configure inbound numbers and Realtime overrides applied to this start block.",
+  "workflowBuilder.startInspector.telephonyRoutesLabel": "Inbound numbers",
+  "workflowBuilder.startInspector.telephonyRoutesPlaceholder": "Enter one phone number per line…",
+  "workflowBuilder.startInspector.telephonyRoutesHelp":
+    "Use the E.164 format (e.g. +33123456789). Leave empty to disable telephony routing.",
+  "workflowBuilder.startInspector.telephonyRoutesError": "Invalid phone numbers: {{list}}",
+  "workflowBuilder.startInspector.telephonyWorkflowSlugLabel": "Target workflow slug",
+  "workflowBuilder.startInspector.telephonyWorkflowSlugHelp":
+    "Slug of the workflow to run when any of the above numbers is called.",
+  "workflowBuilder.startInspector.telephonyWorkflowSlugError":
+    "Provide a slug for the target workflow.",
+  "workflowBuilder.startInspector.telephonyWorkflowIdLabel": "Workflow ID (optional)",
+  "workflowBuilder.startInspector.telephonyWorkflowIdHelp":
+    "Set the internal workflow ID to disambiguate the slug if needed.",
+  "workflowBuilder.startInspector.telephonyWorkflowIdError": "The ID must be a positive integer.",
+  "workflowBuilder.startInspector.telephonyRealtimeTitle": "Realtime overrides",
+  "workflowBuilder.startInspector.telephonyRealtimeDescription":
+    "These settings override the Realtime configuration when the workflow starts from a phone number.",
+  "workflowBuilder.startInspector.telephonyRealtimeModelLabel": "Realtime model",
+  "workflowBuilder.startInspector.telephonyRealtimeModelHelp":
+    "Leave blank to use the workflow's default model.",
+  "workflowBuilder.startInspector.telephonyRealtimeVoiceLabel": "Realtime voice",
+  "workflowBuilder.startInspector.telephonyRealtimeVoiceHelp":
+    "Leave blank to keep the workflow's default voice.",
+  "workflowBuilder.startInspector.telephonyRealtimeStartLabel": "Start mode",
+  "workflowBuilder.startInspector.telephonyRealtimeStartDefault": "Default behaviour",
+  "workflowBuilder.startInspector.telephonyRealtimeStopLabel": "Stop mode",
+  "workflowBuilder.startInspector.telephonyRealtimeStopDefault": "Default behaviour",
   "workflowBuilder.save.autoSaveSuccess": "Changes saved automatically.",
   "workflowBuilder.save.draftDisplayName": "Draft",
   "workflowBuilder.save.failure": "Unable to save the workflow.",
