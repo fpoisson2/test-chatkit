@@ -257,6 +257,20 @@ export const useWorkflowVoiceSession = ({
     [addError],
   );
 
+  const reconnectWithCurrentSecretRef = useRef<() => void>(() => {});
+
+  const { connect, disconnect } = useRealtimeSession({
+    onHistoryUpdated: handleHistoryUpdated,
+    onConnectionChange: handleConnectionChange,
+    onAgentStart: handleAgentStart,
+    onAgentEnd: handleAgentEnd,
+    onTransportError: handleTransportError,
+    onError: handleSessionError,
+    onRefreshDue: () => {
+      reconnectWithCurrentSecretRef.current?.();
+    },
+  });
+
   const reconnectWithCurrentSecret = useCallback(() => {
     const active = activeSessionRef.current;
     if (!active) {
@@ -284,15 +298,9 @@ export const useWorkflowVoiceSession = ({
     );
   }, [addError, connect]);
 
-  const { connect, disconnect } = useRealtimeSession({
-    onHistoryUpdated: handleHistoryUpdated,
-    onConnectionChange: handleConnectionChange,
-    onAgentStart: handleAgentStart,
-    onAgentEnd: handleAgentEnd,
-    onTransportError: handleTransportError,
-    onError: handleSessionError,
-    onRefreshDue: reconnectWithCurrentSecret,
-  });
+  useEffect(() => {
+    reconnectWithCurrentSecretRef.current = reconnectWithCurrentSecret;
+  }, [reconnectWithCurrentSecret]);
 
   const stopSession = useCallback(() => {
     disconnect();

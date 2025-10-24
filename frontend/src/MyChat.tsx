@@ -782,6 +782,8 @@ export function MyChat() {
       chatInstanceKey,
       preferredColorScheme,
       reportError,
+      startWorkflowVoiceSession,
+      syncWorkflowMetadata,
     ],
   );
 
