@@ -3057,14 +3057,22 @@ const WorkflowBuilderPage = () => {
             return data;
           }
 
+          const displayName = workflow.display_name?.trim();
           const enriched: WorkflowToolConfig = {
             slug: workflow.slug,
-            name: workflow.display_name,
-            description: workflow.description ?? undefined,
-            title: workflow.display_name,
+            name: workflow.slug,
             identifier: workflow.slug,
             workflowId: workflow.id,
           };
+
+          if (displayName) {
+            enriched.title = displayName;
+          }
+
+          if (workflow.description?.trim()) {
+            enriched.description = workflow.description.trim();
+          }
+
           nextConfigs = [...remainingConfigs, enriched];
         }
 

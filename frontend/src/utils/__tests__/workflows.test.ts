@@ -248,6 +248,42 @@ describe("workflow tool helpers", () => {
     ]);
   });
 
+  it("sanitises workflow tool names for API compatibility", () => {
+    const configs: WorkflowToolConfig[] = [
+      {
+        slug: "customer-support",
+        name: "Customer Support",
+        identifier: "customer support",
+      },
+      {
+        slug: "démo",
+        name: "Démo Workflow",
+        identifier: "démo",
+        workflowId: 42,
+      },
+    ];
+
+    const next = setAgentWorkflowTools({}, configs);
+
+    expect(next.tools).toEqual([
+      expect.objectContaining({
+        type: "workflow",
+        slug: "customer-support",
+        name: "Customer_Support",
+      }),
+      expect.objectContaining({
+        type: "workflow",
+        slug: "démo",
+        name: "Demo_Workflow",
+      }),
+    ]);
+
+    expect(getAgentWorkflowTools(next)).toEqual([
+      expect.objectContaining({ slug: "customer-support", name: "Customer_Support" }),
+      expect.objectContaining({ slug: "démo", name: "Demo_Workflow" }),
+    ]);
+  });
+
   it("removes workflow tools when the configuration list is empty", () => {
     const parameters: AgentParameters = {
       tools: [

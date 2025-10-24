@@ -2260,12 +2260,37 @@ const buildWorkflowValidationFunctionToolEntry = (): Record<string, unknown> => 
   },
 });
 
+const WORKFLOW_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
+
 const toOptionalString = (value: unknown): string | undefined => {
   if (typeof value !== "string") {
     return undefined;
   }
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
+};
+
+const normalizeWorkflowToolNameCandidate = (
+  candidate: string | undefined,
+): string | undefined => {
+  if (!candidate) {
+    return undefined;
+  }
+
+  if (WORKFLOW_TOOL_NAME_PATTERN.test(candidate)) {
+    return candidate;
+  }
+
+  const normalized = candidate.normalize("NFKD");
+  const withoutMarks = normalized.replace(/[\u0300-\u036f]/g, "");
+  const replaced = withoutMarks.replace(/[^a-zA-Z0-9_-]+/g, "_");
+  const collapsed = replaced.replace(/_+/g, "_").replace(/^_+|_+$/g, "");
+
+  if (collapsed && WORKFLOW_TOOL_NAME_PATTERN.test(collapsed)) {
+    return collapsed;
+  }
+
+  return undefined;
 };
 
 const toOptionalBoolean = (value: unknown): boolean | undefined => {
@@ -2443,9 +2468,31 @@ const sanitizeWorkflowToolConfig = (
 
   const sanitized: WorkflowToolConfig = { slug };
 
-  const name = toOptionalString(config.name);
-  if (name) {
-    sanitized.name = name;
+  const workflowIdNameCandidate =
+    typeof config.workflowId === "number" && Number.isInteger(config.workflowId)
+      ? `workflow_${config.workflowId}`
+      : undefined;
+
+  const toolNameCandidates = [
+    toOptionalString(config.name),
+    toOptionalString(config.identifier),
+    slug,
+    workflowIdNameCandidate,
+  ];
+
+  for (const candidate of toolNameCandidates) {
+    const normalized = normalizeWorkflowToolNameCandidate(candidate);
+    if (normalized) {
+      sanitized.name = normalized;
+      break;
+    }
+  }
+
+  if (!sanitized.name) {
+    sanitized.name =
+      normalizeWorkflowToolNameCandidate(slug) ??
+      normalizeWorkflowToolNameCandidate(`workflow_${slug}`) ??
+      "workflow_tool";
   }
 
   const description = toOptionalString(config.description);
