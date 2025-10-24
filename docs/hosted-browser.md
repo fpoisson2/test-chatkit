@@ -54,6 +54,6 @@ Lorsque la fenêtre est visible, vous pouvez la contrôler via un serveur X11/Wa
 
 ## Dépannage
 
-* Aucun flux vidéo ? Vérifiez que Playwright est bien installé dans votre environnement (`pip install playwright` puis `playwright install chromium`).
+* Aucun flux vidéo ? Avec l'image Docker fournie, Playwright et Chromium sont installés automatiquement au démarrage. En exécution locale, installez-les manuellement (`pip install playwright` puis `playwright install chromium`).
 * L'URL DevTools n'apparaît pas dans les logs ? Assurez-vous que `CHATKIT_HOSTED_BROWSER_DEBUG_PORT` est défini sur un port valide (1-65535) et exposé si vous êtes dans un conteneur.
 * Les actions semblent figées ? Le navigateur retombe automatiquement sur un simulateur PNG si Playwright ne démarre pas. Consultez les logs `chatkit.computer.hosted_browser` pour confirmer et ajuster votre configuration.
