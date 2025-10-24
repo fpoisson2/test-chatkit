@@ -184,6 +184,29 @@ const extractSlugFromLogData = (
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object";
 
+const parseVoiceSessionPayload = (value: unknown): VoiceSessionCreatedPayload | null => {
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parseVoiceSessionPayload(parsed);
+    } catch {
+      return null;
+    }
+  }
+
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const payload = value as VoiceSessionCreatedPayload;
+  const typeValue = asNonEmptyString(payload.type);
+  if (!typeValue || !typeValue.startsWith("voice_session.")) {
+    return null;
+  }
+
+  return payload;
+};
+
 const tryParseVoiceSessionTask = (
   task: unknown,
   metadataFallback: unknown,
@@ -204,27 +227,8 @@ const tryParseVoiceSessionTask = (
   const metadataTitle = extractTitleFromMetadata(metadataSource ?? null);
 
   const { content } = taskLog;
-  let parsed: unknown = null;
-
-  if (typeof content === "string") {
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      return null;
-    }
-  } else if (isRecord(content)) {
-    parsed = content;
-  } else {
-    return null;
-  }
-
-  if (!parsed || typeof parsed !== "object") {
-    return null;
-  }
-
-  const payload = parsed as VoiceSessionCreatedPayload;
-  const typeValue = asNonEmptyString(payload.type);
-  if (!typeValue || !typeValue.startsWith("voice_session.")) {
+  const payload = parseVoiceSessionPayload(content ?? null);
+  if (!payload) {
     return null;
   }
 
@@ -242,6 +246,15 @@ const extractVoiceTaskFromLogData = (
   metadataSlug: string | null;
   metadataTitle: string | null;
 } | null => {
+  const directPayload = parseVoiceSessionPayload(data);
+  if (directPayload) {
+    return {
+      payload: directPayload,
+      metadataSlug: extractStepSlug(directPayload.step ?? null),
+      metadataTitle: extractStepTitle(directPayload.step ?? null),
+    };
+  }
+
   if (!isRecord(data)) {
     return null;
   }
