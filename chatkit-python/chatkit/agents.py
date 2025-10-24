@@ -29,6 +29,7 @@ from agents import (
 )
 from openai.types.responses import (
     EasyInputMessageParam,
+    ResponseComputerToolCall,
     ResponseFunctionToolCallParam,
     ResponseFunctionWebSearch,
     ResponseInputContentParam,
@@ -409,6 +410,141 @@ class SearchTaskTracker(BaseModel):
     task: SearchTask
 
 
+_COMPUTER_ACTION_TITLES: dict[str, str] = {
+    "click": "Clic",
+    "double_click": "Double clic",
+    "drag": "Glisser",
+    "keypress": "Appuyer sur une touche",
+    "move": "Déplacement",
+    "screenshot": "Capture d'écran",
+    "scroll": "Défilement",
+    "type": "Saisie",
+    "wait": "Attente",
+}
+
+
+class ComputerTaskTracker(BaseModel):
+    item_id: str
+    task: ThoughtTask
+    call_id: str | None = None
+    action_data: Any | None = None
+    pending_checks: Any | None = None
+    output_data: Any | None = None
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def set_call_id(self, call_id: str | None) -> tuple[bool, str | None]:
+        if call_id is None or call_id == self.call_id:
+            return False, None
+        previous = self.call_id
+        self.call_id = call_id
+        return True, previous
+
+    def set_status(self, status: str | None) -> bool:
+        indicator = _computer_status_indicator(status)
+        if indicator is None or indicator == self.task.status_indicator:
+            return False
+        self.task.status_indicator = indicator
+        return True
+
+    def _set_action_data(self, value: Any | None) -> bool:
+        if value == self.action_data:
+            return False
+        self.action_data = value
+        return True
+
+    def _set_pending_checks(self, value: Any | None) -> bool:
+        if value == self.pending_checks:
+            return False
+        self.pending_checks = value
+        return True
+
+    def _set_output_data(self, value: Any | None) -> bool:
+        if value == self.output_data:
+            return False
+        self.output_data = value
+        return True
+
+    def _sync_title(self) -> bool:
+        action_type = None
+        if isinstance(self.action_data, dict):
+            action_type = self.action_data.get("type")
+        if not isinstance(action_type, str):
+            return False
+        normalized = action_type.strip().lower()
+        if not normalized:
+            return False
+        title = _COMPUTER_ACTION_TITLES.get(
+            normalized, normalized.replace("_", " ").capitalize()
+        )
+        if self.task.title == title:
+            return False
+        self.task.title = title
+        return True
+
+    def _sync_content(self) -> bool:
+        previous = self.task.content
+        sections: list[str] = []
+        if self.action_data is not None:
+            sections.append(_format_markdown_section("Action", self.action_data))
+        if self.pending_checks:
+            sections.append(
+                _format_markdown_section(
+                    "Vérifications de sécurité", self.pending_checks
+                )
+            )
+        if self.output_data is not None:
+            sections.append(_format_markdown_section("Résultat", self.output_data))
+        content = "\n\n".join(sections).strip()
+        self.task.content = content or ""
+        return self.task.content != previous
+
+    def update_from_call(
+        self, call: ResponseComputerToolCall
+    ) -> tuple[bool, str | None]:
+        call_id_changed, previous_call_id = self.set_call_id(
+            getattr(call, "call_id", None)
+        )
+        changed = call_id_changed
+        changed |= self.set_status(getattr(call, "status", None))
+        changed |= self._set_action_data(_normalize_for_json(getattr(call, "action", None)))
+        pending = getattr(call, "pending_safety_checks", None)
+        normalized_pending = (
+            _normalize_for_json(pending) if pending else None
+        )
+        changed |= self._set_pending_checks(normalized_pending)
+        changed |= self._sync_title()
+        changed |= self._sync_content()
+        return changed, previous_call_id
+
+    def update_from_output(
+        self,
+        *,
+        call_id: str | None,
+        status: str | None,
+        raw_output: Any = None,
+        parsed_output: Any = None,
+    ) -> tuple[bool, str | None]:
+        call_id_changed, previous_call_id = self.set_call_id(call_id)
+        changed = call_id_changed
+        changed |= self.set_status(status)
+        output_value = raw_output if raw_output is not None else parsed_output
+        if output_value is not None:
+            changed |= self._set_output_data(_normalize_for_json(output_value))
+        changed |= self._sync_content()
+        return changed, previous_call_id
+
+
+def _computer_status_indicator(status: str | None) -> str | None:
+    if status == "completed":
+        return "complete"
+    if status in {"in_progress", "generating"}:
+        return "loading"
+    if status == "incomplete":
+        return "none"
+    return None
+
+
 @dataclass
 class ImageTaskTracker:
     item_id: str
@@ -663,8 +799,15 @@ async def stream_agent_response(
     streaming_thought: None | StreamingThoughtTracker = None
     search_tasks: dict[str, SearchTaskTracker] = {}
     image_tasks: dict[tuple[str, int], ImageTaskTracker] = {}
+    computer_tasks: dict[str, ComputerTaskTracker] = {}
+    computer_tasks_by_call_id: dict[str, ComputerTaskTracker] = {}
     function_tasks: dict[str, FunctionTaskTracker] = {}
     function_tasks_by_call_id: dict[str, FunctionTaskTracker] = {}
+
+    def _get_value(raw: Any, key: str) -> Any:
+        if isinstance(raw, dict):
+            return raw.get(key)
+        return getattr(raw, key, None)
 
     # check if the last item in the thread was a workflow or a client tool call
     # if it was a client tool call, check if the second last item was a workflow
@@ -699,6 +842,8 @@ async def stream_agent_response(
         item.workflow.expanded = False
         search_tasks.clear()
         image_tasks.clear()
+        computer_tasks.clear()
+        computer_tasks_by_call_id.clear()
         function_tasks.clear()
         function_tasks_by_call_id.clear()
         return ThreadItemDoneEvent(item=item)
@@ -982,6 +1127,92 @@ async def stream_agent_response(
             updated |= tracker.set_output(output)
         return updated
 
+    def ensure_computer_task(
+        item_id: str,
+        *,
+        call_id: str | None = None,
+    ) -> tuple[ComputerTaskTracker, bool, list[ThreadStreamEvent]]:
+        events = ensure_workflow()
+        tracker = computer_tasks.get(item_id)
+        task_added = False
+
+        if tracker is None:
+            tracker = ComputerTaskTracker(
+                item_id=item_id,
+                task=ThoughtTask(
+                    status_indicator="loading",
+                    title=None,
+                    content="",
+                ),
+            )
+            computer_tasks[item_id] = tracker
+
+        removed_call_id: str | None = None
+        if call_id:
+            call_id_changed, removed_call_id = tracker.set_call_id(call_id)
+            if call_id_changed and removed_call_id:
+                existing = computer_tasks_by_call_id.get(removed_call_id)
+                if existing is tracker:
+                    del computer_tasks_by_call_id[removed_call_id]
+
+        if tracker.call_id:
+            computer_tasks_by_call_id[tracker.call_id] = tracker
+
+        if ctx.workflow_item and tracker.task not in ctx.workflow_item.workflow.tasks:
+            ctx.workflow_item.workflow.tasks.append(tracker.task)
+            task_added = True
+
+        return tracker, task_added, events
+
+    def get_computer_task_by_call_id(
+        call_id: str | None,
+    ) -> ComputerTaskTracker | None:
+        if not call_id:
+            return None
+        tracker = computer_tasks_by_call_id.get(call_id)
+        if tracker:
+            return tracker
+        for candidate in computer_tasks.values():
+            if candidate.call_id == call_id:
+                computer_tasks_by_call_id[call_id] = candidate
+                return candidate
+        return None
+
+    def apply_computer_call_updates(
+        tracker: ComputerTaskTracker,
+        call: ResponseComputerToolCall,
+    ) -> bool:
+        updated, previous_call_id = tracker.update_from_call(call)
+        if previous_call_id:
+            existing = computer_tasks_by_call_id.get(previous_call_id)
+            if existing is tracker:
+                del computer_tasks_by_call_id[previous_call_id]
+        if tracker.call_id:
+            computer_tasks_by_call_id[tracker.call_id] = tracker
+        return updated
+
+    def apply_computer_output_updates(
+        tracker: ComputerTaskTracker,
+        *,
+        call_id: str | None,
+        status: str | None,
+        raw_output: Any = None,
+        parsed_output: Any = None,
+    ) -> bool:
+        updated, previous_call_id = tracker.update_from_output(
+            call_id=call_id,
+            status=status,
+            raw_output=raw_output,
+            parsed_output=parsed_output,
+        )
+        if previous_call_id:
+            existing = computer_tasks_by_call_id.get(previous_call_id)
+            if existing is tracker:
+                del computer_tasks_by_call_id[previous_call_id]
+        if tracker.call_id:
+            computer_tasks_by_call_id[tracker.call_id] = tracker
+        return updated
+
     def search_status_from_call(call: ResponseFunctionWebSearch) -> str:
         if call.status == "completed":
             return "complete"
@@ -1088,24 +1319,127 @@ async def stream_agent_response(
                 continue
 
             if event.type == "run_item_stream_event":
-                event = event.item
+                run_item_event = event
+                event_item = run_item_event.item
                 if (
-                    event.type == "tool_call_item"
-                    and event.raw_item.type == "function_call"
+                    run_item_event.name == "tool_called"
+                    and event_item.type == "tool_call_item"
                 ):
-                    current_tool_call = event.raw_item.call_id
-                    current_item_id = event.raw_item.id
-                    assert current_item_id
-                    produced_items.add(current_item_id)
+                    raw_item = event_item.raw_item
+                    if _get_value(raw_item, "type") == "function_call":
+                        current_tool_call = _get_value(raw_item, "call_id")
+                        current_item_id = _get_value(raw_item, "id")
+                        if current_item_id:
+                            produced_items.add(current_item_id)
+                        tracker, task_added, workflow_events = ensure_function_task(
+                            _get_value(raw_item, "id") or "",
+                            name=_get_value(raw_item, "name"),
+                            call_id=_get_value(raw_item, "call_id"),
+                        )
+                        for workflow_event in workflow_events:
+                            yield workflow_event
+                        updated = apply_function_task_updates(
+                            tracker,
+                            status=_get_value(raw_item, "status"),
+                            arguments=_get_value(raw_item, "arguments"),
+                            name=_get_value(raw_item, "name"),
+                        )
+                        if ctx.workflow_item and (task_added or updated):
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            update_cls = (
+                                WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=update_cls(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
+                    elif _get_value(raw_item, "type") == "web_search_call":
+                        for search_event in upsert_search_task(
+                            cast(ResponseFunctionWebSearch, raw_item),
+                            status="loading",
+                        ):
+                            yield search_event
+                    elif _get_value(raw_item, "type") == "computer_call":
+                        call_id = _get_value(raw_item, "call_id")
+                        item_id = _get_value(raw_item, "id") or ""
+                        if item_id:
+                            produced_items.add(item_id)
+                        tracker, task_added, workflow_events = ensure_computer_task(
+                            item_id,
+                            call_id=call_id,
+                        )
+                        for workflow_event in workflow_events:
+                            yield workflow_event
+                        updated = apply_computer_call_updates(
+                            tracker,
+                            cast(ResponseComputerToolCall, raw_item),
+                        )
+                        if ctx.workflow_item and (task_added or updated):
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            update_cls = (
+                                WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=update_cls(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
                 elif (
-                    event.type == "tool_call_item"
-                    and event.raw_item.type == "web_search_call"
+                    run_item_event.name == "tool_output"
+                    and event_item.type == "tool_call_output_item"
                 ):
-                    for search_event in upsert_search_task(
-                        cast(ResponseFunctionWebSearch, event.raw_item),
-                        status="loading",
-                    ):
-                        yield search_event
+                    raw_item = event_item.raw_item
+                    call_id = _get_value(raw_item, "call_id")
+                    tracker = get_function_task_by_call_id(call_id)
+                    if tracker is not None:
+                        status = _get_value(raw_item, "status")
+                        updated = apply_function_task_updates(
+                            tracker,
+                            status=status,
+                            output=getattr(event_item, "output", None),
+                        )
+                        if ctx.workflow_item and updated:
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=WorkflowTaskUpdated(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
+                    elif _get_value(raw_item, "type") == "computer_call_output":
+                        tracker = get_computer_task_by_call_id(call_id)
+                        if tracker is not None:
+                            status = _get_value(raw_item, "status")
+                            updated = apply_computer_output_updates(
+                                tracker,
+                                call_id=call_id,
+                                status=status,
+                                raw_output=_get_value(raw_item, "output"),
+                                parsed_output=getattr(event_item, "output", None),
+                            )
+                            if ctx.workflow_item and updated:
+                                task_index = ctx.workflow_item.workflow.tasks.index(
+                                    tracker.task
+                                )
+                                yield ThreadItemUpdated(
+                                    item_id=ctx.workflow_item.id,
+                                    update=WorkflowTaskUpdated(
+                                        task=tracker.task,
+                                        task_index=task_index,
+                                    ),
+                                )
                 continue
 
             if event.type != "raw_response_event":
@@ -1203,6 +1537,54 @@ async def stream_agent_response(
                             tracker,
                             output=getattr(item, "output", None),
                             status=getattr(item, "status", None),
+                        )
+                        if ctx.workflow_item and updated:
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=WorkflowTaskUpdated(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
+                elif item.type == "computer_call":
+                    tracker, task_added, workflow_events = ensure_computer_task(
+                        item.id,
+                        call_id=getattr(item, "call_id", None),
+                    )
+                    updated = apply_computer_call_updates(
+                        tracker,
+                        cast(ResponseComputerToolCall, item),
+                    )
+                    for workflow_event in workflow_events:
+                        yield workflow_event
+                    if ctx.workflow_item and (task_added or updated):
+                        task_index = ctx.workflow_item.workflow.tasks.index(
+                            tracker.task
+                        )
+                        update_cls = (
+                            WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                        )
+                        yield ThreadItemUpdated(
+                            item_id=ctx.workflow_item.id,
+                            update=update_cls(
+                                task=tracker.task,
+                                task_index=task_index,
+                            ),
+                        )
+                    produced_items.add(item.id)
+                elif item.type == "computer_call_output":
+                    tracker = get_computer_task_by_call_id(
+                        getattr(item, "call_id", None)
+                    )
+                    if tracker:
+                        updated = apply_computer_output_updates(
+                            tracker,
+                            call_id=getattr(item, "call_id", None),
+                            status=getattr(item, "status", None),
+                            raw_output=getattr(item, "output", None),
                         )
                         if ctx.workflow_item and updated:
                             task_index = ctx.workflow_item.workflow.tasks.index(
@@ -1522,6 +1904,54 @@ async def stream_agent_response(
                             tracker,
                             output=getattr(item, "output", None),
                             status=getattr(item, "status", None),
+                        )
+                        if ctx.workflow_item and updated:
+                            task_index = ctx.workflow_item.workflow.tasks.index(
+                                tracker.task
+                            )
+                            yield ThreadItemUpdated(
+                                item_id=ctx.workflow_item.id,
+                                update=WorkflowTaskUpdated(
+                                    task=tracker.task,
+                                    task_index=task_index,
+                                ),
+                            )
+                elif item.type == "computer_call":
+                    tracker, task_added, workflow_events = ensure_computer_task(
+                        item.id,
+                        call_id=getattr(item, "call_id", None),
+                    )
+                    for workflow_event in workflow_events:
+                        yield workflow_event
+                    updated = apply_computer_call_updates(
+                        tracker,
+                        cast(ResponseComputerToolCall, item),
+                    )
+                    if ctx.workflow_item and (task_added or updated):
+                        task_index = ctx.workflow_item.workflow.tasks.index(
+                            tracker.task
+                        )
+                        update_cls = (
+                            WorkflowTaskAdded if task_added else WorkflowTaskUpdated
+                        )
+                        yield ThreadItemUpdated(
+                            item_id=ctx.workflow_item.id,
+                            update=update_cls(
+                                task=tracker.task,
+                                task_index=task_index,
+                            ),
+                        )
+                    produced_items.add(item.id)
+                elif item.type == "computer_call_output":
+                    tracker = get_computer_task_by_call_id(
+                        getattr(item, "call_id", None)
+                    )
+                    if tracker:
+                        updated = apply_computer_output_updates(
+                            tracker,
+                            call_id=getattr(item, "call_id", None),
+                            status=getattr(item, "status", None),
+                            raw_output=getattr(item, "output", None),
                         )
                         if ctx.workflow_item and updated:
                             task_index = ctx.workflow_item.workflow.tasks.index(
