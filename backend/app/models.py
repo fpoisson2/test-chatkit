@@ -152,6 +152,31 @@ class VoiceSettings(Base):
     )
 
 
+class TelephonyRoute(Base):
+    __tablename__ = "telephony_routes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    phone_number: Mapped[str] = mapped_column(
+        String(32), unique=True, nullable=False, index=True
+    )
+    workflow_slug: Mapped[str] = mapped_column(String(128), nullable=False)
+    workflow_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", PortableJSONB(), nullable=False, default=dict
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+
 class AppSettings(Base):
     __tablename__ = "app_settings"
 

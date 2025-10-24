@@ -4,7 +4,7 @@ import datetime
 import math
 from typing import Any
 
-from pydantic import BaseModel, EmailStr, Field, constr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, constr, field_validator
 
 
 class SessionRequest(BaseModel):
@@ -145,6 +145,41 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TelephonyRouteBase(BaseModel):
+    phone_number: constr(strip_whitespace=True, min_length=1, max_length=32)
+    workflow_slug: constr(strip_whitespace=True, min_length=1, max_length=128)
+    workflow_id: int | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class TelephonyRouteCreateRequest(TelephonyRouteBase):
+    pass
+
+
+class TelephonyRouteUpdateRequest(BaseModel):
+    phone_number: constr(strip_whitespace=True, min_length=1, max_length=32) | None = (
+        None
+    )
+    workflow_slug: (
+        constr(strip_whitespace=True, min_length=1, max_length=128) | None
+    ) = None
+    workflow_id: int | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class TelephonyRouteResponse(TelephonyRouteBase):
+    id: int
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        validation_alias="metadata_",
+        serialization_alias="metadata",
+    )
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AvailableModelBase(BaseModel):

@@ -96,6 +96,14 @@ class Settings:
         model_api_key: Valeur de la clé API active pour le fournisseur choisi.
         openai_api_key: Jeton API OpenAI (présent uniquement si défini dans l'env).
         chatkit_workflow_id: Identifiant du workflow hébergé (optionnel).
+        sip_bind_host: Hôte d'écoute du serveur SIP (optionnel).
+        sip_bind_port: Port d'écoute du serveur SIP (optionnel).
+        sip_username: Identifiant d'authentification SIP (optionnel).
+        sip_password: Mot de passe d'authentification SIP (optionnel).
+        telephony_default_workflow_slug: Slug du workflow par défaut pour la
+            téléphonie (optionnel).
+        telephony_default_workflow_id: Identifiant du workflow par défaut pour
+            la téléphonie (optionnel).
         backend_public_base_url: URL publique du backend utilisée pour
             construire les liens absolus.
         backend_public_base_url_from_env: Indique si l'URL publique provient
@@ -132,6 +140,12 @@ class Settings:
     chatkit_realtime_voice: str
     backend_public_base_url: str
     backend_public_base_url_from_env: bool
+    sip_bind_host: str | None
+    sip_bind_port: int | None
+    sip_username: str | None
+    sip_password: str | None
+    telephony_default_workflow_slug: str | None
+    telephony_default_workflow_id: int | None
     database_url: str
     auth_secret_key: str
     access_token_expire_minutes: int
@@ -336,6 +350,17 @@ class Settings:
             sanitized_public_base_url or "http://localhost:8000"
         ).rstrip("/")
 
+        def _optional_int(name: str) -> int | None:
+            value = get_stripped(name)
+            if value is None:
+                return None
+            try:
+                return int(value)
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"{name} environment variable must be an integer if provided"
+                ) from exc
+
         return cls(
             allowed_origins=cls._parse_allowed_origins(env.get("ALLOWED_ORIGINS")),
             model_provider=model_provider,
@@ -358,6 +383,16 @@ class Settings:
             ),
             backend_public_base_url=backend_public_base_url,
             backend_public_base_url_from_env=bool(sanitized_public_base_url),
+            sip_bind_host=get_stripped("SIP_BIND_HOST"),
+            sip_bind_port=_optional_int("SIP_BIND_PORT"),
+            sip_username=get_stripped("SIP_USERNAME"),
+            sip_password=get_stripped("SIP_PASSWORD"),
+            telephony_default_workflow_slug=get_stripped(
+                "TELEPHONY_DEFAULT_WORKFLOW_SLUG"
+            ),
+            telephony_default_workflow_id=_optional_int(
+                "TELEPHONY_DEFAULT_WORKFLOW_ID"
+            ),
             database_url=require(
                 "DATABASE_URL",
                 message=(

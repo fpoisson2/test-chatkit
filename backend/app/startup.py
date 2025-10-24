@@ -22,6 +22,7 @@ from .models import (
     AppSettings,
     AvailableModel,
     Base,
+    TelephonyRoute,
     User,
     VoiceSettings,
     Workflow,
@@ -59,6 +60,11 @@ def _run_ad_hoc_migrations() -> None:
             logger.info("Création de la table app_settings manquante")
             AppSettings.__table__.create(bind=connection)
             table_names.add("app_settings")
+
+        if "telephony_routes" not in table_names:
+            logger.info("Création de la table telephony_routes manquante")
+            TelephonyRoute.__table__.create(bind=connection)
+            table_names.add("telephony_routes")
 
         # Migration de la dimension des vecteurs dans json_chunks
         if "json_chunks" in table_names:
