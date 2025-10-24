@@ -43,6 +43,7 @@ type TranscriptEntry = {
 };
 
 type TranscriptPayload = {
+  id: string;
   role: "user" | "assistant";
   text: string;
   status?: string;
@@ -50,8 +51,6 @@ type TranscriptPayload = {
 
 type TranscriptSnapshot = {
   payload: TranscriptPayload[];
-  userSignature: string;
-  assistantSignature: string;
 };
 
 const POLL_INTERVAL_MS = 2000; // Poll every 2 seconds
@@ -96,12 +95,9 @@ export const useWorkflowVoiceSession = ({
   const currentSessionRef = useRef<string | null>(null);
   const pollingIntervalRef = useRef<number | null>(null);
   const conversationHistoryRef = useRef<TranscriptEntry[]>([]);
-  const lastSubmittedSignaturesRef = useRef<{ user: string | null; assistant: string | null }>({
-    user: null,
-    assistant: null,
-  });
-  const pendingSnapshotRef = useRef<TranscriptSnapshot | null>(null);
-  const pendingForceRef = useRef(false);
+  const submittedTranscriptSignaturesRef = useRef<Map<string, string>>(new Map());
+  const hasSubmittedUserRef = useRef(false);
+  const queuedSendRef = useRef(false);
   const uploadInFlightRef = useRef(false);
 
   const createSnapshot = useCallback(
@@ -110,27 +106,20 @@ export const useWorkflowVoiceSession = ({
         return null;
       }
 
-      const payload: TranscriptPayload[] = entries.map(({ role, text, status }) => {
-        const normalizedStatus =
-          typeof status === "string" ? status.trim() : "";
+      const payload: TranscriptPayload[] = entries.map(({ id, role, text, status }) => {
+        const normalizedStatus = typeof status === "string" ? status.trim() : "";
+        const base: TranscriptPayload = {
+          id,
+          role,
+          text,
+        };
         if (normalizedStatus.length > 0) {
-          return { role, text, status: normalizedStatus };
+          base.status = normalizedStatus;
         }
-        return { role, text };
+        return base;
       });
 
-      const userSignature = JSON.stringify(
-        payload.filter((entry) => entry.role === "user"),
-      );
-      const assistantSignature = JSON.stringify(
-        payload.filter((entry) => entry.role === "assistant"),
-      );
-
-      return {
-        payload,
-        userSignature,
-        assistantSignature,
-      };
+      return { payload };
     },
     [],
   );
@@ -185,9 +174,9 @@ export const useWorkflowVoiceSession = ({
       const transcripts = conversationHistoryRef.current;
       if (transcripts.length === 0) {
         console.log("[WorkflowVoiceSession] No transcripts to send");
-        lastSubmittedSignaturesRef.current = { user: null, assistant: null };
-        pendingSnapshotRef.current = null;
-        pendingForceRef.current = false;
+        submittedTranscriptSignaturesRef.current.clear();
+        hasSubmittedUserRef.current = false;
+        queuedSendRef.current = false;
         return;
       }
 
@@ -197,50 +186,44 @@ export const useWorkflowVoiceSession = ({
       }
 
       const force = options?.force ?? false;
+      const submittedMap = submittedTranscriptSignaturesRef.current;
 
-      const hasUserTranscript = snapshot.payload.some(
-        (entry) => entry.role === "user" && entry.text.trim().length > 0,
-      );
-      if (!hasUserTranscript && !force) {
-        console.log(
-          "[WorkflowVoiceSession] Skipping transcript submission (no user utterances yet)",
-        );
-        lastSubmittedSignaturesRef.current = { user: null, assistant: null };
-        pendingSnapshotRef.current = null;
-        pendingForceRef.current = false;
+      const entriesToSend = snapshot.payload.filter((entry) => {
+        const signature = `${entry.role}:${entry.text}:${entry.status ?? ""}`;
+        if (force) {
+          return true;
+        }
+        const previous = submittedMap.get(entry.id);
+        return previous !== signature;
+      });
+
+      if (!force && entriesToSend.length === 0) {
         return;
       }
 
-      const { userSignature, assistantSignature } = snapshot;
-      const { user: lastUserSignature, assistant: lastAssistantSignature } =
-        lastSubmittedSignaturesRef.current;
-
-      const hasUserChanges = userSignature !== lastUserSignature;
-      const hasAssistantChanges = assistantSignature !== lastAssistantSignature;
-
-      if (!force) {
-        if (!hasUserChanges && !hasAssistantChanges) {
-          return;
-        }
-        if (!hasUserChanges) {
+      if (!force && !hasSubmittedUserRef.current) {
+        const hasUserInPayload = entriesToSend.some((entry) => entry.role === "user");
+        if (!hasUserInPayload) {
           return;
         }
       }
 
+      if (entriesToSend.length === 0) {
+        return;
+      }
+
       if (uploadInFlightRef.current) {
-        pendingSnapshotRef.current = snapshot;
-        pendingForceRef.current = force || pendingForceRef.current;
+        queuedSendRef.current = true;
         return;
       }
 
       uploadInFlightRef.current = true;
-      pendingSnapshotRef.current = null;
-      pendingForceRef.current = false;
+      queuedSendRef.current = false;
 
       try {
         console.log(
           "[WorkflowVoiceSession] Sending transcripts:",
-          snapshot.payload.length,
+          entriesToSend.length,
           "items",
         );
 
@@ -258,21 +241,23 @@ export const useWorkflowVoiceSession = ({
                 Authorization: `Bearer ${token}`,
                 "Content-Type": "application/json",
               },
-              body: JSON.stringify({ transcripts: snapshot.payload }),
+              body: JSON.stringify({ transcripts: entriesToSend }),
             });
 
             if (response.ok) {
               const result = await response.json();
-              lastSubmittedSignaturesRef.current = {
-                user: userSignature,
-                assistant: assistantSignature,
-              };
+              for (const entry of entriesToSend) {
+                const signature = `${entry.role}:${entry.text}:${entry.status ?? ""}`;
+                submittedMap.set(entry.id, signature);
+                if (entry.role === "user") {
+                  hasSubmittedUserRef.current = true;
+                }
+              }
               console.log(
                 "[WorkflowVoiceSession] Transcripts sent successfully:",
                 result,
               );
 
-              // Appeler le callback pour rafraîchir ChatKit
               onTranscriptsUpdated?.();
 
               lastError = null;
@@ -288,10 +273,6 @@ export const useWorkflowVoiceSession = ({
               console.info(
                 "[WorkflowVoiceSession] Transcript upload skipped (no pending voice session)",
               );
-              lastSubmittedSignaturesRef.current = {
-                user: userSignature,
-                assistant: assistantSignature,
-              };
               lastError = null;
               break;
             }
@@ -310,17 +291,13 @@ export const useWorkflowVoiceSession = ({
         }
       } catch (error) {
         console.error("[WorkflowVoiceSession] Failed to send transcripts:", error);
-        pendingSnapshotRef.current = snapshot;
-        pendingForceRef.current = force || pendingForceRef.current;
+        queuedSendRef.current = true;
         onError?.("Impossible d'envoyer les transcriptions");
       } finally {
         uploadInFlightRef.current = false;
-        const nextSnapshot = pendingSnapshotRef.current;
-        const nextForce = pendingForceRef.current;
-        pendingSnapshotRef.current = null;
-        pendingForceRef.current = false;
-        if (nextSnapshot) {
-          void sendTranscripts({ force: nextForce });
+        if (queuedSendRef.current) {
+          queuedSendRef.current = false;
+          void sendTranscripts();
         }
       }
     },
@@ -431,9 +408,9 @@ export const useWorkflowVoiceSession = ({
       currentSessionRef.current = sessionId;
       conversationHistoryRef.current = [];
       setTranscripts([]);
-      lastSubmittedSignaturesRef.current = { user: null, assistant: null };
-      pendingSnapshotRef.current = null;
-      pendingForceRef.current = false;
+      submittedTranscriptSignaturesRef.current = new Map();
+      hasSubmittedUserRef.current = false;
+      queuedSendRef.current = false;
       uploadInFlightRef.current = false;
 
       setStatus("connecting");
@@ -538,9 +515,9 @@ export const useWorkflowVoiceSession = ({
     currentSessionRef.current = null;
     conversationHistoryRef.current = [];
     setTranscripts([]);
-    lastSubmittedSignaturesRef.current = { user: null, assistant: null };
-    pendingSnapshotRef.current = null;
-    pendingForceRef.current = false;
+    submittedTranscriptSignaturesRef.current.clear();
+    hasSubmittedUserRef.current = false;
+    queuedSendRef.current = false;
     uploadInFlightRef.current = false;
   }, [disconnect, threadId, token, onError]);
 

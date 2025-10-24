@@ -532,33 +532,66 @@ async def submit_voice_transcripts(
             detail={"error": "ChatKit SDK incomplet: types de messages indisponibles"},
         )
 
-    # Créer les messages directement dans le thread et accumuler les transcriptions
+    existing_transcripts_raw = wait_state.get("voice_transcripts")
+    existing_transcripts: list[dict[str, Any]] = []
+    if isinstance(existing_transcripts_raw, list):
+        for entry in existing_transcripts_raw:
+            if isinstance(entry, dict):
+                existing_transcripts.append(dict(entry))
+
+    index_by_message_id: dict[str, int] = {}
+    for idx, entry in enumerate(existing_transcripts):
+        message_id = entry.get("message_id") or entry.get("id")
+        if isinstance(message_id, str) and message_id.strip():
+            index_by_message_id[message_id.strip()] = idx
+
     messages_added = 0
-    new_wait_state_transcripts: list[dict[str, Any]] = []
+    messages_updated = 0
+    wait_state_changed = False
+
     for transcript in transcripts:
         if not isinstance(transcript, dict):
             continue
 
         role_raw = transcript.get("role")
-        if isinstance(role_raw, str):
-            normalized_role = role_raw.strip().lower()
-        else:
-            normalized_role = ""
-
         text_raw = transcript.get("text")
-        text = text_raw.strip() if isinstance(text_raw, str) else ""
+        if not isinstance(role_raw, str) or not isinstance(text_raw, str):
+            continue
+
+        normalized_role = role_raw.strip().lower()
+        text = text_raw.strip()
         if not text or normalized_role not in {"user", "assistant"}:
             continue
 
         status_raw = transcript.get("status")
         normalized_status = status_raw.strip() if isinstance(status_raw, str) else None
 
-        now = datetime.now(timezone.utc)
-        item_id = f"msg_{uuid.uuid4()}"
+        transcript_id_raw = transcript.get("id")
+        transcript_id = (
+            transcript_id_raw.strip()
+            if isinstance(transcript_id_raw, str) and transcript_id_raw.strip()
+            else None
+        )
 
-        wait_state_entry: dict[str, Any] = {
-            key: value for key, value in transcript.items() if key not in {"role", "text"}
-        }
+        message_id_raw = transcript.get("message_id")
+        message_id = (
+            message_id_raw.strip()
+            if isinstance(message_id_raw, str) and message_id_raw.strip()
+            else None
+        )
+
+        if not message_id:
+            if transcript_id:
+                message_id = f"voice_{transcript_id}"
+            else:
+                message_id = f"voice_{thread_id}_{uuid.uuid4()}"
+
+        if not transcript_id:
+            transcript_id = message_id
+
+        wait_state_entry: dict[str, Any] = dict(transcript)
+        wait_state_entry["id"] = transcript_id
+        wait_state_entry["message_id"] = message_id
         wait_state_entry["role"] = normalized_role
         wait_state_entry["text"] = text
         if normalized_status:
@@ -566,75 +599,165 @@ async def submit_voice_transcripts(
         elif "status" in wait_state_entry:
             del wait_state_entry["status"]
 
-        if normalized_role == "user":
-            user_message = UserMessageItem(
-                id=item_id,
-                thread_id=thread_id,
-                created_at=now,
-                content=[UserMessageTextContent(text=text)],
-                attachments=[],
-                inference_options=InferenceOptions(),
-                quoted_text=None,
-            )
-            await server.store.add_thread_item(thread_id, user_message, context)
+        existing_index = index_by_message_id.get(message_id)
+        existing_entry = (
+            existing_transcripts[existing_index] if existing_index is not None else None
+        )
+
+        existing_text = (
+            existing_entry.get("text").strip()
+            if isinstance(existing_entry, dict)
+            and isinstance(existing_entry.get("text"), str)
+            else None
+        )
+        existing_status = (
+            existing_entry.get("status").strip()
+            if isinstance(existing_entry, dict)
+            and isinstance(existing_entry.get("status"), str)
+            else None
+        )
+
+        requires_message_update = (
+            existing_entry is None
+            or existing_text != text
+            or (existing_status or None) != (normalized_status or None)
+        )
+
+        now = datetime.now(timezone.utc)
+
+        if requires_message_update:
+            try:
+                if existing_entry is None:
+                    if normalized_role == "user":
+                        user_message = UserMessageItem(
+                            id=message_id,
+                            thread_id=thread_id,
+                            created_at=now,
+                            content=[UserMessageTextContent(text=text)],
+                            attachments=[],
+                            inference_options=InferenceOptions(),
+                            quoted_text=None,
+                        )
+                        await server.store.add_thread_item(thread_id, user_message, context)
+                    else:
+                        assistant_message = AssistantMessageItem(
+                            id=message_id,
+                            thread_id=thread_id,
+                            created_at=now,
+                            content=[AssistantMessageContent(text=text)],
+                        )
+                        await server.store.add_thread_item(
+                            thread_id, assistant_message, context
+                        )
+                    messages_added += 1
+                else:
+                    try:
+                        existing_item = await server.store.load_item(
+                            thread_id, message_id, context
+                        )
+                    except NotFoundError:
+                        existing_item = None
+
+                    created_at = (
+                        existing_item.created_at
+                        if existing_item is not None
+                        else now
+                    )
+
+                    if normalized_role == "user":
+                        user_message = UserMessageItem(
+                            id=message_id,
+                            thread_id=thread_id,
+                            created_at=created_at,
+                            content=[UserMessageTextContent(text=text)],
+                            attachments=[],
+                            inference_options=InferenceOptions(),
+                            quoted_text=None,
+                        )
+                        if existing_item is None:
+                            await server.store.add_thread_item(
+                                thread_id, user_message, context
+                            )
+                            messages_added += 1
+                        else:
+                            await server.store.save_item(thread_id, user_message, context)
+                            messages_updated += 1
+                    else:
+                        assistant_message = AssistantMessageItem(
+                            id=message_id,
+                            thread_id=thread_id,
+                            created_at=created_at,
+                            content=[AssistantMessageContent(text=text)],
+                        )
+                        if existing_item is None:
+                            await server.store.add_thread_item(
+                                thread_id, assistant_message, context
+                            )
+                            messages_added += 1
+                        else:
+                            await server.store.save_item(
+                                thread_id, assistant_message, context
+                            )
+                            messages_updated += 1
+            except Exception as exc:
+                logger.exception(
+                    "Erreur lors de la synchronisation des transcriptions vocales",
+                    exc_info=exc,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail={"error": "Erreur lors de la synchronisation des transcriptions"},
+                ) from exc
+
+        if existing_index is not None:
+            if existing_entry != wait_state_entry:
+                wait_state_changed = True
+                existing_transcripts[existing_index] = wait_state_entry
         else:
-            assistant_message = AssistantMessageItem(
-                id=item_id,
-                thread_id=thread_id,
-                created_at=now,
-                content=[AssistantMessageContent(text=text)],
-            )
-            await server.store.add_thread_item(thread_id, assistant_message, context)
+            wait_state_changed = True
+            index_by_message_id[message_id] = len(existing_transcripts)
+            existing_transcripts.append(wait_state_entry)
 
-        messages_added += 1
-        new_wait_state_transcripts.append(wait_state_entry)
+    updated_wait_state = dict(wait_state)
+    previous_transcripts_present = bool(wait_state.get("voice_transcripts"))
+    previous_messages_created = bool(wait_state.get("voice_messages_created"))
+    next_transcripts_present = bool(existing_transcripts)
+    next_messages_created = next_transcripts_present
 
-    if new_wait_state_transcripts:
-        existing_transcripts = wait_state.get("voice_transcripts")
-        accumulated: list[dict[str, Any]] = []
-        if isinstance(existing_transcripts, list):
-            for entry in existing_transcripts:
-                if not isinstance(entry, dict):
-                    continue
-                role_entry = entry.get("role")
-                text_entry = entry.get("text")
-                status_entry = entry.get("status")
-                if not isinstance(role_entry, str) or not isinstance(text_entry, str):
-                    continue
-                normalized_entry: dict[str, Any] = dict(entry)
-                normalized_entry["role"] = role_entry.strip().lower()
-                normalized_entry["text"] = text_entry.strip()
-                if isinstance(status_entry, str) and status_entry.strip():
-                    normalized_entry["status"] = status_entry.strip()
-                elif "status" in normalized_entry:
-                    del normalized_entry["status"]
-                accumulated.append(normalized_entry)
-
-        accumulated.extend(new_wait_state_transcripts)
-        updated_wait_state = dict(wait_state)
-        updated_wait_state["voice_transcripts"] = accumulated
+    if (
+        wait_state_changed
+        or next_transcripts_present != previous_transcripts_present
+        or next_messages_created != previous_messages_created
+    ):
+        updated_wait_state["voice_transcripts"] = existing_transcripts
+        updated_wait_state["voice_messages_created"] = next_messages_created
         _set_wait_state_metadata(thread, updated_wait_state)
-
         try:
             await server.store.save_thread(thread, context)
         except Exception as exc:
             logger.exception(
-                "Erreur lors de la sauvegarde des métadonnées de transcription", exc_info=exc
+                "Erreur lors de la sauvegarde des métadonnées de transcription",
+                exc_info=exc,
             )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail={"error": "Erreur lors de la mise à jour des métadonnées"},
             ) from exc
 
-    if messages_added > 0:
+    if messages_added or messages_updated:
         logger.info(
-            "Transcriptions ajoutées au thread (user=%s, thread=%s, messages=%d)",
+            "Transcriptions synchronisées (user=%s, thread=%s, ajoutées=%d, mises à jour=%d)",
             current_user.id,
             thread_id,
             messages_added,
+            messages_updated,
         )
 
-    return {"status": "ok", "messages_added": messages_added}
+    return {
+        "status": "ok",
+        "messages_added": messages_added,
+        "messages_updated": messages_updated,
+    }
 
 
 @router.post("/api/chatkit/voice/finalize/{thread_id}")
