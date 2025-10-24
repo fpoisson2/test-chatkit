@@ -9,6 +9,7 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from agents import Agent, ModelSettings, WebSearchTool
+from agents.tool import ComputerTool
 from pydantic import BaseModel, Field, create_model
 
 from ..chatkit_server.actions import (
@@ -732,9 +733,31 @@ def _build_agent_kwargs(
     if "model_settings" in merged:
         merged["model_settings"] = _coerce_model_settings(merged["model_settings"])
     if "tools" in merged:
-        merged["tools"] = _coerce_agent_tools(
+        coerced_tools = _coerce_agent_tools(
             merged["tools"], base_kwargs.get("tools") if base_kwargs else None
         )
+        merged["tools"] = coerced_tools
+
+        if coerced_tools and any(
+            isinstance(tool, ComputerTool) for tool in coerced_tools if tool is not None
+        ):
+            current_settings = merged.get("model_settings")
+            coerced_settings = _coerce_model_settings(current_settings)
+
+            if isinstance(coerced_settings, ModelSettings):
+                truncation = getattr(coerced_settings, "truncation", None)
+                if truncation != "auto":
+                    try:
+                        coerced_settings.truncation = "auto"
+                    except Exception:  # pragma: no cover - objets immuables
+                        try:
+                            object.__setattr__(coerced_settings, "truncation", "auto")
+                        except Exception:  # pragma: no cover - dernier recours
+                            coerced_settings = _model_settings(truncation="auto")
+            else:
+                coerced_settings = _model_settings(truncation="auto")
+
+            merged["model_settings"] = coerced_settings
     if "response_format" in merged:
         response_format = merged.pop("response_format")
         if sync_output_type:
