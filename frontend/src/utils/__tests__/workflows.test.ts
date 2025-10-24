@@ -15,6 +15,8 @@ import {
   setWidgetNodeDefinitionExpression,
   setWidgetNodeSlug,
   setWidgetNodeSource,
+  getAgentWorkflowValidationToolEnabled,
+  setAgentWorkflowValidationToolEnabled,
 } from "../workflows";
 
 describe("widget_source override", () => {
@@ -138,5 +140,58 @@ describe("voice agent helpers", () => {
         },
       },
     });
+  });
+});
+
+describe("workflow validation tool helpers", () => {
+  it("detects when the workflow validation tool is enabled", () => {
+    const parameters: AgentParameters = {
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "validate_workflow_graph",
+          },
+        },
+      ],
+    };
+
+    expect(getAgentWorkflowValidationToolEnabled(parameters)).toBe(true);
+  });
+
+  it("removes the workflow validation tool when disabled", () => {
+    const parameters: AgentParameters = {
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "validate_workflow_graph",
+          },
+        },
+      ],
+    };
+
+    const next = setAgentWorkflowValidationToolEnabled(parameters, false);
+
+    expect(getAgentWorkflowValidationToolEnabled(next)).toBe(false);
+    expect(next).not.toHaveProperty("tools");
+  });
+
+  it("adds the workflow validation tool when enabled", () => {
+    const parameters: AgentParameters = {};
+
+    const next = setAgentWorkflowValidationToolEnabled(parameters, true);
+
+    expect(getAgentWorkflowValidationToolEnabled(next)).toBe(true);
+    expect(next.tools).toEqual([
+      {
+        type: "function",
+        function: {
+          name: "validate_workflow_graph",
+          description:
+            "Valide un graphe de workflow ChatKit et retourne la version normalisée.",
+        },
+      },
+    ]);
   });
 });

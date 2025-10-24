@@ -4,7 +4,7 @@ import datetime
 import logging
 import math
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -227,6 +227,26 @@ class WorkflowService:
                 )
             workflow_defaults = settings.workflow_defaults
         self._workflow_defaults = workflow_defaults
+
+    def validate_graph_payload(
+        self, graph_payload: Mapping[str, Any] | None
+    ) -> dict[str, Any]:
+        """Normalise et valide la représentation graphe d'un workflow."""
+
+        if graph_payload is None:
+            payload_dict: dict[str, Any] | None = None
+        elif isinstance(graph_payload, Mapping):
+            payload_dict = dict(graph_payload)
+        else:
+            raise WorkflowValidationError(
+                "Le graphe de workflow doit être un objet JSON."
+            )
+
+        nodes, edges = self._normalize_graph(payload_dict)
+        return {
+            "nodes": [asdict(node) for node in nodes],
+            "edges": [asdict(edge) for edge in edges],
+        }
 
     def _fully_load_definition(
         self, definition: WorkflowDefinition

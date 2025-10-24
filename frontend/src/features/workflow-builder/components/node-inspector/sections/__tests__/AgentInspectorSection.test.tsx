@@ -78,6 +78,7 @@ const renderSection = (overrides: Partial<Parameters<typeof AgentInspectorSectio
         onAgentImageGenerationChange={vi.fn()}
         onAgentWeatherToolChange={vi.fn()}
         onAgentWidgetValidationToolChange={vi.fn()}
+        onAgentWorkflowValidationToolChange={vi.fn()}
         {...overrides}
       />
     </I18nProvider>,
@@ -108,5 +109,18 @@ describe("AgentInspectorSection", () => {
     expect(
       screen.getByText(/The selected workflow is no longer available\./i),
     ).toBeInTheDocument();
+  });
+
+  it("calls onAgentWorkflowValidationToolChange when toggled", async () => {
+    const onAgentWorkflowValidationToolChange = vi.fn();
+    renderSection({ onAgentWorkflowValidationToolChange });
+
+    const toggle = screen.getByRole("switch", {
+      name: /Autoriser la fonction de validation de workflow/i,
+    });
+
+    await userEvent.click(toggle);
+
+    expect(onAgentWorkflowValidationToolChange).toHaveBeenCalledWith("agent-1", true);
   });
 });
