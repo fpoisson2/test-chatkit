@@ -29,6 +29,7 @@ services:
       CHATKIT_HOSTED_BROWSER_DEBUG_PORT: ${CHATKIT_HOSTED_BROWSER_DEBUG_PORT:-}
     ports:
       - "0.0.0.0:8000:8000"
+      - "9333:9333"
     depends_on:
       - db
   frontend:

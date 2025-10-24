@@ -35,19 +35,12 @@ export CHATKIT_HOSTED_BROWSER_DEBUG_HOST=0.0.0.0
 export CHATKIT_HOSTED_BROWSER_DEBUG_PORT=9333
 ```
 
+`docker-compose.yml` expose désormais le port `9333` du backend par défaut, ce qui suffit pour accéder à DevTools dans la plupart des configurations Docker.
+
 Puis démarrez uniquement le service backend pour éviter de redémarrer les autres services :
 
 ```bash
 docker compose up backend
-```
-
-Exposez le port DevTools dans `docker-compose.override.yml` si besoin :
-
-```yaml
-services:
-  backend:
-    ports:
-      - "9333:9333"  # correspond à CHATKIT_HOSTED_BROWSER_DEBUG_PORT
 ```
 
 Lorsque la fenêtre est visible, vous pouvez la contrôler via un serveur X11/Wayland local ou via votre environnement Docker s'il supporte l'affichage (ex. VS Code Dev Containers avec forwarding GUI). Sinon, utilisez simplement DevTools pour voir l'écran et le DOM.
