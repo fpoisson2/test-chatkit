@@ -28,10 +28,7 @@ from .models import (
     Workflow,
 )
 from .security import hash_password
-from .telephony.registration import (
-    SIPRegistrationConfig,
-    SIPRegistrationManager,
-)
+from .telephony.registration import SIPRegistrationManager
 from .vector_store import (
     WORKFLOW_VECTOR_STORE_DESCRIPTION,
     WORKFLOW_VECTOR_STORE_METADATA,
