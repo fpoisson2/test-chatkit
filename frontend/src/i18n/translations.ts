@@ -261,6 +261,13 @@ const fr: TranslationDictionary = {
   "workflowBuilder.mobileActions.close": "Fermer",
   "workflowBuilder.mobileActions.properties": "Propriétés du bloc",
   "workflowBuilder.mobileActions.duplicate": "Dupliquer la sélection",
+  "workflowBuilder.mobileActions.delete": "Supprimer la sélection",
+  "workflowBuilder.deleteBlock.confirm":
+    "Supprimer le bloc « {{name}} » ? Cette action est irréversible.",
+  "workflowBuilder.deleteSelection.confirmSingle":
+    "Supprimer le bloc sélectionné ? Cette action est irréversible.",
+  "workflowBuilder.deleteSelection.confirmMultiple":
+    "Supprimer les {{count}} blocs sélectionnés ? Cette action est irréversible.",
   "workflowBuilder.mobileActions.undo": "Annuler (Ctrl+Z)",
   "workflowBuilder.mobileActions.redo": "Rétablir (Ctrl+Y)",
   "workflowBuilder.preview.enter": "Activer la prévisualisation",
@@ -586,6 +593,13 @@ const en: TranslationDictionary = {
   "workflowBuilder.mobileActions.close": "Close",
   "workflowBuilder.mobileActions.properties": "Block properties",
   "workflowBuilder.mobileActions.duplicate": "Duplicate selection",
+  "workflowBuilder.mobileActions.delete": "Delete selection",
+  "workflowBuilder.deleteBlock.confirm":
+    "Delete the \"{{name}}\" block? This action cannot be undone.",
+  "workflowBuilder.deleteSelection.confirmSingle":
+    "Delete the selected block? This action cannot be undone.",
+  "workflowBuilder.deleteSelection.confirmMultiple":
+    "Delete the {{count}} selected blocks? This action cannot be undone.",
   "workflowBuilder.mobileActions.undo": "Undo (Ctrl+Z)",
   "workflowBuilder.mobileActions.redo": "Redo (Ctrl+Y)",
   "workflowBuilder.preview.enter": "Enter preview",

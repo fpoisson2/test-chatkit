@@ -26,7 +26,7 @@ import ReactFlow, {
 
 import "reactflow/dist/style.css";
 
-import { Copy, PenSquare, Redo2, Undo2 } from "lucide-react";
+import { Copy, PenSquare, Redo2, Trash2, Undo2 } from "lucide-react";
 
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
@@ -3585,13 +3585,28 @@ const WorkflowBuilderPage = () => {
       if (isPreviewMode) {
         return;
       }
+      const node = nodesRef.current.find((currentNode) => currentNode.id === nodeId);
+      let confirmed = true;
+      if (node) {
+        const trimmedDisplayName =
+          typeof node.data.displayName === "string" ? node.data.displayName.trim() : "";
+        const displayName = trimmedDisplayName || node.data.slug || nodeId;
+        confirmed = window.confirm(
+          t("workflowBuilder.deleteBlock.confirm", { name: displayName }),
+        );
+      } else {
+        confirmed = window.confirm(t("workflowBuilder.deleteSelection.confirmSingle"));
+      }
+      if (!confirmed) {
+        return;
+      }
       removeElements({ nodeIds: [nodeId] });
       updateHasPendingChanges(true);
       if (selectedNodeId === nodeId) {
         setSelectedNodeId(null);
       }
     },
-    [isPreviewMode, removeElements, selectedNodeId, updateHasPendingChanges]
+    [isPreviewMode, removeElements, selectedNodeId, t, updateHasPendingChanges]
   );
 
   const handleRemoveEdge = useCallback(
@@ -4432,6 +4447,40 @@ const WorkflowBuilderPage = () => {
     setTimeout(() => setSaveState("idle"), 1500);
     return true;
   }, [insertGraphElements, t]);
+
+  const handleDeleteSelection = useCallback((): boolean => {
+    if (isPreviewMode) {
+      return false;
+    }
+
+    const selectedNodeIds = selectedNodeIdsRef.current;
+    const selectedEdgeIds = selectedEdgeIdsRef.current;
+    const hasSelection = selectedNodeIds.size > 0 || selectedEdgeIds.size > 0;
+
+    if (!hasSelection) {
+      return false;
+    }
+
+    if (selectedNodeIds.size > 0) {
+      const confirmKey =
+        selectedNodeIds.size > 1
+          ? "workflowBuilder.deleteSelection.confirmMultiple"
+          : "workflowBuilder.deleteSelection.confirmSingle";
+      const confirmed = window.confirm(
+        t(confirmKey, { count: selectedNodeIds.size }),
+      );
+      if (!confirmed) {
+        return false;
+      }
+    }
+
+    removeElements({
+      nodeIds: selectedNodeIds,
+      edgeIds: selectedEdgeIds,
+    });
+    updateHasPendingChanges(true);
+    return true;
+  }, [isPreviewMode, removeElements, t, updateHasPendingChanges]);
 
   const restoreGraphFromSnapshot = useCallback(
     (snapshot: string): boolean => {
@@ -6539,6 +6588,7 @@ const WorkflowBuilderPage = () => {
   const workflowBusy = loading || isImporting || isExporting;
   const editingLocked = isPreviewMode;
   const hasSelectedElement = !editingLocked && Boolean(selectedNode || selectedEdge);
+  const canDeleteSelection = hasSelectedElement && !workflowBusy;
   const canDuplicateSelection = hasSelectedElement && !workflowBusy;
   const canUndoHistory = !workflowBusy && !editingLocked && historyRef.current.past.length > 0;
   const canRedoHistory = !workflowBusy && !editingLocked && historyRef.current.future.length > 0;
@@ -7055,6 +7105,19 @@ const WorkflowBuilderPage = () => {
                   <Copy aria-hidden="true" size={20} />
                   <span className={styles.srOnly}>
                     {t("workflowBuilder.mobileActions.duplicate")}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.mobileActionButton}
+                  onClick={() => {
+                    handleDeleteSelection();
+                  }}
+                  disabled={!canDeleteSelection}
+                >
+                  <Trash2 aria-hidden="true" size={20} />
+                  <span className={styles.srOnly}>
+                    {t("workflowBuilder.mobileActions.delete")}
                   </span>
                 </button>
                 {hasSelectedElement ? (
