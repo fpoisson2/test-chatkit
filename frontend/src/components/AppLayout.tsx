@@ -3,10 +3,10 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
   type HTMLAttributes,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -27,11 +27,7 @@ type NavigationItem = {
   isActive?: boolean;
 };
 
-type ApplicationKey =
-  | "chat"
-  | "workflows"
-  | "vector-stores"
-  | "widgets";
+type ApplicationKey = "chat" | "workflows";
 
 type ApplicationDescriptor = {
   key: ApplicationKey;
@@ -48,19 +44,12 @@ const APPLICATIONS: ApplicationDescriptor[] = [
     path: "/workflows",
     requiresAdmin: true,
   },
-  {
-    key: "vector-stores",
-    labelKey: "app.sidebar.applications.vectorStores",
-    path: "/vector-stores",
-    requiresAdmin: true,
-  },
-  {
-    key: "widgets",
-    labelKey: "app.sidebar.applications.widgets",
-    path: "/widgets",
-    requiresAdmin: true,
-  },
 ];
+
+const APPLICATION_ICONS: Record<ApplicationKey, SidebarIconName> = {
+  chat: "home",
+  workflows: "workflow",
+};
 
 const buildNavigationItems = ({
   isAuthenticated,
@@ -153,6 +142,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
+  const appSwitcherLabelId = useId();
 
   useEffect(() => {
     const wasDesktop = previousIsDesktopRef.current;
@@ -220,21 +210,15 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     return matchingApplication?.key ?? "chat";
   }, [availableApplications, location.pathname]);
 
-  const handleApplicationChange = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      const nextApplication = availableApplications.find((application) => application.key === event.target.value);
-
-      if (!nextApplication) {
-        return;
-      }
-
+  const handleApplicationNavigate = useCallback(
+    (application: ApplicationDescriptor) => {
       if (!isDesktopLayout) {
         closeSidebar();
       }
 
-      navigate(nextApplication.path);
+      navigate(application.path);
     },
-    [availableApplications, closeSidebar, isDesktopLayout, navigate],
+    [closeSidebar, isDesktopLayout, navigate],
   );
 
   const handleOpenSettings = useCallback(
@@ -438,24 +422,39 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             <div className="chatkit-sidebar__topline">
               <div className="chatkit-sidebar__brand">
                 <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
-                <div className="chatkit-sidebar__brand-switcher">
-                  <label htmlFor="chatkit-app-switcher" className="visually-hidden">
-                    {t("app.sidebar.switcherLabel")}
-                  </label>
-                  <select
-                    id="chatkit-app-switcher"
-                    className="chatkit-sidebar__brand-select"
-                    value={activeApplication}
-                    onChange={handleApplicationChange}
-                    tabIndex={sidebarTabIndex}
-                  >
-                    {availableApplications.map((application) => (
-                      <option key={application.key} value={application.key}>
-                        {application.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {availableApplications.length > 0 ? (
+                  <div className="chatkit-sidebar__brand-switcher">
+                    <span id={appSwitcherLabelId} className="visually-hidden">
+                      {t("app.sidebar.switcherLabel")}
+                    </span>
+                    <nav
+                      className="chatkit-sidebar__app-switcher"
+                      aria-labelledby={appSwitcherLabelId}
+                    >
+                      {availableApplications.map((application) => {
+                        const isActive = activeApplication === application.key;
+
+                        return (
+                          <button
+                            key={application.key}
+                            type="button"
+                            className={`chatkit-sidebar__app-switcher-button${
+                              isActive ? " chatkit-sidebar__app-switcher-button--active" : ""
+                            }`}
+                            onClick={() => handleApplicationNavigate(application)}
+                            tabIndex={sidebarTabIndex}
+                            aria-current={isActive ? "page" : undefined}
+                          >
+                            <span className="chatkit-sidebar__app-switcher-icon" aria-hidden="true">
+                              <SidebarIcon name={APPLICATION_ICONS[application.key]} />
+                            </span>
+                            <span className="chatkit-sidebar__app-switcher-label">{application.label}</span>
+                          </button>
+                        );
+                      })}
+                    </nav>
+                  </div>
+                ) : null}
               </div>
               <div className="chatkit-sidebar__actions">
                 {isSidebarOpen ? (

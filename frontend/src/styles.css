@@ -883,6 +883,9 @@ button {
   position: relative;
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .chatkit-sidebar__logo {
@@ -891,23 +894,73 @@ button {
   color: var(--text-color);
 }
 
-.chatkit-sidebar__brand-select {
-  font-weight: 700;
-  font-size: 1.05rem;
-  color: var(--text-color);
-  background: transparent;
-  border: none;
-  padding: 4px 8px 4px 0;
-  border-radius: 8px;
-  cursor: pointer;
+.chatkit-sidebar__app-switcher {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  min-height: 44px;
   width: 100%;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
-.chatkit-sidebar__brand-select:hover,
-.chatkit-sidebar__brand-select:focus-visible {
-  background: rgba(15, 23, 42, 0.08);
-  outline: none;
+.chatkit-sidebar__app-switcher-button {
+  position: relative;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 120px;
+  transition: color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chatkit-sidebar__app-switcher-button:hover,
+.chatkit-sidebar__app-switcher-button:focus-visible {
+  background: rgba(15, 23, 42, 0.12);
+  color: var(--color-text-strong);
+}
+
+.chatkit-sidebar__app-switcher-button:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.4);
+  outline-offset: 2px;
+}
+
+.chatkit-sidebar__app-switcher-button--active {
+  background: var(--surface-strong);
+  color: var(--color-text-strong);
+  box-shadow: var(--shadow-soft);
+}
+
+.chatkit-sidebar__app-switcher-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: currentColor;
+}
+
+.chatkit-sidebar__app-switcher-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.chatkit-sidebar__app-switcher-label {
+  white-space: nowrap;
 }
 
 .chatkit-sidebar__dismiss {
@@ -1215,7 +1268,7 @@ button {
   justify-content: center;
 }
 
-.chatkit-sidebar--collapsed .chatkit-sidebar__brand-select,
+.chatkit-sidebar--collapsed .chatkit-sidebar__app-switcher,
 .chatkit-sidebar--collapsed .chatkit-sidebar__label,
 .chatkit-sidebar--collapsed .chatkit-sidebar__dismiss {
   display: none;
