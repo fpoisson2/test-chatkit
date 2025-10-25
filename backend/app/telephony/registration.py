@@ -312,9 +312,9 @@ class SIPRegistrationManager:
         if self._app is None:
             self._app = aiosip.Application(loop=self._loop)
 
-        registrar_contact = aiosip.Contact.from_header(config.uri)
-        remote_host = registrar_contact["uri"]["host"]
-        remote_port = registrar_contact["uri"].get("port") or 5060
+        remote_host, remote_port = self._parse_registrar_endpoint(config.uri)
+        if remote_host is None:
+            raise ValueError("URI de trunk SIP invalide : hôte introuvable")
         remote_addr = (remote_host, remote_port)
         local_addr = (config.contact_host, config.contact_port)
 
@@ -391,17 +391,6 @@ class SIPRegistrationManager:
             self.apply_config(None)
             return
 
-        contact_host, contact_port, contact_transport = self._resolve_contact_endpoint(
-            stored_settings, trunk_uri
-        )
-        if not contact_host or contact_port is None:
-            LOGGER.warning(
-                "Impossible d'initialiser l'enregistrement SIP : contact "
-                "sip_contact_host/sip_contact_port manquant",
-            )
-            self.apply_config(None)
-            return
-
         username = (stored_settings.sip_trunk_username or "").strip()
         if not username:
             fallback_username = getattr(self.settings, "sip_username", None)
@@ -423,8 +412,28 @@ class SIPRegistrationManager:
             self.apply_config(None)
             return
 
+        normalized_trunk_uri = self._normalize_trunk_uri(trunk_uri, str(username))
+        if normalized_trunk_uri is None:
+            LOGGER.warning(
+                "Impossible d'initialiser l'enregistrement SIP : "
+                "URI de trunk SIP invalide",
+            )
+            self.apply_config(None)
+            return
+
+        contact_host, contact_port, contact_transport = self._resolve_contact_endpoint(
+            stored_settings, normalized_trunk_uri
+        )
+        if not contact_host or contact_port is None:
+            LOGGER.warning(
+                "Impossible d'initialiser l'enregistrement SIP : contact "
+                "sip_contact_host/sip_contact_port manquant",
+            )
+            self.apply_config(None)
+            return
+
         config = SIPRegistrationConfig(
-            uri=trunk_uri,
+            uri=normalized_trunk_uri,
             username=str(username),
             password=str(password),
             contact_host=str(contact_host),
@@ -490,6 +499,51 @@ class SIPRegistrationManager:
             contact_port = _DEFAULT_SIP_PORT
 
         return contact_host, contact_port, transport
+
+    @staticmethod
+    def _normalize_trunk_uri(trunk_uri: str, username: str) -> str | None:
+        """Return a canonical SIP URI for the registrar."""
+
+        candidate = SIPRegistrationManager._normalize_optional_string(trunk_uri)
+        if not candidate:
+            return None
+
+        trimmed = candidate.strip()
+        if trimmed.startswith("<") and trimmed.endswith(">"):
+            trimmed = trimmed[1:-1].strip()
+
+        scheme = "sip"
+        remainder = trimmed
+        lower = trimmed.lower()
+        if lower.startswith("sip:") or lower.startswith("sips:"):
+            scheme, remainder = trimmed.split(":", 1)
+        remainder = remainder.lstrip("/")
+
+        user_part = ""
+        host_part = remainder
+        if "@" in remainder:
+            user_part, host_part = remainder.split("@", 1)
+
+        user_part = user_part.strip()
+        host_part = host_part.strip()
+        if not host_part:
+            return None
+
+        host_component = host_part.lstrip("/")
+        host_component = host_component.split(";", 1)[0]
+        host_component = host_component.split("?", 1)[0]
+        if not host_component:
+            return None
+
+        normalized_user = user_part or username.strip()
+        if not normalized_user:
+            return None
+
+        normalized_host = host_part
+        if normalized_host.startswith("//"):
+            normalized_host = normalized_host[2:]
+
+        return f"{scheme}:{normalized_user}@{normalized_host}"
 
     @staticmethod
     def _normalize_optional_string(value: Any) -> str | None:
@@ -580,22 +634,41 @@ class SIPRegistrationManager:
 
     @staticmethod
     def _parse_registrar_endpoint(uri: str) -> tuple[str | None, int]:
-        normalized = uri.strip()
-        if not normalized.lower().startswith("sip:"):
+        candidate = SIPRegistrationManager._normalize_optional_string(uri)
+        if not candidate:
             return None, _DEFAULT_SIP_PORT
 
-        candidate = normalized[4:]
-        if not candidate.startswith("//"):
-            candidate = "//" + candidate
+        trimmed = candidate.strip()
+        if trimmed.startswith("<") and trimmed.endswith(">"):
+            trimmed = trimmed[1:-1].strip()
 
-        parsed = urllib.parse.urlparse(f"sip:{candidate}")
+        scheme = "sip"
+        remainder = trimmed
+        lower = trimmed.lower()
+        if lower.startswith("sip:") or lower.startswith("sips:"):
+            scheme, remainder = trimmed.split(":", 1)
+        remainder = remainder.lstrip("/")
+
+        if "@" in remainder:
+            _, host_part = remainder.rsplit("@", 1)
+        else:
+            host_part = remainder
+
+        host_part = host_part.lstrip("/")
+        host_port = host_part.split(";", 1)[0]
+        host_port = host_port.split("?", 1)[0]
+        if not host_port:
+            return None, _DEFAULT_SIP_PORT
+
+        fake_uri = f"{scheme}://{host_port}"
+        parsed = urllib.parse.urlparse(fake_uri)
         host = parsed.hostname
-        if host and ";" in host:
-            host = host.split(";", 1)[0]
-
         try:
             port = parsed.port
         except ValueError:
             port = None
+
+        if host is None:
+            return None, _DEFAULT_SIP_PORT
 
         return host, port or _DEFAULT_SIP_PORT
