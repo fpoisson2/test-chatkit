@@ -3585,13 +3585,28 @@ const WorkflowBuilderPage = () => {
       if (isPreviewMode) {
         return;
       }
+      const node = nodesRef.current.find((currentNode) => currentNode.id === nodeId);
+      let confirmed = true;
+      if (node) {
+        const trimmedDisplayName =
+          typeof node.data.displayName === "string" ? node.data.displayName.trim() : "";
+        const displayName = trimmedDisplayName || node.data.slug || nodeId;
+        confirmed = window.confirm(
+          t("workflowBuilder.deleteBlock.confirm", { name: displayName }),
+        );
+      } else {
+        confirmed = window.confirm(t("workflowBuilder.deleteSelection.confirmSingle"));
+      }
+      if (!confirmed) {
+        return;
+      }
       removeElements({ nodeIds: [nodeId] });
       updateHasPendingChanges(true);
       if (selectedNodeId === nodeId) {
         setSelectedNodeId(null);
       }
     },
-    [isPreviewMode, removeElements, selectedNodeId, updateHasPendingChanges]
+    [isPreviewMode, removeElements, selectedNodeId, t, updateHasPendingChanges]
   );
 
   const handleRemoveEdge = useCallback(
@@ -4438,20 +4453,34 @@ const WorkflowBuilderPage = () => {
       return false;
     }
 
-    const hasSelection =
-      selectedNodeIdsRef.current.size > 0 || selectedEdgeIdsRef.current.size > 0;
+    const selectedNodeIds = selectedNodeIdsRef.current;
+    const selectedEdgeIds = selectedEdgeIdsRef.current;
+    const hasSelection = selectedNodeIds.size > 0 || selectedEdgeIds.size > 0;
 
     if (!hasSelection) {
       return false;
     }
 
+    if (selectedNodeIds.size > 0) {
+      const confirmKey =
+        selectedNodeIds.size > 1
+          ? "workflowBuilder.deleteSelection.confirmMultiple"
+          : "workflowBuilder.deleteSelection.confirmSingle";
+      const confirmed = window.confirm(
+        t(confirmKey, { count: selectedNodeIds.size }),
+      );
+      if (!confirmed) {
+        return false;
+      }
+    }
+
     removeElements({
-      nodeIds: selectedNodeIdsRef.current,
-      edgeIds: selectedEdgeIdsRef.current,
+      nodeIds: selectedNodeIds,
+      edgeIds: selectedEdgeIds,
     });
     updateHasPendingChanges(true);
     return true;
-  }, [isPreviewMode, removeElements, updateHasPendingChanges]);
+  }, [isPreviewMode, removeElements, t, updateHasPendingChanges]);
 
   const restoreGraphFromSnapshot = useCallback(
     (snapshot: string): boolean => {
