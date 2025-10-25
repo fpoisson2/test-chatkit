@@ -64,8 +64,9 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       if (mode !== "local") {
         setMode("local");
       }
-      onWorkflowActivated({ kind: "local", workflow: null }, { reason: "initial" });
-      onWorkflowActivatedRef.current(null, { reason: "initial" });
+      const selection: WorkflowActivation = { kind: "local", workflow: null };
+      onWorkflowActivated(selection, { reason: "initial" });
+      onWorkflowActivatedRef.current(selection, { reason: "initial" });
       return;
     }
 
@@ -105,13 +106,14 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         null;
       setSelectedWorkflowId(active?.id ?? null);
 
+      const selection: WorkflowActivation = { kind: "local", workflow: active ?? null };
       if (mode === "local") {
-        onWorkflowActivated({ kind: "local", workflow: active ?? null }, { reason: "initial" });
+        onWorkflowActivated(selection, { reason: "initial" });
       } else if (mode === "hosted" && hostedList.length === 0) {
         setMode("local");
-        onWorkflowActivated({ kind: "local", workflow: active ?? null }, { reason: "initial" });
+        onWorkflowActivated(selection, { reason: "initial" });
       }
-      onWorkflowActivatedRef.current(active ?? null, { reason: "initial" });
+      onWorkflowActivatedRef.current(selection, { reason: "initial" });
     } catch (err) {
       let message = err instanceof Error ? err.message : "Impossible de charger les workflows.";
       if (isApiError(err) && err.status === 403) {
@@ -131,11 +133,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       setLoading(false);
     }
   }, [isAdmin, mode, onWorkflowActivated, setMode, token]);
-      onWorkflowActivatedRef.current(null, { reason: "initial" });
-    } finally {
-      setLoading(false);
-    }
-  }, [isAdmin, token]);
 
   useEffect(() => {
     void loadWorkflows();
