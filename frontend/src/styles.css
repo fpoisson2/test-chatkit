@@ -442,6 +442,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  width: 100%;
 }
 
 .chatkit-sidebar__section-title {
@@ -449,6 +450,8 @@ button {
   font-size: 1.05rem;
   font-weight: 700;
   color: var(--text-color);
+  flex: 1;
+  min-width: 0;
 }
 
 .chatkit-sidebar__section-text {
