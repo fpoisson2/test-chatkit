@@ -443,6 +443,12 @@ button {
   padding: 0 var(--chatkit-sidebar-content-padding-x) 16px;
 }
 
+@media (max-width: 768px) {
+  .chatkit-sidebar__dynamic {
+    padding-inline: 0;
+  }
+}
+
 .chatkit-sidebar__section {
   display: flex;
   flex-direction: column;
