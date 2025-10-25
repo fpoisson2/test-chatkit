@@ -115,6 +115,7 @@ import {
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
 import { WorkflowPreviewPanel } from "./components/WorkflowPreviewPanel";
+import { createHostedWorkflowGraph } from "./createHostedWorkflowGraph";
 import {
   parseWorkflowImport,
   WorkflowImportError,
@@ -4755,8 +4756,31 @@ const WorkflowBuilderPage = () => {
   );
 
   const handleCreateWorkflow = useCallback(async () => {
-    const proposed = window.prompt("Nom du nouveau workflow ?");
-    if (!proposed) {
+    const useHosted = window.confirm(
+      t("workflowBuilder.sidebar.newWorkflow.useHostedConfirm"),
+    );
+
+    let hostedIdentifier: string | null = null;
+    if (useHosted) {
+      const identifierInput = window.prompt(
+        t("workflowBuilder.sidebar.newWorkflow.hostedIdPrompt"),
+      );
+      if (identifierInput === null) {
+        return;
+      }
+      const trimmedIdentifier = identifierInput.trim();
+      if (!trimmedIdentifier) {
+        window.alert(t("workflowBuilder.sidebar.newWorkflow.hostedIdRequired"));
+        return;
+      }
+      hostedIdentifier = trimmedIdentifier;
+    }
+
+    const namePromptKey = hostedIdentifier
+      ? "workflowBuilder.sidebar.newWorkflow.hostedNamePrompt"
+      : "workflowBuilder.sidebar.newWorkflow.localNamePrompt";
+    const proposed = window.prompt(t(namePromptKey));
+    if (proposed === null) {
       return;
     }
     const displayName = proposed.trim();
@@ -4768,7 +4792,16 @@ const WorkflowBuilderPage = () => {
       slug,
       display_name: displayName,
       description: null,
-      graph: null,
+      graph: hostedIdentifier
+        ? createHostedWorkflowGraph({
+            identifier: hostedIdentifier,
+            agentLabel: t("workflowBuilder.sidebar.newWorkflow.hostedAgentName"),
+            agentInstructions: t(
+              "workflowBuilder.sidebar.newWorkflow.hostedAgentInstructions",
+            ),
+            endMessage: DEFAULT_END_MESSAGE,
+          })
+        : null,
     };
     const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows");
     let lastError: Error | null = null;
@@ -4789,6 +4822,13 @@ const WorkflowBuilderPage = () => {
         await loadWorkflows({ selectWorkflowId: data.workflow_id, selectVersionId: data.id });
         setSaveState("saved");
         setSaveMessage(`Workflow "${displayName}" créé avec succès.`);
+        if (hostedIdentifier) {
+          window.alert(
+            t("workflowBuilder.sidebar.newWorkflow.hostedCreationSuccess", {
+              identifier: hostedIdentifier,
+            }),
+          );
+        }
         setTimeout(() => setSaveState("idle"), 1500);
         return;
       } catch (error) {
@@ -4797,7 +4837,12 @@ const WorkflowBuilderPage = () => {
     }
     setSaveState("error");
     setSaveMessage(lastError?.message ?? "Impossible de créer le workflow.");
-  }, [authHeader, loadWorkflows]);
+  }, [
+    authHeader,
+    backendUrl,
+    loadWorkflows,
+    t,
+  ]);
 
   const handleDeleteWorkflow = useCallback(
     async (workflowId?: number) => {

@@ -174,6 +174,20 @@ const fr: TranslationDictionary = {
     "Aucun autre workflow disponible pour être ajouté comme outil.",
   "workflowBuilder.agentInspector.workflowToolsMissing":
     "Le workflow « {{slug}} » n'est plus disponible. Retirez-le de la configuration.",
+  "workflowBuilder.sidebar.newWorkflow.useHostedConfirm":
+    "Souhaitez-vous connecter un workflow hébergé ?",
+  "workflowBuilder.sidebar.newWorkflow.hostedIdPrompt":
+    "Quel est l'identifiant du workflow hébergé à connecter ?",
+  "workflowBuilder.sidebar.newWorkflow.hostedIdRequired":
+    "Veuillez renseigner l'identifiant du workflow hébergé.",
+  "workflowBuilder.sidebar.newWorkflow.localNamePrompt": "Nom du nouveau workflow ?",
+  "workflowBuilder.sidebar.newWorkflow.hostedNamePrompt":
+    "Nom à afficher pour ce workflow hébergé ?",
+  "workflowBuilder.sidebar.newWorkflow.hostedAgentName": "Agent hébergé",
+  "workflowBuilder.sidebar.newWorkflow.hostedAgentInstructions":
+    "Ce nœud délègue la conversation au workflow hébergé sélectionné.",
+  "workflowBuilder.sidebar.newWorkflow.hostedCreationSuccess":
+    "Workflow hébergé « {{identifier}} » connecté. Vous pouvez personnaliser les étapes avant publication.",
   "workflowBuilder.agentInspector.modelsLoading": "Chargement des modèles disponibles…",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Ajoute l'outil image_generation pour produire des visuels. Actuellement, seule l'API Images d'OpenAI est prise en charge.",
@@ -490,6 +504,20 @@ const en: TranslationDictionary = {
     "No other workflows are available to expose as tools.",
   "workflowBuilder.agentInspector.workflowToolsMissing":
     "The \"{{slug}}\" workflow is no longer available. Remove it from the configuration.",
+  "workflowBuilder.sidebar.newWorkflow.useHostedConfirm":
+    "Would you like to connect a hosted workflow?",
+  "workflowBuilder.sidebar.newWorkflow.hostedIdPrompt":
+    "What's the hosted workflow identifier to connect?",
+  "workflowBuilder.sidebar.newWorkflow.hostedIdRequired":
+    "Please provide the hosted workflow identifier.",
+  "workflowBuilder.sidebar.newWorkflow.localNamePrompt": "What should we name the new workflow?",
+  "workflowBuilder.sidebar.newWorkflow.hostedNamePrompt":
+    "What name should we display for this hosted workflow?",
+  "workflowBuilder.sidebar.newWorkflow.hostedAgentName": "Hosted agent",
+  "workflowBuilder.sidebar.newWorkflow.hostedAgentInstructions":
+    "This node delegates the conversation to the hosted workflow you selected.",
+  "workflowBuilder.sidebar.newWorkflow.hostedCreationSuccess":
+    "Hosted workflow “{{identifier}}” connected. You can customize the steps before publishing.",
   "workflowBuilder.agentInspector.modelsLoading": "Loading available models…",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Enables the image_generation tool to produce visuals. At the moment, only OpenAI's Images API is supported.",
