@@ -31,17 +31,18 @@ export const useWorkflowChatSession = ({
 
   const noopRequestRefresh = useCallback(() => undefined, []);
 
-  const { chatkitWorkflowInfo, requestRefresh } =
-    mode === "hosted"
-      ? { chatkitWorkflowInfo: null, requestRefresh: noopRequestRefresh }
-      : useChatkitWorkflowSync({
-          token,
-          activeWorkflow,
-          fetchUpdates,
-          sendUserMessage,
-          initialThreadId,
-          reportError,
-        });
+  const workflowSync = useChatkitWorkflowSync({
+    token,
+    activeWorkflow,
+    fetchUpdates,
+    sendUserMessage,
+    initialThreadId,
+    reportError,
+    enabled: mode !== "hosted",
+  });
+
+  const requestRefresh = mode === "hosted" ? noopRequestRefresh : workflowSync.requestRefresh;
+  const chatkitWorkflowInfo = mode === "hosted" ? null : workflowSync.chatkitWorkflowInfo;
 
   return useMemo(
     () => ({

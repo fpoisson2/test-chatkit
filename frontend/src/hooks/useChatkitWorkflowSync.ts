@@ -10,6 +10,7 @@ type UseChatkitWorkflowSyncParams = {
   sendUserMessage: (payload: { text: string; newThread?: boolean }) => Promise<unknown>;
   initialThreadId: string | null;
   reportError: (message: string, detail?: unknown) => void;
+  enabled?: boolean;
 };
 
 type UseChatkitWorkflowSyncResult = {
@@ -26,6 +27,7 @@ export const useChatkitWorkflowSync = ({
   sendUserMessage,
   initialThreadId,
   reportError,
+  enabled = true,
 }: UseChatkitWorkflowSyncParams): UseChatkitWorkflowSyncResult => {
   const [chatkitWorkflowInfo, setChatkitWorkflowInfo] = useState<ChatKitWorkflowInfo | null>(null);
   const autoStartAttemptRef = useRef(false);
@@ -42,6 +44,9 @@ export const useChatkitWorkflowSync = ({
 
   const requestRefresh = useCallback(
     (context?: string) => {
+      if (!enabled) {
+        return undefined;
+      }
       const refresh = fetchUpdatesRef.current;
       if (!refresh) {
         return undefined;
@@ -52,10 +57,15 @@ export const useChatkitWorkflowSync = ({
         }
       });
     },
-    [],
+    [enabled],
   );
 
   useEffect(() => {
+    if (!enabled) {
+      setChatkitWorkflowInfo(null);
+      return;
+    }
+
     if (!token) {
       setChatkitWorkflowInfo(null);
       return;
@@ -87,9 +97,20 @@ export const useChatkitWorkflowSync = ({
     return () => {
       cancelled = true;
     };
-  }, [token, activeWorkflow?.id, activeWorkflow?.active_version_id, activeWorkflow?.updated_at]);
+  }, [
+    enabled,
+    token,
+    activeWorkflow?.id,
+    activeWorkflow?.active_version_id,
+    activeWorkflow?.updated_at,
+  ]);
 
   useEffect(() => {
+    if (!enabled) {
+      autoStartAttemptRef.current = false;
+      return;
+    }
+
     if (!chatkitWorkflowInfo || !chatkitWorkflowInfo.auto_start) {
       autoStartAttemptRef.current = false;
       return;
@@ -123,16 +144,33 @@ export const useChatkitWorkflowSync = ({
         }
         reportError(message, err);
       });
-  }, [chatkitWorkflowInfo, initialThreadId, reportError, requestRefresh, sendUserMessage]);
+  }, [
+    enabled,
+    chatkitWorkflowInfo,
+    initialThreadId,
+    reportError,
+    requestRefresh,
+    sendUserMessage,
+  ]);
 
   useEffect(() => {
+    if (!enabled) {
+      autoStartAttemptRef.current = false;
+      previousThreadIdRef.current = initialThreadId;
+      return;
+    }
+
     if (previousThreadIdRef.current && !initialThreadId) {
       autoStartAttemptRef.current = false;
     }
     previousThreadIdRef.current = initialThreadId;
-  }, [initialThreadId]);
+  }, [enabled, initialThreadId]);
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     if (typeof window === "undefined" || typeof document === "undefined") {
       return;
     }
@@ -180,7 +218,7 @@ export const useChatkitWorkflowSync = ({
         cancelAnimationFrame(rafHandle);
       }
     };
-  }, [fetchUpdates]);
+  }, [enabled, fetchUpdates]);
 
   return { chatkitWorkflowInfo, requestRefresh };
 };
