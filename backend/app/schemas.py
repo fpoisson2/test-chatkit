@@ -101,6 +101,24 @@ class VoiceSettingsUpdateRequest(BaseModel):
     )
 
 
+class TelephonyTrunkSettingsResponse(BaseModel):
+    sip_bind_host: str | None = None
+    sip_bind_port: int | None = None
+    sip_username: str | None = None
+    sip_password: str | None = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TelephonyTrunkSettingsUpdateRequest(BaseModel):
+    sip_bind_host: str | None = Field(default=None, max_length=255)
+    sip_bind_port: int | None = Field(default=None, ge=1, le=65535)
+    sip_username: str | None = Field(default=None, max_length=255)
+    sip_password: str | None = Field(default=None, max_length=255)
+
+
 class AppSettingsResponse(BaseModel):
     thread_title_prompt: str
     default_thread_title_prompt: str

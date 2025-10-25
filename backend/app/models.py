@@ -152,6 +152,27 @@ class VoiceSettings(Base):
     )
 
 
+class TelephonyTrunkSettings(Base):
+    __tablename__ = "telephony_trunk_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    sip_bind_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sip_bind_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sip_username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sip_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+
 class TelephonyRoute(Base):
     __tablename__ = "telephony_routes"
 

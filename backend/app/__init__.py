@@ -9,6 +9,7 @@ from .routes import (
     auth,
     docs,
     model_registry,
+    telephony_trunk,
     tools,
     users,
     vector_stores,
@@ -45,6 +46,7 @@ if chatkit and hasattr(chatkit, "router"):
     app.include_router(chatkit.router)
 app.include_router(tools.router)
 app.include_router(vector_stores.router)
+app.include_router(telephony_trunk.router)
 app.include_router(voice_settings.router)
 app.include_router(widgets.router)
 app.include_router(workflows.router)

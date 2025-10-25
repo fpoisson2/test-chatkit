@@ -10,6 +10,7 @@ __all__ = [
     "users",
     "vector_stores",
     "voice_settings",
+    "telephony_trunk",
     "widgets",
     "workflows",
 ]

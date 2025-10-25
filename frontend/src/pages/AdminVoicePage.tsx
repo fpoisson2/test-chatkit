@@ -3,10 +3,13 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useAuth } from "../auth";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { useI18n } from "../i18n";
 import {
   VoiceSettings,
   isUnauthorizedError,
   voiceSettingsApi,
+  telephonyTrunkApi,
+  type TelephonyTrunkSettings,
 } from "../utils/backend";
 
 type PromptVariableField = {
@@ -45,8 +48,27 @@ const buildVoiceForm = (settings: VoiceSettings | null): VoiceSettingsForm => ({
 
 const EMPTY_VOICE_FORM = buildVoiceForm(null);
 
+type TelephonyTrunkForm = {
+  host: string;
+  port: string;
+  username: string;
+  password: string;
+};
+
+const buildTrunkForm = (
+  settings: TelephonyTrunkSettings | null,
+): TelephonyTrunkForm => ({
+  host: settings?.sip_bind_host ?? "",
+  port: settings?.sip_bind_port ? String(settings.sip_bind_port) : "",
+  username: settings?.sip_username ?? "",
+  password: settings?.sip_password ?? "",
+});
+
+const EMPTY_TRUNK_FORM = buildTrunkForm(null);
+
 export const AdminVoicePage = () => {
   const { token, logout } = useAuth();
+  const { t } = useI18n();
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettings | null>(
     null,
   );
@@ -55,6 +77,14 @@ export const AdminVoicePage = () => {
   const [isVoiceLoading, setVoiceLoading] = useState(true);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [voiceSuccess, setVoiceSuccess] = useState<string | null>(null);
+  const [trunkSettings, setTrunkSettings] =
+    useState<TelephonyTrunkSettings | null>(null);
+  const [trunkForm, setTrunkForm] = useState<TelephonyTrunkForm>(
+    EMPTY_TRUNK_FORM,
+  );
+  const [isTrunkLoading, setTrunkLoading] = useState(true);
+  const [trunkError, setTrunkError] = useState<string | null>(null);
+  const [trunkSuccess, setTrunkSuccess] = useState<string | null>(null);
 
   const fetchVoiceSettings = useCallback(async () => {
     if (!token) {
@@ -86,9 +116,41 @@ export const AdminVoicePage = () => {
     }
   }, [logout, token]);
 
+  const fetchTrunkSettings = useCallback(async () => {
+    if (!token) {
+      setTrunkSettings(null);
+      setTrunkForm(EMPTY_TRUNK_FORM);
+      setTrunkLoading(false);
+      return;
+    }
+
+    setTrunkLoading(true);
+    setTrunkError(null);
+    setTrunkSuccess(null);
+    try {
+      const data = await telephonyTrunkApi.get(token);
+      setTrunkSettings(data);
+      setTrunkForm(buildTrunkForm(data));
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        logout();
+        setTrunkError(t("adminVoice.trunk.errors.sessionExpired"));
+        return;
+      }
+      setTrunkError(
+        err instanceof Error
+          ? err.message
+          : t("adminVoice.trunk.errors.loadFailed"),
+      );
+    } finally {
+      setTrunkLoading(false);
+    }
+  }, [logout, t, token]);
+
   useEffect(() => {
     void fetchVoiceSettings();
-  }, [fetchVoiceSettings]);
+    void fetchTrunkSettings();
+  }, [fetchTrunkSettings, fetchVoiceSettings]);
 
   const handleVoiceSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -166,6 +228,64 @@ export const AdminVoicePage = () => {
     setVoiceSuccess(null);
   };
 
+  const handleTrunkSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setTrunkError(null);
+    setTrunkSuccess(null);
+
+    if (!token) {
+      setTrunkError(t("adminVoice.trunk.errors.sessionExpired"));
+      return;
+    }
+
+    const host = trunkForm.host.trim();
+    const username = trunkForm.username.trim();
+    const password = trunkForm.password.trim();
+    const portValue = trunkForm.port.trim();
+    let port: number | null = null;
+    if (portValue) {
+      const parsed = Number(portValue);
+      if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) {
+        setTrunkError(t("adminVoice.trunk.errors.invalidPort"));
+        return;
+      }
+      port = parsed;
+    }
+
+    try {
+      const updated = await telephonyTrunkApi.update(token, {
+        sip_bind_host: host || null,
+        sip_bind_port: port,
+        sip_username: username || null,
+        sip_password: password || null,
+      });
+      setTrunkSettings(updated);
+      setTrunkForm(buildTrunkForm(updated));
+      setTrunkSuccess(t("adminVoice.trunk.success.saved"));
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        logout();
+        setTrunkError(t("adminVoice.trunk.errors.sessionExpired"));
+        return;
+      }
+      setTrunkError(
+        err instanceof Error
+          ? err.message
+          : t("adminVoice.trunk.errors.saveFailed"),
+      );
+    }
+  };
+
+  const handleTrunkReset = () => {
+    if (trunkSettings) {
+      setTrunkForm(buildTrunkForm(trunkSettings));
+    } else {
+      setTrunkForm(EMPTY_TRUNK_FORM);
+    }
+    setTrunkError(null);
+    setTrunkSuccess(null);
+  };
+
   const handleAddPromptVariable = () => {
     setVoiceForm((prev) => ({
       ...prev,
@@ -200,6 +320,10 @@ export const AdminVoicePage = () => {
         {voiceError && <div className="alert alert--danger">{voiceError}</div>}
         {voiceSuccess && (
           <div className="alert alert--success">{voiceSuccess}</div>
+        )}
+        {trunkError && <div className="alert alert--danger">{trunkError}</div>}
+        {trunkSuccess && (
+          <div className="alert alert--success">{trunkSuccess}</div>
         )}
         <div className="admin-grid">
           <section className="admin-card">
@@ -391,6 +515,119 @@ export const AdminVoicePage = () => {
                     disabled={isVoiceLoading}
                   >
                     Enregistrer
+                  </button>
+                </div>
+              </form>
+            )}
+          </section>
+          <section className="admin-card">
+            <div>
+              <h2 className="admin-card__title">
+                {t("adminVoice.trunk.cardTitle")}
+              </h2>
+              <p className="admin-card__subtitle">
+                {t("adminVoice.trunk.cardDescription")}
+              </p>
+              {trunkSettings ? (
+                <p className="admin-card__subtitle">
+                  {t("adminVoice.trunk.lastUpdated", {
+                    value: new Date(trunkSettings.updated_at).toLocaleString(),
+                  })}
+                </p>
+              ) : null}
+            </div>
+            {isTrunkLoading ? (
+              <p className="admin-card__subtitle">
+                {t("adminVoice.trunk.loading")}
+              </p>
+            ) : (
+              <form className="admin-form" onSubmit={handleTrunkSubmit}>
+                <div className="admin-form__row">
+                  <label className="label">
+                    {t("adminVoice.trunk.hostLabel")}
+                    <input
+                      className="input"
+                      type="text"
+                      value={trunkForm.host}
+                      onChange={(event) =>
+                        setTrunkForm((prev) => ({
+                          ...prev,
+                          host: event.target.value,
+                        }))
+                      }
+                      placeholder={t("adminVoice.trunk.hostPlaceholder")}
+                    />
+                    <span className="admin-card__subtitle">
+                      {t("adminVoice.trunk.hostHelp")}
+                    </span>
+                  </label>
+                  <label className="label">
+                    {t("adminVoice.trunk.portLabel")}
+                    <input
+                      className="input"
+                      type="text"
+                      inputMode="numeric"
+                      value={trunkForm.port}
+                      onChange={(event) =>
+                        setTrunkForm((prev) => ({
+                          ...prev,
+                          port: event.target.value,
+                        }))
+                      }
+                      placeholder={t("adminVoice.trunk.portPlaceholder")}
+                    />
+                    <span className="admin-card__subtitle">
+                      {t("adminVoice.trunk.portHelp")}
+                    </span>
+                  </label>
+                </div>
+                <div className="admin-form__row">
+                  <label className="label">
+                    {t("adminVoice.trunk.usernameLabel")}
+                    <input
+                      className="input"
+                      type="text"
+                      value={trunkForm.username}
+                      onChange={(event) =>
+                        setTrunkForm((prev) => ({
+                          ...prev,
+                          username: event.target.value,
+                        }))
+                      }
+                      placeholder={t("adminVoice.trunk.usernamePlaceholder")}
+                    />
+                  </label>
+                  <label className="label">
+                    {t("adminVoice.trunk.passwordLabel")}
+                    <input
+                      className="input"
+                      type="password"
+                      value={trunkForm.password}
+                      onChange={(event) =>
+                        setTrunkForm((prev) => ({
+                          ...prev,
+                          password: event.target.value,
+                        }))
+                      }
+                      placeholder={t("adminVoice.trunk.passwordPlaceholder")}
+                    />
+                  </label>
+                </div>
+                <div className="admin-form__actions" style={{ gap: "12px" }}>
+                  <button
+                    className="button button--ghost"
+                    type="button"
+                    onClick={handleTrunkReset}
+                    disabled={isTrunkLoading}
+                  >
+                    {t("adminVoice.trunk.actions.reset")}
+                  </button>
+                  <button
+                    className="button"
+                    type="submit"
+                    disabled={isTrunkLoading}
+                  >
+                    {t("adminVoice.trunk.actions.save")}
                   </button>
                 </div>
               </form>

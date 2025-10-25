@@ -71,6 +71,34 @@ const fr: TranslationDictionary = {
     "Session expirée, veuillez vous reconnecter.",
   "admin.appSettings.actions.save": "Enregistrer le prompt",
   "admin.appSettings.actions.reset": "Revenir au prompt par défaut",
+  "adminVoice.trunk.cardTitle": "Configuration du tronc SIP",
+  "adminVoice.trunk.cardDescription":
+    "Renseignez les paramètres fournis par votre opérateur voip.ms.",
+  "adminVoice.trunk.lastUpdated": "Dernière mise à jour : {{value}}",
+  "adminVoice.trunk.loading": "Chargement de la configuration du tronc…",
+  "adminVoice.trunk.hostLabel": "Hôte d'écoute",
+  "adminVoice.trunk.hostPlaceholder": "Ex. 0.0.0.0",
+  "adminVoice.trunk.hostHelp":
+    "Adresse IP ou nom d'hôte sur lequel le serveur SIP doit écouter.",
+  "adminVoice.trunk.portLabel": "Port SIP",
+  "adminVoice.trunk.portPlaceholder": "Ex. 5060",
+  "adminVoice.trunk.portHelp":
+    "Laissez vide pour utiliser la valeur par défaut fournie par le serveur.",
+  "adminVoice.trunk.usernameLabel": "Identifiant SIP",
+  "adminVoice.trunk.usernamePlaceholder": "Ex. 123456_sub",
+  "adminVoice.trunk.passwordLabel": "Mot de passe SIP",
+  "adminVoice.trunk.passwordPlaceholder": "Mot de passe fourni par voip.ms",
+  "adminVoice.trunk.actions.reset": "Réinitialiser",
+  "adminVoice.trunk.actions.save": "Enregistrer",
+  "adminVoice.trunk.success.saved": "Tronc SIP enregistré avec succès.",
+  "adminVoice.trunk.errors.loadFailed":
+    "Impossible de charger la configuration du tronc SIP.",
+  "adminVoice.trunk.errors.saveFailed":
+    "Impossible d'enregistrer la configuration du tronc SIP.",
+  "adminVoice.trunk.errors.invalidPort":
+    "Le port SIP doit être compris entre 1 et 65535.",
+  "adminVoice.trunk.errors.sessionExpired":
+    "Session expirée, veuillez vous reconnecter.",
   "auth.login.title": "Connexion",
   "auth.login.subtitle":
     "Accédez au panneau d'administration pour gérer les utilisateurs et vos sessions ChatKit.",
@@ -397,6 +425,33 @@ const en: TranslationDictionary = {
     "Session expired, please sign in again.",
   "admin.appSettings.actions.save": "Save prompt",
   "admin.appSettings.actions.reset": "Revert to default prompt",
+  "adminVoice.trunk.cardTitle": "SIP trunk configuration",
+  "adminVoice.trunk.cardDescription":
+    "Enter the connection details provided by your voip.ms trunk.",
+  "adminVoice.trunk.lastUpdated": "Last updated: {{value}}",
+  "adminVoice.trunk.loading": "Loading trunk configuration…",
+  "adminVoice.trunk.hostLabel": "Bind host",
+  "adminVoice.trunk.hostPlaceholder": "e.g. 0.0.0.0",
+  "adminVoice.trunk.hostHelp":
+    "IP address or hostname where the SIP server should listen.",
+  "adminVoice.trunk.portLabel": "SIP port",
+  "adminVoice.trunk.portPlaceholder": "e.g. 5060",
+  "adminVoice.trunk.portHelp":
+    "Leave empty to rely on the server default port.",
+  "adminVoice.trunk.usernameLabel": "SIP username",
+  "adminVoice.trunk.usernamePlaceholder": "e.g. 123456_sub",
+  "adminVoice.trunk.passwordLabel": "SIP password",
+  "adminVoice.trunk.passwordPlaceholder": "Password provided by voip.ms",
+  "adminVoice.trunk.actions.reset": "Reset",
+  "adminVoice.trunk.actions.save": "Save",
+  "adminVoice.trunk.success.saved": "SIP trunk saved successfully.",
+  "adminVoice.trunk.errors.loadFailed":
+    "Unable to load the SIP trunk configuration.",
+  "adminVoice.trunk.errors.saveFailed":
+    "Unable to save the SIP trunk configuration.",
+  "adminVoice.trunk.errors.invalidPort":
+    "The SIP port must be between 1 and 65535.",
+  "adminVoice.trunk.errors.sessionExpired": "Session expired, please sign in again.",
   "auth.login.title": "Sign in",
   "auth.login.subtitle": "Access the admin console to manage users and ChatKit sessions.",
   "auth.login.email.label": "Email address",

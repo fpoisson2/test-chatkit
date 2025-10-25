@@ -315,6 +315,43 @@ export type DocumentationMetadata = {
   updated_at: string;
 };
 
+export type TelephonyTrunkSettings = {
+  sip_bind_host: string | null;
+  sip_bind_port: number | null;
+  sip_username: string | null;
+  sip_password: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TelephonyTrunkSettingsUpdatePayload = {
+  sip_bind_host?: string | null;
+  sip_bind_port?: number | null;
+  sip_username?: string | null;
+  sip_password?: string | null;
+};
+
+export const telephonyTrunkApi = {
+  async get(token: string | null): Promise<TelephonyTrunkSettings> {
+    const response = await requestWithFallback("/api/admin/telephony-trunk", {
+      headers: withAuthHeaders(token),
+    });
+    return response.json();
+  },
+
+  async update(
+    token: string | null,
+    payload: TelephonyTrunkSettingsUpdatePayload,
+  ): Promise<TelephonyTrunkSettings> {
+    const response = await requestWithFallback("/api/admin/telephony-trunk", {
+      method: "PATCH",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+};
+
 export type DocumentationEntry = DocumentationMetadata & {
   content_markdown: string | null;
   metadata: Record<string, unknown>;
