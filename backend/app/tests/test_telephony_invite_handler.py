@@ -87,14 +87,21 @@ async def test_handle_invite_accepts_supported_codec() -> None:
         media_host="203.0.113.5",
         media_port=5004,
         preferred_codecs=("pcmu", "g729"),
+        contact_uri="<sip:bot@203.0.113.5:5060>",
     )
 
     statuses = [status for status, _ in dialog.replies]
     assert statuses == [100, 180, 200]
 
+    for _, kwargs in dialog.replies[:-1]:
+        assert kwargs["headers"]["Contact"] == "<sip:bot@203.0.113.5:5060>"
+
     final_reply = dialog.replies[-1]
     headers = final_reply[1]["headers"]
-    assert headers == {"Content-Type": "application/sdp"}
+    assert headers == {
+        "Contact": "<sip:bot@203.0.113.5:5060>",
+        "Content-Type": "application/sdp",
+    }
     payload = final_reply[1]["payload"]
     assert isinstance(payload, str)
     assert "m=audio 5004 RTP/AVP 0" in payload
@@ -125,10 +132,14 @@ async def test_handle_invite_accepts_payload_already_decoded() -> None:
         media_host="203.0.113.6",
         media_port=4000,
         preferred_codecs=("pcmu",),
+        contact_uri="<sip:bot@203.0.113.6:5060>",
     )
 
     statuses = [status for status, _ in dialog.replies]
     assert statuses == [100, 180, 200]
+
+    for _, kwargs in dialog.replies:
+        assert kwargs["headers"]["Contact"] == "<sip:bot@203.0.113.6:5060>"
 
 
 @pytest.mark.anyio
@@ -155,10 +166,14 @@ async def test_handle_invite_accepts_payload_with_carriage_returns_only() -> Non
         media_host="203.0.113.6",
         media_port=4002,
         preferred_codecs=("pcmu",),
+        contact_uri="<sip:bot@203.0.113.6:5060>",
     )
 
     statuses = [status for status, _ in dialog.replies]
     assert statuses == [100, 180, 200]
+
+    for _, kwargs in dialog.replies:
+        assert kwargs["headers"]["Contact"] == "<sip:bot@203.0.113.6:5060>"
 
 
 @pytest.mark.anyio
@@ -189,10 +204,14 @@ async def test_handle_invite_accepts_payload_without_line_separators() -> None:
         media_host="203.0.113.9",
         media_port=4010,
         preferred_codecs=("pcmu", "g729"),
+        contact_uri="<sip:bot@203.0.113.9:5060>",
     )
 
     statuses = [status for status, _ in dialog.replies]
     assert statuses == [100, 180, 200]
+
+    for _, kwargs in dialog.replies:
+        assert kwargs["headers"]["Contact"] == "<sip:bot@203.0.113.9:5060>"
 
 
 @pytest.mark.anyio
@@ -219,10 +238,14 @@ async def test_handle_invite_declines_without_codec() -> None:
             media_host="203.0.113.5",
             media_port=6000,
             preferred_codecs=("pcmu", "g729"),
+            contact_uri="<sip:bot@203.0.113.5:5060>",
         )
 
     statuses = [status for status, _ in dialog.replies]
     assert statuses == [100, 603]
+
+    for _, kwargs in dialog.replies:
+        assert kwargs["headers"]["Contact"] == "<sip:bot@203.0.113.5:5060>"
 
 
 @pytest.mark.anyio
@@ -236,7 +259,12 @@ async def test_send_sip_reply_falls_back_to_sync_send_reply() -> None:
         headers={"X-Test": "1"},
         payload=b"",
         call_id="abc",
+        contact_uri="<sip:sync@203.0.113.10:5060>",
     )
 
-    assert dialog.replies == [(486, "Busy Here", {"X-Test": "1"}, "")]
+    expected_headers = {
+        "X-Test": "1",
+        "Contact": "<sip:sync@203.0.113.10:5060>",
+    }
+    assert dialog.replies == [(486, "Busy Here", expected_headers, "")]
 

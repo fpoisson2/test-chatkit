@@ -55,6 +55,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             or (config.contact_host if config else None)
             or settings.sip_bind_host
         )
+        contact_uri = config.contact_uri() if config is not None else None
         media_port = getattr(settings, "sip_media_port", None)
 
         if media_port is None:
@@ -62,7 +63,12 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 "INVITE reçu mais aucun port RTP n'est configuré; réponse 486 Busy"
             )
             with contextlib.suppress(Exception):
-                await send_sip_reply(dialog, 486, reason="Busy Here")
+                await send_sip_reply(
+                    dialog,
+                    486,
+                    reason="Busy Here",
+                    contact_uri=contact_uri,
+                )
             return
 
         if not media_host:
@@ -70,7 +76,12 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 "INVITE reçu mais aucun hôte média n'est disponible; réponse 480"
             )
             with contextlib.suppress(Exception):
-                await send_sip_reply(dialog, 480, reason="Temporarily Unavailable")
+                await send_sip_reply(
+                    dialog,
+                    480,
+                    reason="Temporarily Unavailable",
+                    contact_uri=contact_uri,
+                )
             return
 
         try:
@@ -79,6 +90,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 request,
                 media_host=media_host,
                 media_port=int(media_port),
+                contact_uri=contact_uri,
             )
         except InviteHandlingError as exc:
             logger.warning("Traitement de l'INVITE interrompu : %s", exc)
@@ -88,7 +100,12 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 exc_info=exc,
             )
             with contextlib.suppress(Exception):
-                await send_sip_reply(dialog, 500, reason="Server Internal Error")
+                await send_sip_reply(
+                    dialog,
+                    500,
+                    reason="Server Internal Error",
+                    contact_uri=contact_uri,
+                )
 
     return _on_invite
 

@@ -112,6 +112,7 @@ async def handle_incoming_invite(
     media_host: str,
     media_port: int,
     preferred_codecs: Iterable[str] = ("pcmu", "g729"),
+    contact_uri: str | None = None,
 ) -> None:
     """Répondre à un ``INVITE`` SIP en négociant une session RTP simple."""
 
@@ -126,7 +127,13 @@ async def handle_incoming_invite(
         to_header or "?",
     )
 
-    await send_sip_reply(dialog, 100, reason="Trying", call_id=call_id)
+    await send_sip_reply(
+        dialog,
+        100,
+        reason="Trying",
+        call_id=call_id,
+        contact_uri=contact_uri,
+    )
 
     payload = request.payload
     if isinstance(payload, bytes):
@@ -138,7 +145,13 @@ async def handle_incoming_invite(
                 call_id or "inconnu",
                 exc,
             )
-            await send_sip_reply(dialog, 400, reason="Bad Request", call_id=call_id)
+            await send_sip_reply(
+                dialog,
+                400,
+                reason="Bad Request",
+                call_id=call_id,
+                contact_uri=contact_uri,
+            )
             raise InviteHandlingError("SDP illisible") from exc
     elif isinstance(payload, str):
         payload_text = payload
@@ -172,7 +185,13 @@ async def handle_incoming_invite(
         logger.warning(
             "INVITE sans média audio exploitable (Call-ID=%s)", call_id or "inconnu"
         )
-        await send_sip_reply(dialog, 603, reason="Decline", call_id=call_id)
+        await send_sip_reply(
+            dialog,
+            603,
+            reason="Decline",
+            call_id=call_id,
+            contact_uri=contact_uri,
+        )
         raise InviteHandlingError("Aucun média audio trouvé")
 
     offered_port, offered_payloads = audio_media
@@ -195,10 +214,22 @@ async def handle_incoming_invite(
             call_id or "inconnu",
             offered_payloads,
         )
-        await send_sip_reply(dialog, 603, reason="Decline", call_id=call_id)
+        await send_sip_reply(
+            dialog,
+            603,
+            reason="Decline",
+            call_id=call_id,
+            contact_uri=contact_uri,
+        )
         raise InviteHandlingError("Aucun codec compatible")
 
-    await send_sip_reply(dialog, 180, reason="Ringing", call_id=call_id)
+    await send_sip_reply(
+        dialog,
+        180,
+        reason="Ringing",
+        call_id=call_id,
+        contact_uri=contact_uri,
+    )
 
     sdp_answer = _build_sdp_answer(
         connection_address=media_host,
@@ -226,6 +257,7 @@ async def handle_incoming_invite(
         headers={"Content-Type": "application/sdp"},
         payload=sdp_answer,
         call_id=call_id,
+        contact_uri=contact_uri,
     )
 
 
@@ -251,6 +283,7 @@ async def send_sip_reply(
     headers: dict[str, str] | None = None,
     payload: bytes | str | None = None,
     call_id: str | None = None,
+    contact_uri: str | None = None,
 ) -> None:
     logger.info(
         "Envoi réponse SIP %s %s (Call-ID=%s)",
@@ -258,9 +291,18 @@ async def send_sip_reply(
         reason,
         call_id or "inconnu",
     )
+    merged_headers: dict[str, str] | None = None
+    if headers:
+        merged_headers = dict(headers)
+    if contact_uri and (merged_headers is None or "Contact" not in merged_headers):
+        if merged_headers is None:
+            merged_headers = {"Contact": contact_uri}
+        else:
+            merged_headers.setdefault("Contact", contact_uri)
+
     kwargs: dict[str, object] = {"reason": reason}
-    if headers is not None:
-        kwargs["headers"] = headers
+    if merged_headers is not None:
+        kwargs["headers"] = merged_headers
     normalized_payload: str | bytes | None = payload
     if isinstance(payload, bytes):
         try:
@@ -283,8 +325,8 @@ async def send_sip_reply(
     send_reply = getattr(dialog, "send_reply", None)
     if callable(send_reply):
         send_kwargs: dict[str, object] = {}
-        if headers is not None:
-            send_kwargs["headers"] = headers
+        if merged_headers is not None:
+            send_kwargs["headers"] = merged_headers
         if normalized_payload is not None:
             send_kwargs["payload"] = normalized_payload
         send_reply(status_code, reason, **send_kwargs)
