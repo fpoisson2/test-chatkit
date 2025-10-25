@@ -689,13 +689,15 @@ button {
 
 @media (max-width: 768px) {
   .chatkit-sidebar__workflow-button {
-    margin-inline: 0;
+    margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
     padding-inline-start: var(--chatkit-sidebar-content-padding-x);
-    padding-inline-end: calc(3rem + max(env(safe-area-inset-right), 0px));
+    padding-inline-end: calc(
+      3rem + max(env(safe-area-inset-right), 0px) + var(--chatkit-sidebar-content-padding-x)
+    );
   }
 
   .chatkit-sidebar__workflow-actions {
-    right: max(env(safe-area-inset-right), 0px);
+    right: calc(max(env(safe-area-inset-right), 0px) - var(--chatkit-sidebar-content-padding-x));
   }
 }
 
