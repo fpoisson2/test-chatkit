@@ -636,8 +636,14 @@ button {
 }
 
 @media (max-width: 768px) {
+  .chatkit-sidebar__workflow-button {
+    margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
+    padding-inline: var(--chatkit-sidebar-content-padding-x);
+    padding-right: calc(var(--chatkit-sidebar-content-padding-x) + 2.5rem);
+  }
+
   .chatkit-sidebar__workflow-actions {
-    right: 0;
+    right: calc(-1 * var(--chatkit-sidebar-content-padding-x));
   }
 }
 
