@@ -185,6 +185,7 @@ const DESKTOP_MIN_VIEWPORT_ZOOM = 0.1;
 const MOBILE_MIN_VIEWPORT_ZOOM = 0.05;
 const DESKTOP_WORKSPACE_HORIZONTAL_PADDING = "1.5rem";
 const HISTORY_LIMIT = 50;
+const REMOTE_VERSION_POLL_INTERVAL_MS = 10000;
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
@@ -484,6 +485,10 @@ const WorkflowBuilderPage = () => {
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const draftVersionIdRef = useRef<number | null>(null);
   const draftVersionSummaryRef = useRef<WorkflowVersionSummary | null>(null);
+  const versionsRef = useRef<WorkflowVersionSummary[]>([]);
+  const selectedWorkflowIdRef = useRef<number | null>(null);
+  const hasPendingChangesRef = useRef(hasPendingChanges);
+  const saveStateRef = useRef<SaveState>(saveState);
 
   useEffect(() => {
     if (!isPreviewMode) {
@@ -904,9 +909,25 @@ const WorkflowBuilderPage = () => {
   }, [edges]);
 
   useEffect(() => {
+    versionsRef.current = versions;
+  }, [versions]);
+
+  useEffect(() => {
     draftVersionIdRef.current = null;
     draftVersionSummaryRef.current = null;
   }, [selectedWorkflowId]);
+
+  useEffect(() => {
+    selectedWorkflowIdRef.current = selectedWorkflowId;
+  }, [selectedWorkflowId]);
+
+  useEffect(() => {
+    hasPendingChangesRef.current = hasPendingChanges;
+  }, [hasPendingChanges]);
+
+  useEffect(() => {
+    saveStateRef.current = saveState;
+  }, [saveState]);
 
   useEffect(() => {
     if (!isMobileLayout || !isBlockLibraryOpen) {
@@ -2119,6 +2140,144 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     void loadWorkflows();
   }, [loadWorkflows]);
+
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      !selectedWorkflowId ||
+      !selectedVersionId ||
+      saveState !== "idle" ||
+      hasPendingChanges
+    ) {
+      return;
+    }
+
+    let isDisposed = false;
+    let isPolling = false;
+
+    const pollOnce = async () => {
+      const workflowId = selectedWorkflowIdRef.current;
+      const versionId = selectedVersionIdRef.current;
+      if (
+        workflowId == null ||
+        versionId == null ||
+        hasPendingChangesRef.current ||
+        saveStateRef.current !== "idle"
+      ) {
+        return;
+      }
+
+      const candidates = makeApiEndpointCandidates(
+        backendUrl,
+        `/api/workflows/${workflowId}/versions`,
+      );
+      let reloadWorkflows = false;
+      for (const url of candidates) {
+        try {
+          const response = await fetch(url, {
+            headers: {
+              "Content-Type": "application/json",
+              ...authHeader,
+            },
+          });
+          if (!response.ok) {
+            if (response.status === 404) {
+              reloadWorkflows = true;
+            }
+            throw new Error(
+              `Échec du rafraîchissement des versions (${response.status})`,
+            );
+          }
+          const summaries: WorkflowVersionSummary[] = await response.json();
+          const remoteById = new Map(summaries.map((item) => [item.id, item]));
+          const currentVersions = versionsRef.current;
+          const draftId = draftVersionIdRef.current;
+          let shouldRefresh = false;
+
+          for (const summary of summaries) {
+            const local = currentVersions.find((item) => item.id === summary.id);
+            if (!local) {
+              shouldRefresh = true;
+              break;
+            }
+            if (
+              local.updated_at !== summary.updated_at ||
+              local.version !== summary.version
+            ) {
+              shouldRefresh = true;
+              break;
+            }
+          }
+
+          if (!shouldRefresh) {
+            for (const local of currentVersions) {
+              if (local.id === draftId) {
+                continue;
+              }
+              if (!remoteById.has(local.id)) {
+                shouldRefresh = true;
+                break;
+              }
+            }
+          }
+
+          if (
+            shouldRefresh &&
+            !hasPendingChangesRef.current &&
+            saveStateRef.current === "idle" &&
+            selectedWorkflowIdRef.current === workflowId &&
+            selectedVersionIdRef.current === versionId
+          ) {
+            await loadVersions(workflowId, versionId, {
+              background: true,
+              preserveViewport: true,
+            });
+          }
+          return;
+        } catch (error) {
+          continue;
+        }
+      }
+
+      if (reloadWorkflows && !hasPendingChangesRef.current) {
+        await loadWorkflows({ selectWorkflowId: null });
+      }
+    };
+
+    const triggerPoll = () => {
+      if (isDisposed || isPolling) {
+        return;
+      }
+      if (hasPendingChangesRef.current || saveStateRef.current !== "idle") {
+        return;
+      }
+      isPolling = true;
+      void (async () => {
+        try {
+          await pollOnce();
+        } finally {
+          isPolling = false;
+        }
+      })();
+    };
+
+    triggerPoll();
+    const intervalId = window.setInterval(triggerPoll, REMOTE_VERSION_POLL_INTERVAL_MS);
+
+    return () => {
+      isDisposed = true;
+      window.clearInterval(intervalId);
+    };
+  }, [
+    authHeader,
+    backendUrl,
+    hasPendingChanges,
+    loadWorkflows,
+    loadVersions,
+    saveState,
+    selectedVersionId,
+    selectedWorkflowId,
+  ]);
 
   useEffect(() => {
     void loadHostedWorkflows();
