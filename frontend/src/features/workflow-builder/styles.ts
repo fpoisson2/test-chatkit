@@ -181,9 +181,18 @@ export const actionMenuTriggerLabelStyle: CSSProperties = {
 
 export const getActionMenuStyle = (isMobile: boolean): CSSProperties => ({
   position: "absolute",
-  top: "calc(100% + 0.5rem)",
-  right: isMobile ? "0" : "var(--chatkit-sidebar-content-padding-x)",
-  left: isMobile ? "0" : "auto",
+  ...(isMobile
+    ? {
+        top: "auto",
+        bottom: "calc(100% + 0.5rem)",
+        right: "0",
+        left: "0",
+      }
+    : {
+        top: "calc(100% + 0.5rem)",
+        right: "var(--chatkit-sidebar-content-padding-x)",
+        left: "auto",
+      }),
   background: "var(--surface-strong)",
   borderRadius: "0.75rem",
   border: "1px solid var(--surface-border)",
