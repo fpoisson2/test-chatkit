@@ -107,11 +107,11 @@ describe("AgentInspectorSection", () => {
     ).toBeInTheDocument();
   });
 
-  it("warns when the selected workflow id is not available", () => {
+  it("does not warn when a hosted workflow id is manually entered", () => {
     renderSection({ parameters: { workflow: { id: 99 } } });
     expect(
-      screen.getByText(/The selected workflow is no longer available\./i),
-    ).toBeInTheDocument();
+      screen.queryByText(/The selected workflow is no longer available\./i),
+    ).not.toBeInTheDocument();
   });
 
   it("persists slug information when switching to a hosted workflow", async () => {

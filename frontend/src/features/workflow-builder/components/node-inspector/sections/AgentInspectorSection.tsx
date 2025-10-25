@@ -405,7 +405,8 @@ export const AgentInspectorSection = ({
     );
   }, [availableNestedWorkflows, nestedWorkflowId]);
 
-  const nestedWorkflowMissing = nestedWorkflowId != null && !selectedNestedWorkflow;
+  const nestedWorkflowMissing =
+    workflowMode === "local" && nestedWorkflowId != null && !selectedNestedWorkflow;
 
   const hostedSlugInfoValue = hostedWorkflowSlugInput.trim() || nestedWorkflowSlug.trim();
   const showHostedSlugInfo =
