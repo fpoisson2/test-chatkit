@@ -5,7 +5,6 @@ import { AppLayout } from "./components/AppLayout";
 import { useAuth } from "./auth";
 import { MyChat } from "./MyChat";
 import { LoginPage } from "./pages/LoginPage";
-import { VoicePage } from "./pages/VoicePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import WorkflowBuilderPage from "./features/workflow-builder/WorkflowBuilderPage";
 import { VectorStoresPage } from "./pages/VectorStoresPage";
@@ -13,7 +12,6 @@ import WidgetLibraryPage from "./pages/WidgetLibraryPage";
 import { AdminPage } from "./pages/AdminPage";
 import { AdminModelsPage } from "./pages/AdminModelsPage";
 import { AdminAppSettingsPage } from "./pages/AdminAppSettingsPage";
-import { AdminVoicePage } from "./pages/AdminVoicePage";
 import { DocsPage } from "./pages/docs/DocsPage";
 import { DocDetail } from "./pages/docs/DocDetail";
 
@@ -72,7 +70,6 @@ export const App = () => (
       }
     >
       <Route index element={<HomePage />} />
-      <Route path="voice" element={<VoicePage />} />
       <Route path="settings" element={<SettingsPage />} />
       <Route path="docs" element={<DocsPage />} />
       <Route path="docs/:slug" element={<DocDetail />} />
@@ -107,16 +104,6 @@ export const App = () => (
         <RequireAdmin>
           <AppLayout>
             <AdminPage />
-          </AppLayout>
-        </RequireAdmin>
-      }
-    />
-    <Route
-      path="/admin/voice"
-      element={
-        <RequireAdmin>
-          <AppLayout>
-            <AdminVoicePage />
           </AppLayout>
         </RequireAdmin>
       }

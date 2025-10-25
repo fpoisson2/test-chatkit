@@ -8,7 +8,6 @@ export type SidebarIconName =
   | "settings"
   | "login"
   | "logout"
-  | "voice"
   | "docs";
 
 const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
@@ -180,42 +179,6 @@ const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
       />
       <path
         d="M10.5 12h3"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-    </>
-  ),
-  voice: (
-    <>
-      <path
-        d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M7.5 11a4.5 4.5 0 0 0 9 0"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M12 15v3.25"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M9.75 21h4.5"
         fill="none"
         stroke="currentColor"
         strokeLinecap="round"
