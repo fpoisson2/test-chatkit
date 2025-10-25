@@ -139,6 +139,7 @@ export function MyChat() {
     kind: "local",
     workflow: null,
   });
+  const latestWorkflowSelectionRef = useRef<WorkflowActivation>(workflowSelection);
   const activeWorkflow: WorkflowSummary | null =
     workflowSelection.kind === "local" ? workflowSelection.workflow : null;
   const activeWorkflowSlug =
@@ -154,12 +155,19 @@ export function MyChat() {
   const stopVoiceSessionRef = useRef<(() => void) | null>(null);
   const resetChatStateRef = useRef<((options?: ResetChatStateOptions) => void) | null>(null);
 
+  useEffect(() => {
+    latestWorkflowSelectionRef.current = workflowSelection;
+  }, [workflowSelection]);
+
+  const handleHostedFlowDisabled = useCallback(() => {
+    resetChatStateRef.current?.({
+      selection: latestWorkflowSelectionRef.current,
+      targetMode: "hosted",
+    });
+  }, []);
+
   const { mode, setMode, hostedFlowEnabled, disableHostedFlow } = useHostedFlow({
-    onDisable: () =>
-      resetChatStateRef.current?.({
-        selection: workflowSelection,
-        targetMode: "hosted",
-      }),
+    onDisable: handleHostedFlowDisabled,
   });
 
   const persistenceSlug = resolvePersistenceSlug(mode, workflowSelection);
