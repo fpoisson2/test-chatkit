@@ -4756,9 +4756,24 @@ const WorkflowBuilderPage = () => {
   );
 
   const handleCreateWorkflow = useCallback(async () => {
-    const useHosted = window.confirm(
-      t("workflowBuilder.sidebar.newWorkflow.useHostedConfirm"),
+    const kindInput = window.prompt(
+      t("workflowBuilder.sidebar.newWorkflow.kindPrompt"),
     );
+    if (kindInput === null) {
+      return;
+    }
+
+    const normalized = kindInput.trim().toLowerCase();
+    const normalizedAscii = normalized
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    const useHosted = ["hosted", "heberge", "h"].includes(normalizedAscii);
+    const useLocal = ["local", "l"].includes(normalizedAscii);
+
+    if (!useHosted && !useLocal) {
+      window.alert(t("workflowBuilder.sidebar.newWorkflow.invalidKind"));
+      return;
+    }
 
     let hostedIdentifier: string | null = null;
     if (useHosted) {

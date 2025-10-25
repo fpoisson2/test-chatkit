@@ -174,8 +174,10 @@ const fr: TranslationDictionary = {
     "Aucun autre workflow disponible pour être ajouté comme outil.",
   "workflowBuilder.agentInspector.workflowToolsMissing":
     "Le workflow « {{slug}} » n'est plus disponible. Retirez-le de la configuration.",
-  "workflowBuilder.sidebar.newWorkflow.useHostedConfirm":
-    "Souhaitez-vous connecter un workflow hébergé ?",
+  "workflowBuilder.sidebar.newWorkflow.kindPrompt":
+    "Souhaitez-vous créer un workflow local ou connecter un workflow hébergé ? (Répondez « local » ou « hébergé »)",
+  "workflowBuilder.sidebar.newWorkflow.invalidKind":
+    "Choisissez « local » ou « hébergé » pour continuer.",
   "workflowBuilder.sidebar.newWorkflow.hostedIdPrompt":
     "Quel est l'identifiant du workflow hébergé à connecter ?",
   "workflowBuilder.sidebar.newWorkflow.hostedIdRequired":
@@ -504,8 +506,10 @@ const en: TranslationDictionary = {
     "No other workflows are available to expose as tools.",
   "workflowBuilder.agentInspector.workflowToolsMissing":
     "The \"{{slug}}\" workflow is no longer available. Remove it from the configuration.",
-  "workflowBuilder.sidebar.newWorkflow.useHostedConfirm":
-    "Would you like to connect a hosted workflow?",
+  "workflowBuilder.sidebar.newWorkflow.kindPrompt":
+    "Would you like to create a local workflow or connect a hosted workflow? (Type \"local\" or \"hosted\")",
+  "workflowBuilder.sidebar.newWorkflow.invalidKind":
+    "Please choose either \"local\" or \"hosted\" to continue.",
   "workflowBuilder.sidebar.newWorkflow.hostedIdPrompt":
     "What's the hosted workflow identifier to connect?",
   "workflowBuilder.sidebar.newWorkflow.hostedIdRequired":
