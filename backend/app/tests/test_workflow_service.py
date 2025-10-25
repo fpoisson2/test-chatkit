@@ -18,6 +18,7 @@ if str(ROOT_DIR) not in sys.path:
 from backend.app.config import WorkflowDefaults  # noqa: E402 - import après maj du path
 from backend.app.models import Base  # noqa: E402 - import après maj du path
 from backend.app.workflows.service import (  # noqa: E402 - import après maj du path
+    HostedWorkflowNotFoundError,
     WorkflowService,
     WorkflowValidationError,
     serialize_definition,
@@ -230,4 +231,59 @@ def test_update_current_normalizes_nested_workflow_slug(
     assert serialized_agent["parameters"]["workflow"] == {
         "slug": target_definition.workflow.slug
     }
+
+
+def test_create_hosted_workflow_persists_entry(
+    workflow_service: WorkflowService,
+) -> None:
+    entry = workflow_service.create_hosted_workflow(
+        slug="support",
+        workflow_id="wf-remote-1",
+        label="Support",
+        description="Flux support",
+    )
+
+    stored = workflow_service.list_managed_hosted_workflows()
+    assert len(stored) == 1
+    assert stored[0].slug == entry.slug
+    assert stored[0].remote_workflow_id == "wf-remote-1"
+
+    configs = workflow_service.list_hosted_workflow_configs()
+    assert len(configs) == 1
+    assert configs[0].managed is True
+    assert configs[0].workflow_id == "wf-remote-1"
+    assert configs[0].label == "Support"
+
+
+def test_create_hosted_workflow_rejects_duplicate_slug(
+    workflow_service: WorkflowService,
+) -> None:
+    workflow_service.create_hosted_workflow(
+        slug="duplicate",
+        workflow_id="wf-original",
+        label="Original",
+    )
+
+    with pytest.raises(WorkflowValidationError):
+        workflow_service.create_hosted_workflow(
+            slug="duplicate",
+            workflow_id="wf-other",
+            label="Autre",
+        )
+
+
+def test_delete_hosted_workflow_removes_entry(
+    workflow_service: WorkflowService,
+) -> None:
+    workflow_service.create_hosted_workflow(
+        slug="to-remove",
+        workflow_id="wf-remove",
+        label="À retirer",
+    )
+
+    workflow_service.delete_hosted_workflow("to-remove")
+    assert workflow_service.list_managed_hosted_workflows() == []
+
+    with pytest.raises(HostedWorkflowNotFoundError):
+        workflow_service.delete_hosted_workflow("to-remove")
 

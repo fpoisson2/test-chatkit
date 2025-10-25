@@ -314,21 +314,23 @@ def _sanitize_forward_headers(
     return sanitized
 
 
-async def create_chatkit_session(user_id: str) -> dict[str, Any]:
-    if not settings.chatkit_workflow_id:
+async def create_chatkit_session(
+    user_id: str,
+    *,
+    workflow_id: str | None = None,
+) -> dict[str, Any]:
+    resolved_workflow_id = workflow_id or settings.chatkit_workflow_id
+    if not resolved_workflow_id:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail={
-                "error": "CHATKIT_WORKFLOW_ID is not configured",
-                "hint": (
-                    "Définissez CHATKIT_WORKFLOW_ID dans votre .env pour utiliser "
-                    "l'API ChatKit hébergée."
-                ),
+                "error": "hosted_workflow_not_configured",
+                "message": "Aucun workflow hébergé n'est configuré sur le serveur.",
             },
         )
 
     payload = {
-        "workflow": {"id": settings.chatkit_workflow_id},
+        "workflow": {"id": resolved_workflow_id},
         "user": user_id,
         "chatkit_configuration": {
             "file_upload": {

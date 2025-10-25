@@ -216,6 +216,35 @@ const fr: TranslationDictionary = {
     "Ex. Bonjour, je suis votre assistant… (facultatif)",
   "workflowBuilder.startInspector.autoRunAssistantMessageHint":
     "Ce message est diffusé en tant que première réponse de l'assistant lorsque le démarrage automatique est déclenché. Ajoutez un message utilisateur ci-dessus pour désactiver cette réponse.",
+  "workflowBuilder.startInspector.hostedSectionTitle": "Workflows hébergés",
+  "workflowBuilder.startInspector.hostedSectionDescription":
+    "Exposez des workflows ChatKit hébergés directement depuis ce bloc Start.",
+  "workflowBuilder.startInspector.hostedEmpty":
+    "Aucun workflow hébergé n'est configuré pour le moment.",
+  "workflowBuilder.startInspector.hostedAddButton": "Ajouter un workflow hébergé",
+  "workflowBuilder.startInspector.hostedSlugLabel": "Slug du workflow hébergé",
+  "workflowBuilder.startInspector.hostedSlugPlaceholder": "ex. support-pro",
+  "workflowBuilder.startInspector.hostedSlugHelp":
+    "Identifiant lisible utilisé pour distinguer chaque workflow hébergé.",
+  "workflowBuilder.startInspector.hostedSlugErrorRequired": "Le slug est obligatoire.",
+  "workflowBuilder.startInspector.hostedSlugErrorDuplicate":
+    "Chaque slug doit être unique.",
+  "workflowBuilder.startInspector.hostedLabelLabel": "Libellé affiché",
+  "workflowBuilder.startInspector.hostedLabelPlaceholder":
+    "Nom visible dans la barre latérale",
+  "workflowBuilder.startInspector.hostedWorkflowIdLabel":
+    "Identifiant du workflow hébergé",
+  "workflowBuilder.startInspector.hostedWorkflowIdPlaceholder":
+    "ID fourni par la console ChatKit",
+  "workflowBuilder.startInspector.hostedWorkflowIdHelp":
+    "Copiez l'identifiant du workflow publié depuis la console ChatKit.",
+  "workflowBuilder.startInspector.hostedWorkflowIdError":
+    "Indiquez l'identifiant du workflow hébergé.",
+  "workflowBuilder.startInspector.hostedDescriptionLabel": "Description (optionnel)",
+  "workflowBuilder.startInspector.hostedDescriptionPlaceholder":
+    "Note interne ou aide contextuelle affichée dans l'UI",
+  "workflowBuilder.startInspector.hostedRemoveButton":
+    "Supprimer ce workflow hébergé",
   "workflowBuilder.startInspector.telephonySectionTitle": "Téléphonie",
   "workflowBuilder.startInspector.telephonySectionDescription":
     "Configurez les numéros entrants et les overrides Realtime appliqués à ce bloc de démarrage.",
@@ -247,6 +276,42 @@ const fr: TranslationDictionary = {
   "workflowBuilder.startInspector.telephonyRealtimeStartDefault": "Comportement par défaut",
   "workflowBuilder.startInspector.telephonyRealtimeStopLabel": "Mode d'arrêt",
   "workflowBuilder.startInspector.telephonyRealtimeStopDefault": "Comportement par défaut",
+  "workflowBuilder.createWorkflow.chooseHosted":
+    "Créer un workflow hébergé ? Cliquez sur OK pour ajouter un workflow hébergé ou sur Annuler pour créer un workflow local.",
+  "workflowBuilder.createWorkflow.promptSlug": "Slug du workflow hébergé ?",
+  "workflowBuilder.createWorkflow.promptId": "Identifiant du workflow distant ?",
+  "workflowBuilder.createWorkflow.promptLabel":
+    "Libellé à afficher pour ce workflow (laisser vide pour utiliser le slug).",
+  "workflowBuilder.createWorkflow.promptDescription": "Description du workflow hébergé (optionnel).",
+  "workflowBuilder.createWorkflow.errorMissingSlug": "Le slug du workflow hébergé est obligatoire.",
+  "workflowBuilder.createWorkflow.errorMissingId": "L'identifiant du workflow hébergé est obligatoire.",
+  "workflowBuilder.createWorkflow.creatingHosted": "Création du workflow hébergé…",
+  "workflowBuilder.createWorkflow.successHosted":
+    "Workflow hébergé \"{label}\" ajouté avec succès.",
+  "workflowBuilder.createWorkflow.errorCreateHosted":
+    "Impossible de créer le workflow hébergé.",
+  "workflowBuilder.createWorkflow.errorAuthentication":
+    "Vous devez être connecté pour gérer les workflows hébergés.",
+  "workflowBuilder.createWorkflow.promptLocalName": "Nom du nouveau workflow local ?",
+  "workflowBuilder.createWorkflow.successLocal":
+    "Workflow \"{name}\" créé avec succès.",
+  "workflowBuilder.createWorkflow.errorCreateLocal":
+    "Impossible de créer le workflow.",
+  "workflowBuilder.hostedSection.title": "Workflows hébergés",
+  "workflowBuilder.hostedSection.loading": "Chargement des workflows hébergés…",
+  "workflowBuilder.hostedSection.empty":
+    "Aucun workflow hébergé géré depuis l'interface n'est disponible pour le moment.",
+  "workflowBuilder.hostedSection.deleteAction": "Supprimer",
+  "workflowBuilder.hostedSection.remoteId": "ID distant : {id}",
+  "workflowBuilder.hostedSection.deleting": "Suppression du workflow hébergé…",
+  "workflowBuilder.hostedSection.deleteSuccess":
+    "Workflow hébergé \"{label}\" supprimé.",
+  "workflowBuilder.hostedSection.deleteError":
+    "Impossible de supprimer le workflow hébergé.",
+  "workflowBuilder.hostedSection.loadError":
+    "Impossible de charger les workflows hébergés.",
+  "workflowBuilder.hostedSection.confirmDelete":
+    "Supprimer le workflow hébergé \"{label}\" ? Cette action est irréversible.",
   "workflowBuilder.save.autoSaveSuccess": "Modifications enregistrées automatiquement.",
   "workflowBuilder.save.draftDisplayName": "Brouillon",
   "workflowBuilder.save.failure": "Impossible d'enregistrer le workflow.",
@@ -549,6 +614,34 @@ const en: TranslationDictionary = {
     "e.g. Hello, I'm your assistant… (optional)",
   "workflowBuilder.startInspector.autoRunAssistantMessageHint":
     "This message is delivered as the assistant's first reply when auto-start triggers. Add a user message above to disable it.",
+  "workflowBuilder.startInspector.hostedSectionTitle": "Hosted workflows",
+  "workflowBuilder.startInspector.hostedSectionDescription":
+    "Expose ChatKit hosted workflows directly from this Start block.",
+  "workflowBuilder.startInspector.hostedEmpty":
+    "No hosted workflow is configured yet.",
+  "workflowBuilder.startInspector.hostedAddButton": "Add a hosted workflow",
+  "workflowBuilder.startInspector.hostedSlugLabel": "Hosted workflow slug",
+  "workflowBuilder.startInspector.hostedSlugPlaceholder": "e.g. support-pro",
+  "workflowBuilder.startInspector.hostedSlugHelp":
+    "Human-readable identifier used to distinguish each hosted workflow.",
+  "workflowBuilder.startInspector.hostedSlugErrorRequired": "Slug is required.",
+  "workflowBuilder.startInspector.hostedSlugErrorDuplicate":
+    "Each slug must be unique.",
+  "workflowBuilder.startInspector.hostedLabelLabel": "Display label",
+  "workflowBuilder.startInspector.hostedLabelPlaceholder":
+    "Name shown in the chat sidebar",
+  "workflowBuilder.startInspector.hostedWorkflowIdLabel":
+    "Hosted workflow ID",
+  "workflowBuilder.startInspector.hostedWorkflowIdPlaceholder":
+    "ID from the ChatKit console",
+  "workflowBuilder.startInspector.hostedWorkflowIdHelp":
+    "Copy the workflow identifier published in the ChatKit console.",
+  "workflowBuilder.startInspector.hostedWorkflowIdError":
+    "Enter the hosted workflow identifier.",
+  "workflowBuilder.startInspector.hostedDescriptionLabel": "Description (optional)",
+  "workflowBuilder.startInspector.hostedDescriptionPlaceholder":
+    "Internal note or tooltip shown in the UI",
+  "workflowBuilder.startInspector.hostedRemoveButton": "Remove this hosted workflow",
   "workflowBuilder.startInspector.telephonySectionTitle": "Telephony",
   "workflowBuilder.startInspector.telephonySectionDescription":
     "Configure inbound numbers and Realtime overrides applied to this start block.",
@@ -579,6 +672,42 @@ const en: TranslationDictionary = {
   "workflowBuilder.startInspector.telephonyRealtimeStartDefault": "Default behaviour",
   "workflowBuilder.startInspector.telephonyRealtimeStopLabel": "Stop mode",
   "workflowBuilder.startInspector.telephonyRealtimeStopDefault": "Default behaviour",
+  "workflowBuilder.createWorkflow.chooseHosted":
+    "Create a hosted workflow? Click OK to add a hosted workflow or Cancel to create a local workflow.",
+  "workflowBuilder.createWorkflow.promptSlug": "Hosted workflow slug?",
+  "workflowBuilder.createWorkflow.promptId": "Remote workflow identifier?",
+  "workflowBuilder.createWorkflow.promptLabel":
+    "Display label for this workflow (leave blank to reuse the slug).",
+  "workflowBuilder.createWorkflow.promptDescription": "Hosted workflow description (optional).",
+  "workflowBuilder.createWorkflow.errorMissingSlug": "Hosted workflow slug is required.",
+  "workflowBuilder.createWorkflow.errorMissingId": "Hosted workflow identifier is required.",
+  "workflowBuilder.createWorkflow.creatingHosted": "Creating hosted workflow…",
+  "workflowBuilder.createWorkflow.successHosted":
+    "Hosted workflow \"{label}\" added successfully.",
+  "workflowBuilder.createWorkflow.errorCreateHosted":
+    "Unable to create hosted workflow.",
+  "workflowBuilder.createWorkflow.errorAuthentication":
+    "You must be signed in to manage hosted workflows.",
+  "workflowBuilder.createWorkflow.promptLocalName": "Name of the new local workflow?",
+  "workflowBuilder.createWorkflow.successLocal":
+    "Workflow \"{name}\" created successfully.",
+  "workflowBuilder.createWorkflow.errorCreateLocal":
+    "Unable to create the workflow.",
+  "workflowBuilder.hostedSection.title": "Hosted workflows",
+  "workflowBuilder.hostedSection.loading": "Loading hosted workflows…",
+  "workflowBuilder.hostedSection.empty":
+    "No hosted workflow managed from the interface yet.",
+  "workflowBuilder.hostedSection.deleteAction": "Delete",
+  "workflowBuilder.hostedSection.remoteId": "Remote ID: {id}",
+  "workflowBuilder.hostedSection.deleting": "Deleting hosted workflow…",
+  "workflowBuilder.hostedSection.deleteSuccess":
+    "Hosted workflow \"{label}\" removed.",
+  "workflowBuilder.hostedSection.deleteError":
+    "Unable to delete the hosted workflow.",
+  "workflowBuilder.hostedSection.loadError":
+    "Unable to load hosted workflows.",
+  "workflowBuilder.hostedSection.confirmDelete":
+    "Delete hosted workflow \"{label}\"? This action cannot be undone.",
   "workflowBuilder.save.autoSaveSuccess": "Changes saved automatically.",
   "workflowBuilder.save.draftDisplayName": "Draft",
   "workflowBuilder.save.failure": "Unable to save the workflow.",

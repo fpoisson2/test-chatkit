@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import logging
 import math
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 from ..config import Settings, WorkflowDefaults, get_settings
 from ..database import SessionLocal
 from ..models import (
+    HostedWorkflow,
     Workflow,
     WorkflowDefinition,
     WorkflowStep,
@@ -39,6 +41,8 @@ _LEGACY_AGENT_KEYS = frozenset(
 _LEGACY_STATE_SLUGS = frozenset({"maj-etat-triage", "maj-etat-validation"})
 
 _AGENT_NODE_KINDS = frozenset({"agent", "voice_agent"})
+
+_HOSTED_WORKFLOW_SLUG_INVALID_CHARS = re.compile(r"[^0-9a-z_-]+")
 
 
 def _sanitize_workflow_reference_for_serialization(
@@ -191,6 +195,47 @@ class TelephonyStartConfiguration:
 
     routes: tuple[TelephonyRouteConfig, ...]
     default_route: TelephonyRouteConfig | None
+
+
+@dataclass(slots=True, frozen=True)
+class HostedWorkflowConfig:
+    """Description normalisée d'un workflow hébergé accessible via le chat."""
+
+    slug: str
+    workflow_id: str
+    label: str
+    description: str | None
+    managed: bool = False
+
+
+def _stringify_hosted_value(value: Any) -> str | None:
+    if isinstance(value, str):
+        trimmed = value.strip()
+        return trimmed or None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float) and math.isfinite(value):
+        normalized = int(value) if float(value).is_integer() else value
+        return str(normalized)
+    return None
+
+
+def _normalize_hosted_workflow_slug(value: Any) -> str | None:
+    candidate = _stringify_hosted_value(value)
+    if candidate is None:
+        return None
+    normalized = _HOSTED_WORKFLOW_SLUG_INVALID_CHARS.sub("-", candidate.lower())
+    normalized = re.sub(r"-{2,}", "-", normalized).strip("-")
+    return normalized or None
+
+
+def _normalize_hosted_workflow_label(value: Any, *, fallback: str) -> str:
+    candidate = _stringify_hosted_value(value)
+    if candidate is not None:
+        return candidate
+    return fallback
 
 
 def _normalize_phone_token(value: Any) -> str | None:
@@ -406,6 +451,96 @@ def resolve_start_telephony_config(
     )
 
 
+def resolve_start_hosted_workflows(
+    definition: WorkflowDefinition,
+) -> tuple[HostedWorkflowConfig, ...]:
+    """Retourne la liste des workflows hébergés configurés dans le bloc start."""
+
+    start_step: WorkflowStep | None = None
+    for step in definition.steps:
+        if getattr(step, "kind", None) != "start":
+            continue
+        if not getattr(step, "is_enabled", True):
+            continue
+        start_step = step
+        break
+
+    if start_step is None:
+        return ()
+
+    parameters = getattr(start_step, "parameters", None)
+    if not isinstance(parameters, Mapping):
+        return ()
+
+    entries = parameters.get("hosted_workflows")
+    if not isinstance(entries, Sequence):
+        return ()
+
+    results: list[HostedWorkflowConfig] = []
+    seen_slugs: set[str] = set()
+
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            continue
+
+        raw_workflow_id = (
+            entry.get("workflow_id")
+            or entry.get("id")
+            or entry.get("workflow")
+            or entry.get("remote_id")
+        )
+        workflow_id = _stringify_hosted_value(raw_workflow_id)
+        if workflow_id is None:
+            continue
+
+        slug_candidates = (
+            entry.get("slug"),
+            entry.get("workflow_slug"),
+            entry.get("identifier"),
+            entry.get("workflow_identifier"),
+            entry.get("name"),
+        )
+        slug: str | None = None
+        for candidate in slug_candidates:
+            slug = _normalize_hosted_workflow_slug(candidate)
+            if slug:
+                break
+        if slug is None:
+            slug = _normalize_hosted_workflow_slug(
+                entry.get("label") or entry.get("title") or workflow_id
+            )
+        if slug is None or slug in seen_slugs:
+            continue
+
+        seen_slugs.add(slug)
+
+        label = _normalize_hosted_workflow_label(
+            entry.get("label")
+            or entry.get("title")
+            or entry.get("name")
+            or entry.get("workflow_title"),
+            fallback=workflow_id,
+        )
+
+        description_value = entry.get("description")
+        description = (
+            description_value.strip()
+            if isinstance(description_value, str) and description_value.strip()
+            else None
+        )
+
+        results.append(
+            HostedWorkflowConfig(
+                slug=slug,
+                workflow_id=workflow_id,
+                label=label,
+                description=description,
+            )
+        )
+
+    return tuple(results)
+
+
 @dataclass(slots=True, frozen=True)
 class NormalizedNode:
     slug: str
@@ -439,6 +574,14 @@ class WorkflowNotFoundError(LookupError):
     def __init__(self, workflow_id: int) -> None:
         super().__init__(f"Workflow introuvable ({workflow_id})")
         self.workflow_id = workflow_id
+
+
+class HostedWorkflowNotFoundError(LookupError):
+    """Signale qu'un workflow hébergé géré côté serveur est introuvable."""
+
+    def __init__(self, slug: str) -> None:
+        super().__init__(f"Workflow hébergé introuvable ({slug})")
+        self.slug = slug
 
 
 class WorkflowVersionNotFoundError(LookupError):
@@ -1143,6 +1286,125 @@ class WorkflowService:
                     "Le workflow sélectionné pour ChatKit ne peut pas être supprimé."
                 )
             db.delete(workflow)
+            db.commit()
+        finally:
+            if owns_session:
+                db.close()
+
+    def list_managed_hosted_workflows(
+        self, session: Session | None = None
+    ) -> list[HostedWorkflow]:
+        """Retourne la liste des workflows hébergés gérés côté serveur."""
+
+        db, owns_session = self._get_session(session)
+        try:
+            entries = db.scalars(
+                select(HostedWorkflow).order_by(HostedWorkflow.created_at.asc())
+            ).all()
+            return entries
+        finally:
+            if owns_session:
+                db.close()
+
+    def list_hosted_workflow_configs(
+        self, session: Session | None = None
+    ) -> tuple[HostedWorkflowConfig, ...]:
+        """Expose les workflows hébergés persistés sous forme de configuration."""
+
+        entries = self.list_managed_hosted_workflows(session=session)
+        return tuple(
+            HostedWorkflowConfig(
+                slug=entry.slug,
+                workflow_id=entry.remote_workflow_id,
+                label=entry.label,
+                description=entry.description,
+                managed=True,
+            )
+            for entry in entries
+        )
+
+    def create_hosted_workflow(
+        self,
+        *,
+        slug: str,
+        workflow_id: str,
+        label: str | None = None,
+        description: str | None = None,
+        session: Session | None = None,
+    ) -> HostedWorkflow:
+        """Crée une nouvelle entrée de workflow hébergé gérée côté serveur."""
+
+        db, owns_session = self._get_session(session)
+        try:
+            normalized_slug = _normalize_hosted_workflow_slug(slug)
+            if not normalized_slug:
+                raise WorkflowValidationError(
+                    "Le slug du workflow hébergé est invalide."
+                )
+
+            normalized_workflow_id = _stringify_hosted_value(workflow_id)
+            if not normalized_workflow_id:
+                raise WorkflowValidationError(
+                    "L'identifiant du workflow hébergé est obligatoire."
+                )
+
+            existing = db.scalar(
+                select(HostedWorkflow).where(HostedWorkflow.slug == normalized_slug)
+            )
+            if existing is not None:
+                raise WorkflowValidationError(
+                    "Un workflow hébergé avec ce slug existe déjà."
+                )
+
+            current_definition = self.get_current(session=db)
+            start_configs = resolve_start_hosted_workflows(current_definition)
+            if any(config.slug == normalized_slug for config in start_configs):
+                raise WorkflowValidationError(
+                    "Ce slug est déjà utilisé par un workflow hébergé "
+                    "dans le workflow par défaut."
+                )
+
+            normalized_label = _normalize_hosted_workflow_label(
+                label, fallback=normalized_workflow_id
+            )
+            normalized_description = (
+                description.strip() if isinstance(description, str) else None
+            )
+
+            entry = HostedWorkflow(
+                slug=normalized_slug,
+                remote_workflow_id=normalized_workflow_id,
+                label=normalized_label,
+                description=normalized_description or None,
+            )
+            db.add(entry)
+            db.commit()
+            db.refresh(entry)
+            return entry
+        finally:
+            if owns_session:
+                db.close()
+
+    def delete_hosted_workflow(
+        self, slug: str, *, session: Session | None = None
+    ) -> None:
+        """Supprime un workflow hébergé géré côté serveur."""
+
+        db, owns_session = self._get_session(session)
+        try:
+            normalized_slug = _normalize_hosted_workflow_slug(slug)
+            if not normalized_slug:
+                raise WorkflowValidationError(
+                    "Slug de workflow hébergé invalide."
+                )
+
+            entry = db.scalar(
+                select(HostedWorkflow).where(HostedWorkflow.slug == normalized_slug)
+            )
+            if entry is None:
+                raise HostedWorkflowNotFoundError(normalized_slug)
+
+            db.delete(entry)
             db.commit()
         finally:
             if owns_session:

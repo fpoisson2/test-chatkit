@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, constr, field_valid
 
 class SessionRequest(BaseModel):
     user: str | None = None
+    hosted_workflow_slug: str | None = None
 
 
 class VoiceSessionRequest(BaseModel):
@@ -39,6 +40,26 @@ class VoiceSessionResponse(BaseModel):
     prompt_id: str | None = None
     prompt_version: str | None = None
     prompt_variables: dict[str, str] = Field(default_factory=dict)
+
+
+class HostedWorkflowOption(BaseModel):
+    """Métadonnées minimales pour un workflow hébergé ChatKit."""
+
+    id: str
+    slug: str
+    label: str
+    description: str | None = None
+    available: bool
+    managed: bool = False
+
+
+class HostedWorkflowCreateRequest(BaseModel):
+    """Payload de création pour une entrée de workflow hébergé."""
+
+    slug: constr(strip_whitespace=True, min_length=1, max_length=128)
+    label: constr(strip_whitespace=True, min_length=1, max_length=128)
+    workflow_id: constr(strip_whitespace=True, min_length=1, max_length=128)
+    description: constr(strip_whitespace=True, max_length=512) | None = None
 
 
 class ChatKitWorkflowResponse(BaseModel):

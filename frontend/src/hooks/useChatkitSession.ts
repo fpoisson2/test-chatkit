@@ -13,6 +13,7 @@ export type UseChatkitSessionParams = {
   storageKey: string;
   token: string | null;
   mode: "local" | "hosted";
+  hostedWorkflowSlug: string | null;
   disableHostedFlow: (reason?: string | null) => void;
 };
 
@@ -29,6 +30,7 @@ export const useChatkitSession = ({
   storageKey,
   token,
   mode,
+  hostedWorkflowSlug,
   disableHostedFlow,
 }: UseChatkitSessionParams): UseChatkitSessionResult => {
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +60,14 @@ export const useChatkitSession = ({
         throw new Error("Client secret unavailable outside hosted mode.");
       }
 
+      if (!hostedWorkflowSlug) {
+        const message = "Aucun workflow hébergé n'est disponible.";
+        disableHostedFlow(message);
+        reportError(message);
+        clearStoredChatKitSecret(storageKey);
+        throw new Error(message);
+      }
+
       const { session: storedSession, shouldRefresh } = readStoredChatKitSession(storageKey);
 
       if (currentSecret && storedSession && storedSession.secret === currentSecret && !shouldRefresh) {
@@ -83,6 +93,7 @@ export const useChatkitSession = ({
         const data = await fetchChatkitSession({
           user: sessionOwner,
           token,
+          hostedWorkflowSlug,
         });
         if (!data?.client_secret) {
           throw new Error("Missing client_secret in ChatKit session response");
@@ -129,14 +140,23 @@ export const useChatkitSession = ({
             );
           }
 
-          if (err.status === 500 && detailMessage.includes("CHATKIT_WORKFLOW_ID")) {
-            disableHostedFlow("CHATKIT_WORKFLOW_ID manquant");
-            const workflowError = new Error(
-              "Le flux hébergé a été désactivé car CHATKIT_WORKFLOW_ID n'est pas configuré côté serveur.",
-            );
-            reportError(workflowError.message, err);
+          const errorCode =
+            typeof err.detail === "object" && err.detail !== null
+              ? (err.detail as Record<string, unknown>).error
+              : null;
+
+          if (
+            (err.status === 400 || err.status === 404) &&
+            (errorCode === "hosted_workflow_not_configured" || errorCode === "hosted_workflow_not_found")
+          ) {
+            const reason =
+              errorCode === "hosted_workflow_not_found"
+                ? "Le workflow hébergé sélectionné est introuvable."
+                : "Aucun workflow hébergé n'est configuré sur le serveur.";
+            disableHostedFlow(reason);
+            reportError(reason, err);
             clearStoredChatKitSecret(storageKey);
-            throw workflowError;
+            throw new Error(reason);
           }
 
           const combinedMessage = err.status
@@ -163,7 +183,16 @@ export const useChatkitSession = ({
         setIsLoading(false);
       }
     },
-    [disableHostedFlow, mode, reportError, resetError, sessionOwner, storageKey, token],
+    [
+      disableHostedFlow,
+      hostedWorkflowSlug,
+      mode,
+      reportError,
+      resetError,
+      sessionOwner,
+      storageKey,
+      token,
+    ],
   );
 
   return {

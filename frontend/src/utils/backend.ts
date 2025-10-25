@@ -131,16 +131,21 @@ export type ChatkitSessionResponse = {
 export const fetchChatkitSession = async ({
   user,
   token,
+  hostedWorkflowSlug,
   signal,
 }: {
   user: string;
   token: string | null | undefined;
+  hostedWorkflowSlug?: string | null;
   signal?: AbortSignal;
 }): Promise<ChatkitSessionResponse> => {
   const response = await requestWithFallback("/api/chatkit/session", {
     method: "POST",
     headers: withAuthHeaders(token ?? null),
-    body: JSON.stringify({ user }),
+    body: JSON.stringify({
+      user,
+      hosted_workflow_slug: hostedWorkflowSlug ?? undefined,
+    }),
     signal,
   });
 
@@ -211,6 +216,18 @@ export type ChatKitWorkflowInfo = {
   updated_at: string;
 };
 
+export type HostedWorkflowMetadata = {
+  id: string;
+  slug: string;
+  label: string;
+  description?: string | null;
+  available: boolean;
+  managed: boolean;
+};
+
+let hostedWorkflowCache: HostedWorkflowMetadata[] | null | undefined;
+let hostedWorkflowPromise: Promise<HostedWorkflowMetadata[] | null> | null = null;
+
 export const adminApi = {
   async listUsers(token: string | null): Promise<EditableUser[]> {
     const response = await requestWithFallback("/api/admin/users", {
@@ -275,6 +292,89 @@ export const chatkitApi = {
       headers: withAuthHeaders(token),
     });
     return response.json();
+  },
+
+  async getHostedWorkflows(
+    token: string | null,
+    options: { cache?: boolean } = {},
+  ): Promise<HostedWorkflowMetadata[] | null> {
+    const useCache = options.cache !== false;
+
+    if (useCache && hostedWorkflowCache !== undefined) {
+      return hostedWorkflowCache;
+    }
+
+    if (useCache && hostedWorkflowPromise) {
+      return hostedWorkflowPromise;
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const response = await requestWithFallback("/api/chatkit/hosted", {
+          headers: withAuthHeaders(token),
+        });
+        const payload = (await response.json()) as HostedWorkflowMetadata[];
+        if (useCache) {
+          hostedWorkflowCache = payload;
+        }
+        return payload;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) {
+          if (useCache) {
+            hostedWorkflowCache = null;
+          }
+          return null;
+        }
+
+        if (useCache) {
+          hostedWorkflowCache = undefined;
+        }
+
+        throw error;
+      } finally {
+        if (useCache) {
+          hostedWorkflowPromise = null;
+        }
+      }
+    })();
+
+    if (useCache) {
+      hostedWorkflowPromise = fetchPromise;
+    }
+
+    return fetchPromise;
+  },
+
+  async createHostedWorkflow(
+    token: string | null,
+    payload: {
+      slug: string;
+      workflow_id: string;
+      label: string;
+      description?: string | undefined;
+    },
+  ): Promise<HostedWorkflowMetadata> {
+    const response = await requestWithFallback("/api/chatkit/hosted", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    const data = (await response.json()) as HostedWorkflowMetadata;
+    hostedWorkflowCache = undefined;
+    return data;
+  },
+
+  async deleteHostedWorkflow(token: string | null, slug: string): Promise<void> {
+    await requestWithFallback(`/api/chatkit/hosted/${encodeURIComponent(slug)}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+    hostedWorkflowCache = undefined;
+  },
+
+  invalidateHostedWorkflowCache(): void {
+    hostedWorkflowCache = undefined;
+    hostedWorkflowPromise = null;
   },
 };
 

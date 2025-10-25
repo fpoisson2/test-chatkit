@@ -38,7 +38,13 @@ except (
 
         pass
 
-    AssistantMessageContent = AssistantMessageItem = InferenceOptions = UserMessageItem = UserMessageTextContent = None  # type: ignore[assignment]
+    (
+        AssistantMessageContent,
+        AssistantMessageItem,
+        InferenceOptions,
+        UserMessageItem,
+        UserMessageTextContent,
+    ) = (None, None, None, None, None)  # type: ignore[assignment]
 
 
 if TYPE_CHECKING:  # pragma: no cover - uniquement pour l'auto-complétion
@@ -48,23 +54,25 @@ from chatkit.store import NotFoundError
 
 from ..attachment_store import AttachmentUploadError
 from ..chatkit_realtime import create_realtime_voice_session
+from ..chatkit_server.context import (
+    _get_wait_state_metadata,
+    _set_wait_state_metadata,
+)
 from ..chatkit_sessions import (
     SessionSecretParser,
     create_chatkit_session,
     proxy_chatkit_request,
     summarize_payload_shape,
 )
-from ..chatkit_server.context import (
-    _get_wait_state_metadata,
-    _set_wait_state_metadata,
-)
-from ..config import get_settings
+from ..config import Settings, get_settings
 from ..database import get_session
 from ..dependencies import get_current_user, get_optional_user
 from ..image_utils import AGENT_IMAGE_STORAGE_DIR
 from ..models import User
 from ..schemas import (
     ChatKitWorkflowResponse,
+    HostedWorkflowCreateRequest,
+    HostedWorkflowOption,
     SessionRequest,
     VoiceSessionRequest,
     VoiceSessionResponse,
@@ -72,16 +80,23 @@ from ..schemas import (
 from ..security import decode_agent_image_token
 from ..voice_settings import get_or_create_voice_settings
 from ..workflows import (
+    HostedWorkflowConfig,
+    HostedWorkflowNotFoundError,
     WorkflowService,
+    WorkflowValidationError,
     resolve_start_auto_start,
     resolve_start_auto_start_assistant_message,
     resolve_start_auto_start_message,
+    resolve_start_hosted_workflows,
 )
 
 router = APIRouter()
 
 
 logger = logging.getLogger("chatkit.voice")
+
+
+LEGACY_HOSTED_SLUG = "hosted-workflow"
 
 
 def get_chatkit_server():
@@ -162,14 +177,180 @@ async def get_chatkit_workflow(
     )
 
 
+def _collect_hosted_configs(
+    *,
+    settings: Settings,
+    definition,
+    service: WorkflowService,
+    session: Session,
+) -> list[HostedWorkflowConfig]:
+    managed_configs = list(service.list_hosted_workflow_configs(session=session))
+    configs: list[HostedWorkflowConfig] = []
+    seen_slugs: set[str] = set()
+
+    for config in managed_configs:
+        configs.append(config)
+        seen_slugs.add(config.slug)
+
+    for config in resolve_start_hosted_workflows(definition):
+        if config.slug in seen_slugs:
+            continue
+        configs.append(config)
+        seen_slugs.add(config.slug)
+
+    if settings.chatkit_workflow_id and LEGACY_HOSTED_SLUG not in seen_slugs:
+        configs.append(
+            HostedWorkflowConfig(
+                slug=LEGACY_HOSTED_SLUG,
+                workflow_id=settings.chatkit_workflow_id,
+                label="Hosted ChatKit workflow",
+                description=None,
+            )
+        )
+
+    return configs
+
+
+@router.get("/api/chatkit/hosted", response_model=list[HostedWorkflowOption])
+async def get_hosted_workflow_options(
+    settings: Settings = Depends(get_settings),
+    session: Session = Depends(get_session),
+) -> list[HostedWorkflowOption]:
+    service = WorkflowService()
+    definition = service.get_current(session)
+    configs = _collect_hosted_configs(
+        settings=settings,
+        definition=definition,
+        service=service,
+        session=session,
+    )
+    available = bool(settings.model_api_key and settings.model_api_base)
+    return [
+        HostedWorkflowOption(
+            id=config.workflow_id,
+            slug=config.slug,
+            label=config.label,
+            description=config.description,
+            available=available,
+            managed=config.managed,
+        )
+        for config in configs
+    ]
+
+
+@router.post(
+    "/api/chatkit/hosted",
+    response_model=HostedWorkflowOption,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_hosted_workflow_entry(
+    payload: HostedWorkflowCreateRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> HostedWorkflowOption:
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès administrateur requis pour gérer les workflows hébergés.",
+        )
+
+    service = WorkflowService()
+    try:
+        entry = service.create_hosted_workflow(
+            slug=payload.slug,
+            workflow_id=payload.workflow_id,
+            label=payload.label,
+            description=payload.description,
+            session=session,
+        )
+    except WorkflowValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.message,
+        ) from exc
+
+    available = bool(settings.model_api_key and settings.model_api_base)
+    return HostedWorkflowOption(
+        id=entry.remote_workflow_id,
+        slug=entry.slug,
+        label=entry.label,
+        description=entry.description,
+        available=available,
+        managed=True,
+    )
+
+
+@router.delete("/api/chatkit/hosted/{slug}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_hosted_workflow_entry(
+    slug: str,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès administrateur requis pour gérer les workflows hébergés.",
+        )
+
+    service = WorkflowService()
+    try:
+        service.delete_hosted_workflow(slug, session=session)
+    except WorkflowValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.message,
+        ) from exc
+    except HostedWorkflowNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "hosted_workflow_not_found", "slug": exc.slug},
+        ) from exc
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/api/chatkit/session")
 async def create_session(
     req: SessionRequest,
     current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ):
     user_id = req.user or f"user:{current_user.id}"
+    service = WorkflowService()
+    definition = service.get_current(session)
+    configs = _collect_hosted_configs(
+        settings=settings,
+        definition=definition,
+        service=service,
+        session=session,
+    )
 
-    session_secret = await create_chatkit_session(user_id)
+    target_config: HostedWorkflowConfig | None = None
+    requested_slug = req.hosted_workflow_slug
+    if requested_slug:
+        for config in configs:
+            if config.slug == requested_slug:
+                target_config = config
+                break
+        if target_config is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "hosted_workflow_not_found",
+                    "message": "Workflow hébergé introuvable pour le slug demandé.",
+                    "slug": requested_slug,
+                },
+            )
+    else:
+        if configs:
+            target_config = configs[0]
+
+    session_secret = await create_chatkit_session(
+        user_id,
+        workflow_id=target_config.workflow_id if target_config else None,
+    )
     return {
         "client_secret": session_secret["client_secret"],
         "expires_at": session_secret.get("expires_at"),
@@ -406,7 +587,7 @@ async def get_pending_voice_session(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "Thread introuvable"},
-        )
+        ) from None
     except Exception as exc:
         logger.exception("Erreur lors de la récupération du thread", exc_info=exc)
         raise HTTPException(
@@ -472,7 +653,7 @@ async def submit_voice_transcripts(
     request: Request,
     current_user: User = Depends(get_current_user),
 ):
-    """Ajoute des transcriptions vocales au thread en temps réel (sans déclencher la continuation du workflow)."""
+    """Ajoute des transcriptions vocales en temps réel sans relancer le workflow."""
     try:
         server = get_chatkit_server()
     except (ModuleNotFoundError, ImportError) as exc:
@@ -502,7 +683,7 @@ async def submit_voice_transcripts(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "Thread introuvable"},
-        )
+        ) from None
     except Exception as exc:
         logger.exception("Erreur lors de la récupération du thread", exc_info=exc)
         raise HTTPException(
@@ -638,7 +819,11 @@ async def submit_voice_transcripts(
                             inference_options=InferenceOptions(),
                             quoted_text=None,
                         )
-                        await server.store.add_thread_item(thread_id, user_message, context)
+                        await server.store.add_thread_item(
+                            thread_id,
+                            user_message,
+                            context,
+                        )
                     else:
                         assistant_message = AssistantMessageItem(
                             id=message_id,
@@ -680,7 +865,11 @@ async def submit_voice_transcripts(
                             )
                             messages_added += 1
                         else:
-                            await server.store.save_item(thread_id, user_message, context)
+                            await server.store.save_item(
+                                thread_id,
+                                user_message,
+                                context,
+                            )
                             messages_updated += 1
                     else:
                         assistant_message = AssistantMessageItem(
@@ -696,7 +885,9 @@ async def submit_voice_transcripts(
                             messages_added += 1
                         else:
                             await server.store.save_item(
-                                thread_id, assistant_message, context
+                                thread_id,
+                                assistant_message,
+                                context,
                             )
                             messages_updated += 1
             except Exception as exc:
@@ -706,7 +897,9 @@ async def submit_voice_transcripts(
                 )
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail={"error": "Erreur lors de la synchronisation des transcriptions"},
+                    detail={
+                        "error": "Erreur lors de la synchronisation des transcriptions"
+                    },
                 ) from exc
 
         if existing_index is not None:
@@ -746,7 +939,8 @@ async def submit_voice_transcripts(
 
     if messages_added or messages_updated:
         logger.info(
-            "Transcriptions synchronisées (user=%s, thread=%s, ajoutées=%d, mises à jour=%d)",
+            "Transcriptions synchronisées (user=%s, thread=%s, ajoutées=%d, mises à "
+            "jour=%d)",
             current_user.id,
             thread_id,
             messages_added,
@@ -766,7 +960,7 @@ async def finalize_voice_session(
     request: Request,
     current_user: User = Depends(get_current_user),
 ):
-    """Finalise la session vocale avec les transcriptions et déclenche la continuation du workflow."""
+    """Finalise la session vocale et relance le workflow si nécessaire."""
     try:
         server = get_chatkit_server()
     except (ModuleNotFoundError, ImportError) as exc:
@@ -776,7 +970,8 @@ async def finalize_voice_session(
             detail={"error": "ChatKit SDK introuvable"},
         ) from exc
 
-    # Récupérer les transcriptions du body (peut être vide si déjà envoyées via /transcripts)
+    # Récupérer les transcriptions du body
+    # (peut être vide si déjà envoyées via /transcripts)
     try:
         body = await request.json()
         transcripts = body.get("transcripts", [])
@@ -796,7 +991,7 @@ async def finalize_voice_session(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"error": "Thread introuvable"},
-        )
+        ) from None
     except Exception as exc:
         logger.exception("Erreur lors de la récupération du thread", exc_info=exc)
         raise HTTPException(
@@ -818,7 +1013,8 @@ async def finalize_voice_session(
     updated_wait_state = dict(wait_state)
     updated_wait_state["voice_messages_created"] = True
     if transcripts:
-        # Si des transcriptions sont quand même envoyées (pour retrocompatibilité), les stocker
+        # Si des transcriptions sont envoyées (pour retrocompatibilité),
+        # les stocker
         updated_wait_state["voice_transcripts"] = transcripts
     _set_wait_state_metadata(thread, updated_wait_state)
 
@@ -826,7 +1022,10 @@ async def finalize_voice_session(
     try:
         await server.store.save_thread(thread, context)
     except Exception as exc:
-        logger.exception("Erreur lors de la sauvegarde des transcriptions", exc_info=exc)
+        logger.exception(
+            "Erreur lors de la sauvegarde des transcriptions",
+            exc_info=exc,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "Erreur lors de la sauvegarde des transcriptions"},
@@ -880,7 +1079,8 @@ async def finalize_voice_session(
                     pass
         except Exception as exc:
             logger.warning(
-                "Impossible de reprendre le workflow via ChatKitServer.process pour le thread %s",
+                "Impossible de reprendre le workflow via ChatKitServer.process pour "
+                "le thread %s",
                 thread_id,
                 exc_info=exc,
             )
