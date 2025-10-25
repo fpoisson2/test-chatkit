@@ -222,7 +222,6 @@ export const AgentInspectorSection = ({
   const hostedModeOptionId = `${nestedWorkflowLabelId}-hosted`;
   const localWorkflowSelectId = `${nestedWorkflowLabelId}-select`;
   const hostedWorkflowIdFieldId = `${nestedWorkflowLabelId}-hosted-id`;
-  const hostedWorkflowSlugFieldId = `${nestedWorkflowLabelId}-hosted-slug`;
 
   const parseDimension = (value: string, fallback: number): number => {
     const parsed = Number.parseInt(value, 10);
@@ -389,13 +388,6 @@ export const AgentInspectorSection = ({
     }
   };
 
-  const handleHostedWorkflowSlugChange = (value: string) => {
-    setHostedWorkflowSlugInput(value);
-    if (workflowMode === "hosted") {
-      emitNestedWorkflowChange("hosted", hostedWorkflowIdInput, value);
-    }
-  };
-
   const selectedNestedWorkflow = useMemo(() => {
     if (nestedWorkflowId == null) {
       return null;
@@ -411,7 +403,8 @@ export const AgentInspectorSection = ({
   const hostedSlugInfoValue = hostedWorkflowSlugInput.trim() || nestedWorkflowSlug.trim();
   const showHostedSlugInfo =
     workflowMode === "hosted" && nestedWorkflowId == null && hostedSlugInfoValue.length > 0;
-  return (
+
+  const nestedWorkflowSection = (
     <>
       <div className={styles.nodeInspectorInlineField}>
         <span id={nestedWorkflowLabelId} className={styles.nodeInspectorLabel}>
@@ -480,20 +473,6 @@ export const AgentInspectorSection = ({
                   onChange={(event) => handleHostedWorkflowIdChange(event.target.value)}
                 />
               </label>
-              <label className={styles.nodeInspectorSubField} htmlFor={hostedWorkflowSlugFieldId}>
-                <span className={styles.nodeInspectorSubLabel}>
-                  {t("workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel")}
-                </span>
-                <input
-                  id={hostedWorkflowSlugFieldId}
-                  type="text"
-                  value={hostedWorkflowSlugInput}
-                  placeholder={t(
-                    "workflowBuilder.agentInspector.nestedWorkflowHostedSlugPlaceholder",
-                  )}
-                  onChange={(event) => handleHostedWorkflowSlugChange(event.target.value)}
-                />
-              </label>
             </div>
           )}
         </div>
@@ -510,6 +489,15 @@ export const AgentInspectorSection = ({
           {t("workflowBuilder.agentInspector.nestedWorkflowSlugInfo", { slug: hostedSlugInfoValue })}
         </p>
       ) : null}
+    </>
+  );
+  if (workflowMode === "hosted") {
+    return nestedWorkflowSection;
+  }
+
+  return (
+    <>
+      {nestedWorkflowSection}
 
       <label className={styles.nodeInspectorField}>
         <span>Message système</span>

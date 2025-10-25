@@ -132,6 +132,9 @@ describe("AgentInspectorSection", () => {
       workflowSlug: "secondary",
     });
 
+    expect(screen.queryByText(/Message système/i)).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("switch").length).toBe(0);
+
     const hostedIdInput = screen.getByLabelText(/identifiant du workflow|workflow id/i);
     await userEvent.clear(hostedIdInput);
     await userEvent.type(hostedIdInput, "123");
@@ -142,15 +145,9 @@ describe("AgentInspectorSection", () => {
       workflowSlug: "secondary",
     });
 
-    const hostedSlugInput = screen.getByLabelText(/slug du workflow|workflow slug/i);
-    await userEvent.clear(hostedSlugInput);
-    await userEvent.type(hostedSlugInput, "remote-workflow");
-
-    expect(onAgentNestedWorkflowChange).toHaveBeenLastCalledWith("agent-1", {
-      mode: "hosted",
-      workflowId: 123,
-      workflowSlug: "remote-workflow",
-    });
+    expect(
+      screen.queryByLabelText(/slug du workflow|workflow slug/i),
+    ).not.toBeInTheDocument();
   });
 
   it("calls onAgentWorkflowValidationToolChange when toggled", async () => {
