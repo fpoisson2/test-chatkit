@@ -1331,6 +1331,13 @@ button {
   justify-content: flex-end;
 }
 
+.admin-form__divider {
+  height: 1px;
+  background: var(--color-border-subtle);
+  border-radius: 1px;
+  margin: 4px 0 8px;
+}
+
 .admin-form__hint {
   margin-top: 6px;
   font-size: 0.875rem;

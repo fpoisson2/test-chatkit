@@ -17,8 +17,8 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test-admin-settings.db")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret-key")
 os.environ.setdefault("OPENAI_API_KEY", "sk-test")
 
-from backend.app import admin_settings
-from backend.app.models import AppSettings, Base
+from backend.app import admin_settings  # noqa: E402
+from backend.app.models import AppSettings, Base  # noqa: E402
 
 
 @pytest.fixture
@@ -91,6 +91,9 @@ def test_serialize_admin_settings_marks_custom_value(
     payload = admin_settings.serialize_admin_settings(override)
     assert payload["thread_title_prompt"] == "Prompt ajusté"
     assert payload["is_custom_thread_title_prompt"] is True
+    assert payload["sip_trunk_uri"] is None
+    assert payload["sip_trunk_username"] is None
+    assert payload["sip_trunk_password"] is None
 
     with session_factory() as session:
         admin_settings.update_admin_settings(session, thread_title_prompt="  ")
@@ -100,3 +103,40 @@ def test_serialize_admin_settings_marks_custom_value(
     )
     assert payload["thread_title_prompt"] == default_prompt
     assert payload["is_custom_thread_title_prompt"] is False
+    assert payload["sip_trunk_uri"] is None
+    assert payload["sip_trunk_username"] is None
+    assert payload["sip_trunk_password"] is None
+
+
+def test_update_admin_settings_handles_sip_trunk(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        stored = admin_settings.update_admin_settings(
+            session,
+            sip_trunk_uri=" sip:example.org ",
+            sip_trunk_username="  user ",
+            sip_trunk_password="  secret ",
+        )
+
+    assert stored is not None
+    assert stored.sip_trunk_uri == "sip:example.org"
+    assert stored.sip_trunk_username == "user"
+    assert stored.sip_trunk_password == "secret"
+
+    with session_factory() as session:
+        override = admin_settings.get_thread_title_prompt_override(session)
+        assert override is not None
+        assert override.sip_trunk_uri == "sip:example.org"
+
+    with session_factory() as session:
+        admin_settings.update_admin_settings(
+            session,
+            sip_trunk_uri=None,
+            sip_trunk_username=None,
+            sip_trunk_password=None,
+        )
+
+    with session_factory() as session:
+        override = admin_settings.get_thread_title_prompt_override(session)
+        assert override is None

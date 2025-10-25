@@ -45,7 +45,17 @@ async def patch_app_settings(
     session: Session = Depends(get_session),
     _: User = Depends(require_admin),
 ):
-    update_admin_settings(session, thread_title_prompt=payload.thread_title_prompt)
+    kwargs: dict[str, object] = {}
+    if "thread_title_prompt" in payload.model_fields_set:
+        kwargs["thread_title_prompt"] = payload.thread_title_prompt
+    if "sip_trunk_uri" in payload.model_fields_set:
+        kwargs["sip_trunk_uri"] = payload.sip_trunk_uri
+    if "sip_trunk_username" in payload.model_fields_set:
+        kwargs["sip_trunk_username"] = payload.sip_trunk_username
+    if "sip_trunk_password" in payload.model_fields_set:
+        kwargs["sip_trunk_password"] = payload.sip_trunk_password
+
+    update_admin_settings(session, **kwargs)
     override = get_thread_title_prompt_override(session)
     serialized = serialize_admin_settings(override)
     return AppSettingsResponse.model_validate(serialized)

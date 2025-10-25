@@ -105,6 +105,9 @@ class AppSettingsResponse(BaseModel):
     thread_title_prompt: str
     default_thread_title_prompt: str
     is_custom_thread_title_prompt: bool
+    sip_trunk_uri: str | None = None
+    sip_trunk_username: str | None = None
+    sip_trunk_password: str | None = None
     created_at: datetime.datetime | None = None
     updated_at: datetime.datetime | None = None
 
@@ -117,6 +120,21 @@ class AppSettingsUpdateRequest(BaseModel):
             "à la valeur par défaut."
         ),
         max_length=4000,
+    )
+    sip_trunk_uri: str | None = Field(
+        default=None,
+        description="URI du trunk SIP à joindre pour les appels entrants.",
+        max_length=512,
+    )
+    sip_trunk_username: str | None = Field(
+        default=None,
+        description="Identifiant d'authentification SIP (optionnel).",
+        max_length=128,
+    )
+    sip_trunk_password: str | None = Field(
+        default=None,
+        description="Mot de passe SIP (laisser vide pour le supprimer).",
+        max_length=256,
     )
 
 

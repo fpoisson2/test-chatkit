@@ -185,12 +185,18 @@ export type AppSettings = {
   thread_title_prompt: string;
   default_thread_title_prompt: string;
   is_custom_thread_title_prompt: boolean;
+  sip_trunk_uri: string | null;
+  sip_trunk_username: string | null;
+  sip_trunk_password: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
 
 export type AppSettingsUpdatePayload = {
-  thread_title_prompt: string | null;
+  thread_title_prompt?: string | null;
+  sip_trunk_uri?: string | null;
+  sip_trunk_username?: string | null;
+  sip_trunk_password?: string | null;
 };
 
 export type ChatKitWorkflowInfo = {
