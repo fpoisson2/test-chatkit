@@ -65,7 +65,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         setMode("local");
       }
       const selection: WorkflowActivation = { kind: "local", workflow: null };
-      onWorkflowActivated(selection, { reason: "initial" });
       onWorkflowActivatedRef.current(selection, { reason: "initial" });
       return;
     }
@@ -108,12 +107,11 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
       const selection: WorkflowActivation = { kind: "local", workflow: active ?? null };
       if (mode === "local") {
-        onWorkflowActivated(selection, { reason: "initial" });
+        onWorkflowActivatedRef.current(selection, { reason: "initial" });
       } else if (mode === "hosted" && hostedList.length === 0) {
         setMode("local");
-        onWorkflowActivated(selection, { reason: "initial" });
+        onWorkflowActivatedRef.current(selection, { reason: "initial" });
       }
-      onWorkflowActivatedRef.current(selection, { reason: "initial" });
     } catch (err) {
       let message = err instanceof Error ? err.message : "Impossible de charger les workflows.";
       if (isApiError(err) && err.status === 403) {
@@ -128,11 +126,11 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       if (mode !== "local") {
         setMode("local");
       }
-      onWorkflowActivated({ kind: "local", workflow: null }, { reason: "initial" });
+      onWorkflowActivatedRef.current({ kind: "local", workflow: null }, { reason: "initial" });
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, mode, onWorkflowActivated, setMode, token]);
+  }, [isAdmin, mode, setMode, token]);
 
   useEffect(() => {
     void loadWorkflows();
@@ -169,13 +167,13 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       const option = hostedWorkflows.find((entry) => entry.slug === activeSlug);
       if (option) {
         hostedInitialAnnouncedRef.current = true;
-        onWorkflowActivated(
+        onWorkflowActivatedRef.current(
           { kind: "hosted", slug: option.slug, option },
           { reason: "initial" },
         );
       }
     }
-  }, [hostedWorkflows, mode, onWorkflowActivated, selectedHostedSlug]);
+  }, [hostedWorkflows, mode, selectedHostedSlug]);
 
   const handleWorkflowClick = useCallback(
     async (workflowId: number) => {
@@ -212,7 +210,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         if (mode !== "local") {
           setMode("local");
         }
-        onWorkflowActivated(
+        onWorkflowActivatedRef.current(
           { kind: "local", workflow: updated.active_version_id ? updated : null },
           { reason: "user" },
         );
@@ -238,7 +236,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       isDesktopLayout,
       isUpdating,
       mode,
-      onWorkflowActivated,
       selectedWorkflowId,
       setMode,
       token,
@@ -258,7 +255,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       if (mode !== "hosted") {
         setMode("hosted");
       }
-      onWorkflowActivated(
+      onWorkflowActivatedRef.current(
         { kind: "hosted", slug: option.slug, option },
         { reason: "user" },
       );
@@ -266,14 +263,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         closeSidebar();
       }
     },
-    [
-      closeSidebar,
-      hostedWorkflows,
-      isDesktopLayout,
-      mode,
-      onWorkflowActivated,
-      setMode,
-    ],
+    [closeSidebar, hostedWorkflows, isDesktopLayout, mode, setMode],
   );
 
   const handleOpenBuilder = useCallback(() => {
