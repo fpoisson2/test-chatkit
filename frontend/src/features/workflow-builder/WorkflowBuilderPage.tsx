@@ -809,6 +809,11 @@ const WorkflowBuilderPage = () => {
   const previousSelectedElementRef = useRef<string | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);
   const selectedEdgeIdRef = useRef<string | null>(null);
+  const lastTappedElementRef = useRef<{
+    kind: "node" | "edge";
+    id: string;
+    tapCount: number;
+  } | null>(null);
   const selectedNodeIdsRef = useRef<Set<string>>(new Set());
   const selectedEdgeIdsRef = useRef<Set<string>>(new Set());
   const isNodeDragInProgressRef = useRef(false);
@@ -2114,10 +2119,17 @@ const WorkflowBuilderPage = () => {
       if (isPreviewMode) {
         return;
       }
+      const lastTapped = lastTappedElementRef.current;
+      const isSameElement = lastTapped?.kind === "node" && lastTapped.id === node.id;
+      const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
+      lastTappedElementRef.current = { kind: "node", id: node.id, tapCount: nextTapCount };
       setSelectedNodeId(node.id);
       setSelectedEdgeId(null);
+      if (isMobileLayout && isSameElement && nextTapCount >= 2) {
+        setPropertiesPanelOpen(true);
+      }
     },
-    [isPreviewMode],
+    [isMobileLayout, isPreviewMode],
   );
 
   const handleEdgeClick = useCallback(
@@ -2125,10 +2137,17 @@ const WorkflowBuilderPage = () => {
       if (isPreviewMode) {
         return;
       }
+      const lastTapped = lastTappedElementRef.current;
+      const isSameElement = lastTapped?.kind === "edge" && lastTapped.id === edge.id;
+      const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
+      lastTappedElementRef.current = { kind: "edge", id: edge.id, tapCount: nextTapCount };
       setSelectedEdgeId(edge.id);
       setSelectedNodeId(null);
+      if (isMobileLayout && isSameElement && nextTapCount >= 2) {
+        setPropertiesPanelOpen(true);
+      }
     },
-    [isPreviewMode],
+    [isMobileLayout, isPreviewMode],
   );
 
   const handleClearSelection = useCallback(() => {
@@ -2220,17 +2239,43 @@ const WorkflowBuilderPage = () => {
   }, [selectedEdgeId]);
 
   useEffect(() => {
-    if (selectedElementKey) {
-      if (previousSelectedElementRef.current !== selectedElementKey) {
-        if (!(isMobileLayout && isNodeDragInProgressRef.current)) {
-          setPropertiesPanelOpen(true);
-        }
-      }
-    } else {
+    if (!selectedElementKey) {
       setPropertiesPanelOpen(false);
+      lastTappedElementRef.current = null;
+      previousSelectedElementRef.current = selectedElementKey;
+      return;
     }
+
+    const isNewSelection = previousSelectedElementRef.current !== selectedElementKey;
+    if (isNewSelection) {
+      const matchesLastTap =
+        (selectedNodeId &&
+          lastTappedElementRef.current?.kind === "node" &&
+          lastTappedElementRef.current.id === selectedNodeId) ||
+        (selectedEdgeId &&
+          lastTappedElementRef.current?.kind === "edge" &&
+          lastTappedElementRef.current.id === selectedEdgeId);
+
+      if (!matchesLastTap) {
+        lastTappedElementRef.current = null;
+      } else if (lastTappedElementRef.current) {
+        lastTappedElementRef.current = {
+          ...lastTappedElementRef.current,
+          tapCount: 1,
+        };
+      }
+    }
+
+    if (isMobileLayout) {
+      if (isNewSelection) {
+        setPropertiesPanelOpen(false);
+      }
+    } else if (isNewSelection && !isNodeDragInProgressRef.current) {
+      setPropertiesPanelOpen(true);
+    }
+
     previousSelectedElementRef.current = selectedElementKey;
-  }, [isMobileLayout, selectedElementKey]);
+  }, [isMobileLayout, selectedEdgeId, selectedElementKey, selectedNodeId]);
 
   useEffect(() => {
     if (!isMobileLayout) {
