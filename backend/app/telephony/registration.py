@@ -201,6 +201,15 @@ class SIPRegistrationManager:
             raise RuntimeError("aiosip is not available") from _AIOSIP_IMPORT_ERROR
 
         self._config = new_config
+        if new_config is None:
+            LOGGER.info("Enregistrement SIP désactivé")
+        else:
+            LOGGER.info(
+                "Enregistrement SIP mis à jour : trunk %s (contact %s:%s)",
+                new_config.uri,
+                new_config.contact_host,
+                new_config.contact_port,
+            )
         self._reload_event.set()
 
     async def start(self) -> None:
@@ -313,6 +322,10 @@ class SIPRegistrationManager:
         register_future = self._dialog.register(expires=config.expires)
         await asyncio.wait_for(register_future, timeout=self._register_timeout)
 
+        LOGGER.info(
+            "Enregistrement SIP réussi auprès de %s:%s", remote_host, remote_port
+        )
+        self._last_error = None
         self._active_config = config
 
     async def _unregister(self) -> None:
@@ -320,6 +333,7 @@ class SIPRegistrationManager:
 
         dialog = self._dialog
         app = self._app
+        previous_config = self._active_config
 
         self._dialog = None
         self._app = None
@@ -339,6 +353,9 @@ class SIPRegistrationManager:
             with contextlib.suppress(Exception):  # pragma: no cover - network dependent
                 await asyncio.wait_for(app.finish(), timeout=self._register_timeout)
 
+        if previous_config is not None:
+            LOGGER.info("Enregistrement SIP arrêté pour %s", previous_config.uri)
+
     async def apply_config_from_settings(
         self, session: Session, settings: AppSettings | None
     ) -> None:
@@ -349,11 +366,17 @@ class SIPRegistrationManager:
             stored_settings = session.scalar(select(AppSettings).limit(1))
 
         if stored_settings is None:
+            LOGGER.info(
+                "Enregistrement SIP désactivé : aucun paramètre d'application trouvé"
+            )
             self.apply_config(None)
             return
 
         trunk_uri = (stored_settings.sip_trunk_uri or "").strip()
         if not trunk_uri:
+            LOGGER.info(
+                "Enregistrement SIP désactivé : aucun trunk SIP n'est configuré"
+            )
             self.apply_config(None)
             return
 
@@ -393,6 +416,12 @@ class SIPRegistrationManager:
             password=str(password),
             contact_host=str(contact_host),
             contact_port=int(contact_port),
+        )
+        LOGGER.info(
+            "Configuration SIP prête : trunk %s (contact %s:%s)",
+            config.uri,
+            config.contact_host,
+            config.contact_port,
         )
         self.apply_config(config)
 
