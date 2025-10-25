@@ -61,6 +61,42 @@ def _run_ad_hoc_migrations() -> None:
             AppSettings.__table__.create(bind=connection)
             table_names.add("app_settings")
 
+        if "app_settings" in table_names:
+            app_settings_columns = {
+                column["name"]
+                for column in inspect(connection).get_columns("app_settings")
+            }
+            if "sip_trunk_uri" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "sip_trunk_uri"
+                )
+                connection.execute(
+                    text("ALTER TABLE app_settings ADD COLUMN sip_trunk_uri TEXT")
+                )
+            if "sip_trunk_username" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "sip_trunk_username"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN sip_trunk_username "
+                        "VARCHAR(128)"
+                    )
+                )
+            if "sip_trunk_password" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "sip_trunk_password"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN sip_trunk_password "
+                        "VARCHAR(256)"
+                    )
+                )
+
         if "telephony_routes" not in table_names:
             logger.info("Création de la table telephony_routes manquante")
             TelephonyRoute.__table__.create(bind=connection)

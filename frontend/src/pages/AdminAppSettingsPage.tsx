@@ -15,6 +15,9 @@ export const AdminAppSettingsPage = () => {
   const { t } = useI18n();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [prompt, setPrompt] = useState("");
+  const [sipTrunkUri, setSipTrunkUri] = useState("");
+  const [sipTrunkUsername, setSipTrunkUsername] = useState("");
+  const [sipTrunkPassword, setSipTrunkPassword] = useState("");
   const [isLoading, setLoading] = useState(true);
   const [isSaving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +38,9 @@ export const AdminAppSettingsPage = () => {
       const data = await appSettingsApi.get(token);
       setSettings(data);
       setPrompt(data.thread_title_prompt);
+      setSipTrunkUri(data.sip_trunk_uri ?? "");
+      setSipTrunkUsername(data.sip_trunk_username ?? "");
+      setSipTrunkPassword(data.sip_trunk_password ?? "");
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
@@ -75,9 +81,15 @@ export const AdminAppSettingsPage = () => {
     try {
       const updated = await appSettingsApi.update(token, {
         thread_title_prompt: trimmed,
+        sip_trunk_uri: sipTrunkUri.trim() || null,
+        sip_trunk_username: sipTrunkUsername.trim() || null,
+        sip_trunk_password: sipTrunkPassword.trim() || null,
       });
       setSettings(updated);
       setPrompt(updated.thread_title_prompt);
+      setSipTrunkUri(updated.sip_trunk_uri ?? "");
+      setSipTrunkUsername(updated.sip_trunk_username ?? "");
+      setSipTrunkPassword(updated.sip_trunk_password ?? "");
       setSuccess(t("admin.appSettings.success.saved"));
     } catch (err) {
       if (isUnauthorizedError(err)) {
@@ -111,6 +123,9 @@ export const AdminAppSettingsPage = () => {
       });
       setSettings(updated);
       setPrompt(updated.thread_title_prompt);
+      setSipTrunkUri(updated.sip_trunk_uri ?? "");
+      setSipTrunkUsername(updated.sip_trunk_username ?? "");
+      setSipTrunkPassword(updated.sip_trunk_password ?? "");
       setSuccess(t("admin.appSettings.success.reset"));
     } catch (err) {
       if (isUnauthorizedError(err)) {
@@ -179,6 +194,56 @@ export const AdminAppSettingsPage = () => {
                 <strong>{t("admin.appSettings.threadTitle.defaultLabel")}</strong>
                 <pre>{defaultPrompt}</pre>
               </div>
+              <div className="admin-form__divider" aria-hidden="true" />
+              <div>
+                <h3 className="admin-card__title" style={{ marginBottom: "8px" }}>
+                  {t("admin.appSettings.sipTrunk.cardTitle")}
+                </h3>
+                <p className="admin-card__subtitle">
+                  {t("admin.appSettings.sipTrunk.cardDescription")}
+                </p>
+              </div>
+              <label className="label" htmlFor="sip-trunk-uri">
+                {t("admin.appSettings.sipTrunk.uriLabel")}
+                <input
+                  id="sip-trunk-uri"
+                  className="input"
+                  type="text"
+                  value={sipTrunkUri}
+                  onChange={(event) => setSipTrunkUri(event.target.value)}
+                  placeholder={t("admin.appSettings.sipTrunk.uriPlaceholder")}
+                  disabled={isBusy}
+                />
+              </label>
+              <label className="label" htmlFor="sip-trunk-username">
+                {t("admin.appSettings.sipTrunk.usernameLabel")}
+                <input
+                  id="sip-trunk-username"
+                  className="input"
+                  type="text"
+                  value={sipTrunkUsername}
+                  onChange={(event) => setSipTrunkUsername(event.target.value)}
+                  placeholder={t("admin.appSettings.sipTrunk.usernamePlaceholder")}
+                  disabled={isBusy}
+                  autoComplete="username"
+                />
+              </label>
+              <label className="label" htmlFor="sip-trunk-password">
+                {t("admin.appSettings.sipTrunk.passwordLabel")}
+                <input
+                  id="sip-trunk-password"
+                  className="input"
+                  type="password"
+                  value={sipTrunkPassword}
+                  onChange={(event) => setSipTrunkPassword(event.target.value)}
+                  placeholder={t("admin.appSettings.sipTrunk.passwordPlaceholder")}
+                  disabled={isBusy}
+                  autoComplete="current-password"
+                />
+              </label>
+              <p className="admin-form__hint">
+                {t("admin.appSettings.sipTrunk.passwordHelp")}
+              </p>
               <div className="admin-form__actions" style={{ gap: "12px" }}>
                 <button
                   type="button"

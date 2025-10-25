@@ -182,6 +182,9 @@ class AppSettings(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     thread_title_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    sip_trunk_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sip_trunk_username: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    sip_trunk_password: Mapped[str | None] = mapped_column(String(256), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

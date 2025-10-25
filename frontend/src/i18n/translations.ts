@@ -69,6 +69,17 @@ const fr: TranslationDictionary = {
     "Session expirée, veuillez vous reconnecter.",
   "admin.appSettings.actions.save": "Enregistrer le prompt",
   "admin.appSettings.actions.reset": "Revenir au prompt par défaut",
+  "admin.appSettings.sipTrunk.cardTitle": "Trunk SIP",
+  "admin.appSettings.sipTrunk.cardDescription":
+    "Configurez l'accès SIP utilisé pour la téléphonie entrante.",
+  "admin.appSettings.sipTrunk.uriLabel": "URI du trunk SIP",
+  "admin.appSettings.sipTrunk.uriPlaceholder": "ex. sip:pbx.exemple.com",
+  "admin.appSettings.sipTrunk.usernameLabel": "Identifiant SIP",
+  "admin.appSettings.sipTrunk.usernamePlaceholder": "Identifiant optionnel",
+  "admin.appSettings.sipTrunk.passwordLabel": "Mot de passe SIP",
+  "admin.appSettings.sipTrunk.passwordPlaceholder": "Mot de passe (optionnel)",
+  "admin.appSettings.sipTrunk.passwordHelp":
+    "Laissez vide pour désactiver l'authentification par mot de passe.",
   "auth.login.title": "Connexion",
   "auth.login.subtitle":
     "Accédez au panneau d'administration pour gérer les utilisateurs et vos sessions ChatKit.",
@@ -387,6 +398,17 @@ const en: TranslationDictionary = {
     "Session expired, please sign in again.",
   "admin.appSettings.actions.save": "Save prompt",
   "admin.appSettings.actions.reset": "Revert to default prompt",
+  "admin.appSettings.sipTrunk.cardTitle": "SIP trunk",
+  "admin.appSettings.sipTrunk.cardDescription":
+    "Configure the SIP access used for inbound telephony.",
+  "admin.appSettings.sipTrunk.uriLabel": "SIP trunk URI",
+  "admin.appSettings.sipTrunk.uriPlaceholder": "e.g. sip:pbx.example.com",
+  "admin.appSettings.sipTrunk.usernameLabel": "SIP username",
+  "admin.appSettings.sipTrunk.usernamePlaceholder": "Optional username",
+  "admin.appSettings.sipTrunk.passwordLabel": "SIP password",
+  "admin.appSettings.sipTrunk.passwordPlaceholder": "Password (optional)",
+  "admin.appSettings.sipTrunk.passwordHelp":
+    "Leave empty to remove the stored password.",
   "auth.login.title": "Sign in",
   "auth.login.subtitle": "Access the admin console to manage users and ChatKit sessions.",
   "auth.login.email.label": "Email address",

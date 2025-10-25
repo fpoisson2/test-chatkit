@@ -39,31 +39,77 @@ def _normalize_prompt(value: str | None, default_prompt: str) -> str:
     return candidate or default_prompt
 
 
+def _normalize_optional_string(value: str | None) -> str | None:
+    if value is None:
+        return None
+    candidate = value.strip()
+    return candidate or None
+
+
 def update_admin_settings(
     session: Session,
     *,
     thread_title_prompt: str | None | object = _UNSET,
+    sip_trunk_uri: str | None | object = _UNSET,
+    sip_trunk_username: str | None | object = _UNSET,
+    sip_trunk_password: str | None | object = _UNSET,
 ) -> AppSettings | None:
     default_prompt = _default_thread_title_prompt()
     settings = get_thread_title_prompt_override(session)
+    created = False
+
+    if settings is None:
+        settings = AppSettings(thread_title_prompt=default_prompt)
+        created = True
+
+    changed = False
 
     if thread_title_prompt is not _UNSET:
-        normalized = _normalize_prompt(thread_title_prompt, default_prompt)
-        if normalized == default_prompt:
-            if settings:
-                session.delete(settings)
-                session.commit()
-            return None
-        if settings is None:
-            settings = AppSettings(thread_title_prompt=normalized)
-        else:
-            settings.thread_title_prompt = normalized
-        settings.updated_at = _now()
-        session.add(settings)
-        session.commit()
-        session.refresh(settings)
-        return settings
+        settings.thread_title_prompt = _normalize_prompt(
+            thread_title_prompt, default_prompt
+        )
+        changed = True
 
+    if sip_trunk_uri is not _UNSET:
+        settings.sip_trunk_uri = _normalize_optional_string(sip_trunk_uri)
+        changed = True
+
+    if sip_trunk_username is not _UNSET:
+        settings.sip_trunk_username = _normalize_optional_string(sip_trunk_username)
+        changed = True
+
+    if sip_trunk_password is not _UNSET:
+        settings.sip_trunk_password = _normalize_optional_string(sip_trunk_password)
+        changed = True
+
+    if not changed:
+        return None if created else settings
+
+    normalized_prompt = settings.thread_title_prompt.strip()
+    if not normalized_prompt:
+        normalized_prompt = default_prompt
+        settings.thread_title_prompt = normalized_prompt
+
+    has_custom_prompt = normalized_prompt != default_prompt
+    has_sip_values = any(
+        bool(_normalize_optional_string(value))
+        for value in (
+            settings.sip_trunk_uri,
+            settings.sip_trunk_username,
+            settings.sip_trunk_password,
+        )
+    )
+
+    if not has_custom_prompt and not has_sip_values:
+        if not created:
+            session.delete(settings)
+            session.commit()
+        return None
+
+    settings.updated_at = _now()
+    session.add(settings)
+    session.commit()
+    session.refresh(settings)
     return settings
 
 
@@ -102,6 +148,15 @@ def serialize_admin_settings(
         "thread_title_prompt": resolved_prompt,
         "default_thread_title_prompt": resolved_default,
         "is_custom_thread_title_prompt": is_custom,
+        "sip_trunk_uri": _normalize_optional_string(
+            settings.sip_trunk_uri if settings else None
+        ),
+        "sip_trunk_username": _normalize_optional_string(
+            settings.sip_trunk_username if settings else None
+        ),
+        "sip_trunk_password": _normalize_optional_string(
+            settings.sip_trunk_password if settings else None
+        ),
         "created_at": settings.created_at if settings else None,
         "updated_at": settings.updated_at if settings else None,
     }
