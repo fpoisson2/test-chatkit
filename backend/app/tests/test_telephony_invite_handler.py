@@ -54,8 +54,13 @@ class SyncDialog:
         self.replies.append((status_code, status_message, headers, payload))
 
 
-def _make_invite(sdp: str) -> SimpleNamespace:
-    return SimpleNamespace(payload=sdp.encode("utf-8"))
+def _make_invite(sdp: str, *, as_text: bool = False) -> SimpleNamespace:
+    payload: str | bytes
+    if as_text:
+        payload = sdp
+    else:
+        payload = sdp.encode("utf-8")
+    return SimpleNamespace(payload=payload)
 
 
 @pytest.mark.anyio
@@ -93,6 +98,36 @@ async def test_handle_invite_accepts_supported_codec() -> None:
     payload = final_reply[1]["payload"].decode("utf-8")
     assert "m=audio 5004 RTP/AVP 0" in payload
     assert "a=rtpmap:0 PCMU/8000" in payload
+
+
+@pytest.mark.anyio
+async def test_handle_invite_accepts_payload_already_decoded() -> None:
+    dialog = DummyDialog()
+    invite = _make_invite(
+        "\r\n".join(
+            [
+                "v=0",
+                "o=- 54321 67890 IN IP4 198.51.100.10",
+                "s=-",
+                "c=IN IP4 198.51.100.10",
+                "t=0 0",
+                "m=audio 49170 RTP/AVP 0",
+                "a=rtpmap:0 PCMU/8000",
+            ]
+        ),
+        as_text=True,
+    )
+
+    await handle_incoming_invite(
+        dialog,
+        invite,
+        media_host="203.0.113.6",
+        media_port=4000,
+        preferred_codecs=("pcmu",),
+    )
+
+    statuses = [status for status, _ in dialog.replies]
+    assert statuses == [100, 180, 200]
 
 
 @pytest.mark.anyio

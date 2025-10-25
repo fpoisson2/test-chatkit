@@ -127,21 +127,27 @@ async def handle_incoming_invite(
 
     await send_sip_reply(dialog, 100, reason="Trying", call_id=call_id)
 
-    try:
-        payload_text = request.payload.decode("utf-8", errors="strict")
-    except UnicodeDecodeError as exc:
-        logger.warning(
-            "SDP reçu illisible (Call-ID=%s) : %s",
-            call_id or "inconnu",
-            exc,
-        )
-        await send_sip_reply(dialog, 400, reason="Bad Request", call_id=call_id)
-        raise InviteHandlingError("SDP illisible") from exc
+    payload = request.payload
+    if isinstance(payload, bytes):
+        try:
+            payload_text = payload.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            logger.warning(
+                "SDP reçu illisible (Call-ID=%s) : %s",
+                call_id or "inconnu",
+                exc,
+            )
+            await send_sip_reply(dialog, 400, reason="Bad Request", call_id=call_id)
+            raise InviteHandlingError("SDP illisible") from exc
+    elif isinstance(payload, str):
+        payload_text = payload
+    else:
+        payload_text = str(payload)
 
     logger.debug(
         "SDP reçu (Call-ID=%s, %d octets):\n%s",
         call_id or "inconnu",
-        len(request.payload),
+        len(payload) if isinstance(payload, bytes | str) else len(payload_text),
         payload_text,
     )
 
