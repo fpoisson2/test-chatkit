@@ -97,6 +97,38 @@ def _run_ad_hoc_migrations() -> None:
                         "VARCHAR(256)"
                     )
                 )
+            if "sip_contact_host" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "sip_contact_host"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN sip_contact_host "
+                        "VARCHAR(255)"
+                    )
+                )
+            if "sip_contact_port" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "sip_contact_port"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN sip_contact_port INTEGER"
+                    )
+                )
+            if "sip_contact_transport" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "sip_contact_transport"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN sip_contact_transport "
+                        "VARCHAR(16)"
+                    )
+                )
 
         if "telephony_routes" not in table_names:
             logger.info("Création de la table telephony_routes manquante")
@@ -746,6 +778,7 @@ def register_startup_events(app: FastAPI) -> None:
         settings=settings,
         contact_host=sip_contact_host,
         contact_port=sip_contact_port,
+        contact_transport=getattr(settings, "sip_contact_transport", None),
     )
     app.state.sip_registration = sip_registration_manager
 

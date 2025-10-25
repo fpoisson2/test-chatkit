@@ -98,6 +98,9 @@ def test_serialize_admin_settings_marks_custom_value(
     assert payload["sip_trunk_uri"] is None
     assert payload["sip_trunk_username"] is None
     assert payload["sip_trunk_password"] is None
+    assert payload["sip_contact_host"] is None
+    assert payload["sip_contact_port"] is None
+    assert payload["sip_contact_transport"] is None
 
     with session_factory() as session:
         admin_settings.update_admin_settings(session, thread_title_prompt="  ")
@@ -110,6 +113,9 @@ def test_serialize_admin_settings_marks_custom_value(
     assert payload["sip_trunk_uri"] is None
     assert payload["sip_trunk_username"] is None
     assert payload["sip_trunk_password"] is None
+    assert payload["sip_contact_host"] is None
+    assert payload["sip_contact_port"] is None
+    assert payload["sip_contact_transport"] is None
 
 
 def test_update_admin_settings_handles_sip_trunk(
@@ -141,6 +147,45 @@ def test_update_admin_settings_handles_sip_trunk(
             sip_trunk_uri=None,
             sip_trunk_username=None,
             sip_trunk_password=None,
+        )
+        assert result.sip_changed is True
+
+    with session_factory() as session:
+        override = admin_settings.get_thread_title_prompt_override(session)
+        assert override is None
+
+
+def test_update_admin_settings_handles_contact_endpoint(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        result = admin_settings.update_admin_settings(
+            session,
+            sip_contact_host=" 198.51.100.10 ",
+            sip_contact_port=" 5070 ",
+            sip_contact_transport=" UDP ",
+        )
+
+    assert result.sip_changed is True
+    stored = result.settings
+    assert stored is not None
+    assert stored.sip_contact_host == "198.51.100.10"
+    assert stored.sip_contact_port == 5070
+    assert stored.sip_contact_transport == "udp"
+
+    with session_factory() as session:
+        override = admin_settings.get_thread_title_prompt_override(session)
+        assert override is not None
+        assert override.sip_contact_host == "198.51.100.10"
+        assert override.sip_contact_port == 5070
+        assert override.sip_contact_transport == "udp"
+
+    with session_factory() as session:
+        result = admin_settings.update_admin_settings(
+            session,
+            sip_contact_host=None,
+            sip_contact_port=None,
+            sip_contact_transport=None,
         )
         assert result.sip_changed is True
 

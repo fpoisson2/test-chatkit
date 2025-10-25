@@ -65,6 +65,10 @@ const fr: TranslationDictionary = {
     "Impossible de réinitialiser le prompt.",
   "admin.appSettings.errors.promptRequired":
     "Le prompt doit contenir au moins un caractère.",
+  "admin.appSettings.errors.invalidSipPort":
+    "Le port SIP doit être un entier compris entre 1 et 65535.",
+  "admin.appSettings.errors.invalidSipTransport":
+    "Le transport SIP doit être vide ou parmi udp, tcp, tls.",
   "admin.appSettings.errors.sessionExpired":
     "Session expirée, veuillez vous reconnecter.",
   "admin.appSettings.actions.save": "Enregistrer le prompt",
@@ -80,6 +84,23 @@ const fr: TranslationDictionary = {
   "admin.appSettings.sipTrunk.passwordPlaceholder": "Mot de passe (optionnel)",
   "admin.appSettings.sipTrunk.passwordHelp":
     "Laissez vide pour désactiver l'authentification par mot de passe.",
+  "admin.appSettings.sipTrunk.contactHostLabel":
+    "Hôte Contact SIP",
+  "admin.appSettings.sipTrunk.contactHostPlaceholder":
+    "ex. 192.0.2.10",
+  "admin.appSettings.sipTrunk.contactHostHelp":
+    "Laissez vide pour que ChatKit détecte automatiquement l'adresse IP sortante.",
+  "admin.appSettings.sipTrunk.contactPortLabel": "Port Contact SIP",
+  "admin.appSettings.sipTrunk.contactPortPlaceholder": "ex. 5070",
+  "admin.appSettings.sipTrunk.contactTransportLabel":
+    "Transport Contact SIP",
+  "admin.appSettings.sipTrunk.contactTransportOptionDefault":
+    "Utiliser la valeur par défaut",
+  "admin.appSettings.sipTrunk.contactTransportOptionUdp": "UDP",
+  "admin.appSettings.sipTrunk.contactTransportOptionTcp": "TCP",
+  "admin.appSettings.sipTrunk.contactTransportOptionTls": "TLS",
+  "admin.appSettings.sipTrunk.contactTransportHelp":
+    "Sélectionnez le transport annoncé dans l'en-tête Contact (laisser vide pour la valeur par défaut).",
   "auth.login.title": "Connexion",
   "auth.login.subtitle":
     "Accédez au panneau d'administration pour gérer les utilisateurs et vos sessions ChatKit.",
@@ -466,6 +487,10 @@ const en: TranslationDictionary = {
   "admin.appSettings.errors.resetFailed": "Unable to reset the prompt.",
   "admin.appSettings.errors.promptRequired":
     "The prompt must contain at least one character.",
+  "admin.appSettings.errors.invalidSipPort":
+    "The SIP port must be an integer between 1 and 65535.",
+  "admin.appSettings.errors.invalidSipTransport":
+    "The SIP transport must be empty or one of udp, tcp, tls.",
   "admin.appSettings.errors.sessionExpired":
     "Session expired, please sign in again.",
   "admin.appSettings.actions.save": "Save prompt",
@@ -481,6 +506,19 @@ const en: TranslationDictionary = {
   "admin.appSettings.sipTrunk.passwordPlaceholder": "Password (optional)",
   "admin.appSettings.sipTrunk.passwordHelp":
     "Leave empty to remove the stored password.",
+  "admin.appSettings.sipTrunk.contactHostLabel": "SIP contact host",
+  "admin.appSettings.sipTrunk.contactHostPlaceholder": "e.g. 192.0.2.10",
+  "admin.appSettings.sipTrunk.contactHostHelp":
+    "Leave empty to let ChatKit detect the outbound IP address automatically.",
+  "admin.appSettings.sipTrunk.contactPortLabel": "SIP contact port",
+  "admin.appSettings.sipTrunk.contactPortPlaceholder": "e.g. 5070",
+  "admin.appSettings.sipTrunk.contactTransportLabel": "SIP contact transport",
+  "admin.appSettings.sipTrunk.contactTransportOptionDefault": "Use default value",
+  "admin.appSettings.sipTrunk.contactTransportOptionUdp": "UDP",
+  "admin.appSettings.sipTrunk.contactTransportOptionTcp": "TCP",
+  "admin.appSettings.sipTrunk.contactTransportOptionTls": "TLS",
+  "admin.appSettings.sipTrunk.contactTransportHelp":
+    "Select the transport advertised in the Contact header (leave empty for the default).",
   "auth.login.title": "Sign in",
   "auth.login.subtitle": "Access the admin console to manage users and ChatKit sessions.",
   "auth.login.email.label": "Email address",

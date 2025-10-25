@@ -59,6 +59,12 @@ async def patch_app_settings(
         kwargs["sip_trunk_username"] = payload.sip_trunk_username
     if "sip_trunk_password" in payload.model_fields_set:
         kwargs["sip_trunk_password"] = payload.sip_trunk_password
+    if "sip_contact_host" in payload.model_fields_set:
+        kwargs["sip_contact_host"] = payload.sip_contact_host
+    if "sip_contact_port" in payload.model_fields_set:
+        kwargs["sip_contact_port"] = payload.sip_contact_port
+    if "sip_contact_transport" in payload.model_fields_set:
+        kwargs["sip_contact_transport"] = payload.sip_contact_transport
 
     try:
         result = update_admin_settings(session, **kwargs)

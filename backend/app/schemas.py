@@ -129,6 +129,9 @@ class AppSettingsResponse(BaseModel):
     sip_trunk_uri: str | None = None
     sip_trunk_username: str | None = None
     sip_trunk_password: str | None = None
+    sip_contact_host: str | None = None
+    sip_contact_port: int | None = None
+    sip_contact_transport: str | None = None
     created_at: datetime.datetime | None = None
     updated_at: datetime.datetime | None = None
 
@@ -156,6 +159,30 @@ class AppSettingsUpdateRequest(BaseModel):
         default=None,
         description="Mot de passe SIP (laisser vide pour le supprimer).",
         max_length=256,
+    )
+    sip_contact_host: str | None = Field(
+        default=None,
+        description=(
+            "Nom d'hôte ou adresse IP à publier dans l'en-tête Contact. "
+            "Laisser vide pour déduire automatiquement l'adresse."
+        ),
+        max_length=255,
+    )
+    sip_contact_port: int | None = Field(
+        default=None,
+        description=(
+            "Port d'écoute du serveur SIP local. Utilise 5060 si non défini."
+        ),
+        ge=1,
+        le=65535,
+    )
+    sip_contact_transport: str | None = Field(
+        default=None,
+        description=(
+            "Transport SIP à annoncer (udp, tcp, tls). "
+            "Laisser vide pour conserver la valeur par défaut."
+        ),
+        max_length=16,
     )
 
 
