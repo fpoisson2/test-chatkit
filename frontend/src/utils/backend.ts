@@ -211,6 +211,15 @@ export type ChatKitWorkflowInfo = {
   updated_at: string;
 };
 
+export type HostedWorkflowMetadata = {
+  id: string;
+  label: string;
+  available: boolean;
+};
+
+let hostedWorkflowCache: HostedWorkflowMetadata | null | undefined;
+let hostedWorkflowPromise: Promise<HostedWorkflowMetadata | null> | null = null;
+
 export const adminApi = {
   async listUsers(token: string | null): Promise<EditableUser[]> {
     const response = await requestWithFallback("/api/admin/users", {
@@ -275,6 +284,57 @@ export const chatkitApi = {
       headers: withAuthHeaders(token),
     });
     return response.json();
+  },
+
+  async getHostedWorkflow(
+    token: string | null,
+    options: { cache?: boolean } = {},
+  ): Promise<HostedWorkflowMetadata | null> {
+    const useCache = options.cache !== false;
+
+    if (useCache && hostedWorkflowCache !== undefined) {
+      return hostedWorkflowCache;
+    }
+
+    if (useCache && hostedWorkflowPromise) {
+      return hostedWorkflowPromise;
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const response = await requestWithFallback("/api/chatkit/hosted", {
+          headers: withAuthHeaders(token),
+        });
+        const payload = (await response.json()) as HostedWorkflowMetadata;
+        if (useCache) {
+          hostedWorkflowCache = payload;
+        }
+        return payload;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) {
+          if (useCache) {
+            hostedWorkflowCache = null;
+          }
+          return null;
+        }
+
+        if (useCache) {
+          hostedWorkflowCache = undefined;
+        }
+
+        throw error;
+      } finally {
+        if (useCache) {
+          hostedWorkflowPromise = null;
+        }
+      }
+    })();
+
+    if (useCache) {
+      hostedWorkflowPromise = fetchPromise;
+    }
+
+    return fetchPromise;
   },
 };
 

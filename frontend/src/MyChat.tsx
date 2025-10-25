@@ -4,7 +4,11 @@ import type { ChatKitOptions } from "@openai/chatkit";
 import { useAuth } from "./auth";
 import { useAppLayout } from "./components/AppLayout";
 import { ChatKitHost } from "./components/my-chat/ChatKitHost";
-import { ChatSidebar } from "./components/my-chat/ChatSidebar";
+import {
+  ChatSidebar,
+  HOSTED_WORKFLOW_SLUG,
+  type WorkflowActivation,
+} from "./components/my-chat/ChatSidebar";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
 import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
@@ -120,8 +124,16 @@ export function MyChat() {
   const preferredColorScheme = usePreferredColorScheme();
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = user?.email ?? deviceId;
-  const [activeWorkflow, setActiveWorkflow] = useState<WorkflowSummary | null>(null);
-  const activeWorkflowSlug = activeWorkflow?.slug ?? null;
+  const [workflowSelection, setWorkflowSelection] = useState<WorkflowActivation>({
+    kind: "local",
+    workflow: null,
+  });
+  const activeWorkflow: WorkflowSummary | null =
+    workflowSelection.kind === "local" ? workflowSelection.workflow : null;
+  const activeWorkflowSlug =
+    workflowSelection.kind === "local"
+      ? workflowSelection.workflow?.slug ?? null
+      : HOSTED_WORKFLOW_SLUG;
   const [workflowModes, setWorkflowModes] = useState<Record<string, HostedFlowMode>>({});
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
@@ -227,9 +239,27 @@ export function MyChat() {
   }, [preferredColorScheme]);
 
   const handleWorkflowActivated = useCallback(
-    (workflow: WorkflowSummary | null, { reason }: { reason: "initial" | "user" }) => {
-      setActiveWorkflow((current) => {
-        const currentId = current?.id ?? null;
+    (selection: WorkflowActivation, { reason }: { reason: "initial" | "user" }) => {
+      setWorkflowSelection((current) => {
+        if (selection.kind === "hosted") {
+          const wasHosted = current.kind === "hosted";
+          if (mode !== "hosted") {
+            setMode("hosted");
+          }
+          if (reason === "user" && !wasHosted) {
+            resetChatState({
+              workflowSlug: HOSTED_WORKFLOW_SLUG,
+              preserveStoredThread: true,
+              targetMode: "hosted",
+            });
+            resetError();
+          }
+          return selection;
+        }
+
+        const workflow = selection.workflow;
+        const previousWorkflow = current.kind === "local" ? current.workflow : null;
+        const currentId = previousWorkflow?.id ?? null;
         const nextId = workflow?.id ?? null;
 
         const workflowSlug = workflow?.slug ?? null;
@@ -250,7 +280,7 @@ export function MyChat() {
           resetError();
         }
 
-        return workflow;
+        return selection;
       });
     },
     [mode, resetChatState, resetError, setMode, workflowModes],
@@ -804,7 +834,7 @@ export function MyChat() {
 
   return (
     <>
-      <ChatSidebar onWorkflowActivated={handleWorkflowActivated} />
+      <ChatSidebar mode={mode} setMode={setMode} onWorkflowActivated={handleWorkflowActivated} />
       <ChatKitHost control={control} chatInstanceKey={chatInstanceKey} />
       <ChatStatusMessage message={statusMessage} isError={Boolean(error)} isLoading={isLoading} />
       {voiceStatusMessage && (

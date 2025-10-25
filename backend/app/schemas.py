@@ -41,6 +41,14 @@ class VoiceSessionResponse(BaseModel):
     prompt_variables: dict[str, str] = Field(default_factory=dict)
 
 
+class HostedWorkflowOption(BaseModel):
+    """Métadonnées minimales pour un workflow hébergé ChatKit."""
+
+    id: str
+    label: str
+    available: bool
+
+
 class ChatKitWorkflowResponse(BaseModel):
     """Description minimaliste du workflow utilisé par ChatKit."""
 

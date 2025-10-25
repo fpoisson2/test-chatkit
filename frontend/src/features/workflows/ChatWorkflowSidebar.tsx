@@ -1,21 +1,40 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../auth";
 import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
-import { workflowsApi } from "../../utils/backend";
+import { chatkitApi, workflowsApi } from "../../utils/backend";
+import type { HostedWorkflowMetadata } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
+import type { HostedFlowMode } from "../../hooks/useHostedFlow";
 
 const isApiError = (error: unknown): error is { status?: number; message?: string } =>
   Boolean(error) && typeof error === "object" && "status" in error;
 
 type ActivationContext = { reason: "initial" | "user" };
 
-type ChatWorkflowSidebarProps = {
-  onWorkflowActivated: (workflow: WorkflowSummary | null, context: ActivationContext) => void;
+export const HOSTED_WORKFLOW_SLUG = "hosted-workflow" as const;
+
+type HostedWorkflowSelection = {
+  kind: "hosted";
+  slug: typeof HOSTED_WORKFLOW_SLUG;
+  option: HostedWorkflowMetadata;
 };
 
-export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebarProps) => {
+type LocalWorkflowSelection = {
+  kind: "local";
+  workflow: WorkflowSummary | null;
+};
+
+export type WorkflowActivation = HostedWorkflowSelection | LocalWorkflowSelection;
+
+type ChatWorkflowSidebarProps = {
+  mode: HostedFlowMode;
+  setMode: (mode: HostedFlowMode) => void;
+  onWorkflowActivated: (selection: WorkflowActivation, context: ActivationContext) => void;
+};
+
+export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: ChatWorkflowSidebarProps) => {
   const navigate = useNavigate();
   const { closeSidebar, isDesktopLayout } = useAppLayout();
   const { setSidebarContent, clearSidebarContent } = useSidebarPortal();
@@ -23,31 +42,58 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
   const isAdmin = Boolean(user?.is_admin);
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(null);
+  const [hostedWorkflow, setHostedWorkflow] = useState<HostedWorkflowMetadata | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const hostedInitialAnnouncedRef = useRef(false);
 
   const loadWorkflows = useCallback(async () => {
     if (!token || !isAdmin) {
       setWorkflows([]);
+      setHostedWorkflow(null);
       setSelectedWorkflowId(null);
       setError(null);
       setLoading(false);
-      onWorkflowActivated(null, { reason: "initial" });
+      hostedInitialAnnouncedRef.current = false;
+      if (mode !== "local") {
+        setMode("local");
+      }
+      onWorkflowActivated({ kind: "local", workflow: null }, { reason: "initial" });
       return;
     }
 
     setLoading(true);
     setError(null);
     try {
-      const items = await workflowsApi.list(token);
+      const [items, hosted] = await Promise.all([
+        workflowsApi.list(token),
+        chatkitApi
+          .getHostedWorkflow(token)
+          .catch((err) => {
+            if (isApiError(err) && err.status === 404) {
+              return null;
+            }
+            if (import.meta.env.DEV) {
+              console.warn("Impossible de charger le workflow hébergé.", err);
+            }
+            return null;
+          }),
+      ]);
       setWorkflows(items);
+      setHostedWorkflow(hosted);
       const active =
         items.find((workflow) => workflow.is_chatkit_default && workflow.active_version_id !== null) ??
         items.find((workflow) => workflow.active_version_id !== null) ??
         null;
       setSelectedWorkflowId(active?.id ?? null);
-      onWorkflowActivated(active ?? null, { reason: "initial" });
+
+      if (mode === "local") {
+        onWorkflowActivated({ kind: "local", workflow: active ?? null }, { reason: "initial" });
+      } else if (mode === "hosted" && !hosted) {
+        setMode("local");
+        onWorkflowActivated({ kind: "local", workflow: active ?? null }, { reason: "initial" });
+      }
     } catch (err) {
       let message = err instanceof Error ? err.message : "Impossible de charger les workflows.";
       if (isApiError(err) && err.status === 403) {
@@ -55,16 +101,35 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
       }
       setError(message);
       setWorkflows([]);
+      setHostedWorkflow(null);
       setSelectedWorkflowId(null);
-      onWorkflowActivated(null, { reason: "initial" });
+      hostedInitialAnnouncedRef.current = false;
+      if (mode !== "local") {
+        setMode("local");
+      }
+      onWorkflowActivated({ kind: "local", workflow: null }, { reason: "initial" });
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, onWorkflowActivated, token]);
+  }, [isAdmin, mode, onWorkflowActivated, setMode, token]);
 
   useEffect(() => {
     void loadWorkflows();
   }, [loadWorkflows]);
+
+  useEffect(() => {
+    if (mode === "hosted") {
+      if (hostedWorkflow && !hostedInitialAnnouncedRef.current) {
+        hostedInitialAnnouncedRef.current = true;
+        onWorkflowActivated(
+          { kind: "hosted", slug: HOSTED_WORKFLOW_SLUG, option: hostedWorkflow },
+          { reason: "initial" },
+        );
+      }
+    } else {
+      hostedInitialAnnouncedRef.current = false;
+    }
+  }, [hostedWorkflow, mode, onWorkflowActivated]);
 
   const handleWorkflowClick = useCallback(
     async (workflowId: number) => {
@@ -77,6 +142,7 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
         return;
       }
 
+      const previousMode = mode;
       setIsUpdating(true);
       setError(null);
       try {
@@ -97,8 +163,11 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
           );
         });
         setSelectedWorkflowId(updated.id);
+        if (mode !== "local") {
+          setMode("local");
+        }
         onWorkflowActivated(
-          updated.active_version_id ? updated : null,
+          { kind: "local", workflow: updated.active_version_id ? updated : null },
           { reason: "user" },
         );
         if (!isDesktopLayout) {
@@ -110,6 +179,9 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
           message = "Publiez une version de production avant d'activer ce workflow.";
         }
         setError(message);
+        if (previousMode !== "local") {
+          setMode(previousMode);
+        }
       } finally {
         setIsUpdating(false);
       }
@@ -119,12 +191,39 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
       isAdmin,
       isDesktopLayout,
       isUpdating,
+      mode,
       onWorkflowActivated,
       selectedWorkflowId,
+      setMode,
       token,
       workflows,
     ],
   );
+
+  const handleHostedWorkflowClick = useCallback(() => {
+    if (!hostedWorkflow || !hostedWorkflow.available) {
+      return;
+    }
+
+    hostedInitialAnnouncedRef.current = true;
+    if (mode !== "hosted") {
+      setMode("hosted");
+    }
+    onWorkflowActivated(
+      { kind: "hosted", slug: HOSTED_WORKFLOW_SLUG, option: hostedWorkflow },
+      { reason: "user" },
+    );
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
+  }, [
+    closeSidebar,
+    hostedWorkflow,
+    isDesktopLayout,
+    mode,
+    onWorkflowActivated,
+    setMode,
+  ]);
 
   const handleOpenBuilder = useCallback(() => {
     navigate("/workflows");
@@ -184,7 +283,10 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
       );
     }
 
-    if (workflows.length === 0) {
+    const hasHostedWorkflow = Boolean(hostedWorkflow);
+    const hasLocalWorkflows = workflows.length > 0;
+
+    if (!hasHostedWorkflow && !hasLocalWorkflows) {
       return (
         <section className="chatkit-sidebar__section" aria-live="polite">
           <h2 className="chatkit-sidebar__section-title">Workflow</h2>
@@ -206,8 +308,21 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
           </h2>
         </div>
         <ul className="chatkit-sidebar__workflow-list">
+          {hasHostedWorkflow && (
+            <li className="chatkit-sidebar__workflow-list-item" key={HOSTED_WORKFLOW_SLUG}>
+              <button
+                type="button"
+                className="chatkit-sidebar__workflow-button"
+                onClick={() => void handleHostedWorkflowClick()}
+                disabled={!hostedWorkflow.available}
+                aria-current={mode === "hosted" ? "true" : undefined}
+              >
+                {hostedWorkflow.label}
+              </button>
+            </li>
+          )}
           {workflows.map((workflow) => {
-            const isActive = workflow.id === selectedWorkflowId;
+            const isActive = mode === "local" && workflow.id === selectedWorkflowId;
             const hasProduction = workflow.active_version_id !== null;
             return (
               <li key={workflow.id} className="chatkit-sidebar__workflow-list-item">
@@ -224,15 +339,27 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
             );
           })}
         </ul>
+        {!hasLocalWorkflows ? (
+          <button
+            type="button"
+            className="chatkit-sidebar__section-button"
+            onClick={handleOpenBuilder}
+          >
+            Ouvrir le workflow builder
+          </button>
+        ) : null}
       </section>
     );
   }, [
     error,
     handleOpenBuilder,
+    handleHostedWorkflowClick,
     handleWorkflowClick,
+    hostedWorkflow,
     isAdmin,
     loadWorkflows,
     loading,
+    mode,
     selectedWorkflowId,
     user,
     workflows,
