@@ -224,7 +224,7 @@ async def handle_incoming_invite(
         200,
         reason="OK",
         headers={"Content-Type": "application/sdp"},
-        payload=sdp_answer.encode("utf-8"),
+        payload=sdp_answer,
         call_id=call_id,
     )
 
@@ -249,7 +249,7 @@ async def send_sip_reply(
     *,
     reason: str,
     headers: dict[str, str] | None = None,
-    payload: bytes | None = None,
+    payload: bytes | str | None = None,
     call_id: str | None = None,
 ) -> None:
     logger.info(
@@ -261,8 +261,18 @@ async def send_sip_reply(
     kwargs: dict[str, object] = {"reason": reason}
     if headers is not None:
         kwargs["headers"] = headers
-    if payload is not None:
-        kwargs["payload"] = payload
+    normalized_payload: str | bytes | None = payload
+    if isinstance(payload, bytes):
+        try:
+            normalized_payload = payload.decode("utf-8")
+        except UnicodeDecodeError:
+            logger.warning(
+                "Charge utile SIP non décodable en UTF-8 ; remplacements utilisés",
+            )
+            normalized_payload = payload.decode("utf-8", errors="replace")
+
+    if normalized_payload is not None:
+        kwargs["payload"] = normalized_payload
     reply_method = getattr(dialog, "reply", None)
     if callable(reply_method):
         result = reply_method(status_code, **kwargs)
@@ -275,8 +285,8 @@ async def send_sip_reply(
         send_kwargs: dict[str, object] = {}
         if headers is not None:
             send_kwargs["headers"] = headers
-        if payload is not None:
-            send_kwargs["payload"] = payload
+        if normalized_payload is not None:
+            send_kwargs["payload"] = normalized_payload
         send_reply(status_code, reason, **send_kwargs)
         return
 

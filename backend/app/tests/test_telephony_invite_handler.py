@@ -95,7 +95,8 @@ async def test_handle_invite_accepts_supported_codec() -> None:
     final_reply = dialog.replies[-1]
     headers = final_reply[1]["headers"]
     assert headers == {"Content-Type": "application/sdp"}
-    payload = final_reply[1]["payload"].decode("utf-8")
+    payload = final_reply[1]["payload"]
+    assert isinstance(payload, str)
     assert "m=audio 5004 RTP/AVP 0" in payload
     assert "a=rtpmap:0 PCMU/8000" in payload
 
@@ -237,5 +238,5 @@ async def test_send_sip_reply_falls_back_to_sync_send_reply() -> None:
         call_id="abc",
     )
 
-    assert dialog.replies == [(486, "Busy Here", {"X-Test": "1"}, b"")]
+    assert dialog.replies == [(486, "Busy Here", {"X-Test": "1"}, "")]
 
