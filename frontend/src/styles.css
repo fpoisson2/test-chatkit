@@ -385,12 +385,10 @@ button {
     width: 100%;
   }
 
-  .chatkit-sidebar__list {
-    margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
-  }
-
   .chatkit-sidebar__item button {
+    margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
     padding-inline: var(--chatkit-sidebar-content-padding-x);
+    border-radius: 0;
   }
 }
 
