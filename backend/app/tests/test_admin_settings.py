@@ -52,9 +52,12 @@ def test_update_admin_settings_creates_override(
     session_factory: sessionmaker[Session], default_prompt: str
 ) -> None:
     with session_factory() as session:
-        stored = admin_settings.update_admin_settings(
+        result = admin_settings.update_admin_settings(
             session, thread_title_prompt=" Nouveau prompt personnalisé "
         )
+        assert result.prompt_changed is True
+        assert result.sip_changed is False
+        stored = result.settings
         assert stored is not None
         assert stored.thread_title_prompt == "Nouveau prompt personnalisé"
 
@@ -84,9 +87,10 @@ def test_serialize_admin_settings_marks_custom_value(
     session_factory: sessionmaker[Session], default_prompt: str
 ) -> None:
     with session_factory() as session:
-        override = admin_settings.update_admin_settings(
+        result = admin_settings.update_admin_settings(
             session, thread_title_prompt="Prompt ajusté"
         )
+        override = result.settings
 
     payload = admin_settings.serialize_admin_settings(override)
     assert payload["thread_title_prompt"] == "Prompt ajusté"
@@ -112,13 +116,15 @@ def test_update_admin_settings_handles_sip_trunk(
     session_factory: sessionmaker[Session],
 ) -> None:
     with session_factory() as session:
-        stored = admin_settings.update_admin_settings(
+        result = admin_settings.update_admin_settings(
             session,
             sip_trunk_uri=" sip:example.org ",
             sip_trunk_username="  user ",
             sip_trunk_password="  secret ",
         )
 
+    assert result.sip_changed is True
+    stored = result.settings
     assert stored is not None
     assert stored.sip_trunk_uri == "sip:example.org"
     assert stored.sip_trunk_username == "user"
@@ -130,12 +136,13 @@ def test_update_admin_settings_handles_sip_trunk(
         assert override.sip_trunk_uri == "sip:example.org"
 
     with session_factory() as session:
-        admin_settings.update_admin_settings(
+        result = admin_settings.update_admin_settings(
             session,
             sip_trunk_uri=None,
             sip_trunk_username=None,
             sip_trunk_password=None,
         )
+        assert result.sip_changed is True
 
     with session_factory() as session:
         override = admin_settings.get_thread_title_prompt_override(session)

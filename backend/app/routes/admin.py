@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import datetime
+import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ..admin_settings import (
@@ -27,6 +30,7 @@ from ..schemas import (
 from ..security import hash_password
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/api/admin/app-settings", response_model=AppSettingsResponse)
@@ -42,6 +46,7 @@ async def get_app_settings(
 @router.patch("/api/admin/app-settings", response_model=AppSettingsResponse)
 async def patch_app_settings(
     payload: AppSettingsUpdateRequest,
+    request: Request,
     session: Session = Depends(get_session),
     _: User = Depends(require_admin),
 ):
@@ -55,7 +60,33 @@ async def patch_app_settings(
     if "sip_trunk_password" in payload.model_fields_set:
         kwargs["sip_trunk_password"] = payload.sip_trunk_password
 
-    update_admin_settings(session, **kwargs)
+    try:
+        result = update_admin_settings(session, **kwargs)
+    except SQLAlchemyError as exc:  # pragma: no cover - database failure
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Impossible d'enregistrer les paramètres",
+        ) from exc
+
+    if result.sip_changed:
+        manager = getattr(request.app.state, "sip_registration", None)
+        if manager is None:
+            logger.warning(
+                "Gestionnaire d'enregistrement SIP absent : "
+                "impossible d'appliquer la nouvelle configuration",
+            )
+        else:
+            try:
+                await manager.apply_config_from_settings(session, result.settings)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # pragma: no cover - depends on SIP stack
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="La mise à jour de la configuration SIP a échoué",
+                ) from exc
+
     override = get_thread_title_prompt_override(session)
     serialized = serialize_admin_settings(override)
     return AppSettingsResponse.model_validate(serialized)

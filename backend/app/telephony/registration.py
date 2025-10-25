@@ -53,6 +53,11 @@ except Exception as exc:  # pragma: no cover - exercised when dependency missing
 else:
     _AIOSIP_IMPORT_ERROR = None
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from ..models import AppSettings
+
 __all__ = ["SIPRegistrationConfig", "SIPRegistrationManager"]
 
 LOGGER = logging.getLogger(__name__)
@@ -329,3 +334,70 @@ class SIPRegistrationManager:
         if app is not None:
             with contextlib.suppress(Exception):  # pragma: no cover - network dependent
                 await asyncio.wait_for(app.finish(), timeout=self._register_timeout)
+
+    async def apply_config_from_settings(
+        self, session: Session, settings: AppSettings | None
+    ) -> None:
+        """Build and apply a SIP configuration from admin settings."""
+
+        stored_settings = settings
+        if stored_settings is None:
+            stored_settings = session.scalar(select(AppSettings).limit(1))
+
+        if stored_settings is None:
+            self.apply_config(None)
+            return
+
+        trunk_uri = (stored_settings.sip_trunk_uri or "").strip()
+        if not trunk_uri:
+            self.apply_config(None)
+            return
+
+        contact_host = self.contact_host or getattr(
+            self.settings, "sip_bind_host", None
+        )
+        if isinstance(contact_host, str):
+            contact_host = contact_host.strip() or None
+        contact_port = (
+            self.contact_port
+            if self.contact_port is not None
+            else getattr(self.settings, "sip_bind_port", None)
+        )
+
+        if not contact_host or contact_port is None:
+            LOGGER.warning(
+                "Impossible d'initialiser l'enregistrement SIP : contact "
+                "SIP_BIND_HOST/SIP_BIND_PORT manquant",
+            )
+            self.apply_config(None)
+            return
+
+        username = (stored_settings.sip_trunk_username or "").strip()
+        if not username:
+            fallback_username = getattr(self.settings, "sip_username", None)
+            if isinstance(fallback_username, str):
+                fallback_username = fallback_username.strip()
+            username = fallback_username
+        password = (stored_settings.sip_trunk_password or "").strip()
+        if not password:
+            fallback_password = getattr(self.settings, "sip_password", None)
+            if isinstance(fallback_password, str):
+                fallback_password = fallback_password.strip()
+            password = fallback_password
+
+        if not username or not password:
+            LOGGER.warning(
+                "Impossible d'initialiser l'enregistrement SIP : identifiants "
+                "SIP manquants",
+            )
+            self.apply_config(None)
+            return
+
+        config = SIPRegistrationConfig(
+            uri=trunk_uri,
+            username=str(username),
+            password=str(password),
+            contact_host=str(contact_host),
+            contact_port=int(contact_port),
+        )
+        self.apply_config(config)
