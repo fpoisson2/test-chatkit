@@ -4,6 +4,7 @@ import asyncio
 import errno
 import logging
 import os
+import socket
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -218,6 +219,84 @@ def test_set_invite_handler_configures_router() -> None:
         manager.set_invite_handler(None)
         assert "INVITE" not in dummy_app.router.routes
     finally:
+        loop.close()
+
+
+def test_register_once_uses_resolved_registrar_ip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loop = asyncio.new_event_loop()
+
+    class FakeDialog:
+        def register(self, *, expires: int) -> asyncio.Future[None]:
+            fut: asyncio.Future[None] = loop.create_future()
+            fut.set_result(None)
+            return fut
+
+        def close(self) -> None:
+            pass
+
+    start_kwargs: list[dict[str, object]] = []
+
+    class FakeApplication:
+        def __init__(self, *, loop: asyncio.AbstractEventLoop) -> None:
+            self.loop = loop
+            self.router = SimpleNamespace(
+                routes={}, add_route=lambda *args, **kwargs: None
+            )
+
+        async def start_dialog(self, **kwargs: object) -> FakeDialog:
+            start_kwargs.append(kwargs)
+            return FakeDialog()
+
+        async def finish(self) -> None:
+            return None
+
+    import backend.app.telephony.registration as registration_module
+
+    fake_aiosip = SimpleNamespace(Application=FakeApplication)
+    monkeypatch.setattr(registration_module, "aiosip", fake_aiosip)
+    monkeypatch.setattr(
+        registration_module,
+        "_AIOSIP_IMPORT_ERROR",
+        None,
+        raising=False,
+    )
+
+    def fake_getaddrinfo(
+        host: str, port: int, *, type: int
+    ) -> list[tuple[object, ...]]:
+        assert host == "montreal5.voip.ms"
+        assert port == 5060
+        return [
+            (
+                socket.AF_INET,
+                socket.SOCK_DGRAM,
+                0,
+                "",
+                ("208.100.60.23", port),
+            )
+        ]
+
+    monkeypatch.setattr(registration_module.socket, "getaddrinfo", fake_getaddrinfo)
+
+    try:
+        manager = SIPRegistrationManager(loop=loop)
+        config = SIPRegistrationConfig(
+            uri="sip:218135_chatkit@montreal5.voip.ms",
+            username="218135_chatkit",
+            password="secret",
+            contact_host="172.18.0.3",
+            contact_port=5060,
+        )
+
+        loop.run_until_complete(manager._register_once(config))
+
+        assert start_kwargs, "start_dialog should be invoked"
+        remote_addr = start_kwargs[0]["remote_addr"]
+        assert remote_addr == ("208.100.60.23", 5060)
+    finally:
+        loop.run_until_complete(manager._unregister())
         loop.close()
 
 

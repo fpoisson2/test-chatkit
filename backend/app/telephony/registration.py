@@ -353,7 +353,18 @@ class SIPRegistrationManager:
         remote_host, remote_port = self._parse_registrar_endpoint(config.uri)
         if remote_host is None:
             raise ValueError("URI de trunk SIP invalide : hôte introuvable")
-        remote_addr = (remote_host, remote_port)
+        resolved_host, resolved_port = self._resolve_registrar_socket(
+            remote_host, remote_port
+        )
+        if resolved_host != remote_host or resolved_port != remote_port:
+            LOGGER.debug(
+                "Résolution du registrar SIP %s:%s vers %s:%s",
+                remote_host,
+                remote_port,
+                resolved_host,
+                resolved_port,
+            )
+        remote_addr = (resolved_host, resolved_port)
         local_addr = (config.contact_host, config.contact_port)
 
         if self._dialog is None:
@@ -680,6 +691,35 @@ class SIPRegistrationManager:
             LOGGER.warning("Transport SIP invalide ignoré : %r", value)
             return None
         return candidate
+
+    @staticmethod
+    def _resolve_registrar_socket(host: str, port: int) -> tuple[str, int]:
+        try:
+            address_infos = socket.getaddrinfo(
+                host,
+                port,
+                type=socket.SOCK_DGRAM,
+            )
+        except OSError as exc:
+            LOGGER.debug(
+                "Impossible de résoudre l'adresse réseau du registrar %s:%s : %s",
+                host,
+                port,
+                exc,
+            )
+            return host, port
+
+        for _family, socktype, _proto, _canon, sockaddr in address_infos:
+            if socktype != socket.SOCK_DGRAM:
+                continue
+            if not sockaddr:
+                continue
+            candidate_host = sockaddr[0]
+            candidate_port = sockaddr[1] if len(sockaddr) > 1 else port
+            if candidate_host:
+                return candidate_host, candidate_port
+
+        return host, port
 
     @staticmethod
     def _dialog_transport_kwargs(transport: str | None) -> dict[str, Any]:
