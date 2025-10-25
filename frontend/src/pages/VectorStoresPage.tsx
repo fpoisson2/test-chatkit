@@ -9,6 +9,7 @@ import { VectorStoreSearchForm } from "../components/VectorStoreSearchForm";
 import { VectorStoreSearchResults } from "../components/VectorStoreSearchResults";
 import { VectorStoreTable } from "../components/VectorStoreTable";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { AdminTabs } from "../components/AdminTabs";
 import { useI18n } from "../i18n";
 import {
   VectorStoreDocument,
@@ -327,26 +328,28 @@ export const VectorStoresPage = () => {
   };
 
   return (
-    <ManagementPageLayout
-      actions={
-        <button
-          className="management-header__icon-button"
-          type="button"
-          aria-label="Créer un vector store"
-          onClick={() => setShowCreateModal(true)}
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            <path
-              d="M10 4v12M4 10h12"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </button>
-      }
-    >
+    <>
+      <AdminTabs activeTab="vector-stores" />
+      <ManagementPageLayout
+        actions={
+          <button
+            className="management-header__icon-button"
+            type="button"
+            aria-label="Créer un vector store"
+            onClick={() => setShowCreateModal(true)}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path
+                d="M10 4v12M4 10h12"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        }
+      >
       {success ? <div className="alert alert--success">{success}</div> : null}
       {error ? <div className="alert alert--danger">{error}</div> : null}
 
@@ -429,7 +432,8 @@ export const VectorStoresPage = () => {
           ) : null}
         </Modal>
       ) : null}
-    </ManagementPageLayout>
+      </ManagementPageLayout>
+    </>
   );
 }
 
