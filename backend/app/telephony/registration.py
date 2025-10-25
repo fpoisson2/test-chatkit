@@ -33,7 +33,9 @@ import asyncio
 import collections
 import contextlib
 import logging
+import socket
 import types
+import urllib.parse
 from dataclasses import dataclass
 from typing import Any
 
@@ -61,6 +63,8 @@ from ..models import AppSettings
 __all__ = ["SIPRegistrationConfig", "SIPRegistrationManager"]
 
 LOGGER = logging.getLogger(__name__)
+
+_DEFAULT_SIP_PORT = 5060
 
 
 @dataclass(slots=True)
@@ -353,17 +357,7 @@ class SIPRegistrationManager:
             self.apply_config(None)
             return
 
-        contact_host = self.contact_host or getattr(
-            self.settings, "sip_bind_host", None
-        )
-        if isinstance(contact_host, str):
-            contact_host = contact_host.strip() or None
-        contact_port = (
-            self.contact_port
-            if self.contact_port is not None
-            else getattr(self.settings, "sip_bind_port", None)
-        )
-
+        contact_host, contact_port = self._resolve_contact_endpoint(trunk_uri)
         if not contact_host or contact_port is None:
             LOGGER.warning(
                 "Impossible d'initialiser l'enregistrement SIP : contact "
@@ -401,3 +395,114 @@ class SIPRegistrationManager:
             contact_port=int(contact_port),
         )
         self.apply_config(config)
+
+    def _resolve_contact_endpoint(
+        self, trunk_uri: str
+    ) -> tuple[str | None, int | None]:
+        """Determine the contact host/port used for registration."""
+
+        contact_host = self._normalize_optional_string(self.contact_host)
+        if contact_host is None and self.settings is not None:
+            contact_host = self._normalize_optional_string(
+                getattr(self.settings, "sip_bind_host", None)
+            )
+
+        raw_port: int | str | None
+        if self.contact_port is not None:
+            raw_port = self.contact_port
+        elif self.settings is not None:
+            raw_port = getattr(self.settings, "sip_bind_port", None)
+        else:
+            raw_port = None
+
+        contact_port = self._normalize_port(raw_port)
+
+        if contact_host is None:
+            inferred_host = self._infer_contact_host(trunk_uri)
+            if inferred_host:
+                LOGGER.info(
+                    "Hôte de contact SIP déduit automatiquement : %s",
+                    inferred_host,
+                )
+                contact_host = inferred_host
+
+        if contact_port is None:
+            contact_port = _DEFAULT_SIP_PORT
+
+        return contact_host, contact_port
+
+    @staticmethod
+    def _normalize_optional_string(value: Any) -> str | None:
+        if not isinstance(value, str):
+            return None
+        candidate = value.strip()
+        return candidate or None
+
+    @staticmethod
+    def _normalize_port(value: Any) -> int | None:
+        if value is None:
+            return None
+        try:
+            port = int(value)
+        except (TypeError, ValueError):
+            LOGGER.warning("Port SIP invalide ignoré : %r", value)
+            return None
+        if port <= 0:
+            LOGGER.warning("Port SIP invalide ignoré : %r", value)
+            return None
+        return port
+
+    def _infer_contact_host(self, trunk_uri: str) -> str | None:
+        """Attempt to determine the outbound IP address for SIP traffic."""
+
+        registrar_host, registrar_port = self._parse_registrar_endpoint(trunk_uri)
+        if registrar_host is None:
+            return None
+
+        try:
+            address_infos = socket.getaddrinfo(
+                registrar_host,
+                registrar_port,
+                type=socket.SOCK_DGRAM,
+            )
+        except OSError as exc:
+            LOGGER.warning(
+                "Impossible de résoudre l'hôte du trunk SIP %s : %s",
+                registrar_host,
+                exc,
+            )
+            return None
+
+        for family, socktype, proto, _, sockaddr in address_infos:
+            try:
+                with socket.socket(family, socktype, proto) as sock:
+                    sock.connect(sockaddr)
+                    local_host = sock.getsockname()[0]
+                    if local_host:
+                        return local_host
+            except OSError:
+                continue
+
+        return None
+
+    @staticmethod
+    def _parse_registrar_endpoint(uri: str) -> tuple[str | None, int]:
+        normalized = uri.strip()
+        if not normalized.lower().startswith("sip:"):
+            return None, _DEFAULT_SIP_PORT
+
+        candidate = normalized[4:]
+        if not candidate.startswith("//"):
+            candidate = "//" + candidate
+
+        parsed = urllib.parse.urlparse(f"sip:{candidate}")
+        host = parsed.hostname
+        if host and ";" in host:
+            host = host.split(";", 1)[0]
+
+        try:
+            port = parsed.port
+        except ValueError:
+            port = None
+
+        return host, port or _DEFAULT_SIP_PORT
