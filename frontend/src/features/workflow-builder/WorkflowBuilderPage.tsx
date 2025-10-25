@@ -26,7 +26,7 @@ import ReactFlow, {
 
 import "reactflow/dist/style.css";
 
-import { Copy, PenSquare, Redo2, Undo2 } from "lucide-react";
+import { Copy, PenSquare, Redo2, Trash2, Undo2 } from "lucide-react";
 
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
@@ -4433,6 +4433,26 @@ const WorkflowBuilderPage = () => {
     return true;
   }, [insertGraphElements, t]);
 
+  const handleDeleteSelection = useCallback((): boolean => {
+    if (isPreviewMode) {
+      return false;
+    }
+
+    const hasSelection =
+      selectedNodeIdsRef.current.size > 0 || selectedEdgeIdsRef.current.size > 0;
+
+    if (!hasSelection) {
+      return false;
+    }
+
+    removeElements({
+      nodeIds: selectedNodeIdsRef.current,
+      edgeIds: selectedEdgeIdsRef.current,
+    });
+    updateHasPendingChanges(true);
+    return true;
+  }, [isPreviewMode, removeElements, updateHasPendingChanges]);
+
   const restoreGraphFromSnapshot = useCallback(
     (snapshot: string): boolean => {
       let parsed;
@@ -6539,6 +6559,7 @@ const WorkflowBuilderPage = () => {
   const workflowBusy = loading || isImporting || isExporting;
   const editingLocked = isPreviewMode;
   const hasSelectedElement = !editingLocked && Boolean(selectedNode || selectedEdge);
+  const canDeleteSelection = hasSelectedElement && !workflowBusy;
   const canDuplicateSelection = hasSelectedElement && !workflowBusy;
   const canUndoHistory = !workflowBusy && !editingLocked && historyRef.current.past.length > 0;
   const canRedoHistory = !workflowBusy && !editingLocked && historyRef.current.future.length > 0;
@@ -7055,6 +7076,19 @@ const WorkflowBuilderPage = () => {
                   <Copy aria-hidden="true" size={20} />
                   <span className={styles.srOnly}>
                     {t("workflowBuilder.mobileActions.duplicate")}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className={styles.mobileActionButton}
+                  onClick={() => {
+                    handleDeleteSelection();
+                  }}
+                  disabled={!canDeleteSelection}
+                >
+                  <Trash2 aria-hidden="true" size={20} />
+                  <span className={styles.srOnly}>
+                    {t("workflowBuilder.mobileActions.delete")}
                   </span>
                 </button>
                 {hasSelectedElement ? (
