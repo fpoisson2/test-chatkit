@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../auth";
@@ -26,6 +26,11 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const onWorkflowActivatedRef = useRef(onWorkflowActivated);
+
+  useEffect(() => {
+    onWorkflowActivatedRef.current = onWorkflowActivated;
+  }, [onWorkflowActivated]);
 
   const loadWorkflows = useCallback(async () => {
     if (!token || !isAdmin) {
@@ -33,7 +38,7 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
       setSelectedWorkflowId(null);
       setError(null);
       setLoading(false);
-      onWorkflowActivated(null, { reason: "initial" });
+      onWorkflowActivatedRef.current(null, { reason: "initial" });
       return;
     }
 
@@ -47,7 +52,7 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
         items.find((workflow) => workflow.active_version_id !== null) ??
         null;
       setSelectedWorkflowId(active?.id ?? null);
-      onWorkflowActivated(active ?? null, { reason: "initial" });
+      onWorkflowActivatedRef.current(active ?? null, { reason: "initial" });
     } catch (err) {
       let message = err instanceof Error ? err.message : "Impossible de charger les workflows.";
       if (isApiError(err) && err.status === 403) {
@@ -56,11 +61,11 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
       setError(message);
       setWorkflows([]);
       setSelectedWorkflowId(null);
-      onWorkflowActivated(null, { reason: "initial" });
+      onWorkflowActivatedRef.current(null, { reason: "initial" });
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, onWorkflowActivated, token]);
+  }, [isAdmin, token]);
 
   useEffect(() => {
     void loadWorkflows();
