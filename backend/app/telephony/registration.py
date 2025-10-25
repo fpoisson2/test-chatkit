@@ -136,6 +136,10 @@ class SIPRegistrationManager:
         max_retry_interval: float = 60.0,
         refresh_margin: float = 0.8,
         register_timeout: float = 10.0,
+        session_factory: Any | None = None,
+        settings: Any | None = None,
+        contact_host: str | None = None,
+        contact_port: int | None = None,
     ) -> None:
         self._loop = loop or asyncio.get_event_loop()
         self._retry_interval = float(retry_interval)
@@ -152,6 +156,11 @@ class SIPRegistrationManager:
         self._app: Any | None = None
         self._dialog: Any | None = None
         self._last_error: BaseException | None = None
+
+        self.session_factory = session_factory
+        self.settings = settings
+        self.contact_host = contact_host
+        self.contact_port = contact_port
 
     @property
     def last_error(self) -> BaseException | None:
@@ -185,7 +194,7 @@ class SIPRegistrationManager:
         self._config = new_config
         self._reload_event.set()
 
-    def start(self) -> None:
+    async def start(self) -> None:
         """Start the background registration task if it is not already running."""
 
         if self._task and not self._task.done():

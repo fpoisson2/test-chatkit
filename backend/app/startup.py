@@ -28,6 +28,10 @@ from .models import (
     Workflow,
 )
 from .security import hash_password
+from .telephony.registration import (
+    SIPRegistrationConfig,
+    SIPRegistrationManager,
+)
 from .vector_store import (
     WORKFLOW_VECTOR_STORE_DESCRIPTION,
     WORKFLOW_VECTOR_STORE_METADATA,
@@ -738,6 +742,58 @@ def _ensure_protected_vector_store() -> None:
 
 
 def register_startup_events(app: FastAPI) -> None:
+    sip_contact_host = settings.sip_bind_host
+    sip_contact_port = settings.sip_bind_port
+    sip_registration_manager = SIPRegistrationManager(
+        session_factory=SessionLocal,
+        settings=settings,
+        contact_host=sip_contact_host,
+        contact_port=sip_contact_port,
+    )
+    app.state.sip_registration = sip_registration_manager
+
+    def _build_sip_registration_config(
+        stored_settings: AppSettings | None,
+    ) -> SIPRegistrationConfig | None:
+        if stored_settings is None:
+            return None
+
+        trunk_uri = stored_settings.sip_trunk_uri
+        if not trunk_uri:
+            return None
+
+        contact_host = sip_registration_manager.contact_host or sip_contact_host
+        contact_port = (
+            sip_registration_manager.contact_port
+            if sip_registration_manager.contact_port is not None
+            else sip_contact_port
+        )
+
+        if not contact_host or contact_port is None:
+            logger.warning(
+                "Impossible d'initialiser l'enregistrement SIP : contact "
+                "SIP_BIND_HOST/SIP_BIND_PORT manquant",
+            )
+            return None
+
+        username = stored_settings.sip_trunk_username or settings.sip_username
+        password = stored_settings.sip_trunk_password or settings.sip_password
+
+        if not username or not password:
+            logger.warning(
+                "Impossible d'initialiser l'enregistrement SIP : identifiants "
+                "SIP manquants",
+            )
+            return None
+
+        return SIPRegistrationConfig(
+            uri=trunk_uri,
+            username=username,
+            password=password,
+            contact_host=contact_host,
+            contact_port=contact_port,
+        )
+
     @app.on_event("startup")
     def _on_startup() -> None:
         configure_model_provider(settings)
@@ -806,3 +862,24 @@ def register_startup_events(app: FastAPI) -> None:
                             slug,
                             exc,
                         )
+
+    @app.on_event("startup")
+    async def _start_sip_registration() -> None:
+        manager: SIPRegistrationManager = app.state.sip_registration
+        with SessionLocal() as session:
+            stored_settings = session.scalar(select(AppSettings).limit(1))
+
+        config = _build_sip_registration_config(stored_settings)
+        manager.apply_config(config)
+        await manager.start()
+
+    @app.on_event("shutdown")
+    async def _stop_sip_registration() -> None:
+        manager: SIPRegistrationManager = app.state.sip_registration
+        try:
+            await manager.stop()
+        except Exception as exc:  # pragma: no cover - network dependent
+            logger.exception(
+                "Arrêt du gestionnaire d'enregistrement SIP échoué",
+                exc_info=exc,
+            )
