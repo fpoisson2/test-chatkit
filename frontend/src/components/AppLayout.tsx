@@ -466,39 +466,45 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                     tabIndex={sidebarTabIndex}
                     aria-label={t("app.sidebar.close")}
                   >
-                    ×
+                    <span aria-hidden="true" className="chatkit-sidebar__dismiss-icon">
+                      <SidebarIcon name="close" />
+                    </span>
                   </button>
                 ) : null}
               </div>
             </div>
           </header>
-          {sidebarContent ? (
-            <div className="chatkit-sidebar__dynamic">{sidebarContent}</div>
-          ) : null}
-          {navigationItems.length > 0 && (
-            <nav className="chatkit-sidebar__nav" aria-label={t("app.sidebar.menu")}>
-              <ul className="chatkit-sidebar__list">
-                {navigationItems.map((item) => (
-                  <li
-                    key={item.key}
-                    className={`chatkit-sidebar__item${
-                      item.isActive ? " chatkit-sidebar__item--active" : ""
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={item.onClick}
-                      tabIndex={sidebarTabIndex}
-                      aria-label={item.label}
-                      aria-current={item.isActive ? "page" : undefined}
-                    >
-                      <SidebarIcon name={item.icon} className="chatkit-sidebar__icon" />
-                      <span className="chatkit-sidebar__label">{item.label}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </nav>
+          {(sidebarContent || navigationItems.length > 0) && (
+            <div className="chatkit-sidebar__main">
+              {sidebarContent ? (
+                <div className="chatkit-sidebar__dynamic">{sidebarContent}</div>
+              ) : null}
+              {navigationItems.length > 0 && (
+                <nav className="chatkit-sidebar__nav" aria-label={t("app.sidebar.menu")}>
+                  <ul className="chatkit-sidebar__list">
+                    {navigationItems.map((item) => (
+                      <li
+                        key={item.key}
+                        className={`chatkit-sidebar__item${
+                          item.isActive ? " chatkit-sidebar__item--active" : ""
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={item.onClick}
+                          tabIndex={sidebarTabIndex}
+                          aria-label={item.label}
+                          aria-current={item.isActive ? "page" : undefined}
+                        >
+                          <SidebarIcon name={item.icon} className="chatkit-sidebar__icon" />
+                          <span className="chatkit-sidebar__label">{item.label}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </nav>
+              )}
+            </div>
           )}
           {isAuthenticated && (
             <footer className="chatkit-sidebar__footer">

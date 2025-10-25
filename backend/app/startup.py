@@ -28,6 +28,10 @@ from .models import (
     Workflow,
 )
 from .security import hash_password
+from .telephony.registration import (
+    SIPRegistrationConfig,
+    SIPRegistrationManager,
+)
 from .vector_store import (
     WORKFLOW_VECTOR_STORE_DESCRIPTION,
     WORKFLOW_VECTOR_STORE_METADATA,
@@ -738,6 +742,16 @@ def _ensure_protected_vector_store() -> None:
 
 
 def register_startup_events(app: FastAPI) -> None:
+    sip_contact_host = settings.sip_bind_host
+    sip_contact_port = settings.sip_bind_port
+    sip_registration_manager = SIPRegistrationManager(
+        session_factory=SessionLocal,
+        settings=settings,
+        contact_host=sip_contact_host,
+        contact_port=sip_contact_port,
+    )
+    app.state.sip_registration = sip_registration_manager
+
     @app.on_event("startup")
     def _on_startup() -> None:
         configure_model_provider(settings)
@@ -806,3 +820,22 @@ def register_startup_events(app: FastAPI) -> None:
                             slug,
                             exc,
                         )
+
+    @app.on_event("startup")
+    async def _start_sip_registration() -> None:
+        manager: SIPRegistrationManager = app.state.sip_registration
+        with SessionLocal() as session:
+            stored_settings = session.scalar(select(AppSettings).limit(1))
+            await manager.apply_config_from_settings(session, stored_settings)
+        await manager.start()
+
+    @app.on_event("shutdown")
+    async def _stop_sip_registration() -> None:
+        manager: SIPRegistrationManager = app.state.sip_registration
+        try:
+            await manager.stop()
+        except Exception as exc:  # pragma: no cover - network dependent
+            logger.exception(
+                "Arrêt du gestionnaire d'enregistrement SIP échoué",
+                exc_info=exc,
+            )
