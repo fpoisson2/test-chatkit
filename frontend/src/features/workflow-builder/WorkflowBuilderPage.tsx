@@ -174,6 +174,7 @@ import {
   getMobileActionButtonStyle,
   getVersionSelectStyle,
   loadingStyle,
+  type ActionMenuPlacement,
 } from "./styles";
 import styles from "./WorkflowBuilderPage.module.css";
 
@@ -376,7 +377,7 @@ const WorkflowBuilderPage = () => {
     () => (token ? { Authorization: `Bearer ${token}` } : {}),
     [token],
   );
-  const { openSidebar } = useAppLayout();
+  const { openSidebar, closeSidebar } = useAppLayout();
   const { setSidebarContent, clearSidebarContent } = useSidebarPortal();
 
   const ensurePreviewDefaults = useCallback((data: FlowNodeData): FlowNodeData => {
@@ -468,6 +469,12 @@ const WorkflowBuilderPage = () => {
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isMobileActionsOpen, setIsMobileActionsOpen] = useState(false);
+  const [workflowMenuPlacement, setWorkflowMenuPlacement] =
+    useState<ActionMenuPlacement>("up");
+  const closeWorkflowMenu = useCallback(() => {
+    setOpenWorkflowMenuId(null);
+    setWorkflowMenuPlacement("up");
+  }, []);
   const autoSaveTimeoutRef = useRef<number | null>(null);
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const draftVersionIdRef = useRef<number | null>(null);
@@ -951,15 +958,15 @@ const WorkflowBuilderPage = () => {
 
   useEffect(() => {
     if (!isBlockLibraryOpen) {
-      setOpenWorkflowMenuId(null);
+      closeWorkflowMenu();
     }
-  }, [isBlockLibraryOpen]);
+  }, [closeWorkflowMenu, isBlockLibraryOpen]);
 
   useEffect(() => {
     if (workflows.length === 0) {
-      setOpenWorkflowMenuId(null);
+      closeWorkflowMenu();
     }
-  }, [workflows.length]);
+  }, [closeWorkflowMenu, workflows.length]);
 
   useEffect(() => {
     if (openWorkflowMenuId === null) {
@@ -977,12 +984,12 @@ const WorkflowBuilderPage = () => {
       ) {
         return;
       }
-      setOpenWorkflowMenuId(null);
+      closeWorkflowMenu();
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setOpenWorkflowMenuId(null);
+        closeWorkflowMenu();
       }
     };
 
@@ -992,7 +999,7 @@ const WorkflowBuilderPage = () => {
       window.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [openWorkflowMenuId]);
+  }, [closeWorkflowMenu, openWorkflowMenuId]);
 
   const applySelection = useCallback(
     ({
@@ -1260,7 +1267,7 @@ const WorkflowBuilderPage = () => {
     );
 
     if (isMobileLayout) {
-      const mobileMenuStyle = getActionMenuStyle(true);
+      const mobileMenuStyle = getActionMenuStyle(true, "down");
       mobileMenuStyle.right = 0;
       mobileMenuStyle.left = "auto";
       mobileMenuStyle.minWidth = "min(18rem, 85vw)";
@@ -4775,14 +4782,27 @@ const WorkflowBuilderPage = () => {
   const handleSelectWorkflow = useCallback(
     (workflowId: number) => {
       if (workflowId === selectedWorkflowId) {
+        if (isMobileLayout) {
+          closeWorkflowMenu();
+          closeSidebar();
+        }
         return;
       }
       setSelectedWorkflowId(workflowId);
       setSelectedVersionId(null);
-      setOpenWorkflowMenuId(null);
+      closeWorkflowMenu();
+      if (isMobileLayout) {
+        closeSidebar();
+      }
       void loadVersions(workflowId, null);
     },
-    [loadVersions, selectedWorkflowId],
+    [
+      closeSidebar,
+      closeWorkflowMenu,
+      isMobileLayout,
+      loadVersions,
+      selectedWorkflowId,
+    ],
   );
 
   const handleVersionChange = useCallback(
@@ -4871,7 +4891,7 @@ const WorkflowBuilderPage = () => {
       if (!confirmed) {
         return;
       }
-      setOpenWorkflowMenuId(null);
+      closeWorkflowMenu();
       const endpoint = `/api/workflows/${targetId}`;
       const candidates = makeApiEndpointCandidates(backendUrl, endpoint);
       let lastError: Error | null = null;
@@ -4928,6 +4948,7 @@ const WorkflowBuilderPage = () => {
       authHeader,
       backendUrl,
       applySelection,
+      closeWorkflowMenu,
       loadWorkflows,
       selectedWorkflowId,
       workflows,
@@ -5257,6 +5278,7 @@ const WorkflowBuilderPage = () => {
     updateHasPendingChanges(true);
     setSaveMessage(lastError?.message ?? saveFailureMessage);
   }, [
+    closeWorkflowMenu,
     authHeader,
     autoSaveSuccessMessage,
     backendUrl,
@@ -5714,7 +5736,7 @@ const WorkflowBuilderPage = () => {
     async (workflowId?: number) => {
       const targetId = workflowId ?? selectedWorkflowId;
       if (!targetId || !selectedWorkflow || targetId !== selectedWorkflowId) {
-        setOpenWorkflowMenuId(null);
+        closeWorkflowMenu();
         if (targetId && targetId !== selectedWorkflowId) {
           setSaveState("error");
           setSaveMessage("Sélectionnez le workflow avant de le dupliquer.");
@@ -5761,7 +5783,7 @@ const WorkflowBuilderPage = () => {
           }
 
           const data: WorkflowVersionResponse = await response.json();
-          setOpenWorkflowMenuId(null);
+          closeWorkflowMenu();
           await loadWorkflows({ selectWorkflowId: data.workflow_id, selectVersionId: data.id });
           setSaveState("saved");
           setSaveMessage(`Workflow dupliqué sous "${displayName}".`);
@@ -5778,6 +5800,7 @@ const WorkflowBuilderPage = () => {
     [
       authHeader,
       buildGraphPayload,
+      closeWorkflowMenu,
       loadWorkflows,
       selectedWorkflow,
       selectedWorkflowId,
@@ -5793,11 +5816,11 @@ const WorkflowBuilderPage = () => {
 
       const target = workflows.find((workflow) => workflow.id === targetId);
       if (!target) {
-        setOpenWorkflowMenuId(null);
+        closeWorkflowMenu();
         return;
       }
 
-      setOpenWorkflowMenuId(null);
+      closeWorkflowMenu();
 
       const baseName = target.display_name?.trim() || "Workflow sans nom";
       const proposed = window.prompt("Nouveau nom du workflow ?", baseName);
@@ -5869,6 +5892,7 @@ const WorkflowBuilderPage = () => {
     [
       authHeader,
       backendUrl,
+      closeWorkflowMenu,
       loadWorkflows,
       selectedVersionId,
       selectedWorkflowId,
@@ -6307,14 +6331,9 @@ const WorkflowBuilderPage = () => {
             const canDuplicate = !loading && workflow.id === selectedWorkflowId;
             const canDelete = !loading && !workflow.is_chatkit_default;
             const menuId = `workflow-actions-${workflow.id}`;
-            const menuStyle = getActionMenuStyle(isMobileLayout);
-            menuStyle.right = "var(--chatkit-sidebar-padding-x)";
-            if (isMobileLayout) {
-              menuStyle.left = "calc(-1 * var(--chatkit-sidebar-padding-x))";
-              menuStyle.right = undefined;
-              menuStyle.width = "calc(100% + (var(--chatkit-sidebar-padding-x) * 2))";
-              menuStyle.minWidth = "0";
-            }
+            const placement =
+              isMobileLayout && isMenuOpen ? workflowMenuPlacement : "down";
+            const menuStyle = getActionMenuStyle(isMobileLayout, placement);
             return (
               <li key={workflow.id} className="chatkit-sidebar__workflow-list-item">
                 <button
@@ -6322,8 +6341,11 @@ const WorkflowBuilderPage = () => {
                   className="chatkit-sidebar__workflow-button"
                   onClick={() => handleSelectWorkflow(workflow.id)}
                   aria-current={isActive ? "true" : undefined}
+                  title={workflow.display_name}
                 >
-                  {workflow.display_name}
+                  <span className="chatkit-sidebar__workflow-label">
+                    {workflow.display_name}
+                  </span>
                 </button>
                 <div className="chatkit-sidebar__workflow-actions" data-workflow-menu-container="">
                   <button
@@ -6336,9 +6358,30 @@ const WorkflowBuilderPage = () => {
                     disabled={loading}
                     onClick={(event) => {
                       event.stopPropagation();
-                      setOpenWorkflowMenuId((current) =>
-                        current === workflow.id ? null : workflow.id,
-                      );
+                      if (openWorkflowMenuId === workflow.id) {
+                        closeWorkflowMenu();
+                        return;
+                      }
+
+                      if (isMobileLayout && typeof window !== "undefined") {
+                        const triggerRect = event.currentTarget.getBoundingClientRect();
+                        const viewport = window.visualViewport;
+                        const viewportHeight =
+                          viewport?.height ?? window.innerHeight ?? document.documentElement.clientHeight ?? 0;
+                        const viewportOffsetTop = viewport?.offsetTop ?? 0;
+                        const adjustedTop = triggerRect.top - viewportOffsetTop;
+                        const adjustedBottom = triggerRect.bottom - viewportOffsetTop;
+                        const spaceAbove = Math.max(0, adjustedTop);
+                        const spaceBelow = Math.max(0, viewportHeight - adjustedBottom);
+                        const estimatedMenuHeight = 240;
+                        const shouldOpenUpwards =
+                          spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow;
+                        setWorkflowMenuPlacement(shouldOpenUpwards ? "up" : "down");
+                      } else {
+                        setWorkflowMenuPlacement("down");
+                      }
+
+                      setOpenWorkflowMenuId(workflow.id);
                     }}
                   >
                     <span aria-hidden="true">…</span>
