@@ -40,6 +40,7 @@ import type {
   FlowNode,
   ImageGenerationToolConfig,
   WebSearchConfig,
+  WorkflowSummary,
 } from "../../../types";
 import {
   DEFAULT_COMPUTER_USE_CONFIG,
@@ -60,6 +61,8 @@ type UseAgentInspectorStateParams = {
   vectorStores: VectorStoreSummary[];
   vectorStoresLoading: boolean;
   vectorStoresError: string | null;
+  workflows: WorkflowSummary[];
+  currentWorkflowId: number | null;
   availableModels: AvailableModel[];
   isReasoningModel: (model: string) => boolean;
   onAgentImageGenerationChange: (
@@ -73,6 +76,7 @@ type AgentInspectorState = {
   agentModel: string;
   nestedWorkflowId: number | null;
   nestedWorkflowSlug: string;
+  nestedWorkflowMode: "local" | "hosted";
   reasoningEffort: string;
   reasoningSummaryValue: string;
   textVerbosityValue: string;
@@ -137,6 +141,8 @@ export const useAgentInspectorState = ({
   vectorStores,
   vectorStoresLoading,
   vectorStoresError,
+  workflows,
+  currentWorkflowId,
   availableModels,
   isReasoningModel,
   onAgentImageGenerationChange,
@@ -144,6 +150,22 @@ export const useAgentInspectorState = ({
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
   const nestedWorkflow = getAgentNestedWorkflow(parameters);
+  const availableNestedWorkflows = useMemo(
+    () => workflows.filter((workflow) => workflow.id !== currentWorkflowId),
+    [workflows, currentWorkflowId],
+  );
+  const nestedWorkflowMode: "local" | "hosted" = useMemo(() => {
+    if (nestedWorkflow.id != null) {
+      const matchesLocal = availableNestedWorkflows.some(
+        (workflow) => workflow.id === nestedWorkflow.id,
+      );
+      return matchesLocal ? "local" : "hosted";
+    }
+    if (nestedWorkflow.slug.trim().length > 0) {
+      return "hosted";
+    }
+    return "local";
+  }, [availableNestedWorkflows, nestedWorkflow.id, nestedWorkflow.slug]);
   const reasoningEffort = getAgentReasoningEffort(parameters);
   const textVerbosity = getAgentTextVerbosity(parameters).trim();
   const responseFormat = getAgentResponseFormat(parameters);
@@ -211,9 +233,13 @@ export const useAgentInspectorState = ({
   const widgetValidationFunctionEnabled = getAgentWidgetValidationToolEnabled(parameters);
   const workflowValidationFunctionEnabled =
     getAgentWorkflowValidationToolEnabled(parameters);
-  const workflowToolSlugs = getAgentWorkflowTools(parameters)
-    .map((config) => config.slug.trim())
-    .filter((slug) => slug.length > 0);
+  const workflowToolSlugs = Array.from(
+    new Set(
+      getAgentWorkflowTools(parameters)
+        .map((config) => (config.slug?.trim() || config.identifier?.trim() || ""))
+        .filter((slug) => slug.length > 0),
+    ),
+  );
 
   const selectedVectorStoreSlug = fileSearchConfig?.vector_store_slug ?? "";
   const trimmedVectorStoreSlug = selectedVectorStoreSlug.trim();
@@ -395,6 +421,7 @@ export const useAgentInspectorState = ({
     agentModel,
     nestedWorkflowId: nestedWorkflow.id,
     nestedWorkflowSlug: nestedWorkflow.slug,
+    nestedWorkflowMode,
     reasoningEffort,
     reasoningSummaryValue,
     textVerbosityValue,

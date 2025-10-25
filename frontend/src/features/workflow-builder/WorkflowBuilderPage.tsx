@@ -45,6 +45,7 @@ import {
   getAgentFileSearchConfig,
   getAgentWorkflowTools,
   getAgentResponseFormat,
+  getAgentNestedWorkflow,
   setAgentContinueOnError,
   setAgentDisplayResponseInChat,
   setAgentFileSearchConfig,
@@ -121,6 +122,7 @@ import {
 } from "./importWorkflow";
 import type {
   AgentParameters,
+  AgentNestedWorkflowSelection,
   ComputerUseConfig,
   FileSearchConfig,
   ImageGenerationToolConfig,
@@ -2454,12 +2456,39 @@ const WorkflowBuilderPage = () => {
   );
 
   const handleAgentNestedWorkflowChange = useCallback(
-    (nodeId: string, workflowId: number | null) => {
+    (nodeId: string, selection: AgentNestedWorkflowSelection) => {
       updateNodeData(nodeId, (data) => {
         if (!isAgentKind(data.kind)) {
           return data;
         }
-        const nextParameters = setAgentNestedWorkflow(data.parameters, { id: workflowId });
+
+        const currentReference = getAgentNestedWorkflow(data.parameters);
+        const trimmedSlug = selection.workflowSlug.trim();
+        const persistedSlug = trimmedSlug || currentReference.slug;
+
+        let reference: { id?: number | null; slug?: string | null };
+        if (selection.mode === "local") {
+          if (selection.workflowId == null) {
+            reference = { id: null, slug: null };
+          } else {
+            const slugForLocal = trimmedSlug || currentReference.slug;
+            reference = {
+              id: selection.workflowId,
+              slug: slugForLocal.trim().length > 0 ? slugForLocal : null,
+            };
+          }
+        } else if (!selection.workflowId && !persistedSlug.trim()) {
+          reference = { id: null, slug: null };
+        } else if (!persistedSlug.trim()) {
+          reference = { id: selection.workflowId };
+        } else {
+          reference = {
+            id: selection.workflowId,
+            slug: persistedSlug.trim(),
+          };
+        }
+
+        const nextParameters = setAgentNestedWorkflow(data.parameters, reference);
         return {
           ...data,
           parameters: nextParameters,

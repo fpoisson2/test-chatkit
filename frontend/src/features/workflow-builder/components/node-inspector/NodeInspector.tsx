@@ -31,6 +31,7 @@ import {
   type StartTelephonyRealtimeOverrides,
 } from "../../../../utils/workflows";
 import type {
+  AgentNestedWorkflowSelection,
   ComputerUseConfig,
   FileSearchConfig,
   FlowNode,
@@ -68,7 +69,10 @@ export type NodeInspectorProps = {
   onDisplayNameChange: (nodeId: string, value: string) => void;
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onAgentModelChange: (nodeId: string, value: string) => void;
-  onAgentNestedWorkflowChange: (nodeId: string, workflowId: number | null) => void;
+  onAgentNestedWorkflowChange: (
+    nodeId: string,
+    selection: AgentNestedWorkflowSelection,
+  ) => void;
   onAgentReasoningChange: (nodeId: string, value: string) => void;
   onAgentReasoningSummaryChange: (nodeId: string, value: string) => void;
   onAgentTextVerbosityChange: (nodeId: string, value: string) => void;
