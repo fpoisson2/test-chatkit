@@ -179,20 +179,40 @@ export const actionMenuTriggerLabelStyle: CSSProperties = {
   color: "var(--text-color)",
 };
 
-export const getActionMenuStyle = (isMobile: boolean): CSSProperties => ({
+export type ActionMenuPlacement = "up" | "down";
+
+export const getActionMenuStyle = (
+  isMobile: boolean,
+  placement: ActionMenuPlacement = "down",
+): CSSProperties => ({
   position: "absolute",
   ...(isMobile
-    ? {
-        top: "auto",
-        bottom: "calc(100% + 0.5rem)",
-        right: "0",
-        left: "0",
-      }
-    : {
-        top: "calc(100% + 0.5rem)",
-        right: "var(--chatkit-sidebar-content-padding-x)",
-        left: "auto",
-      }),
+    ? placement === "up"
+      ? {
+          top: "auto",
+          bottom: "calc(100% + 0.5rem)",
+          right: "0",
+          left: "0",
+        }
+      : {
+          top: "calc(100% + 0.5rem)",
+          bottom: "auto",
+          right: "0",
+          left: "0",
+        }
+    : placement === "up"
+      ? {
+          top: "auto",
+          bottom: "calc(100% + 0.5rem)",
+          right: "var(--chatkit-sidebar-content-padding-x)",
+          left: "auto",
+        }
+      : {
+          top: "calc(100% + 0.5rem)",
+          bottom: "auto",
+          right: "var(--chatkit-sidebar-content-padding-x)",
+          left: "auto",
+        }),
   background: "var(--surface-strong)",
   borderRadius: "0.75rem",
   border: "1px solid var(--surface-border)",
