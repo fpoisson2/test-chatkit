@@ -144,14 +144,20 @@ async def handle_incoming_invite(
     else:
         payload_text = str(payload)
 
+    normalized_payload_text = (
+        payload_text.replace("\r\n", "\n").replace("\r", "\n")
+    )
+
     logger.debug(
         "SDP reçu (Call-ID=%s, %d octets):\n%s",
         call_id or "inconnu",
         len(payload) if isinstance(payload, bytes | str) else len(payload_text),
-        payload_text,
+        normalized_payload_text,
     )
 
-    sdp_lines = [line.strip() for line in payload_text.splitlines() if line.strip()]
+    sdp_lines = [
+        line.strip() for line in normalized_payload_text.splitlines() if line.strip()
+    ]
     audio_media = _parse_audio_media_line(sdp_lines)
     if audio_media is None:
         logger.warning(

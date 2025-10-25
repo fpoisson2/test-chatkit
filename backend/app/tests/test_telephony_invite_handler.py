@@ -131,6 +131,36 @@ async def test_handle_invite_accepts_payload_already_decoded() -> None:
 
 
 @pytest.mark.anyio
+async def test_handle_invite_accepts_payload_with_carriage_returns_only() -> None:
+    dialog = DummyDialog()
+    invite = _make_invite(
+        "\r".join(
+            [
+                "v=0",
+                "o=- 98765 67890 IN IP4 198.51.100.10",
+                "s=-",
+                "c=IN IP4 198.51.100.10",
+                "t=0 0",
+                "m=audio 49170 RTP/AVP 0",
+                "a=rtpmap:0 PCMU/8000",
+            ]
+        ),
+        as_text=True,
+    )
+
+    await handle_incoming_invite(
+        dialog,
+        invite,
+        media_host="203.0.113.6",
+        media_port=4002,
+        preferred_codecs=("pcmu",),
+    )
+
+    statuses = [status for status, _ in dialog.replies]
+    assert statuses == [100, 180, 200]
+
+
+@pytest.mark.anyio
 async def test_handle_invite_declines_without_codec() -> None:
     dialog = DummyDialog()
     invite = _make_invite(
