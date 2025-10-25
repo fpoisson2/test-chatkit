@@ -29,7 +29,6 @@ type NavigationItem = {
 
 type ApplicationKey =
   | "chat"
-  | "voice"
   | "workflows"
   | "vector-stores"
   | "widgets";
@@ -43,7 +42,6 @@ type ApplicationDescriptor = {
 
 const APPLICATIONS: ApplicationDescriptor[] = [
   { key: "chat", labelKey: "app.sidebar.applications.chat", path: "/" },
-  { key: "voice", labelKey: "app.sidebar.applications.voice", path: "/voice" },
   {
     key: "workflows",
     labelKey: "app.sidebar.applications.workflows",
