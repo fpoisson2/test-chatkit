@@ -751,16 +751,22 @@ button {
   display: flex;
   align-items: center;
   gap: 12px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .chatkit-sidebar__brand {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .chatkit-sidebar__brand-switcher {
   position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .chatkit-sidebar__logo {
@@ -778,6 +784,8 @@ button {
   padding: 4px 8px 4px 0;
   border-radius: 8px;
   cursor: pointer;
+  width: 100%;
+  min-width: 0;
 }
 
 .chatkit-sidebar__brand-select:hover,
@@ -787,15 +795,18 @@ button {
 }
 
 .chatkit-sidebar__dismiss {
-  background: transparent;
+  background: rgba(15, 23, 42, 0.06);
   border: none;
   color: var(--text-color);
-  font-size: 1.5rem;
-  line-height: 1;
-  padding: 4px 6px;
-  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 12px;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .chatkit-sidebar__dismiss:hover,
@@ -808,8 +819,24 @@ button {
   outline-offset: 2px;
 }
 
+.chatkit-sidebar__dismiss-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chatkit-sidebar__dismiss-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
 .chatkit-sidebar__nav {
   flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .chatkit-sidebar__main {
@@ -818,7 +845,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .chatkit-sidebar__dynamic {
@@ -849,6 +876,8 @@ button {
   border-radius: 12px;
   cursor: pointer;
   transition: background-color 0.2s ease;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chatkit-sidebar__item button:hover,

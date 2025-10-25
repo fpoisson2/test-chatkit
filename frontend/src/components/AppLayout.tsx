@@ -466,7 +466,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                     tabIndex={sidebarTabIndex}
                     aria-label={t("app.sidebar.close")}
                   >
-                    ×
+                    <span aria-hidden="true" className="chatkit-sidebar__dismiss-icon">
+                      <SidebarIcon name="close" />
+                    </span>
                   </button>
                 ) : null}
               </div>

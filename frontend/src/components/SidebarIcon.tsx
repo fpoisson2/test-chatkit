@@ -8,7 +8,8 @@ export type SidebarIconName =
   | "settings"
   | "login"
   | "logout"
-  | "docs";
+  | "docs"
+  | "close";
 
 const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
   logo: (
@@ -179,6 +180,18 @@ const SIDEBAR_ICONS: Record<SidebarIconName, ReactNode> = {
       />
       <path
         d="M10.5 12h3"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </>
+  ),
+  close: (
+    <>
+      <path
+        d="M7.5 7.5 16.5 16.5m0-9L7.5 16.5"
         fill="none"
         stroke="currentColor"
         strokeLinecap="round"
