@@ -6261,10 +6261,11 @@ const WorkflowBuilderPage = () => {
             const menuStyle = getActionMenuStyle(isMobileLayout);
             menuStyle.right = "var(--chatkit-sidebar-padding-x)";
             if (isMobileLayout) {
-              menuStyle.left = "calc(-1 * var(--chatkit-sidebar-padding-x))";
-              menuStyle.right = undefined;
-              menuStyle.width = "calc(100% + (var(--chatkit-sidebar-padding-x) * 2))";
+              menuStyle.left = "0";
+              menuStyle.right = "0";
+              menuStyle.width = "100%";
               menuStyle.minWidth = "0";
+              menuStyle.maxWidth = "none";
             }
             return (
               <li key={workflow.id} className="chatkit-sidebar__workflow-list-item">

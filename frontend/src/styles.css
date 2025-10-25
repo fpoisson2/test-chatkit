@@ -603,6 +603,17 @@ button {
   line-height: 1.35;
 }
 
+@media (max-width: 768px) {
+  .chatkit-sidebar__workflow-button {
+    width: 100%;
+    margin-inline: 0;
+  }
+
+  .chatkit-sidebar__workflow-actions {
+    right: 0;
+  }
+}
+
 .chatkit-sidebar__workflow-button[disabled] {
   cursor: not-allowed;
   opacity: 0.6;
@@ -863,11 +874,11 @@ button {
   gap: 24px;
   padding: 16px 0;
   border-bottom: 1px solid var(--sidebar-border);
-  overflow-x: visible;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: stable;
 }
 
 .chatkit-sidebar__dynamic {
