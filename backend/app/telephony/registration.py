@@ -320,15 +320,23 @@ class SIPRegistrationManager:
 
         if self._dialog is None:
             dialog_kwargs = self._dialog_transport_kwargs(config.transport)
-            self._dialog = await self._app.start_dialog(
-                from_uri=config.uri,
-                to_uri=config.uri,
-                contact_uri=config.contact_uri(),
-                local_addr=local_addr,
-                remote_addr=remote_addr,
-                password=config.password,
-                **dialog_kwargs,
-            )
+            try:
+                self._dialog = await self._app.start_dialog(
+                    from_uri=config.uri,
+                    to_uri=config.uri,
+                    contact_uri=config.contact_uri(),
+                    local_addr=local_addr,
+                    remote_addr=remote_addr,
+                    password=config.password,
+                    **dialog_kwargs,
+                )
+            except OSError as exc:
+                raise ValueError(
+                    "Impossible d'ouvrir une socket SIP locale sur "
+                    f"{config.contact_host}:{config.contact_port} : {exc}. "
+                    "Vérifiez que l'hôte de contact correspond à une interface "
+                    "réseau locale et que le port n'est pas déjà utilisé."
+                ) from exc
 
         register_future = self._dialog.register(expires=config.expires)
         await asyncio.wait_for(register_future, timeout=self._register_timeout)
