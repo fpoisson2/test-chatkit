@@ -2,6 +2,7 @@
 
 from .service import (
     HostedWorkflowConfig,
+    HostedWorkflowNotFoundError,
     TelephonyRouteConfig,
     TelephonyRouteOverrides,
     TelephonyStartConfiguration,
@@ -25,6 +26,7 @@ __all__ = [
     "WorkflowNotFoundError",
     "WorkflowService",
     "WorkflowVersionNotFoundError",
+    "HostedWorkflowNotFoundError",
     "WorkflowValidationError",
     "serialize_definition",
     "serialize_definition_graph",

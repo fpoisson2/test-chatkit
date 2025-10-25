@@ -222,6 +222,7 @@ export type HostedWorkflowMetadata = {
   label: string;
   description?: string | null;
   available: boolean;
+  managed: boolean;
 };
 
 let hostedWorkflowCache: HostedWorkflowMetadata[] | null | undefined;
@@ -342,6 +343,38 @@ export const chatkitApi = {
     }
 
     return fetchPromise;
+  },
+
+  async createHostedWorkflow(
+    token: string | null,
+    payload: {
+      slug: string;
+      workflow_id: string;
+      label: string;
+      description?: string | undefined;
+    },
+  ): Promise<HostedWorkflowMetadata> {
+    const response = await requestWithFallback("/api/chatkit/hosted", {
+      method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    const data = (await response.json()) as HostedWorkflowMetadata;
+    hostedWorkflowCache = undefined;
+    return data;
+  },
+
+  async deleteHostedWorkflow(token: string | null, slug: string): Promise<void> {
+    await requestWithFallback(`/api/chatkit/hosted/${encodeURIComponent(slug)}`, {
+      method: "DELETE",
+      headers: withAuthHeaders(token),
+    });
+    hostedWorkflowCache = undefined;
+  },
+
+  invalidateHostedWorkflowCache(): void {
+    hostedWorkflowCache = undefined;
+    hostedWorkflowPromise = null;
   },
 };
 

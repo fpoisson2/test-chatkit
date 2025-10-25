@@ -32,11 +32,13 @@ import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
 import {
+  chatkitApi,
   makeApiEndpointCandidates,
   modelRegistryApi,
   widgetLibraryApi,
   vectorStoreApi,
   type AvailableModel,
+  type HostedWorkflowMetadata,
   type WidgetTemplateSummary,
   type VectorStoreSummary,
 } from "../../utils/backend";
@@ -85,7 +87,6 @@ import {
   setStartTelephonyRoutes,
   setStartTelephonyWorkflow,
   setStartTelephonyRealtimeOverrides,
-  setStartHostedWorkflows,
   setConditionMode,
   setConditionPath,
   setConditionValue,
@@ -112,7 +113,6 @@ import {
   resolveStartParameters,
   type WorkflowToolConfig,
   type StartTelephonyRealtimeOverrides,
-  type StartHostedWorkflowOption,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
@@ -440,6 +440,9 @@ const WorkflowBuilderPage = () => {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
+  const [hostedWorkflows, setHostedWorkflows] = useState<HostedWorkflowMetadata[]>([]);
+  const [hostedLoading, setHostedLoading] = useState(false);
+  const [hostedError, setHostedError] = useState<string | null>(null);
   const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
   const [selectedVersionDetail, setSelectedVersionDetail] = useState<WorkflowVersionResponse | null>(null);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(null);
@@ -2077,9 +2080,42 @@ const WorkflowBuilderPage = () => {
     ],
   );
 
+  const loadHostedWorkflows = useCallback(async () => {
+    if (!token) {
+      setHostedWorkflows([]);
+      setHostedError(null);
+      setHostedLoading(false);
+      return;
+    }
+
+    setHostedLoading(true);
+    setHostedError(null);
+    try {
+      const response = await chatkitApi.getHostedWorkflows(token, { cache: false });
+      if (!response) {
+        setHostedWorkflows([]);
+      } else {
+        setHostedWorkflows(response);
+      }
+    } catch (error) {
+      setHostedWorkflows([]);
+      const message =
+        error instanceof Error
+          ? error.message
+          : t("workflowBuilder.hostedSection.loadError");
+      setHostedError(message);
+    } finally {
+      setHostedLoading(false);
+    }
+  }, [t, token]);
+
   useEffect(() => {
     void loadWorkflows();
   }, [loadWorkflows]);
+
+  useEffect(() => {
+    void loadHostedWorkflows();
+  }, [loadHostedWorkflows]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
@@ -2393,24 +2429,6 @@ const WorkflowBuilderPage = () => {
           data.parameters,
           value,
         );
-        return {
-          ...data,
-          parameters: nextParameters,
-          parametersText: stringifyAgentParameters(nextParameters),
-          parametersError: null,
-        } satisfies FlowNodeData;
-      });
-    },
-    [updateNodeData],
-  );
-
-  const handleStartHostedWorkflowsChange = useCallback(
-    (nodeId: string, workflows: StartHostedWorkflowOption[]) => {
-      updateNodeData(nodeId, (data) => {
-        if (data.kind !== "start") {
-          return data;
-        }
-        const nextParameters = setStartHostedWorkflows(data.parameters, workflows);
         return {
           ...data,
           parameters: nextParameters,
@@ -4824,7 +4842,83 @@ const WorkflowBuilderPage = () => {
   );
 
   const handleCreateWorkflow = useCallback(async () => {
-    const proposed = window.prompt("Nom du nouveau workflow ?");
+    const wantsHosted = window.confirm(
+      t("workflowBuilder.createWorkflow.chooseHosted"),
+    );
+
+    if (wantsHosted) {
+      if (!token) {
+        setSaveState("error");
+        setSaveMessage(t("workflowBuilder.createWorkflow.errorAuthentication"));
+        return;
+      }
+
+      const slugInput = window.prompt(t("workflowBuilder.createWorkflow.promptSlug"));
+      if (slugInput === null) {
+        return;
+      }
+      const slug = slugInput.trim();
+      if (!slug) {
+        setSaveState("error");
+        setSaveMessage(t("workflowBuilder.createWorkflow.errorMissingSlug"));
+        return;
+      }
+
+      const workflowIdInput = window.prompt(
+        t("workflowBuilder.createWorkflow.promptId"),
+      );
+      if (workflowIdInput === null) {
+        return;
+      }
+      const remoteWorkflowId = workflowIdInput.trim();
+      if (!remoteWorkflowId) {
+        setSaveState("error");
+        setSaveMessage(t("workflowBuilder.createWorkflow.errorMissingId"));
+        return;
+      }
+
+      const labelInput = window.prompt(
+        t("workflowBuilder.createWorkflow.promptLabel"),
+        slug,
+      );
+      const label = labelInput && labelInput.trim() ? labelInput.trim() : slug;
+
+      const descriptionInput = window.prompt(
+        t("workflowBuilder.createWorkflow.promptDescription"),
+        "",
+      );
+      const description = descriptionInput && descriptionInput.trim()
+        ? descriptionInput.trim()
+        : undefined;
+
+      setSaveState("saving");
+      setSaveMessage(t("workflowBuilder.createWorkflow.creatingHosted"));
+      try {
+        const created = await chatkitApi.createHostedWorkflow(token, {
+          slug,
+          workflow_id: remoteWorkflowId,
+          label,
+          description,
+        });
+        chatkitApi.invalidateHostedWorkflowCache();
+        await loadHostedWorkflows();
+        setSaveState("saved");
+        setSaveMessage(
+          t("workflowBuilder.createWorkflow.successHosted", { label: created.label }),
+        );
+        setTimeout(() => setSaveState("idle"), 1500);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : t("workflowBuilder.createWorkflow.errorCreateHosted");
+        setSaveState("error");
+        setSaveMessage(message);
+      }
+      return;
+    }
+
+    const proposed = window.prompt(t("workflowBuilder.createWorkflow.promptLocalName"));
     if (!proposed) {
       return;
     }
@@ -4857,16 +4951,30 @@ const WorkflowBuilderPage = () => {
         const data: WorkflowVersionResponse = await response.json();
         await loadWorkflows({ selectWorkflowId: data.workflow_id, selectVersionId: data.id });
         setSaveState("saved");
-        setSaveMessage(`Workflow "${displayName}" créé avec succès.`);
+        setSaveMessage(
+          t("workflowBuilder.createWorkflow.successLocal", { name: displayName }),
+        );
         setTimeout(() => setSaveState("idle"), 1500);
         return;
       } catch (error) {
-        lastError = error instanceof Error ? error : new Error("Impossible de créer le workflow.");
+        lastError =
+          error instanceof Error
+            ? error
+            : new Error(t("workflowBuilder.createWorkflow.errorCreateLocal"));
       }
     }
     setSaveState("error");
-    setSaveMessage(lastError?.message ?? "Impossible de créer le workflow.");
-  }, [authHeader, loadWorkflows]);
+    setSaveMessage(
+      lastError?.message ?? t("workflowBuilder.createWorkflow.errorCreateLocal"),
+    );
+  }, [
+    authHeader,
+    backendUrl,
+    loadHostedWorkflows,
+    loadWorkflows,
+    t,
+    token,
+  ]);
 
   const handleDeleteWorkflow = useCallback(
     async (workflowId?: number) => {
@@ -4952,6 +5060,46 @@ const WorkflowBuilderPage = () => {
       selectedWorkflowId,
       workflows,
     ],
+  );
+
+  const handleDeleteHostedWorkflow = useCallback(
+    async (slug: string) => {
+      if (!token) {
+        setSaveState("error");
+        setSaveMessage(t("workflowBuilder.createWorkflow.errorAuthentication"));
+        return;
+      }
+      const entry = hostedWorkflows.find((workflow) => workflow.slug === slug);
+      if (!entry) {
+        return;
+      }
+      const confirmed = window.confirm(
+        t("workflowBuilder.hostedSection.confirmDelete", { label: entry.label }),
+      );
+      if (!confirmed) {
+        return;
+      }
+      setSaveState("saving");
+      setSaveMessage(t("workflowBuilder.hostedSection.deleting"));
+      try {
+        await chatkitApi.deleteHostedWorkflow(token, slug);
+        chatkitApi.invalidateHostedWorkflowCache();
+        await loadHostedWorkflows();
+        setSaveState("saved");
+        setSaveMessage(
+          t("workflowBuilder.hostedSection.deleteSuccess", { label: entry.label }),
+        );
+        setTimeout(() => setSaveState("idle"), 1500);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : t("workflowBuilder.hostedSection.deleteError");
+        setSaveState("error");
+        setSaveMessage(message);
+      }
+    },
+    [hostedWorkflows, loadHostedWorkflows, t, token],
   );
 
   const buildGraphPayload = useCallback(
@@ -6415,6 +6563,67 @@ const WorkflowBuilderPage = () => {
       );
     };
 
+    const managedHosted = hostedWorkflows.filter((workflow) => workflow.managed);
+
+    const renderHostedList = () => {
+      if (hostedLoading && managedHosted.length === 0) {
+        return (
+          <p className="chatkit-sidebar__section-text" aria-live="polite">
+            {t("workflowBuilder.hostedSection.loading")}
+          </p>
+        );
+      }
+
+      if (hostedError) {
+        return (
+          <p className="chatkit-sidebar__section-error" aria-live="polite">
+            {hostedError}
+          </p>
+        );
+      }
+
+      if (managedHosted.length === 0) {
+        return (
+          <p className="chatkit-sidebar__section-text" aria-live="polite">
+            {t("workflowBuilder.hostedSection.empty")}
+          </p>
+        );
+      }
+
+      return (
+        <ul className="chatkit-sidebar__workflow-list">
+          {managedHosted.map((workflow) => (
+            <li key={workflow.slug} className="chatkit-sidebar__workflow-list-item">
+              <button
+                type="button"
+                className="chatkit-sidebar__workflow-button"
+                disabled
+                title={workflow.description ?? undefined}
+              >
+                {workflow.label}
+              </button>
+              <div className="chatkit-sidebar__workflow-actions">
+                <button
+                  type="button"
+                  className="chatkit-sidebar__workflow-action-button"
+                  onClick={() => void handleDeleteHostedWorkflow(workflow.slug)}
+                  disabled={hostedLoading}
+                >
+                  {t("workflowBuilder.hostedSection.deleteAction")}
+                </button>
+              </div>
+              <p className="chatkit-sidebar__section-text">
+                {t("workflowBuilder.hostedSection.remoteId", { id: workflow.id })}
+              </p>
+              {workflow.description ? (
+                <p className="chatkit-sidebar__section-text">{workflow.description}</p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      );
+    };
+
     return (
       <section className="chatkit-sidebar__section" aria-labelledby={`${sectionId}-title`}>
         <div className="chatkit-sidebar__section-header">
@@ -6423,6 +6632,12 @@ const WorkflowBuilderPage = () => {
           </h2>
         </div>
         {renderWorkflowList()}
+        <div className="chatkit-sidebar__section-header" style={{ marginTop: "1rem" }}>
+          <h3 className="chatkit-sidebar__section-title">
+            {t("workflowBuilder.hostedSection.title")}
+          </h3>
+        </div>
+        {renderHostedList()}
         {workflows.length > 0 ? (
           <div
             style={{
@@ -6456,17 +6671,22 @@ const WorkflowBuilderPage = () => {
     );
   }, [
     handleCreateWorkflow,
+    handleDeleteHostedWorkflow,
     handleDeleteWorkflow,
     handleDuplicateWorkflow,
     handleRenameWorkflow,
     handleSelectWorkflow,
     isMobileLayout,
+    hostedError,
+    hostedLoading,
+    hostedWorkflows,
     loadError,
     loading,
     openWorkflowMenuId,
     selectedWorkflow,
     selectedWorkflowId,
     workflows,
+    t,
   ]);
 
   useEffect(() => {
@@ -6762,7 +6982,6 @@ const WorkflowBuilderPage = () => {
             onStartAutoRunAssistantMessageChange={
               handleStartAutoRunAssistantMessageChange
             }
-            onStartHostedWorkflowsChange={handleStartHostedWorkflowsChange}
             onStartTelephonyRoutesChange={handleStartTelephonyRoutesChange}
             onStartTelephonyWorkflowChange={handleStartTelephonyWorkflowChange}
             onStartTelephonyRealtimeChange={handleStartTelephonyRealtimeChange}

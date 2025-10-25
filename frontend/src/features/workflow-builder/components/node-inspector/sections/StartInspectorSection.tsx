@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useI18n } from "../../../../../i18n";
 import type {
-  StartHostedWorkflowOption,
   StartTelephonyRealtimeOverrides,
   StartTelephonyWorkflowReference,
 } from "../../../../../utils/workflows";
@@ -19,17 +18,12 @@ type StartInspectorSectionProps = {
   startAutoRun: boolean;
   startAutoRunMessage: string;
   startAutoRunAssistantMessage: string;
-  startHostedWorkflows: StartHostedWorkflowOption[];
   startTelephonyRoutes: string[];
   startTelephonyWorkflow: StartTelephonyWorkflowReference;
   startTelephonyRealtime: StartTelephonyRealtimeOverrides;
   onStartAutoRunChange: (nodeId: string, value: boolean) => void;
   onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
   onStartAutoRunAssistantMessageChange: (nodeId: string, value: string) => void;
-  onStartHostedWorkflowsChange: (
-    nodeId: string,
-    workflows: StartHostedWorkflowOption[],
-  ) => void;
   onStartTelephonyRoutesChange: (nodeId: string, routes: string[]) => void;
   onStartTelephonyWorkflowChange: (
     nodeId: string,
@@ -60,14 +54,12 @@ export const StartInspectorSection = ({
   startAutoRun,
   startAutoRunMessage,
   startAutoRunAssistantMessage,
-  startHostedWorkflows,
   startTelephonyRoutes,
   startTelephonyWorkflow,
   startTelephonyRealtime,
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
   onStartAutoRunAssistantMessageChange,
-  onStartHostedWorkflowsChange,
   onStartTelephonyRoutesChange,
   onStartTelephonyWorkflowChange,
   onStartTelephonyRealtimeChange,
@@ -86,14 +78,6 @@ export const StartInspectorSection = ({
   >(startTelephonyRealtime.start_mode ?? "");
   const [realtimeStopModeInput, setRealtimeStopModeInput] = useState<VoiceAgentStopBehavior | "">(
     startTelephonyRealtime.stop_mode ?? "",
-  );
-  const [hostedEntries, setHostedEntries] = useState<StartHostedWorkflowOption[]>(
-    startHostedWorkflows.map((entry) => ({
-      slug: entry.slug,
-      label: entry.label,
-      workflow_id: entry.workflow_id,
-      description: entry.description ?? "",
-    })),
   );
 
   useEffect(() => {
@@ -116,17 +100,6 @@ export const StartInspectorSection = ({
     startTelephonyRealtime.start_mode,
     startTelephonyRealtime.stop_mode,
   ]);
-
-  useEffect(() => {
-    setHostedEntries(
-      startHostedWorkflows.map((entry) => ({
-        slug: entry.slug,
-        label: entry.label,
-        workflow_id: entry.workflow_id,
-        description: entry.description ?? "",
-      })),
-    );
-  }, [startHostedWorkflows]);
 
   const normalizedRoutes = useMemo(
     () =>
@@ -163,49 +136,6 @@ export const StartInspectorSection = ({
 
   const workflowIdParsed = useMemo(() => parseWorkflowId(workflowIdInput), [workflowIdInput]);
   const workflowIdHasError = Boolean(workflowIdInput.trim()) && workflowIdParsed === null;
-
-  const hostedSlugCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    hostedEntries.forEach((entry) => {
-      const slug = entry.slug.trim();
-      if (!slug) {
-        return;
-      }
-      counts.set(slug, (counts.get(slug) ?? 0) + 1);
-    });
-    return counts;
-  }, [hostedEntries]);
-
-  const updateHostedEntries = (updater: (current: StartHostedWorkflowOption[]) => StartHostedWorkflowOption[]) => {
-    setHostedEntries((current) => {
-      const next = updater(current);
-      onStartHostedWorkflowsChange(nodeId, next.map((entry) => ({ ...entry })));
-      return next;
-    });
-  };
-
-  const handleHostedFieldChange = (
-    index: number,
-    field: keyof StartHostedWorkflowOption,
-    value: string,
-  ) => {
-    updateHostedEntries((current) =>
-      current.map((entry, entryIndex) =>
-        entryIndex === index ? { ...entry, [field]: value } : entry,
-      ),
-    );
-  };
-
-  const handleHostedWorkflowRemove = (index: number) => {
-    updateHostedEntries((current) => current.filter((_, entryIndex) => entryIndex !== index));
-  };
-
-  const handleHostedWorkflowAdd = () => {
-    updateHostedEntries((current) => [
-      ...current,
-      { slug: "", label: "", workflow_id: "", description: "" },
-    ]);
-  };
 
   const hasStartAutoRunUserMessage = startAutoRunMessage.trim().length > 0;
   const hasStartAutoRunAssistantMessage = startAutoRunAssistantMessage.trim().length > 0;
@@ -267,138 +197,6 @@ export const StartInspectorSection = ({
           </label>
         </>
       ) : null}
-
-      <div className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorSectionTitle}>
-          {t("workflowBuilder.startInspector.hostedSectionTitle")}
-        </span>
-        <p className={styles.nodeInspectorSectionDescription}>
-          {t("workflowBuilder.startInspector.hostedSectionDescription")}
-        </p>
-      </div>
-
-      {hostedEntries.length === 0 ? (
-        <p className={styles.nodeInspectorEmptyLabel}>
-          {t("workflowBuilder.startInspector.hostedEmpty")}
-        </p>
-      ) : null}
-
-      {hostedEntries.map((entry, index) => {
-        const trimmedSlug = entry.slug.trim();
-        const slugMissing = trimmedSlug.length === 0;
-        const slugDuplicate =
-          trimmedSlug.length > 0 && (hostedSlugCounts.get(trimmedSlug) ?? 0) > 1;
-        const slugHasError = slugMissing || slugDuplicate;
-        const workflowIdTrimmed = entry.workflow_id.trim();
-        const workflowIdMissing = workflowIdTrimmed.length === 0;
-
-        return (
-          <div
-            key={`hosted-workflow-${index}-${trimmedSlug || "new"}`}
-            className={styles.nodeInspectorPanelInner}
-          >
-            <label className={styles.nodeInspectorField}>
-              <span className={styles.nodeInspectorLabel}>
-                {t("workflowBuilder.startInspector.hostedSlugLabel")}
-              </span>
-              <input
-                type="text"
-                value={entry.slug}
-                placeholder={t("workflowBuilder.startInspector.hostedSlugPlaceholder")}
-                onChange={(event) =>
-                  handleHostedFieldChange(index, "slug", event.target.value)
-                }
-                className={slugHasError ? styles.nodeInspectorInputError : undefined}
-              />
-              <p className={styles.nodeInspectorHintTextTight}>
-                {t("workflowBuilder.startInspector.hostedSlugHelp")}
-              </p>
-              {slugMissing ? (
-                <p className={styles.nodeInspectorErrorTextSmall}>
-                  {t("workflowBuilder.startInspector.hostedSlugErrorRequired")}
-                </p>
-              ) : null}
-              {!slugMissing && slugDuplicate ? (
-                <p className={styles.nodeInspectorErrorTextSmall}>
-                  {t("workflowBuilder.startInspector.hostedSlugErrorDuplicate")}
-                </p>
-              ) : null}
-            </label>
-
-            <label className={styles.nodeInspectorField}>
-              <span className={styles.nodeInspectorLabel}>
-                {t("workflowBuilder.startInspector.hostedLabelLabel")}
-              </span>
-              <input
-                type="text"
-                value={entry.label}
-                placeholder={t("workflowBuilder.startInspector.hostedLabelPlaceholder")}
-                onChange={(event) =>
-                  handleHostedFieldChange(index, "label", event.target.value)
-                }
-              />
-            </label>
-
-            <label className={styles.nodeInspectorField}>
-              <span className={styles.nodeInspectorLabel}>
-                {t("workflowBuilder.startInspector.hostedWorkflowIdLabel")}
-              </span>
-              <input
-                type="text"
-                value={entry.workflow_id}
-                placeholder={t(
-                  "workflowBuilder.startInspector.hostedWorkflowIdPlaceholder",
-                )}
-                onChange={(event) =>
-                  handleHostedFieldChange(index, "workflow_id", event.target.value)
-                }
-                className={workflowIdMissing ? styles.nodeInspectorInputError : undefined}
-              />
-              <p className={styles.nodeInspectorHintTextTight}>
-                {t("workflowBuilder.startInspector.hostedWorkflowIdHelp")}
-              </p>
-              {workflowIdMissing ? (
-                <p className={styles.nodeInspectorErrorTextSmall}>
-                  {t("workflowBuilder.startInspector.hostedWorkflowIdError")}
-                </p>
-              ) : null}
-            </label>
-
-            <label className={styles.nodeInspectorField}>
-              <span className={styles.nodeInspectorLabel}>
-                {t("workflowBuilder.startInspector.hostedDescriptionLabel")}
-              </span>
-              <textarea
-                value={entry.description}
-                rows={2}
-                placeholder={t(
-                  "workflowBuilder.startInspector.hostedDescriptionPlaceholder",
-                )}
-                className={styles.nodeInspectorTextarea}
-                onChange={(event) =>
-                  handleHostedFieldChange(index, "description", event.target.value)
-                }
-              />
-            </label>
-
-            <div className={styles.nodeInspectorSectionFooter}>
-              <button
-                type="button"
-                className="btn danger"
-                onClick={() => handleHostedWorkflowRemove(index)}
-              >
-                {t("workflowBuilder.startInspector.hostedRemoveButton")}
-              </button>
-            </div>
-          </div>
-        );
-      })}
-
-      <div>
-        <button type="button" className="btn" onClick={handleHostedWorkflowAdd}>
-          {t("workflowBuilder.startInspector.hostedAddButton")}
-        </button>
-      </div>
 
       <div className={styles.nodeInspectorField}>
         <span className={styles.nodeInspectorSectionTitle}>

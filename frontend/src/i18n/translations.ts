@@ -276,6 +276,42 @@ const fr: TranslationDictionary = {
   "workflowBuilder.startInspector.telephonyRealtimeStartDefault": "Comportement par défaut",
   "workflowBuilder.startInspector.telephonyRealtimeStopLabel": "Mode d'arrêt",
   "workflowBuilder.startInspector.telephonyRealtimeStopDefault": "Comportement par défaut",
+  "workflowBuilder.createWorkflow.chooseHosted":
+    "Créer un workflow hébergé ? Cliquez sur OK pour ajouter un workflow hébergé ou sur Annuler pour créer un workflow local.",
+  "workflowBuilder.createWorkflow.promptSlug": "Slug du workflow hébergé ?",
+  "workflowBuilder.createWorkflow.promptId": "Identifiant du workflow distant ?",
+  "workflowBuilder.createWorkflow.promptLabel":
+    "Libellé à afficher pour ce workflow (laisser vide pour utiliser le slug).",
+  "workflowBuilder.createWorkflow.promptDescription": "Description du workflow hébergé (optionnel).",
+  "workflowBuilder.createWorkflow.errorMissingSlug": "Le slug du workflow hébergé est obligatoire.",
+  "workflowBuilder.createWorkflow.errorMissingId": "L'identifiant du workflow hébergé est obligatoire.",
+  "workflowBuilder.createWorkflow.creatingHosted": "Création du workflow hébergé…",
+  "workflowBuilder.createWorkflow.successHosted":
+    "Workflow hébergé \"{label}\" ajouté avec succès.",
+  "workflowBuilder.createWorkflow.errorCreateHosted":
+    "Impossible de créer le workflow hébergé.",
+  "workflowBuilder.createWorkflow.errorAuthentication":
+    "Vous devez être connecté pour gérer les workflows hébergés.",
+  "workflowBuilder.createWorkflow.promptLocalName": "Nom du nouveau workflow local ?",
+  "workflowBuilder.createWorkflow.successLocal":
+    "Workflow \"{name}\" créé avec succès.",
+  "workflowBuilder.createWorkflow.errorCreateLocal":
+    "Impossible de créer le workflow.",
+  "workflowBuilder.hostedSection.title": "Workflows hébergés",
+  "workflowBuilder.hostedSection.loading": "Chargement des workflows hébergés…",
+  "workflowBuilder.hostedSection.empty":
+    "Aucun workflow hébergé géré depuis l'interface n'est disponible pour le moment.",
+  "workflowBuilder.hostedSection.deleteAction": "Supprimer",
+  "workflowBuilder.hostedSection.remoteId": "ID distant : {id}",
+  "workflowBuilder.hostedSection.deleting": "Suppression du workflow hébergé…",
+  "workflowBuilder.hostedSection.deleteSuccess":
+    "Workflow hébergé \"{label}\" supprimé.",
+  "workflowBuilder.hostedSection.deleteError":
+    "Impossible de supprimer le workflow hébergé.",
+  "workflowBuilder.hostedSection.loadError":
+    "Impossible de charger les workflows hébergés.",
+  "workflowBuilder.hostedSection.confirmDelete":
+    "Supprimer le workflow hébergé \"{label}\" ? Cette action est irréversible.",
   "workflowBuilder.save.autoSaveSuccess": "Modifications enregistrées automatiquement.",
   "workflowBuilder.save.draftDisplayName": "Brouillon",
   "workflowBuilder.save.failure": "Impossible d'enregistrer le workflow.",
@@ -636,6 +672,42 @@ const en: TranslationDictionary = {
   "workflowBuilder.startInspector.telephonyRealtimeStartDefault": "Default behaviour",
   "workflowBuilder.startInspector.telephonyRealtimeStopLabel": "Stop mode",
   "workflowBuilder.startInspector.telephonyRealtimeStopDefault": "Default behaviour",
+  "workflowBuilder.createWorkflow.chooseHosted":
+    "Create a hosted workflow? Click OK to add a hosted workflow or Cancel to create a local workflow.",
+  "workflowBuilder.createWorkflow.promptSlug": "Hosted workflow slug?",
+  "workflowBuilder.createWorkflow.promptId": "Remote workflow identifier?",
+  "workflowBuilder.createWorkflow.promptLabel":
+    "Display label for this workflow (leave blank to reuse the slug).",
+  "workflowBuilder.createWorkflow.promptDescription": "Hosted workflow description (optional).",
+  "workflowBuilder.createWorkflow.errorMissingSlug": "Hosted workflow slug is required.",
+  "workflowBuilder.createWorkflow.errorMissingId": "Hosted workflow identifier is required.",
+  "workflowBuilder.createWorkflow.creatingHosted": "Creating hosted workflow…",
+  "workflowBuilder.createWorkflow.successHosted":
+    "Hosted workflow \"{label}\" added successfully.",
+  "workflowBuilder.createWorkflow.errorCreateHosted":
+    "Unable to create hosted workflow.",
+  "workflowBuilder.createWorkflow.errorAuthentication":
+    "You must be signed in to manage hosted workflows.",
+  "workflowBuilder.createWorkflow.promptLocalName": "Name of the new local workflow?",
+  "workflowBuilder.createWorkflow.successLocal":
+    "Workflow \"{name}\" created successfully.",
+  "workflowBuilder.createWorkflow.errorCreateLocal":
+    "Unable to create the workflow.",
+  "workflowBuilder.hostedSection.title": "Hosted workflows",
+  "workflowBuilder.hostedSection.loading": "Loading hosted workflows…",
+  "workflowBuilder.hostedSection.empty":
+    "No hosted workflow managed from the interface yet.",
+  "workflowBuilder.hostedSection.deleteAction": "Delete",
+  "workflowBuilder.hostedSection.remoteId": "Remote ID: {id}",
+  "workflowBuilder.hostedSection.deleting": "Deleting hosted workflow…",
+  "workflowBuilder.hostedSection.deleteSuccess":
+    "Hosted workflow \"{label}\" removed.",
+  "workflowBuilder.hostedSection.deleteError":
+    "Unable to delete the hosted workflow.",
+  "workflowBuilder.hostedSection.loadError":
+    "Unable to load hosted workflows.",
+  "workflowBuilder.hostedSection.confirmDelete":
+    "Delete hosted workflow \"{label}\"? This action cannot be undone.",
   "workflowBuilder.save.autoSaveSuccess": "Changes saved automatically.",
   "workflowBuilder.save.draftDisplayName": "Draft",
   "workflowBuilder.save.failure": "Unable to save the workflow.",

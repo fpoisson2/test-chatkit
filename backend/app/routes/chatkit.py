@@ -71,6 +71,7 @@ from ..image_utils import AGENT_IMAGE_STORAGE_DIR
 from ..models import User
 from ..schemas import (
     ChatKitWorkflowResponse,
+    HostedWorkflowCreateRequest,
     HostedWorkflowOption,
     SessionRequest,
     VoiceSessionRequest,
@@ -80,7 +81,9 @@ from ..security import decode_agent_image_token
 from ..voice_settings import get_or_create_voice_settings
 from ..workflows import (
     HostedWorkflowConfig,
+    HostedWorkflowNotFoundError,
     WorkflowService,
+    WorkflowValidationError,
     resolve_start_auto_start,
     resolve_start_auto_start_assistant_message,
     resolve_start_auto_start_message,
@@ -178,19 +181,33 @@ def _collect_hosted_configs(
     *,
     settings: Settings,
     definition,
+    service: WorkflowService,
+    session: Session,
 ) -> list[HostedWorkflowConfig]:
-    configs = list(resolve_start_hosted_workflows(definition))
-    if settings.chatkit_workflow_id:
-        has_legacy = any(config.slug == LEGACY_HOSTED_SLUG for config in configs)
-        if not has_legacy:
-            configs.append(
-                HostedWorkflowConfig(
-                    slug=LEGACY_HOSTED_SLUG,
-                    workflow_id=settings.chatkit_workflow_id,
-                    label="Hosted ChatKit workflow",
-                    description=None,
-                )
+    managed_configs = list(service.list_hosted_workflow_configs(session=session))
+    configs: list[HostedWorkflowConfig] = []
+    seen_slugs: set[str] = set()
+
+    for config in managed_configs:
+        configs.append(config)
+        seen_slugs.add(config.slug)
+
+    for config in resolve_start_hosted_workflows(definition):
+        if config.slug in seen_slugs:
+            continue
+        configs.append(config)
+        seen_slugs.add(config.slug)
+
+    if settings.chatkit_workflow_id and LEGACY_HOSTED_SLUG not in seen_slugs:
+        configs.append(
+            HostedWorkflowConfig(
+                slug=LEGACY_HOSTED_SLUG,
+                workflow_id=settings.chatkit_workflow_id,
+                label="Hosted ChatKit workflow",
+                description=None,
             )
+        )
+
     return configs
 
 
@@ -201,7 +218,12 @@ async def get_hosted_workflow_options(
 ) -> list[HostedWorkflowOption]:
     service = WorkflowService()
     definition = service.get_current(session)
-    configs = _collect_hosted_configs(settings=settings, definition=definition)
+    configs = _collect_hosted_configs(
+        settings=settings,
+        definition=definition,
+        service=service,
+        session=session,
+    )
     available = bool(settings.model_api_key and settings.model_api_base)
     return [
         HostedWorkflowOption(
@@ -210,9 +232,82 @@ async def get_hosted_workflow_options(
             label=config.label,
             description=config.description,
             available=available,
+            managed=config.managed,
         )
         for config in configs
     ]
+
+
+@router.post(
+    "/api/chatkit/hosted",
+    response_model=HostedWorkflowOption,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_hosted_workflow_entry(
+    payload: HostedWorkflowCreateRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> HostedWorkflowOption:
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès administrateur requis pour gérer les workflows hébergés.",
+        )
+
+    service = WorkflowService()
+    try:
+        entry = service.create_hosted_workflow(
+            slug=payload.slug,
+            workflow_id=payload.workflow_id,
+            label=payload.label,
+            description=payload.description,
+            session=session,
+        )
+    except WorkflowValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.message,
+        ) from exc
+
+    available = bool(settings.model_api_key and settings.model_api_base)
+    return HostedWorkflowOption(
+        id=entry.remote_workflow_id,
+        slug=entry.slug,
+        label=entry.label,
+        description=entry.description,
+        available=available,
+        managed=True,
+    )
+
+
+@router.delete("/api/chatkit/hosted/{slug}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_hosted_workflow_entry(
+    slug: str,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès administrateur requis pour gérer les workflows hébergés.",
+        )
+
+    service = WorkflowService()
+    try:
+        service.delete_hosted_workflow(slug, session=session)
+    except WorkflowValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.message,
+        ) from exc
+    except HostedWorkflowNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "hosted_workflow_not_found", "slug": exc.slug},
+        ) from exc
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/api/chatkit/session")
@@ -225,7 +320,12 @@ async def create_session(
     user_id = req.user or f"user:{current_user.id}"
     service = WorkflowService()
     definition = service.get_current(session)
-    configs = _collect_hosted_configs(settings=settings, definition=definition)
+    configs = _collect_hosted_configs(
+        settings=settings,
+        definition=definition,
+        service=service,
+        session=session,
+    )
 
     target_config: HostedWorkflowConfig | None = None
     requested_slug = req.hosted_workflow_slug

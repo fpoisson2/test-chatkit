@@ -50,6 +50,16 @@ class HostedWorkflowOption(BaseModel):
     label: str
     description: str | None = None
     available: bool
+    managed: bool = False
+
+
+class HostedWorkflowCreateRequest(BaseModel):
+    """Payload de création pour une entrée de workflow hébergé."""
+
+    slug: constr(strip_whitespace=True, min_length=1, max_length=128)
+    label: constr(strip_whitespace=True, min_length=1, max_length=128)
+    workflow_id: constr(strip_whitespace=True, min_length=1, max_length=128)
+    description: constr(strip_whitespace=True, max_length=512) | None = None
 
 
 class ChatKitWorkflowResponse(BaseModel):
