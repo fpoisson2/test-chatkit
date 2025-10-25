@@ -32,11 +32,12 @@ from __future__ import annotations
 import asyncio
 import collections
 import contextlib
+import errno
 import logging
 import socket
 import types
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 if not hasattr(asyncio, "coroutine"):  # pragma: no cover - compatibility shim
@@ -320,23 +321,37 @@ class SIPRegistrationManager:
 
         if self._dialog is None:
             dialog_kwargs = self._dialog_transport_kwargs(config.transport)
-            try:
-                self._dialog = await self._app.start_dialog(
-                    from_uri=config.uri,
-                    to_uri=config.uri,
-                    contact_uri=config.contact_uri(),
-                    local_addr=local_addr,
-                    remote_addr=remote_addr,
-                    password=config.password,
-                    **dialog_kwargs,
-                )
-            except OSError as exc:
+            bind_error: BaseException | None = None
+            while self._dialog is None:
+                try:
+                    self._dialog = await self._app.start_dialog(
+                        from_uri=config.uri,
+                        to_uri=config.uri,
+                        contact_uri=config.contact_uri(),
+                        local_addr=local_addr,
+                        remote_addr=remote_addr,
+                        password=config.password,
+                        **dialog_kwargs,
+                    )
+                except OSError as exc:
+                    bind_error = exc
+                    fallback_config = self._fallback_contact_port(config, exc)
+                    if fallback_config is None:
+                        break
+                    config = fallback_config
+                    local_addr = (config.contact_host, config.contact_port)
+                    dialog_kwargs = self._dialog_transport_kwargs(config.transport)
+                    continue
+                break
+
+            if self._dialog is None:
+                assert bind_error is not None
                 raise ValueError(
                     "Impossible d'ouvrir une socket SIP locale sur "
-                    f"{config.contact_host}:{config.contact_port} : {exc}. "
+                    f"{config.contact_host}:{config.contact_port} : {bind_error}. "
                     "Vérifiez que l'hôte de contact correspond à une interface "
                     "réseau locale et que le port n'est pas déjà utilisé."
-                ) from exc
+                ) from bind_error
 
         register_future = self._dialog.register(expires=config.expires)
         await asyncio.wait_for(register_future, timeout=self._register_timeout)
@@ -346,6 +361,7 @@ class SIPRegistrationManager:
         )
         self._last_error = None
         self._active_config = config
+        self._config = config
 
     async def _unregister(self) -> None:
         """Send ``UNREGISTER`` (if needed) and dispose of the SIP dialog."""
@@ -522,6 +538,34 @@ class SIPRegistrationManager:
 
         return contact_host, contact_port, transport
 
+    def _fallback_contact_port(
+        self, config: SIPRegistrationConfig, exc: OSError
+    ) -> SIPRegistrationConfig | None:
+        """Handle contact port binding errors with an automatic fallback."""
+
+        if exc.errno != errno.EADDRINUSE:
+            return None
+
+        candidate_port = self._find_available_contact_port(config.contact_host)
+        if candidate_port is None:
+            LOGGER.warning(
+                "Port SIP %s indisponible sur %s et aucun port alternatif "
+                "n'a pu être détecté automatiquement.",
+                config.contact_port,
+                config.contact_host,
+            )
+            return None
+
+        LOGGER.warning(
+            "Port SIP %s indisponible sur %s, tentative avec le port %s.",
+            config.contact_port,
+            config.contact_host,
+            candidate_port,
+        )
+        updated = replace(config, contact_port=candidate_port)
+        self._config = updated
+        return updated
+
     @staticmethod
     def _normalize_trunk_uri(trunk_uri: str, username: str) -> str | None:
         """Return a canonical SIP URI for the registrar."""
@@ -694,3 +738,45 @@ class SIPRegistrationManager:
             return None, _DEFAULT_SIP_PORT
 
         return host, port or _DEFAULT_SIP_PORT
+
+    @staticmethod
+    def _find_available_contact_port(host: str | None) -> int | None:
+        """Return an available UDP port bound to ``host`` if possible."""
+
+        if not host:
+            return None
+
+        try:
+            address_infos = socket.getaddrinfo(
+                host,
+                0,
+                type=socket.SOCK_DGRAM,
+            )
+        except OSError as exc:
+            LOGGER.warning(
+                "Impossible de déterminer un port SIP libre pour %s : %s",
+                host,
+                exc,
+            )
+            return None
+
+        for family, socktype, proto, _, sockaddr in address_infos:
+            try:
+                sock = socket.socket(family, socktype, proto)
+            except OSError:
+                continue
+
+            with contextlib.closing(sock):
+                try:
+                    sock.bind(sockaddr)
+                except OSError:
+                    continue
+                bound = sock.getsockname()
+                if isinstance(bound, tuple) and len(bound) >= 2:
+                    port = bound[1]
+                else:
+                    continue
+                if isinstance(port, int) and port > 0:
+                    return port
+
+        return None

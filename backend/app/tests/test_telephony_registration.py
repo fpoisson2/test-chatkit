@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import logging
 import os
 import sys
@@ -269,3 +270,50 @@ def test_register_once_reports_bind_error(monkeypatch: pytest.MonkeyPatch) -> No
     message = str(excinfo.value)
     assert "Impossible d'ouvrir une socket SIP locale" in message
     assert "montreal5.voip.ms:5060" in message
+
+
+def test_register_once_retries_with_available_port(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(loop=loop)
+
+        dialog = SimpleNamespace(register=AsyncMock(return_value=None))
+        start_dialog = AsyncMock(
+            side_effect=[
+                OSError(errno.EADDRINUSE, "Address already in use"),
+                dialog,
+            ]
+        )
+        fake_app = SimpleNamespace(start_dialog=start_dialog)
+        fake_application = MagicMock(return_value=fake_app)
+        monkeypatch.setattr(
+            "backend.app.telephony.registration.aiosip",
+            SimpleNamespace(Application=fake_application),
+        )
+        monkeypatch.setattr(
+            manager,
+            "_find_available_contact_port",
+            MagicMock(return_value=5072),
+        )
+
+        config = SIPRegistrationConfig(
+            uri="sip:alice@example.com",
+            username="alice",
+            password="secret",
+            contact_host="127.0.0.1",
+            contact_port=5060,
+        )
+        manager._config = config
+
+        caplog.set_level(logging.WARNING)
+        loop.run_until_complete(manager._register_once(config))
+    finally:
+        loop.close()
+
+    assert start_dialog.await_count == 2
+    assert manager._dialog is dialog
+    assert manager._config.contact_port == 5072
+    assert manager._active_config.contact_port == 5072
+    assert "tentative avec le port" in caplog.text
