@@ -1,6 +1,7 @@
 """Services liés aux workflows ChatKit."""
 
 from .service import (
+    HostedWorkflowConfig,
     TelephonyRouteConfig,
     TelephonyRouteOverrides,
     TelephonyStartConfiguration,
@@ -11,6 +12,7 @@ from .service import (
     resolve_start_auto_start,
     resolve_start_auto_start_assistant_message,
     resolve_start_auto_start_message,
+    resolve_start_hosted_workflows,
     resolve_start_telephony_config,
     serialize_definition,
     serialize_definition_graph,
@@ -33,7 +35,9 @@ __all__ = [
     "resolve_start_auto_start_message",
     "resolve_start_auto_start_assistant_message",
     "resolve_start_telephony_config",
+    "resolve_start_hosted_workflows",
     "TelephonyRouteConfig",
     "TelephonyRouteOverrides",
     "TelephonyStartConfiguration",
+    "HostedWorkflowConfig",
 ]

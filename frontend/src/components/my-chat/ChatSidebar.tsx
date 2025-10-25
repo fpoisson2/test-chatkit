@@ -18,4 +18,3 @@ export const ChatSidebar = ({ mode, setMode, onWorkflowActivated }: ChatSidebarP
 );
 
 export type { WorkflowActivation };
-export { HOSTED_WORKFLOW_SLUG } from "../../features/workflows/ChatWorkflowSidebar";

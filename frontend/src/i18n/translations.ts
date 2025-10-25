@@ -216,6 +216,35 @@ const fr: TranslationDictionary = {
     "Ex. Bonjour, je suis votre assistant… (facultatif)",
   "workflowBuilder.startInspector.autoRunAssistantMessageHint":
     "Ce message est diffusé en tant que première réponse de l'assistant lorsque le démarrage automatique est déclenché. Ajoutez un message utilisateur ci-dessus pour désactiver cette réponse.",
+  "workflowBuilder.startInspector.hostedSectionTitle": "Workflows hébergés",
+  "workflowBuilder.startInspector.hostedSectionDescription":
+    "Exposez des workflows ChatKit hébergés directement depuis ce bloc Start.",
+  "workflowBuilder.startInspector.hostedEmpty":
+    "Aucun workflow hébergé n'est configuré pour le moment.",
+  "workflowBuilder.startInspector.hostedAddButton": "Ajouter un workflow hébergé",
+  "workflowBuilder.startInspector.hostedSlugLabel": "Slug du workflow hébergé",
+  "workflowBuilder.startInspector.hostedSlugPlaceholder": "ex. support-pro",
+  "workflowBuilder.startInspector.hostedSlugHelp":
+    "Identifiant lisible utilisé pour distinguer chaque workflow hébergé.",
+  "workflowBuilder.startInspector.hostedSlugErrorRequired": "Le slug est obligatoire.",
+  "workflowBuilder.startInspector.hostedSlugErrorDuplicate":
+    "Chaque slug doit être unique.",
+  "workflowBuilder.startInspector.hostedLabelLabel": "Libellé affiché",
+  "workflowBuilder.startInspector.hostedLabelPlaceholder":
+    "Nom visible dans la barre latérale",
+  "workflowBuilder.startInspector.hostedWorkflowIdLabel":
+    "Identifiant du workflow hébergé",
+  "workflowBuilder.startInspector.hostedWorkflowIdPlaceholder":
+    "ID fourni par la console ChatKit",
+  "workflowBuilder.startInspector.hostedWorkflowIdHelp":
+    "Copiez l'identifiant du workflow publié depuis la console ChatKit.",
+  "workflowBuilder.startInspector.hostedWorkflowIdError":
+    "Indiquez l'identifiant du workflow hébergé.",
+  "workflowBuilder.startInspector.hostedDescriptionLabel": "Description (optionnel)",
+  "workflowBuilder.startInspector.hostedDescriptionPlaceholder":
+    "Note interne ou aide contextuelle affichée dans l'UI",
+  "workflowBuilder.startInspector.hostedRemoveButton":
+    "Supprimer ce workflow hébergé",
   "workflowBuilder.startInspector.telephonySectionTitle": "Téléphonie",
   "workflowBuilder.startInspector.telephonySectionDescription":
     "Configurez les numéros entrants et les overrides Realtime appliqués à ce bloc de démarrage.",
@@ -549,6 +578,34 @@ const en: TranslationDictionary = {
     "e.g. Hello, I'm your assistant… (optional)",
   "workflowBuilder.startInspector.autoRunAssistantMessageHint":
     "This message is delivered as the assistant's first reply when auto-start triggers. Add a user message above to disable it.",
+  "workflowBuilder.startInspector.hostedSectionTitle": "Hosted workflows",
+  "workflowBuilder.startInspector.hostedSectionDescription":
+    "Expose ChatKit hosted workflows directly from this Start block.",
+  "workflowBuilder.startInspector.hostedEmpty":
+    "No hosted workflow is configured yet.",
+  "workflowBuilder.startInspector.hostedAddButton": "Add a hosted workflow",
+  "workflowBuilder.startInspector.hostedSlugLabel": "Hosted workflow slug",
+  "workflowBuilder.startInspector.hostedSlugPlaceholder": "e.g. support-pro",
+  "workflowBuilder.startInspector.hostedSlugHelp":
+    "Human-readable identifier used to distinguish each hosted workflow.",
+  "workflowBuilder.startInspector.hostedSlugErrorRequired": "Slug is required.",
+  "workflowBuilder.startInspector.hostedSlugErrorDuplicate":
+    "Each slug must be unique.",
+  "workflowBuilder.startInspector.hostedLabelLabel": "Display label",
+  "workflowBuilder.startInspector.hostedLabelPlaceholder":
+    "Name shown in the chat sidebar",
+  "workflowBuilder.startInspector.hostedWorkflowIdLabel":
+    "Hosted workflow ID",
+  "workflowBuilder.startInspector.hostedWorkflowIdPlaceholder":
+    "ID from the ChatKit console",
+  "workflowBuilder.startInspector.hostedWorkflowIdHelp":
+    "Copy the workflow identifier published in the ChatKit console.",
+  "workflowBuilder.startInspector.hostedWorkflowIdError":
+    "Enter the hosted workflow identifier.",
+  "workflowBuilder.startInspector.hostedDescriptionLabel": "Description (optional)",
+  "workflowBuilder.startInspector.hostedDescriptionPlaceholder":
+    "Internal note or tooltip shown in the UI",
+  "workflowBuilder.startInspector.hostedRemoveButton": "Remove this hosted workflow",
   "workflowBuilder.startInspector.telephonySectionTitle": "Telephony",
   "workflowBuilder.startInspector.telephonySectionDescription":
     "Configure inbound numbers and Realtime overrides applied to this start block.",

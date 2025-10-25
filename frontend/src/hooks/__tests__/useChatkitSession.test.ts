@@ -33,6 +33,7 @@ const setupHook = (overrides: Partial<Parameters<typeof useChatkitSession>[0]> =
       storageKey: "user@example.com:hosted",
       token: null,
       mode: "hosted",
+      hostedWorkflowSlug: "demo-hosted",
       disableHostedFlow,
       ...overrides,
     }),
@@ -101,7 +102,11 @@ describe("useChatkitSession", () => {
 
     expect(secret).toBe("fresh-secret");
     expect(fetchChatkitSessionSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ user: "user@example.com", token: null }),
+      expect.objectContaining({
+        user: "user@example.com",
+        token: null,
+        hostedWorkflowSlug: "demo-hosted",
+      }),
     );
     expect(mockNormalizeSessionExpiration).toHaveBeenCalledWith("2024-01-01T00:00:00Z");
     expect(mockPersistChatKitSecret).toHaveBeenCalledWith(
@@ -112,13 +117,13 @@ describe("useChatkitSession", () => {
     expect(result.current.isLoading).toBe(false);
   });
 
-  it("désactive le flux hébergé lorsque CHATKIT_WORKFLOW_ID est manquant", async () => {
+  it("désactive le flux hébergé lorsque le workflow distant est introuvable", async () => {
     mockReadStoredChatKitSession.mockReturnValue({ session: null, shouldRefresh: false });
 
     fetchChatkitSessionSpy.mockRejectedValue(
-      new ApiError("CHATKIT_WORKFLOW_ID missing", {
-        status: 500,
-        detail: { detail: { error: "CHATKIT_WORKFLOW_ID missing" } },
+      new ApiError("Hosted workflow missing", {
+        status: 400,
+        detail: { error: "hosted_workflow_not_configured" },
       }),
     );
 
@@ -133,11 +138,38 @@ describe("useChatkitSession", () => {
       }
     });
 
-    expect(disableHostedFlow).toHaveBeenCalledWith("CHATKIT_WORKFLOW_ID manquant");
+    expect(disableHostedFlow).toHaveBeenCalledWith(
+      "Aucun workflow hébergé n'est configuré sur le serveur.",
+    );
     expect(mockClearStoredChatKitSecret).toHaveBeenCalledWith("user@example.com:hosted");
     expect(thrownError).toBeInstanceOf(Error);
-    expect((thrownError as Error).message).toContain("Le flux hébergé a été désactivé");
-    expect(result.current.error).toContain("Le flux hébergé a été désactivé");
+    expect((thrownError as Error).message).toContain("Aucun workflow hébergé n'est configuré");
+    expect(result.current.error).toContain("Aucun workflow hébergé n'est configuré");
+  });
+
+  it("désactive le flux hébergé lorsque le slug sélectionné n'existe plus", async () => {
+    mockReadStoredChatKitSession.mockReturnValue({ session: null, shouldRefresh: false });
+
+    fetchChatkitSessionSpy.mockRejectedValue(
+      new ApiError("Hosted workflow missing", {
+        status: 404,
+        detail: { error: "hosted_workflow_not_found" },
+      }),
+    );
+
+    const { result, disableHostedFlow } = setupHook();
+
+    await act(async () => {
+      await expect(result.current.getClientSecret(null)).rejects.toThrow(
+        /Workflow hébergé sélectionné est introuvable/i,
+      );
+    });
+
+    expect(disableHostedFlow).toHaveBeenCalledWith(
+      "Le workflow hébergé sélectionné est introuvable.",
+    );
+    expect(mockClearStoredChatKitSecret).toHaveBeenCalledWith("user@example.com:hosted");
+    expect(result.current.error).toContain("workflow hébergé sélectionné est introuvable");
   });
 
   it("rejette lorsqu'un client_secret est demandé en mode local", async () => {

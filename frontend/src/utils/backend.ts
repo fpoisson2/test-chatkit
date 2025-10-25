@@ -131,16 +131,21 @@ export type ChatkitSessionResponse = {
 export const fetchChatkitSession = async ({
   user,
   token,
+  hostedWorkflowSlug,
   signal,
 }: {
   user: string;
   token: string | null | undefined;
+  hostedWorkflowSlug?: string | null;
   signal?: AbortSignal;
 }): Promise<ChatkitSessionResponse> => {
   const response = await requestWithFallback("/api/chatkit/session", {
     method: "POST",
     headers: withAuthHeaders(token ?? null),
-    body: JSON.stringify({ user }),
+    body: JSON.stringify({
+      user,
+      hosted_workflow_slug: hostedWorkflowSlug ?? undefined,
+    }),
     signal,
   });
 
@@ -213,12 +218,14 @@ export type ChatKitWorkflowInfo = {
 
 export type HostedWorkflowMetadata = {
   id: string;
+  slug: string;
   label: string;
+  description?: string | null;
   available: boolean;
 };
 
-let hostedWorkflowCache: HostedWorkflowMetadata | null | undefined;
-let hostedWorkflowPromise: Promise<HostedWorkflowMetadata | null> | null = null;
+let hostedWorkflowCache: HostedWorkflowMetadata[] | null | undefined;
+let hostedWorkflowPromise: Promise<HostedWorkflowMetadata[] | null> | null = null;
 
 export const adminApi = {
   async listUsers(token: string | null): Promise<EditableUser[]> {
@@ -286,10 +293,10 @@ export const chatkitApi = {
     return response.json();
   },
 
-  async getHostedWorkflow(
+  async getHostedWorkflows(
     token: string | null,
     options: { cache?: boolean } = {},
-  ): Promise<HostedWorkflowMetadata | null> {
+  ): Promise<HostedWorkflowMetadata[] | null> {
     const useCache = options.cache !== false;
 
     if (useCache && hostedWorkflowCache !== undefined) {
@@ -305,7 +312,7 @@ export const chatkitApi = {
         const response = await requestWithFallback("/api/chatkit/hosted", {
           headers: withAuthHeaders(token),
         });
-        const payload = (await response.json()) as HostedWorkflowMetadata;
+        const payload = (await response.json()) as HostedWorkflowMetadata[];
         if (useCache) {
           hostedWorkflowCache = payload;
         }

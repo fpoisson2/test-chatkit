@@ -21,6 +21,7 @@ import {
   getStartAutoRun,
   getStartAutoRunAssistantMessage,
   getStartAutoRunMessage,
+  getStartHostedWorkflows,
   getStartTelephonyRoutes,
   getStartTelephonyWorkflow,
   getStartTelephonyRealtimeOverrides,
@@ -29,6 +30,7 @@ import {
   getVectorStoreNodeConfig,
   getWaitForUserInputMessage,
   type StartTelephonyRealtimeOverrides,
+  type StartHostedWorkflowOption,
 } from "../../../../utils/workflows";
 import type {
   AgentNestedWorkflowSelection,
@@ -141,6 +143,10 @@ export type NodeInspectorProps = {
     nodeId: string,
     overrides: Partial<StartTelephonyRealtimeOverrides>,
   ) => void;
+  onStartHostedWorkflowsChange: (
+    nodeId: string,
+    workflows: StartHostedWorkflowOption[],
+  ) => void;
   onConditionPathChange: (nodeId: string, value: string) => void;
   onConditionModeChange: (nodeId: string, value: string) => void;
   onConditionValueChange: (nodeId: string, value: string) => void;
@@ -218,6 +224,7 @@ const NodeInspector = ({
   onStartTelephonyRoutesChange,
   onStartTelephonyWorkflowChange,
   onStartTelephonyRealtimeChange,
+  onStartHostedWorkflowsChange,
   onConditionPathChange,
   onConditionModeChange,
   onConditionValueChange,
@@ -280,6 +287,8 @@ const NodeInspector = ({
     kind === "start"
       ? getStartTelephonyRealtimeOverrides(parameters)
       : { model: "", voice: "", start_mode: null, stop_mode: null };
+  const startHostedWorkflows =
+    kind === "start" ? getStartHostedWorkflows(parameters) : [];
 
   const conditionPath = kind === "condition" ? getConditionPath(parameters) : "";
   const conditionMode = kind === "condition" ? getConditionMode(parameters) : "truthy";
@@ -373,12 +382,14 @@ const NodeInspector = ({
           startAutoRun={startAutoRun}
           startAutoRunMessage={startAutoRunMessage}
           startAutoRunAssistantMessage={startAutoRunAssistantMessage}
+          startHostedWorkflows={startHostedWorkflows}
           startTelephonyRoutes={startTelephonyRoutes}
           startTelephonyWorkflow={startTelephonyWorkflow}
           startTelephonyRealtime={startTelephonyRealtime}
           onStartAutoRunChange={onStartAutoRunChange}
           onStartAutoRunMessageChange={onStartAutoRunMessageChange}
           onStartAutoRunAssistantMessageChange={onStartAutoRunAssistantMessageChange}
+          onStartHostedWorkflowsChange={onStartHostedWorkflowsChange}
           onStartTelephonyRoutesChange={onStartTelephonyRoutesChange}
           onStartTelephonyWorkflowChange={onStartTelephonyWorkflowChange}
           onStartTelephonyRealtimeChange={onStartTelephonyRealtimeChange}

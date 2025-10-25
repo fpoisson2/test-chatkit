@@ -85,6 +85,7 @@ import {
   setStartTelephonyRoutes,
   setStartTelephonyWorkflow,
   setStartTelephonyRealtimeOverrides,
+  setStartHostedWorkflows,
   setConditionMode,
   setConditionPath,
   setConditionValue,
@@ -111,6 +112,7 @@ import {
   resolveStartParameters,
   type WorkflowToolConfig,
   type StartTelephonyRealtimeOverrides,
+  type StartHostedWorkflowOption,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
@@ -2391,6 +2393,24 @@ const WorkflowBuilderPage = () => {
           data.parameters,
           value,
         );
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleStartHostedWorkflowsChange = useCallback(
+    (nodeId: string, workflows: StartHostedWorkflowOption[]) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "start") {
+          return data;
+        }
+        const nextParameters = setStartHostedWorkflows(data.parameters, workflows);
         return {
           ...data,
           parameters: nextParameters,
@@ -6742,6 +6762,7 @@ const WorkflowBuilderPage = () => {
             onStartAutoRunAssistantMessageChange={
               handleStartAutoRunAssistantMessageChange
             }
+            onStartHostedWorkflowsChange={handleStartHostedWorkflowsChange}
             onStartTelephonyRoutesChange={handleStartTelephonyRoutesChange}
             onStartTelephonyWorkflowChange={handleStartTelephonyWorkflowChange}
             onStartTelephonyRealtimeChange={handleStartTelephonyRealtimeChange}

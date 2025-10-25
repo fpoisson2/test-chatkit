@@ -26,6 +26,13 @@ export type WorkflowToolConfig = {
   initialMessage?: string;
 };
 
+export type StartHostedWorkflowOption = {
+  slug: string;
+  label: string;
+  workflow_id: string;
+  description?: string;
+};
+
 export const DEFAULT_END_MESSAGE = "Workflow terminé";
 
 export const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
@@ -64,6 +71,79 @@ const stripEmpty = (value: Record<string, unknown>): AgentParameters => {
     return {};
   }
   return value;
+};
+
+const coerceHostedValue = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number") {
+    return String(value);
+  }
+  return "";
+};
+
+export const getStartHostedWorkflows = (
+  parameters: AgentParameters | null | undefined,
+): StartHostedWorkflowOption[] => {
+  if (!parameters || typeof parameters !== "object") {
+    return [];
+  }
+  const entries = (parameters as Record<string, unknown>).hosted_workflows;
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+  return entries.map((entry) => {
+    if (!isPlainRecord(entry)) {
+      return { slug: "", label: "", workflow_id: "" };
+    }
+    const record = entry as Record<string, unknown>;
+    const slug = coerceHostedValue(record.slug ?? record.workflow_slug ?? "");
+    const label = coerceHostedValue(record.label ?? record.title ?? record.name ?? "");
+    const workflowId = coerceHostedValue(record.workflow_id ?? record.id ?? "");
+    const description = coerceHostedValue(record.description);
+    return {
+      slug,
+      label,
+      workflow_id: workflowId,
+      description: description || undefined,
+    } satisfies StartHostedWorkflowOption;
+  });
+};
+
+export const setStartHostedWorkflows = (
+  parameters: AgentParameters,
+  options: StartHostedWorkflowOption[],
+): AgentParameters => {
+  const next = { ...parameters } as Record<string, unknown>;
+  const normalized = options.map((option) => {
+    const payload: Record<string, unknown> = {};
+    const slug = option.slug.trim();
+    if (slug) {
+      payload.slug = slug;
+    }
+    const label = option.label.trim();
+    if (label) {
+      payload.label = label;
+    }
+    const workflowId = option.workflow_id.trim();
+    if (workflowId) {
+      payload.workflow_id = workflowId;
+    }
+    const description = option.description?.trim();
+    if (description) {
+      payload.description = description;
+    }
+    return payload;
+  });
+
+  if (normalized.length === 0) {
+    const { hosted_workflows: _ignored, ...rest } = next;
+    return stripEmpty(rest);
+  }
+
+  next.hosted_workflows = normalized;
+  return stripEmpty(next);
 };
 
 const sanitizeWorkflowReference = (

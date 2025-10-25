@@ -79,16 +79,21 @@ from ..schemas import (
 from ..security import decode_agent_image_token
 from ..voice_settings import get_or_create_voice_settings
 from ..workflows import (
+    HostedWorkflowConfig,
     WorkflowService,
     resolve_start_auto_start,
     resolve_start_auto_start_assistant_message,
     resolve_start_auto_start_message,
+    resolve_start_hosted_workflows,
 )
 
 router = APIRouter()
 
 
 logger = logging.getLogger("chatkit.voice")
+
+
+LEGACY_HOSTED_SLUG = "hosted-workflow"
 
 
 def get_chatkit_server():
@@ -169,31 +174,83 @@ async def get_chatkit_workflow(
     )
 
 
-@router.get("/api/chatkit/hosted", response_model=HostedWorkflowOption)
-async def get_hosted_workflow_option(
+def _collect_hosted_configs(
+    *,
+    settings: Settings,
+    definition,
+) -> list[HostedWorkflowConfig]:
+    configs = list(resolve_start_hosted_workflows(definition))
+    if settings.chatkit_workflow_id:
+        has_legacy = any(config.slug == LEGACY_HOSTED_SLUG for config in configs)
+        if not has_legacy:
+            configs.append(
+                HostedWorkflowConfig(
+                    slug=LEGACY_HOSTED_SLUG,
+                    workflow_id=settings.chatkit_workflow_id,
+                    label="Hosted ChatKit workflow",
+                    description=None,
+                )
+            )
+    return configs
+
+
+@router.get("/api/chatkit/hosted", response_model=list[HostedWorkflowOption])
+async def get_hosted_workflow_options(
     settings: Settings = Depends(get_settings),
-) -> HostedWorkflowOption:
-    workflow_id = settings.chatkit_workflow_id
-    if not workflow_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Hosted workflow is not configured",
-        )
-
-    label = "Hosted ChatKit workflow"
+    session: Session = Depends(get_session),
+) -> list[HostedWorkflowOption]:
+    service = WorkflowService()
+    definition = service.get_current(session)
+    configs = _collect_hosted_configs(settings=settings, definition=definition)
     available = bool(settings.model_api_key and settings.model_api_base)
-
-    return HostedWorkflowOption(id=workflow_id, label=label, available=available)
+    return [
+        HostedWorkflowOption(
+            id=config.workflow_id,
+            slug=config.slug,
+            label=config.label,
+            description=config.description,
+            available=available,
+        )
+        for config in configs
+    ]
 
 
 @router.post("/api/chatkit/session")
 async def create_session(
     req: SessionRequest,
     current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ):
     user_id = req.user or f"user:{current_user.id}"
+    service = WorkflowService()
+    definition = service.get_current(session)
+    configs = _collect_hosted_configs(settings=settings, definition=definition)
 
-    session_secret = await create_chatkit_session(user_id)
+    target_config: HostedWorkflowConfig | None = None
+    requested_slug = req.hosted_workflow_slug
+    if requested_slug:
+        for config in configs:
+            if config.slug == requested_slug:
+                target_config = config
+                break
+        if target_config is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "hosted_workflow_not_found",
+                    "message": "Workflow hébergé introuvable pour le slug demandé.",
+                    "slug": requested_slug,
+                },
+            )
+    else:
+        if configs:
+            target_config = configs[0]
+
+    session_secret = await create_chatkit_session(
+        user_id,
+        workflow_id=target_config.workflow_id if target_config else None,
+    )
     return {
         "client_secret": session_secret["client_secret"],
         "expires_at": session_secret.get("expires_at"),
