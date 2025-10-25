@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import sys
 from pathlib import Path
@@ -207,6 +208,33 @@ def test_parse_registrar_endpoint_handles_various_inputs(
     host, port = SIPRegistrationManager._parse_registrar_endpoint(raw_uri)
     assert host == expected_host
     assert port == expected_port
+
+
+def test_resolve_contact_endpoint_replaces_registrar_host(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(loop=loop)
+        monkeypatch.setattr(manager, "_infer_contact_host", lambda uri: "203.0.113.7")
+
+        stored = AppSettings(thread_title_prompt="Prompt")
+        stored.sip_trunk_uri = "sip:alice@montreal5.voip.ms"
+        stored.sip_contact_host = "montreal5.voip.ms"
+        stored.sip_contact_port = 5060
+
+        caplog.set_level(logging.WARNING)
+        host, port, transport = manager._resolve_contact_endpoint(
+            stored,
+            "sip:alice@montreal5.voip.ms",
+        )
+    finally:
+        loop.close()
+
+    assert host == "203.0.113.7"
+    assert port == 5060
+    assert transport is None
+    assert "identique au registrar" in caplog.text
 
 
 def test_register_once_reports_bind_error(monkeypatch: pytest.MonkeyPatch) -> None:

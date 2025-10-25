@@ -494,6 +494,20 @@ class SIPRegistrationManager:
                 getattr(self.settings, "sip_contact_transport", None)
             )
 
+        registrar_host, _ = self._parse_registrar_endpoint(trunk_uri)
+        if (
+            contact_host
+            and registrar_host
+            and contact_host.casefold() == registrar_host.casefold()
+        ):
+            LOGGER.warning(
+                "Hôte de contact SIP %s identique au registrar %s, "
+                "détection automatique d'une adresse locale.",
+                contact_host,
+                registrar_host,
+            )
+            contact_host = None
+
         if contact_host is None:
             inferred_host = self._infer_contact_host(trunk_uri)
             if inferred_host:
