@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import datetime
 import logging
 from typing import Any
@@ -28,6 +29,10 @@ from .models import (
     Workflow,
 )
 from .security import hash_password
+from .telephony.invite_handler import (
+    InviteHandlingError,
+    handle_incoming_invite,
+)
 from .telephony.registration import SIPRegistrationManager
 from .vector_store import (
     WORKFLOW_VECTOR_STORE_DESCRIPTION,
@@ -39,6 +44,52 @@ from .vector_store import (
 
 logger = logging.getLogger("chatkit.server")
 settings = get_settings()
+
+
+def _build_invite_handler(manager: SIPRegistrationManager):
+    async def _on_invite(dialog: Any, request: Any) -> None:
+        config = manager.active_config
+        media_host = (
+            manager.contact_host
+            or (config.contact_host if config else None)
+            or settings.sip_bind_host
+        )
+        media_port = getattr(settings, "sip_media_port", None)
+
+        if media_port is None:
+            logger.warning(
+                "INVITE reçu mais aucun port RTP n'est configuré; réponse 486 Busy"
+            )
+            with contextlib.suppress(Exception):
+                await dialog.reply(486, reason="Busy Here")
+            return
+
+        if not media_host:
+            logger.warning(
+                "INVITE reçu mais aucun hôte média n'est disponible; réponse 480"
+            )
+            with contextlib.suppress(Exception):
+                await dialog.reply(480, reason="Temporarily Unavailable")
+            return
+
+        try:
+            await handle_incoming_invite(
+                dialog,
+                request,
+                media_host=media_host,
+                media_port=int(media_port),
+            )
+        except InviteHandlingError as exc:
+            logger.warning("Traitement de l'INVITE interrompu : %s", exc)
+        except Exception as exc:  # pragma: no cover - dépend de aiosip
+            logger.exception(
+                "Erreur inattendue lors du traitement d'un INVITE",
+                exc_info=exc,
+            )
+            with contextlib.suppress(Exception):
+                await dialog.reply(500, reason="Server Internal Error")
+
+    return _on_invite
 
 
 def _run_ad_hoc_migrations() -> None:
@@ -779,6 +830,9 @@ def register_startup_events(app: FastAPI) -> None:
         contact_host=sip_contact_host,
         contact_port=sip_contact_port,
         contact_transport=getattr(settings, "sip_contact_transport", None),
+    )
+    sip_registration_manager.set_invite_handler(
+        _build_invite_handler(sip_registration_manager)
     )
     app.state.sip_registration = sip_registration_manager
 

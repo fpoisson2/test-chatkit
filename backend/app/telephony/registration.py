@@ -37,6 +37,7 @@ import logging
 import socket
 import types
 import urllib.parse
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -115,6 +116,9 @@ class SIPRegistrationConfig:
         )
 
 
+InviteRouteHandler = Callable[[Any, Any], Awaitable[None]]
+
+
 class SIPRegistrationManager:
     """Maintain a SIP ``REGISTER`` dialog in the background.
 
@@ -158,6 +162,7 @@ class SIPRegistrationManager:
         contact_host: str | None = None,
         contact_port: int | None = None,
         contact_transport: str | None = None,
+        invite_handler: InviteRouteHandler | None = None,
     ) -> None:
         self._loop = loop or asyncio.get_event_loop()
         self._retry_interval = float(retry_interval)
@@ -180,6 +185,7 @@ class SIPRegistrationManager:
         self.contact_host = contact_host
         self.contact_port = contact_port
         self.contact_transport = self._normalize_transport(contact_transport)
+        self._invite_handler: InviteRouteHandler | None = invite_handler
 
     @property
     def last_error(self) -> BaseException | None:
@@ -221,6 +227,36 @@ class SIPRegistrationManager:
                 new_config.contact_port,
             )
         self._reload_event.set()
+
+    @property
+    def active_config(self) -> SIPRegistrationConfig | None:
+        """Return the SIP configuration currently applied to the dialog."""
+
+        return self._active_config
+
+    def set_invite_handler(self, handler: InviteRouteHandler | None) -> None:
+        """Register or remove the coroutine invoked for incoming ``INVITE``."""
+
+        self._invite_handler = handler
+        app = self._app
+        if app is not None:
+            self._configure_invite_route(app)
+
+    def _configure_invite_route(self, app: Any) -> None:
+        router = getattr(app, "router", None)
+        if router is None:
+            return
+
+        if self._invite_handler is None:
+            if hasattr(router, "routes") and isinstance(router.routes, dict):
+                router.routes.pop("INVITE", None)
+            return
+
+        add_route = getattr(router, "add_route", None)
+        if callable(add_route):
+            add_route("INVITE", self._invite_handler)
+        elif hasattr(router, "routes") and isinstance(router.routes, dict):
+            router.routes["INVITE"] = self._invite_handler
 
     async def start(self) -> None:
         """Start the background registration task if it is not already running."""
@@ -312,6 +348,7 @@ class SIPRegistrationManager:
 
         if self._app is None:
             self._app = aiosip.Application(loop=self._loop)
+            self._configure_invite_route(self._app)
 
         remote_host, remote_port = self._parse_registrar_endpoint(config.uri)
         if remote_host is None:

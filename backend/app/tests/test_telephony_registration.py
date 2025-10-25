@@ -194,6 +194,33 @@ def test_normalize_trunk_uri_enforces_scheme_and_username() -> None:
     assert normalized == "sip:alice@example.com:5070;transport=udp"
 
 
+def test_set_invite_handler_configures_router() -> None:
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(loop=loop)
+
+        class _Router:
+            def __init__(self) -> None:
+                self.routes: dict[str, object] = {}
+
+            def add_route(self, method: str, handler) -> None:  # type: ignore[no-untyped-def]
+                self.routes[method] = handler
+
+        dummy_app = SimpleNamespace(router=_Router())
+        manager._app = dummy_app  # type: ignore[attr-defined]
+
+        async def handler(dialog, request):  # type: ignore[no-untyped-def]
+            return None
+
+        manager.set_invite_handler(handler)
+        assert dummy_app.router.routes["INVITE"] is handler
+
+        manager.set_invite_handler(None)
+        assert "INVITE" not in dummy_app.router.routes
+    finally:
+        loop.close()
+
+
 @pytest.mark.parametrize(
     "raw_uri, expected_host, expected_port",
     [
