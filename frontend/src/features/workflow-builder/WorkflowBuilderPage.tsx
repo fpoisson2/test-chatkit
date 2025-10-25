@@ -377,7 +377,7 @@ const WorkflowBuilderPage = () => {
     () => (token ? { Authorization: `Bearer ${token}` } : {}),
     [token],
   );
-  const { openSidebar } = useAppLayout();
+  const { openSidebar, closeSidebar } = useAppLayout();
   const { setSidebarContent, clearSidebarContent } = useSidebarPortal();
 
   const ensurePreviewDefaults = useCallback((data: FlowNodeData): FlowNodeData => {
@@ -4733,14 +4733,27 @@ const WorkflowBuilderPage = () => {
   const handleSelectWorkflow = useCallback(
     (workflowId: number) => {
       if (workflowId === selectedWorkflowId) {
+        if (isMobileLayout) {
+          closeWorkflowMenu();
+          closeSidebar();
+        }
         return;
       }
       setSelectedWorkflowId(workflowId);
       setSelectedVersionId(null);
       closeWorkflowMenu();
+      if (isMobileLayout) {
+        closeSidebar();
+      }
       void loadVersions(workflowId, null);
     },
-    [closeWorkflowMenu, loadVersions, selectedWorkflowId],
+    [
+      closeSidebar,
+      closeWorkflowMenu,
+      isMobileLayout,
+      loadVersions,
+      selectedWorkflowId,
+    ],
   );
 
   const handleVersionChange = useCallback(
