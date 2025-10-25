@@ -641,18 +641,6 @@ button {
   line-height: 1.35;
 }
 
-@media (max-width: 768px) {
-  .chatkit-sidebar__workflow-button {
-    margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
-    padding-inline: var(--chatkit-sidebar-content-padding-x);
-    padding-right: calc(var(--chatkit-sidebar-content-padding-x) + 2.5rem);
-  }
-
-  .chatkit-sidebar__workflow-actions {
-    right: calc(-1 * var(--chatkit-sidebar-content-padding-x));
-  }
-}
-
 .chatkit-sidebar__workflow-button[disabled] {
   cursor: not-allowed;
   opacity: 0.6;
@@ -697,6 +685,18 @@ button {
   align-items: center;
   justify-content: flex-end;
   gap: 0.25rem;
+}
+
+@media (max-width: 768px) {
+  .chatkit-sidebar__workflow-button {
+    margin-inline: 0;
+    padding-inline-start: var(--chatkit-sidebar-content-padding-x);
+    padding-inline-end: calc(3rem + max(env(safe-area-inset-right), 0px));
+  }
+
+  .chatkit-sidebar__workflow-actions {
+    right: max(env(safe-area-inset-right), 0px);
+  }
 }
 
 .chatkit-sidebar__workflow-menu {
