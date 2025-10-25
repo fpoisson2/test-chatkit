@@ -296,7 +296,7 @@ button {
   box-shadow: 12px 0 32px rgba(15, 23, 42, 0.14);
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 0;
   --chatkit-sidebar-padding-x: 24px;
   padding: 28px var(--chatkit-sidebar-padding-x);
   overflow: hidden;
@@ -402,6 +402,8 @@ button {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--sidebar-border);
 }
 
 .chatkit-sidebar__dynamic {
@@ -596,9 +598,9 @@ button {
   cursor: pointer;
   transition: background-color 0.2s ease, color 0.2s ease;
   text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  align-items: flex-start;
+  line-height: 1.35;
 }
 
 .chatkit-sidebar__workflow-button[disabled] {
@@ -616,6 +618,24 @@ button {
 .chatkit-sidebar__workflow-button[aria-current="true"] {
   background: rgba(37, 99, 235, 0.18);
   color: var(--primary-hover);
+}
+
+.chatkit-sidebar__workflow-label {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  line-height: 1.35;
+  max-height: calc(1.35em * 2);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+@supports not (-webkit-line-clamp: 2) {
+  .chatkit-sidebar__workflow-label {
+    display: block;
+  }
 }
 
 .chatkit-sidebar__workflow-actions {
@@ -833,10 +853,6 @@ button {
 .chatkit-sidebar__nav {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
 }
 
 .chatkit-sidebar__main {
@@ -845,7 +861,13 @@ button {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  overflow: hidden;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--sidebar-border);
+  overflow-x: visible;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable both-edges;
 }
 
 .chatkit-sidebar__dynamic {
@@ -909,12 +931,14 @@ button {
 .chatkit-sidebar__label {
   flex: 1 1 auto;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chatkit-sidebar__footer {
   margin-top: auto;
   padding-top: 16px;
-  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  border-top: 1px solid var(--sidebar-border);
 }
 
 .chatkit-sidebar__footer-link {

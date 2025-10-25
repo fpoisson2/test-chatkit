@@ -6273,8 +6273,11 @@ const WorkflowBuilderPage = () => {
                   className="chatkit-sidebar__workflow-button"
                   onClick={() => handleSelectWorkflow(workflow.id)}
                   aria-current={isActive ? "true" : undefined}
+                  title={workflow.display_name}
                 >
-                  {workflow.display_name}
+                  <span className="chatkit-sidebar__workflow-label">
+                    {workflow.display_name}
+                  </span>
                 </button>
                 <div className="chatkit-sidebar__workflow-actions" data-workflow-menu-container="">
                   <button
