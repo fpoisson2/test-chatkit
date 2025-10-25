@@ -19,6 +19,7 @@ os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 from backend.app.telephony.invite_handler import (  # noqa: E402
     InviteHandlingError,
     handle_incoming_invite,
+    send_sip_reply,
 )
 
 
@@ -35,6 +36,22 @@ class DummyDialog:
         # Simuler le comportement async d'un dialogue aiosip
         await asyncio.sleep(0)
         self.replies.append((status_code, kwargs))
+
+
+class SyncDialog:
+    def __init__(self) -> None:
+        self.replies: list[tuple[int, str, dict[str, str] | None, bytes | None]] = []
+
+    def send_reply(
+        self,
+        status_code: int,
+        status_message: str,
+        *,
+        headers: dict[str, str] | None = None,
+        payload: bytes | None = None,
+        **_: object,
+    ) -> None:
+        self.replies.append((status_code, status_message, headers, payload))
 
 
 def _make_invite(sdp: str) -> SimpleNamespace:
@@ -106,4 +123,20 @@ async def test_handle_invite_declines_without_codec() -> None:
 
     statuses = [status for status, _ in dialog.replies]
     assert statuses == [100, 603]
+
+
+@pytest.mark.anyio
+async def test_send_sip_reply_falls_back_to_sync_send_reply() -> None:
+    dialog = SyncDialog()
+
+    await send_sip_reply(
+        dialog,
+        486,
+        reason="Busy Here",
+        headers={"X-Test": "1"},
+        payload=b"",
+        call_id="abc",
+    )
+
+    assert dialog.replies == [(486, "Busy Here", {"X-Test": "1"}, b"")]
 

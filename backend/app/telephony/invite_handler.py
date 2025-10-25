@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 import random
 import time
@@ -124,7 +125,7 @@ async def handle_incoming_invite(
         to_header or "?",
     )
 
-    await _send_reply(dialog, 100, reason="Trying", call_id=call_id)
+    await send_sip_reply(dialog, 100, reason="Trying", call_id=call_id)
 
     try:
         payload_text = request.payload.decode("utf-8", errors="strict")
@@ -134,7 +135,7 @@ async def handle_incoming_invite(
             call_id or "inconnu",
             exc,
         )
-        await _send_reply(dialog, 400, reason="Bad Request", call_id=call_id)
+        await send_sip_reply(dialog, 400, reason="Bad Request", call_id=call_id)
         raise InviteHandlingError("SDP illisible") from exc
 
     logger.debug(
@@ -150,7 +151,7 @@ async def handle_incoming_invite(
         logger.warning(
             "INVITE sans média audio exploitable (Call-ID=%s)", call_id or "inconnu"
         )
-        await _send_reply(dialog, 603, reason="Decline", call_id=call_id)
+        await send_sip_reply(dialog, 603, reason="Decline", call_id=call_id)
         raise InviteHandlingError("Aucun média audio trouvé")
 
     offered_port, offered_payloads = audio_media
@@ -173,10 +174,10 @@ async def handle_incoming_invite(
             call_id or "inconnu",
             offered_payloads,
         )
-        await _send_reply(dialog, 603, reason="Decline", call_id=call_id)
+        await send_sip_reply(dialog, 603, reason="Decline", call_id=call_id)
         raise InviteHandlingError("Aucun codec compatible")
 
-    await _send_reply(dialog, 180, reason="Ringing", call_id=call_id)
+    await send_sip_reply(dialog, 180, reason="Ringing", call_id=call_id)
 
     sdp_answer = _build_sdp_answer(
         connection_address=media_host,
@@ -197,7 +198,7 @@ async def handle_incoming_invite(
         sdp_answer,
     )
 
-    await _send_reply(
+    await send_sip_reply(
         dialog,
         200,
         reason="OK",
@@ -221,7 +222,7 @@ def _extract_header(request: _InviteRequest, name: str) -> str | None:
     return None
 
 
-async def _send_reply(
+async def send_sip_reply(
     dialog: _InviteDialog,
     status_code: int,
     *,
@@ -241,7 +242,24 @@ async def _send_reply(
         kwargs["headers"] = headers
     if payload is not None:
         kwargs["payload"] = payload
-    await dialog.reply(status_code, **kwargs)
+    reply_method = getattr(dialog, "reply", None)
+    if callable(reply_method):
+        result = reply_method(status_code, **kwargs)
+        if inspect.isawaitable(result):
+            await result
+        return
+
+    send_reply = getattr(dialog, "send_reply", None)
+    if callable(send_reply):
+        send_kwargs: dict[str, object] = {}
+        if headers is not None:
+            send_kwargs["headers"] = headers
+        if payload is not None:
+            send_kwargs["payload"] = payload
+        send_reply(status_code, reason, **send_kwargs)
+        return
+
+    raise AttributeError("Le dialogue SIP ne supporte ni reply() ni send_reply().")
 
 
 class _InviteDialog:

@@ -32,6 +32,7 @@ from .security import hash_password
 from .telephony.invite_handler import (
     InviteHandlingError,
     handle_incoming_invite,
+    send_sip_reply,
 )
 from .telephony.registration import SIPRegistrationManager
 from .vector_store import (
@@ -61,7 +62,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 "INVITE reçu mais aucun port RTP n'est configuré; réponse 486 Busy"
             )
             with contextlib.suppress(Exception):
-                await dialog.reply(486, reason="Busy Here")
+                await send_sip_reply(dialog, 486, reason="Busy Here")
             return
 
         if not media_host:
@@ -69,7 +70,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 "INVITE reçu mais aucun hôte média n'est disponible; réponse 480"
             )
             with contextlib.suppress(Exception):
-                await dialog.reply(480, reason="Temporarily Unavailable")
+                await send_sip_reply(dialog, 480, reason="Temporarily Unavailable")
             return
 
         try:
@@ -87,7 +88,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 exc_info=exc,
             )
             with contextlib.suppress(Exception):
-                await dialog.reply(500, reason="Server Internal Error")
+                await send_sip_reply(dialog, 500, reason="Server Internal Error")
 
     return _on_invite
 
