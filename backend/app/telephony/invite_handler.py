@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import random
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 logger = logging.getLogger("chatkit.telephony.invite")
@@ -113,20 +113,44 @@ async def handle_incoming_invite(
 ) -> None:
     """Répondre à un ``INVITE`` SIP en négociant une session RTP simple."""
 
-    await dialog.reply(100, reason="Trying")
+    call_id = _extract_header(request, "Call-ID")
+    from_header = _extract_header(request, "From")
+    to_header = _extract_header(request, "To")
+
+    logger.info(
+        "INVITE reçu (Call-ID=%s, From=%s, To=%s)",
+        call_id or "inconnu",
+        from_header or "?",
+        to_header or "?",
+    )
+
+    await _send_reply(dialog, 100, reason="Trying", call_id=call_id)
 
     try:
         payload_text = request.payload.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
-        logger.warning("SDP reçu illisible : %s", exc)
-        await dialog.reply(400, reason="Bad Request")
+        logger.warning(
+            "SDP reçu illisible (Call-ID=%s) : %s",
+            call_id or "inconnu",
+            exc,
+        )
+        await _send_reply(dialog, 400, reason="Bad Request", call_id=call_id)
         raise InviteHandlingError("SDP illisible") from exc
+
+    logger.debug(
+        "SDP reçu (Call-ID=%s, %d octets):\n%s",
+        call_id or "inconnu",
+        len(request.payload),
+        payload_text,
+    )
 
     sdp_lines = [line.strip() for line in payload_text.splitlines() if line.strip()]
     audio_media = _parse_audio_media_line(sdp_lines)
     if audio_media is None:
-        logger.warning("INVITE sans média audio exploitable")
-        await dialog.reply(603, reason="Decline")
+        logger.warning(
+            "INVITE sans média audio exploitable (Call-ID=%s)", call_id or "inconnu"
+        )
+        await _send_reply(dialog, 603, reason="Decline", call_id=call_id)
         raise InviteHandlingError("Aucun média audio trouvé")
 
     offered_port, offered_payloads = audio_media
@@ -144,11 +168,15 @@ async def handle_incoming_invite(
     )
 
     if codec is None:
-        logger.warning("Aucun codec commun trouvé pour l'INVITE : %s", offered_payloads)
-        await dialog.reply(603, reason="Decline")
+        logger.warning(
+            "Aucun codec commun trouvé pour l'INVITE (Call-ID=%s) : %s",
+            call_id or "inconnu",
+            offered_payloads,
+        )
+        await _send_reply(dialog, 603, reason="Decline", call_id=call_id)
         raise InviteHandlingError("Aucun codec compatible")
 
-    await dialog.reply(180, reason="Ringing")
+    await _send_reply(dialog, 180, reason="Ringing", call_id=call_id)
 
     sdp_answer = _build_sdp_answer(
         connection_address=media_host,
@@ -163,12 +191,57 @@ async def handle_incoming_invite(
         codec.clock_rate,
     )
 
-    await dialog.reply(
+    logger.debug(
+        "SDP de réponse généré (Call-ID=%s) :\n%s",
+        call_id or "inconnu",
+        sdp_answer,
+    )
+
+    await _send_reply(
+        dialog,
         200,
         reason="OK",
         headers={"Content-Type": "application/sdp"},
         payload=sdp_answer.encode("utf-8"),
+        call_id=call_id,
     )
+
+
+def _extract_header(request: _InviteRequest, name: str) -> str | None:
+    headers = getattr(request, "headers", None)
+    if not isinstance(headers, Mapping):
+        return None
+
+    lower_name = name.lower()
+    for key, value in headers.items():
+        if isinstance(key, str) and key.lower() == lower_name:
+            if isinstance(value, list | tuple) and value:
+                return str(value[0])
+            return str(value)
+    return None
+
+
+async def _send_reply(
+    dialog: _InviteDialog,
+    status_code: int,
+    *,
+    reason: str,
+    headers: dict[str, str] | None = None,
+    payload: bytes | None = None,
+    call_id: str | None = None,
+) -> None:
+    logger.info(
+        "Envoi réponse SIP %s %s (Call-ID=%s)",
+        status_code,
+        reason,
+        call_id or "inconnu",
+    )
+    kwargs: dict[str, object] = {"reason": reason}
+    if headers is not None:
+        kwargs["headers"] = headers
+    if payload is not None:
+        kwargs["payload"] = payload
+    await dialog.reply(status_code, **kwargs)
 
 
 class _InviteDialog:
