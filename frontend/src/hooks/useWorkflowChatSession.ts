@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useChatKit } from "@openai/chatkit-react";
 import type { ChatKitOptions } from "@openai/chatkit";
 
@@ -11,6 +11,7 @@ type UseWorkflowChatSessionOptions = {
   activeWorkflow: WorkflowSummary | null;
   initialThreadId: string | null;
   reportError: (message: string, detail?: unknown) => void;
+  mode: "local" | "hosted";
 };
 
 type UseWorkflowChatSessionResult = ReturnType<typeof useChatKit> & {
@@ -24,17 +25,23 @@ export const useWorkflowChatSession = ({
   activeWorkflow,
   initialThreadId,
   reportError,
+  mode,
 }: UseWorkflowChatSessionOptions): UseWorkflowChatSessionResult => {
   const { control, fetchUpdates, sendUserMessage } = useChatKit(chatkitOptions);
 
-  const { chatkitWorkflowInfo, requestRefresh } = useChatkitWorkflowSync({
-    token,
-    activeWorkflow,
-    fetchUpdates,
-    sendUserMessage,
-    initialThreadId,
-    reportError,
-  });
+  const noopRequestRefresh = useCallback(() => undefined, []);
+
+  const { chatkitWorkflowInfo, requestRefresh } =
+    mode === "hosted"
+      ? { chatkitWorkflowInfo: null, requestRefresh: noopRequestRefresh }
+      : useChatkitWorkflowSync({
+          token,
+          activeWorkflow,
+          fetchUpdates,
+          sendUserMessage,
+          initialThreadId,
+          reportError,
+        });
 
   return useMemo(
     () => ({

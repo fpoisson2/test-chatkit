@@ -10,8 +10,9 @@ import { ApiError, fetchChatkitSession } from "../utils/backend";
 
 export type UseChatkitSessionParams = {
   sessionOwner: string;
+  storageKey: string;
   token: string | null;
-  hostedFlowEnabled: boolean;
+  mode: "local" | "hosted";
   disableHostedFlow: (reason?: string | null) => void;
 };
 
@@ -25,8 +26,9 @@ export type UseChatkitSessionResult = {
 
 export const useChatkitSession = ({
   sessionOwner,
+  storageKey,
   token,
-  hostedFlowEnabled,
+  mode,
   disableHostedFlow,
 }: UseChatkitSessionParams): UseChatkitSessionResult => {
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +51,14 @@ export const useChatkitSession = ({
 
   const getClientSecret = useCallback(
     async (currentSecret: string | null) => {
-      const { session: storedSession, shouldRefresh } = readStoredChatKitSession(sessionOwner);
+      if (mode !== "hosted") {
+        if (import.meta.env.DEV) {
+          console.debug("[ChatKit] Demande de client_secret ignorée (mode %s).", mode);
+        }
+        throw new Error("Client secret unavailable outside hosted mode.");
+      }
+
+      const { session: storedSession, shouldRefresh } = readStoredChatKitSession(storageKey);
 
       if (currentSecret && storedSession && storedSession.secret === currentSecret && !shouldRefresh) {
         return currentSecret;
@@ -60,18 +69,14 @@ export const useChatkitSession = ({
       }
 
       if (storedSession && shouldRefresh) {
-        clearStoredChatKitSecret(sessionOwner);
+        clearStoredChatKitSecret(storageKey);
       }
 
       setIsLoading(true);
       resetError();
 
       if (import.meta.env.DEV) {
-        console.debug(
-          "[ChatKit] Demande d'un client_secret pour %s (flux hébergé activé: %s).",
-          sessionOwner,
-          hostedFlowEnabled ? "oui" : "non",
-        );
+        console.debug("[ChatKit] Demande d'un client_secret pour %s.", sessionOwner);
       }
 
       try {
@@ -84,7 +89,7 @@ export const useChatkitSession = ({
         }
 
         const expiresAt = normalizeSessionExpiration(data.expires_at ?? data);
-        persistChatKitSecret(sessionOwner, data.client_secret, expiresAt);
+        persistChatKitSecret(storageKey, data.client_secret, expiresAt);
 
         return data.client_secret;
       } catch (err) {
@@ -130,7 +135,7 @@ export const useChatkitSession = ({
               "Le flux hébergé a été désactivé car CHATKIT_WORKFLOW_ID n'est pas configuré côté serveur.",
             );
             reportError(workflowError.message, err);
-            clearStoredChatKitSecret(sessionOwner);
+            clearStoredChatKitSecret(storageKey);
             throw workflowError;
           }
 
@@ -143,7 +148,7 @@ export const useChatkitSession = ({
             detail: err.detail,
           });
           reportError(wrappedError.message, err);
-          clearStoredChatKitSecret(sessionOwner);
+          clearStoredChatKitSecret(storageKey);
           throw wrappedError;
         }
 
@@ -152,13 +157,13 @@ export const useChatkitSession = ({
         } else {
           reportError("Erreur inconnue lors de la récupération du client_secret.");
         }
-        clearStoredChatKitSecret(sessionOwner);
+        clearStoredChatKitSecret(storageKey);
         throw err;
       } finally {
         setIsLoading(false);
       }
     },
-    [disableHostedFlow, hostedFlowEnabled, reportError, resetError, sessionOwner, token],
+    [disableHostedFlow, mode, reportError, resetError, sessionOwner, storageKey, token],
   );
 
   return {
@@ -169,3 +174,5 @@ export const useChatkitSession = ({
     resetError,
   };
 };
+
+export type { UseChatkitSessionParams as UseChatkitSessionOptions };
