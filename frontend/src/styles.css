@@ -189,6 +189,12 @@ button {
   overflow: hidden;
 }
 
+@media (max-width: 768px) {
+  .chatkit-layout {
+    --chatkit-sidebar-width: 100vw;
+  }
+}
+
 .chatkit-layout__main {
   position: relative;
   display: flex;
