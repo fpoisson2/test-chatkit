@@ -140,7 +140,7 @@ export function MyChat() {
     [activeWorkflowSlug, sessionOwner],
   );
 
-  const { hostedFlowEnabled, disableHostedFlow } = useHostedFlow({
+  const { hostedFlowEnabled, disableHostedFlow, enableHostedFlow } = useHostedFlow({
     onDisable: resetChatState,
   });
 
@@ -171,8 +171,28 @@ export function MyChat() {
     document.documentElement.dataset.theme = preferredColorScheme;
   }, [preferredColorScheme]);
 
+  useEffect(() => {
+    if (!hostedFlowEnabled) {
+      return;
+    }
+    setActiveWorkflow((current) => (current ? null : current));
+  }, [hostedFlowEnabled]);
+
   const handleWorkflowActivated = useCallback(
-    (workflow: WorkflowSummary | null, { reason }: { reason: "initial" | "user" }) => {
+    (
+      workflow: WorkflowSummary | null,
+      { reason, mode }: { reason: "initial" | "user"; mode: "local" | "hosted" },
+    ) => {
+      if (reason === "user") {
+        if (mode === "hosted") {
+          if (!hostedFlowEnabled) {
+            enableHostedFlow();
+          }
+        } else if (hostedFlowEnabled) {
+          disableHostedFlow();
+        }
+      }
+
       setActiveWorkflow((current) => {
         const currentId = current?.id ?? null;
         const nextId = workflow?.id ?? null;
@@ -185,7 +205,13 @@ export function MyChat() {
         return workflow;
       });
     },
-    [resetChatState, resetError],
+    [
+      disableHostedFlow,
+      enableHostedFlow,
+      hostedFlowEnabled,
+      resetChatState,
+      resetError,
+    ],
   );
 
   useEffect(() => {
@@ -733,7 +759,10 @@ export function MyChat() {
 
   return (
     <>
-      <ChatSidebar onWorkflowActivated={handleWorkflowActivated} />
+      <ChatSidebar
+        hostedFlowEnabled={hostedFlowEnabled}
+        onWorkflowActivated={handleWorkflowActivated}
+      />
       <ChatKitHost control={control} chatInstanceKey={chatInstanceKey} />
       <ChatStatusMessage message={statusMessage} isError={Boolean(error)} isLoading={isLoading} />
       {voiceStatusMessage && (

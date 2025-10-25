@@ -3,37 +3,48 @@ import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../auth";
 import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
+import { useI18n } from "../../i18n";
 import { workflowsApi } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
 
 const isApiError = (error: unknown): error is { status?: number; message?: string } =>
   Boolean(error) && typeof error === "object" && "status" in error;
 
-type ActivationContext = { reason: "initial" | "user" };
+const HOSTED_WORKFLOW_KEY = "hosted" as const;
+
+type WorkflowSelectionKey = typeof HOSTED_WORKFLOW_KEY | number;
+
+type ActivationContext = { reason: "initial" | "user"; mode: "local" | "hosted" };
 
 type ChatWorkflowSidebarProps = {
+  hostedFlowEnabled: boolean;
   onWorkflowActivated: (workflow: WorkflowSummary | null, context: ActivationContext) => void;
 };
 
-export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebarProps) => {
+export const ChatWorkflowSidebar = ({ hostedFlowEnabled, onWorkflowActivated }: ChatWorkflowSidebarProps) => {
   const navigate = useNavigate();
   const { closeSidebar, isDesktopLayout } = useAppLayout();
   const { setSidebarContent, clearSidebarContent } = useSidebarPortal();
   const { token, user } = useAuth();
+  const { t } = useI18n();
   const isAdmin = Boolean(user?.is_admin);
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(null);
+  const [selectedWorkflowKey, setSelectedWorkflowKey] = useState<WorkflowSelectionKey | null>(
+    hostedFlowEnabled ? HOSTED_WORKFLOW_KEY : null,
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
   const loadWorkflows = useCallback(async () => {
+    const initialMode: ActivationContext["mode"] = hostedFlowEnabled ? "hosted" : "local";
+
     if (!token || !isAdmin) {
       setWorkflows([]);
-      setSelectedWorkflowId(null);
+      setSelectedWorkflowKey(hostedFlowEnabled ? HOSTED_WORKFLOW_KEY : null);
       setError(null);
       setLoading(false);
-      onWorkflowActivated(null, { reason: "initial" });
+      onWorkflowActivated(null, { reason: "initial", mode: initialMode });
       return;
     }
 
@@ -42,12 +53,20 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
     try {
       const items = await workflowsApi.list(token);
       setWorkflows(items);
+
+      if (hostedFlowEnabled) {
+        setSelectedWorkflowKey(HOSTED_WORKFLOW_KEY);
+        onWorkflowActivated(null, { reason: "initial", mode: "hosted" });
+        return;
+      }
+
       const active =
         items.find((workflow) => workflow.is_chatkit_default && workflow.active_version_id !== null) ??
         items.find((workflow) => workflow.active_version_id !== null) ??
         null;
-      setSelectedWorkflowId(active?.id ?? null);
-      onWorkflowActivated(active ?? null, { reason: "initial" });
+      const nextKey: WorkflowSelectionKey | null = active?.id ?? null;
+      setSelectedWorkflowKey(nextKey);
+      onWorkflowActivated(active ?? null, { reason: "initial", mode: "local" });
     } catch (err) {
       let message = err instanceof Error ? err.message : "Impossible de charger les workflows.";
       if (isApiError(err) && err.status === 403) {
@@ -55,12 +74,12 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
       }
       setError(message);
       setWorkflows([]);
-      setSelectedWorkflowId(null);
-      onWorkflowActivated(null, { reason: "initial" });
+      setSelectedWorkflowKey(hostedFlowEnabled ? HOSTED_WORKFLOW_KEY : null);
+      onWorkflowActivated(null, { reason: "initial", mode: initialMode });
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, onWorkflowActivated, token]);
+  }, [hostedFlowEnabled, isAdmin, onWorkflowActivated, token]);
 
   useEffect(() => {
     void loadWorkflows();
@@ -68,7 +87,7 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
 
   const handleWorkflowClick = useCallback(
     async (workflowId: number) => {
-      if (!token || !isAdmin || workflowId === selectedWorkflowId || isUpdating) {
+      if (!token || !isAdmin || workflowId === selectedWorkflowKey || isUpdating) {
         return;
       }
 
@@ -96,11 +115,11 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
             workflow.id === updated.id ? updated : { ...workflow, is_chatkit_default: false },
           );
         });
-        setSelectedWorkflowId(updated.id);
-        onWorkflowActivated(
-          updated.active_version_id ? updated : null,
-          { reason: "user" },
-        );
+        setSelectedWorkflowKey(updated.id);
+        onWorkflowActivated(updated.active_version_id ? updated : null, {
+          reason: "user",
+          mode: "local",
+        });
         if (!isDesktopLayout) {
           closeSidebar();
         }
@@ -120,11 +139,24 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
       isDesktopLayout,
       isUpdating,
       onWorkflowActivated,
-      selectedWorkflowId,
+      selectedWorkflowKey,
       token,
       workflows,
     ],
   );
+
+  const handleHostedClick = useCallback(() => {
+    if (selectedWorkflowKey === HOSTED_WORKFLOW_KEY) {
+      return;
+    }
+
+    setError(null);
+    setSelectedWorkflowKey(HOSTED_WORKFLOW_KEY);
+    onWorkflowActivated(null, { reason: "user", mode: "hosted" });
+    if (!isDesktopLayout) {
+      closeSidebar();
+    }
+  }, [closeSidebar, isDesktopLayout, onWorkflowActivated, selectedWorkflowKey]);
 
   const handleOpenBuilder = useCallback(() => {
     navigate("/workflows");
@@ -135,6 +167,40 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
 
   const sidebarContent = useMemo(() => {
     const sectionId = "chat-sidebar-workflow";
+    const hostedWorkflowLabel = t("chat.sidebar.hostedWorkflow.label");
+    const isHostedActive = selectedWorkflowKey === HOSTED_WORKFLOW_KEY;
+
+    const workflowList = (
+      <ul className="chatkit-sidebar__workflow-list">
+        <li key={HOSTED_WORKFLOW_KEY} className="chatkit-sidebar__workflow-list-item">
+          <button
+            type="button"
+            className="chatkit-sidebar__workflow-button"
+            onClick={handleHostedClick}
+            aria-current={isHostedActive ? "true" : undefined}
+          >
+            {hostedWorkflowLabel}
+          </button>
+        </li>
+        {workflows.map((workflow) => {
+          const isActive = workflow.id === selectedWorkflowKey;
+          const hasProduction = workflow.active_version_id !== null;
+          return (
+            <li key={workflow.id} className="chatkit-sidebar__workflow-list-item">
+              <button
+                type="button"
+                className="chatkit-sidebar__workflow-button"
+                onClick={() => void handleWorkflowClick(workflow.id)}
+                disabled={!hasProduction}
+                aria-current={isActive ? "true" : undefined}
+              >
+                {workflow.display_name}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    );
 
     if (!user) {
       return (
@@ -188,6 +254,7 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
       return (
         <section className="chatkit-sidebar__section" aria-live="polite">
           <h2 className="chatkit-sidebar__section-title">Workflow</h2>
+          {workflowList}
           <p className="chatkit-sidebar__section-text">
             Publiez un workflow pour qu'il soit disponible dans le chat.
           </p>
@@ -205,35 +272,19 @@ export const ChatWorkflowSidebar = ({ onWorkflowActivated }: ChatWorkflowSidebar
             Workflow
           </h2>
         </div>
-        <ul className="chatkit-sidebar__workflow-list">
-          {workflows.map((workflow) => {
-            const isActive = workflow.id === selectedWorkflowId;
-            const hasProduction = workflow.active_version_id !== null;
-            return (
-              <li key={workflow.id} className="chatkit-sidebar__workflow-list-item">
-                <button
-                  type="button"
-                  className="chatkit-sidebar__workflow-button"
-                  onClick={() => void handleWorkflowClick(workflow.id)}
-                  disabled={!hasProduction}
-                  aria-current={isActive ? "true" : undefined}
-                >
-                  {workflow.display_name}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+        {workflowList}
       </section>
     );
   }, [
     error,
     handleOpenBuilder,
     handleWorkflowClick,
+    handleHostedClick,
     isAdmin,
     loadWorkflows,
     loading,
-    selectedWorkflowId,
+    selectedWorkflowKey,
+    t,
     user,
     workflows,
   ]);
