@@ -82,3 +82,26 @@ def test_settings_thread_title_prompt_override() -> None:
     settings = Settings.from_env(env)
 
     assert settings.thread_title_prompt == "Titre personnalisé"
+
+
+def test_settings_default_sip_media_port() -> None:
+    env = _base_env()
+    env["OPENAI_API_KEY"] = "sk-test"
+
+    settings = Settings.from_env(env)
+
+    assert settings.sip_media_port == config_module.DEFAULT_SIP_MEDIA_PORT
+
+
+def test_settings_custom_sip_media_port() -> None:
+    env = _base_env()
+    env.update(
+        {
+            "OPENAI_API_KEY": "sk-test",
+            "SIP_MEDIA_PORT": "5008",
+        }
+    )
+
+    settings = Settings.from_env(env)
+
+    assert settings.sip_media_port == 5008

@@ -21,6 +21,9 @@ DEFAULT_THREAD_TITLE_PROMPT = (
 )
 
 
+DEFAULT_SIP_MEDIA_PORT = 40000
+
+
 @dataclass(frozen=True)
 class WorkflowDefaults:
     """Configuration par défaut pour le workflow ChatKit."""
@@ -100,7 +103,8 @@ class Settings:
         sip_bind_port: Port d'écoute du serveur SIP (optionnel).
         sip_username: Identifiant d'authentification SIP (optionnel).
         sip_password: Mot de passe d'authentification SIP (optionnel).
-        sip_media_port: Port RTP local annoncé dans les réponses SIP (optionnel).
+        sip_media_port: Port RTP local annoncé dans les réponses SIP (configurable,
+            40000 par défaut).
         telephony_default_workflow_slug: Slug du workflow par défaut pour la
             téléphonie (optionnel).
         telephony_default_workflow_id: Identifiant du workflow par défaut pour
@@ -145,7 +149,7 @@ class Settings:
     sip_bind_port: int | None
     sip_username: str | None
     sip_password: str | None
-    sip_media_port: int | None
+    sip_media_port: int
     telephony_default_workflow_slug: str | None
     telephony_default_workflow_id: int | None
     database_url: str
@@ -389,7 +393,7 @@ class Settings:
             sip_bind_port=_optional_int("SIP_BIND_PORT"),
             sip_username=get_stripped("SIP_USERNAME"),
             sip_password=get_stripped("SIP_PASSWORD"),
-            sip_media_port=_optional_int("SIP_MEDIA_PORT"),
+            sip_media_port=_optional_int("SIP_MEDIA_PORT") or DEFAULT_SIP_MEDIA_PORT,
             telephony_default_workflow_slug=get_stripped(
                 "TELEPHONY_DEFAULT_WORKFLOW_SLUG"
             ),
