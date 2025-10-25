@@ -6259,14 +6259,6 @@ const WorkflowBuilderPage = () => {
             const canDelete = !loading && !workflow.is_chatkit_default;
             const menuId = `workflow-actions-${workflow.id}`;
             const menuStyle = getActionMenuStyle(isMobileLayout);
-            menuStyle.right = "var(--chatkit-sidebar-padding-x)";
-            if (isMobileLayout) {
-              menuStyle.left = "0";
-              menuStyle.right = "0";
-              menuStyle.width = "100%";
-              menuStyle.minWidth = "0";
-              menuStyle.maxWidth = "none";
-            }
             return (
               <li key={workflow.id} className="chatkit-sidebar__workflow-list-item">
                 <button

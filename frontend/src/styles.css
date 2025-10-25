@@ -298,6 +298,7 @@ button {
   flex-direction: column;
   gap: 0;
   --chatkit-sidebar-padding-x: 24px;
+  --chatkit-sidebar-content-padding-x: var(--chatkit-sidebar-padding-x);
   padding: 28px var(--chatkit-sidebar-padding-x);
   overflow: hidden;
   transform: translateX(calc(-1 * var(--chatkit-sidebar-width)));
@@ -313,6 +314,7 @@ button {
 .chatkit-sidebar--collapsed {
   width: var(--chatkit-sidebar-collapsed-width);
   --chatkit-sidebar-padding-x: 18px;
+  --chatkit-sidebar-content-padding-x: var(--chatkit-sidebar-padding-x);
   padding: 28px var(--chatkit-sidebar-padding-x);
   gap: 20px;
   pointer-events: auto;
@@ -361,6 +363,18 @@ button {
   }
 }
 
+@media (max-width: 768px) {
+  .chatkit-sidebar {
+    --chatkit-sidebar-padding-x: max(env(safe-area-inset-left), env(safe-area-inset-right), 0px);
+    --chatkit-sidebar-content-padding-x: clamp(12px, 5vw, 20px);
+    padding: 24px var(--chatkit-sidebar-padding-x);
+  }
+
+  .chatkit-sidebar__main {
+    padding-inline: 0;
+  }
+}
+
 .react-flow__handle {
   --handle-size: 14px;
   width: var(--handle-size);
@@ -397,12 +411,11 @@ button {
   }
 }
 
-
 .chatkit-sidebar__header {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding-bottom: 16px;
+  padding: 0 var(--chatkit-sidebar-content-padding-x) 16px;
   border-bottom: 1px solid var(--sidebar-border);
 }
 
@@ -410,7 +423,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  padding: 0 0 16px;
+  padding: 0 var(--chatkit-sidebar-content-padding-x) 16px;
 }
 
 .chatkit-sidebar__section {
@@ -536,8 +549,8 @@ button {
 
 .chatkit-sidebar__nav-link {
   display: block;
-  margin-inline: calc(-1 * var(--chatkit-sidebar-padding-x));
-  padding: 12px var(--chatkit-sidebar-padding-x);
+  margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
+  padding: 12px var(--chatkit-sidebar-content-padding-x);
   font-weight: 600;
   color: var(--text-color);
   text-decoration: none;
@@ -551,7 +564,7 @@ button {
   position: absolute;
   top: 8px;
   bottom: 8px;
-  left: calc(-1 * var(--chatkit-sidebar-padding-x));
+  left: calc(-1 * var(--chatkit-sidebar-content-padding-x));
   width: 4px;
   border-radius: 0 999px 999px 0;
   background: transparent;
@@ -582,15 +595,14 @@ button {
 }
 
 .chatkit-sidebar__workflow-button {
-  width: calc(100% + (var(--chatkit-sidebar-padding-x) * 2));
+  width: 100%;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
   border: none;
   background: transparent;
-  padding: 12px var(--chatkit-sidebar-padding-x);
-  padding-right: calc(var(--chatkit-sidebar-padding-x) * 2 + 2rem);
-  margin-inline: calc(-1 * var(--chatkit-sidebar-padding-x));
+  padding: 12px var(--chatkit-sidebar-content-padding-x);
+  padding-right: calc(var(--chatkit-sidebar-content-padding-x) + 2.5rem);
   border-radius: 0;
   font: inherit;
   font-weight: 600;
@@ -604,11 +616,6 @@ button {
 }
 
 @media (max-width: 768px) {
-  .chatkit-sidebar__workflow-button {
-    width: 100%;
-    margin-inline: 0;
-  }
-
   .chatkit-sidebar__workflow-actions {
     right: 0;
   }
@@ -652,12 +659,16 @@ button {
 .chatkit-sidebar__workflow-actions {
   position: absolute;
   top: 0;
-  right: var(--chatkit-sidebar-padding-x);
+  right: var(--chatkit-sidebar-content-padding-x);
   bottom: 0;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 0.25rem;
+}
+
+.chatkit-sidebar__workflow-menu {
+  z-index: 40;
 }
 
 .chatkit-sidebar__workflow-action-button {
@@ -872,13 +883,12 @@ button {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding: 16px 0;
+  padding: 16px var(--chatkit-sidebar-content-padding-x);
   border-bottom: 1px solid var(--sidebar-border);
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  scrollbar-gutter: stable;
 }
 
 .chatkit-sidebar__dynamic {
@@ -948,7 +958,7 @@ button {
 
 .chatkit-sidebar__footer {
   margin-top: auto;
-  padding-top: 16px;
+  padding: 16px var(--chatkit-sidebar-content-padding-x) 0;
   border-top: 1px solid var(--sidebar-border);
 }
 
