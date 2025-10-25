@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import logging
 import random
+import re
 import time
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -147,6 +148,14 @@ async def handle_incoming_invite(
     normalized_payload_text = (
         payload_text.replace("\r\n", "\n").replace("\r", "\n")
     )
+
+    if "\n" not in normalized_payload_text:
+        compact_payload = normalized_payload_text.strip()
+        normalized_payload_text = re.sub(
+            r"(?<!^)(?=[A-Za-z][-A-Za-z]*=)",
+            "\n",
+            compact_payload,
+        )
 
     logger.debug(
         "SDP reçu (Call-ID=%s, %d octets):\n%s",
