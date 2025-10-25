@@ -2114,10 +2114,14 @@ const WorkflowBuilderPage = () => {
       if (isPreviewMode) {
         return;
       }
+      const wasSelected = selectedNodeIdRef.current === node.id;
       setSelectedNodeId(node.id);
       setSelectedEdgeId(null);
+      if (isMobileLayout && wasSelected) {
+        setPropertiesPanelOpen(true);
+      }
     },
-    [isPreviewMode],
+    [isMobileLayout, isPreviewMode],
   );
 
   const handleEdgeClick = useCallback(
@@ -2125,10 +2129,14 @@ const WorkflowBuilderPage = () => {
       if (isPreviewMode) {
         return;
       }
+      const wasSelected = selectedEdgeIdRef.current === edge.id;
       setSelectedEdgeId(edge.id);
       setSelectedNodeId(null);
+      if (isMobileLayout && wasSelected) {
+        setPropertiesPanelOpen(true);
+      }
     },
-    [isPreviewMode],
+    [isMobileLayout, isPreviewMode],
   );
 
   const handleClearSelection = useCallback(() => {
@@ -2220,15 +2228,22 @@ const WorkflowBuilderPage = () => {
   }, [selectedEdgeId]);
 
   useEffect(() => {
-    if (selectedElementKey) {
-      if (previousSelectedElementRef.current !== selectedElementKey) {
-        if (!(isMobileLayout && isNodeDragInProgressRef.current)) {
-          setPropertiesPanelOpen(true);
-        }
-      }
-    } else {
+    if (!selectedElementKey) {
       setPropertiesPanelOpen(false);
+      previousSelectedElementRef.current = selectedElementKey;
+      return;
     }
+
+    const isNewSelection = previousSelectedElementRef.current !== selectedElementKey;
+
+    if (isMobileLayout) {
+      if (isNewSelection) {
+        setPropertiesPanelOpen(false);
+      }
+    } else if (isNewSelection && !isNodeDragInProgressRef.current) {
+      setPropertiesPanelOpen(true);
+    }
+
     previousSelectedElementRef.current = selectedElementKey;
   }, [isMobileLayout, selectedElementKey]);
 
