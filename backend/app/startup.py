@@ -752,48 +752,6 @@ def register_startup_events(app: FastAPI) -> None:
     )
     app.state.sip_registration = sip_registration_manager
 
-    def _build_sip_registration_config(
-        stored_settings: AppSettings | None,
-    ) -> SIPRegistrationConfig | None:
-        if stored_settings is None:
-            return None
-
-        trunk_uri = stored_settings.sip_trunk_uri
-        if not trunk_uri:
-            return None
-
-        contact_host = sip_registration_manager.contact_host or sip_contact_host
-        contact_port = (
-            sip_registration_manager.contact_port
-            if sip_registration_manager.contact_port is not None
-            else sip_contact_port
-        )
-
-        if not contact_host or contact_port is None:
-            logger.warning(
-                "Impossible d'initialiser l'enregistrement SIP : contact "
-                "SIP_BIND_HOST/SIP_BIND_PORT manquant",
-            )
-            return None
-
-        username = stored_settings.sip_trunk_username or settings.sip_username
-        password = stored_settings.sip_trunk_password or settings.sip_password
-
-        if not username or not password:
-            logger.warning(
-                "Impossible d'initialiser l'enregistrement SIP : identifiants "
-                "SIP manquants",
-            )
-            return None
-
-        return SIPRegistrationConfig(
-            uri=trunk_uri,
-            username=username,
-            password=password,
-            contact_host=contact_host,
-            contact_port=contact_port,
-        )
-
     @app.on_event("startup")
     def _on_startup() -> None:
         configure_model_provider(settings)
@@ -868,9 +826,7 @@ def register_startup_events(app: FastAPI) -> None:
         manager: SIPRegistrationManager = app.state.sip_registration
         with SessionLocal() as session:
             stored_settings = session.scalar(select(AppSettings).limit(1))
-
-        config = _build_sip_registration_config(stored_settings)
-        manager.apply_config(config)
+            await manager.apply_config_from_settings(session, stored_settings)
         await manager.start()
 
     @app.on_event("shutdown")
