@@ -379,6 +379,19 @@ button {
   .chatkit-sidebar__main {
     padding-inline: 0;
   }
+
+  .chatkit-sidebar__nav,
+  .chatkit-sidebar__list {
+    width: 100%;
+  }
+
+  .chatkit-sidebar__list {
+    margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
+  }
+
+  .chatkit-sidebar__item button {
+    padding-inline: var(--chatkit-sidebar-content-padding-x);
+  }
 }
 
 .react-flow__handle {
