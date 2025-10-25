@@ -6160,14 +6160,6 @@ const WorkflowBuilderPage = () => {
       return;
     }
 
-    if (isPropertiesPanelOpen) {
-      if (autoSaveTimeoutRef.current !== null) {
-        clearTimeout(autoSaveTimeoutRef.current);
-        autoSaveTimeoutRef.current = null;
-      }
-      return;
-    }
-
     if (
       !hasPendingChanges ||
       disableSave ||
@@ -6202,7 +6194,6 @@ const WorkflowBuilderPage = () => {
     handleSave,
     hasPendingChanges,
     isPreviewMode,
-    isPropertiesPanelOpen,
     loading,
     saveState,
     selectedWorkflowId,
