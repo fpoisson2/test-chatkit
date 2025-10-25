@@ -809,6 +809,11 @@ const WorkflowBuilderPage = () => {
   const previousSelectedElementRef = useRef<string | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);
   const selectedEdgeIdRef = useRef<string | null>(null);
+  const lastTappedElementRef = useRef<{
+    kind: "node" | "edge";
+    id: string;
+    tapCount: number;
+  } | null>(null);
   const selectedNodeIdsRef = useRef<Set<string>>(new Set());
   const selectedEdgeIdsRef = useRef<Set<string>>(new Set());
   const isNodeDragInProgressRef = useRef(false);
@@ -2114,10 +2119,13 @@ const WorkflowBuilderPage = () => {
       if (isPreviewMode) {
         return;
       }
-      const wasSelected = selectedNodeIdRef.current === node.id;
+      const lastTapped = lastTappedElementRef.current;
+      const isSameElement = lastTapped?.kind === "node" && lastTapped.id === node.id;
+      const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
+      lastTappedElementRef.current = { kind: "node", id: node.id, tapCount: nextTapCount };
       setSelectedNodeId(node.id);
       setSelectedEdgeId(null);
-      if (isMobileLayout && wasSelected) {
+      if (isMobileLayout && isSameElement && nextTapCount >= 2) {
         setPropertiesPanelOpen(true);
       }
     },
@@ -2129,10 +2137,13 @@ const WorkflowBuilderPage = () => {
       if (isPreviewMode) {
         return;
       }
-      const wasSelected = selectedEdgeIdRef.current === edge.id;
+      const lastTapped = lastTappedElementRef.current;
+      const isSameElement = lastTapped?.kind === "edge" && lastTapped.id === edge.id;
+      const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
+      lastTappedElementRef.current = { kind: "edge", id: edge.id, tapCount: nextTapCount };
       setSelectedEdgeId(edge.id);
       setSelectedNodeId(null);
-      if (isMobileLayout && wasSelected) {
+      if (isMobileLayout && isSameElement && nextTapCount >= 2) {
         setPropertiesPanelOpen(true);
       }
     },
@@ -2230,11 +2241,30 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     if (!selectedElementKey) {
       setPropertiesPanelOpen(false);
+      lastTappedElementRef.current = null;
       previousSelectedElementRef.current = selectedElementKey;
       return;
     }
 
     const isNewSelection = previousSelectedElementRef.current !== selectedElementKey;
+    if (isNewSelection) {
+      const matchesLastTap =
+        (selectedNodeId &&
+          lastTappedElementRef.current?.kind === "node" &&
+          lastTappedElementRef.current.id === selectedNodeId) ||
+        (selectedEdgeId &&
+          lastTappedElementRef.current?.kind === "edge" &&
+          lastTappedElementRef.current.id === selectedEdgeId);
+
+      if (!matchesLastTap) {
+        lastTappedElementRef.current = null;
+      } else if (lastTappedElementRef.current) {
+        lastTappedElementRef.current = {
+          ...lastTappedElementRef.current,
+          tapCount: 1,
+        };
+      }
+    }
 
     if (isMobileLayout) {
       if (isNewSelection) {
@@ -2245,7 +2275,7 @@ const WorkflowBuilderPage = () => {
     }
 
     previousSelectedElementRef.current = selectedElementKey;
-  }, [isMobileLayout, selectedElementKey]);
+  }, [isMobileLayout, selectedEdgeId, selectedElementKey, selectedNodeId]);
 
   useEffect(() => {
     if (!isMobileLayout) {
