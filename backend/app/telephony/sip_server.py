@@ -180,6 +180,12 @@ def resolve_workflow_for_phone_number(
 
     effective_settings = settings or get_settings()
 
+    logger.info(
+        "Appel entrant reçu pour %s (workflow demandé=%s)",
+        phone_number,
+        workflow_slug or "<non spécifié>",
+    )
+
     if workflow_slug:
         definition = workflow_service.get_definition_by_slug(
             workflow_slug, session=session
@@ -189,12 +195,29 @@ def resolve_workflow_for_phone_number(
 
     normalized_number = _normalize_incoming_number(phone_number)
 
+    if normalized_number != phone_number:
+        logger.info(
+            "Numéro entrant normalisé de %s vers %s",
+            phone_number,
+            normalized_number,
+        )
+    else:
+        logger.info("Numéro entrant %s déjà normalisé", normalized_number)
+
     telephony_config = resolve_start_telephony_config(definition)
     if telephony_config is None:
         logger.info(
             "Workflow %s sans configuration téléphonie : utilisation de la définition "
             "courante.",
             getattr(definition.workflow, "slug", "<inconnu>"),
+        )
+    else:
+        logger.info(
+            "Configuration téléphonie chargée pour %s : %d route(s), "
+            "route par défaut=%s",
+            getattr(definition.workflow, "slug", "<inconnu>"),
+            len(telephony_config.routes),
+            "oui" if telephony_config.default_route else "non",
         )
         model, instructions, voice, prompt_variables = _merge_voice_settings(
             session=session, overrides=None, settings=effective_settings
@@ -222,6 +245,31 @@ def resolve_workflow_for_phone_number(
             f"Aucune route téléphonie pour le numéro {phone_number!r}"
         )
 
+    if route is telephony_config.default_route:
+        match_reason = "route par défaut"
+    elif normalized_number and normalized_number in route.phone_numbers:
+        match_reason = "correspondance exacte"
+    else:
+        matched_prefix = next(
+            (
+                prefix
+                for prefix in route.prefixes
+                if normalized_number.startswith(prefix)
+            ),
+            None,
+        )
+        match_reason = (
+            f"préfixe {matched_prefix}" if matched_prefix else "route configurée"
+        )
+
+    logger.info(
+        "Route téléphonie sélectionnée (%s) : label=%s, workflow=%s, priorité=%s",
+        match_reason,
+        route.label or "<sans-label>",
+        route.workflow_slug or getattr(definition.workflow, "slug", "<inconnu>"),
+        route.priority,
+    )
+
     selected_definition = definition
     if route.workflow_slug and (
         not hasattr(definition, "workflow")
@@ -242,9 +290,22 @@ def resolve_workflow_for_phone_number(
             raise TelephonyRouteSelectionError(
                 f"Workflow {route.workflow_slug!r} introuvable pour la route téléphonie"
             ) from exc
+        else:
+            logger.info(
+                "Workflow surchargé chargé depuis la route : %s",
+                route.workflow_slug,
+            )
 
     model, instructions, voice, prompt_variables = _merge_voice_settings(
         session=session, overrides=route.overrides, settings=effective_settings
+    )
+
+    logger.info(
+        "Paramètres voix appliqués : modèle=%s, voix=%s, instructions=%s, variables=%s",
+        model,
+        voice,
+        instructions,
+        prompt_variables,
     )
 
     return TelephonyCallContext(
