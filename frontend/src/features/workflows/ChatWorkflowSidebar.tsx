@@ -53,7 +53,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   }, [onWorkflowActivated]);
 
   const loadWorkflows = useCallback(async () => {
-    if (!token || !isAdmin) {
+    if (!token) {
       setWorkflows([]);
       setHostedWorkflows([]);
       setSelectedHostedSlug(null);
@@ -72,20 +72,22 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     setLoading(true);
     setError(null);
     try {
-      const [items, hosted] = await Promise.all([
-        workflowsApi.list(token),
-        chatkitApi
-          .getHostedWorkflows(token)
-          .catch((err) => {
-            if (isApiError(err) && err.status === 404) {
-              return null;
-            }
-            if (import.meta.env.DEV) {
-              console.warn("Impossible de charger le workflow hébergé.", err);
-            }
+      const workflowsPromise = isAdmin
+        ? workflowsApi.list(token)
+        : Promise.resolve<WorkflowSummary[]>([]);
+      const hostedPromise = chatkitApi
+        .getHostedWorkflows(token)
+        .catch((err) => {
+          if (isApiError(err) && err.status === 404) {
             return null;
-          }),
-      ]);
+          }
+          if (import.meta.env.DEV) {
+            console.warn("Impossible de charger le workflow hébergé.", err);
+          }
+          return null;
+        });
+
+      const [items, hosted] = await Promise.all([workflowsPromise, hostedPromise]);
       setWorkflows(items);
       const hostedList = Array.isArray(hosted) ? hosted : [];
       setHostedWorkflows(hostedList);
@@ -287,17 +289,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       );
     }
 
-    if (!isAdmin) {
-      return (
-        <section className="chatkit-sidebar__section" aria-live="polite">
-          <h2 className="chatkit-sidebar__section-title">Workflow</h2>
-          <p className="chatkit-sidebar__section-text">
-            Votre rôle ne permet pas de modifier le workflow ChatKit.
-          </p>
-        </section>
-      );
-    }
-
     if (error) {
       return (
         <section className="chatkit-sidebar__section" aria-live="polite">
@@ -334,9 +325,11 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           <p className="chatkit-sidebar__section-text">
             Publiez un workflow pour qu'il soit disponible dans le chat.
           </p>
-          <button type="button" className="chatkit-sidebar__section-button" onClick={handleOpenBuilder}>
-            Ouvrir le workflow builder
-          </button>
+          {isAdmin ? (
+            <button type="button" className="chatkit-sidebar__section-button" onClick={handleOpenBuilder}>
+              Ouvrir le workflow builder
+            </button>
+          ) : null}
         </section>
       );
     }
@@ -384,7 +377,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
             );
           })}
         </ul>
-        {!hasLocalWorkflows ? (
+        {!hasLocalWorkflows && isAdmin ? (
           <button
             type="button"
             className="chatkit-sidebar__section-button"
