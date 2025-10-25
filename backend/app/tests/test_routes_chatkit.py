@@ -395,6 +395,100 @@ def test_download_attachment_missing_store(monkeypatch: pytest.MonkeyPatch) -> N
     asyncio.run(_run())
 
 
+def test_create_session_uses_managed_workflow_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _run() -> None:
+        settings = SimpleNamespace(
+            model_api_key="sk-test",
+            model_api_base="https://api.openai.com",
+            chatkit_workflow_id=None,
+        )
+        captured: dict[str, Any] = {}
+
+        class _StubService:
+            def get_current(self, session):  # type: ignore[no-untyped-def]
+                return SimpleNamespace()
+
+            def list_hosted_workflow_configs(self, session):  # type: ignore[no-untyped-def]
+                return (
+                    routes_chatkit.HostedWorkflowConfig(
+                        slug="ui-default",
+                        workflow_id="wf_ui",
+                        label="Workflow UI",
+                        description=None,
+                        managed=True,
+                    ),
+                )
+
+        async def _fake_create_session(user_id: str, *, workflow_id: str) -> dict[str, Any]:
+            captured["user_id"] = user_id
+            captured["workflow_id"] = workflow_id
+            return {"client_secret": {"value": "secret"}, "expires_at": "soon"}
+
+        monkeypatch.setattr(routes_chatkit, "WorkflowService", lambda: _StubService())
+        monkeypatch.setattr(
+            routes_chatkit,
+            "resolve_start_hosted_workflows",
+            lambda _definition: (),
+        )
+        monkeypatch.setattr(
+            routes_chatkit,
+            "create_chatkit_session",
+            _fake_create_session,
+        )
+
+        response = await routes_chatkit.create_session(
+            routes_chatkit.SessionRequest(),
+            current_user=_StubUser(),
+            session=SimpleNamespace(),
+            settings=settings,
+        )
+
+        assert response == {"client_secret": {"value": "secret"}, "expires_at": "soon"}
+        assert captured["workflow_id"] == "wf_ui"
+        assert captured["user_id"] == "user:user-1"
+
+    asyncio.run(_run())
+
+
+def test_create_session_without_any_hosted_workflow(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _run() -> None:
+        settings = SimpleNamespace(
+            model_api_key="sk-test",
+            model_api_base="https://api.openai.com",
+            chatkit_workflow_id=None,
+        )
+
+        class _StubService:
+            def get_current(self, session):  # type: ignore[no-untyped-def]
+                return SimpleNamespace()
+
+            def list_hosted_workflow_configs(self, session):  # type: ignore[no-untyped-def]
+                return ()
+
+        monkeypatch.setattr(routes_chatkit, "WorkflowService", lambda: _StubService())
+        monkeypatch.setattr(
+            routes_chatkit,
+            "resolve_start_hosted_workflows",
+            lambda _definition: (),
+        )
+
+        with pytest.raises(HTTPException) as excinfo:
+            await routes_chatkit.create_session(
+                routes_chatkit.SessionRequest(),
+                current_user=_StubUser(),
+                session=SimpleNamespace(),
+                settings=settings,
+            )
+
+        assert excinfo.value.status_code == status.HTTP_400_BAD_REQUEST
+        assert excinfo.value.detail == {
+            "error": "hosted_workflow_not_configured",
+            "message": "Aucun workflow hébergé n'est configuré sur le serveur.",
+        }
+
+    asyncio.run(_run())
+
+
 def test_demo_server_handles_attachment_creation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

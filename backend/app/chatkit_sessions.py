@@ -317,10 +317,10 @@ def _sanitize_forward_headers(
 async def create_chatkit_session(
     user_id: str,
     *,
-    workflow_id: str | None = None,
+    workflow_id: str,
 ) -> dict[str, Any]:
-    resolved_workflow_id = workflow_id or settings.chatkit_workflow_id
-    if not resolved_workflow_id:
+    normalized_workflow_id = workflow_id.strip()
+    if not normalized_workflow_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
@@ -330,7 +330,7 @@ async def create_chatkit_session(
         )
 
     payload = {
-        "workflow": {"id": resolved_workflow_id},
+        "workflow": {"id": normalized_workflow_id},
         "user": user_id,
         "chatkit_configuration": {
             "file_upload": {

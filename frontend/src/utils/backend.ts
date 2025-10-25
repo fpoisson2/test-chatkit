@@ -222,13 +222,66 @@ export type ChatKitWorkflowInfo = {
   updated_at: string;
 };
 
-export type HostedWorkflowMetadata = {
-  id: string;
+type HostedWorkflowApiEntry = {
+  id?: string | number | null;
   slug: string;
   label: string;
   description?: string | null;
   available: boolean;
+  managed?: boolean;
+  workflow_id?: string | number | null;
+  workflowId?: string | number | null;
+  remote_workflow_id?: string | number | null;
+  remoteWorkflowId?: string | number | null;
+};
+
+export type HostedWorkflowMetadata = {
+  id: string;
+  slug: string;
+  label: string;
+  description: string | null;
+  available: boolean;
   managed: boolean;
+};
+
+const coerceHostedWorkflowId = (entry: HostedWorkflowApiEntry): string => {
+  const candidate =
+    entry.id ??
+    entry.workflow_id ??
+    entry.workflowId ??
+    entry.remote_workflow_id ??
+    entry.remoteWorkflowId;
+
+  if (candidate == null) {
+    return entry.slug;
+  }
+
+  if (typeof candidate === "string") {
+    const normalized = candidate.trim();
+    return normalized || entry.slug;
+  }
+
+  if (typeof candidate === "number" && Number.isFinite(candidate)) {
+    return String(candidate);
+  }
+
+  return String(candidate) || entry.slug;
+};
+
+export const normalizeHostedWorkflowMetadata = (
+  entry: HostedWorkflowApiEntry,
+): HostedWorkflowMetadata => {
+  const rawDescription =
+    typeof entry.description === "string" ? entry.description.trim() : entry.description;
+
+  return {
+    id: coerceHostedWorkflowId(entry),
+    slug: entry.slug,
+    label: entry.label,
+    description: rawDescription ? String(rawDescription) : null,
+    available: Boolean(entry.available),
+    managed: Boolean(entry.managed),
+  };
 };
 
 let hostedWorkflowCache: HostedWorkflowMetadata[] | null | undefined;
@@ -319,11 +372,12 @@ export const chatkitApi = {
         const response = await requestWithFallback("/api/chatkit/hosted", {
           headers: withAuthHeaders(token),
         });
-        const payload = (await response.json()) as HostedWorkflowMetadata[];
+        const payload = (await response.json()) as HostedWorkflowApiEntry[];
+        const normalized = payload.map((entry) => normalizeHostedWorkflowMetadata(entry));
         if (useCache) {
-          hostedWorkflowCache = payload;
+          hostedWorkflowCache = normalized;
         }
-        return payload;
+        return normalized;
       } catch (error) {
         if (error instanceof ApiError && error.status === 404) {
           if (useCache) {
@@ -365,7 +419,9 @@ export const chatkitApi = {
       headers: withAuthHeaders(token),
       body: JSON.stringify(payload),
     });
-    const data = (await response.json()) as HostedWorkflowMetadata;
+    const data = normalizeHostedWorkflowMetadata(
+      (await response.json()) as HostedWorkflowApiEntry,
+    );
     hostedWorkflowCache = undefined;
     return data;
   },

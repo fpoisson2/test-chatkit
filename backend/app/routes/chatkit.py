@@ -347,9 +347,18 @@ async def create_session(
         if configs:
             target_config = configs[0]
 
+    if target_config is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "hosted_workflow_not_configured",
+                "message": "Aucun workflow hébergé n'est configuré sur le serveur.",
+            },
+        )
+
     session_secret = await create_chatkit_session(
         user_id,
-        workflow_id=target_config.workflow_id if target_config else None,
+        workflow_id=target_config.workflow_id,
     )
     return {
         "client_secret": session_secret["client_secret"],
