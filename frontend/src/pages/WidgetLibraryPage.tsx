@@ -6,6 +6,7 @@ import { WidgetPreviewModal } from "../components/WidgetPreviewModal";
 import { WidgetTemplateForm } from "../components/WidgetTemplateForm";
 import { WidgetTemplateGallery } from "../components/WidgetTemplateGallery";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
+import { AdminTabs } from "../components/AdminTabs";
 import {
   ApiError,
   isUnauthorizedError,
@@ -168,21 +169,23 @@ export const WidgetLibraryPage = () => {
   };
 
   return (
-    <ManagementPageLayout
-      actions={
-        <button
-          type="button"
-          className="management-header__icon-button"
-          aria-label="Créer un nouveau widget"
-          title="Nouveau widget"
-          onClick={() => setShowCreateModal(true)}
-        >
-          <svg aria-hidden={true} width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-          </svg>
-        </button>
-      }
-    >
+    <>
+      <AdminTabs activeTab="widgets" />
+      <ManagementPageLayout
+        actions={
+          <button
+            type="button"
+            className="management-header__icon-button"
+            aria-label="Créer un nouveau widget"
+            title="Nouveau widget"
+            onClick={() => setShowCreateModal(true)}
+          >
+            <svg aria-hidden={true} width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M10 4v12M4 10h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </button>
+        }
+      >
       {success ? <div className="alert alert--success">{success}</div> : null}
       {error ? <div className="alert alert--danger">{error}</div> : null}
 
@@ -233,7 +236,8 @@ export const WidgetLibraryPage = () => {
           onClose={() => setPreviewData(null)}
         />
       ) : null}
-    </ManagementPageLayout>
+      </ManagementPageLayout>
+    </>
   );
 };
 

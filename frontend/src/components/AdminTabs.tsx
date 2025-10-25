@@ -4,7 +4,7 @@ import { NavLink } from "react-router-dom";
 import { useAppLayout, useSidebarPortal } from "./AppLayout";
 import { useI18n } from "../i18n";
 
-type AdminTabKey = "users" | "models" | "settings";
+type AdminTabKey = "users" | "models" | "vector-stores" | "widgets" | "settings";
 
 type AdminTabsProps = {
   activeTab: AdminTabKey;
@@ -13,6 +13,8 @@ type AdminTabsProps = {
 const TAB_DEFINITIONS: { key: AdminTabKey; to: string; labelKey: string }[] = [
   { key: "users", to: "/admin", labelKey: "admin.tabs.users" },
   { key: "models", to: "/admin/models", labelKey: "admin.tabs.models" },
+  { key: "vector-stores", to: "/vector-stores", labelKey: "admin.tabs.vectorStores" },
+  { key: "widgets", to: "/widgets", labelKey: "admin.tabs.widgets" },
   { key: "settings", to: "/admin/settings", labelKey: "admin.tabs.settings" },
 ];
 

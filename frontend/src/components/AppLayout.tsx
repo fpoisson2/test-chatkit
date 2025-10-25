@@ -27,11 +27,7 @@ type NavigationItem = {
   isActive?: boolean;
 };
 
-type ApplicationKey =
-  | "chat"
-  | "workflows"
-  | "vector-stores"
-  | "widgets";
+type ApplicationKey = "chat" | "workflows";
 
 type ApplicationDescriptor = {
   key: ApplicationKey;
@@ -46,18 +42,6 @@ const APPLICATIONS: ApplicationDescriptor[] = [
     key: "workflows",
     labelKey: "app.sidebar.applications.workflows",
     path: "/workflows",
-    requiresAdmin: true,
-  },
-  {
-    key: "vector-stores",
-    labelKey: "app.sidebar.applications.vectorStores",
-    path: "/vector-stores",
-    requiresAdmin: true,
-  },
-  {
-    key: "widgets",
-    labelKey: "app.sidebar.applications.widgets",
-    path: "/widgets",
     requiresAdmin: true,
   },
 ];
