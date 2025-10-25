@@ -99,12 +99,19 @@ class SIPRegistrationConfig:
     password: str
     contact_host: str
     contact_port: int
+    transport: str | None = None
     expires: int = 3600
 
     def contact_uri(self) -> str:
         """Return a ``Contact`` header suitable for :mod:`aiosip` dialogs."""
 
-        return f"<sip:{self.username}@{self.contact_host}:{self.contact_port}>"
+        transport_suffix = ""
+        if self.transport:
+            transport_suffix = f";transport={self.transport}"
+        return (
+            f"<sip:{self.username}@{self.contact_host}:{self.contact_port}"
+            f"{transport_suffix}>"
+        )
 
 
 class SIPRegistrationManager:
@@ -149,6 +156,7 @@ class SIPRegistrationManager:
         settings: Any | None = None,
         contact_host: str | None = None,
         contact_port: int | None = None,
+        contact_transport: str | None = None,
     ) -> None:
         self._loop = loop or asyncio.get_event_loop()
         self._retry_interval = float(retry_interval)
@@ -170,6 +178,7 @@ class SIPRegistrationManager:
         self.settings = settings
         self.contact_host = contact_host
         self.contact_port = contact_port
+        self.contact_transport = self._normalize_transport(contact_transport)
 
     @property
     def last_error(self) -> BaseException | None:
@@ -310,6 +319,7 @@ class SIPRegistrationManager:
         local_addr = (config.contact_host, config.contact_port)
 
         if self._dialog is None:
+            dialog_kwargs = self._dialog_transport_kwargs(config.transport)
             self._dialog = await self._app.start_dialog(
                 from_uri=config.uri,
                 to_uri=config.uri,
@@ -317,6 +327,7 @@ class SIPRegistrationManager:
                 local_addr=local_addr,
                 remote_addr=remote_addr,
                 password=config.password,
+                **dialog_kwargs,
             )
 
         register_future = self._dialog.register(expires=config.expires)
@@ -380,11 +391,13 @@ class SIPRegistrationManager:
             self.apply_config(None)
             return
 
-        contact_host, contact_port = self._resolve_contact_endpoint(trunk_uri)
+        contact_host, contact_port, contact_transport = self._resolve_contact_endpoint(
+            stored_settings, trunk_uri
+        )
         if not contact_host or contact_port is None:
             LOGGER.warning(
                 "Impossible d'initialiser l'enregistrement SIP : contact "
-                "SIP_BIND_HOST/SIP_BIND_PORT manquant",
+                "sip_contact_host/sip_contact_port manquant",
             )
             self.apply_config(None)
             return
@@ -416,21 +429,27 @@ class SIPRegistrationManager:
             password=str(password),
             contact_host=str(contact_host),
             contact_port=int(contact_port),
+            transport=contact_transport,
         )
         LOGGER.info(
-            "Configuration SIP prête : trunk %s (contact %s:%s)",
+            "Configuration SIP prête : trunk %s (contact %s:%s, transport=%s)",
             config.uri,
             config.contact_host,
             config.contact_port,
+            config.transport or "par défaut",
         )
         self.apply_config(config)
 
     def _resolve_contact_endpoint(
-        self, trunk_uri: str
-    ) -> tuple[str | None, int | None]:
+        self, stored_settings: AppSettings | None, trunk_uri: str
+    ) -> tuple[str | None, int | None, str | None]:
         """Determine the contact host/port used for registration."""
 
         contact_host = self._normalize_optional_string(self.contact_host)
+        if contact_host is None and stored_settings is not None:
+            contact_host = self._normalize_optional_string(
+                getattr(stored_settings, "sip_contact_host", None)
+            )
         if contact_host is None and self.settings is not None:
             contact_host = self._normalize_optional_string(
                 getattr(self.settings, "sip_bind_host", None)
@@ -439,12 +458,24 @@ class SIPRegistrationManager:
         raw_port: int | str | None
         if self.contact_port is not None:
             raw_port = self.contact_port
+        elif stored_settings is not None:
+            raw_port = getattr(stored_settings, "sip_contact_port", None)
         elif self.settings is not None:
             raw_port = getattr(self.settings, "sip_bind_port", None)
         else:
             raw_port = None
 
         contact_port = self._normalize_port(raw_port)
+
+        transport = self._normalize_transport(self.contact_transport)
+        if transport is None and stored_settings is not None:
+            transport = self._normalize_transport(
+                getattr(stored_settings, "sip_contact_transport", None)
+            )
+        if transport is None and self.settings is not None:
+            transport = self._normalize_transport(
+                getattr(self.settings, "sip_contact_transport", None)
+            )
 
         if contact_host is None:
             inferred_host = self._infer_contact_host(trunk_uri)
@@ -458,7 +489,7 @@ class SIPRegistrationManager:
         if contact_port is None:
             contact_port = _DEFAULT_SIP_PORT
 
-        return contact_host, contact_port
+        return contact_host, contact_port, transport
 
     @staticmethod
     def _normalize_optional_string(value: Any) -> str | None:
@@ -480,6 +511,39 @@ class SIPRegistrationManager:
             LOGGER.warning("Port SIP invalide ignoré : %r", value)
             return None
         return port
+
+    @staticmethod
+    def _normalize_transport(value: Any) -> str | None:
+        if not isinstance(value, str):
+            return None
+        candidate = value.strip().lower()
+        if not candidate:
+            return None
+        if candidate not in {"udp", "tcp", "tls"}:
+            LOGGER.warning("Transport SIP invalide ignoré : %r", value)
+            return None
+        return candidate
+
+    @staticmethod
+    def _dialog_transport_kwargs(transport: str | None) -> dict[str, Any]:
+        if aiosip is None or not transport:
+            return {}
+        if transport == "udp":
+            try:
+                from aiosip.protocol import UDP  # type: ignore[attr-defined]
+            except Exception:  # pragma: no cover - depends on aiosip internals
+                LOGGER.warning(
+                    "Impossible de charger le protocole UDP pour aiosip, "
+                    "utilisation du transport par défaut",
+                )
+                return {}
+            return {"protocol": UDP}
+        LOGGER.warning(
+            "Transport SIP %s non pris en charge par aiosip, "
+            "utilisation du transport par défaut",
+            transport,
+        )
+        return {}
 
     def _infer_contact_host(self, trunk_uri: str) -> str | None:
         """Attempt to determine the outbound IP address for SIP traffic."""

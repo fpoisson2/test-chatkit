@@ -62,6 +62,7 @@ def test_apply_config_from_settings_infers_contact_host(
     assert isinstance(config, SIPRegistrationConfig)
     assert config.contact_host == "192.0.2.10"
     assert config.contact_port == _DEFAULT_SIP_PORT
+    assert config.transport is None
 
 
 def test_apply_config_from_settings_disables_without_contact(
@@ -97,3 +98,46 @@ def test_apply_config_from_settings_disables_without_contact(
         loop.close()
 
     assert applied == [None]
+
+
+def test_apply_config_from_settings_uses_stored_contact_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    applied: list[SIPRegistrationConfig | None] = []
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(
+            loop=loop,
+            settings=SimpleNamespace(
+                sip_bind_host=None,
+                sip_bind_port=None,
+                sip_username=None,
+                sip_password=None,
+                sip_contact_transport=None,
+            ),
+        )
+
+        def fake_apply_config(config: SIPRegistrationConfig | None) -> None:
+            applied.append(config)
+
+        monkeypatch.setattr(manager, "apply_config", fake_apply_config)
+
+        stored = AppSettings(thread_title_prompt="Prompt")
+        stored.sip_trunk_uri = "sip:alice@example.com"
+        stored.sip_trunk_username = "alice"
+        stored.sip_trunk_password = "secret"
+        stored.sip_contact_host = "198.51.100.5"
+        stored.sip_contact_port = 5070
+        stored.sip_contact_transport = "udp"
+
+        session = MagicMock()
+        loop.run_until_complete(manager.apply_config_from_settings(session, stored))
+    finally:
+        loop.close()
+
+    assert applied, "apply_config should be invoked"
+    config = applied[0]
+    assert isinstance(config, SIPRegistrationConfig)
+    assert config.contact_host == "198.51.100.5"
+    assert config.contact_port == 5070
+    assert config.transport == "udp"

@@ -185,6 +185,9 @@ class AppSettings(Base):
     sip_trunk_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
     sip_trunk_username: Mapped[str | None] = mapped_column(String(128), nullable=True)
     sip_trunk_password: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    sip_contact_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    sip_contact_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sip_contact_transport: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

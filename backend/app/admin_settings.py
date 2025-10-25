@@ -60,15 +60,51 @@ def _resolved_prompt(settings: AppSettings | None, default_prompt: str) -> str:
     return default_prompt
 
 
+def _normalize_optional_int(value: int | str | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        return None
+    if port <= 0 or port > 65535:
+        return None
+    return port
+
+
+_VALID_TRANSPORTS = {"udp", "tcp", "tls"}
+
+
+def _normalize_transport(value: str | None) -> str | None:
+    if value is None:
+        return None
+    candidate = value.strip().lower()
+    if not candidate:
+        return None
+    if candidate not in _VALID_TRANSPORTS:
+        return None
+    return candidate
+
+
 def _resolved_sip_values(
     settings: AppSettings | None,
-) -> tuple[str | None, str | None, str | None]:
+) -> tuple[
+    str | None,
+    str | None,
+    str | None,
+    str | None,
+    int | None,
+    str | None,
+]:
     if not settings:
-        return (None, None, None)
+        return (None, None, None, None, None, None)
     return (
         _normalize_optional_string(settings.sip_trunk_uri),
         _normalize_optional_string(settings.sip_trunk_username),
         _normalize_optional_string(settings.sip_trunk_password),
+        _normalize_optional_string(settings.sip_contact_host),
+        _normalize_optional_int(settings.sip_contact_port),
+        _normalize_transport(settings.sip_contact_transport),
     )
 
 
@@ -79,6 +115,9 @@ def update_admin_settings(
     sip_trunk_uri: str | None | object = _UNSET,
     sip_trunk_username: str | None | object = _UNSET,
     sip_trunk_password: str | None | object = _UNSET,
+    sip_contact_host: str | None | object = _UNSET,
+    sip_contact_port: int | str | None | object = _UNSET,
+    sip_contact_transport: str | None | object = _UNSET,
 ) -> AdminSettingsUpdateResult:
     default_prompt = _default_thread_title_prompt()
     stored_settings = get_thread_title_prompt_override(session)
@@ -112,6 +151,18 @@ def update_admin_settings(
         settings.sip_trunk_password = _normalize_optional_string(sip_trunk_password)
         changed = True
 
+    if sip_contact_host is not _UNSET:
+        settings.sip_contact_host = _normalize_optional_string(sip_contact_host)
+        changed = True
+
+    if sip_contact_port is not _UNSET:
+        settings.sip_contact_port = _normalize_optional_int(sip_contact_port)
+        changed = True
+
+    if sip_contact_transport is not _UNSET:
+        settings.sip_contact_transport = _normalize_transport(sip_contact_transport)
+        changed = True
+
     if not changed:
         return AdminSettingsUpdateResult(
             settings=None if created else settings,
@@ -125,18 +176,12 @@ def update_admin_settings(
         settings.thread_title_prompt = normalized_prompt
 
     has_custom_prompt = normalized_prompt != default_prompt
-    has_sip_values = any(
-        bool(_normalize_optional_string(value))
-        for value in (
-            settings.sip_trunk_uri,
-            settings.sip_trunk_username,
-            settings.sip_trunk_password,
-        )
-    )
+    resolved_sip_values = _resolved_sip_values(settings)
+    has_sip_values = any(value is not None for value in resolved_sip_values)
 
     if not has_custom_prompt and not has_sip_values:
         new_prompt = default_prompt
-        new_sip_values = (None, None, None)
+        new_sip_values = (None, None, None, None, None, None)
         if not created:
             session.delete(settings)
             session.commit()
@@ -151,7 +196,7 @@ def update_admin_settings(
     session.commit()
     session.refresh(settings)
     new_prompt = _resolved_prompt(settings, default_prompt)
-    new_sip_values = _resolved_sip_values(settings)
+    new_sip_values = resolved_sip_values
     return AdminSettingsUpdateResult(
         settings=settings,
         sip_changed=previous_sip_values != new_sip_values,
@@ -202,6 +247,15 @@ def serialize_admin_settings(
         ),
         "sip_trunk_password": _normalize_optional_string(
             settings.sip_trunk_password if settings else None
+        ),
+        "sip_contact_host": _normalize_optional_string(
+            settings.sip_contact_host if settings else None
+        ),
+        "sip_contact_port": _normalize_optional_int(
+            settings.sip_contact_port if settings else None
+        ),
+        "sip_contact_transport": _normalize_transport(
+            settings.sip_contact_transport if settings else None
         ),
         "created_at": settings.created_at if settings else None,
         "updated_at": settings.updated_at if settings else None,

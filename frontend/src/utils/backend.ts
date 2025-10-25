@@ -193,6 +193,9 @@ export type AppSettings = {
   sip_trunk_uri: string | null;
   sip_trunk_username: string | null;
   sip_trunk_password: string | null;
+  sip_contact_host: string | null;
+  sip_contact_port: number | null;
+  sip_contact_transport: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
@@ -202,6 +205,9 @@ export type AppSettingsUpdatePayload = {
   sip_trunk_uri?: string | null;
   sip_trunk_username?: string | null;
   sip_trunk_password?: string | null;
+  sip_contact_host?: string | null;
+  sip_contact_port?: number | null;
+  sip_contact_transport?: string | null;
 };
 
 export type ChatKitWorkflowInfo = {
