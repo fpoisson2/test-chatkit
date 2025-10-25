@@ -30,8 +30,9 @@ const setupHook = (overrides: Partial<Parameters<typeof useChatkitSession>[0]> =
   const hook = renderHook(() =>
     useChatkitSession({
       sessionOwner: "user@example.com",
+      storageKey: "user@example.com:hosted",
       token: null,
-      hostedFlowEnabled: true,
+      mode: "hosted",
       disableHostedFlow,
       ...overrides,
     }),
@@ -104,7 +105,7 @@ describe("useChatkitSession", () => {
     );
     expect(mockNormalizeSessionExpiration).toHaveBeenCalledWith("2024-01-01T00:00:00Z");
     expect(mockPersistChatKitSecret).toHaveBeenCalledWith(
-      "user@example.com",
+      "user@example.com:hosted",
       "fresh-secret",
       1_704_067_200_000,
     );
@@ -133,9 +134,18 @@ describe("useChatkitSession", () => {
     });
 
     expect(disableHostedFlow).toHaveBeenCalledWith("CHATKIT_WORKFLOW_ID manquant");
-    expect(mockClearStoredChatKitSecret).toHaveBeenCalledWith("user@example.com");
+    expect(mockClearStoredChatKitSecret).toHaveBeenCalledWith("user@example.com:hosted");
     expect(thrownError).toBeInstanceOf(Error);
     expect((thrownError as Error).message).toContain("Le flux hébergé a été désactivé");
     expect(result.current.error).toContain("Le flux hébergé a été désactivé");
+  });
+
+  it("rejette lorsqu'un client_secret est demandé en mode local", async () => {
+    const { result } = setupHook({ mode: "local" });
+
+    await expect(result.current.getClientSecret(null)).rejects.toThrow(
+      /client secret unavailable/i,
+    );
+    expect(fetchChatkitSessionSpy).not.toHaveBeenCalled();
   });
 });

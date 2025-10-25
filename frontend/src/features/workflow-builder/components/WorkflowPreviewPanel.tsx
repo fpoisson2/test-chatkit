@@ -7,7 +7,6 @@ import { ChatKitHost } from "../../../components/my-chat/ChatKitHost";
 import { ChatStatusMessage } from "../../../components/my-chat/ChatStatusMessage";
 import { usePreferredColorScheme } from "../../../hooks/usePreferredColorScheme";
 import { useChatkitSession } from "../../../hooks/useChatkitSession";
-import { useHostedFlow } from "../../../hooks/useHostedFlow";
 import { useWorkflowChatSession } from "../../../hooks/useWorkflowChatSession";
 import type { WorkflowSummary } from "../../../types/workflows";
 import { makeApiEndpointCandidates } from "../../../utils/backend";
@@ -21,6 +20,7 @@ type WorkflowPreviewPanelProps = {
   version: WorkflowVersionResponse | null;
   onActiveStepChange: (slug: string | null) => void;
   onExitPreview: () => void;
+  mode?: "local" | "hosted";
 };
 
 type WorkflowLogEntry = {
@@ -89,33 +89,36 @@ export function WorkflowPreviewPanel({
   version,
   onActiveStepChange,
   onExitPreview,
+  mode = "local",
 }: WorkflowPreviewPanelProps) {
   const { token, user } = useAuth();
   const { t } = useI18n();
   const preferredColorScheme = usePreferredColorScheme();
-  const { hostedFlowEnabled, disableHostedFlow } = useHostedFlow();
   const workflowId = workflow?.id ?? null;
   const versionId = version?.id ?? null;
   const [deviceId] = useState(() => getOrCreateDeviceId());
   const sessionOwner = `${user?.email ?? deviceId}:preview`;
+  const sessionStorageKey = `${sessionOwner}:${mode}`;
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
   const [initialThreadId, setInitialThreadId] = useState<string | null>(null);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
   const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
+  const disableHostedPreview = useCallback(() => {}, []);
 
   const { getClientSecret, isLoading, error, reportError, resetError } = useChatkitSession({
     sessionOwner,
+    storageKey: sessionStorageKey,
     token,
-    hostedFlowEnabled,
-    disableHostedFlow,
+    mode,
+    disableHostedFlow: disableHostedPreview,
   });
 
   useEffect(() => {
-    clearStoredChatKitSecret(sessionOwner);
+    clearStoredChatKitSecret(sessionStorageKey);
     setInitialThreadId(null);
     setChatInstanceKey((value) => value + 1);
     onActiveStepChange(null);
-  }, [onActiveStepChange, sessionOwner, workflowId, versionId]);
+  }, [onActiveStepChange, sessionStorageKey, workflowId, versionId]);
 
   const endpointCandidates = useMemo(
     () => makeApiEndpointCandidates(backendUrl, "/api/chatkit"),
@@ -124,7 +127,7 @@ export function WorkflowPreviewPanel({
 
   const resolveApiConfig = useCallback(
     (): ChatKitOptions["api"] => {
-      if (hostedFlowEnabled) {
+      if (mode === "hosted") {
         return { getClientSecret };
       }
 
@@ -155,7 +158,7 @@ export function WorkflowPreviewPanel({
 
       return { url: customApiUrl, fetch: authFetch, ...(domainKey ? { domainKey } : {}) } as ChatKitOptions["api"];
     },
-    [endpointCandidates, getClientSecret, hostedFlowEnabled, token],
+    [endpointCandidates, getClientSecret, mode, token],
   );
 
   const handleLog = useCallback(
@@ -234,6 +237,7 @@ export function WorkflowPreviewPanel({
     activeWorkflow: workflow,
     initialThreadId,
     reportError,
+    mode,
   });
 
   useEffect(() => {

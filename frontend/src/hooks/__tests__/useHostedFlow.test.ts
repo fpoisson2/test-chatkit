@@ -14,6 +14,7 @@ describe("useHostedFlow", () => {
 
     const { result } = renderHook(() => useHostedFlow());
 
+    expect(result.current.mode).toBe("hosted");
     expect(result.current.hostedFlowEnabled).toBe(true);
   });
 
@@ -23,17 +24,19 @@ describe("useHostedFlow", () => {
 
     const { result } = renderHook(() => useHostedFlow({ onDisable }));
 
-    expect(result.current.hostedFlowEnabled).toBe(false);
+    expect(result.current.mode).toBe("local");
 
     act(() => {
-      result.current.enableHostedFlow();
+      result.current.setMode("hosted");
     });
     expect(result.current.hostedFlowEnabled).toBe(true);
+    expect(result.current.mode).toBe("hosted");
 
     act(() => {
       result.current.disableHostedFlow("test");
     });
 
+    expect(result.current.mode).toBe("local");
     expect(result.current.hostedFlowEnabled).toBe(false);
     expect(onDisable).toHaveBeenCalledTimes(1);
   });

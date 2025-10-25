@@ -8,7 +8,7 @@ import { ChatSidebar } from "./components/my-chat/ChatSidebar";
 import { ChatStatusMessage } from "./components/my-chat/ChatStatusMessage";
 import { usePreferredColorScheme } from "./hooks/usePreferredColorScheme";
 import { useChatkitSession } from "./hooks/useChatkitSession";
-import { useHostedFlow } from "./hooks/useHostedFlow";
+import { useHostedFlow, type HostedFlowMode } from "./hooks/useHostedFlow";
 import { useWorkflowChatSession } from "./hooks/useWorkflowChatSession";
 import { useWorkflowVoiceSession } from "./hooks/useWorkflowVoiceSession";
 import { getOrCreateDeviceId } from "./utils/device";
@@ -43,7 +43,22 @@ type ClientToolCall = WeatherToolCall;
 type ResetChatStateOptions = {
   workflowSlug?: string | null;
   preserveStoredThread?: boolean;
+  targetMode?: "local" | "hosted";
 };
+
+const HOSTED_WORKFLOW_KEY = "hosted";
+const DEFAULT_WORKFLOW_STORAGE_KEY = "__default__";
+
+const normalizeWorkflowStorageKey = (slug: string | null | undefined) => {
+  const trimmed = slug?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : DEFAULT_WORKFLOW_STORAGE_KEY;
+};
+
+const resolvePersistenceSlug = (mode: "local" | "hosted", slug: string | null) =>
+  mode === "hosted" ? HOSTED_WORKFLOW_KEY : slug;
+
+const buildSessionStorageKey = (owner: string, slug: string | null | undefined) =>
+  `${owner}:${normalizeWorkflowStorageKey(slug)}`;
 
 type SecureUrlNormalizationResult =
   | { kind: "ok"; url: string; wasUpgraded: boolean }
@@ -107,21 +122,45 @@ export function MyChat() {
   const sessionOwner = user?.email ?? deviceId;
   const [activeWorkflow, setActiveWorkflow] = useState<WorkflowSummary | null>(null);
   const activeWorkflowSlug = activeWorkflow?.slug ?? null;
-  const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
-    loadStoredThreadId(sessionOwner, activeWorkflowSlug),
-  );
+  const [workflowModes, setWorkflowModes] = useState<Record<string, HostedFlowMode>>({});
   const [chatInstanceKey, setChatInstanceKey] = useState(0);
   const lastThreadSnapshotRef = useRef<Record<string, unknown> | null>(null);
   const previousSessionOwnerRef = useRef<string | null>(null);
   const missingDomainKeyWarningShownRef = useRef(false);
   const requestRefreshRef = useRef<((context?: string) => Promise<void> | undefined) | null>(null);
   const stopVoiceSessionRef = useRef<(() => void) | null>(null);
+  const resetChatStateRef = useRef<((options?: ResetChatStateOptions) => void) | null>(null);
+
+  const { mode, setMode, hostedFlowEnabled, disableHostedFlow } = useHostedFlow({
+    onDisable: () =>
+      resetChatStateRef.current?.({
+        workflowSlug: HOSTED_WORKFLOW_KEY,
+        targetMode: "hosted",
+      }),
+  });
+
+  const persistenceSlug = resolvePersistenceSlug(mode, activeWorkflowSlug);
+  const sessionStorageKey = buildSessionStorageKey(sessionOwner, persistenceSlug);
+
+  const [initialThreadId, setInitialThreadId] = useState<string | null>(() =>
+    loadStoredThreadId(sessionOwner, persistenceSlug),
+  );
 
   const resetChatState = useCallback(
-    ({ workflowSlug, preserveStoredThread = false }: ResetChatStateOptions = {}) => {
-      clearStoredChatKitSecret(sessionOwner);
+    ({
+      workflowSlug,
+      preserveStoredThread = false,
+      targetMode,
+    }: ResetChatStateOptions = {}) => {
+      const effectiveMode = targetMode ?? mode;
+      const resolvedWorkflowSlug = resolvePersistenceSlug(
+        effectiveMode,
+        workflowSlug ?? activeWorkflowSlug,
+      );
+      const storageKey = buildSessionStorageKey(sessionOwner, resolvedWorkflowSlug);
 
-      const resolvedWorkflowSlug = workflowSlug ?? activeWorkflowSlug;
+      clearStoredChatKitSecret(storageKey);
+
       if (!preserveStoredThread) {
         clearStoredThreadId(sessionOwner, resolvedWorkflowSlug);
       }
@@ -137,17 +176,33 @@ export function MyChat() {
       // Arrêter la session vocale si elle est en cours
       stopVoiceSessionRef.current?.();
     },
-    [activeWorkflowSlug, sessionOwner],
+    [activeWorkflowSlug, mode, sessionOwner],
   );
 
-  const { hostedFlowEnabled, disableHostedFlow } = useHostedFlow({
-    onDisable: resetChatState,
-  });
+  useEffect(() => {
+    resetChatStateRef.current = resetChatState;
+    return () => {
+      if (resetChatStateRef.current === resetChatState) {
+        resetChatStateRef.current = null;
+      }
+    };
+  }, [resetChatState]);
+
+  useEffect(() => {
+    const key = normalizeWorkflowStorageKey(activeWorkflowSlug);
+    setWorkflowModes((current) => {
+      if (current[key] === mode) {
+        return current;
+      }
+      return { ...current, [key]: mode };
+    });
+  }, [activeWorkflowSlug, mode]);
 
   const { getClientSecret, isLoading, error, reportError, resetError } = useChatkitSession({
     sessionOwner,
+    storageKey: sessionStorageKey,
     token,
-    hostedFlowEnabled,
+    mode,
     disableHostedFlow,
   });
 
@@ -177,28 +232,43 @@ export function MyChat() {
         const currentId = current?.id ?? null;
         const nextId = workflow?.id ?? null;
 
+        const workflowSlug = workflow?.slug ?? null;
+        const workflowKey = normalizeWorkflowStorageKey(workflowSlug);
+        const defaultModeForWorkflow = reason === "initial" ? mode : "local";
+        const nextMode = workflowModes[workflowKey] ?? defaultModeForWorkflow;
+
+        if (nextMode !== mode) {
+          setMode(nextMode);
+        }
+
         if (reason === "user" && currentId !== nextId) {
-          resetChatState({ workflowSlug: workflow?.slug, preserveStoredThread: true });
+          resetChatState({
+            workflowSlug,
+            preserveStoredThread: true,
+            targetMode: nextMode,
+          });
           resetError();
         }
 
         return workflow;
       });
     },
-    [resetChatState, resetError],
+    [mode, resetChatState, resetError, setMode, workflowModes],
   );
 
   useEffect(() => {
     const previousOwner = previousSessionOwnerRef.current;
     if (previousOwner && previousOwner !== sessionOwner) {
-      clearStoredChatKitSecret(previousOwner);
+      clearStoredChatKitSecret(buildSessionStorageKey(previousOwner, HOSTED_WORKFLOW_KEY));
+      clearStoredChatKitSecret(buildSessionStorageKey(previousOwner, activeWorkflowSlug));
+      clearStoredThreadId(previousOwner, HOSTED_WORKFLOW_KEY);
       clearStoredThreadId(previousOwner, activeWorkflowSlug);
     }
     previousSessionOwnerRef.current = sessionOwner;
 
-    const storedThreadId = loadStoredThreadId(sessionOwner, activeWorkflowSlug);
+    const storedThreadId = loadStoredThreadId(sessionOwner, persistenceSlug);
     setInitialThreadId((current) => (current === storedThreadId ? current : storedThreadId));
-  }, [activeWorkflowSlug, sessionOwner]);
+  }, [activeWorkflowSlug, persistenceSlug, sessionOwner]);
 
   
 
@@ -675,7 +745,7 @@ export function MyChat() {
         },
         onThreadChange: ({ threadId }: { threadId: string | null }) => {
           console.debug("[ChatKit] thread change", { threadId });
-          persistStoredThreadId(sessionOwner, threadId, activeWorkflowSlug);
+          persistStoredThreadId(sessionOwner, threadId, persistenceSlug);
           setInitialThreadId((current) => (current === threadId ? current : threadId));
         },
         onThreadLoadStart: ({ threadId }: { threadId: string }) => {
@@ -714,6 +784,7 @@ export function MyChat() {
     activeWorkflow,
     initialThreadId,
     reportError,
+    mode,
   });
 
   useEffect(() => {
