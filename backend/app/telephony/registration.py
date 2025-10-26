@@ -33,14 +33,18 @@ import asyncio
 import collections
 import contextlib
 import errno
+import inspect
 import ipaddress
 import logging
+import secrets
 import socket
 import types
 import urllib.parse
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from typing import Any
+
+from multidict import CIMultiDict
 
 if not hasattr(asyncio, "coroutine"):  # pragma: no cover - compatibility shim
     asyncio.coroutine = types.coroutine  # type: ignore[attr-defined]
@@ -95,7 +99,31 @@ else:
 
         ha1 = _aiosip_auth.md5digest(username, auth["realm"], password)
         ha2 = _aiosip_auth.md5digest(method, uri)
-        auth["response"] = _aiosip_auth.md5digest(ha1, auth["nonce"], ha2)
+
+        qop_value = auth.get("qop")
+        qop_token: str | None = None
+        if qop_value:
+            candidates = [candidate.strip() for candidate in qop_value.split(",")]
+            candidates = [candidate for candidate in candidates if candidate]
+            if candidates:
+                for candidate in candidates:
+                    if candidate.lower() == "auth":
+                        qop_token = candidate
+                        break
+                if qop_token is None:
+                    qop_token = candidates[0]
+
+        if qop_token:
+            cnonce = secrets.token_hex(16)
+            nc_value = "00000001"
+            auth["qop"] = qop_token
+            auth["cnonce"] = cnonce
+            auth["nc"] = nc_value
+            auth["response"] = _aiosip_auth.md5digest(
+                ha1, auth["nonce"], nc_value, cnonce, qop_token, ha2
+            )
+        else:
+            auth["response"] = _aiosip_auth.md5digest(ha1, auth["nonce"], ha2)
         return auth
 
     _aiosip_auth.Auth.from_authenticate_header = classmethod(  # type: ignore[assignment]
@@ -416,6 +444,8 @@ class SIPRegistrationManager:
         local_host = config.bind_host or config.contact_host
         local_addr = (local_host, config.contact_port)
 
+        request_uri = self._registrar_request_uri(config.uri)
+
         if self._dialog is None:
             dialog_kwargs = self._dialog_transport_kwargs(config.transport)
             bind_error: BaseException | None = None
@@ -423,7 +453,7 @@ class SIPRegistrationManager:
                 try:
                     self._dialog = await self._app.start_dialog(
                         from_uri=config.uri,
-                        to_uri=config.uri,
+                        to_uri=request_uri,
                         contact_uri=config.contact_uri(),
                         local_addr=local_addr,
                         remote_addr=remote_addr,
@@ -451,7 +481,10 @@ class SIPRegistrationManager:
                     "réseau locale et que le port n'est pas déjà utilisé."
                 ) from bind_error
 
-        register_future = self._dialog.register(expires=config.expires)
+        register_headers = self._build_register_headers(config)
+        register_future = self._call_dialog_register(
+            self._dialog, expires=config.expires, headers=register_headers
+        )
         await asyncio.wait_for(register_future, timeout=self._register_timeout)
 
         LOGGER.info(
@@ -474,7 +507,14 @@ class SIPRegistrationManager:
 
         if dialog is not None:
             with contextlib.suppress(Exception):  # pragma: no cover - network dependent
-                unregister_future = dialog.register(expires=0)
+                headers = (
+                    self._build_register_headers(previous_config)
+                    if previous_config is not None
+                    else None
+                )
+                unregister_future = self._call_dialog_register(
+                    dialog, expires=0, headers=headers
+                )
                 await asyncio.wait_for(
                     unregister_future, timeout=self._register_timeout
                 )
@@ -750,11 +790,80 @@ class SIPRegistrationManager:
         return f"{scheme}:{normalized_user}@{normalized_host}"
 
     @staticmethod
+    def _registrar_request_uri(trunk_uri: str) -> str:
+        candidate = SIPRegistrationManager._normalize_optional_string(trunk_uri)
+        if not candidate:
+            return "sip:"
+
+        trimmed = candidate.strip()
+        if trimmed.startswith("<") and trimmed.endswith(">"):
+            trimmed = trimmed[1:-1].strip()
+
+        scheme = "sip"
+        remainder = trimmed
+        lower = trimmed.lower()
+        if lower.startswith("sip:") or lower.startswith("sips:"):
+            scheme, remainder = trimmed.split(":", 1)
+        remainder = remainder.lstrip("/")
+
+        host_part = remainder
+        if "@" in remainder:
+            _, host_part = remainder.rsplit("@", 1)
+
+        host_part = host_part.lstrip("/")
+        host_part = host_part.split(";", 1)[0]
+        host_part = host_part.split("?", 1)[0]
+
+        if not host_part:
+            return f"{scheme}:"
+
+        return f"{scheme}:{host_part}"
+
+    @staticmethod
+    def _format_register_to_header(uri: str) -> str | None:
+        candidate = SIPRegistrationManager._normalize_optional_string(uri)
+        if not candidate:
+            return None
+
+        trimmed = candidate.strip()
+        if "<" in trimmed or ">" in trimmed:
+            return trimmed
+
+        return f"<{trimmed}>"
+
+    def _build_register_headers(
+        self, config: SIPRegistrationConfig
+    ) -> CIMultiDict[str]:
+        headers: CIMultiDict[str] = CIMultiDict()
+        to_header = self._format_register_to_header(config.uri)
+        if to_header:
+            headers["To"] = to_header
+        return headers
+
+    @staticmethod
     def _normalize_optional_string(value: Any) -> str | None:
         if not isinstance(value, str):
             return None
         candidate = value.strip()
         return candidate or None
+
+    def _call_dialog_register(
+        self,
+        dialog: Any,
+        *,
+        expires: int,
+        headers: CIMultiDict[str] | None,
+    ):
+        register_callable = dialog.register
+        kwargs: dict[str, Any] = {"expires": expires}
+        if headers:
+            try:
+                signature = inspect.signature(register_callable)
+            except (TypeError, ValueError):
+                signature = None
+            if signature is not None and "headers" in signature.parameters:
+                kwargs["headers"] = headers
+        return register_callable(**kwargs)
 
     @staticmethod
     def _normalize_port(value: Any) -> int | None:
