@@ -347,6 +347,8 @@ class AvailableModelBase(BaseModel):
         None
     )
     supports_reasoning: bool = False
+    supports_previous_response_id: bool = True
+    supports_reasoning_summary: bool = True
 
     @field_validator("provider_id")
     @classmethod
@@ -381,6 +383,47 @@ class AvailableModelBase(BaseModel):
 
 class AvailableModelCreateRequest(AvailableModelBase):
     pass
+
+
+class AvailableModelUpdateRequest(BaseModel):
+    name: constr(strip_whitespace=True, min_length=1, max_length=128) | None = None
+    display_name: (
+        constr(strip_whitespace=True, min_length=1, max_length=128) | None
+    ) = None
+    description: (
+        constr(strip_whitespace=True, min_length=1, max_length=512) | None
+    ) = None
+    provider_id: (
+        constr(strip_whitespace=True, min_length=1, max_length=128) | None
+    ) = None
+    provider_slug: (
+        constr(strip_whitespace=True, min_length=1, max_length=64) | None
+    ) = None
+    supports_reasoning: bool | None = None
+    supports_previous_response_id: bool | None = None
+    supports_reasoning_summary: bool | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("provider_id")
+    @classmethod
+    def _normalize_provider_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        candidate = value.strip()
+        if not candidate:
+            raise ValueError("provider_id ne peut pas être vide")
+        return candidate
+
+    @field_validator("provider_slug")
+    @classmethod
+    def _normalize_provider_slug(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        candidate = value.strip()
+        if not candidate:
+            raise ValueError("provider_slug ne peut pas être vide")
+        return candidate.lower()
 
 
 class AvailableModelResponse(AvailableModelBase):

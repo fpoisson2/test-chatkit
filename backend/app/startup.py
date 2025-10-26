@@ -156,6 +156,28 @@ def _run_ad_hoc_migrations() -> None:
                         "VARCHAR(64)"
                     )
                 )
+            if "supports_previous_response_id" not in available_models_columns:
+                logger.info(
+                    "Migration du schéma available_models : ajout de la colonne "
+                    "supports_previous_response_id"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE available_models ADD COLUMN "
+                        "supports_previous_response_id BOOLEAN NOT NULL DEFAULT TRUE"
+                    )
+                )
+            if "supports_reasoning_summary" not in available_models_columns:
+                logger.info(
+                    "Migration du schéma available_models : ajout de la colonne "
+                    "supports_reasoning_summary"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE available_models ADD COLUMN "
+                        "supports_reasoning_summary BOOLEAN NOT NULL DEFAULT TRUE"
+                    )
+                )
 
         if "voice_settings" not in table_names:
             logger.info("Création de la table voice_settings manquante")

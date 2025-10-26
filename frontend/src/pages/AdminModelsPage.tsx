@@ -1,4 +1,11 @@
-import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from "react";
+import {
+  ChangeEvent,
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
@@ -8,6 +15,7 @@ import {
   AppSettings,
   AvailableModel,
   AvailableModelPayload,
+  AvailableModelUpdatePayload,
   appSettingsApi,
   isUnauthorizedError,
   modelRegistryApi,
@@ -78,6 +86,43 @@ const buildProviderOptions = (settings: AppSettings): ProviderOption[] => {
   );
 };
 
+type ModelFormState = {
+  name: string;
+  display_name: string;
+  description: string;
+  supports_reasoning: boolean;
+  supports_previous_response_id: boolean;
+  supports_reasoning_summary: boolean;
+  provider_id: string;
+  provider_slug: string;
+};
+
+const buildDefaultFormState = (
+  overrides: Partial<ModelFormState> = {},
+): ModelFormState => ({
+  name: "",
+  display_name: "",
+  description: "",
+  supports_reasoning: false,
+  supports_previous_response_id: true,
+  supports_reasoning_summary: true,
+  provider_id: "",
+  provider_slug: "",
+  ...overrides,
+});
+
+const buildFormFromModel = (model: AvailableModel): ModelFormState =>
+  buildDefaultFormState({
+    name: model.name,
+    display_name: model.display_name ?? "",
+    description: model.description ?? "",
+    supports_reasoning: model.supports_reasoning,
+    supports_previous_response_id: model.supports_previous_response_id,
+    supports_reasoning_summary: model.supports_reasoning_summary,
+    provider_id: model.provider_id ?? "",
+    provider_slug: model.provider_slug ?? "",
+  });
+
 export const AdminModelsPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
@@ -85,16 +130,47 @@ export const AdminModelsPage = () => {
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [form, setForm] = useState<AvailableModelPayload>({
-    name: "",
-    display_name: "",
-    description: "",
-    supports_reasoning: false,
-    provider_id: "",
-    provider_slug: "",
-  });
+  const [form, setForm] = useState<ModelFormState>(() => buildDefaultFormState());
+  const [editingModelId, setEditingModelId] = useState<number | null>(null);
   const [providerOptions, setProviderOptions] = useState<ProviderOption[]>([]);
   const [isLoadingProviders, setLoadingProviders] = useState(false);
+
+  const mergedProviderOptions = useMemo(() => {
+    const options = new Map<string, ProviderOption>();
+    for (const option of providerOptions) {
+      options.set(option.slug, option);
+    }
+    for (const model of models) {
+      if (!model.provider_slug) {
+        continue;
+      }
+      const slug = model.provider_slug.toLowerCase();
+      if (!options.has(slug)) {
+        options.set(slug, {
+          id: model.provider_id ?? null,
+          slug,
+          name: model.provider_slug,
+          isDefault: false,
+        });
+      }
+    }
+    return Array.from(options.values()).sort((a, b) =>
+      (a.name || a.slug).localeCompare(b.name || b.slug, "fr"),
+    );
+  }, [models, providerOptions]);
+
+  const resetForm = useCallback((overrides: Partial<ModelFormState> = {}) => {
+    setForm(buildDefaultFormState(overrides));
+    setEditingModelId(null);
+  }, []);
+
+  const isEditing = editingModelId !== null;
+
+  const editingModelName = isEditing
+    ? form.name.trim() ||
+      models.find((candidate) => candidate.id === editingModelId)?.name ||
+      form.name
+    : "";
 
   const refreshModels = useCallback(async () => {
     if (!token) {
@@ -163,7 +239,9 @@ export const AdminModelsPage = () => {
       }));
       return;
     }
-    const option = providerOptions.find((candidate) => candidate.slug === slug);
+    const option = mergedProviderOptions.find(
+      (candidate) => candidate.slug === slug,
+    );
     setForm((prev) => ({
       ...prev,
       provider_id: option?.id ?? "",
@@ -191,39 +269,96 @@ export const AdminModelsPage = () => {
       return;
     }
     setError(null);
+    setSuccess(null);
+
     const trimmedName = form.name.trim();
     if (!trimmedName) {
       setError(t("admin.models.errors.missingModelId"));
       return;
     }
-    const trimmedProviderSlug = form.provider_slug?.trim();
+
+    const trimmedProviderSlug = form.provider_slug.trim();
     if (!trimmedProviderSlug) {
       setError(t("admin.models.errors.missingProvider"));
       return;
     }
 
+    const normalizedProviderSlug = trimmedProviderSlug.toLowerCase();
+    const providerOption = mergedProviderOptions.find(
+      (candidate) => candidate.slug === normalizedProviderSlug,
+    );
+    const providerIdFromOption = providerOption?.id?.trim() ?? null;
+    const providerIdFromForm = form.provider_id.trim()
+      ? form.provider_id.trim()
+      : null;
+    const providerId = providerIdFromOption ?? providerIdFromForm;
+
+    const trimmedDisplayName = form.display_name.trim();
+    const trimmedDescription = form.description.trim();
+
+    if (editingModelId !== null) {
+      const payload: AvailableModelUpdatePayload = {
+        name: trimmedName,
+        display_name: trimmedDisplayName ? trimmedDisplayName : null,
+        description: trimmedDescription ? trimmedDescription : null,
+        supports_reasoning: form.supports_reasoning,
+        supports_previous_response_id: form.supports_previous_response_id,
+        supports_reasoning_summary: form.supports_reasoning_summary,
+        provider_id: providerId,
+        provider_slug: normalizedProviderSlug,
+      };
+
+      try {
+        const updated = await modelRegistryApi.update(
+          token,
+          editingModelId,
+          payload,
+        );
+        setModels((prev) =>
+          sortModels(
+            prev.map((item) => (item.id === updated.id ? updated : item)),
+          ),
+        );
+        resetForm({
+          provider_id: updated.provider_id ?? "",
+          provider_slug: updated.provider_slug ?? "",
+        });
+        setSuccess(t("admin.models.feedback.updated", { model: updated.name }));
+      } catch (err) {
+        if (isUnauthorizedError(err)) {
+          logout();
+          setError("Session expirée, veuillez vous reconnecter.");
+          return;
+        }
+        setSuccess(null);
+        setError(
+          err instanceof Error
+            ? err.message
+            : t("admin.models.errors.updateFailed"),
+        );
+      }
+      return;
+    }
+
     const payload: AvailableModelPayload = {
       name: trimmedName,
-      display_name: form.display_name?.trim() ? form.display_name.trim() : null,
-      description: form.description?.trim() ? form.description.trim() : null,
+      display_name: trimmedDisplayName ? trimmedDisplayName : null,
+      description: trimmedDescription ? trimmedDescription : null,
       supports_reasoning: form.supports_reasoning,
-      provider_id: form.provider_id?.trim() ? form.provider_id.trim() : null,
-      provider_slug: trimmedProviderSlug.toLowerCase(),
+      supports_previous_response_id: form.supports_previous_response_id,
+      supports_reasoning_summary: form.supports_reasoning_summary,
+      provider_id: providerId,
+      provider_slug: normalizedProviderSlug,
     };
 
     try {
       const created = await modelRegistryApi.create(token, payload);
       setModels((prev) => sortModels([...prev, created]));
-      setForm((prev) => ({
-        name: "",
-        display_name: "",
-        description: "",
-        supports_reasoning: false,
-        provider_id: prev.provider_id ?? "",
-        provider_slug: prev.provider_slug ?? "",
-      }));
-      setSuccess(`Modèle « ${created.name} » ajouté avec succès.`);
-      setError(null);
+      resetForm({
+        provider_id: created.provider_id ?? "",
+        provider_slug: created.provider_slug ?? "",
+      });
+      setSuccess(t("admin.models.feedback.created", { model: created.name }));
     } catch (err) {
       if (isUnauthorizedError(err)) {
         logout();
@@ -232,9 +367,27 @@ export const AdminModelsPage = () => {
       }
       setSuccess(null);
       setError(
-        err instanceof Error ? err.message : "Impossible d'ajouter le modèle.",
+        err instanceof Error
+          ? err.message
+          : t("admin.models.errors.createFailed"),
       );
     }
+  };
+
+  const handleEdit = (model: AvailableModel) => {
+    setEditingModelId(model.id);
+    setForm(buildFormFromModel(model));
+    setError(null);
+    setSuccess(null);
+  };
+
+  const handleCancelEdit = () => {
+    resetForm({
+      provider_id: form.provider_id,
+      provider_slug: form.provider_slug,
+    });
+    setError(null);
+    setSuccess(null);
   };
 
   const handleDelete = async (model: AvailableModel) => {
@@ -248,7 +401,10 @@ export const AdminModelsPage = () => {
     try {
       await modelRegistryApi.delete(token, model.id);
       setModels((prev) => prev.filter((item) => item.id !== model.id));
-      setSuccess(`Modèle « ${model.name} » supprimé.`);
+      if (editingModelId === model.id) {
+        resetForm();
+      }
+      setSuccess(t("admin.models.feedback.deleted", { model: model.name }));
       setError(null);
     } catch (err) {
       if (isUnauthorizedError(err)) {
@@ -271,13 +427,25 @@ export const AdminModelsPage = () => {
         <div className="admin-grid">
           <section className="admin-card">
             <div>
-              <h2 className="admin-card__title">Ajouter un modèle</h2>
+              <h2 className="admin-card__title">
+                {isEditing
+                  ? t("admin.models.form.editTitle")
+                  : t("admin.models.form.createTitle")}
+              </h2>
               <p className="admin-card__subtitle">
-                Déclarez un modèle accessible dans le workflow builder et
-                précisez s'il supporte le raisonnement.
+                {isEditing
+                  ? t("admin.models.form.editSubtitle")
+                  : t("admin.models.form.createSubtitle")}
               </p>
             </div>
             <form className="admin-form" onSubmit={handleSubmit}>
+              {isEditing && (
+                <div className="alert alert--info" role="status">
+                  {t("admin.models.form.editingNotice", {
+                    model: editingModelName,
+                  })}
+                </div>
+              )}
               <div className="admin-form__row">
                 <label className="label">
                   {t("admin.models.form.modelIdLabel")}
@@ -297,7 +465,7 @@ export const AdminModelsPage = () => {
                   <input
                     className="input"
                     type="text"
-                    value={form.display_name ?? ""}
+                    value={form.display_name}
                     onChange={(event) =>
                       setForm((prev) => ({
                         ...prev,
@@ -312,7 +480,7 @@ export const AdminModelsPage = () => {
                 {t("admin.models.form.providerSelectLabel")}
                 <select
                   className="input"
-                  value={form.provider_slug ?? ""}
+                  value={form.provider_slug}
                   onChange={handleProviderChange}
                   disabled={isLoading || isLoadingProviders}
                 >
@@ -321,7 +489,7 @@ export const AdminModelsPage = () => {
                       ? t("admin.models.form.providerSelectLoading")
                       : t("admin.models.form.providerSelectPlaceholder")}
                   </option>
-                  {providerOptions.map((option) => (
+                  {mergedProviderOptions.map((option) => (
                     <option key={option.slug} value={option.slug}>
                       {renderProviderOptionLabel(option)}
                     </option>
@@ -336,7 +504,7 @@ export const AdminModelsPage = () => {
                 <textarea
                   className="input"
                   rows={3}
-                  value={form.description ?? ""}
+                  value={form.description}
                   onChange={(event) =>
                     setForm((prev) => ({
                       ...prev,
@@ -360,13 +528,50 @@ export const AdminModelsPage = () => {
                 Modèle de raisonnement (affiche les options avancées dans le
                 workflow builder)
               </label>
+              <label className="checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={form.supports_previous_response_id}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      supports_previous_response_id: event.target.checked,
+                    }))
+                  }
+                />
+                {t("admin.models.form.supportsPreviousResponseId")}
+              </label>
+              <label className="checkbox-field">
+                <input
+                  type="checkbox"
+                  checked={form.supports_reasoning_summary}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      supports_reasoning_summary: event.target.checked,
+                    }))
+                  }
+                />
+                {t("admin.models.form.supportsReasoningSummary")}
+              </label>
               <div className="admin-form__actions">
+                {isEditing && (
+                  <button
+                    type="button"
+                    className="button button--ghost"
+                    onClick={handleCancelEdit}
+                  >
+                    {t("admin.models.form.cancelEdit")}
+                  </button>
+                )}
                 <button
                   className="button"
                   type="submit"
                   disabled={isLoading || isLoadingProviders}
                 >
-                  Ajouter le modèle
+                  {isEditing
+                    ? t("admin.models.form.submitUpdate")
+                    : t("admin.models.form.submitCreate")}
                 </button>
               </div>
             </form>
@@ -396,6 +601,8 @@ export const AdminModelsPage = () => {
                       <th>Affichage</th>
                       <th>Fournisseur</th>
                       <th>Raisonnement</th>
+                      <th>{t("admin.models.table.previousResponseId")}</th>
+                      <th>{t("admin.models.table.reasoningSummary")}</th>
                       <th>Description</th>
                       <th>Actions</th>
                     </tr>
@@ -413,15 +620,29 @@ export const AdminModelsPage = () => {
                         <td data-label="Raisonnement">
                           {model.supports_reasoning ? "Oui" : "Non"}
                         </td>
+                        <td data-label={t("admin.models.table.previousResponseId")}>
+                          {model.supports_previous_response_id ? "Oui" : "Non"}
+                        </td>
+                        <td data-label={t("admin.models.table.reasoningSummary")}>
+                          {model.supports_reasoning_summary ? "Oui" : "Non"}
+                        </td>
                         <td data-label="Description">{model.description ?? "—"}</td>
                         <td data-label="Actions">
                           <div className="admin-table__actions">
                             <button
                               type="button"
                               className="button button--ghost button--sm"
+                              onClick={() => handleEdit(model)}
+                              disabled={isEditing && editingModelId === model.id}
+                            >
+                              {t("admin.models.table.editAction")}
+                            </button>
+                            <button
+                              type="button"
+                              className="button button--ghost button--sm"
                               onClick={() => handleDelete(model)}
                             >
-                              Supprimer
+                              {t("admin.models.table.deleteAction")}
                             </button>
                           </div>
                         </td>
