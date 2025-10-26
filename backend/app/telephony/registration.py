@@ -1249,6 +1249,7 @@ class SIPRegistrationManager:
         via_header = self._format_register_via(config)
         if via_header:
             headers["Via"] = via_header
+            LOGGER.info("REGISTER Via généré : %s", via_header)
         return headers
 
     @staticmethod
@@ -1331,7 +1332,7 @@ class SIPRegistrationManager:
 
         branch = f"z9hG4bK{secrets.token_hex(8)}"
         return (
-            f"SIP/2.0/{transport_token} {formatted_host}:{port};rport;branch={branch}"
+            f"SIP/2.0/{transport_token} {formatted_host}:{port};branch={branch};rport"
         )
 
     def _call_dialog_register(
