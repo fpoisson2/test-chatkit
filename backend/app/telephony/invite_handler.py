@@ -13,6 +13,34 @@ from dataclasses import dataclass
 logger = logging.getLogger("chatkit.telephony.invite")
 
 
+def _log_call_event(
+    level: int,
+    call_id: str | None,
+    message: str,
+    **context: object,
+) -> None:
+    """Consistently log SIP call events with contextual key/value pairs."""
+
+    if not logger.isEnabledFor(level):
+        return
+
+    formatted_context = " ".join(
+        f"{key}={value}"
+        for key, value in context.items()
+        if value not in (None, "")
+    )
+    if formatted_context:
+        logger.log(
+            level,
+            "[Call-ID=%s] %s | %s",
+            call_id or "inconnu",
+            message,
+            formatted_context,
+        )
+    else:
+        logger.log(level, "[Call-ID=%s] %s", call_id or "inconnu", message)
+
+
 @dataclass(frozen=True)
 class SelectedCodec:
     """Informations sur le codec retenu pour la session RTP."""
@@ -121,11 +149,13 @@ async def handle_incoming_invite(
     from_header = _extract_header(request, "From")
     to_header = _extract_header(request, "To")
 
-    logger.info(
-        "INVITE reçu (Call-ID=%s, From=%s, To=%s)",
-        call_id or "inconnu",
-        from_header or "?",
-        to_header or "?",
+    _log_call_event(
+        logging.INFO,
+        call_id,
+        "INVITE reçu",
+        caller=from_header or "?",
+        callee=to_header or "?",
+        via=via_header,
     )
 
     await send_sip_reply(
@@ -143,10 +173,11 @@ async def handle_incoming_invite(
         try:
             payload_text = payload.decode("utf-8", errors="strict")
         except UnicodeDecodeError as exc:
-            logger.warning(
-                "SDP reçu illisible (Call-ID=%s) : %s",
-                call_id or "inconnu",
-                exc,
+            _log_call_event(
+                logging.WARNING,
+                call_id,
+                "SDP illisible",
+                erreur=exc,
             )
             await send_sip_reply(
                 dialog,
@@ -178,7 +209,7 @@ async def handle_incoming_invite(
         )
 
     logger.debug(
-        "SDP reçu (Call-ID=%s, %d octets):\n%s",
+        "[Call-ID=%s] SDP reçu (%d octets):\n%s",
         call_id or "inconnu",
         payload_length,
         normalized_payload_text,
@@ -189,8 +220,10 @@ async def handle_incoming_invite(
     ]
     audio_media = _parse_audio_media_line(sdp_lines)
     if audio_media is None:
-        logger.warning(
-            "INVITE sans média audio exploitable (Call-ID=%s)", call_id or "inconnu"
+        _log_call_event(
+            logging.WARNING,
+            call_id,
+            "INVITE sans média audio exploitable",
         )
         await send_sip_reply(
             dialog,
@@ -203,10 +236,12 @@ async def handle_incoming_invite(
         raise InviteHandlingError("Aucun média audio trouvé")
 
     offered_port, offered_payloads = audio_media
-    logger.info(
-        "INVITE reçu : port audio=%s, payloads=%s",
-        offered_port,
-        ",".join(str(p) for p in offered_payloads),
+    _log_call_event(
+        logging.INFO,
+        call_id,
+        "SDP audio analysé",
+        audio_port=offered_port,
+        payloads=",".join(str(p) for p in offered_payloads),
     )
 
     payload_map = _parse_payload_map(sdp_lines)
@@ -217,10 +252,11 @@ async def handle_incoming_invite(
     )
 
     if codec is None:
-        logger.warning(
-            "Aucun codec commun trouvé pour l'INVITE (Call-ID=%s) : %s",
-            call_id or "inconnu",
-            offered_payloads,
+        _log_call_event(
+            logging.WARNING,
+            call_id,
+            "Aucun codec compatible",
+            payloads=",".join(str(p) for p in offered_payloads),
         )
         await send_sip_reply(
             dialog,
@@ -247,15 +283,17 @@ async def handle_incoming_invite(
         codec=codec,
     )
 
-    logger.info(
-        "Codec sélectionné : payload=%s (%s/%s Hz)",
-        codec.payload_type,
-        codec.name,
-        codec.clock_rate,
+    _log_call_event(
+        logging.INFO,
+        call_id,
+        "Codec sélectionné",
+        payload_type=codec.payload_type,
+        codec=codec.name,
+        clock_rate=codec.clock_rate,
     )
 
     logger.debug(
-        "SDP de réponse généré (Call-ID=%s) :\n%s",
+        "[Call-ID=%s] SDP de réponse généré:\n%s",
         call_id or "inconnu",
         sdp_answer,
     )
@@ -299,11 +337,13 @@ async def send_sip_reply(
     contact_uri: str | None = None,
     via_header: str | None = None,
 ) -> None:
-    logger.info(
-        "Envoi réponse SIP %s %s (Call-ID=%s)",
-        status_code,
-        reason,
-        call_id or "inconnu",
+    _log_call_event(
+        logging.INFO,
+        call_id,
+        "Réponse envoyée",
+        status=f"{status_code} {reason}",
+        via=via_header,
+        contact=contact_uri,
     )
     merged_headers: dict[str, str] | None = None
     if headers:
@@ -334,8 +374,10 @@ async def send_sip_reply(
         try:
             normalized_payload = payload.decode("utf-8")
         except UnicodeDecodeError:
-            logger.warning(
-                "Charge utile SIP non décodable en UTF-8 ; remplacements utilisés",
+            _log_call_event(
+                logging.WARNING,
+                call_id,
+                "Charge utile non UTF-8",
             )
             normalized_payload = payload.decode("utf-8", errors="replace")
 
