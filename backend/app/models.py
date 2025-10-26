@@ -20,6 +20,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
+from .config import DEFAULT_THREAD_TITLE_MODEL
+
 # Dimension pour text-embedding-3-small d'OpenAI
 EMBEDDING_DIMENSION = 1536
 
@@ -190,6 +192,9 @@ class AppSettings(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     thread_title_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    thread_title_model: Mapped[str] = mapped_column(
+        String(128), nullable=False, default=DEFAULT_THREAD_TITLE_MODEL
+    )
     sip_trunk_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
     sip_trunk_username: Mapped[str | None] = mapped_column(String(128), nullable=True)
     sip_trunk_password: Mapped[str | None] = mapped_column(String(256), nullable=True)

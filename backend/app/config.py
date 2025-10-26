@@ -20,6 +20,7 @@ DEFAULT_THREAD_TITLE_PROMPT = (
     "Propose un titre court et descriptif en français pour un nouveau fil de "
     "discussion. Utilise au maximum 6 mots."
 )
+DEFAULT_THREAD_TITLE_MODEL = "gpt-5-nano"
 
 
 DEFAULT_SIP_BIND_HOST = "0.0.0.0"
@@ -154,6 +155,8 @@ class Settings:
             lors du démarrage du serveur.
         thread_title_prompt: Prompt utilisé pour générer automatiquement les titres
             de fil.
+        thread_title_model: Modèle utilisé pour générer automatiquement les titres
+            de fil.
     """
 
     allowed_origins: list[str]
@@ -192,6 +195,7 @@ class Settings:
     workflow_defaults: WorkflowDefaults
     docs_seed_documents: tuple[dict[str, Any], ...]
     thread_title_prompt: str
+    thread_title_model: str
 
     @property
     def chatkit_api_base(self) -> str:
@@ -498,6 +502,10 @@ class Settings:
             thread_title_prompt=(
                 get_stripped("CHATKIT_THREAD_TITLE_PROMPT")
                 or DEFAULT_THREAD_TITLE_PROMPT
+            ),
+            thread_title_model=(
+                get_stripped("CHATKIT_THREAD_TITLE_MODEL")
+                or DEFAULT_THREAD_TITLE_MODEL
             ),
         )
 

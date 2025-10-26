@@ -172,6 +172,9 @@ class AppSettingsResponse(BaseModel):
     thread_title_prompt: str
     default_thread_title_prompt: str
     is_custom_thread_title_prompt: bool
+    thread_title_model: str
+    default_thread_title_model: str
+    is_custom_thread_title_model: bool
     model_provider: str
     model_api_base: str
     is_model_provider_overridden: bool
@@ -197,6 +200,14 @@ class AppSettingsUpdateRequest(BaseModel):
             "à la valeur par défaut."
         ),
         max_length=4000,
+    )
+    thread_title_model: str | None = Field(
+        default=None,
+        description=(
+            "Modèle personnalisé pour générer les titres de fil. Laisser vide pour "
+            "revenir à la valeur par défaut."
+        ),
+        max_length=128,
     )
     model_provider: str | None = Field(
         default=None,

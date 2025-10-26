@@ -114,6 +114,15 @@ except Exception:  # pragma: no cover - module non initialisé
 logger = logging.getLogger("chatkit.server")
 
 
+def _log_async_exception(task: asyncio.Task[Any]) -> None:
+    try:
+        task.result()
+    except asyncio.CancelledError:  # pragma: no cover - annulation attendue
+        pass
+    except Exception:  # pragma: no cover - robustesse best effort
+        logger.warning("Tâche asynchrone échouée", exc_info=True)
+
+
 def _get_thread_title_agent() -> Agent:
     from ..chatkit.agent_registry import _build_thread_title_agent
 
@@ -489,12 +498,15 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
     ) -> AsyncIterator[ThreadStreamEvent]:
         thread_item_converter = self._thread_item_converter.for_context(context)
         if input_user_message is not None:
-            await self._maybe_update_thread_title(
-                thread,
-                input_user_message,
-                context,
-                converter=thread_item_converter,
+            title_task = asyncio.create_task(
+                self._maybe_update_thread_title(
+                    thread,
+                    input_user_message,
+                    context,
+                    converter=thread_item_converter,
+                )
             )
+            title_task.add_done_callback(_log_async_exception)
         try:
             history = await self.store.load_thread_items(
                 thread.id,

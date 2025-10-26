@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from .config import (
     ADMIN_MODEL_API_KEY_ENV,
+    DEFAULT_THREAD_TITLE_MODEL,
     DEFAULT_THREAD_TITLE_PROMPT,
     ModelProviderConfig,
     get_settings,
@@ -123,6 +124,17 @@ def _default_thread_title_prompt() -> str:
     return DEFAULT_THREAD_TITLE_PROMPT
 
 
+def _default_thread_title_model() -> str:
+    try:
+        settings = get_settings()
+        candidate = getattr(settings, "thread_title_model", None)
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    except Exception:  # pragma: no cover - fallback best effort
+        return DEFAULT_THREAD_TITLE_MODEL
+    return DEFAULT_THREAD_TITLE_MODEL
+
+
 def get_thread_title_prompt_override(session: Session) -> AppSettings | None:
     return session.scalar(select(AppSettings).limit(1))
 
@@ -141,10 +153,26 @@ def _normalize_optional_string(value: str | None) -> str | None:
     return candidate or None
 
 
+def _normalize_thread_title_model(value: str | None, default_model: str) -> str:
+    if value is None:
+        return default_model
+    candidate = value.strip()
+    return candidate or default_model
+
+
 def _resolved_prompt(settings: AppSettings | None, default_prompt: str) -> str:
     if settings and settings.thread_title_prompt.strip():
         return settings.thread_title_prompt.strip()
     return default_prompt
+
+
+def _resolved_thread_title_model(
+    settings: AppSettings | None, default_model: str
+) -> str:
+    candidate = getattr(settings, "thread_title_model", None)
+    if isinstance(candidate, str) and candidate.strip():
+        return candidate.strip()
+    return default_model
 
 
 def _normalize_optional_int(value: int | str | None) -> int | None:
@@ -413,6 +441,7 @@ def update_admin_settings(
     session: Session,
     *,
     thread_title_prompt: str | None | object = _UNSET,
+    thread_title_model: str | None | object = _UNSET,
     sip_trunk_uri: str | None | object = _UNSET,
     sip_trunk_username: str | None | object = _UNSET,
     sip_trunk_password: str | None | object = _UNSET,
@@ -425,8 +454,10 @@ def update_admin_settings(
     model_providers: list[Any] | None | object = _UNSET,
 ) -> AdminSettingsUpdateResult:
     default_prompt = _default_thread_title_prompt()
+    default_model = _default_thread_title_model()
     stored_settings = get_thread_title_prompt_override(session)
     previous_prompt = _resolved_prompt(stored_settings, default_prompt)
+    previous_model = _resolved_thread_title_model(stored_settings, default_model)
     previous_sip_values = _resolved_sip_values(stored_settings)
     previous_overrides = _compute_model_overrides(stored_settings)
 
@@ -434,7 +465,10 @@ def update_admin_settings(
     created = False
 
     if settings is None:
-        settings = AppSettings(thread_title_prompt=default_prompt)
+        settings = AppSettings(
+            thread_title_prompt=default_prompt,
+            thread_title_model=default_model,
+        )
         created = True
 
     changed = False
@@ -442,6 +476,12 @@ def update_admin_settings(
     if thread_title_prompt is not _UNSET:
         settings.thread_title_prompt = _normalize_prompt(
             thread_title_prompt, default_prompt
+        )
+        changed = True
+
+    if thread_title_model is not _UNSET:
+        settings.thread_title_model = _normalize_thread_title_model(
+            thread_title_model, default_model
         )
         changed = True
 
@@ -637,14 +677,26 @@ def update_admin_settings(
         normalized_prompt = default_prompt
         settings.thread_title_prompt = normalized_prompt
 
+    normalized_model = settings.thread_title_model.strip()
+    if not normalized_model:
+        normalized_model = default_model
+        settings.thread_title_model = normalized_model
+
     has_custom_prompt = normalized_prompt != default_prompt
+    has_custom_model = normalized_model != default_model
     resolved_sip_values = _resolved_sip_values(settings)
     has_sip_values = any(value is not None for value in resolved_sip_values)
     new_overrides = _compute_model_overrides(settings)
     has_model_values = bool(new_overrides)
 
-    if not has_custom_prompt and not has_sip_values and not has_model_values:
+    if (
+        not has_custom_prompt
+        and not has_custom_model
+        and not has_sip_values
+        and not has_model_values
+    ):
         new_prompt = default_prompt
+        new_model = default_model
         new_sip_values = (None, None, None, None, None, None)
         if not created:
             session.delete(settings)
@@ -652,7 +704,9 @@ def update_admin_settings(
         return AdminSettingsUpdateResult(
             settings=None,
             sip_changed=previous_sip_values != new_sip_values,
-            prompt_changed=previous_prompt != new_prompt,
+            prompt_changed=(
+                previous_prompt != new_prompt or previous_model != new_model
+            ),
             model_settings_changed=previous_overrides != new_overrides,
             provider_changed=(
                 previous_overrides.get("model_provider")
@@ -665,12 +719,15 @@ def update_admin_settings(
     session.commit()
     session.refresh(settings)
     new_prompt = _resolved_prompt(settings, default_prompt)
+    new_model = _resolved_thread_title_model(settings, default_model)
     new_sip_values = resolved_sip_values
     final_overrides = _compute_model_overrides(settings)
     return AdminSettingsUpdateResult(
         settings=settings,
         sip_changed=previous_sip_values != new_sip_values,
-        prompt_changed=previous_prompt != new_prompt,
+        prompt_changed=(
+            previous_prompt != new_prompt or previous_model != new_model
+        ),
         model_settings_changed=previous_overrides != final_overrides,
         provider_changed=(
             previous_overrides.get("model_provider")
@@ -698,17 +755,42 @@ def resolve_thread_title_prompt(session: Session | None = None) -> str:
     return default_prompt
 
 
+def resolve_thread_title_model(session: Session | None = None) -> str:
+    default_model = _default_thread_title_model()
+    try:
+        if session is not None:
+            override = get_thread_title_prompt_override(session)
+            if override and override.thread_title_model.strip():
+                return override.thread_title_model.strip()
+            return default_model
+
+        with SessionLocal() as owned_session:
+            override = get_thread_title_prompt_override(owned_session)
+            if override and override.thread_title_model.strip():
+                return override.thread_title_model.strip()
+    except Exception:  # pragma: no cover - graceful fallback
+        return default_model
+
+    return default_model
+
+
 def serialize_admin_settings(
     settings: AppSettings | None,
     *,
     default_prompt: str | None = None,
 ) -> dict[str, Any]:
-    resolved_default = default_prompt or _default_thread_title_prompt()
-    resolved_prompt = resolved_default
+    resolved_default_prompt = default_prompt or _default_thread_title_prompt()
+    resolved_prompt = resolved_default_prompt
     if settings and settings.thread_title_prompt.strip():
         resolved_prompt = settings.thread_title_prompt.strip()
 
-    is_custom = bool(settings and resolved_prompt != resolved_default)
+    resolved_default_model = _default_thread_title_model()
+    resolved_model = _resolved_thread_title_model(settings, resolved_default_model)
+
+    is_custom_prompt = bool(
+        settings and resolved_prompt != resolved_default_prompt
+    )
+    is_custom_model = bool(settings and resolved_model != resolved_default_model)
     runtime_settings = get_settings()
     provider_overridden = bool(
         settings and _normalize_model_provider(settings.model_provider)
@@ -732,8 +814,11 @@ def serialize_admin_settings(
 
     return {
         "thread_title_prompt": resolved_prompt,
-        "default_thread_title_prompt": resolved_default,
-        "is_custom_thread_title_prompt": is_custom,
+        "default_thread_title_prompt": resolved_default_prompt,
+        "is_custom_thread_title_prompt": is_custom_prompt,
+        "thread_title_model": resolved_model,
+        "default_thread_title_model": resolved_default_model,
+        "is_custom_thread_title_model": is_custom_model,
         "model_provider": runtime_settings.model_provider,
         "model_api_base": runtime_settings.model_api_base,
         "is_model_provider_overridden": provider_overridden,

@@ -20,6 +20,7 @@ os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 
+from backend.app.config import DEFAULT_THREAD_TITLE_MODEL  # noqa: E402
 from backend.app.models import AppSettings  # noqa: E402
 from backend.app.telephony.registration import (  # noqa: E402
     _DEFAULT_SIP_PORT,
@@ -51,7 +52,10 @@ def test_apply_config_from_settings_infers_contact_host(
         monkeypatch.setattr(manager, "apply_config", fake_apply_config)
         monkeypatch.setattr(manager, "_infer_contact_host", lambda uri: "192.0.2.10")
 
-        stored = AppSettings(thread_title_prompt="Prompt")
+        stored = AppSettings(
+            thread_title_prompt="Prompt",
+            thread_title_model=DEFAULT_THREAD_TITLE_MODEL,
+        )
         stored.sip_trunk_uri = "sip:alice@example.com"
         stored.sip_trunk_username = "alice"
         stored.sip_trunk_password = "secret"
@@ -92,7 +96,10 @@ def test_apply_config_from_settings_disables_without_contact(
         monkeypatch.setattr(manager, "apply_config", fake_apply_config)
         monkeypatch.setattr(manager, "_infer_contact_host", lambda uri: None)
 
-        stored = AppSettings(thread_title_prompt="Prompt")
+        stored = AppSettings(
+            thread_title_prompt="Prompt",
+            thread_title_model=DEFAULT_THREAD_TITLE_MODEL,
+        )
         stored.sip_trunk_uri = "sip:alice@example.com"
         stored.sip_trunk_username = "alice"
         stored.sip_trunk_password = "secret"
@@ -127,7 +134,10 @@ def test_apply_config_from_settings_uses_stored_contact_values(
 
         monkeypatch.setattr(manager, "apply_config", fake_apply_config)
 
-        stored = AppSettings(thread_title_prompt="Prompt")
+        stored = AppSettings(
+            thread_title_prompt="Prompt",
+            thread_title_model=DEFAULT_THREAD_TITLE_MODEL,
+        )
         stored.sip_trunk_uri = "sip:alice@example.com"
         stored.sip_trunk_username = "alice"
         stored.sip_trunk_password = "secret"
@@ -173,7 +183,10 @@ def test_apply_config_from_settings_uses_runtime_contact_settings(
 
         monkeypatch.setattr(manager, "apply_config", fake_apply_config)
 
-        stored = AppSettings(thread_title_prompt="Prompt")
+        stored = AppSettings(
+            thread_title_prompt="Prompt",
+            thread_title_model=DEFAULT_THREAD_TITLE_MODEL,
+        )
         stored.sip_trunk_uri = "sip:alice@example.com"
         stored.sip_trunk_username = "alice"
         stored.sip_trunk_password = "secret"
@@ -304,7 +317,10 @@ def test_apply_config_from_settings_autodetects_port_zero(
             MagicMock(return_value=5074),
         )
 
-        stored = AppSettings(thread_title_prompt="Prompt")
+        stored = AppSettings(
+            thread_title_prompt="Prompt",
+            thread_title_model=DEFAULT_THREAD_TITLE_MODEL,
+        )
         stored.sip_trunk_uri = "sip:alice@example.com"
         stored.sip_trunk_username = "alice"
         stored.sip_trunk_password = "secret"
@@ -341,7 +357,10 @@ def test_apply_config_from_settings_disables_when_port_autodetect_fails(
             MagicMock(return_value=None),
         )
 
-        stored = AppSettings(thread_title_prompt="Prompt")
+        stored = AppSettings(
+            thread_title_prompt="Prompt",
+            thread_title_model=DEFAULT_THREAD_TITLE_MODEL,
+        )
         stored.sip_trunk_uri = "sip:alice@example.com"
         stored.sip_trunk_username = "alice"
         stored.sip_trunk_password = "secret"
@@ -448,7 +467,10 @@ def test_apply_config_from_settings_respects_bind_host_override(
 
         monkeypatch.setattr(manager, "apply_config", fake_apply_config)
 
-        stored = AppSettings(thread_title_prompt="Prompt")
+        stored = AppSettings(
+            thread_title_prompt="Prompt",
+            thread_title_model=DEFAULT_THREAD_TITLE_MODEL,
+        )
         stored.sip_trunk_uri = "sip:alice@example.com"
         stored.sip_trunk_username = "alice"
         stored.sip_trunk_password = "secret"
@@ -487,7 +509,10 @@ def test_apply_config_from_settings_defaults_to_wildcard_for_public_ip(
 
         monkeypatch.setattr(manager, "apply_config", fake_apply_config)
 
-        stored = AppSettings(thread_title_prompt="Prompt")
+        stored = AppSettings(
+            thread_title_prompt="Prompt",
+            thread_title_model=DEFAULT_THREAD_TITLE_MODEL,
+        )
         stored.sip_trunk_uri = "sip:alice@example.com"
         stored.sip_trunk_username = "alice"
         stored.sip_trunk_password = "secret"
@@ -527,7 +552,10 @@ def test_apply_config_from_settings_accepts_host_only_trunk_uri(
 
         monkeypatch.setattr(manager, "apply_config", fake_apply_config)
 
-        stored = AppSettings(thread_title_prompt="Prompt")
+        stored = AppSettings(
+            thread_title_prompt="Prompt",
+            thread_title_model=DEFAULT_THREAD_TITLE_MODEL,
+        )
         stored.sip_trunk_uri = "montreal5.voip.ms"
         stored.sip_trunk_username = "alice"
         stored.sip_trunk_password = "secret"
@@ -804,7 +832,10 @@ def test_resolve_contact_endpoint_replaces_registrar_host(
         manager = SIPRegistrationManager(loop=loop)
         monkeypatch.setattr(manager, "_infer_contact_host", lambda uri: "203.0.113.7")
 
-        stored = AppSettings(thread_title_prompt="Prompt")
+        stored = AppSettings(
+            thread_title_prompt="Prompt",
+            thread_title_model=DEFAULT_THREAD_TITLE_MODEL,
+        )
         stored.sip_trunk_uri = "sip:alice@montreal5.voip.ms"
         stored.sip_contact_host = "montreal5.voip.ms"
         stored.sip_contact_port = 5060
