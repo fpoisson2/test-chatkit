@@ -434,6 +434,7 @@ class SIPRegistrationManager:
                     LOGGER.exception("SIP registration attempt failed", exc_info=exc)
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, self._max_retry_interval)
+                    self._reload_event.set()
                     continue
 
                 backoff = self._retry_interval

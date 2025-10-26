@@ -902,3 +902,36 @@ def test_register_once_retries_with_available_port(
     assert manager._config.contact_port == 5072
     assert manager._active_config.contact_port == 5072
     assert "tentative avec le port" in caplog.text
+
+
+def test_run_loop_retries_after_register_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(
+            loop=loop,
+            retry_interval=0.01,
+            max_retry_interval=0.01,
+        )
+
+        config = SIPRegistrationConfig(
+            uri="sip:alice@example.com",
+            username="alice",
+            password="secret",
+            contact_host="127.0.0.1",
+            contact_port=5060,
+            expires=1,
+        )
+        manager.apply_config(config)
+
+        register_once = AsyncMock(side_effect=[RuntimeError("boom"), None])
+        monkeypatch.setattr(manager, "_register_once", register_once)
+
+        loop.run_until_complete(manager.start())
+        loop.run_until_complete(asyncio.sleep(0.05))
+        loop.run_until_complete(manager.stop())
+    finally:
+        loop.close()
+
+    assert register_once.await_count >= 2
