@@ -262,6 +262,59 @@ def test_apply_config_from_settings_disables_when_port_autodetect_fails(
     assert "détection automatique du port SIP impossible" in caplog.text
 
 
+def test_find_available_contact_port_falls_back_on_unassigned_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import backend.app.telephony.registration as registration_module
+
+    contact_host = "198.51.100.5"
+    fake_addrinfo = [
+        (socket.AF_INET, socket.SOCK_DGRAM, 0, "", (contact_host, 0)),
+    ]
+
+    monkeypatch.setattr(
+        registration_module.socket,
+        "getaddrinfo",
+        MagicMock(return_value=fake_addrinfo),
+    )
+
+    bound_sockaddrs: list[tuple[object, ...]] = []
+
+    class DummySocket:
+        def __init__(self, family: int, socktype: int, proto: int) -> None:
+            self.family = family
+            self.socktype = socktype
+            self.proto = proto
+            self._bound: tuple[str, int] = ("0.0.0.0", 0)
+
+        def bind(self, sockaddr: tuple[object, ...]) -> None:
+            bound_sockaddrs.append(sockaddr)
+            host = sockaddr[0] if len(sockaddr) >= 1 else ""
+            if host == contact_host:
+                raise OSError(errno.EADDRNOTAVAIL, "Cannot assign requested address")
+            self._bound = ("0.0.0.0", 59876)
+
+        def getsockname(self) -> tuple[str, int]:
+            return self._bound
+
+        def close(self) -> None:  # pragma: no cover - nothing to clean up
+            pass
+
+    monkeypatch.setattr(registration_module.socket, "socket", DummySocket)
+
+    port = registration_module.SIPRegistrationManager._find_available_contact_port(
+        contact_host
+    )
+
+    assert port == 59876
+    assert bound_sockaddrs
+    assert bound_sockaddrs[0][0] == contact_host
+    assert any(
+        isinstance(addr, tuple) and len(addr) >= 1 and addr[0] in {"0.0.0.0", "::"}
+        for addr in bound_sockaddrs
+    )
+
+
 def test_apply_config_from_settings_respects_bind_host_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
