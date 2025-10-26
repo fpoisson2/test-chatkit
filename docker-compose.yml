@@ -30,6 +30,9 @@ services:
     ports:
       - "0.0.0.0:8000:8000"
       - "9333:9333"
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "${SIP_MEDIA_PORT:-40000}:${SIP_MEDIA_PORT:-40000}/udp"
     depends_on:
       - db
   frontend:
