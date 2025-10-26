@@ -626,18 +626,18 @@ class SIPRegistrationManager:
             )
         if contact_host is None and self.settings is not None:
             contact_host = self._normalize_optional_string(
-                getattr(self.settings, "sip_bind_host", None)
+                getattr(self.settings, "sip_contact_host", None)
             )
 
-        raw_port: int | str | None
+        raw_port: int | str | None = None
         if self.contact_port is not None:
             raw_port = self.contact_port
         elif stored_settings is not None:
-            raw_port = getattr(stored_settings, "sip_contact_port", None)
-        elif self.settings is not None:
-            raw_port = getattr(self.settings, "sip_bind_port", None)
-        else:
-            raw_port = None
+            stored_port = getattr(stored_settings, "sip_contact_port", None)
+            if stored_port is not None:
+                raw_port = stored_port
+        if raw_port is None and self.settings is not None:
+            raw_port = getattr(self.settings, "sip_contact_port", None)
 
         auto_detect_port = False
         if isinstance(raw_port, str):
