@@ -22,6 +22,8 @@ DEFAULT_THREAD_TITLE_PROMPT = (
 )
 
 
+DEFAULT_SIP_BIND_HOST = "0.0.0.0"
+DEFAULT_SIP_BIND_PORT = 0
 DEFAULT_SIP_MEDIA_PORT = 40000
 
 ADMIN_MODEL_API_KEY_ENV = "APP_SETTINGS_MODEL_API_KEY"
@@ -117,8 +119,8 @@ class Settings:
         model_providers: Profils de connexion disponibles (incluant les clés chiffrées
             côté administration) permettant d'activer plusieurs fournisseurs.
         chatkit_workflow_id: Identifiant du workflow hébergé (optionnel).
-        sip_bind_host: Hôte d'écoute du serveur SIP (optionnel).
-        sip_bind_port: Port d'écoute du serveur SIP (optionnel).
+        sip_bind_host: Hôte d'écoute du serveur SIP (0.0.0.0 par défaut).
+        sip_bind_port: Port d'écoute du serveur SIP (0 pour laisser l'OS choisir).
         sip_username: Identifiant d'authentification SIP (optionnel).
         sip_password: Mot de passe d'authentification SIP (optionnel).
         sip_media_port: Port RTP local annoncé dans les réponses SIP (configurable,
@@ -389,6 +391,8 @@ class Settings:
                     f"{name} environment variable must be an integer if provided"
                 ) from exc
 
+        sip_bind_port_value = _optional_int("SIP_BIND_PORT")
+
         return cls(
             allowed_origins=cls._parse_allowed_origins(env.get("ALLOWED_ORIGINS")),
             model_provider=model_provider,
@@ -419,8 +423,12 @@ class Settings:
             ),
             backend_public_base_url=backend_public_base_url,
             backend_public_base_url_from_env=bool(sanitized_public_base_url),
-            sip_bind_host=get_stripped("SIP_BIND_HOST"),
-            sip_bind_port=_optional_int("SIP_BIND_PORT"),
+            sip_bind_host=get_stripped("SIP_BIND_HOST") or DEFAULT_SIP_BIND_HOST,
+            sip_bind_port=(
+                sip_bind_port_value
+                if sip_bind_port_value is not None
+                else DEFAULT_SIP_BIND_PORT
+            ),
             sip_username=get_stripped("SIP_USERNAME"),
             sip_password=get_stripped("SIP_PASSWORD"),
             sip_media_port=_optional_int("SIP_MEDIA_PORT") or DEFAULT_SIP_MEDIA_PORT,
