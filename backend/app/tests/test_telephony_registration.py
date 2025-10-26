@@ -4,7 +4,6 @@ import asyncio
 import errno
 import logging
 import os
-import re
 import socket
 import sys
 from pathlib import Path
@@ -1079,7 +1078,7 @@ def test_run_loop_resumes_immediately_when_config_changes(
     assert register_once.await_count >= 2
 
 
-def test_build_register_headers_includes_preformatted_via() -> None:
+def test_build_register_headers_leaves_via_to_aiosip() -> None:
     loop = asyncio.new_event_loop()
     try:
         manager = SIPRegistrationManager(loop=loop)
@@ -1095,37 +1094,10 @@ def test_build_register_headers_includes_preformatted_via() -> None:
     finally:
         loop.close()
 
-    via_header = headers.get("Via")
-    assert via_header is not None
-    assert re.fullmatch(
-        r"SIP/2\.0/TCP 198\.51\.100\.10:5070;branch=z9hG4bK[0-9a-f]{16}", via_header
-    )
+    assert "Via" not in headers
 
 
-def test_build_register_headers_strips_port_from_contact_host() -> None:
-    loop = asyncio.new_event_loop()
-    try:
-        manager = SIPRegistrationManager(loop=loop)
-        config = SIPRegistrationConfig(
-            uri="sip:alice@example.com",
-            username="alice",
-            password="secret",
-            contact_host="192.168.1.116:5090",
-            contact_port=5090,
-        )
-        headers = manager._build_register_headers(config)
-    finally:
-        loop.close()
-
-    via_header = headers.get("Via")
-    assert via_header is not None
-    assert re.fullmatch(
-        r"SIP/2\.0/UDP 192\.168\.1\.116:5090;branch=z9hG4bK[0-9a-f]{16}",
-        via_header,
-    )
-
-
-def test_build_register_headers_formats_ipv6_host_for_via() -> None:
+def test_build_register_headers_leaves_via_to_aiosip_for_ipv6() -> None:
     loop = asyncio.new_event_loop()
     try:
         manager = SIPRegistrationManager(loop=loop)
@@ -1140,31 +1112,4 @@ def test_build_register_headers_formats_ipv6_host_for_via() -> None:
     finally:
         loop.close()
 
-    via_header = headers.get("Via")
-    assert via_header is not None
-    assert re.fullmatch(
-        r"SIP/2\.0/UDP \[2001:db8::1\]:5080;branch=z9hG4bK[0-9a-f]{16}", via_header
-    )
-
-
-def test_build_register_headers_strips_port_from_ipv6_contact_host() -> None:
-    loop = asyncio.new_event_loop()
-    try:
-        manager = SIPRegistrationManager(loop=loop)
-        config = SIPRegistrationConfig(
-            uri="sip:alice@example.com",
-            username="alice",
-            password="secret",
-            contact_host="[2001:db8::1]:5080",
-            contact_port=5080,
-        )
-        headers = manager._build_register_headers(config)
-    finally:
-        loop.close()
-
-    via_header = headers.get("Via")
-    assert via_header is not None
-    assert re.fullmatch(
-        r"SIP/2\.0/UDP \[2001:db8::1\]:5080;branch=z9hG4bK[0-9a-f]{16}",
-        via_header,
-    )
+    assert "Via" not in headers

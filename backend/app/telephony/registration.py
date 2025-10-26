@@ -1031,9 +1031,6 @@ class SIPRegistrationManager:
         to_header = self._format_register_to_header(config.uri)
         if to_header:
             headers["To"] = to_header
-        via_header = self._format_register_via(config)
-        if via_header:
-            headers["Via"] = via_header
         return headers
 
     @staticmethod
@@ -1042,78 +1039,6 @@ class SIPRegistrationManager:
             return None
         candidate = value.strip()
         return candidate or None
-
-    @staticmethod
-    def _format_register_via(config: SIPRegistrationConfig) -> str | None:
-        host = SIPRegistrationManager._normalize_optional_string(config.contact_host)
-        port = config.contact_port
-        if not host or not isinstance(port, int) or port <= 0:
-            return None
-
-        host_only, embedded_port = SIPRegistrationManager._split_contact_host_port(host)
-        if host_only:
-            host = host_only
-        if embedded_port is not None and embedded_port != port:
-            LOGGER.debug(
-                (
-                    "Port %s intégré dans l'hôte de contact SIP %s ignoré "
-                    "(port configuré %s)"
-                ),
-                embedded_port,
-                host,
-                port,
-            )
-
-        try:
-            ip_obj = ipaddress.ip_address(host)
-        except ValueError:
-            formatted_host = host
-        else:
-            if isinstance(ip_obj, ipaddress.IPv6Address):
-                formatted_host = f"[{host}]"
-            else:
-                formatted_host = host
-
-        transport = SIPRegistrationManager._normalize_transport(config.transport)
-        if not transport:
-            transport_token = "UDP"
-        else:
-            transport_token = transport.upper()
-
-        branch = f"z9hG4bK{secrets.token_hex(8)}"
-        return f"SIP/2.0/{transport_token} {formatted_host}:{port};branch={branch}"
-
-    @staticmethod
-    def _split_contact_host_port(value: str) -> tuple[str, int | None]:
-        trimmed = value.strip()
-        if not trimmed:
-            return "", None
-
-        candidate = trimmed.split(";", 1)[0]
-        candidate = candidate.split("?", 1)[0]
-
-        if (
-            ":" in candidate
-            and candidate.count(":") > 1
-            and not candidate.startswith("[")
-        ):
-            return candidate, None
-
-        try:
-            parsed = urllib.parse.urlsplit(f"//{candidate}")
-        except ValueError:
-            return candidate, None
-
-        host = parsed.hostname
-        if host is None:
-            return candidate, None
-
-        try:
-            port = parsed.port
-        except ValueError:
-            port = None
-
-        return host, port
 
     def _call_dialog_register(
         self,
