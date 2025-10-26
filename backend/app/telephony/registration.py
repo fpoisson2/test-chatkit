@@ -40,7 +40,7 @@ import secrets
 import socket
 import types
 import urllib.parse
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, MutableMapping
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -481,6 +481,9 @@ class SIPRegistrationManager:
                     "réseau locale et que le port n'est pas déjà utilisé."
                 ) from bind_error
 
+        if self._dialog is not None:
+            self._ensure_dialog_username(self._dialog, config.username)
+
         register_headers = self._build_register_headers(config)
         register_future = self._call_dialog_register(
             self._dialog, expires=config.expires, headers=register_headers
@@ -780,6 +783,31 @@ class SIPRegistrationManager:
         return updated
 
     @staticmethod
+    def _ensure_dialog_username(dialog: Any, username: str) -> None:
+        """Ensure the dialog exposes a username for digest authentication."""
+
+        if not username:
+            return
+
+        try:
+            to_details = dialog.to_details  # type: ignore[attr-defined]
+        except AttributeError:
+            return
+
+        if not isinstance(to_details, MutableMapping):
+            return
+
+        uri_details = to_details.get("uri")
+        if not isinstance(uri_details, MutableMapping):
+            return
+
+        current_user = uri_details.get("user")
+        if current_user:
+            return
+
+        uri_details["user"] = username
+
+    @staticmethod
     def _normalize_trunk_uri(trunk_uri: str, username: str) -> str | None:
         """Return a canonical SIP URI for the registrar."""
 
@@ -1071,6 +1099,8 @@ class SIPRegistrationManager:
             )
             return None
 
+        resolver = SIPRegistrationManager._fallback_unspecified_sockaddr
+
         for family, socktype, proto, _, sockaddr in address_infos:
             try:
                 sock = socket.socket(family, socktype, proto)
@@ -1080,8 +1110,32 @@ class SIPRegistrationManager:
             with contextlib.closing(sock):
                 try:
                     sock.bind(sockaddr)
-                except OSError:
-                    continue
+                except OSError as exc:
+                    if exc.errno != errno.EADDRNOTAVAIL:
+                        continue
+
+                    fallback_sockaddr = resolver(family, sockaddr)
+                    if fallback_sockaddr is None:
+                        continue
+
+                    host_part = host
+                    if isinstance(sockaddr, tuple) and len(sockaddr) >= 1:
+                        host_candidate = sockaddr[0]
+                        if isinstance(host_candidate, str) and host_candidate:
+                            host_part = host_candidate
+                    fallback_host = fallback_sockaddr[0] if fallback_sockaddr else ""
+                    LOGGER.debug(
+                        "Adresse %s non assignée localement pour la détection du port"
+                        " SIP, tentative avec %s",
+                        host_part,
+                        fallback_host,
+                    )
+
+                    try:
+                        sock.bind(fallback_sockaddr)
+                    except OSError:
+                        continue
+
                 bound = sock.getsockname()
                 if isinstance(bound, tuple) and len(bound) >= 2:
                     port = bound[1]
@@ -1089,5 +1143,26 @@ class SIPRegistrationManager:
                     continue
                 if isinstance(port, int) and port > 0:
                     return port
+
+        return None
+
+    @staticmethod
+    def _fallback_unspecified_sockaddr(
+        family: int, sockaddr: tuple[Any, ...]
+    ) -> tuple[Any, ...] | None:
+        """Return a wildcard sockaddr matching ``family`` for port probing."""
+
+        if family == socket.AF_INET:
+            return ("0.0.0.0", 0)
+
+        af_inet6 = getattr(socket, "AF_INET6", None)
+        if af_inet6 is not None and family == af_inet6:
+            flowinfo = 0
+            scopeid = 0
+            if len(sockaddr) >= 3 and isinstance(sockaddr[2], int):
+                flowinfo = sockaddr[2]
+            if len(sockaddr) >= 4 and isinstance(sockaddr[3], int):
+                scopeid = sockaddr[3]
+            return ("::", 0, flowinfo, scopeid)
 
         return None
