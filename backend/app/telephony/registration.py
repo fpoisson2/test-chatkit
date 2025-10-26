@@ -33,10 +33,12 @@ import asyncio
 import collections
 import contextlib
 import errno
+import ipaddress
 import logging
 import socket
 import types
 import urllib.parse
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -101,6 +103,7 @@ class SIPRegistrationConfig:
     contact_host: str
     contact_port: int
     transport: str | None = None
+    bind_host: str | None = None
     expires: int = 3600
 
     def contact_uri(self) -> str:
@@ -113,6 +116,9 @@ class SIPRegistrationConfig:
             f"<sip:{self.username}@{self.contact_host}:{self.contact_port}"
             f"{transport_suffix}>"
         )
+
+
+InviteRouteHandler = Callable[[Any, Any], Awaitable[None]]
 
 
 class SIPRegistrationManager:
@@ -158,6 +164,8 @@ class SIPRegistrationManager:
         contact_host: str | None = None,
         contact_port: int | None = None,
         contact_transport: str | None = None,
+        bind_host: str | None = None,
+        invite_handler: InviteRouteHandler | None = None,
     ) -> None:
         self._loop = loop or asyncio.get_event_loop()
         self._retry_interval = float(retry_interval)
@@ -180,6 +188,8 @@ class SIPRegistrationManager:
         self.contact_host = contact_host
         self.contact_port = contact_port
         self.contact_transport = self._normalize_transport(contact_transport)
+        self.bind_host = bind_host
+        self._invite_handler: InviteRouteHandler | None = invite_handler
 
     @property
     def last_error(self) -> BaseException | None:
@@ -221,6 +231,36 @@ class SIPRegistrationManager:
                 new_config.contact_port,
             )
         self._reload_event.set()
+
+    @property
+    def active_config(self) -> SIPRegistrationConfig | None:
+        """Return the SIP configuration currently applied to the dialog."""
+
+        return self._active_config
+
+    def set_invite_handler(self, handler: InviteRouteHandler | None) -> None:
+        """Register or remove the coroutine invoked for incoming ``INVITE``."""
+
+        self._invite_handler = handler
+        app = self._app
+        if app is not None:
+            self._configure_invite_route(app)
+
+    def _configure_invite_route(self, app: Any) -> None:
+        router = getattr(app, "router", None)
+        if router is None:
+            return
+
+        if self._invite_handler is None:
+            if hasattr(router, "routes") and isinstance(router.routes, dict):
+                router.routes.pop("INVITE", None)
+            return
+
+        add_route = getattr(router, "add_route", None)
+        if callable(add_route):
+            add_route("INVITE", self._invite_handler)
+        elif hasattr(router, "routes") and isinstance(router.routes, dict):
+            router.routes["INVITE"] = self._invite_handler
 
     async def start(self) -> None:
         """Start the background registration task if it is not already running."""
@@ -312,12 +352,25 @@ class SIPRegistrationManager:
 
         if self._app is None:
             self._app = aiosip.Application(loop=self._loop)
+            self._configure_invite_route(self._app)
 
         remote_host, remote_port = self._parse_registrar_endpoint(config.uri)
         if remote_host is None:
             raise ValueError("URI de trunk SIP invalide : hôte introuvable")
-        remote_addr = (remote_host, remote_port)
-        local_addr = (config.contact_host, config.contact_port)
+        resolved_host, resolved_port = self._resolve_registrar_socket(
+            remote_host, remote_port
+        )
+        if resolved_host != remote_host or resolved_port != remote_port:
+            LOGGER.debug(
+                "Résolution du registrar SIP %s:%s vers %s:%s",
+                remote_host,
+                remote_port,
+                resolved_host,
+                resolved_port,
+            )
+        remote_addr = (resolved_host, resolved_port)
+        local_host = config.bind_host or config.contact_host
+        local_addr = (local_host, config.contact_port)
 
         if self._dialog is None:
             dialog_kwargs = self._dialog_transport_kwargs(config.transport)
@@ -339,7 +392,8 @@ class SIPRegistrationManager:
                     if fallback_config is None:
                         break
                     config = fallback_config
-                    local_addr = (config.contact_host, config.contact_port)
+                    local_host = config.bind_host or config.contact_host
+                    local_addr = (local_host, config.contact_port)
                     dialog_kwargs = self._dialog_transport_kwargs(config.transport)
                     continue
                 break
@@ -456,6 +510,8 @@ class SIPRegistrationManager:
             self.apply_config(None)
             return
 
+        bind_host = self._resolve_bind_host(contact_host)
+
         config = SIPRegistrationConfig(
             uri=normalized_trunk_uri,
             username=str(username),
@@ -463,6 +519,7 @@ class SIPRegistrationManager:
             contact_host=str(contact_host),
             contact_port=int(contact_port),
             transport=contact_transport,
+            bind_host=bind_host,
         )
         LOGGER.info(
             "Configuration SIP prête : trunk %s (contact %s:%s, transport=%s)",
@@ -537,6 +594,43 @@ class SIPRegistrationManager:
             contact_port = _DEFAULT_SIP_PORT
 
         return contact_host, contact_port, transport
+
+    def _resolve_bind_host(self, contact_host: str | None) -> str | None:
+        """Choose the local interface used to bind the SIP socket."""
+
+        candidate = self._normalize_optional_string(self.bind_host)
+        if candidate:
+            return candidate
+
+        if self.settings is not None:
+            configured = self._normalize_optional_string(
+                getattr(self.settings, "sip_bind_host", None)
+            )
+            if configured:
+                return configured
+
+        if not contact_host:
+            return None
+
+        try:
+            ip = ipaddress.ip_address(contact_host)
+        except ValueError:
+            # Domain names or other non-IP hosts should bind on all interfaces.
+            return "0.0.0.0"
+
+        if ip.version == 6:
+            if ip.is_unspecified or ip.is_loopback:
+                return str(ip)
+            if ip.is_private or ip.is_link_local:
+                return str(ip)
+            return "::"
+
+        if ip.is_unspecified or ip.is_loopback or ip.is_private or ip.is_link_local:
+            return str(ip)
+
+        # Public IPv4 addresses are unlikely to be assigned locally when the
+        # service runs behind NAT; listen on all interfaces instead.
+        return "0.0.0.0"
 
     def _fallback_contact_port(
         self, config: SIPRegistrationConfig, exc: OSError
@@ -643,6 +737,35 @@ class SIPRegistrationManager:
             LOGGER.warning("Transport SIP invalide ignoré : %r", value)
             return None
         return candidate
+
+    @staticmethod
+    def _resolve_registrar_socket(host: str, port: int) -> tuple[str, int]:
+        try:
+            address_infos = socket.getaddrinfo(
+                host,
+                port,
+                type=socket.SOCK_DGRAM,
+            )
+        except OSError as exc:
+            LOGGER.debug(
+                "Impossible de résoudre l'adresse réseau du registrar %s:%s : %s",
+                host,
+                port,
+                exc,
+            )
+            return host, port
+
+        for _family, socktype, _proto, _canon, sockaddr in address_infos:
+            if socktype != socket.SOCK_DGRAM:
+                continue
+            if not sockaddr:
+                continue
+            candidate_host = sockaddr[0]
+            candidate_port = sockaddr[1] if len(sockaddr) > 1 else port
+            if candidate_host:
+                return candidate_host, candidate_port
+
+        return host, port
 
     @staticmethod
     def _dialog_transport_kwargs(transport: str | None) -> dict[str, Any]:

@@ -82,3 +82,50 @@ def test_settings_thread_title_prompt_override() -> None:
     settings = Settings.from_env(env)
 
     assert settings.thread_title_prompt == "Titre personnalisé"
+
+
+def test_settings_default_sip_media_port() -> None:
+    env = _base_env()
+    env["OPENAI_API_KEY"] = "sk-test"
+
+    settings = Settings.from_env(env)
+
+    assert settings.sip_media_port == config_module.DEFAULT_SIP_MEDIA_PORT
+    assert settings.sip_contact_host is None
+    assert settings.sip_contact_port is None
+    assert settings.sip_contact_transport is None
+
+
+def test_settings_custom_sip_media_port() -> None:
+    env = _base_env()
+    env.update(
+        {
+            "OPENAI_API_KEY": "sk-test",
+            "SIP_MEDIA_PORT": "5008",
+        }
+    )
+
+    settings = Settings.from_env(env)
+
+    assert settings.sip_media_port == 5008
+    assert settings.sip_contact_host is None
+    assert settings.sip_contact_port is None
+    assert settings.sip_contact_transport is None
+
+
+def test_settings_custom_sip_contact_endpoint() -> None:
+    env = _base_env()
+    env.update(
+        {
+            "OPENAI_API_KEY": "sk-test",
+            "SIP_CONTACT_HOST": "198.51.100.10",
+            "SIP_CONTACT_PORT": "5070",
+            "SIP_CONTACT_TRANSPORT": "UDP",
+        }
+    )
+
+    settings = Settings.from_env(env)
+
+    assert settings.sip_contact_host == "198.51.100.10"
+    assert settings.sip_contact_port == 5070
+    assert settings.sip_contact_transport == "UDP"
