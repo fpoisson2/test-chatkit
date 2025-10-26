@@ -1219,7 +1219,8 @@ def test_build_register_headers_includes_preformatted_via() -> None:
     via_header = headers.get("Via")
     assert via_header is not None
     assert re.fullmatch(
-        r"SIP/2\.0/TCP 198\.51\.100\.10:5070;branch=z9hG4bK[0-9a-f]{16}", via_header
+        r"SIP/2\.0/TCP 198\.51\.100\.10:5070;rport;branch=z9hG4bK[0-9a-f]{16}",
+        via_header,
     )
 
 
@@ -1241,7 +1242,8 @@ def test_build_register_headers_strips_port_from_contact_host() -> None:
     via_header = headers.get("Via")
     assert via_header is not None
     assert re.fullmatch(
-        r"SIP/2\.0/UDP 198\.51\.100\.10:5080;branch=z9hG4bK[0-9a-f]{16}", via_header
+        r"SIP/2\.0/UDP 198\.51\.100\.10:5080;rport;branch=z9hG4bK[0-9a-f]{16}",
+        via_header,
     )
 
 
@@ -1263,5 +1265,6 @@ def test_build_register_headers_formats_ipv6_host_for_via() -> None:
     via_header = headers.get("Via")
     assert via_header is not None
     assert re.fullmatch(
-        r"SIP/2\.0/UDP \[2001:db8::1\]:5080;branch=z9hG4bK[0-9a-f]{16}", via_header
+        r"SIP/2\.0/UDP \[2001:db8::1\]:5080;rport;branch=z9hG4bK[0-9a-f]{16}",
+        via_header,
     )

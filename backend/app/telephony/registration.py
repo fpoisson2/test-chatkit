@@ -1330,7 +1330,9 @@ class SIPRegistrationManager:
             transport_token = transport.upper()
 
         branch = f"z9hG4bK{secrets.token_hex(8)}"
-        return f"SIP/2.0/{transport_token} {formatted_host}:{port};branch={branch}"
+        return (
+            f"SIP/2.0/{transport_token} {formatted_host}:{port};rport;branch={branch}"
+        )
 
     def _call_dialog_register(
         self,
