@@ -652,6 +652,57 @@ def test_options_handler_replies_with_success() -> None:
         )
         manager._active_config = manager._config  # type: ignore[assignment]
 
+        created: list[tuple[int, str]] = []
+        replied: list[object] = []
+
+        class DummyResponse:
+            def __init__(self) -> None:
+                self.headers: dict[str, str] = {}
+
+        class DummyRequest:
+            def create_response(  # type: ignore[no-untyped-def]
+                self, status_code: int, reason: str
+            ) -> DummyResponse:
+                created.append((status_code, reason))
+                return DummyResponse()
+
+            async def reply(self, response: DummyResponse) -> None:
+                replied.append(response)
+
+        class DummyDialog:
+            async def reply(self, *args: object, **kwargs: object) -> None:  # type: ignore[no-untyped-def]
+                raise AssertionError("dialog.reply ne devrait pas être appelé")
+
+        request = DummyRequest()
+
+        loop.run_until_complete(
+            manager._handle_incoming_options(DummyDialog(), request)  # type: ignore[arg-type]
+        )
+    finally:
+        loop.run_until_complete(asyncio.sleep(0))
+        loop.close()
+
+    assert created == [(200, "OK")]
+    assert replied, "A SIP reply should be sent"
+    response = replied[0]
+    assert isinstance(response, DummyResponse)
+    assert response.headers["Allow"] == _OPTIONS_ALLOW_HEADER
+    assert response.headers["Contact"] == "<sip:alice@198.51.100.10:5070>"
+
+
+def test_options_handler_fallbacks_to_dialog_reply() -> None:
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(loop=loop)
+        manager._config = SIPRegistrationConfig(  # type: ignore[assignment]
+            uri="sip:alice@example.com",
+            username="alice",
+            password="secret",
+            contact_host="198.51.100.10",
+            contact_port=5070,
+        )
+        manager._active_config = manager._config  # type: ignore[assignment]
+
         replies: list[tuple[int, dict[str, object]]] = []
 
         class DummyDialog:

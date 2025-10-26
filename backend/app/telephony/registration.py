@@ -379,6 +379,50 @@ class SIPRegistrationManager:
             routes["OPTIONS"] = handler
 
     async def _handle_incoming_options(self, dialog: Any, request: Any) -> None:
+        contact_uri: str | None = None
+        config = self._active_config or self._config
+        if config is not None:
+            with contextlib.suppress(Exception):
+                contact_uri = config.contact_uri()
+
+        create_response = getattr(request, "create_response", None)
+        reply_method = getattr(request, "reply", None)
+        if callable(create_response) and callable(reply_method):
+            try:
+                response = create_response(200, "OK")
+            except Exception:  # pragma: no cover - network dependent
+                LOGGER.exception(
+                    "Impossible de préparer la réponse à la requête SIP OPTIONS"
+                )
+            else:
+                headers_obj = getattr(response, "headers", None)
+                if isinstance(headers_obj, MutableMapping):
+                    headers_obj["Allow"] = _OPTIONS_ALLOW_HEADER
+                    if contact_uri:
+                        headers_obj.setdefault("Contact", contact_uri)
+                else:
+                    merged_headers = {"Allow": _OPTIONS_ALLOW_HEADER}
+                    if contact_uri:
+                        merged_headers.setdefault("Contact", contact_uri)
+                    try:
+                        response.headers = merged_headers  # type: ignore[attr-defined]
+                    except Exception:  # pragma: no cover - depends on aiosip internals
+                        LOGGER.debug(
+                            "Impossible d'attacher les en-têtes SIP OPTIONS "
+                            "à la réponse"
+                        )
+
+                try:
+                    result = reply_method(response)
+                    if inspect.isawaitable(result):
+                        await result
+                except Exception:  # pragma: no cover - network dependent
+                    LOGGER.exception(
+                        "Impossible de répondre à la requête SIP OPTIONS"
+                    )
+                else:
+                    return
+
         call_id: str | None = None
         headers_obj = getattr(request, "headers", None)
         if isinstance(headers_obj, Mapping):
@@ -387,12 +431,6 @@ class SIPRegistrationManager:
                 or headers_obj.get("call-id")
                 or headers_obj.get("Call-id")
             )
-
-        contact_uri: str | None = None
-        config = self._active_config or self._config
-        if config is not None:
-            with contextlib.suppress(Exception):
-                contact_uri = config.contact_uri()
 
         try:
             await send_sip_reply(
