@@ -10,12 +10,15 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from ..admin_settings import (
+    apply_runtime_model_overrides,
     get_thread_title_prompt_override,
     serialize_admin_settings,
     update_admin_settings,
 )
+from ..config import get_settings
 from ..database import get_session
 from ..dependencies import require_admin
+from ..model_providers import configure_model_provider
 from ..models import TelephonyRoute, User
 from ..schemas import (
     AppSettingsResponse,
@@ -65,15 +68,28 @@ async def patch_app_settings(
         kwargs["sip_contact_port"] = payload.sip_contact_port
     if "sip_contact_transport" in payload.model_fields_set:
         kwargs["sip_contact_transport"] = payload.sip_contact_transport
+    if "model_provider" in payload.model_fields_set:
+        kwargs["model_provider"] = payload.model_provider
+    if "model_api_base" in payload.model_fields_set:
+        kwargs["model_api_base"] = payload.model_api_base
+    if "model_api_key" in payload.model_fields_set:
+        kwargs["model_api_key"] = payload.model_api_key
 
     try:
         result = update_admin_settings(session, **kwargs)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     except SQLAlchemyError as exc:  # pragma: no cover - database failure
         session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Impossible d'enregistrer les paramètres",
         ) from exc
+
+    runtime_settings = None
 
     if result.sip_changed:
         manager = getattr(request.app.state, "sip_registration", None)
@@ -92,6 +108,12 @@ async def patch_app_settings(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="La mise à jour de la configuration SIP a échoué",
                 ) from exc
+
+    if result.model_settings_changed:
+        runtime_settings = apply_runtime_model_overrides(result.settings)
+
+    if result.provider_changed or result.model_settings_changed:
+        configure_model_provider(runtime_settings or get_settings())
 
     override = get_thread_title_prompt_override(session)
     serialized = serialize_admin_settings(override)

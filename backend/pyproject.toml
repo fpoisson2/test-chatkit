@@ -9,6 +9,7 @@ dependencies = [
     "openai",
     "openai-agents[litellm]",
     "openai-chatkit @ file:///home/fpoisson/Documents/GitHub/test-chatkit/chatkit-python",
+    "cryptography",
     "uvicorn[standard]",
     "python-dotenv",
     "httpx",

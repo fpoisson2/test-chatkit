@@ -8,7 +8,11 @@ from typing import Any
 from fastapi import FastAPI
 from sqlalchemy import inspect, select, text
 
-from .config import get_settings
+from .admin_settings import (
+    apply_runtime_model_overrides,
+    get_thread_title_prompt_override,
+)
+from .config import settings_proxy
 from .database import (
     SessionLocal,
     engine,
@@ -44,7 +48,7 @@ from .vector_store import (
 )
 
 logger = logging.getLogger("chatkit.server")
-settings = get_settings()
+settings = settings_proxy
 
 
 def _build_invite_handler(manager: SIPRegistrationManager):
@@ -196,6 +200,49 @@ def _run_ad_hoc_migrations() -> None:
                     text(
                         "ALTER TABLE app_settings ADD COLUMN sip_contact_transport "
                         "VARCHAR(16)"
+                    )
+                )
+            if "model_provider" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "model_provider"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN model_provider "
+                        "VARCHAR(64)"
+                    )
+                )
+            if "model_api_base" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "model_api_base"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN model_api_base TEXT"
+                    )
+                )
+            if "model_api_key_encrypted" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "model_api_key_encrypted"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN model_api_key_encrypted "
+                        "TEXT"
+                    )
+                )
+            if "model_api_key_hint" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "model_api_key_hint"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN model_api_key_hint "
+                        "VARCHAR(128)"
                     )
                 )
 
@@ -861,12 +908,15 @@ def register_startup_events(app: FastAPI) -> None:
 
     @app.on_event("startup")
     def _on_startup() -> None:
-        configure_model_provider(settings)
         wait_for_database()
         ensure_database_extensions()
         _run_ad_hoc_migrations()
         Base.metadata.create_all(bind=engine)
         ensure_vector_indexes()
+        with SessionLocal() as session:
+            override = get_thread_title_prompt_override(session)
+            runtime_settings = apply_runtime_model_overrides(override)
+        configure_model_provider(runtime_settings)
         _ensure_protected_vector_store()
         if settings.admin_email and settings.admin_password:
             normalized_email = settings.admin_email.lower()

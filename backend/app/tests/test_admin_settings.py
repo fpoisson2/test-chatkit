@@ -35,7 +35,13 @@ def session_factory(monkeypatch: pytest.MonkeyPatch):
 
 @pytest.fixture
 def default_prompt(monkeypatch: pytest.MonkeyPatch) -> str:
-    defaults = types.SimpleNamespace(thread_title_prompt="Prompt par défaut")
+    defaults = types.SimpleNamespace(
+        thread_title_prompt="Prompt par défaut",
+        model_provider="openai",
+        model_api_base="https://api.openai.com",
+        is_model_api_key_managed=False,
+        model_api_key_hint=None,
+    )
     monkeypatch.setattr(admin_settings, "get_settings", lambda: defaults)
     return defaults.thread_title_prompt
 
@@ -95,6 +101,12 @@ def test_serialize_admin_settings_marks_custom_value(
     payload = admin_settings.serialize_admin_settings(override)
     assert payload["thread_title_prompt"] == "Prompt ajusté"
     assert payload["is_custom_thread_title_prompt"] is True
+    assert payload["model_provider"] == "openai"
+    assert payload["model_api_base"] == "https://api.openai.com"
+    assert payload["is_model_provider_overridden"] is False
+    assert payload["is_model_api_base_overridden"] is False
+    assert payload["is_model_api_key_managed"] is False
+    assert payload["model_api_key_hint"] is None
     assert payload["sip_trunk_uri"] is None
     assert payload["sip_trunk_username"] is None
     assert payload["sip_trunk_password"] is None
@@ -110,6 +122,12 @@ def test_serialize_admin_settings_marks_custom_value(
     )
     assert payload["thread_title_prompt"] == default_prompt
     assert payload["is_custom_thread_title_prompt"] is False
+    assert payload["model_provider"] == "openai"
+    assert payload["model_api_base"] == "https://api.openai.com"
+    assert payload["is_model_provider_overridden"] is False
+    assert payload["is_model_api_base_overridden"] is False
+    assert payload["is_model_api_key_managed"] is False
+    assert payload["model_api_key_hint"] is None
     assert payload["sip_trunk_uri"] is None
     assert payload["sip_trunk_username"] is None
     assert payload["sip_trunk_password"] is None
@@ -192,3 +210,58 @@ def test_update_admin_settings_handles_contact_endpoint(
     with session_factory() as session:
         override = admin_settings.get_thread_title_prompt_override(session)
         assert override is None
+
+
+def test_update_admin_settings_handles_model_provider(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        result = admin_settings.update_admin_settings(
+            session,
+            model_provider="litellm",
+            model_api_base="http://localhost:4000/",
+            model_api_key=" proxy-secret ",
+        )
+
+    assert result.model_settings_changed is True
+    assert result.provider_changed is True
+    stored = result.settings
+    assert stored is not None
+    assert stored.model_provider == "litellm"
+    assert stored.model_api_base == "http://localhost:4000"
+    assert stored.model_api_key_encrypted is not None
+    assert stored.model_api_key_encrypted != "proxy-secret"
+    assert stored.model_api_key_hint is not None
+    assert stored.model_api_key_hint.endswith("cret")
+
+    decrypted = admin_settings._decrypt_secret(stored.model_api_key_encrypted)
+    assert decrypted == "proxy-secret"
+
+    overrides = admin_settings._compute_model_overrides(stored)
+    assert overrides["model_provider"] == "litellm"
+    assert overrides["model_api_base"] == "http://localhost:4000"
+    assert overrides["model_api_key"] == "proxy-secret"
+
+
+def test_update_admin_settings_clears_model_overrides(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        admin_settings.update_admin_settings(
+            session,
+            model_provider="litellm",
+            model_api_base="http://localhost:4000",
+            model_api_key="secret",
+        )
+
+    with session_factory() as session:
+        result = admin_settings.update_admin_settings(
+            session,
+            model_provider=None,
+            model_api_base=None,
+            model_api_key=None,
+        )
+
+    assert result.model_settings_changed is True
+    assert result.provider_changed is True
+    assert result.settings is None

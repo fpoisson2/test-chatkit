@@ -129,3 +129,28 @@ def test_settings_custom_sip_contact_endpoint() -> None:
     assert settings.sip_contact_host == "198.51.100.10"
     assert settings.sip_contact_port == 5070
     assert settings.sip_contact_transport == "UDP"
+
+
+def test_set_runtime_settings_overrides_applies_custom_provider() -> None:
+    config_module.get_settings.cache_clear()
+    config_module.set_runtime_settings_overrides(None)
+    env = _base_env()
+    env["OPENAI_API_KEY"] = "sk-test"
+    base_settings = Settings.from_env(env)
+    assert base_settings.model_provider == "openai"
+    assert base_settings.model_api_base == "https://api.openai.com"
+
+    config_module.set_runtime_settings_overrides(
+        {
+            "model_provider": "litellm",
+            "model_api_base": "http://localhost:4000",
+            "model_api_key": "proxy-secret",
+            "model_api_key_env": config_module.ADMIN_MODEL_API_KEY_ENV,
+        }
+    )
+    overridden = config_module.get_settings()
+    assert overridden.model_provider == "litellm"
+    assert overridden.model_api_base == "http://localhost:4000"
+    assert overridden.model_api_key == "proxy-secret"
+
+    config_module.set_runtime_settings_overrides(None)

@@ -395,7 +395,9 @@ def test_download_attachment_missing_store(monkeypatch: pytest.MonkeyPatch) -> N
     asyncio.run(_run())
 
 
-def test_create_session_uses_managed_workflow_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_session_uses_managed_workflow_without_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async def _run() -> None:
         settings = SimpleNamespace(
             model_api_key="sk-test",
@@ -419,7 +421,9 @@ def test_create_session_uses_managed_workflow_without_env(monkeypatch: pytest.Mo
                     ),
                 )
 
-        async def _fake_create_session(user_id: str, *, workflow_id: str) -> dict[str, Any]:
+        async def _fake_create_session(
+            user_id: str, *, workflow_id: str
+        ) -> dict[str, Any]:
             captured["user_id"] = user_id
             captured["workflow_id"] = workflow_id
             return {"client_secret": {"value": "secret"}, "expires_at": "soon"}
@@ -450,7 +454,9 @@ def test_create_session_uses_managed_workflow_without_env(monkeypatch: pytest.Mo
     asyncio.run(_run())
 
 
-def test_create_session_without_any_hosted_workflow(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_session_without_any_hosted_workflow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     async def _run() -> None:
         settings = SimpleNamespace(
             model_api_key="sk-test",
