@@ -1031,6 +1031,9 @@ class SIPRegistrationManager:
         to_header = self._format_register_to_header(config.uri)
         if to_header:
             headers["To"] = to_header
+        via_header = self._format_register_via(config)
+        if via_header:
+            headers["Via"] = via_header
         return headers
 
     @staticmethod
@@ -1039,6 +1042,32 @@ class SIPRegistrationManager:
             return None
         candidate = value.strip()
         return candidate or None
+
+    @staticmethod
+    def _format_register_via(config: SIPRegistrationConfig) -> str | None:
+        host = SIPRegistrationManager._normalize_optional_string(config.contact_host)
+        port = config.contact_port
+        if not host or not isinstance(port, int) or port <= 0:
+            return None
+
+        try:
+            ip_obj = ipaddress.ip_address(host)
+        except ValueError:
+            formatted_host = host
+        else:
+            if isinstance(ip_obj, ipaddress.IPv6Address):
+                formatted_host = f"[{host}]"
+            else:
+                formatted_host = host
+
+        transport = SIPRegistrationManager._normalize_transport(config.transport)
+        if not transport:
+            transport_token = "UDP"
+        else:
+            transport_token = transport.upper()
+
+        branch = f"z9hG4bK{secrets.token_hex(8)}"
+        return f"SIP/2.0/{transport_token} {formatted_host}:{port};branch={branch}"
 
     def _call_dialog_register(
         self,
