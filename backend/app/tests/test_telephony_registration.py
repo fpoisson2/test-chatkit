@@ -614,6 +614,31 @@ def test_set_invite_handler_configures_router() -> None:
         loop.close()
 
 
+def test_set_invite_handler_configures_dispatcher() -> None:
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(loop=loop)
+
+        class _Dispatcher:
+            def __init__(self) -> None:
+                self.registered: dict[str, object] = {}
+
+            def register(self, method: str):  # type: ignore[no-untyped-def]
+                def decorator(handler):  # type: ignore[no-untyped-def]
+                    self.registered[method] = handler
+                    return handler
+
+                return decorator
+
+        dummy_app = SimpleNamespace(dispatcher=_Dispatcher())
+        manager._app = dummy_app  # type: ignore[attr-defined]
+
+        manager.set_invite_handler(None)
+        assert "OPTIONS" in dummy_app.dispatcher.registered
+    finally:
+        loop.close()
+
+
 def test_options_handler_replies_with_success() -> None:
     loop = asyncio.new_event_loop()
     try:
@@ -652,6 +677,51 @@ def test_options_handler_replies_with_success() -> None:
     assert headers.get("Allow") == _OPTIONS_ALLOW_HEADER
     assert headers.get("Contact") == "<sip:alice@198.51.100.10:5070>"
     assert params.get("reason") == "OK"
+
+
+def test_options_dispatcher_handler_replies_with_success() -> None:
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(loop=loop)
+        manager._config = SIPRegistrationConfig(  # type: ignore[assignment]
+            uri="sip:alice@example.com",
+            username="alice",
+            password="secret",
+            contact_host="198.51.100.10",
+            contact_port=5070,
+        )
+        manager._active_config = manager._config  # type: ignore[assignment]
+
+        created: list[tuple[int, str]] = []
+        replies: list[object] = []
+
+        class DummyResponse:
+            def __init__(self) -> None:
+                self.headers: dict[str, str] = {}
+
+        class DummyRequest:
+            def create_response(  # type: ignore[no-untyped-def]
+                self, status_code: int, reason: str
+            ) -> DummyResponse:
+                created.append((status_code, reason))
+                return DummyResponse()
+
+            async def reply(self, response: DummyResponse) -> None:
+                replies.append(response)
+
+        loop.run_until_complete(
+            manager._handle_incoming_options_dispatcher(DummyRequest(), object())
+        )
+    finally:
+        loop.run_until_complete(asyncio.sleep(0))
+        loop.close()
+
+    assert created == [(200, "OK")]
+    assert replies, "A SIP reply should be sent"
+    response = replies[0]
+    assert isinstance(response, DummyResponse)
+    assert response.headers["Allow"] == _OPTIONS_ALLOW_HEADER
+    assert response.headers["Contact"] == "<sip:alice@198.51.100.10:5070>"
 
 
 def test_register_once_uses_resolved_registrar_ip(

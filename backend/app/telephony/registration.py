@@ -325,10 +325,15 @@ class SIPRegistrationManager:
 
     def _configure_invite_route(self, app: Any) -> None:
         router = getattr(app, "router", None)
+        if router is not None:
+            self._configure_options_route(router)
+
+        dispatcher = getattr(app, "dispatcher", None)
+        if dispatcher is not None:
+            self._configure_options_dispatcher(dispatcher)
+
         if router is None:
             return
-
-        self._configure_options_route(router)
 
         if self._invite_handler is None:
             if hasattr(router, "routes") and isinstance(router.routes, dict):
@@ -349,6 +354,27 @@ class SIPRegistrationManager:
             return
 
         routes = getattr(router, "routes", None)
+        if isinstance(routes, dict):
+            routes["OPTIONS"] = handler
+
+    def _configure_options_dispatcher(self, dispatcher: Any) -> None:
+        handler = self._handle_incoming_options_dispatcher
+        register = getattr(dispatcher, "register", None)
+        if callable(register):
+            try:
+                decorator = register("OPTIONS")
+            except Exception:  # pragma: no cover - depends on aiosip internals
+                decorator = None
+            if callable(decorator):
+                decorator(handler)
+                return
+
+        add_method = getattr(dispatcher, "add_method", None)
+        if callable(add_method):
+            add_method("OPTIONS", handler)
+            return
+
+        routes = getattr(dispatcher, "routes", None)
         if isinstance(routes, dict):
             routes["OPTIONS"] = handler
 
@@ -378,6 +404,44 @@ class SIPRegistrationManager:
                 contact_uri=contact_uri,
                 log=False,
             )
+        except Exception:  # pragma: no cover - network dependent
+            LOGGER.exception("Impossible de répondre à la requête SIP OPTIONS")
+
+    async def _handle_incoming_options_dispatcher(
+        self, request: Any, message: Any
+    ) -> None:
+        contact_uri: str | None = None
+        config = self._active_config or self._config
+        if config is not None:
+            with contextlib.suppress(Exception):
+                contact_uri = config.contact_uri()
+
+        try:
+            response = request.create_response(200, "OK")
+        except Exception:  # pragma: no cover - network dependent
+            LOGGER.exception(
+                "Impossible de préparer la réponse à la requête SIP OPTIONS"
+            )
+            return
+
+        headers_obj = getattr(response, "headers", None)
+        if isinstance(headers_obj, MutableMapping):
+            headers_obj["Allow"] = _OPTIONS_ALLOW_HEADER
+            if contact_uri:
+                headers_obj.setdefault("Contact", contact_uri)
+        else:
+            merged_headers = {"Allow": _OPTIONS_ALLOW_HEADER}
+            if contact_uri:
+                merged_headers.setdefault("Contact", contact_uri)
+            try:
+                response.headers = merged_headers  # type: ignore[attr-defined]
+            except Exception:  # pragma: no cover - depends on aiosip internals
+                LOGGER.debug(
+                    "Impossible d'attacher les en-têtes SIP OPTIONS à la réponse"
+                )
+
+        try:
+            await request.reply(response)
         except Exception:  # pragma: no cover - network dependent
             LOGGER.exception("Impossible de répondre à la requête SIP OPTIONS")
 
