@@ -828,15 +828,15 @@ class SIPRegistrationManager:
         if ip.version == 6:
             if ip.is_unspecified or ip.is_loopback:
                 return str(ip)
-            if ip.is_private or ip.is_link_local:
-                return str(ip)
             return "::"
 
-        if ip.is_unspecified or ip.is_loopback or ip.is_private or ip.is_link_local:
+        if ip.is_unspecified or ip.is_loopback:
             return str(ip)
 
-        # Public IPv4 addresses are unlikely to be assigned locally when the
-        # service runs behind NAT; listen on all interfaces instead.
+        # Rely on wildcard bindings for all other IPv4 addresses.  This avoids
+        # attempting to bind to a specific host interface that may not exist in
+        # containerised deployments (for instance when the contact host points
+        # to an address assigned on the Docker host).
         return "0.0.0.0"
 
     def _fallback_contact_port(

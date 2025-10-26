@@ -146,7 +146,7 @@ def test_apply_config_from_settings_uses_stored_contact_values(
     assert config.contact_host == "198.51.100.5"
     assert config.contact_port == 5070
     assert config.transport == "udp"
-    assert config.bind_host == "198.51.100.5"
+    assert config.bind_host == "0.0.0.0"
 
 
 def test_apply_config_from_settings_uses_runtime_contact_settings(
@@ -545,7 +545,7 @@ def test_apply_config_from_settings_accepts_host_only_trunk_uri(
     assert config.uri == "sip:alice@montreal5.voip.ms"
     assert config.contact_host == "198.51.100.5"
     assert config.contact_port == 5070
-    assert config.bind_host == "198.51.100.5"
+    assert config.bind_host == "0.0.0.0"
 
 
 def test_normalize_trunk_uri_enforces_scheme_and_username() -> None:
