@@ -12,7 +12,7 @@ from .admin_settings import (
     apply_runtime_model_overrides,
     get_thread_title_prompt_override,
 )
-from .config import settings_proxy
+from .config import DEFAULT_THREAD_TITLE_MODEL, settings_proxy
 from .database import (
     SessionLocal,
     engine,
@@ -172,6 +172,38 @@ def _run_ad_hoc_migrations() -> None:
                 column["name"]
                 for column in inspect(connection).get_columns("app_settings")
             }
+            if "thread_title_model" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "thread_title_model",
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN thread_title_model "
+                        "VARCHAR(128)"
+                    )
+                )
+                connection.execute(
+                    text(
+                        "UPDATE app_settings SET thread_title_model = :default_model"
+                    ),
+                    {"default_model": DEFAULT_THREAD_TITLE_MODEL},
+                )
+                dialect = connection.dialect.name
+                if dialect == "postgresql":
+                    connection.execute(
+                        text(
+                            "ALTER TABLE app_settings ALTER COLUMN thread_title_model "
+                            "SET DEFAULT :default_model"
+                        ),
+                        {"default_model": DEFAULT_THREAD_TITLE_MODEL},
+                    )
+                    connection.execute(
+                        text(
+                            "ALTER TABLE app_settings ALTER COLUMN thread_title_model "
+                            "SET NOT NULL"
+                        )
+                    )
             if "sip_trunk_uri" not in app_settings_columns:
                 logger.info(
                     "Migration du schéma app_settings : ajout de la colonne "
