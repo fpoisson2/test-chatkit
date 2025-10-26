@@ -290,13 +290,15 @@ async def send_sip_reply(
     payload: bytes | str | None = None,
     call_id: str | None = None,
     contact_uri: str | None = None,
+    log: bool = True,
 ) -> None:
-    logger.info(
-        "Envoi réponse SIP %s %s (Call-ID=%s)",
-        status_code,
-        reason,
-        call_id or "inconnu",
-    )
+    if log:
+        logger.info(
+            "Envoi réponse SIP %s %s (Call-ID=%s)",
+            status_code,
+            reason,
+            call_id or "inconnu",
+        )
     merged_headers: dict[str, str] | None = None
     if headers:
         merged_headers = dict(headers)

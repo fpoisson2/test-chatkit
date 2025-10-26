@@ -48,6 +48,11 @@ from .vector_store import (
 )
 
 logger = logging.getLogger("chatkit.server")
+
+for _aiosip_logger in ("aiosip", "aiosip.protocol", "aiosip.application"):
+    logger_instance = logging.getLogger(_aiosip_logger)
+    if logger_instance.level == logging.NOTSET:
+        logger_instance.setLevel(logging.INFO)
 settings = settings_proxy
 
 
