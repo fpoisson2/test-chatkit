@@ -56,6 +56,49 @@ _STATIC_PAYLOADS: dict[int, tuple[str, int]] = {
 }
 
 
+def _parse_connection_address(sdp_lines: Iterable[str]) -> str | None:
+    """Extraire l'adresse de connexion RTP depuis le SDP."""
+
+    session_connection: str | None = None
+    audio_connection: str | None = None
+    in_audio_section = False
+    for line in sdp_lines:
+        if line.startswith("m="):
+            in_audio_section = line.startswith("m=audio")
+            continue
+        if not line.startswith("c="):
+            continue
+
+        parts = line[2:].strip().split()
+        if len(parts) < 3:
+            logger.debug("Ligne c= ignorée (mal formée) : %s", line)
+            continue
+        address = parts[2]
+        if in_audio_section and audio_connection is None:
+            audio_connection = address
+        elif session_connection is None:
+            session_connection = address
+
+    return audio_connection or session_connection
+
+
+def _describe_offered_codecs(
+    offered_payloads: Iterable[int],
+    payload_map: Mapping[int, tuple[str, int]],
+) -> str:
+    """Fournir une représentation textuelle des codecs proposés."""
+
+    descriptions: list[str] = []
+    for payload in offered_payloads:
+        codec_info = payload_map.get(payload) or _STATIC_PAYLOADS.get(payload)
+        if codec_info is None:
+            descriptions.append(str(payload))
+            continue
+        codec_name, clock_rate = codec_info
+        descriptions.append(f"{payload}:{codec_name}/{clock_rate}")
+    return ",".join(descriptions)
+
+
 def _parse_payload_map(sdp_lines: Iterable[str]) -> dict[int, tuple[str, int]]:
     payload_map: dict[int, tuple[str, int]] = {}
     for line in sdp_lines:
@@ -218,6 +261,7 @@ async def handle_incoming_invite(
     sdp_lines = [
         line.strip() for line in normalized_payload_text.splitlines() if line.strip()
     ]
+    payload_map = _parse_payload_map(sdp_lines)
     audio_media = _parse_audio_media_line(sdp_lines)
     if audio_media is None:
         _log_call_event(
@@ -236,15 +280,16 @@ async def handle_incoming_invite(
         raise InviteHandlingError("Aucun média audio trouvé")
 
     offered_port, offered_payloads = audio_media
+    connection_address = _parse_connection_address(sdp_lines)
     _log_call_event(
         logging.INFO,
         call_id,
-        "SDP audio analysé",
-        audio_port=offered_port,
-        payloads=",".join(str(p) for p in offered_payloads),
+        "Offre RTP détectée",
+        rtp_host=connection_address or "?",
+        rtp_port=offered_port,
+        payloads=_describe_offered_codecs(offered_payloads, payload_map),
     )
 
-    payload_map = _parse_payload_map(sdp_lines)
     codec = _select_codec(
         offered_payloads=offered_payloads,
         payload_map=payload_map,
@@ -290,6 +335,10 @@ async def handle_incoming_invite(
         payload_type=codec.payload_type,
         codec=codec.name,
         clock_rate=codec.clock_rate,
+        local_host=media_host,
+        local_port=media_port,
+        remote_host=connection_address or "?",
+        remote_port=offered_port,
     )
 
     logger.debug(
@@ -337,8 +386,15 @@ async def send_sip_reply(
     contact_uri: str | None = None,
     via_header: str | None = None,
 ) -> None:
+    if status_code < 200:
+        log_level = logging.DEBUG
+    elif status_code >= 400:
+        log_level = logging.WARNING
+    else:
+        log_level = logging.INFO
+
     _log_call_event(
-        logging.INFO,
+        log_level,
         call_id,
         "Réponse envoyée",
         status=f"{status_code} {reason}",
