@@ -1050,6 +1050,20 @@ class SIPRegistrationManager:
         if not host or not isinstance(port, int) or port <= 0:
             return None
 
+        host_only, embedded_port = SIPRegistrationManager._split_contact_host_port(host)
+        if host_only:
+            host = host_only
+        if embedded_port is not None and embedded_port != port:
+            LOGGER.debug(
+                (
+                    "Port %s intégré dans l'hôte de contact SIP %s ignoré "
+                    "(port configuré %s)"
+                ),
+                embedded_port,
+                host,
+                port,
+            )
+
         try:
             ip_obj = ipaddress.ip_address(host)
         except ValueError:
@@ -1068,6 +1082,38 @@ class SIPRegistrationManager:
 
         branch = f"z9hG4bK{secrets.token_hex(8)}"
         return f"SIP/2.0/{transport_token} {formatted_host}:{port};branch={branch}"
+
+    @staticmethod
+    def _split_contact_host_port(value: str) -> tuple[str, int | None]:
+        trimmed = value.strip()
+        if not trimmed:
+            return "", None
+
+        candidate = trimmed.split(";", 1)[0]
+        candidate = candidate.split("?", 1)[0]
+
+        if (
+            ":" in candidate
+            and candidate.count(":") > 1
+            and not candidate.startswith("[")
+        ):
+            return candidate, None
+
+        try:
+            parsed = urllib.parse.urlsplit(f"//{candidate}")
+        except ValueError:
+            return candidate, None
+
+        host = parsed.hostname
+        if host is None:
+            return candidate, None
+
+        try:
+            port = parsed.port
+        except ValueError:
+            port = None
+
+        return host, port
 
     def _call_dialog_register(
         self,
