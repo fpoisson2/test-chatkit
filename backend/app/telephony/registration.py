@@ -376,6 +376,7 @@ class SIPRegistrationManager:
                 headers={"Allow": _OPTIONS_ALLOW_HEADER},
                 call_id=call_id,
                 contact_uri=contact_uri,
+                log=False,
             )
         except Exception:  # pragma: no cover - network dependent
             LOGGER.exception("Impossible de répondre à la requête SIP OPTIONS")
