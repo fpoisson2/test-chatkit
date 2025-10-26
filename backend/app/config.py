@@ -124,6 +124,8 @@ class Settings:
         sip_bind_port: Port d'écoute du serveur SIP (0 pour laisser l'OS choisir).
         sip_username: Identifiant d'authentification SIP (optionnel).
         sip_password: Mot de passe d'authentification SIP (optionnel).
+        sip_trunk_uri: URI du trunk SIP (ex: "sip:alice@example.org").
+        sip_registrar: Hôte ou URI du registrar SIP (ex: "pbx.local").
         sip_media_port: Port RTP local annoncé dans les réponses SIP (configurable,
             40000 par défaut).
         telephony_default_workflow_slug: Slug du workflow par défaut pour la
@@ -171,6 +173,8 @@ class Settings:
     sip_bind_port: int | None
     sip_username: str | None
     sip_password: str | None
+    sip_trunk_uri: str | None
+    sip_registrar: str | None
     sip_media_port: int
     sip_contact_host: str | None
     sip_contact_port: int | None
@@ -394,6 +398,25 @@ class Settings:
 
         sip_bind_port_value = _optional_int("SIP_BIND_PORT")
 
+        sip_username_value = get_stripped("SIP_USERNAME")
+        sip_password_value = get_stripped("SIP_PASSWORD")
+
+        contact_transport_value = get_stripped("SIP_CONTACT_TRANSPORT")
+        if contact_transport_value is None:
+            contact_transport_value = get_stripped("SIP_TRANSPORT")
+
+        sip_trunk_uri_value = get_stripped("SIP_TRUNK_URI")
+        sip_registrar_value = get_stripped("SIP_REGISTRAR")
+        if not sip_trunk_uri_value and sip_registrar_value:
+            registrar_trimmed = sip_registrar_value.strip()
+            registrar_lower = registrar_trimmed.lower()
+            if registrar_lower.startswith("sip:") or registrar_lower.startswith(
+                "sips:"
+            ):
+                sip_trunk_uri_value = registrar_trimmed
+            elif sip_username_value:
+                sip_trunk_uri_value = f"sip:{sip_username_value}@{registrar_trimmed}"
+
         return cls(
             allowed_origins=cls._parse_allowed_origins(env.get("ALLOWED_ORIGINS")),
             model_provider=model_provider,
@@ -430,12 +453,14 @@ class Settings:
                 if sip_bind_port_value is not None
                 else DEFAULT_SIP_BIND_PORT
             ),
-            sip_username=get_stripped("SIP_USERNAME"),
-            sip_password=get_stripped("SIP_PASSWORD"),
+            sip_username=sip_username_value,
+            sip_password=sip_password_value,
+            sip_trunk_uri=sip_trunk_uri_value,
+            sip_registrar=sip_registrar_value,
             sip_media_port=_optional_int("SIP_MEDIA_PORT") or DEFAULT_SIP_MEDIA_PORT,
             sip_contact_host=get_stripped("SIP_CONTACT_HOST"),
             sip_contact_port=_optional_int("SIP_CONTACT_PORT"),
-            sip_contact_transport=get_stripped("SIP_CONTACT_TRANSPORT"),
+            sip_contact_transport=contact_transport_value,
             telephony_default_workflow_slug=get_stripped(
                 "TELEPHONY_DEFAULT_WORKFLOW_SLUG"
             ),

@@ -587,38 +587,40 @@ class SIPRegistrationManager:
         if stored_settings is None:
             stored_settings = session.scalar(select(AppSettings).limit(1))
 
-        if stored_settings is None:
-            LOGGER.info(
-                "Enregistrement SIP désactivé : aucun paramètre d'application trouvé"
-            )
-            self.apply_config(None)
-            return
+        runtime_settings = self.settings
 
-        trunk_uri = (stored_settings.sip_trunk_uri or "").strip()
-        if not trunk_uri:
-            LOGGER.info(
-                "Enregistrement SIP désactivé : aucun trunk SIP n'est configuré"
+        username = None
+        if stored_settings is not None:
+            username = self._normalize_optional_string(
+                getattr(stored_settings, "sip_trunk_username", None)
             )
-            self.apply_config(None)
-            return
+        if not username and runtime_settings is not None:
+            username = self._normalize_optional_string(
+                getattr(runtime_settings, "sip_username", None)
+            )
 
-        username = (stored_settings.sip_trunk_username or "").strip()
-        if not username:
-            fallback_username = getattr(self.settings, "sip_username", None)
-            if isinstance(fallback_username, str):
-                fallback_username = fallback_username.strip()
-            username = fallback_username
-        password = (stored_settings.sip_trunk_password or "").strip()
-        if not password:
-            fallback_password = getattr(self.settings, "sip_password", None)
-            if isinstance(fallback_password, str):
-                fallback_password = fallback_password.strip()
-            password = fallback_password
+        password = None
+        if stored_settings is not None:
+            password = self._normalize_optional_string(
+                getattr(stored_settings, "sip_trunk_password", None)
+            )
+        if not password and runtime_settings is not None:
+            password = self._normalize_optional_string(
+                getattr(runtime_settings, "sip_password", None)
+            )
 
         if not username or not password:
             LOGGER.warning(
                 "Impossible d'initialiser l'enregistrement SIP : identifiants "
                 "SIP manquants",
+            )
+            self.apply_config(None)
+            return
+
+        trunk_uri = self._resolve_trunk_uri(stored_settings, username)
+        if trunk_uri is None:
+            LOGGER.info(
+                "Enregistrement SIP désactivé : aucun trunk SIP n'est configuré"
             )
             self.apply_config(None)
             return
@@ -662,6 +664,43 @@ class SIPRegistrationManager:
             config.transport or "par défaut",
         )
         self.apply_config(config)
+
+    def _resolve_trunk_uri(
+        self, stored_settings: AppSettings | None, username: str | None
+    ) -> str | None:
+        """Return the trunk URI from admin settings or runtime overrides."""
+
+        if stored_settings is not None:
+            candidate = self._normalize_optional_string(
+                getattr(stored_settings, "sip_trunk_uri", None)
+            )
+            if candidate:
+                return candidate
+
+        runtime_settings = self.settings
+        if runtime_settings is None:
+            return None
+
+        candidate = self._normalize_optional_string(
+            getattr(runtime_settings, "sip_trunk_uri", None)
+        )
+        if candidate:
+            return candidate
+
+        registrar = self._normalize_optional_string(
+            getattr(runtime_settings, "sip_registrar", None)
+        )
+        if not registrar:
+            return None
+
+        lower = registrar.lower()
+        if lower.startswith("sip:") or lower.startswith("sips:"):
+            return registrar
+
+        if not username:
+            return None
+
+        return f"sip:{username}@{registrar}"
 
     def _resolve_contact_endpoint(
         self, stored_settings: AppSettings | None, trunk_uri: str
