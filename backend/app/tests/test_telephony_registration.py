@@ -685,6 +685,11 @@ def test_register_once_uses_resolved_registrar_ip(
 
     try:
         manager = SIPRegistrationManager(loop=loop)
+        monkeypatch.setattr(
+            manager,
+            "_find_available_contact_port",
+            MagicMock(return_value=5060),
+        )
         config = SIPRegistrationConfig(
             uri="sip:218135_chatkit@montreal5.voip.ms",
             username="218135_chatkit",
@@ -760,6 +765,11 @@ def test_register_once_uses_bind_host_for_local_addr(
 
     try:
         manager = SIPRegistrationManager(loop=loop)
+        monkeypatch.setattr(
+            manager,
+            "_find_available_contact_port",
+            MagicMock(return_value=40650),
+        )
         config = SIPRegistrationConfig(
             uri="sip:218135_chatkit@montreal5.voip.ms",
             username="218135_chatkit",
@@ -773,7 +783,8 @@ def test_register_once_uses_bind_host_for_local_addr(
 
         assert start_kwargs, "start_dialog should be invoked"
         local_addr = start_kwargs[0]["local_addr"]
-        assert local_addr == ("0.0.0.0", 5060)
+        assert local_addr == ("0.0.0.0", 40650)
+        assert manager._active_config.contact_port == 40650
     finally:
         loop.run_until_complete(manager._unregister())
         loop.close()
@@ -827,6 +838,11 @@ def test_register_once_reports_bind_error(monkeypatch: pytest.MonkeyPatch) -> No
     loop = asyncio.new_event_loop()
     try:
         manager = SIPRegistrationManager(loop=loop)
+        monkeypatch.setattr(
+            manager,
+            "_find_available_contact_port",
+            MagicMock(return_value=40118),
+        )
 
         fake_app = SimpleNamespace(
             start_dialog=AsyncMock(
@@ -856,7 +872,7 @@ def test_register_once_reports_bind_error(monkeypatch: pytest.MonkeyPatch) -> No
 
     message = str(excinfo.value)
     assert "Impossible d'ouvrir une socket SIP locale" in message
-    assert "0.0.0.0:5060" in message
+    assert "0.0.0.0:40118" in message
 
 
 def test_register_once_retries_with_available_bind_host(
@@ -888,6 +904,14 @@ def test_register_once_retries_with_available_bind_host(
             contact_port=5060,
         )
         manager._config = config
+        monkeypatch.setattr(
+            manager,
+            "_find_available_contact_port",
+            MagicMock(side_effect=[
+                40700,
+                40788,
+            ]),
+        )
 
         caplog.set_level(logging.WARNING)
         loop.run_until_complete(manager._register_once(config))
@@ -897,11 +921,12 @@ def test_register_once_retries_with_available_bind_host(
     assert start_dialog.await_count == 2
     first_call = start_dialog.await_args_list[0]
     second_call = start_dialog.await_args_list[1]
-    assert first_call.kwargs["local_addr"] == ("192.168.1.116", 5060)
-    assert second_call.kwargs["local_addr"] == ("0.0.0.0", 5060)
+    assert first_call.kwargs["local_addr"] == ("192.168.1.116", 40700)
+    assert second_call.kwargs["local_addr"] == ("0.0.0.0", 40788)
     assert manager._dialog is dialog
     assert manager._config.bind_host == "0.0.0.0"
     assert manager._active_config.bind_host == "0.0.0.0"
+    assert manager._active_config.contact_port == 40788
     assert "tentative avec" in caplog.text
 
 
@@ -949,7 +974,8 @@ def test_register_once_retries_with_available_port(
     assert manager._dialog is dialog
     assert manager._config.contact_port == 5072
     assert manager._active_config.contact_port == 5072
-    assert "tentative avec le port" in caplog.text
+    assert manager._find_available_contact_port.call_count >= 2
+    assert "nouvelle tentative avec un port éphémère" in caplog.text
 
 
 def test_run_loop_retries_after_register_failure(

@@ -493,15 +493,37 @@ class SIPRegistrationManager:
                 resolved_port,
             )
         remote_addr = (resolved_host, resolved_port)
-        local_host = config.bind_host or config.contact_host
-        local_addr = (local_host, config.contact_port)
-
         request_uri = self._registrar_request_uri(config.uri)
 
         if self._dialog is None:
             dialog_kwargs = self._dialog_transport_kwargs(config.transport)
             bind_error: BaseException | None = None
+            last_local_addr: tuple[str, int] | None = None
             while self._dialog is None:
+                local_host = config.bind_host or config.contact_host
+                if not local_host:
+                    bind_error = ValueError(
+                        "Impossible de déterminer l'hôte local pour le SIP "
+                        "REGISTER. Vérifiez la configuration du contact."
+                    )
+                    break
+
+                candidate_port = self._find_available_contact_port(local_host)
+                if candidate_port is None:
+                    bind_error = ValueError(
+                        "Impossible de déterminer un port SIP disponible sur "
+                        f"{local_host}. Vérifiez que l'hôte de contact est "
+                        "accessible depuis cette machine."
+                    )
+                    break
+
+                if candidate_port != config.contact_port:
+                    config = replace(config, contact_port=candidate_port)
+                    self._config = config
+
+                local_addr = (local_host, candidate_port)
+                last_local_addr = local_addr
+
                 try:
                     self._dialog = await self._app.start_dialog(
                         from_uri=config.uri,
@@ -517,28 +539,30 @@ class SIPRegistrationManager:
                     fallback_config = self._fallback_bind_host(config, exc)
                     if fallback_config is not None:
                         config = fallback_config
-                        local_host = config.bind_host or config.contact_host
-                        local_addr = (local_host, config.contact_port)
                         dialog_kwargs = self._dialog_transport_kwargs(
                             config.transport
                         )
                         continue
 
-                    fallback_config = self._fallback_contact_port(config, exc)
-                    if fallback_config is None:
-                        break
-                    config = fallback_config
-                    local_host = config.bind_host or config.contact_host
-                    local_addr = (local_host, config.contact_port)
-                    dialog_kwargs = self._dialog_transport_kwargs(config.transport)
-                    continue
+                    if exc.errno == errno.EADDRINUSE:
+                        LOGGER.warning(
+                            "Port SIP %s indisponible sur %s, nouvelle tentative "
+                            "avec un port éphémère.",
+                            candidate_port,
+                            local_host,
+                        )
+                        continue
                 break
 
             if self._dialog is None:
                 assert bind_error is not None
+                if last_local_addr is not None:
+                    local_host, local_port = last_local_addr
+                else:
+                    local_host, local_port = config.contact_host, config.contact_port
                 raise ValueError(
                     "Impossible d'ouvrir une socket SIP locale sur "
-                    f"{local_host}:{config.contact_port} : {bind_error}. "
+                    f"{local_host}:{local_port} : {bind_error}. "
                     "Vérifiez que l'hôte de contact correspond à une interface "
                     "réseau locale et que le port n'est pas déjà utilisé."
                 ) from bind_error
@@ -854,34 +878,6 @@ class SIPRegistrationManager:
         # Public IPv4 addresses are unlikely to be assigned locally when the
         # service runs behind NAT; listen on all interfaces instead.
         return "0.0.0.0"
-
-    def _fallback_contact_port(
-        self, config: SIPRegistrationConfig, exc: OSError
-    ) -> SIPRegistrationConfig | None:
-        """Handle contact port binding errors with an automatic fallback."""
-
-        if exc.errno != errno.EADDRINUSE:
-            return None
-
-        candidate_port = self._find_available_contact_port(config.contact_host)
-        if candidate_port is None:
-            LOGGER.warning(
-                "Port SIP %s indisponible sur %s et aucun port alternatif "
-                "n'a pu être détecté automatiquement.",
-                config.contact_port,
-                config.contact_host,
-            )
-            return None
-
-        LOGGER.warning(
-            "Port SIP %s indisponible sur %s, tentative avec le port %s.",
-            config.contact_port,
-            config.contact_host,
-            candidate_port,
-        )
-        updated = replace(config, contact_port=candidate_port)
-        self._config = updated
-        return updated
 
     def _fallback_bind_host(
         self, config: SIPRegistrationConfig, exc: OSError
