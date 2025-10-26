@@ -207,7 +207,7 @@ def _run_ad_hoc_migrations() -> None:
                     )
                 )
                 default_model_param = bindparam(
-                    "default_model", type_=String(128)
+                    "default_model", type_=String(128), literal_execute=True
                 )
                 connection.execute(
                     text(
