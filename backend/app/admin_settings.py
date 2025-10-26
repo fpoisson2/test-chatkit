@@ -56,6 +56,14 @@ class StoredModelProvider:
             "is_default": self.is_default,
         }
 
+
+@dataclass(frozen=True)
+class ResolvedModelProviderCredentials:
+    id: str
+    provider: str
+    api_base: str
+    api_key: str | None
+
 _UNSET = object()
 
 
@@ -188,7 +196,9 @@ def _normalize_optional_encrypted(value: Any) -> str | None:
     return candidate or None
 
 
-def _load_stored_model_providers(settings: AppSettings | None) -> list[StoredModelProvider]:
+def _load_stored_model_providers(
+    settings: AppSettings | None,
+) -> list[StoredModelProvider]:
     if not settings or not settings.model_provider_configs:
         return []
     try:
@@ -283,6 +293,7 @@ def _build_model_provider_configs(
                     api_base=record.api_base,
                     api_key=_decrypt_secret(record.api_key_encrypted),
                     is_default=record.is_default,
+                    id=record.id,
                 )
             )
         return tuple(configs)
@@ -296,9 +307,46 @@ def _build_model_provider_configs(
                 api_base=base,
                 api_key=_decrypt_secret(settings.model_api_key_encrypted),
                 is_default=True,
+                id="__env__",
             )
         )
     return tuple(configs)
+
+
+def resolve_model_provider_credentials(
+    provider_id: str,
+    *,
+    session: Session | None = None,
+) -> ResolvedModelProviderCredentials | None:
+    normalized = provider_id.strip() if isinstance(provider_id, str) else ""
+    if not normalized:
+        return None
+
+    owned_session = False
+    db_session = session
+    if db_session is None:
+        db_session = SessionLocal()
+        owned_session = True
+
+    try:
+        settings = get_thread_title_prompt_override(db_session)
+        record: StoredModelProvider | None = None
+        if settings is not None:
+            for candidate in _load_stored_model_providers(settings):
+                if candidate.id == normalized:
+                    record = candidate
+                    break
+        if record is None:
+            return None
+        return ResolvedModelProviderCredentials(
+            id=record.id,
+            provider=record.provider,
+            api_base=record.api_base,
+            api_key=_decrypt_secret(record.api_key_encrypted),
+        )
+    finally:
+        if owned_session and db_session is not None:
+            db_session.close()
 
 
 def _compute_model_overrides(settings: AppSettings | None) -> dict[str, Any]:
@@ -493,7 +541,9 @@ def update_admin_settings(
 
             provider_value = _normalize_model_provider(entry.get("provider"))
             if not provider_value:
-                raise ValueError("Chaque fournisseur doit contenir au moins un caractère.")
+                raise ValueError(
+                    "Chaque fournisseur doit contenir au moins un caractère."
+                )
 
             try:
                 normalized_base = _sanitize_model_api_base(
@@ -505,7 +555,8 @@ def update_admin_settings(
             entry_id = _normalize_provider_id(entry.get("id"))
             if entry_id in seen_ids:
                 raise ValueError(
-                    "Chaque configuration de fournisseur doit avoir un identifiant unique."
+                    "Chaque configuration de fournisseur doit avoir un identifiant "
+                    "unique."
                 )
             seen_ids.add(entry_id)
 
@@ -552,8 +603,8 @@ def update_admin_settings(
         if new_records:
             if default_count == 0:
                 raise ValueError(
-                    "Un fournisseur par défaut doit être sélectionné lorsqu'au moins une "
-                    "configuration est enregistrée."
+                    "Un fournisseur par défaut doit être sélectionné lorsqu'au moins "
+                    "une configuration est enregistrée."
                 )
             if default_count > 1:
                 raise ValueError("Un seul fournisseur peut être défini par défaut.")

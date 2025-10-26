@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
 import pytest
@@ -181,6 +181,108 @@ def test_coerce_agent_tools_logs_error_when_builder_fails(
 
     assert result == []
     assert "Workflow introuvable" in caplog.text
+
+
+def test_get_agent_provider_binding_uses_resolver_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent_registry = _import_agent_registry(monkeypatch)
+
+    sentinel_provider = object()
+    captured: list[Any] = []
+    credentials = agent_registry.ResolvedModelProviderCredentials(
+        id="provider-123",
+        provider="openai",
+        api_base="https://api.openai.com/v1",
+        api_key="sk-provider",
+    )
+
+    monkeypatch.setattr(
+        agent_registry,
+        "resolve_model_provider_credentials",
+        lambda provider_id, session=None: credentials
+        if provider_id == "provider-123"
+        else None,
+    )
+    monkeypatch.setattr(
+        agent_registry,
+        "_PROVIDER_BUILDERS",
+        {"openai": lambda resolved: captured.append(resolved) or sentinel_provider},
+        raising=False,
+    )
+
+    binding = agent_registry.get_agent_provider_binding("provider-123", "openai")
+
+    assert binding is not None
+    assert binding.provider is sentinel_provider
+    assert binding.provider_id == "provider-123"
+    assert binding.provider_slug == "openai"
+    assert captured == [credentials]
+
+
+def test_get_agent_provider_binding_uses_settings_when_resolver_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent_registry = _import_agent_registry(monkeypatch)
+
+    monkeypatch.setattr(
+        agent_registry,
+        "resolve_model_provider_credentials",
+        lambda *_args, **_kwargs: None,
+    )
+
+    config = agent_registry.ModelProviderConfig(
+        provider="litellm",
+        api_base="http://localhost:4000",
+        api_key="proxy-secret",
+        is_default=False,
+        id="settings-id",
+    )
+    settings = SimpleNamespace(model_providers=(config,))
+    monkeypatch.setattr(agent_registry, "get_settings", lambda: settings)
+
+    sentinel_provider = object()
+    captured: list[Any] = []
+    monkeypatch.setattr(
+        agent_registry,
+        "_PROVIDER_BUILDERS",
+        {"litellm": lambda resolved: captured.append(resolved) or sentinel_provider},
+        raising=False,
+    )
+
+    binding = agent_registry.get_agent_provider_binding("settings-id", None)
+
+    assert binding is not None
+    assert binding.provider is sentinel_provider
+    assert binding.provider_id == "settings-id"
+    assert binding.provider_slug == "litellm"
+    assert captured and captured[0].id == "settings-id"
+
+
+def test_get_agent_provider_binding_returns_none_for_unknown_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent_registry = _import_agent_registry(monkeypatch)
+
+    monkeypatch.setattr(
+        agent_registry,
+        "resolve_model_provider_credentials",
+        lambda *_args, **_kwargs: None,
+    )
+    config = agent_registry.ModelProviderConfig(
+        provider="unsupported",
+        api_base="https://example.invalid",
+        api_key=None,
+        is_default=False,
+        id="unsupported-id",
+    )
+    settings = SimpleNamespace(model_providers=(config,))
+    monkeypatch.setattr(agent_registry, "get_settings", lambda: settings)
+    monkeypatch.setattr(agent_registry, "_PROVIDER_BUILDERS", {}, raising=False)
+
+    binding = agent_registry.get_agent_provider_binding("unsupported-id", "unsupported")
+
+    assert binding is None
 
 
 class _DummyComputer(AsyncComputer):

@@ -6,21 +6,31 @@ import logging
 import re
 import weakref
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 from agents import Agent, ModelSettings, WebSearchTool
+from agents.models.interface import ModelProvider
+from agents.models.openai_provider import OpenAIProvider
 from agents.tool import ComputerTool
+from openai import AsyncOpenAI
 from pydantic import BaseModel, Field, create_model
 
-from ..admin_settings import resolve_thread_title_prompt
+from ..admin_settings import (
+    ResolvedModelProviderCredentials,
+    resolve_model_provider_credentials,
+    resolve_thread_title_prompt,
+)
 from ..chatkit_server.actions import (
     _patch_model_json_schema,
     _remove_additional_properties_from_schema,
     _sanitize_widget_field_name,
     _StrictSchemaBase,
 )
-from ..config import DEFAULT_THREAD_TITLE_PROMPT
+from ..config import DEFAULT_THREAD_TITLE_PROMPT, ModelProviderConfig, get_settings
 from ..database import SessionLocal
+from ..model_providers._shared import normalize_api_base
 from ..token_sanitizer import sanitize_model_like
 from ..tool_factory import (
     build_computer_use_tool,
@@ -81,6 +91,105 @@ _JSON_TYPE_MAPPING: dict[str, Any] = {
     "number": float,
     "boolean": bool,
 }
+
+
+@dataclass(frozen=True)
+class AgentProviderBinding:
+    provider: ModelProvider
+    provider_id: str
+    provider_slug: str
+
+
+def _credentials_from_config(
+    config: ModelProviderConfig,
+) -> ResolvedModelProviderCredentials:
+    return ResolvedModelProviderCredentials(
+        id=config.id or config.provider,
+        provider=config.provider,
+        api_base=config.api_base,
+        api_key=config.api_key,
+    )
+
+
+@lru_cache(maxsize=16)
+def _get_cached_openai_client(
+    provider_id: str, api_base: str, api_key: str
+) -> AsyncOpenAI:
+    return AsyncOpenAI(api_key=api_key, base_url=api_base)
+
+
+def _build_openai_provider(
+    credentials: ResolvedModelProviderCredentials,
+) -> ModelProvider | None:
+    api_base = credentials.api_base.strip() if credentials.api_base else ""
+    api_key = credentials.api_key.strip() if credentials.api_key else ""
+    if not api_base or not api_key:
+        logger.warning(
+            "Configuration fournisseur %s (%s) incomplète : base ou clé manquante",
+            credentials.provider,
+            credentials.id,
+        )
+        return None
+
+    normalized_base = normalize_api_base(api_base)
+    client = _get_cached_openai_client(credentials.id, normalized_base, api_key)
+    return OpenAIProvider(openai_client=client)
+
+
+_PROVIDER_BUILDERS: dict[
+    str, Callable[[ResolvedModelProviderCredentials], ModelProvider | None]
+] = {
+    "openai": _build_openai_provider,
+    "litellm": _build_openai_provider,
+}
+
+
+def get_agent_provider_binding(
+    provider_id: str | None, provider_slug: str | None
+) -> AgentProviderBinding | None:
+    normalized_id = provider_id.strip() if isinstance(provider_id, str) else ""
+    normalized_slug = (
+        provider_slug.strip().lower() if isinstance(provider_slug, str) else ""
+    )
+
+    credentials: ResolvedModelProviderCredentials | None = None
+    if normalized_id:
+        credentials = resolve_model_provider_credentials(normalized_id)
+
+    if credentials is None:
+        settings = get_settings()
+        if normalized_id:
+            for config in settings.model_providers:
+                if config.id == normalized_id:
+                    credentials = _credentials_from_config(config)
+                    break
+        if credentials is None and normalized_slug:
+            for config in settings.model_providers:
+                if config.provider == normalized_slug:
+                    credentials = _credentials_from_config(config)
+                    break
+
+    if credentials is None:
+        return None
+
+    slug = normalized_slug or credentials.provider
+    builder = _PROVIDER_BUILDERS.get(slug)
+    if builder is None:
+        logger.warning(
+            "Fournisseur de modèles %s non pris en charge pour la sélection d'agent",
+            slug,
+        )
+        return None
+
+    provider = builder(credentials)
+    if provider is None:
+        return None
+
+    return AgentProviderBinding(
+        provider=provider,
+        provider_id=credentials.id,
+        provider_slug=slug,
+    )
 
 
 def _sanitize_model_name(name: str | None) -> str:
@@ -844,6 +953,8 @@ STEP_TITLES: dict[str, str] = {}
 
 
 __all__ = [
+    "AgentProviderBinding",
+    "get_agent_provider_binding",
     "AGENT_BUILDERS",
     "AGENT_RESPONSE_FORMATS",
     "STEP_TITLES",

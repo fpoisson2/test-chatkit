@@ -211,14 +211,6 @@ def resolve_workflow_for_phone_number(
             "courante.",
             getattr(definition.workflow, "slug", "<inconnu>"),
         )
-    else:
-        logger.info(
-            "Configuration téléphonie chargée pour %s : %d route(s), "
-            "route par défaut=%s",
-            getattr(definition.workflow, "slug", "<inconnu>"),
-            len(telephony_config.routes),
-            "oui" if telephony_config.default_route else "non",
-        )
         model, instructions, voice, prompt_variables = _merge_voice_settings(
             session=session, overrides=None, settings=effective_settings
         )
@@ -231,6 +223,14 @@ def resolve_workflow_for_phone_number(
             voice_instructions=instructions,
             voice_voice=voice,
             voice_prompt_variables=prompt_variables,
+        )
+    else:
+        logger.info(
+            "Configuration téléphonie chargée pour %s : %d route(s), "
+            "route par défaut=%s",
+            getattr(definition.workflow, "slug", "<inconnu>"),
+            len(telephony_config.routes),
+            "oui" if telephony_config.default_route else "non",
         )
 
     route = _match_route(telephony_config, normalized_number)

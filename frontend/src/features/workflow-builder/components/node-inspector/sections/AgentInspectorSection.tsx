@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import type {
   AvailableModel,
@@ -54,7 +54,14 @@ type AgentInspectorSectionProps = {
   vectorStoresLoading: boolean;
   vectorStoresError: string | null;
   onAgentMessageChange: (nodeId: string, value: string) => void;
-  onAgentModelChange: (nodeId: string, value: string) => void;
+  onAgentModelChange: (
+    nodeId: string,
+    selection: { model: string; providerId?: string | null; providerSlug?: string | null },
+  ) => void;
+  onAgentProviderChange: (
+    nodeId: string,
+    selection: { providerId?: string | null; providerSlug?: string | null },
+  ) => void;
   onAgentNestedWorkflowChange: (
     nodeId: string,
     selection: AgentNestedWorkflowSelection,
@@ -116,6 +123,7 @@ export const AgentInspectorSection = ({
   vectorStoresError,
   onAgentMessageChange,
   onAgentModelChange,
+  onAgentProviderChange,
   onAgentNestedWorkflowChange,
   onAgentReasoningChange,
   onAgentReasoningSummaryChange,
@@ -146,6 +154,8 @@ export const AgentInspectorSection = ({
   const {
     agentMessage,
     agentModel,
+    agentProviderId,
+    agentProviderSlug,
     nestedWorkflowId,
     nestedWorkflowSlug,
     nestedWorkflowMode,
@@ -183,6 +193,9 @@ export const AgentInspectorSection = ({
     selectedVectorStoreSlug,
     matchedModel,
     selectedModelOption,
+    selectedProviderValue,
+    providerOptions,
+    modelsForProvider,
     supportsReasoning,
     schemaText,
     setSchemaText,
@@ -213,6 +226,56 @@ export const AgentInspectorSection = ({
     isReasoningModel,
     onAgentImageGenerationChange,
   });
+
+  const handleProviderChange = useCallback(
+    (value: string) => {
+      if (!value) {
+        onAgentProviderChange(nodeId, {
+          providerId: null,
+          providerSlug: null,
+        });
+        return;
+      }
+      const option = providerOptions.find((candidate) => candidate.value === value);
+      onAgentProviderChange(nodeId, {
+        providerId: option?.id ?? null,
+        providerSlug: option?.slug ?? null,
+      });
+    },
+    [nodeId, onAgentProviderChange, providerOptions],
+  );
+
+  const handleModelChange = useCallback(
+    (value: string) => {
+      if (!value) {
+        onAgentModelChange(nodeId, {
+          model: "",
+          providerId: null,
+          providerSlug: null,
+        });
+        return;
+      }
+      try {
+        const payload = JSON.parse(value) as {
+          name: string;
+          providerId: string | null;
+          providerSlug: string | null;
+        };
+        onAgentModelChange(nodeId, {
+          model: payload.name,
+          providerId: payload.providerId,
+          providerSlug: payload.providerSlug,
+        });
+      } catch {
+        onAgentModelChange(nodeId, {
+          model: value,
+          providerId: null,
+          providerSlug: null,
+        });
+      }
+    },
+    [nodeId, onAgentModelChange],
+  );
 
   const { t } = useI18n();
   const widgetSelectId = useId();
@@ -523,21 +586,60 @@ export const AgentInspectorSection = ({
 
       <label className={styles.nodeInspectorInlineField}>
         <span className={styles.nodeInspectorLabel}>
+          {t("workflowBuilder.agentInspector.providerLabel")}
+        </span>
+        <select
+          value={selectedProviderValue}
+          onChange={(event) => handleProviderChange(event.target.value)}
+          disabled={availableModelsLoading}
+        >
+          <option value="">
+            {t("workflowBuilder.agentInspector.providerPlaceholder")}
+          </option>
+          {providerOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className={styles.nodeInspectorInlineField}>
+        <span className={styles.nodeInspectorLabel}>
           {t("workflowBuilder.agentInspector.modelLabel")}
           <HelpTooltip label={t("workflowBuilder.agentInspector.modelHelp")} />
         </span>
         <select
           value={selectedModelOption}
-          onChange={(event) => onAgentModelChange(nodeId, event.target.value)}
+          onChange={(event) => handleModelChange(event.target.value)}
           disabled={availableModelsLoading}
         >
           <option value="">{t("workflowBuilder.agentInspector.modelPlaceholder")}</option>
-          {availableModels.map((model) => (
-            <option key={model.id} value={model.name}>
-              {model.display_name?.trim() ? `${model.display_name} (${model.name})` : model.name}
-              {model.supports_reasoning ? t("workflowBuilder.agentInspector.reasoningSuffix") : ""}
-            </option>
-          ))}
+          {modelsForProvider.map((model) => {
+            const displayLabel = model.display_name?.trim()
+              ? `${model.display_name.trim()} (${model.name})`
+              : model.name;
+            const reasoningSuffix = model.supports_reasoning
+              ? t("workflowBuilder.agentInspector.reasoningSuffix")
+              : "";
+            const providerSlug = model.provider_slug?.trim();
+            const providerId = model.provider_id?.trim();
+            const providerSuffix = providerSlug || providerId
+              ? ` – ${providerSlug ?? ""}${providerId ? ` (${providerId})` : ""}`
+              : "";
+            return (
+              <option
+                key={`${model.id}:${model.name}`}
+                value={JSON.stringify({
+                  name: model.name,
+                  providerId: model.provider_id ?? null,
+                  providerSlug: model.provider_slug ?? null,
+                })}
+              >
+                {`${displayLabel}${reasoningSuffix}${providerSuffix}`}
+              </option>
+            );
+          })}
         </select>
       </label>
 

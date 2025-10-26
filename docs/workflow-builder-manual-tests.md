@@ -8,3 +8,13 @@
 4. Revenir sur la première fenêtre et observer que la liste des versions et le graphe se mettent à jour automatiquement sans rechargement manuel.
 
 **Résultat attendu :** la première fenêtre récupère la version publiée par la seconde en quelques secondes, tant qu'aucune modification locale n'est en cours.
+
+## Sélection du fournisseur de modèle par agent
+
+1. Depuis le Workflow Builder, ajouter un nœud « Agent » ou sélectionner un agent existant.
+2. Dans le panneau de configuration de l'agent, choisir un fournisseur dans la nouvelle liste déroulante « Fournisseur ».
+3. Vérifier que la liste des modèles se met à jour pour n'afficher que les modèles exposés par ce fournisseur.
+4. Sauvegarder le workflow puis ré-ouvrir l'agent pour confirmer que le couple fournisseur/modèle est correctement restauré.
+5. (Optionnel) Exécuter le workflow afin de s'assurer que la requête utilise bien les identifiants du fournisseur sélectionné.
+
+**Résultat attendu :** chaque agent mémorise le fournisseur et le modèle choisis, et l'exécution du workflow s'appuie sur les informations d'authentification correspondantes.

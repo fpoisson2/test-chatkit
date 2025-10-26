@@ -56,6 +56,7 @@ import {
   setAgentMaxOutputTokens,
   setAgentMessage,
   setAgentModel,
+  setAgentModelProvider,
   setAgentComputerUseConfig,
   setAgentReasoningEffort,
   setAgentReasoningSummary,
@@ -2682,13 +2683,17 @@ const WorkflowBuilderPage = () => {
   );
 
   const handleAgentModelChange = useCallback(
-    (nodeId: string, value: string) => {
+    (
+      nodeId: string,
+      selection: { model: string; providerId?: string | null; providerSlug?: string | null },
+    ) => {
       updateNodeData(nodeId, (data) => {
         if (!isAgentKind(data.kind)) {
           return data;
         }
-        let nextParameters = setAgentModel(data.parameters, value);
-        if (!isReasoningModel(value)) {
+        let nextParameters = setAgentModel(data.parameters, selection.model);
+        nextParameters = setAgentModelProvider(nextParameters, selection);
+        if (!isReasoningModel(selection.model)) {
           nextParameters = setAgentReasoningEffort(nextParameters, "");
           nextParameters = setAgentReasoningSummary(nextParameters, "");
           nextParameters = setAgentTextVerbosity(nextParameters, "");
@@ -2702,6 +2707,27 @@ const WorkflowBuilderPage = () => {
       });
     },
     [isReasoningModel, updateNodeData],
+  );
+
+  const handleAgentProviderChange = useCallback(
+    (
+      nodeId: string,
+      selection: { providerId?: string | null; providerSlug?: string | null },
+    ) => {
+      updateNodeData(nodeId, (data) => {
+        if (!isAgentKind(data.kind)) {
+          return data;
+        }
+        const nextParameters = setAgentModelProvider(data.parameters, selection);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
   );
 
   const handleAgentNestedWorkflowChange = useCallback(
@@ -7131,6 +7157,7 @@ const WorkflowBuilderPage = () => {
             onDisplayNameChange={handleDisplayNameChange}
             onAgentMessageChange={handleAgentMessageChange}
             onAgentModelChange={handleAgentModelChange}
+            onAgentProviderChange={handleAgentProviderChange}
             onAgentNestedWorkflowChange={handleAgentNestedWorkflowChange}
             onAgentReasoningChange={handleAgentReasoningChange}
             onAgentReasoningSummaryChange={handleAgentReasoningSummaryChange}

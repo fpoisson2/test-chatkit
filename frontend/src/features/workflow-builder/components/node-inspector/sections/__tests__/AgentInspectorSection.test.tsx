@@ -55,6 +55,7 @@ const renderSection = (overrides: Partial<Parameters<typeof AgentInspectorSectio
         vectorStoresError={null}
         onAgentMessageChange={vi.fn()}
         onAgentModelChange={vi.fn()}
+        onAgentProviderChange={vi.fn()}
         onAgentNestedWorkflowChange={onAgentNestedWorkflowChange}
         onAgentReasoningChange={vi.fn()}
         onAgentReasoningSummaryChange={vi.fn()}

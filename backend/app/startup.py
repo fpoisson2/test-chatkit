@@ -124,6 +124,33 @@ def _run_ad_hoc_migrations() -> None:
             logger.info("Création de la table available_models manquante")
             AvailableModel.__table__.create(bind=connection)
             table_names.add("available_models")
+        else:
+            available_models_columns = {
+                column["name"]
+                for column in inspect(connection).get_columns("available_models")
+            }
+            if "provider_id" not in available_models_columns:
+                logger.info(
+                    "Migration du schéma available_models : ajout de la colonne "
+                    "provider_id"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE available_models ADD COLUMN provider_id "
+                        "VARCHAR(128)"
+                    )
+                )
+            if "provider_slug" not in available_models_columns:
+                logger.info(
+                    "Migration du schéma available_models : ajout de la colonne "
+                    "provider_slug"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE available_models ADD COLUMN provider_slug "
+                        "VARCHAR(64)"
+                    )
+                )
 
         if "voice_settings" not in table_names:
             logger.info("Création de la table voice_settings manquante")

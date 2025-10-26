@@ -618,6 +618,8 @@ export type AvailableModel = {
   name: string;
   display_name: string | null;
   description: string | null;
+  provider_id: string | null;
+  provider_slug: string | null;
   supports_reasoning: boolean;
   created_at: string;
   updated_at: string;
@@ -642,6 +644,8 @@ export type AvailableModelPayload = {
   display_name?: string | null;
   description?: string | null;
   supports_reasoning: boolean;
+  provider_id?: string | null;
+  provider_slug?: string | null;
 };
 
 export const modelRegistryApi = {

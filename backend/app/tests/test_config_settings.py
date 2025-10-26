@@ -47,6 +47,7 @@ def test_settings_openai_provider_requires_key() -> None:
     assert len(settings.model_providers) == 1
     assert settings.model_providers[0].provider == "openai"
     assert settings.model_providers[0].is_default is True
+    assert settings.model_providers[0].id is None
 
 
 def test_settings_openai_provider_missing_key_raises() -> None:
@@ -78,6 +79,7 @@ def test_settings_litellm_provider_uses_alternative_key() -> None:
     assert len(settings.model_providers) == 1
     assert settings.model_providers[0].provider == "litellm"
     assert settings.model_providers[0].api_key == "proxy-secret"
+    assert settings.model_providers[0].id is None
 
 
 def test_settings_thread_title_prompt_override() -> None:
@@ -164,6 +166,7 @@ def test_set_runtime_settings_overrides_applies_custom_provider() -> None:
                     api_base="http://localhost:4000",
                     api_key="proxy-secret",
                     is_default=True,
+                    id="litellm-managed",
                 ),
             ),
         }
@@ -174,5 +177,6 @@ def test_set_runtime_settings_overrides_applies_custom_provider() -> None:
     assert overridden.model_api_key == "proxy-secret"
     assert overridden.model_providers[0].provider == "litellm"
     assert overridden.model_providers[0].api_key == "proxy-secret"
+    assert overridden.model_providers[0].id == "litellm-managed"
 
     config_module.set_runtime_settings_overrides(None)
