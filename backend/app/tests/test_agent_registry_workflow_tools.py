@@ -285,6 +285,42 @@ def test_get_agent_provider_binding_returns_none_for_unknown_provider(
     assert binding is None
 
 
+def test_get_agent_provider_binding_falls_back_to_openai_builder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent_registry = _import_agent_registry(monkeypatch)
+
+    credentials = agent_registry.ResolvedModelProviderCredentials(
+        id="openrouter-id",
+        provider="openrouter",
+        api_base="https://openrouter.invalid/v1",
+        api_key="router-secret",
+    )
+    monkeypatch.setattr(
+        agent_registry,
+        "resolve_model_provider_credentials",
+        lambda *_args, **_kwargs: credentials,
+    )
+
+    sentinel_provider = object()
+    captured: list[Any] = []
+
+    def _fake_builder(resolved: Any) -> Any:
+        captured.append(resolved)
+        return sentinel_provider
+
+    monkeypatch.setattr(agent_registry, "_PROVIDER_BUILDERS", {}, raising=False)
+    monkeypatch.setattr(agent_registry, "_build_openai_provider", _fake_builder)
+
+    binding = agent_registry.get_agent_provider_binding("openrouter-id", "openrouter")
+
+    assert binding is not None
+    assert binding.provider is sentinel_provider
+    assert binding.provider_id == "openrouter-id"
+    assert binding.provider_slug == "openrouter"
+    assert captured == [credentials]
+
+
 class _DummyComputer(AsyncComputer):
     @property
     def environment(self) -> str:

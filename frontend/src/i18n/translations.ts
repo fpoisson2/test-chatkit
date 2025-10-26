@@ -44,7 +44,17 @@ const fr: TranslationDictionary = {
   "admin.models.form.providerIdPlaceholder": "Ex. proxy-openai",
   "admin.models.form.providerSlugLabel": "Slug du fournisseur (optionnel)",
   "admin.models.form.providerSlugPlaceholder": "Ex. openai",
+  "admin.models.form.providerSelectLabel": "Fournisseur configuré",
+  "admin.models.form.providerSelectPlaceholder": "Sélectionnez un fournisseur",
+  "admin.models.form.providerSelectLoading": "Chargement des fournisseurs…",
+  "admin.models.form.providerSelectHint":
+    "Choisissez un fournisseur déjà configuré ou l'API OpenAI native.",
+  "admin.models.form.providerOptionOpenAI": "OpenAI (natif)",
+  "admin.models.form.providerOptionWithDefault": "{{provider}} (par défaut)",
   "admin.models.errors.missingModelId": "Indiquez l'identifiant du modèle.",
+  "admin.models.errors.missingProvider": "Sélectionnez un fournisseur pour ce modèle.",
+  "admin.models.errors.providersLoadFailed":
+    "Impossible de charger la liste des fournisseurs disponibles.",
   "admin.appSettings.page.title": "Paramètres généraux",
   "admin.appSettings.page.subtitle":
     "Contrôlez le comportement global de ChatKit.",
@@ -522,7 +532,17 @@ const en: TranslationDictionary = {
   "admin.models.form.providerIdPlaceholder": "e.g. proxy-openai",
   "admin.models.form.providerSlugLabel": "Provider slug (optional)",
   "admin.models.form.providerSlugPlaceholder": "e.g. openai",
+  "admin.models.form.providerSelectLabel": "Configured provider",
+  "admin.models.form.providerSelectPlaceholder": "Select a provider",
+  "admin.models.form.providerSelectLoading": "Loading providers…",
+  "admin.models.form.providerSelectHint":
+    "Pick a provider that is already configured or the native OpenAI API.",
+  "admin.models.form.providerOptionOpenAI": "OpenAI (native)",
+  "admin.models.form.providerOptionWithDefault": "{{provider}} (default)",
   "admin.models.errors.missingModelId": "Enter the model identifier.",
+  "admin.models.errors.missingProvider": "Select a provider for this model.",
+  "admin.models.errors.providersLoadFailed":
+    "Unable to load the list of available providers.",
   "admin.appSettings.page.title": "General settings",
   "admin.appSettings.page.subtitle": "Control ChatKit's global behaviour.",
   "admin.appSettings.threadTitle.cardTitle": "Automatic thread titles prompt",

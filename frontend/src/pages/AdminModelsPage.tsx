@@ -1,18 +1,82 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useState } from "react";
 
 import { useAuth } from "../auth";
 import { useI18n } from "../i18n";
 import { AdminTabs } from "../components/AdminTabs";
 import { ManagementPageLayout } from "../components/ManagementPageLayout";
 import {
+  AppSettings,
   AvailableModel,
   AvailableModelPayload,
+  appSettingsApi,
   isUnauthorizedError,
   modelRegistryApi,
 } from "../utils/backend";
 
 const sortModels = (models: AvailableModel[]): AvailableModel[] =>
   [...models].sort((a, b) => a.name.localeCompare(b.name, "fr"));
+
+type ProviderOption = {
+  id: string | null;
+  slug: string;
+  name: string;
+  isDefault: boolean;
+};
+
+const buildProviderOptions = (settings: AppSettings): ProviderOption[] => {
+  const options = new Map<string, ProviderOption>();
+
+  const pushOption = (option: ProviderOption) => {
+    const existing = options.get(option.slug);
+    if (existing) {
+      options.set(option.slug, {
+        ...existing,
+        id: existing.id ?? option.id,
+        name: existing.name || option.name,
+        isDefault: existing.isDefault || option.isDefault,
+      });
+      return;
+    }
+    options.set(option.slug, option);
+  };
+
+  for (const record of settings.model_providers ?? []) {
+    const slug = record.provider?.trim().toLowerCase();
+    if (!slug) {
+      continue;
+    }
+    pushOption({
+      id: record.id ?? null,
+      slug,
+      name: record.provider,
+      isDefault: Boolean(record.is_default),
+    });
+  }
+
+  const runtimeProvider = settings.model_provider?.trim();
+  if (runtimeProvider) {
+    const normalized = runtimeProvider.toLowerCase();
+    pushOption({
+      id: null,
+      slug: normalized,
+      name: runtimeProvider,
+      isDefault: true,
+    });
+  }
+
+  if (!options.has("openai")) {
+    pushOption({
+      id: null,
+      slug: "openai",
+      name: "openai",
+      isDefault: runtimeProvider?.toLowerCase() === "openai",
+    });
+  }
+
+  return Array.from(options.values()).sort((a, b) =>
+    (a.name || a.slug).localeCompare(b.name || b.slug, "fr"),
+  );
+};
 
 export const AdminModelsPage = () => {
   const { token, logout } = useAuth();
@@ -29,6 +93,8 @@ export const AdminModelsPage = () => {
     provider_id: "",
     provider_slug: "",
   });
+  const [providerOptions, setProviderOptions] = useState<ProviderOption[]>([]);
+  const [isLoadingProviders, setLoadingProviders] = useState(false);
 
   const refreshModels = useCallback(async () => {
     if (!token) {
@@ -58,9 +124,65 @@ export const AdminModelsPage = () => {
     }
   }, [logout, token]);
 
+  const refreshProviders = useCallback(async () => {
+    if (!token) {
+      setProviderOptions([]);
+      return;
+    }
+    setLoadingProviders(true);
+    try {
+      const settings = await appSettingsApi.get(token);
+      setProviderOptions(buildProviderOptions(settings));
+    } catch (err) {
+      if (isUnauthorizedError(err)) {
+        logout();
+        setError("Session expirée, veuillez vous reconnecter.");
+        return;
+      }
+      setError(t("admin.models.errors.providersLoadFailed"));
+    } finally {
+      setLoadingProviders(false);
+    }
+  }, [logout, t, token]);
+
   useEffect(() => {
     void refreshModels();
   }, [refreshModels]);
+
+  useEffect(() => {
+    void refreshProviders();
+  }, [refreshProviders]);
+
+  const handleProviderChange = (event: ChangeEvent<HTMLSelectElement>) => {
+    const slug = event.target.value;
+    if (!slug) {
+      setForm((prev) => ({
+        ...prev,
+        provider_id: "",
+        provider_slug: "",
+      }));
+      return;
+    }
+    const option = providerOptions.find((candidate) => candidate.slug === slug);
+    setForm((prev) => ({
+      ...prev,
+      provider_id: option?.id ?? "",
+      provider_slug: slug,
+    }));
+  };
+
+  const renderProviderOptionLabel = (option: ProviderOption): string => {
+    const baseLabel =
+      option.slug === "openai"
+        ? t("admin.models.form.providerOptionOpenAI")
+        : option.name || option.slug;
+    if (option.isDefault) {
+      return t("admin.models.form.providerOptionWithDefault", {
+        provider: baseLabel,
+      });
+    }
+    return baseLabel;
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -68,36 +190,38 @@ export const AdminModelsPage = () => {
       setError("Authentification requise pour ajouter un modèle.");
       return;
     }
+    setError(null);
     const trimmedName = form.name.trim();
     if (!trimmedName) {
       setError(t("admin.models.errors.missingModelId"));
       return;
     }
+    const trimmedProviderSlug = form.provider_slug?.trim();
+    if (!trimmedProviderSlug) {
+      setError(t("admin.models.errors.missingProvider"));
+      return;
+    }
 
-      const payload: AvailableModelPayload = {
-        name: trimmedName,
-        display_name: form.display_name?.trim() ? form.display_name.trim() : null,
-        description: form.description?.trim() ? form.description.trim() : null,
-        supports_reasoning: form.supports_reasoning,
-        provider_id: form.provider_id?.trim()
-          ? form.provider_id.trim()
-          : null,
-        provider_slug: form.provider_slug?.trim()
-          ? form.provider_slug.trim().toLowerCase()
-          : null,
-      };
+    const payload: AvailableModelPayload = {
+      name: trimmedName,
+      display_name: form.display_name?.trim() ? form.display_name.trim() : null,
+      description: form.description?.trim() ? form.description.trim() : null,
+      supports_reasoning: form.supports_reasoning,
+      provider_id: form.provider_id?.trim() ? form.provider_id.trim() : null,
+      provider_slug: trimmedProviderSlug.toLowerCase(),
+    };
 
     try {
       const created = await modelRegistryApi.create(token, payload);
       setModels((prev) => sortModels([...prev, created]));
-      setForm({
+      setForm((prev) => ({
         name: "",
         display_name: "",
         description: "",
         supports_reasoning: false,
-        provider_id: "",
-        provider_slug: "",
-      });
+        provider_id: prev.provider_id ?? "",
+        provider_slug: prev.provider_slug ?? "",
+      }));
       setSuccess(`Modèle « ${created.name} » ajouté avec succès.`);
       setError(null);
     } catch (err) {
@@ -184,38 +308,29 @@ export const AdminModelsPage = () => {
                   />
                 </label>
               </div>
-              <div className="admin-form__row">
-                <label className="label">
-                  {t("admin.models.form.providerIdLabel")}
-                  <input
-                    className="input"
-                    type="text"
-                    value={form.provider_id ?? ""}
-                    onChange={(event) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        provider_id: event.target.value,
-                      }))
-                    }
-                    placeholder={t("admin.models.form.providerIdPlaceholder")}
-                  />
-                </label>
-                <label className="label">
-                  {t("admin.models.form.providerSlugLabel")}
-                  <input
-                    className="input"
-                    type="text"
-                    value={form.provider_slug ?? ""}
-                    onChange={(event) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        provider_slug: event.target.value,
-                      }))
-                    }
-                    placeholder={t("admin.models.form.providerSlugPlaceholder")}
-                  />
-                </label>
-              </div>
+              <label className="label">
+                {t("admin.models.form.providerSelectLabel")}
+                <select
+                  className="input"
+                  value={form.provider_slug ?? ""}
+                  onChange={handleProviderChange}
+                  disabled={isLoading || isLoadingProviders}
+                >
+                  <option value="" disabled={isLoadingProviders}>
+                    {isLoadingProviders
+                      ? t("admin.models.form.providerSelectLoading")
+                      : t("admin.models.form.providerSelectPlaceholder")}
+                  </option>
+                  {providerOptions.map((option) => (
+                    <option key={option.slug} value={option.slug}>
+                      {renderProviderOptionLabel(option)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="admin-form__hint">
+                {t("admin.models.form.providerSelectHint")}
+              </p>
               <label className="label">
                 Description (optionnel)
                 <textarea
@@ -246,7 +361,11 @@ export const AdminModelsPage = () => {
                 workflow builder)
               </label>
               <div className="admin-form__actions">
-                <button className="button" type="submit" disabled={isLoading}>
+                <button
+                  className="button"
+                  type="submit"
+                  disabled={isLoading || isLoadingProviders}
+                >
                   Ajouter le modèle
                 </button>
               </div>

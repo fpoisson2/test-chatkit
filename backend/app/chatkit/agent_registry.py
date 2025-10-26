@@ -173,13 +173,16 @@ def get_agent_provider_binding(
         return None
 
     slug = normalized_slug or credentials.provider
-    builder = _PROVIDER_BUILDERS.get(slug)
+    builder = _PROVIDER_BUILDERS.get(slug) or _PROVIDER_BUILDERS.get(
+        credentials.provider
+    )
+
     if builder is None:
-        logger.warning(
-            "Fournisseur de modèles %s non pris en charge pour la sélection d'agent",
+        logger.info(
+            "Fournisseur %s non reconnu, usage du client OpenAI compatible",
             slug,
         )
-        return None
+        builder = _build_openai_provider
 
     provider = builder(credentials)
     if provider is None:
