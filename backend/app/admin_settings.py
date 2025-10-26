@@ -3,8 +3,10 @@ from __future__ import annotations
 import base64
 import datetime
 import hashlib
+import json
 import logging
 import os
+import uuid
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
@@ -17,6 +19,7 @@ from sqlalchemy.orm import Session
 from .config import (
     ADMIN_MODEL_API_KEY_ENV,
     DEFAULT_THREAD_TITLE_PROMPT,
+    ModelProviderConfig,
     get_settings,
     set_runtime_settings_overrides,
 )
@@ -32,6 +35,26 @@ class AdminSettingsUpdateResult:
     prompt_changed: bool
     model_settings_changed: bool
     provider_changed: bool
+
+
+@dataclass(slots=True)
+class StoredModelProvider:
+    id: str
+    provider: str
+    api_base: str
+    api_key_encrypted: str | None
+    api_key_hint: str | None
+    is_default: bool
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "provider": self.provider,
+            "api_base": self.api_base,
+            "api_key_encrypted": self.api_key_encrypted,
+            "api_key_hint": self.api_key_hint,
+            "is_default": self.is_default,
+        }
 
 _UNSET = object()
 
@@ -149,6 +172,62 @@ def _normalize_model_provider(value: str | None) -> str | None:
     return candidate or None
 
 
+def _normalize_provider_id(value: Any) -> str:
+    candidate = ""
+    if isinstance(value, str):
+        candidate = value.strip()
+    if not candidate:
+        candidate = uuid.uuid4().hex
+    return candidate
+
+
+def _normalize_optional_encrypted(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    return candidate or None
+
+
+def _load_stored_model_providers(settings: AppSettings | None) -> list[StoredModelProvider]:
+    if not settings or not settings.model_provider_configs:
+        return []
+    try:
+        raw_payload = json.loads(settings.model_provider_configs)
+    except (TypeError, json.JSONDecodeError):
+        logger.warning(
+            "Configuration des fournisseurs de modèles illisible : JSON invalide."
+        )
+        return []
+
+    records: list[StoredModelProvider] = []
+    for entry in raw_payload:
+        if not isinstance(entry, dict):
+            continue
+        provider = _normalize_model_provider(entry.get("provider"))
+        base = _sanitize_model_api_base(entry.get("api_base"), strict=False)
+        if not provider or not base:
+            continue
+        record = StoredModelProvider(
+            id=_normalize_provider_id(entry.get("id")),
+            provider=provider,
+            api_base=base,
+            api_key_encrypted=_normalize_optional_encrypted(
+                entry.get("api_key_encrypted")
+            ),
+            api_key_hint=_normalize_optional_encrypted(entry.get("api_key_hint")),
+            is_default=bool(entry.get("is_default")),
+        )
+        records.append(record)
+    return records
+
+
+def _dump_stored_model_providers(records: list[StoredModelProvider]) -> str | None:
+    if not records:
+        return None
+    payload = [record.to_dict() for record in records]
+    return json.dumps(payload, ensure_ascii=False)
+
+
 def _sanitize_model_api_base(
     value: str | None, *, strict: bool = False
 ) -> str | None:
@@ -176,6 +255,8 @@ def _sanitize_model_api_base(
 def _has_model_overrides(settings: AppSettings | None) -> bool:
     if not settings:
         return False
+    if _load_stored_model_providers(settings):
+        return True
     if _normalize_model_provider(settings.model_provider):
         return True
     if _sanitize_model_api_base(settings.model_api_base, strict=False):
@@ -185,8 +266,56 @@ def _has_model_overrides(settings: AppSettings | None) -> bool:
     return False
 
 
+def _build_model_provider_configs(
+    settings: AppSettings | None,
+) -> tuple[ModelProviderConfig, ...]:
+    if not settings:
+        return tuple()
+
+    records = _load_stored_model_providers(settings)
+    configs: list[ModelProviderConfig] = []
+
+    if records:
+        for record in records:
+            configs.append(
+                ModelProviderConfig(
+                    provider=record.provider,
+                    api_base=record.api_base,
+                    api_key=_decrypt_secret(record.api_key_encrypted),
+                    is_default=record.is_default,
+                )
+            )
+        return tuple(configs)
+
+    provider = _normalize_model_provider(settings.model_provider)
+    base = _sanitize_model_api_base(settings.model_api_base, strict=False)
+    if provider and base:
+        configs.append(
+            ModelProviderConfig(
+                provider=provider,
+                api_base=base,
+                api_key=_decrypt_secret(settings.model_api_key_encrypted),
+                is_default=True,
+            )
+        )
+    return tuple(configs)
+
+
 def _compute_model_overrides(settings: AppSettings | None) -> dict[str, Any]:
     overrides: dict[str, Any] = {}
+    configs = _build_model_provider_configs(settings)
+    if configs:
+        overrides["model_providers"] = configs
+        default_config = next((cfg for cfg in configs if cfg.is_default), configs[0])
+        overrides["model_provider"] = default_config.provider
+        overrides["model_api_base"] = default_config.api_base
+        if default_config.api_key:
+            overrides["model_api_key"] = default_config.api_key
+            overrides["model_api_key_env"] = ADMIN_MODEL_API_KEY_ENV
+            if default_config.provider == "openai":
+                overrides["openai_api_key"] = default_config.api_key
+        return overrides
+
     if not settings:
         return overrides
     provider = _normalize_model_provider(settings.model_provider)
@@ -199,7 +328,8 @@ def _compute_model_overrides(settings: AppSettings | None) -> dict[str, Any]:
     if decrypted:
         overrides["model_api_key"] = decrypted
         overrides["model_api_key_env"] = ADMIN_MODEL_API_KEY_ENV
-        overrides["openai_api_key"] = decrypted
+        if provider == "openai":
+            overrides["openai_api_key"] = decrypted
     return overrides
 
 
@@ -244,6 +374,7 @@ def update_admin_settings(
     model_provider: str | None | object = _UNSET,
     model_api_base: str | None | object = _UNSET,
     model_api_key: str | None | object = _UNSET,
+    model_providers: list[Any] | None | object = _UNSET,
 ) -> AdminSettingsUpdateResult:
     default_prompt = _default_thread_title_prompt()
     stored_settings = get_thread_title_prompt_override(session)
@@ -312,6 +443,23 @@ def update_admin_settings(
             settings.model_api_base = normalized_base
         changed = True
 
+    existing_provider_records = _load_stored_model_providers(stored_settings)
+    legacy_record: StoredModelProvider | None = None
+    if not existing_provider_records and stored_settings is not None:
+        legacy_provider = _normalize_model_provider(stored_settings.model_provider)
+        legacy_base = _sanitize_model_api_base(
+            stored_settings.model_api_base, strict=False
+        )
+        if legacy_provider and legacy_base:
+            legacy_record = StoredModelProvider(
+                id="__legacy__",
+                provider=legacy_provider,
+                api_base=legacy_base,
+                api_key_encrypted=stored_settings.model_api_key_encrypted,
+                api_key_hint=stored_settings.model_api_key_hint,
+                is_default=True,
+            )
+
     if model_api_key is not _UNSET:
         if model_api_key is None:
             settings.model_api_key_encrypted = None
@@ -324,6 +472,105 @@ def update_admin_settings(
             settings.model_api_key_encrypted = _encrypt_secret(stripped_key)
             settings.model_api_key_hint = _mask_secret(stripped_key)
         changed = True
+
+    if model_providers is not _UNSET:
+        changed = True
+        submitted = model_providers or []
+        new_records: list[StoredModelProvider] = []
+        existing_by_id = {record.id: record for record in existing_provider_records}
+        if legacy_record is not None:
+            existing_by_id[legacy_record.id] = legacy_record
+        default_count = 0
+        seen_ids: set[str] = set()
+
+        for item in submitted:
+            if hasattr(item, "model_dump"):
+                entry = item.model_dump()
+            elif isinstance(item, dict):
+                entry = dict(item)
+            else:
+                raise ValueError("Format de configuration de fournisseur invalide.")
+
+            provider_value = _normalize_model_provider(entry.get("provider"))
+            if not provider_value:
+                raise ValueError("Chaque fournisseur doit contenir au moins un caractère.")
+
+            try:
+                normalized_base = _sanitize_model_api_base(
+                    entry.get("api_base"), strict=True
+                )
+            except ValueError as exc:
+                raise ValueError(str(exc)) from exc
+
+            entry_id = _normalize_provider_id(entry.get("id"))
+            if entry_id in seen_ids:
+                raise ValueError(
+                    "Chaque configuration de fournisseur doit avoir un identifiant unique."
+                )
+            seen_ids.add(entry_id)
+
+            is_default = bool(entry.get("is_default"))
+            if is_default:
+                default_count += 1
+
+            delete_flag = bool(entry.get("delete_api_key"))
+            new_key = entry.get("api_key")
+            if delete_flag and new_key not in (None, ""):
+                raise ValueError(
+                    "Impossible de fournir une clé API et de demander sa suppression."
+                )
+
+            encrypted = None
+            hint = None
+            existing_record = existing_by_id.get(entry_id)
+            if existing_record is not None:
+                encrypted = existing_record.api_key_encrypted
+                hint = existing_record.api_key_hint
+
+            if new_key is not None:
+                candidate = str(new_key)
+                stripped_candidate = candidate.strip()
+                if not stripped_candidate:
+                    raise ValueError("La clé API ne peut pas être vide.")
+                encrypted = _encrypt_secret(stripped_candidate)
+                hint = _mask_secret(stripped_candidate)
+            elif delete_flag:
+                encrypted = None
+                hint = None
+
+            new_records.append(
+                StoredModelProvider(
+                    id=entry_id,
+                    provider=provider_value,
+                    api_base=normalized_base,
+                    api_key_encrypted=encrypted,
+                    api_key_hint=hint,
+                    is_default=is_default,
+                )
+            )
+
+        if new_records:
+            if default_count == 0:
+                raise ValueError(
+                    "Un fournisseur par défaut doit être sélectionné lorsqu'au moins une "
+                    "configuration est enregistrée."
+                )
+            if default_count > 1:
+                raise ValueError("Un seul fournisseur peut être défini par défaut.")
+
+        settings.model_provider_configs = _dump_stored_model_providers(new_records)
+
+        if new_records:
+            default_record = next(record for record in new_records if record.is_default)
+            settings.model_provider = default_record.provider
+            settings.model_api_base = default_record.api_base
+            settings.model_api_key_encrypted = default_record.api_key_encrypted
+            settings.model_api_key_hint = default_record.api_key_hint
+        else:
+            settings.model_provider = None
+            settings.model_api_base = None
+            settings.model_api_key_encrypted = None
+            settings.model_api_key_hint = None
 
     if not changed:
         return AdminSettingsUpdateResult(
@@ -419,6 +666,18 @@ def serialize_admin_settings(
         settings and _sanitize_model_api_base(settings.model_api_base, strict=False)
     )
     api_key_managed = bool(settings and settings.model_api_key_encrypted)
+    stored_records = _load_stored_model_providers(settings)
+    serialized_records = [
+        {
+            "id": record.id,
+            "provider": record.provider,
+            "api_base": record.api_base,
+            "api_key_hint": record.api_key_hint,
+            "has_api_key": bool(record.api_key_encrypted),
+            "is_default": record.is_default,
+        }
+        for record in stored_records
+    ]
 
     return {
         "thread_title_prompt": resolved_prompt,
@@ -432,6 +691,7 @@ def serialize_admin_settings(
         "model_api_key_hint": (
             settings.model_api_key_hint if api_key_managed and settings else None
         ),
+        "model_providers": serialized_records,
         "sip_trunk_uri": _normalize_optional_string(
             settings.sip_trunk_uri if settings else None
         ),

@@ -63,7 +63,7 @@ const fr: TranslationDictionary = {
   "admin.appSettings.model.enableCustomLabel":
     "Remplacer la configuration d'environnement",
   "admin.appSettings.model.customConfigHint":
-    "Définissez un fournisseur, une URL et une clé pour utiliser un proxy personnalisé.",
+    "Définissez un ou plusieurs fournisseurs, leurs URL et leurs clés pour utiliser un proxy personnalisé.",
   "admin.appSettings.model.environmentSummary":
     "Configuration actuelle : fournisseur {{provider}}, base {{base}}.",
   "admin.appSettings.model.providerUnknown": "inconnu",
@@ -73,9 +73,12 @@ const fr: TranslationDictionary = {
   "admin.appSettings.model.providerLiteLLM":
     "LiteLLM (proxy compatible OpenAI)",
   "admin.appSettings.model.providerCustom": "Autre fournisseur…",
-  "admin.appSettings.model.customProviderLabel":
-    "Identifiant du fournisseur personnalisé",
-  "admin.appSettings.model.customProviderPlaceholder": "ex. azure-openai",
+  "admin.appSettings.model.providerNameLabel": "Identifiant du fournisseur",
+  "admin.appSettings.model.providerNamePlaceholder": "ex. gemini, claude, litellm",
+  "admin.appSettings.model.defaultProviderLabel":
+    "Définir comme fournisseur par défaut",
+  "admin.appSettings.model.removeProvider": "Supprimer ce fournisseur",
+  "admin.appSettings.model.addProvider": "Ajouter un fournisseur",
   "admin.appSettings.model.apiBaseLabel": "URL de base de l'API",
   "admin.appSettings.model.apiBaseHint":
     "L'URL doit commencer par http:// ou https:// et pointer vers le proxy à utiliser.",
@@ -86,6 +89,7 @@ const fr: TranslationDictionary = {
     "Laissez vide pour conserver la clé actuelle ou utiliser la variable d'environnement.",
   "admin.appSettings.model.apiKeyStoredHint":
     "Une clé est enregistrée ({{hint}}). Saisissez une nouvelle clé pour la remplacer.",
+  "admin.appSettings.model.apiKeyUnknownHint": "clé masquée",
   "admin.appSettings.model.apiKeyClearLabel": "Supprimer la clé enregistrée",
   "admin.appSettings.success.saved": "Paramètres enregistrés avec succès.",
   "admin.appSettings.success.reset": "Le prompt par défaut est rétabli.",
@@ -107,6 +111,10 @@ const fr: TranslationDictionary = {
     "Indiquez l'identifiant du fournisseur lorsque la configuration personnalisée est activée.",
   "admin.appSettings.errors.modelApiBaseRequired":
     "Indiquez l'URL de base de l'API lorsque la configuration personnalisée est activée.",
+  "admin.appSettings.errors.modelProvidersRequired":
+    "Ajoutez au moins un fournisseur lorsque la configuration personnalisée est activée.",
+  "admin.appSettings.errors.modelDefaultRequired":
+    "Sélectionnez un fournisseur par défaut.",
   "admin.appSettings.errors.invalidModelApiBase":
     "L'URL de base du fournisseur doit être valide et utiliser http ou https.",
   "admin.appSettings.actions.save": "Enregistrer le prompt",
@@ -526,7 +534,7 @@ const en: TranslationDictionary = {
   "admin.appSettings.model.enableCustomLabel":
     "Override environment configuration",
   "admin.appSettings.model.customConfigHint":
-    "Provide a provider identifier, base URL and API key to use a custom proxy.",
+    "Provide one or more providers, their base URLs and API keys to use a custom proxy.",
   "admin.appSettings.model.environmentSummary":
     "Current configuration: provider {{provider}}, base {{base}}.",
   "admin.appSettings.model.providerUnknown": "unknown",
@@ -536,9 +544,11 @@ const en: TranslationDictionary = {
   "admin.appSettings.model.providerLiteLLM":
     "LiteLLM (OpenAI-compatible proxy)",
   "admin.appSettings.model.providerCustom": "Other provider…",
-  "admin.appSettings.model.customProviderLabel":
-    "Custom provider identifier",
-  "admin.appSettings.model.customProviderPlaceholder": "e.g. azure-openai",
+  "admin.appSettings.model.providerNameLabel": "Provider identifier",
+  "admin.appSettings.model.providerNamePlaceholder": "e.g. gemini, claude, litellm",
+  "admin.appSettings.model.defaultProviderLabel": "Set as default provider",
+  "admin.appSettings.model.removeProvider": "Remove this provider",
+  "admin.appSettings.model.addProvider": "Add provider",
   "admin.appSettings.model.apiBaseLabel": "API base URL",
   "admin.appSettings.model.apiBaseHint":
     "The URL must start with http:// or https:// and point to the proxy to use.",
@@ -549,6 +559,7 @@ const en: TranslationDictionary = {
     "Leave empty to keep the current key or use the environment variable.",
   "admin.appSettings.model.apiKeyStoredHint":
     "A key is stored ({{hint}}). Enter a new key to replace it.",
+  "admin.appSettings.model.apiKeyUnknownHint": "hidden value",
   "admin.appSettings.model.apiKeyClearLabel": "Remove the stored key",
   "admin.appSettings.success.saved": "Settings saved successfully.",
   "admin.appSettings.success.reset": "Default prompt restored.",
@@ -567,6 +578,10 @@ const en: TranslationDictionary = {
     "Provide the provider identifier when the custom configuration is enabled.",
   "admin.appSettings.errors.modelApiBaseRequired":
     "Provide the provider base URL when the custom configuration is enabled.",
+  "admin.appSettings.errors.modelProvidersRequired":
+    "Add at least one provider when the custom configuration is enabled.",
+  "admin.appSettings.errors.modelDefaultRequired":
+    "Select a default provider.",
   "admin.appSettings.errors.invalidModelApiBase":
     "The provider base URL must be valid and use http or https.",
   "admin.appSettings.actions.save": "Save prompt",

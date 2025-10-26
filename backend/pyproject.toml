@@ -8,7 +8,7 @@ dependencies = [
     "fastapi",
     "openai",
     "openai-agents[litellm]",
-    "openai-chatkit @ file:///home/fpoisson/Documents/GitHub/test-chatkit/chatkit-python",
+    "openai-chatkit @ file:../chatkit-python",
     "cryptography",
     "uvicorn[standard]",
     "python-dotenv",

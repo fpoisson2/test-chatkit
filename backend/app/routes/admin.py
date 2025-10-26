@@ -74,6 +74,8 @@ async def patch_app_settings(
         kwargs["model_api_base"] = payload.model_api_base
     if "model_api_key" in payload.model_fields_set:
         kwargs["model_api_key"] = payload.model_api_key
+    if "model_providers" in payload.model_fields_set:
+        kwargs["model_providers"] = payload.model_providers
 
     try:
         result = update_admin_settings(session, **kwargs)

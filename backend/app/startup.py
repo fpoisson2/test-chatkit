@@ -245,6 +245,17 @@ def _run_ad_hoc_migrations() -> None:
                         "VARCHAR(128)"
                     )
                 )
+            if "model_provider_configs" not in app_settings_columns:
+                logger.info(
+                    "Migration du schéma app_settings : ajout de la colonne "
+                    "model_provider_configs"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE app_settings ADD COLUMN model_provider_configs "
+                        "TEXT"
+                    )
+                )
 
         if "telephony_routes" not in table_names:
             logger.info("Création de la table telephony_routes manquante")

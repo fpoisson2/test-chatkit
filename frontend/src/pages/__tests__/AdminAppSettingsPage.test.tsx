@@ -51,6 +51,16 @@ const baseSettings = {
   is_model_api_base_overridden: true,
   is_model_api_key_managed: true,
   model_api_key_hint: "••••3456",
+  model_providers: [
+    {
+      id: "primary",
+      provider: "litellm",
+      api_base: "http://localhost:4000",
+      has_api_key: true,
+      api_key_hint: "••••3456",
+      is_default: true,
+    },
+  ],
   sip_trunk_uri: null,
   sip_trunk_username: null,
   sip_trunk_password: null,
@@ -66,12 +76,30 @@ describe("AdminAppSettingsPage", () => {
     getMock.mockResolvedValue({ ...baseSettings });
     updateMock.mockResolvedValue({
       ...baseSettings,
-      model_provider: "litellm",
-      model_api_base: "http://localhost:4000",
+      model_provider: "gemini",
+      model_api_base: "https://generativelanguage.googleapis.com",
       is_model_provider_overridden: true,
       is_model_api_base_overridden: true,
       is_model_api_key_managed: true,
       model_api_key_hint: "••••cret",
+      model_providers: [
+        {
+          id: "primary",
+          provider: "litellm",
+          api_base: "http://localhost:4000",
+          has_api_key: true,
+          api_key_hint: "••••cret",
+          is_default: false,
+        },
+        {
+          id: "generated-id",
+          provider: "gemini",
+          api_base: "https://generativelanguage.googleapis.com",
+          has_api_key: true,
+          api_key_hint: "••••cret",
+          is_default: true,
+        },
+      ],
     });
   });
 
@@ -87,24 +115,53 @@ describe("AdminAppSettingsPage", () => {
       expect(getMock).toHaveBeenCalledWith("test-token");
     });
 
-    const providerSelect = screen.getByLabelText(
-      "admin.appSettings.model.providerLabel",
-    ) as HTMLSelectElement;
-    await userEvent.selectOptions(providerSelect, "litellm");
+    const providerInputs = screen.getAllByLabelText(
+      "admin.appSettings.model.providerNameLabel",
+    );
+    await userEvent.clear(providerInputs[0]);
+    await userEvent.type(providerInputs[0], "litellm");
 
-    const apiBaseInput = screen.getByLabelText(
+    const apiBaseInputs = screen.getAllByLabelText(
       "admin.appSettings.model.apiBaseLabel",
     );
     await waitFor(() => {
-      expect(apiBaseInput).not.toHaveAttribute("disabled");
+      expect(apiBaseInputs[0]).not.toHaveAttribute("disabled");
     });
-    await userEvent.clear(apiBaseInput);
-    await userEvent.type(apiBaseInput, "http://localhost:4000/");
+    await userEvent.clear(apiBaseInputs[0]);
+    await userEvent.type(apiBaseInputs[0], "http://localhost:4000/");
 
-    const apiKeyInput = screen.getByLabelText(
+    const apiKeyInputs = screen.getAllByLabelText(
       "admin.appSettings.model.apiKeyLabel",
     );
-    await userEvent.type(apiKeyInput, "proxy-secret");
+    await userEvent.type(apiKeyInputs[0], "proxy-secret");
+
+    const addButton = screen.getByRole("button", {
+      name: "admin.appSettings.model.addProvider",
+    });
+    await userEvent.click(addButton);
+
+    const updatedProviderInputs = screen.getAllByLabelText(
+      "admin.appSettings.model.providerNameLabel",
+    );
+    await userEvent.type(updatedProviderInputs[1], "gemini");
+
+    const updatedApiBaseInputs = screen.getAllByLabelText(
+      "admin.appSettings.model.apiBaseLabel",
+    );
+    await userEvent.type(
+      updatedApiBaseInputs[1],
+      "https://generativelanguage.googleapis.com/",
+    );
+
+    const updatedApiKeyInputs = screen.getAllByLabelText(
+      "admin.appSettings.model.apiKeyLabel",
+    );
+    await userEvent.type(updatedApiKeyInputs[1], "gemini-secret");
+
+    const defaultRadios = screen.getAllByLabelText(
+      "admin.appSettings.model.defaultProviderLabel",
+    );
+    await userEvent.click(defaultRadios[1]);
 
     const promptInput = screen.getByLabelText(
       "admin.appSettings.threadTitle.fieldLabel",
@@ -120,15 +177,27 @@ describe("AdminAppSettingsPage", () => {
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledWith("test-token", {
         thread_title_prompt: "Nouveau prompt",
-        model_provider: "litellm",
-        model_api_base: "http://localhost:4000",
-        model_api_key: "proxy-secret",
         sip_trunk_uri: null,
         sip_trunk_username: null,
         sip_trunk_password: null,
         sip_contact_host: null,
         sip_contact_port: null,
         sip_contact_transport: null,
+        model_providers: [
+          {
+            id: "primary",
+            provider: "litellm",
+            api_base: "http://localhost:4000",
+            api_key: "proxy-secret",
+            is_default: false,
+          },
+          {
+            provider: "gemini",
+            api_base: "https://generativelanguage.googleapis.com",
+            api_key: "gemini-secret",
+            is_default: true,
+          },
+        ],
       });
     });
   });

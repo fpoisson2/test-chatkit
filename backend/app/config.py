@@ -31,6 +31,16 @@ _RUNTIME_SETTINGS_LOCK = RLock()
 
 
 @dataclass(frozen=True)
+class ModelProviderConfig:
+    """Profil de connexion pour un fournisseur de modèles."""
+
+    provider: str
+    api_base: str
+    api_key: str | None
+    is_default: bool = False
+
+
+@dataclass(frozen=True)
 class WorkflowDefaults:
     """Configuration par défaut pour le workflow ChatKit."""
 
@@ -104,6 +114,8 @@ class Settings:
         model_api_key_env: Nom de la variable d'environnement contenant la clé API.
         model_api_key: Valeur de la clé API active pour le fournisseur choisi.
         openai_api_key: Jeton API OpenAI (présent uniquement si défini dans l'env).
+        model_providers: Profils de connexion disponibles (incluant les clés chiffrées
+            côté administration) permettant d'activer plusieurs fournisseurs.
         chatkit_workflow_id: Identifiant du workflow hébergé (optionnel).
         sip_bind_host: Hôte d'écoute du serveur SIP (optionnel).
         sip_bind_port: Port d'écoute du serveur SIP (optionnel).
@@ -145,6 +157,7 @@ class Settings:
     model_api_key_env: str
     model_api_key: str
     openai_api_key: str | None
+    model_providers: tuple[ModelProviderConfig, ...]
     chatkit_workflow_id: str | None
     chatkit_realtime_model: str
     chatkit_realtime_instructions: str
@@ -383,6 +396,14 @@ class Settings:
             model_api_key_env=model_api_key_env,
             model_api_key=model_api_key,
             openai_api_key=openai_api_key_value,
+            model_providers=(
+                ModelProviderConfig(
+                    provider=model_provider,
+                    api_base=model_api_base,
+                    api_key=model_api_key,
+                    is_default=True,
+                ),
+            ),
             chatkit_workflow_id=env.get("CHATKIT_WORKFLOW_ID"),
             chatkit_realtime_model=env.get(
                 "CHATKIT_REALTIME_MODEL",

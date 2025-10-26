@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import types
@@ -18,6 +19,7 @@ os.environ.setdefault("AUTH_SECRET_KEY", "secret-key")
 os.environ.setdefault("OPENAI_API_KEY", "sk-test")
 
 from backend.app import admin_settings  # noqa: E402
+from backend.app.config import ModelProviderConfig  # noqa: E402
 from backend.app.models import AppSettings, Base  # noqa: E402
 
 
@@ -41,6 +43,14 @@ def default_prompt(monkeypatch: pytest.MonkeyPatch) -> str:
         model_api_base="https://api.openai.com",
         is_model_api_key_managed=False,
         model_api_key_hint=None,
+        model_providers=(
+            ModelProviderConfig(
+                provider="openai",
+                api_base="https://api.openai.com",
+                api_key="sk-test",
+                is_default=True,
+            ),
+        ),
     )
     monkeypatch.setattr(admin_settings, "get_settings", lambda: defaults)
     return defaults.thread_title_prompt
@@ -107,6 +117,7 @@ def test_serialize_admin_settings_marks_custom_value(
     assert payload["is_model_api_base_overridden"] is False
     assert payload["is_model_api_key_managed"] is False
     assert payload["model_api_key_hint"] is None
+    assert payload["model_providers"] == []
     assert payload["sip_trunk_uri"] is None
     assert payload["sip_trunk_username"] is None
     assert payload["sip_trunk_password"] is None
@@ -128,6 +139,7 @@ def test_serialize_admin_settings_marks_custom_value(
     assert payload["is_model_api_base_overridden"] is False
     assert payload["is_model_api_key_managed"] is False
     assert payload["model_api_key_hint"] is None
+    assert payload["model_providers"] == []
     assert payload["sip_trunk_uri"] is None
     assert payload["sip_trunk_username"] is None
     assert payload["sip_trunk_password"] is None
@@ -241,6 +253,11 @@ def test_update_admin_settings_handles_model_provider(
     assert overrides["model_provider"] == "litellm"
     assert overrides["model_api_base"] == "http://localhost:4000"
     assert overrides["model_api_key"] == "proxy-secret"
+    provider_configs = overrides["model_providers"]
+    assert len(provider_configs) == 1
+    assert provider_configs[0].provider == "litellm"
+    assert provider_configs[0].api_base == "http://localhost:4000"
+    assert provider_configs[0].api_key == "proxy-secret"
 
 
 def test_update_admin_settings_clears_model_overrides(
@@ -265,3 +282,107 @@ def test_update_admin_settings_clears_model_overrides(
     assert result.model_settings_changed is True
     assert result.provider_changed is True
     assert result.settings is None
+
+
+def test_update_admin_settings_manages_multiple_model_providers(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        result = admin_settings.update_admin_settings(
+            session,
+            model_providers=[
+                {
+                    "provider": "litellm",
+                    "api_base": "http://localhost:4000",
+                    "api_key": "proxy-secret",
+                    "is_default": True,
+                },
+                {
+                    "provider": "gemini",
+                    "api_base": "https://generativelanguage.googleapis.com",
+                    "api_key": "gemini-secret",
+                    "is_default": False,
+                },
+            ],
+        )
+
+    assert result.model_settings_changed is True
+    assert result.provider_changed is True
+    stored = result.settings
+    assert stored is not None
+    assert stored.model_provider == "litellm"
+    assert stored.model_api_base == "http://localhost:4000"
+    assert stored.model_provider_configs is not None
+    saved_payload = json.loads(stored.model_provider_configs)
+    assert len(saved_payload) == 2
+    default_entry = next(entry for entry in saved_payload if entry["is_default"])
+    assert default_entry["provider"] == "litellm"
+    other_entry = next(entry for entry in saved_payload if not entry["is_default"])
+    assert other_entry["provider"] == "gemini"
+
+    overrides = admin_settings._compute_model_overrides(stored)
+    assert overrides["model_provider"] == "litellm"
+    configs = overrides["model_providers"]
+    assert len(configs) == 2
+    assert any(cfg.provider == "gemini" and cfg.api_key == "gemini-secret" for cfg in configs)
+    assert any(cfg.provider == "litellm" and cfg.api_key == "proxy-secret" for cfg in configs)
+
+    serialized = admin_settings.serialize_admin_settings(stored)
+    assert len(serialized["model_providers"]) == 2
+    first_id = serialized["model_providers"][0]["id"]
+    second_id = serialized["model_providers"][1]["id"]
+
+    with session_factory() as session:
+        result = admin_settings.update_admin_settings(
+            session,
+            model_providers=[
+                {
+                    "id": first_id,
+                    "provider": "litellm",
+                    "api_base": "http://localhost:4001",
+                    "delete_api_key": True,
+                    "is_default": False,
+                },
+                {
+                    "id": second_id,
+                    "provider": "gemini",
+                    "api_base": "https://generativelanguage.googleapis.com",
+                    "is_default": True,
+                },
+            ],
+        )
+
+    assert result.model_settings_changed is True
+    assert result.provider_changed is True
+    updated = result.settings
+    assert updated is not None
+    assert updated.model_provider == "gemini"
+    assert updated.model_api_base == "https://generativelanguage.googleapis.com"
+    assert updated.model_api_key_encrypted is not None
+    assert (
+        admin_settings._decrypt_secret(updated.model_api_key_encrypted)
+        == "gemini-secret"
+    )
+    assert updated.model_api_key_hint is not None
+    assert updated.model_api_key_hint.endswith("cret")
+    assert updated.model_provider_configs is not None
+    payload = json.loads(updated.model_provider_configs)
+    assert len(payload) == 2
+    gemini_entry = next(entry for entry in payload if entry["provider"] == "gemini")
+    assert gemini_entry["is_default"] is True
+    assert gemini_entry["api_key_encrypted"] is not None
+    litellm_entry = next(entry for entry in payload if entry["provider"] == "litellm")
+    assert litellm_entry["api_key_encrypted"] is None
+
+    overrides = admin_settings._compute_model_overrides(updated)
+    assert overrides["model_provider"] == "gemini"
+    configs = overrides["model_providers"]
+    assert any(cfg.provider == "gemini" and cfg.is_default for cfg in configs)
+    assert any(cfg.provider == "litellm" and cfg.api_key is None for cfg in configs)
+
+    serialized = admin_settings.serialize_admin_settings(updated)
+    assert any(entry["is_default"] for entry in serialized["model_providers"])
+    assert any(
+        entry["provider"] == "litellm" and entry["has_api_key"] is False
+        for entry in serialized["model_providers"]
+    )

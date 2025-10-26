@@ -192,6 +192,7 @@ class AppSettings(Base):
     model_api_base: Mapped[str | None] = mapped_column(Text, nullable=True)
     model_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     model_api_key_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    model_provider_configs: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
