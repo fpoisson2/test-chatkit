@@ -639,7 +639,19 @@ class SIPRegistrationManager:
         else:
             raw_port = None
 
-        contact_port = self._normalize_port(raw_port)
+        auto_detect_port = False
+        if isinstance(raw_port, str):
+            stripped_port = raw_port.strip()
+            if stripped_port == "":
+                raw_port = None
+            elif stripped_port == "0":
+                auto_detect_port = True
+            else:
+                raw_port = stripped_port
+        elif isinstance(raw_port, int) and raw_port == 0:
+            auto_detect_port = True
+
+        contact_port = None if auto_detect_port else self._normalize_port(raw_port)
 
         transport = self._normalize_transport(self.contact_transport)
         if transport is None and stored_settings is not None:
@@ -673,6 +685,29 @@ class SIPRegistrationManager:
                     inferred_host,
                 )
                 contact_host = inferred_host
+
+        if auto_detect_port:
+            if not contact_host:
+                LOGGER.warning(
+                    "Impossible d'initialiser l'enregistrement SIP : "
+                    "détection automatique du port impossible sans hôte de contact",
+                )
+                return None, None, transport
+
+            detected_port = self._find_available_contact_port(contact_host)
+            if detected_port is None:
+                LOGGER.warning(
+                    "Impossible d'initialiser l'enregistrement SIP : "
+                    "détection automatique du port SIP impossible",
+                )
+                return None, None, transport
+
+            LOGGER.info(
+                "Port SIP détecté automatiquement pour %s : %s",
+                contact_host,
+                detected_port,
+            )
+            contact_port = detected_port
 
         if contact_port is None:
             contact_port = _DEFAULT_SIP_PORT
