@@ -432,9 +432,13 @@ class SIPRegistrationManager:
                 except Exception as exc:  # pragma: no cover - network failures
                     self._last_error = exc
                     LOGGER.exception("SIP registration attempt failed", exc_info=exc)
-                    await asyncio.sleep(backoff)
+                    try:
+                        await asyncio.wait_for(
+                            self._reload_event.wait(), timeout=backoff
+                        )
+                    except asyncio.TimeoutError:
+                        self._reload_event.set()
                     backoff = min(backoff * 2, self._max_retry_interval)
-                    self._reload_event.set()
                     continue
 
                 backoff = self._retry_interval
