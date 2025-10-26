@@ -709,6 +709,30 @@ export const getAgentModel = (parameters: AgentParameters | null | undefined): s
   return typeof model === "string" ? model : "";
 };
 
+export const getAgentModelProviderId = (
+  parameters: AgentParameters | null | undefined,
+): string => {
+  if (!parameters) {
+    return "";
+  }
+  const value = (parameters as Record<string, unknown>).model_provider_id;
+  return typeof value === "string" ? value : "";
+};
+
+export const getAgentModelProviderSlug = (
+  parameters: AgentParameters | null | undefined,
+): string => {
+  if (!parameters) {
+    return "";
+  }
+  const value = (parameters as Record<string, unknown>).model_provider_slug;
+  if (typeof value === "string") {
+    return value;
+  }
+  const legacy = (parameters as Record<string, unknown>).model_provider;
+  return typeof legacy === "string" ? legacy : "";
+};
+
 export const getAgentReasoningEffort = (
   parameters: AgentParameters | null | undefined,
 ): string => {
@@ -766,6 +790,38 @@ export const setAgentModel = (parameters: AgentParameters, model: string): Agent
     return stripEmpty(rest);
   }
   return { ...next, model: trimmed };
+};
+
+export const setAgentModelProvider = (
+  parameters: AgentParameters,
+  selection: { providerId?: string | null; providerSlug?: string | null },
+): AgentParameters => {
+  const next = { ...(parameters as Record<string, unknown>) };
+  const providerId = selection.providerId?.toString().trim() ?? "";
+  const providerSlug = selection.providerSlug?.toString().trim().toLowerCase() ?? "";
+
+  if (!providerId && !providerSlug) {
+    delete next.model_provider_id;
+    delete next.model_provider_slug;
+    delete next.model_provider;
+    return stripEmpty(next);
+  }
+
+  if (providerId) {
+    next.model_provider_id = providerId;
+  } else {
+    delete next.model_provider_id;
+  }
+
+  if (providerSlug) {
+    next.model_provider_slug = providerSlug;
+    next.model_provider = providerSlug;
+  } else {
+    delete next.model_provider_slug;
+    delete next.model_provider;
+  }
+
+  return stripEmpty(next);
 };
 
 export const VOICE_AGENT_TOOL_KEYS = [

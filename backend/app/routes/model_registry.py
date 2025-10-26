@@ -65,6 +65,8 @@ async def create_model(
         name=payload.name,
         display_name=payload.display_name,
         description=payload.description,
+        provider_id=payload.provider_id,
+        provider_slug=payload.provider_slug,
         supports_reasoning=payload.supports_reasoning,
         created_at=now,
         updated_at=now,

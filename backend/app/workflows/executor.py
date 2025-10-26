@@ -39,6 +39,7 @@ try:  # pragma: no cover - dépend de la version du SDK Agents installée
     from chatkit.agents import stream_widget as _sdk_stream_widget
 except ImportError:  # pragma: no cover - compatibilité avec les anciennes versions
     _sdk_stream_widget = None  # type: ignore[assignment]
+
 from chatkit.types import (
     AssistantMessageContent,
     AssistantMessageContentPartTextDelta,
@@ -64,8 +65,10 @@ from ..chatkit.agent_registry import (
     AGENT_BUILDERS,
     AGENT_RESPONSE_FORMATS,
     STEP_TITLES,
+    AgentProviderBinding,
     _build_custom_agent,
     _create_response_format_from_pydantic,
+    get_agent_provider_binding,
 )
 from ..chatkit_realtime import create_realtime_voice_session
 from ..chatkit_server.actions import (
@@ -638,6 +641,7 @@ async def run_workflow(
             _register_widget_config(step)
 
     agent_instances: dict[str, Agent] = {}
+    agent_provider_bindings: dict[str, AgentProviderBinding | None] = {}
     nested_workflow_configs: dict[str, dict[str, Any]] = {}
     nested_workflow_definition_cache: dict[
         tuple[str, str | int], WorkflowDefinition
@@ -673,6 +677,22 @@ async def run_workflow(
         builder = AGENT_BUILDERS.get(agent_key)
         overrides_raw = step.parameters or {}
         overrides = dict(overrides_raw)
+
+        raw_provider_id = overrides_raw.get("model_provider_id")
+        provider_id = raw_provider_id if isinstance(raw_provider_id, str) else None
+        raw_provider_slug = overrides_raw.get("model_provider_slug")
+        if not isinstance(raw_provider_slug, str) or not raw_provider_slug.strip():
+            fallback_slug = overrides_raw.get("model_provider")
+            raw_provider_slug = (
+                fallback_slug if isinstance(fallback_slug, str) else None
+            )
+        provider_slug = (
+            raw_provider_slug if isinstance(raw_provider_slug, str) else None
+        )
+
+        overrides.pop("model_provider_id", None)
+        overrides.pop("model_provider_slug", None)
+        overrides.pop("model_provider", None)
 
         logger.info(
             "Construction de l'agent pour l'étape %s. widget_config: %s, "
@@ -718,6 +738,18 @@ async def run_workflow(
             agent_instances[step.slug] = _build_custom_agent(overrides)
         else:
             agent_instances[step.slug] = builder(overrides)
+
+        provider_binding = None
+        if provider_id or provider_slug:
+            provider_binding = get_agent_provider_binding(provider_id, provider_slug)
+            if provider_binding is None:
+                logger.warning(
+                    "Impossible de résoudre le fournisseur %s (id=%s) pour l'étape %s",
+                    provider_slug or "<inconnu>",
+                    provider_id or "<aucun>",
+                    step.slug,
+                )
+        agent_provider_bindings[step.slug] = provider_binding
 
     def _load_nested_workflow_definition(
         reference: Mapping[str, Any]
@@ -1090,6 +1122,8 @@ async def run_workflow(
 
     def _workflow_run_config(
         response_format: dict[str, Any] | None = None,
+        *,
+        provider_binding: AgentProviderBinding | None = None,
     ) -> RunConfig:
         metadata: dict[str, str] = {"__trace_source__": "agent-builder"}
         if definition.workflow_id is not None:
@@ -1098,17 +1132,18 @@ async def run_workflow(
             metadata["workflow_slug"] = definition.workflow.slug
         if definition.workflow and definition.workflow.display_name:
             metadata["workflow_name"] = definition.workflow.display_name
+        kwargs: dict[str, Any] = {"trace_metadata": metadata}
+        if provider_binding is not None:
+            kwargs["model_provider"] = provider_binding.provider
         try:
             if response_format is not None:
-                return RunConfig(
-                    trace_metadata=metadata, response_format=response_format
-                )
+                return RunConfig(response_format=response_format, **kwargs)
         except TypeError:
             logger.debug(
                 "RunConfig ne supporte pas response_format, utilisation de la "
                 "configuration par défaut"
             )
-        return RunConfig(trace_metadata=metadata)
+        return RunConfig(**kwargs)
 
     async def record_step(step_key: str, title: str, payload: Any) -> None:
         formatted_output = _format_step_output(payload)
@@ -1890,10 +1925,14 @@ async def run_workflow(
                 step_context=run_context if isinstance(run_context, Mapping) else None,
             )
 
+        provider_binding = agent_provider_bindings.get(current_slug)
+
         result = Runner.run_streamed(
             agent,
             input=[*conversation_history],
-            run_config=_workflow_run_config(response_format_override),
+            run_config=_workflow_run_config(
+                response_format_override, provider_binding=provider_binding
+            ),
             context=runner_context,
             previous_response_id=getattr(
                 agent_context, "previous_response_id", None

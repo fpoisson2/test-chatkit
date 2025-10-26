@@ -22,6 +22,8 @@ import {
   getAgentMessage,
   getAgentNestedWorkflow,
   getAgentModel,
+  getAgentModelProviderId,
+  getAgentModelProviderSlug,
   getAgentReasoningEffort,
   getAgentReasoningSummary,
   getAgentResponseFormat,
@@ -74,6 +76,8 @@ type UseAgentInspectorStateParams = {
 type AgentInspectorState = {
   agentMessage: string;
   agentModel: string;
+  agentProviderId: string;
+  agentProviderSlug: string;
   nestedWorkflowId: number | null;
   nestedWorkflowSlug: string;
   nestedWorkflowMode: "local" | "hosted";
@@ -115,6 +119,14 @@ type AgentInspectorState = {
   selectedVectorStoreSlug: string;
   matchedModel: AvailableModel | undefined;
   selectedModelOption: string;
+  selectedProviderValue: string;
+  providerOptions: {
+    value: string;
+    id: string | null;
+    slug: string | null;
+    label: string;
+  }[];
+  modelsForProvider: AvailableModel[];
   supportsReasoning: boolean;
   schemaText: string;
   setSchemaText: (value: string) => void;
@@ -149,6 +161,8 @@ export const useAgentInspectorState = ({
 }: UseAgentInspectorStateParams): AgentInspectorState => {
   const agentMessage = getAgentMessage(parameters);
   const agentModel = getAgentModel(parameters);
+  const agentProviderId = getAgentModelProviderId(parameters).trim();
+  const agentProviderSlug = getAgentModelProviderSlug(parameters).trim().toLowerCase();
   const nestedWorkflow = getAgentNestedWorkflow(parameters);
   const availableNestedWorkflows = useMemo(
     () => workflows.filter((workflow) => workflow.id !== currentWorkflowId),
@@ -189,6 +203,99 @@ export const useAgentInspectorState = ({
   const computerUseEnabled = Boolean(computerUseConfig);
   const imageGenerationConfig = getAgentImageGenerationConfig(parameters);
   const imageGenerationEnabled = Boolean(imageGenerationConfig);
+
+  const providerOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const options: AgentInspectorState["providerOptions"] = [];
+    for (const model of availableModels) {
+      const slug = model.provider_slug?.trim().toLowerCase() ?? "";
+      const id = model.provider_id?.trim() ?? "";
+      if (!slug && !id) {
+        continue;
+      }
+      const key = `${id}|${slug}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      const baseLabel = slug || id || "fournisseur";
+      const label = slug && id ? `${slug} (${id})` : baseLabel;
+      options.push({ value: key, id: id || null, slug: slug || null, label });
+    }
+    return options.sort((a, b) => a.label.localeCompare(b.label, "fr"));
+  }, [availableModels]);
+
+  const selectedProviderValue = useMemo(() => {
+    if (!agentProviderId && !agentProviderSlug) {
+      return "";
+    }
+    const matchById = providerOptions.find(
+      (option) => agentProviderId && option.id === agentProviderId,
+    );
+    if (matchById) {
+      return matchById.value;
+    }
+    const matchBySlug = providerOptions.find(
+      (option) => agentProviderSlug && option.slug === agentProviderSlug,
+    );
+    if (matchBySlug) {
+      return matchBySlug.value;
+    }
+    return "";
+  }, [providerOptions, agentProviderId, agentProviderSlug]);
+
+  const modelsForProvider = useMemo(() => {
+    if (!selectedProviderValue) {
+      return availableModels;
+    }
+    const target = providerOptions.find((option) => option.value === selectedProviderValue);
+    if (!target) {
+      return availableModels;
+    }
+    const filtered = availableModels.filter((model) => {
+      const normalizedSlug = model.provider_slug?.trim().toLowerCase() ?? "";
+      const normalizedId = model.provider_id?.trim() ?? "";
+      if (target.id && normalizedId) {
+        return normalizedId === target.id;
+      }
+      if (target.slug && normalizedSlug) {
+        return normalizedSlug === target.slug;
+      }
+      if (target.id && !normalizedId) {
+        return false;
+      }
+      if (!target.id && target.slug) {
+        return normalizedSlug === target.slug;
+      }
+      return false;
+    });
+    if (filtered.length > 0) {
+      return filtered;
+    }
+    if (agentProviderId || agentProviderSlug) {
+      const fallback = availableModels.filter((model) => {
+        const normalizedSlug = model.provider_slug?.trim().toLowerCase() ?? "";
+        const normalizedId = model.provider_id?.trim() ?? "";
+        if (agentProviderId && normalizedId) {
+          return normalizedId === agentProviderId;
+        }
+        if (agentProviderSlug && normalizedSlug) {
+          return normalizedSlug === agentProviderSlug;
+        }
+        return false;
+      });
+      if (fallback.length > 0) {
+        return fallback;
+      }
+    }
+    return availableModels;
+  }, [
+    agentProviderId,
+    agentProviderSlug,
+    availableModels,
+    providerOptions,
+    selectedProviderValue,
+  ]);
 
   const imageModelValue = imageGenerationConfig?.model ?? DEFAULT_IMAGE_TOOL_CONFIG.model;
   const imageSizeValue = imageGenerationConfig?.size ?? "";
@@ -389,9 +496,35 @@ export const useAgentInspectorState = ({
   const widgetSelectValue =
     responseWidgetSource === "library" && selectedWidgetExists ? trimmedWidgetSlug : "";
 
-  const matchedModel = availableModels.find((model) => model.name === agentModel);
-  const selectedModelOption = matchedModel ? matchedModel.name : "";
-  const supportsReasoning = isReasoningModel(agentModel);
+  const matchedModel = useMemo(() => {
+    if (!agentModel) {
+      return undefined;
+    }
+    const candidates = availableModels.filter((model) => model.name === agentModel);
+    if (candidates.length === 0) {
+      return undefined;
+    }
+    const prioritized = candidates.find((model) => {
+      const normalizedSlug = model.provider_slug?.trim().toLowerCase() ?? "";
+      const normalizedId = model.provider_id?.trim() ?? "";
+      if (agentProviderId && normalizedId) {
+        return normalizedId === agentProviderId;
+      }
+      if (agentProviderSlug && normalizedSlug) {
+        return normalizedSlug === agentProviderSlug;
+      }
+      return false;
+    });
+    return prioritized ?? candidates[0];
+  }, [agentModel, agentProviderId, agentProviderSlug, availableModels]);
+  const selectedModelOption = matchedModel
+    ? JSON.stringify({
+        name: matchedModel.name,
+        providerId: matchedModel.provider_id ?? null,
+        providerSlug: matchedModel.provider_slug ?? null,
+      })
+    : "";
+  const supportsReasoning = matchedModel?.supports_reasoning ?? isReasoningModel(agentModel);
   const temperatureValue = typeof temperature === "number" ? String(temperature) : "";
   const topPValue = typeof topP === "number" ? String(topP) : "";
 
@@ -419,6 +552,8 @@ export const useAgentInspectorState = ({
   return {
     agentMessage,
     agentModel,
+    agentProviderId,
+    agentProviderSlug,
     nestedWorkflowId: nestedWorkflow.id,
     nestedWorkflowSlug: nestedWorkflow.slug,
     nestedWorkflowMode,
@@ -460,6 +595,9 @@ export const useAgentInspectorState = ({
     selectedVectorStoreSlug,
     matchedModel,
     selectedModelOption,
+    selectedProviderValue,
+    providerOptions,
+    modelsForProvider,
     supportsReasoning,
     schemaText,
     setSchemaText,

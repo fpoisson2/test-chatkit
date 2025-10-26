@@ -258,6 +258,7 @@ def test_update_admin_settings_handles_model_provider(
     assert provider_configs[0].provider == "litellm"
     assert provider_configs[0].api_base == "http://localhost:4000"
     assert provider_configs[0].api_key == "proxy-secret"
+    assert provider_configs[0].id == "__env__"
 
 
 def test_update_admin_settings_clears_model_overrides(
@@ -317,20 +318,30 @@ def test_update_admin_settings_manages_multiple_model_providers(
     assert len(saved_payload) == 2
     default_entry = next(entry for entry in saved_payload if entry["is_default"])
     assert default_entry["provider"] == "litellm"
+    assert isinstance(default_entry["id"], str) and default_entry["id"].strip()
     other_entry = next(entry for entry in saved_payload if not entry["is_default"])
     assert other_entry["provider"] == "gemini"
+    assert isinstance(other_entry["id"], str) and other_entry["id"].strip()
 
     overrides = admin_settings._compute_model_overrides(stored)
     assert overrides["model_provider"] == "litellm"
     configs = overrides["model_providers"]
     assert len(configs) == 2
-    assert any(cfg.provider == "gemini" and cfg.api_key == "gemini-secret" for cfg in configs)
-    assert any(cfg.provider == "litellm" and cfg.api_key == "proxy-secret" for cfg in configs)
+    assert any(
+        cfg.provider == "gemini" and cfg.api_key == "gemini-secret"
+        for cfg in configs
+    )
+    assert any(
+        cfg.provider == "litellm" and cfg.api_key == "proxy-secret"
+        for cfg in configs
+    )
 
     serialized = admin_settings.serialize_admin_settings(stored)
     assert len(serialized["model_providers"]) == 2
     first_id = serialized["model_providers"][0]["id"]
     second_id = serialized["model_providers"][1]["id"]
+    assert isinstance(first_id, str) and first_id
+    assert isinstance(second_id, str) and second_id
 
     with session_factory() as session:
         result = admin_settings.update_admin_settings(
@@ -371,8 +382,10 @@ def test_update_admin_settings_manages_multiple_model_providers(
     gemini_entry = next(entry for entry in payload if entry["provider"] == "gemini")
     assert gemini_entry["is_default"] is True
     assert gemini_entry["api_key_encrypted"] is not None
+    assert isinstance(gemini_entry["id"], str) and gemini_entry["id"].strip()
     litellm_entry = next(entry for entry in payload if entry["provider"] == "litellm")
     assert litellm_entry["api_key_encrypted"] is None
+    assert isinstance(litellm_entry["id"], str) and litellm_entry["id"].strip()
 
     overrides = admin_settings._compute_model_overrides(updated)
     assert overrides["model_provider"] == "gemini"
@@ -386,3 +399,62 @@ def test_update_admin_settings_manages_multiple_model_providers(
         entry["provider"] == "litellm" and entry["has_api_key"] is False
         for entry in serialized["model_providers"]
     )
+    assert all(
+        isinstance(entry["id"], str) and entry["id"].strip()
+        for entry in serialized["model_providers"]
+    )
+
+
+def test_resolve_model_provider_credentials_returns_entry(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        result = admin_settings.update_admin_settings(
+            session,
+            model_providers=[
+                {
+                    "provider": "openai",
+                    "api_base": "https://api.openai.com/v1",
+                    "api_key": "sk-provider",
+                    "is_default": True,
+                }
+            ],
+        )
+        assert result.settings is not None
+        stored_payload = json.loads(result.settings.model_provider_configs or "[]")
+        provider_id = stored_payload[0]["id"]
+
+    with session_factory() as session:
+        credentials = admin_settings.resolve_model_provider_credentials(
+            provider_id, session=session
+        )
+
+    assert credentials is not None
+    assert credentials.id == provider_id
+    assert credentials.provider == "openai"
+    assert credentials.api_base == "https://api.openai.com/v1"
+    assert credentials.api_key == "sk-provider"
+
+
+def test_resolve_model_provider_credentials_returns_none_for_unknown_id(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        admin_settings.update_admin_settings(
+            session,
+            model_providers=[
+                {
+                    "provider": "openai",
+                    "api_base": "https://api.openai.com/v1",
+                    "api_key": "sk-provider",
+                    "is_default": True,
+                }
+            ],
+        )
+
+    with session_factory() as session:
+        credentials = admin_settings.resolve_model_provider_credentials(
+            "missing-id", session=session
+        )
+
+    assert credentials is None

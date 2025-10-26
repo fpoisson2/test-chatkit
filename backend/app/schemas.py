@@ -4,7 +4,15 @@ import datetime
 import math
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, constr, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    constr,
+    field_validator,
+    model_validator,
+)
 
 
 class SessionRequest(BaseModel):
@@ -134,14 +142,20 @@ class ModelProviderSettings(BaseModel):
 class ModelProviderSettingsUpdate(BaseModel):
     id: str | None = Field(
         default=None,
-        description="Identifiant interne de la configuration (laisser vide pour une nouvelle entrée).",
+        description=(
+            "Identifiant interne de la configuration (laisser vide pour une "
+            "nouvelle entrée)."
+        ),
         max_length=128,
     )
     provider: constr(strip_whitespace=True, min_length=1, max_length=64)
     api_base: constr(strip_whitespace=True, min_length=1, max_length=512)
     api_key: str | None = Field(
         default=None,
-        description="Clé API à associer à ce fournisseur (laisser vide pour conserver la valeur existante).",
+        description=(
+            "Clé API à associer à ce fournisseur (laisser vide pour conserver "
+            "la valeur existante)."
+        ),
         max_length=512,
     )
     delete_api_key: bool = Field(
@@ -326,7 +340,43 @@ class AvailableModelBase(BaseModel):
     description: constr(strip_whitespace=True, min_length=1, max_length=512) | None = (
         None
     )
+    provider_id: constr(strip_whitespace=True, min_length=1, max_length=128) | None = (
+        None
+    )
+    provider_slug: constr(strip_whitespace=True, min_length=1, max_length=64) | None = (
+        None
+    )
     supports_reasoning: bool = False
+
+    @field_validator("provider_id")
+    @classmethod
+    def _normalize_provider_id(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        candidate = value.strip()
+        if not candidate:
+            raise ValueError("provider_id ne peut pas être vide")
+        return candidate
+
+    @field_validator("provider_slug")
+    @classmethod
+    def _normalize_provider_slug(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        candidate = value.strip()
+        if not candidate:
+            raise ValueError("provider_slug ne peut pas être vide")
+        return candidate.lower()
+
+    @model_validator(mode="after")
+    def _ensure_provider_pair(self) -> AvailableModelBase:
+        has_id = self.provider_id is not None
+        has_slug = self.provider_slug is not None
+        if has_id != has_slug:
+            raise ValueError(
+                "provider_id et provider_slug doivent être fournis ensemble"
+            )
+        return self
 
 
 class AvailableModelCreateRequest(AvailableModelBase):

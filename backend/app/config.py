@@ -40,6 +40,7 @@ class ModelProviderConfig:
     api_base: str
     api_key: str | None
     is_default: bool = False
+    id: str | None = None
 
 
 @dataclass(frozen=True)

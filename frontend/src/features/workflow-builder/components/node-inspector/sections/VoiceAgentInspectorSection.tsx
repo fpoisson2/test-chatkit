@@ -19,7 +19,10 @@ import { ToolSettingsPanel } from "./ToolSettingsPanel";
 type VoiceAgentInspectorSectionProps = {
   nodeId: string;
   parameters: FlowNode["data"]["parameters"];
-  onAgentModelChange: (nodeId: string, value: string) => void;
+  onAgentModelChange: (
+    nodeId: string,
+    selection: { model: string; providerId?: string | null; providerSlug?: string | null },
+  ) => void;
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onVoiceAgentVoiceChange: (nodeId: string, value: string) => void;
   onVoiceAgentStartBehaviorChange: (
@@ -68,7 +71,13 @@ export const VoiceAgentInspectorSection = ({
         <input
           type="text"
           value={voiceModel}
-          onChange={(event) => onAgentModelChange(nodeId, event.target.value)}
+          onChange={(event) =>
+            onAgentModelChange(nodeId, {
+              model: event.target.value,
+              providerId: null,
+              providerSlug: null,
+            })
+          }
         />
       </label>
 

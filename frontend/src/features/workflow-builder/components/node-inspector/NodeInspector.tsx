@@ -68,7 +68,14 @@ export type NodeInspectorProps = {
   node: FlowNode;
   onDisplayNameChange: (nodeId: string, value: string) => void;
   onAgentMessageChange: (nodeId: string, value: string) => void;
-  onAgentModelChange: (nodeId: string, value: string) => void;
+  onAgentModelChange: (
+    nodeId: string,
+    selection: { model: string; providerId?: string | null; providerSlug?: string | null },
+  ) => void;
+  onAgentProviderChange: (
+    nodeId: string,
+    selection: { providerId?: string | null; providerSlug?: string | null },
+  ) => void;
   onAgentNestedWorkflowChange: (
     nodeId: string,
     selection: AgentNestedWorkflowSelection,
@@ -177,6 +184,7 @@ const NodeInspector = ({
   onDisplayNameChange,
   onAgentMessageChange,
   onAgentModelChange,
+  onAgentProviderChange,
   onAgentNestedWorkflowChange,
   onAgentReasoningChange,
   onAgentReasoningSummaryChange,
@@ -471,6 +479,7 @@ const NodeInspector = ({
           vectorStoresError={vectorStoresError}
             onAgentMessageChange={onAgentMessageChange}
             onAgentModelChange={onAgentModelChange}
+            onAgentProviderChange={onAgentProviderChange}
             onAgentNestedWorkflowChange={onAgentNestedWorkflowChange}
           onAgentReasoningChange={onAgentReasoningChange}
           onAgentReasoningSummaryChange={onAgentReasoningSummaryChange}

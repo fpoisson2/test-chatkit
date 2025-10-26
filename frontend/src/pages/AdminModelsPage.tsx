@@ -26,6 +26,8 @@ export const AdminModelsPage = () => {
     display_name: "",
     description: "",
     supports_reasoning: false,
+    provider_id: "",
+    provider_slug: "",
   });
 
   const refreshModels = useCallback(async () => {
@@ -72,12 +74,18 @@ export const AdminModelsPage = () => {
       return;
     }
 
-    const payload: AvailableModelPayload = {
-      name: trimmedName,
-      display_name: form.display_name?.trim() ? form.display_name.trim() : null,
-      description: form.description?.trim() ? form.description.trim() : null,
-      supports_reasoning: form.supports_reasoning,
-    };
+      const payload: AvailableModelPayload = {
+        name: trimmedName,
+        display_name: form.display_name?.trim() ? form.display_name.trim() : null,
+        description: form.description?.trim() ? form.description.trim() : null,
+        supports_reasoning: form.supports_reasoning,
+        provider_id: form.provider_id?.trim()
+          ? form.provider_id.trim()
+          : null,
+        provider_slug: form.provider_slug?.trim()
+          ? form.provider_slug.trim().toLowerCase()
+          : null,
+      };
 
     try {
       const created = await modelRegistryApi.create(token, payload);
@@ -87,6 +95,8 @@ export const AdminModelsPage = () => {
         display_name: "",
         description: "",
         supports_reasoning: false,
+        provider_id: "",
+        provider_slug: "",
       });
       setSuccess(`Modèle « ${created.name} » ajouté avec succès.`);
       setError(null);
@@ -174,6 +184,38 @@ export const AdminModelsPage = () => {
                   />
                 </label>
               </div>
+              <div className="admin-form__row">
+                <label className="label">
+                  {t("admin.models.form.providerIdLabel")}
+                  <input
+                    className="input"
+                    type="text"
+                    value={form.provider_id ?? ""}
+                    onChange={(event) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        provider_id: event.target.value,
+                      }))
+                    }
+                    placeholder={t("admin.models.form.providerIdPlaceholder")}
+                  />
+                </label>
+                <label className="label">
+                  {t("admin.models.form.providerSlugLabel")}
+                  <input
+                    className="input"
+                    type="text"
+                    value={form.provider_slug ?? ""}
+                    onChange={(event) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        provider_slug: event.target.value,
+                      }))
+                    }
+                    placeholder={t("admin.models.form.providerSlugPlaceholder")}
+                  />
+                </label>
+              </div>
               <label className="label">
                 Description (optionnel)
                 <textarea
@@ -233,6 +275,7 @@ export const AdminModelsPage = () => {
                     <tr>
                       <th>Modèle</th>
                       <th>Affichage</th>
+                      <th>Fournisseur</th>
                       <th>Raisonnement</th>
                       <th>Description</th>
                       <th>Actions</th>
@@ -243,6 +286,11 @@ export const AdminModelsPage = () => {
                       <tr key={model.id}>
                         <td data-label="Modèle">{model.name}</td>
                         <td data-label="Affichage">{model.display_name ?? "—"}</td>
+                        <td data-label="Fournisseur">
+                          {model.provider_slug
+                            ? `${model.provider_slug}${model.provider_id ? ` (${model.provider_id})` : ""}`
+                            : "—"}
+                        </td>
                         <td data-label="Raisonnement">
                           {model.supports_reasoning ? "Oui" : "Non"}
                         </td>
