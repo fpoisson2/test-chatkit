@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -9,6 +10,9 @@ import pytest
 ROOT_DIR = Path(__file__).resolve().parents[2]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+
+os.environ.setdefault("DATABASE_URL", "sqlite:///tmp.db")
+os.environ.setdefault("AUTH_SECRET_KEY", "secret-key")
 
 CONFIG_SPEC = importlib.util.spec_from_file_location(
     "app.config", ROOT_DIR / "app" / "config.py"
@@ -96,6 +100,8 @@ def test_settings_default_sip_media_port() -> None:
 
     settings = Settings.from_env(env)
 
+    assert settings.sip_bind_host == config_module.DEFAULT_SIP_BIND_HOST
+    assert settings.sip_bind_port == config_module.DEFAULT_SIP_BIND_PORT
     assert settings.sip_media_port == config_module.DEFAULT_SIP_MEDIA_PORT
     assert settings.sip_contact_host is None
     assert settings.sip_contact_port is None
