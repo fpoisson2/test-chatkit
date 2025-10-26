@@ -56,7 +56,12 @@ type AgentInspectorSectionProps = {
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onAgentModelChange: (
     nodeId: string,
-    selection: { model: string; providerId?: string | null; providerSlug?: string | null },
+    selection: {
+      model: string;
+      providerId?: string | null;
+      providerSlug?: string | null;
+      store?: boolean | null;
+    },
   ) => void;
   onAgentProviderChange: (
     nodeId: string,
@@ -252,6 +257,7 @@ export const AgentInspectorSection = ({
           model: "",
           providerId: null,
           providerSlug: null,
+          store: undefined,
         });
         return;
       }
@@ -260,17 +266,20 @@ export const AgentInspectorSection = ({
           name: string;
           providerId: string | null;
           providerSlug: string | null;
+          store?: boolean | null;
         };
         onAgentModelChange(nodeId, {
           model: payload.name,
           providerId: payload.providerId,
           providerSlug: payload.providerSlug,
+          store: payload.store,
         });
       } catch {
         onAgentModelChange(nodeId, {
           model: value,
           providerId: null,
           providerSlug: null,
+          store: undefined,
         });
       }
     },
@@ -278,6 +287,8 @@ export const AgentInspectorSection = ({
   );
 
   const { t } = useI18n();
+  const storePreferenceLocked = matchedModel?.store === false;
+  const resolvedStoreResponses = storePreferenceLocked ? false : storeResponses;
   const widgetSelectId = useId();
   const nestedWorkflowLabelId = useId();
   const nestedWorkflowModeName = `${nestedWorkflowLabelId}-mode`;
@@ -634,6 +645,7 @@ export const AgentInspectorSection = ({
                   name: model.name,
                   providerId: model.provider_id ?? null,
                   providerSlug: model.provider_slug ?? null,
+                  store: model.store ?? null,
                 })}
               >
                 {`${displayLabel}${reasoningSuffix}${providerSuffix}`}
@@ -787,8 +799,9 @@ export const AgentInspectorSection = ({
         />
         <ToggleRow
           label="Enregistrer la réponse dans l'historique de conversation"
-          checked={storeResponses}
+          checked={resolvedStoreResponses}
           onChange={(next) => onAgentStorePreferenceChange(nodeId, next)}
+          disabled={storePreferenceLocked}
         />
       </div>
 

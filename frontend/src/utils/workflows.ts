@@ -1508,8 +1508,16 @@ export const getAgentStorePreference = (
 
 export const setAgentStorePreference = (
   parameters: AgentParameters,
-  value: boolean,
-): AgentParameters => setBooleanSetting(parameters, "store", value);
+  value: boolean | null,
+): AgentParameters => {
+  if (value == null) {
+    return updateModelSettings(parameters, (current) => {
+      const { store: _ignored, ...rest } = current;
+      return rest;
+    });
+  }
+  return setBooleanSetting(parameters, "store", value);
+};
 
 export type WidgetSource = "library" | "variable";
 

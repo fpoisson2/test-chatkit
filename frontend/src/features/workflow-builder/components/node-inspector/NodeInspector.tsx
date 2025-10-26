@@ -70,7 +70,12 @@ export type NodeInspectorProps = {
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onAgentModelChange: (
     nodeId: string,
-    selection: { model: string; providerId?: string | null; providerSlug?: string | null },
+    selection: {
+      model: string;
+      providerId?: string | null;
+      providerSlug?: string | null;
+      store?: boolean | null;
+    },
   ) => void;
   onAgentProviderChange: (
     nodeId: string,

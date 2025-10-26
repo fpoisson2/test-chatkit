@@ -177,4 +177,67 @@ describe("AgentInspectorSection", () => {
 
     expect(onAgentWorkflowToolToggle).toHaveBeenCalledWith("agent-1", "secondary", true);
   });
+
+  it("serializes the store flag in model options", () => {
+    const availableModels = [
+      {
+        id: 1,
+        name: "gpt-1",
+        display_name: "GPT-1",
+        description: null,
+        provider_id: "openai",
+        provider_slug: "openai",
+        supports_reasoning: false,
+        supports_previous_response_id: false,
+        supports_reasoning_summary: false,
+        store: false,
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      },
+    ];
+
+    renderSection({ availableModels });
+
+    const option = screen.getByRole("option", { name: /GPT-1/ }) as HTMLOptionElement;
+    expect(option.value).toContain('"store":false');
+  });
+
+  it("disables the store toggle when the selected model forbids persistence", async () => {
+    const onAgentStorePreferenceChange = vi.fn();
+    const availableModels = [
+      {
+        id: 2,
+        name: "privacy-model",
+        display_name: "Privacy Model",
+        description: null,
+        provider_id: null,
+        provider_slug: null,
+        supports_reasoning: false,
+        supports_previous_response_id: false,
+        supports_reasoning_summary: false,
+        store: false,
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      },
+    ];
+
+    renderSection({
+      availableModels,
+      parameters: {
+        model: "privacy-model",
+        model_settings: { store: false },
+      },
+      onAgentStorePreferenceChange,
+    });
+
+    const toggle = screen.getByRole("switch", {
+      name: /Enregistrer la réponse dans l'historique de conversation/i,
+    });
+
+    expect(toggle).toBeDisabled();
+
+    await userEvent.click(toggle);
+
+    expect(onAgentStorePreferenceChange).not.toHaveBeenCalled();
+  });
 });
