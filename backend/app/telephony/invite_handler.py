@@ -116,6 +116,7 @@ async def handle_incoming_invite(
 ) -> None:
     """Répondre à un ``INVITE`` SIP en négociant une session RTP simple."""
 
+    via_header = _extract_header(request, "Via")
     call_id = _extract_header(request, "Call-ID")
     from_header = _extract_header(request, "From")
     to_header = _extract_header(request, "To")
@@ -133,6 +134,7 @@ async def handle_incoming_invite(
         reason="Trying",
         call_id=call_id,
         contact_uri=contact_uri,
+        via_header=via_header,
     )
 
     payload = request.payload
@@ -152,6 +154,7 @@ async def handle_incoming_invite(
                 reason="Bad Request",
                 call_id=call_id,
                 contact_uri=contact_uri,
+                via_header=via_header,
             )
             raise InviteHandlingError("SDP illisible") from exc
         payload_length = len(payload)
@@ -195,6 +198,7 @@ async def handle_incoming_invite(
             reason="Decline",
             call_id=call_id,
             contact_uri=contact_uri,
+            via_header=via_header,
         )
         raise InviteHandlingError("Aucun média audio trouvé")
 
@@ -224,6 +228,7 @@ async def handle_incoming_invite(
             reason="Decline",
             call_id=call_id,
             contact_uri=contact_uri,
+            via_header=via_header,
         )
         raise InviteHandlingError("Aucun codec compatible")
 
@@ -233,6 +238,7 @@ async def handle_incoming_invite(
         reason="Ringing",
         call_id=call_id,
         contact_uri=contact_uri,
+        via_header=via_header,
     )
 
     sdp_answer = _build_sdp_answer(
@@ -262,6 +268,7 @@ async def handle_incoming_invite(
         payload=sdp_answer,
         call_id=call_id,
         contact_uri=contact_uri,
+        via_header=via_header,
     )
 
 
@@ -290,6 +297,7 @@ async def send_sip_reply(
     payload: bytes | str | None = None,
     call_id: str | None = None,
     contact_uri: str | None = None,
+    via_header: str | None = None,
 ) -> None:
     logger.info(
         "Envoi réponse SIP %s %s (Call-ID=%s)",
@@ -300,11 +308,23 @@ async def send_sip_reply(
     merged_headers: dict[str, str] | None = None
     if headers:
         merged_headers = dict(headers)
-    if contact_uri and (merged_headers is None or "Contact" not in merged_headers):
+    if contact_uri and (
+        merged_headers is None
+        or not any(key.lower() == "contact" for key in merged_headers)
+    ):
         if merged_headers is None:
             merged_headers = {"Contact": contact_uri}
         else:
             merged_headers.setdefault("Contact", contact_uri)
+
+    if via_header and (
+        merged_headers is None
+        or not any(key.lower() == "via" for key in merged_headers)
+    ):
+        if merged_headers is None:
+            merged_headers = {"Via": via_header}
+        else:
+            merged_headers.setdefault("Via", via_header)
 
     kwargs: dict[str, object] = {"reason": reason}
     if merged_headers is not None:

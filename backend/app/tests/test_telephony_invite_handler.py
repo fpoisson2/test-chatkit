@@ -54,18 +54,24 @@ class SyncDialog:
         self.replies.append((status_code, status_message, headers, payload))
 
 
-def _make_invite(sdp: str, *, as_text: bool = False) -> SimpleNamespace:
+def _make_invite(
+    sdp: str,
+    *,
+    as_text: bool = False,
+    via_value: str = "SIP/2.0/UDP 192.0.2.1:5060;branch=z9hG4bK-default",
+) -> SimpleNamespace:
     payload: str | bytes
     if as_text:
         payload = sdp
     else:
         payload = sdp.encode("utf-8")
-    return SimpleNamespace(payload=payload)
+    return SimpleNamespace(payload=payload, headers={"Via": via_value})
 
 
 @pytest.mark.anyio
 async def test_handle_invite_accepts_supported_codec() -> None:
     dialog = DummyDialog()
+    via_value = "SIP/2.0/UDP 198.51.100.10:5060;branch=z9hG4bK-accept"
     invite = _make_invite(
         "\r\n".join(
             [
@@ -78,7 +84,8 @@ async def test_handle_invite_accepts_supported_codec() -> None:
                 "a=rtpmap:0 PCMU/8000",
                 "a=rtpmap:18 G729/8000",
             ]
-        )
+        ),
+        via_value=via_value,
     )
 
     await handle_incoming_invite(
@@ -94,13 +101,16 @@ async def test_handle_invite_accepts_supported_codec() -> None:
     assert statuses == [100, 180, 200]
 
     for _, kwargs in dialog.replies[:-1]:
-        assert kwargs["headers"]["Contact"] == "<sip:bot@203.0.113.5:5060>"
+        headers = kwargs["headers"]
+        assert headers["Contact"] == "<sip:bot@203.0.113.5:5060>"
+        assert headers["Via"] == via_value
 
     final_reply = dialog.replies[-1]
     headers = final_reply[1]["headers"]
     assert headers == {
         "Contact": "<sip:bot@203.0.113.5:5060>",
         "Content-Type": "application/sdp",
+        "Via": via_value,
     }
     payload = final_reply[1]["payload"]
     assert isinstance(payload, str)
@@ -111,6 +121,7 @@ async def test_handle_invite_accepts_supported_codec() -> None:
 @pytest.mark.anyio
 async def test_handle_invite_accepts_payload_already_decoded() -> None:
     dialog = DummyDialog()
+    via_value = "SIP/2.0/UDP 198.51.100.11:5060;branch=z9hG4bK-text"
     invite = _make_invite(
         "\r\n".join(
             [
@@ -124,6 +135,7 @@ async def test_handle_invite_accepts_payload_already_decoded() -> None:
             ]
         ),
         as_text=True,
+        via_value=via_value,
     )
 
     await handle_incoming_invite(
@@ -139,12 +151,15 @@ async def test_handle_invite_accepts_payload_already_decoded() -> None:
     assert statuses == [100, 180, 200]
 
     for _, kwargs in dialog.replies:
-        assert kwargs["headers"]["Contact"] == "<sip:bot@203.0.113.6:5060>"
+        headers = kwargs["headers"]
+        assert headers["Contact"] == "<sip:bot@203.0.113.6:5060>"
+        assert headers["Via"] == via_value
 
 
 @pytest.mark.anyio
 async def test_handle_invite_accepts_payload_with_carriage_returns_only() -> None:
     dialog = DummyDialog()
+    via_value = "SIP/2.0/UDP 198.51.100.12:5060;branch=z9hG4bK-cr"
     invite = _make_invite(
         "\r".join(
             [
@@ -158,6 +173,7 @@ async def test_handle_invite_accepts_payload_with_carriage_returns_only() -> Non
             ]
         ),
         as_text=True,
+        via_value=via_value,
     )
 
     await handle_incoming_invite(
@@ -173,12 +189,15 @@ async def test_handle_invite_accepts_payload_with_carriage_returns_only() -> Non
     assert statuses == [100, 180, 200]
 
     for _, kwargs in dialog.replies:
-        assert kwargs["headers"]["Contact"] == "<sip:bot@203.0.113.6:5060>"
+        headers = kwargs["headers"]
+        assert headers["Contact"] == "<sip:bot@203.0.113.6:5060>"
+        assert headers["Via"] == via_value
 
 
 @pytest.mark.anyio
 async def test_handle_invite_accepts_payload_without_line_separators() -> None:
     dialog = DummyDialog()
+    via_value = "SIP/2.0/UDP 198.51.100.13:5060;branch=z9hG4bK-compact"
     invite = _make_invite(
         "".join(
             [
@@ -196,6 +215,7 @@ async def test_handle_invite_accepts_payload_without_line_separators() -> None:
             ]
         ),
         as_text=True,
+        via_value=via_value,
     )
 
     await handle_incoming_invite(
@@ -211,12 +231,15 @@ async def test_handle_invite_accepts_payload_without_line_separators() -> None:
     assert statuses == [100, 180, 200]
 
     for _, kwargs in dialog.replies:
-        assert kwargs["headers"]["Contact"] == "<sip:bot@203.0.113.9:5060>"
+        headers = kwargs["headers"]
+        assert headers["Contact"] == "<sip:bot@203.0.113.9:5060>"
+        assert headers["Via"] == via_value
 
 
 @pytest.mark.anyio
 async def test_handle_invite_declines_without_codec() -> None:
     dialog = DummyDialog()
+    via_value = "SIP/2.0/UDP 198.51.100.14:5060;branch=z9hG4bK-nocodec"
     invite = _make_invite(
         "\r\n".join(
             [
@@ -228,7 +251,8 @@ async def test_handle_invite_declines_without_codec() -> None:
                 "m=audio 49170 RTP/AVP 101",
                 "a=rtpmap:101 opus/48000/2",
             ]
-        )
+        ),
+        via_value=via_value,
     )
 
     with pytest.raises(InviteHandlingError):
@@ -245,12 +269,15 @@ async def test_handle_invite_declines_without_codec() -> None:
     assert statuses == [100, 603]
 
     for _, kwargs in dialog.replies:
-        assert kwargs["headers"]["Contact"] == "<sip:bot@203.0.113.5:5060>"
+        headers = kwargs["headers"]
+        assert headers["Contact"] == "<sip:bot@203.0.113.5:5060>"
+        assert headers["Via"] == via_value
 
 
 @pytest.mark.anyio
 async def test_send_sip_reply_falls_back_to_sync_send_reply() -> None:
     dialog = SyncDialog()
+    via_value = "SIP/2.0/UDP 203.0.113.10:5060;branch=z9hG4bK-sync"
 
     await send_sip_reply(
         dialog,
@@ -260,11 +287,13 @@ async def test_send_sip_reply_falls_back_to_sync_send_reply() -> None:
         payload=b"",
         call_id="abc",
         contact_uri="<sip:sync@203.0.113.10:5060>",
+        via_header=via_value,
     )
 
     expected_headers = {
         "X-Test": "1",
         "Contact": "<sip:sync@203.0.113.10:5060>",
+        "Via": via_value,
     }
     assert dialog.replies == [(486, "Busy Here", expected_headers, "")]
 
