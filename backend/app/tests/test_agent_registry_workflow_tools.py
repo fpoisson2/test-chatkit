@@ -420,3 +420,74 @@ def test_build_agent_kwargs_adds_model_settings_when_missing(
     assert isinstance(settings, agent_registry.ModelSettings)
     assert settings.truncation == "auto"
     assert result["tools"] == [computer_tool]
+
+
+def test_thread_title_agent_uses_provider_binding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent_registry = _import_agent_registry(monkeypatch)
+
+    sentinel_binding = agent_registry.AgentProviderBinding(
+        provider=object(),
+        provider_id="litellm-default",
+        provider_slug="litellm",
+    )
+
+    class _StubAvailableModel:
+        provider_id = "litellm-default"
+        provider_slug = "litellm"
+        store = False
+
+    monkeypatch.setattr(
+        agent_registry,
+        "resolve_thread_title_prompt",
+        lambda: "Prompt",
+    )
+    monkeypatch.setattr(
+        agent_registry,
+        "resolve_thread_title_model",
+        lambda: "gpt-oss-20b",
+    )
+    monkeypatch.setattr(
+        agent_registry,
+        "_load_available_model",
+        lambda model: _StubAvailableModel() if model == "gpt-oss-20b" else None,
+    )
+    monkeypatch.setattr(
+        agent_registry,
+        "get_agent_provider_binding",
+        lambda provider_id, provider_slug: sentinel_binding
+        if (provider_id, provider_slug) == ("litellm-default", "litellm")
+        else None,
+    )
+
+    agent = agent_registry._build_thread_title_agent()
+
+    assert getattr(agent, "_chatkit_provider_binding", None) is sentinel_binding
+    assert getattr(getattr(agent, "model_settings", object()), "store", None) is False
+
+
+def test_thread_title_agent_defaults_store_without_available_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    agent_registry = _import_agent_registry(monkeypatch)
+
+    monkeypatch.setattr(
+        agent_registry,
+        "resolve_thread_title_prompt",
+        lambda: "Prompt",
+    )
+    monkeypatch.setattr(
+        agent_registry,
+        "resolve_thread_title_model",
+        lambda: "gpt-unknown",
+    )
+    monkeypatch.setattr(
+        agent_registry,
+        "_load_available_model",
+        lambda _model: None,
+    )
+
+    agent = agent_registry._build_thread_title_agent()
+
+    assert getattr(getattr(agent, "model_settings", object()), "store", None) is False

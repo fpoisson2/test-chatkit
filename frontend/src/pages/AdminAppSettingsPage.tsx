@@ -7,9 +7,11 @@ import { useI18n } from "../i18n";
 import {
   type AppSettings,
   type AppSettingsUpdatePayload,
+  type AvailableModel,
   type ModelProviderUpdatePayload,
   appSettingsApi,
   isUnauthorizedError,
+  modelRegistryApi,
 } from "../utils/backend";
 
 type ProviderRowState = {
@@ -42,6 +44,9 @@ export const AdminAppSettingsPage = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [useCustomModelConfig, setUseCustomModelConfig] = useState(false);
   const [providerRows, setProviderRows] = useState<ProviderRowState[]>([]);
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
+  const [isLoadingModels, setLoadingModels] = useState(false);
+  const [modelOptionsError, setModelOptionsError] = useState<string | null>(null);
   const promptRef = useRef("");
   const threadTitleModelRef = useRef("");
   const providerIdRef = useRef(0);
@@ -170,6 +175,8 @@ export const AdminAppSettingsPage = () => {
       setSettings(null);
       setPrompt("");
       promptRef.current = "";
+      setAvailableModels([]);
+      setModelOptionsError(null);
       setSipTrunkUri("");
       setSipTrunkUsername("");
       setSipTrunkPassword("");
@@ -208,6 +215,71 @@ export const AdminAppSettingsPage = () => {
   useEffect(() => {
     void fetchSettings();
   }, [fetchSettings]);
+
+  useEffect(() => {
+    if (!token) {
+      setAvailableModels([]);
+      setModelOptionsError(null);
+      return;
+    }
+
+    let isActive = true;
+    setLoadingModels(true);
+    setModelOptionsError(null);
+
+    void modelRegistryApi
+      .listAdmin(token)
+      .then((models) => {
+        if (!isActive) {
+          return;
+        }
+        setAvailableModels(models);
+      })
+      .catch((err) => {
+        if (!isActive) {
+          return;
+        }
+        if (isUnauthorizedError(err)) {
+          logoutRef.current();
+          setError(tRef.current("admin.appSettings.errors.sessionExpired"));
+          return;
+        }
+        setAvailableModels([]);
+        setModelOptionsError(
+          tRef.current("admin.appSettings.errors.threadTitleModelsLoadFailed"),
+        );
+      })
+      .finally(() => {
+        if (isActive) {
+          setLoadingModels(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [token]);
+
+  const CUSTOM_MODEL_OPTION = "__custom__";
+  const [selectedModelOption, setSelectedModelOption] = useState("");
+
+  useEffect(() => {
+    const normalizedModel = threadTitleModel.trim();
+    const hasMatch = availableModels.some((model) => model.name === normalizedModel);
+    if (!normalizedModel) {
+      setSelectedModelOption((current) => {
+        if (!current || current === CUSTOM_MODEL_OPTION) {
+          return current;
+        }
+        return "";
+      });
+      return;
+    }
+    const nextValue = hasMatch ? normalizedModel : CUSTOM_MODEL_OPTION;
+    setSelectedModelOption((current) =>
+      current === nextValue ? current : nextValue,
+    );
+  }, [threadTitleModel, availableModels, CUSTOM_MODEL_OPTION]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -394,6 +466,8 @@ export const AdminAppSettingsPage = () => {
   const defaultModel = settings?.default_thread_title_model ?? "";
   const effectiveProvider = settings?.model_provider ?? "";
   const effectiveBase = settings?.model_api_base ?? "";
+  const shouldShowCustomModelInput =
+    selectedModelOption === CUSTOM_MODEL_OPTION || availableModels.length === 0;
 
   return (
     <>
@@ -611,24 +685,70 @@ export const AdminAppSettingsPage = () => {
                 </p>
               )}
               <div className="admin-form__divider" aria-hidden="true" />
-              <label className="label" htmlFor="thread-title-model">
+              <label
+                className="label"
+                htmlFor="thread-title-model-select"
+              >
                 {t("admin.appSettings.threadTitle.modelLabel")}
-                <input
-                  id="thread-title-model"
-                  name="thread-title-model"
-                  className="input"
-                  type="text"
-                  value={threadTitleModel}
-                  onChange={(event) => {
-                    setThreadTitleModel(event.target.value);
-                    threadTitleModelRef.current = event.target.value;
-                  }}
-                  placeholder={t(
-                    "admin.appSettings.threadTitle.modelPlaceholder",
-                  )}
-                  disabled={isBusy}
-                />
               </label>
+              <select
+                id="thread-title-model-select"
+                name="thread-title-model-select"
+                className="input"
+                value={selectedModelOption}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setSelectedModelOption(value);
+                  if (!value || value === CUSTOM_MODEL_OPTION) {
+                    return;
+                  }
+                  setThreadTitleModel(value);
+                  threadTitleModelRef.current = value;
+                }}
+                disabled={isBusy || isLoadingModels}
+              >
+                <option value="" disabled>
+                  {isLoadingModels
+                    ? t("admin.appSettings.threadTitle.modelLoadingOption")
+                    : t("admin.appSettings.threadTitle.modelPlaceholder")}
+                </option>
+                {availableModels.map((model) => {
+                  const label = model.display_name
+                    ? `${model.display_name} (${model.name})`
+                    : model.name;
+                  return (
+                    <option key={model.id} value={model.name}>
+                      {label}
+                    </option>
+                  );
+                })}
+                <option value={CUSTOM_MODEL_OPTION}>
+                  {t("admin.appSettings.threadTitle.modelCustomOption")}
+                </option>
+              </select>
+              {shouldShowCustomModelInput ? (
+                <label className="label" htmlFor="thread-title-model">
+                  {t("admin.appSettings.threadTitle.modelCustomLabel")}
+                  <input
+                    id="thread-title-model"
+                    name="thread-title-model"
+                    className="input"
+                    type="text"
+                    value={threadTitleModel}
+                    onChange={(event) => {
+                      setThreadTitleModel(event.target.value);
+                      threadTitleModelRef.current = event.target.value;
+                    }}
+                    placeholder={t(
+                      "admin.appSettings.threadTitle.modelPlaceholder",
+                    )}
+                    disabled={isBusy}
+                  />
+                </label>
+              ) : null}
+              {modelOptionsError ? (
+                <p className="admin-form__hint">{modelOptionsError}</p>
+              ) : null}
               <p className="admin-form__hint">
                 {t("admin.appSettings.threadTitle.modelHint")}
               </p>

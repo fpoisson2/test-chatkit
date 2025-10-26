@@ -680,11 +680,24 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
         except Exception:  # pragma: no cover - robustesse best effort
             pass
 
+        run_config_kwargs: dict[str, Any] = {"trace_metadata": metadata}
+        provider_binding = getattr(
+            self._title_agent, "_chatkit_provider_binding", None
+        )
+        if provider_binding is not None:
+            run_config_kwargs["model_provider"] = provider_binding.provider
+
+        try:
+            run_config = RunConfig(**run_config_kwargs)
+        except TypeError:  # pragma: no cover - compatibilité SDK
+            run_config_kwargs.pop("model_provider", None)
+            run_config = RunConfig(**run_config_kwargs)
+
         try:
             run = await Runner.run(
                 self._title_agent,
                 input=agent_input,
-                run_config=RunConfig(trace_metadata=metadata),
+                run_config=run_config,
             )
         except (
             Exception

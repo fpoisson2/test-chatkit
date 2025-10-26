@@ -627,6 +627,7 @@ export type AvailableModel = {
   supports_reasoning: boolean;
   supports_previous_response_id: boolean;
   supports_reasoning_summary: boolean;
+  store: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -654,6 +655,7 @@ export type AvailableModelPayload = {
   supports_reasoning_summary: boolean;
   provider_id?: string | null;
   provider_slug?: string | null;
+  store?: boolean | null;
 };
 
 export type AvailableModelUpdatePayload = {
@@ -665,6 +667,7 @@ export type AvailableModelUpdatePayload = {
   supports_reasoning_summary?: boolean;
   provider_id?: string | null;
   provider_slug?: string | null;
+  store?: boolean | null;
 };
 
 export const modelRegistryApi = {
