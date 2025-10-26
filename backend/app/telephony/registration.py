@@ -33,6 +33,7 @@ import asyncio
 import collections
 import contextlib
 import errno
+import ipaddress
 import logging
 import socket
 import types
@@ -102,6 +103,7 @@ class SIPRegistrationConfig:
     contact_host: str
     contact_port: int
     transport: str | None = None
+    bind_host: str | None = None
     expires: int = 3600
 
     def contact_uri(self) -> str:
@@ -162,6 +164,7 @@ class SIPRegistrationManager:
         contact_host: str | None = None,
         contact_port: int | None = None,
         contact_transport: str | None = None,
+        bind_host: str | None = None,
         invite_handler: InviteRouteHandler | None = None,
     ) -> None:
         self._loop = loop or asyncio.get_event_loop()
@@ -185,6 +188,7 @@ class SIPRegistrationManager:
         self.contact_host = contact_host
         self.contact_port = contact_port
         self.contact_transport = self._normalize_transport(contact_transport)
+        self.bind_host = bind_host
         self._invite_handler: InviteRouteHandler | None = invite_handler
 
     @property
@@ -365,7 +369,8 @@ class SIPRegistrationManager:
                 resolved_port,
             )
         remote_addr = (resolved_host, resolved_port)
-        local_addr = (config.contact_host, config.contact_port)
+        local_host = config.bind_host or config.contact_host
+        local_addr = (local_host, config.contact_port)
 
         if self._dialog is None:
             dialog_kwargs = self._dialog_transport_kwargs(config.transport)
@@ -387,7 +392,8 @@ class SIPRegistrationManager:
                     if fallback_config is None:
                         break
                     config = fallback_config
-                    local_addr = (config.contact_host, config.contact_port)
+                    local_host = config.bind_host or config.contact_host
+                    local_addr = (local_host, config.contact_port)
                     dialog_kwargs = self._dialog_transport_kwargs(config.transport)
                     continue
                 break
@@ -504,6 +510,8 @@ class SIPRegistrationManager:
             self.apply_config(None)
             return
 
+        bind_host = self._resolve_bind_host(contact_host)
+
         config = SIPRegistrationConfig(
             uri=normalized_trunk_uri,
             username=str(username),
@@ -511,6 +519,7 @@ class SIPRegistrationManager:
             contact_host=str(contact_host),
             contact_port=int(contact_port),
             transport=contact_transport,
+            bind_host=bind_host,
         )
         LOGGER.info(
             "Configuration SIP prête : trunk %s (contact %s:%s, transport=%s)",
@@ -585,6 +594,43 @@ class SIPRegistrationManager:
             contact_port = _DEFAULT_SIP_PORT
 
         return contact_host, contact_port, transport
+
+    def _resolve_bind_host(self, contact_host: str | None) -> str | None:
+        """Choose the local interface used to bind the SIP socket."""
+
+        candidate = self._normalize_optional_string(self.bind_host)
+        if candidate:
+            return candidate
+
+        if self.settings is not None:
+            configured = self._normalize_optional_string(
+                getattr(self.settings, "sip_bind_host", None)
+            )
+            if configured:
+                return configured
+
+        if not contact_host:
+            return None
+
+        try:
+            ip = ipaddress.ip_address(contact_host)
+        except ValueError:
+            # Domain names or other non-IP hosts should bind on all interfaces.
+            return "0.0.0.0"
+
+        if ip.version == 6:
+            if ip.is_unspecified or ip.is_loopback:
+                return str(ip)
+            if ip.is_private or ip.is_link_local:
+                return str(ip)
+            return "::"
+
+        if ip.is_unspecified or ip.is_loopback or ip.is_private or ip.is_link_local:
+            return str(ip)
+
+        # Public IPv4 addresses are unlikely to be assigned locally when the
+        # service runs behind NAT; listen on all interfaces instead.
+        return "0.0.0.0"
 
     def _fallback_contact_port(
         self, config: SIPRegistrationConfig, exc: OSError

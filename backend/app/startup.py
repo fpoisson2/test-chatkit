@@ -840,14 +840,19 @@ def _ensure_protected_vector_store() -> None:
 
 
 def register_startup_events(app: FastAPI) -> None:
-    sip_contact_host = settings.sip_bind_host
-    sip_contact_port = settings.sip_bind_port
+    sip_contact_host = settings.sip_contact_host
+    sip_contact_port = (
+        settings.sip_contact_port
+        if settings.sip_contact_port is not None
+        else settings.sip_bind_port
+    )
     sip_registration_manager = SIPRegistrationManager(
         session_factory=SessionLocal,
         settings=settings,
         contact_host=sip_contact_host,
         contact_port=sip_contact_port,
-        contact_transport=getattr(settings, "sip_contact_transport", None),
+        contact_transport=settings.sip_contact_transport,
+        bind_host=settings.sip_bind_host,
     )
     sip_registration_manager.set_invite_handler(
         _build_invite_handler(sip_registration_manager)

@@ -150,6 +150,9 @@ class Settings:
     sip_username: str | None
     sip_password: str | None
     sip_media_port: int
+    sip_contact_host: str | None
+    sip_contact_port: int | None
+    sip_contact_transport: str | None
     telephony_default_workflow_slug: str | None
     telephony_default_workflow_id: int | None
     database_url: str
@@ -394,6 +397,9 @@ class Settings:
             sip_username=get_stripped("SIP_USERNAME"),
             sip_password=get_stripped("SIP_PASSWORD"),
             sip_media_port=_optional_int("SIP_MEDIA_PORT") or DEFAULT_SIP_MEDIA_PORT,
+            sip_contact_host=get_stripped("SIP_CONTACT_HOST"),
+            sip_contact_port=_optional_int("SIP_CONTACT_PORT"),
+            sip_contact_transport=get_stripped("SIP_CONTACT_TRANSPORT"),
             telephony_default_workflow_slug=get_stripped(
                 "TELEPHONY_DEFAULT_WORKFLOW_SLUG"
             ),
