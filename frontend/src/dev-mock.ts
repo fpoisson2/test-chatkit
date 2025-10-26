@@ -18,6 +18,8 @@ const MOCK_MODELS: AvailableModel[] = [
     provider_id: 'openai-default',
     provider_slug: 'openai',
     supports_reasoning: true,
+    supports_previous_response_id: true,
+    supports_reasoning_summary: true,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   },
@@ -29,6 +31,8 @@ const MOCK_MODELS: AvailableModel[] = [
     provider_id: 'openai-default',
     provider_slug: 'openai',
     supports_reasoning: false,
+    supports_previous_response_id: true,
+    supports_reasoning_summary: true,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   },
@@ -40,6 +44,8 @@ const MOCK_MODELS: AvailableModel[] = [
     provider_id: 'anthropic-proxy',
     provider_slug: 'litellm',
     supports_reasoning: true,
+    supports_previous_response_id: false,
+    supports_reasoning_summary: false,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   },
@@ -185,6 +191,113 @@ export const setupMockApi = () => {
     }
 
     // Mock des endpoints API
+    if (url.includes('/api/admin/models')) {
+      console.log(`🔧 Mock API: ${method} ${url}`);
+      const idMatch = url.match(/\/api\/admin\/models\/(\d+)/);
+
+      if (method === 'GET') {
+        return new Response(JSON.stringify(MOCK_MODELS), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (method === 'POST') {
+        const body = init?.body ? JSON.parse(init.body as string) : {};
+        const now = new Date().toISOString();
+        const nextId =
+          MOCK_MODELS.reduce((max, model) => Math.max(max, model.id), 0) + 1;
+        const created = {
+          id: nextId,
+          name: body.name,
+          display_name: body.display_name ?? null,
+          description: body.description ?? null,
+          provider_id: body.provider_id ?? null,
+          provider_slug: body.provider_slug ?? null,
+          supports_reasoning: Boolean(body.supports_reasoning),
+          supports_previous_response_id: Boolean(
+            body.supports_previous_response_id ?? true,
+          ),
+          supports_reasoning_summary: Boolean(
+            body.supports_reasoning_summary ?? true,
+          ),
+          created_at: now,
+          updated_at: now,
+        } satisfies AvailableModel;
+        MOCK_MODELS.push(created);
+        return new Response(JSON.stringify(created), {
+          status: 201,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (method === 'PATCH' && idMatch) {
+        const modelId = Number.parseInt(idMatch[1] ?? '', 10);
+        const body = init?.body ? JSON.parse(init.body as string) : {};
+        const index = MOCK_MODELS.findIndex((model) => model.id === modelId);
+        if (index === -1) {
+          return new Response(JSON.stringify({ detail: 'Not found' }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        const current = { ...MOCK_MODELS[index] };
+        if (Object.prototype.hasOwnProperty.call(body, 'name')) {
+          current.name = body.name ?? current.name;
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'display_name')) {
+          current.display_name = body.display_name ?? null;
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'description')) {
+          current.description = body.description ?? null;
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'provider_id')) {
+          current.provider_id = body.provider_id ?? null;
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'provider_slug')) {
+          current.provider_slug = body.provider_slug ?? null;
+        }
+        if (Object.prototype.hasOwnProperty.call(body, 'supports_reasoning')) {
+          current.supports_reasoning = Boolean(body.supports_reasoning);
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            body,
+            'supports_previous_response_id',
+          )
+        ) {
+          current.supports_previous_response_id = Boolean(
+            body.supports_previous_response_id,
+          );
+        }
+        if (
+          Object.prototype.hasOwnProperty.call(
+            body,
+            'supports_reasoning_summary',
+          )
+        ) {
+          current.supports_reasoning_summary = Boolean(
+            body.supports_reasoning_summary,
+          );
+        }
+        current.updated_at = new Date().toISOString();
+        MOCK_MODELS[index] = current;
+        return new Response(JSON.stringify(current), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (method === 'DELETE' && idMatch) {
+        const modelId = Number.parseInt(idMatch[1] ?? '', 10);
+        const index = MOCK_MODELS.findIndex((model) => model.id === modelId);
+        if (index !== -1) {
+          MOCK_MODELS.splice(index, 1);
+        }
+        return new Response(null, { status: 204 });
+      }
+    }
+
     if (url.includes('/api/models')) {
       console.log('🔧 Mock API: /api/models');
       return new Response(JSON.stringify(MOCK_MODELS), {

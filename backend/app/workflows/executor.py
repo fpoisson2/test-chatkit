@@ -100,6 +100,7 @@ from ..image_utils import (
     merge_generated_image_urls_into_payload,
     save_agent_image_file,
 )
+from ..model_capabilities import ModelCapabilities, lookup_model_capabilities
 from ..models import WorkflowDefinition, WorkflowStep, WorkflowTransition
 from ..token_sanitizer import sanitize_model_like
 from ..vector_store.ingestion import (
@@ -497,6 +498,18 @@ async def run_workflow(
 
     service = workflow_service or WorkflowService()
 
+    model_capability_index: dict[tuple[str, str, str], ModelCapabilities] = {}
+    get_capabilities = getattr(service, "get_available_model_capabilities", None)
+    if callable(get_capabilities):
+        try:
+            model_capability_index = get_capabilities()
+        except Exception:  # pragma: no cover - dépend de la persistance
+            logger.warning(
+                "Impossible de récupérer les capacités des modèles disponibles",
+                exc_info=True,
+            )
+            model_capability_index = {}
+
     definition: WorkflowDefinition
     if workflow_definition is not None:
         definition = workflow_definition
@@ -643,6 +656,7 @@ async def run_workflow(
 
     agent_instances: dict[str, Agent] = {}
     agent_provider_bindings: dict[str, AgentProviderBinding | None] = {}
+    agent_model_capabilities: dict[str, ModelCapabilities | None] = {}
     nested_workflow_configs: dict[str, dict[str, Any]] = {}
     nested_workflow_definition_cache: dict[
         tuple[str, str | int], WorkflowDefinition
@@ -680,7 +694,9 @@ async def run_workflow(
         overrides = dict(overrides_raw)
 
         raw_provider_id = overrides_raw.get("model_provider_id")
-        provider_id = raw_provider_id if isinstance(raw_provider_id, str) else None
+        provider_id = (
+            raw_provider_id.strip() if isinstance(raw_provider_id, str) else None
+        )
         raw_provider_slug = overrides_raw.get("model_provider_slug")
         if not isinstance(raw_provider_slug, str) or not raw_provider_slug.strip():
             fallback_slug = overrides_raw.get("model_provider")
@@ -688,8 +704,21 @@ async def run_workflow(
                 fallback_slug if isinstance(fallback_slug, str) else None
             )
         provider_slug = (
-            raw_provider_slug if isinstance(raw_provider_slug, str) else None
+            raw_provider_slug.strip().lower()
+            if isinstance(raw_provider_slug, str)
+            else None
         )
+
+        model_name = overrides_raw.get("model")
+        capability: ModelCapabilities | None = None
+        if isinstance(model_name, str):
+            capability = lookup_model_capabilities(
+                model_capability_index,
+                name=model_name,
+                provider_id=provider_id,
+                provider_slug=provider_slug,
+            )
+        agent_model_capabilities[step.slug] = capability
 
         overrides.pop("model_provider_id", None)
         overrides.pop("model_provider_slug", None)
@@ -1927,22 +1956,31 @@ async def run_workflow(
             )
 
         provider_binding = agent_provider_bindings.get(current_slug)
+        model_capabilities = agent_model_capabilities.get(current_slug)
 
+        should_strip_reasoning_summary = False
         if provider_binding is not None:
             slug = (provider_binding.provider_slug or "").lower()
             if slug == "groq":
-                try:
-                    agent.model_settings = sanitize_model_like(
-                        agent.model_settings, allow_reasoning_summary=False
-                    )
-                except Exception:
-                    logger.debug(
-                        (
-                            "Impossible de nettoyer reasoning.summary pour le "
-                            "fournisseur groq"
-                        ),
-                        exc_info=True,
-                    )
+                should_strip_reasoning_summary = True
+
+        if (
+            model_capabilities is not None
+            and not model_capabilities.supports_reasoning_summary
+        ):
+            should_strip_reasoning_summary = True
+
+        if should_strip_reasoning_summary:
+            try:
+                agent.model_settings = sanitize_model_like(
+                    agent.model_settings, allow_reasoning_summary=False
+                )
+            except Exception:
+                logger.debug(
+                    "Impossible de nettoyer reasoning.summary pour le modèle %s",
+                    getattr(agent, "name", "<inconnu>"),
+                    exc_info=True,
+                )
 
         result = Runner.run_streamed(
             agent,
@@ -1951,8 +1989,11 @@ async def run_workflow(
                 response_format_override, provider_binding=provider_binding
             ),
             context=runner_context,
-            previous_response_id=getattr(
-                agent_context, "previous_response_id", None
+            previous_response_id=(
+                None
+                if model_capabilities is not None
+                and not model_capabilities.supports_previous_response_id
+                else getattr(agent_context, "previous_response_id", None)
             ),
         )
         try:
@@ -1984,7 +2025,10 @@ async def run_workflow(
             raise_step_error(step_key, title, exc)
 
         last_response_id = getattr(result, "last_response_id", None)
-        if last_response_id is not None:
+        if last_response_id is not None and (
+            model_capabilities is None
+            or model_capabilities.supports_previous_response_id
+        ):
             agent_context.previous_response_id = last_response_id
             thread_metadata = getattr(agent_context, "thread", None)
             should_persist_thread = False

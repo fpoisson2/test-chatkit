@@ -51,10 +51,36 @@ const fr: TranslationDictionary = {
     "Choisissez un fournisseur déjà configuré ou l'API OpenAI native.",
   "admin.models.form.providerOptionOpenAI": "OpenAI (natif)",
   "admin.models.form.providerOptionWithDefault": "{{provider}} (par défaut)",
+  "admin.models.form.createTitle": "Ajouter un modèle",
+  "admin.models.form.createSubtitle":
+    "Déclarez un modèle accessible dans le workflow builder et précisez ses capacités.",
+  "admin.models.form.editTitle": "Modifier un modèle",
+  "admin.models.form.editSubtitle":
+    "Mettez à jour un modèle existant sans recréer son entrée.",
+  "admin.models.form.editingNotice":
+    "Vous modifiez « {{model}} ». Les changements seront appliqués immédiatement.",
+  "admin.models.form.submitCreate": "Ajouter le modèle",
+  "admin.models.form.submitUpdate": "Enregistrer les modifications",
+  "admin.models.form.cancelEdit": "Annuler la modification",
+  "admin.models.form.supportsPreviousResponseId":
+    "Réponses incrémentales (previous_response_id) prises en charge",
+  "admin.models.form.supportsReasoningSummary":
+    "Résumé de raisonnement (reasoning_summary) pris en charge",
   "admin.models.errors.missingModelId": "Indiquez l'identifiant du modèle.",
   "admin.models.errors.missingProvider": "Sélectionnez un fournisseur pour ce modèle.",
   "admin.models.errors.providersLoadFailed":
     "Impossible de charger la liste des fournisseurs disponibles.",
+  "admin.models.errors.createFailed": "Impossible d'ajouter le modèle.",
+  "admin.models.errors.updateFailed": "Impossible de mettre à jour le modèle.",
+  "admin.models.feedback.created":
+    "Modèle « {{model}} » ajouté avec succès.",
+  "admin.models.feedback.updated":
+    "Modèle « {{model}} » mis à jour avec succès.",
+  "admin.models.feedback.deleted": "Modèle « {{model}} » supprimé.",
+  "admin.models.table.previousResponseId": "Réponses incrémentales",
+  "admin.models.table.reasoningSummary": "Résumé de raisonnement",
+  "admin.models.table.editAction": "Modifier",
+  "admin.models.table.deleteAction": "Supprimer",
   "admin.appSettings.page.title": "Paramètres généraux",
   "admin.appSettings.page.subtitle":
     "Contrôlez le comportement global de ChatKit.",
@@ -539,10 +565,36 @@ const en: TranslationDictionary = {
     "Pick a provider that is already configured or the native OpenAI API.",
   "admin.models.form.providerOptionOpenAI": "OpenAI (native)",
   "admin.models.form.providerOptionWithDefault": "{{provider}} (default)",
+  "admin.models.form.createTitle": "Add a model",
+  "admin.models.form.createSubtitle":
+    "Register a model available in the workflow builder and specify its capabilities.",
+  "admin.models.form.editTitle": "Edit a model",
+  "admin.models.form.editSubtitle":
+    "Update an existing model without creating a new entry.",
+  "admin.models.form.editingNotice":
+    "Editing \"{{model}}\". Changes apply immediately.",
+  "admin.models.form.submitCreate": "Add model",
+  "admin.models.form.submitUpdate": "Save changes",
+  "admin.models.form.cancelEdit": "Cancel edit",
+  "admin.models.form.supportsPreviousResponseId":
+    "Supports incremental responses (previous_response_id)",
+  "admin.models.form.supportsReasoningSummary":
+    "Supports reasoning summary (reasoning_summary)",
   "admin.models.errors.missingModelId": "Enter the model identifier.",
   "admin.models.errors.missingProvider": "Select a provider for this model.",
   "admin.models.errors.providersLoadFailed":
     "Unable to load the list of available providers.",
+  "admin.models.errors.createFailed": "Unable to add the model.",
+  "admin.models.errors.updateFailed": "Unable to update the model.",
+  "admin.models.feedback.created":
+    "Model \"{{model}}\" added successfully.",
+  "admin.models.feedback.updated":
+    "Model \"{{model}}\" updated successfully.",
+  "admin.models.feedback.deleted": "Model \"{{model}}\" deleted.",
+  "admin.models.table.previousResponseId": "Incremental responses",
+  "admin.models.table.reasoningSummary": "Reasoning summary",
+  "admin.models.table.editAction": "Edit",
+  "admin.models.table.deleteAction": "Delete",
   "admin.appSettings.page.title": "General settings",
   "admin.appSettings.page.subtitle": "Control ChatKit's global behaviour.",
   "admin.appSettings.threadTitle.cardTitle": "Automatic thread titles prompt",

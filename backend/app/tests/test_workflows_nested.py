@@ -24,6 +24,13 @@ os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 
+from backend.app.model_capabilities import (  # noqa: E402
+    ModelCapabilities,
+    NormalizedModelKey,
+    iter_model_capability_keys,
+)
+
+
 def _load_dependencies():
     agents_module = import_module("chatkit.agents")
     types_module = import_module("chatkit.types")
@@ -144,7 +151,12 @@ def _build_definition(
 
 
 class _FakeWorkflowService:
-    def __init__(self, definitions: list[SimpleNamespace]) -> None:
+    def __init__(
+        self,
+        definitions: list[SimpleNamespace],
+        *,
+        model_capabilities: dict[tuple[str, str, str], ModelCapabilities] | None = None,
+    ) -> None:
         self._definitions = {
             definition.workflow_id: definition for definition in definitions
         }
@@ -158,6 +170,7 @@ class _FakeWorkflowService:
             for definition in definitions
         }
         self._current = definitions[0]
+        self._model_capabilities = model_capabilities or {}
 
     def get_current(self) -> SimpleNamespace:  # pragma: no cover - simple access
         return self._current
@@ -184,6 +197,11 @@ class _FakeWorkflowService:
         if definition is None or definition.id != version_id:
             raise WorkflowVersionNotFoundError(workflow_id, version_id)
         return definition
+
+    def get_available_model_capabilities(
+        self,
+    ) -> dict[NormalizedModelKey, ModelCapabilities]:
+        return dict(self._model_capabilities)
 
 
 def _nested_workflow_definition(message: str, workflow_id: int) -> SimpleNamespace:
@@ -437,6 +455,122 @@ async def test_run_workflow_reuses_previous_response_id(
     saved_threads = getattr(context.store, "saved_threads", [])
     assert saved_threads
     assert saved_threads[-1].metadata.get("previous_response_id") == "resp-2"
+
+
+@pytest.mark.anyio
+async def test_run_workflow_skips_previous_response_when_unsupported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    executor_module = import_module("backend.app.workflows.executor")
+
+    recorded_previous_ids: list[str | None] = []
+
+    class _StubRunItem:
+        def __init__(self, label: str) -> None:
+            self._label = label
+
+        def to_input_item(self) -> dict[str, Any]:
+            return {
+                "type": "message",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": f"Sortie {self._label}",
+                    }
+                ],
+            }
+
+    class _StubRunResult:
+        def __init__(self, response_id: str) -> None:
+            self.last_response_id = response_id
+            self.new_items = [_StubRunItem(response_id)]
+            self.final_output = {"message": f"output-{response_id}"}
+
+    def _fake_run_streamed(cls, *args, **kwargs):
+        recorded_previous_ids.append(kwargs.get("previous_response_id"))
+        return _StubRunResult("resp-1")
+
+    async def _fake_stream_agent_response(*_args, **_kwargs):
+        if False:  # pragma: no cover - générateur artificiel
+            yield None
+        return
+
+    async def _fake_ingest_workflow_step(*_args, **_kwargs) -> None:
+        return None
+
+    monkeypatch.setattr(
+        executor_module.Runner,
+        "run_streamed",
+        classmethod(_fake_run_streamed),
+    )
+    monkeypatch.setattr(
+        executor_module,
+        "stream_agent_response",
+        _fake_stream_agent_response,
+    )
+    monkeypatch.setattr(
+        executor_module,
+        "ingest_workflow_step",
+        _fake_ingest_workflow_step,
+    )
+
+    from backend.app.chatkit.agent_registry import AGENT_BUILDERS
+
+    def _build_test_agent(_overrides: dict[str, Any] | None = None) -> Agent:
+        return Agent(name="Test agent", model="gpt-4o-mini")
+
+    monkeypatch.setitem(AGENT_BUILDERS, "agent", _build_test_agent)
+
+    start = _Step(slug="start", kind="start", position=1)
+    agent_step = _Step(
+        slug="agent",
+        kind="agent",
+        position=2,
+        agent_key="agent",
+        parameters={"model": "gpt-4o-mini"},
+    )
+    end = _Step(slug="end", kind="end", position=3)
+    transitions = [
+        _Transition(source_step=start, target_step=agent_step, id=1),
+        _Transition(source_step=agent_step, target_step=end, id=2),
+    ]
+    definition = _build_definition(
+        workflow_id=100,
+        slug="response-loop-disabled",
+        steps=[start, agent_step, end],
+        transitions=transitions,
+        version_id=991,
+    )
+
+    capabilities = ModelCapabilities(
+        supports_previous_response_id=False,
+        supports_reasoning_summary=True,
+    )
+    capability_index = {
+        key: capabilities
+        for key in iter_model_capability_keys("gpt-4o-mini", None, None)
+    }
+    service = _FakeWorkflowService([definition], model_capabilities=capability_index)
+
+    context = _build_agent_context()
+    context.previous_response_id = "initial-response"
+
+    payload = WorkflowInput(
+        input_as_text="Bonjour",
+        auto_start_was_triggered=False,
+        auto_start_assistant_message=None,
+        source_item_id=None,
+    )
+
+    await run_workflow(payload, agent_context=context, workflow_service=service)
+    await run_workflow(payload, agent_context=context, workflow_service=service)
+
+    assert recorded_previous_ids == [None, None]
+    assert context.previous_response_id == "initial-response"
+    assert context.thread.metadata.get("previous_response_id") is None
+    saved_threads = getattr(context.store, "saved_threads", [])
+    assert not saved_threads
 
 
 @pytest.mark.anyio

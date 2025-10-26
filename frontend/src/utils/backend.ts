@@ -621,6 +621,8 @@ export type AvailableModel = {
   provider_id: string | null;
   provider_slug: string | null;
   supports_reasoning: boolean;
+  supports_previous_response_id: boolean;
+  supports_reasoning_summary: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -644,6 +646,19 @@ export type AvailableModelPayload = {
   display_name?: string | null;
   description?: string | null;
   supports_reasoning: boolean;
+  supports_previous_response_id: boolean;
+  supports_reasoning_summary: boolean;
+  provider_id?: string | null;
+  provider_slug?: string | null;
+};
+
+export type AvailableModelUpdatePayload = {
+  name?: string;
+  display_name?: string | null;
+  description?: string | null;
+  supports_reasoning?: boolean;
+  supports_previous_response_id?: boolean;
+  supports_reasoning_summary?: boolean;
   provider_id?: string | null;
   provider_slug?: string | null;
 };
@@ -666,6 +681,19 @@ export const modelRegistryApi = {
   async create(token: string | null, payload: AvailableModelPayload): Promise<AvailableModel> {
     const response = await requestWithFallback("/api/admin/models", {
       method: "POST",
+      headers: withAuthHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async update(
+    token: string | null,
+    id: number,
+    payload: AvailableModelUpdatePayload,
+  ): Promise<AvailableModel> {
+    const response = await requestWithFallback(`/api/admin/models/${id}`, {
+      method: "PATCH",
       headers: withAuthHeaders(token),
       body: JSON.stringify(payload),
     });

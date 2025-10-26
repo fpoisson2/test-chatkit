@@ -116,6 +116,12 @@ class AvailableModel(Base):
     supports_reasoning: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    supports_previous_response_id: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
+    supports_reasoning_summary: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

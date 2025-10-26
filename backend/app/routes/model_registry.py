@@ -10,6 +10,7 @@ from ..models import AvailableModel, User
 from ..schemas import (
     AvailableModelCreateRequest,
     AvailableModelResponse,
+    AvailableModelUpdateRequest,
 )
 
 router = APIRouter()
@@ -68,10 +69,83 @@ async def create_model(
         provider_id=payload.provider_id,
         provider_slug=payload.provider_slug,
         supports_reasoning=payload.supports_reasoning,
+        supports_previous_response_id=payload.supports_previous_response_id,
+        supports_reasoning_summary=payload.supports_reasoning_summary,
         created_at=now,
         updated_at=now,
     )
     session.add(model)
+    session.commit()
+    session.refresh(model)
+    return model
+
+
+@router.patch(
+    "/api/admin/models/{model_id}",
+    response_model=AvailableModelResponse,
+)
+async def update_model(
+    model_id: int,
+    payload: AvailableModelUpdateRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+) -> AvailableModel:
+    model = session.get(AvailableModel, model_id)
+    if not model:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Modèle introuvable"
+        )
+
+    update_data = payload.model_dump(exclude_unset=True)
+
+    if "name" in update_data:
+        existing = session.scalar(
+            select(AvailableModel)
+            .where(AvailableModel.name == update_data["name"])
+            .where(AvailableModel.id != model_id)
+        )
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Un modèle avec ce nom existe déjà",
+            )
+        model.name = update_data["name"]
+
+    if "display_name" in update_data:
+        model.display_name = update_data["display_name"]
+
+    if "description" in update_data:
+        model.description = update_data["description"]
+
+    provider_id = model.provider_id
+    provider_slug = model.provider_slug
+
+    if "provider_id" in update_data:
+        provider_id = update_data["provider_id"]
+
+    if "provider_slug" in update_data:
+        provider_slug = update_data["provider_slug"]
+
+    if provider_id is not None and provider_slug is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="provider_slug doit être fourni lorsque provider_id est défini",
+        )
+
+    model.provider_id = provider_id
+    model.provider_slug = provider_slug
+
+    if "supports_reasoning" in update_data:
+        model.supports_reasoning = update_data["supports_reasoning"]
+
+    if "supports_previous_response_id" in update_data:
+        model.supports_previous_response_id = update_data[
+            "supports_previous_response_id"
+        ]
+
+    if "supports_reasoning_summary" in update_data:
+        model.supports_reasoning_summary = update_data["supports_reasoning_summary"]
+
     session.commit()
     session.refresh(model)
     return model

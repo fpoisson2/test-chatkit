@@ -15,7 +15,10 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test-available-models.db")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret-key")
 os.environ.setdefault("OPENAI_API_KEY", "sk-test")
 
-from backend.app.schemas import AvailableModelCreateRequest  # noqa: E402
+from backend.app.schemas import (  # noqa: E402
+    AvailableModelCreateRequest,
+    AvailableModelUpdateRequest,
+)
 
 
 def _base_payload(**overrides):
@@ -24,6 +27,8 @@ def _base_payload(**overrides):
         "display_name": "GPT-4o Mini",
         "description": "Test model",
         "supports_reasoning": False,
+        "supports_previous_response_id": True,
+        "supports_reasoning_summary": True,
     }
     payload.update(overrides)
     return payload
@@ -41,3 +46,15 @@ def test_available_model_rejects_provider_id_without_slug() -> None:
         AvailableModelCreateRequest(
             **_base_payload(provider_id="custom-provider", provider_slug=None)
         )
+
+
+def test_available_model_update_normalizes_optional_fields() -> None:
+    request = AvailableModelUpdateRequest(
+        name="  gpt-4o-mini  ",
+        display_name="  GPT-4o Mini  ",
+        provider_slug="OpenAI",
+    )
+
+    assert request.name == "gpt-4o-mini"
+    assert request.display_name == "GPT-4o Mini"
+    assert request.provider_slug == "openai"
