@@ -315,6 +315,22 @@ def test_find_available_contact_port_falls_back_on_unassigned_host(
     )
 
 
+def test_ensure_dialog_username_populates_missing_user() -> None:
+    dialog = SimpleNamespace(to_details={"uri": {"user": ""}})
+
+    SIPRegistrationManager._ensure_dialog_username(dialog, "alice")
+
+    assert dialog.to_details["uri"]["user"] == "alice"
+
+
+def test_ensure_dialog_username_preserves_existing_user() -> None:
+    dialog = SimpleNamespace(to_details={"uri": {"user": "carol"}})
+
+    SIPRegistrationManager._ensure_dialog_username(dialog, "alice")
+
+    assert dialog.to_details["uri"]["user"] == "carol"
+
+
 def test_apply_config_from_settings_respects_bind_host_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

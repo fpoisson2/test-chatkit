@@ -40,7 +40,7 @@ import secrets
 import socket
 import types
 import urllib.parse
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, MutableMapping
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -481,6 +481,9 @@ class SIPRegistrationManager:
                     "réseau locale et que le port n'est pas déjà utilisé."
                 ) from bind_error
 
+        if self._dialog is not None:
+            self._ensure_dialog_username(self._dialog, config.username)
+
         register_headers = self._build_register_headers(config)
         register_future = self._call_dialog_register(
             self._dialog, expires=config.expires, headers=register_headers
@@ -778,6 +781,31 @@ class SIPRegistrationManager:
         updated = replace(config, contact_port=candidate_port)
         self._config = updated
         return updated
+
+    @staticmethod
+    def _ensure_dialog_username(dialog: Any, username: str) -> None:
+        """Ensure the dialog exposes a username for digest authentication."""
+
+        if not username:
+            return
+
+        try:
+            to_details = dialog.to_details  # type: ignore[attr-defined]
+        except AttributeError:
+            return
+
+        if not isinstance(to_details, MutableMapping):
+            return
+
+        uri_details = to_details.get("uri")
+        if not isinstance(uri_details, MutableMapping):
+            return
+
+        current_user = uri_details.get("user")
+        if current_user:
+            return
+
+        uri_details["user"] = username
 
     @staticmethod
     def _normalize_trunk_uri(trunk_uri: str, username: str) -> str | None:
