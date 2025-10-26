@@ -35,6 +35,7 @@ import contextlib
 import errno
 import ipaddress
 import logging
+import secrets
 import socket
 import types
 import urllib.parse
@@ -61,7 +62,21 @@ else:
     from aiosip.auth import Auth as _AioSipAuth
     from aiosip.auth import md5digest as _aiosip_md5digest
 
+    _ORIGINAL_AUTH_STR = _AioSipAuth.__str__
     _ORIGINAL_FROM_AUTHENTICATE_HEADER = _AioSipAuth.from_authenticate_header.__func__
+
+    _UNQUOTED_DIRECTIVES = {"algorithm", "nc", "qop"}
+
+    def _patched_auth_str(self) -> str:
+        if getattr(self, "method", None) == "Digest":
+            directives = []
+            for key, value in self.items():
+                if key in _UNQUOTED_DIRECTIVES:
+                    directives.append(f"{key}={value}")
+                else:
+                    directives.append(f'{key}="{value}"')
+            return "Digest " + ",".join(directives)
+        return _ORIGINAL_AUTH_STR(self)
 
     def _patched_from_authenticate_header(
         cls,
@@ -74,31 +89,62 @@ else:
         """Parse ``WWW-Authenticate`` directives more permissively."""
 
         if authenticate.startswith("Digest"):
-            params_section = authenticate[7:].strip()
             try:
+                params_section = authenticate[7:].strip()
                 parsed_params = parse_keqv_list(parse_http_list(params_section))
-            except Exception:  # pragma: no cover - defensive fallback
-                LOGGER.debug(
-                    "Falling back to default digest parser for header %s",
-                    authenticate,
-                    exc_info=True,
-                )
-            else:
+
                 auth = cls()
                 auth.method = "Digest"
                 for key, value in parsed_params.items():
                     auth[key] = value
                 auth["username"] = username
                 auth["uri"] = uri
+
+                qop_value = auth.get("qop")
+                if qop_value and "," in qop_value:
+                    # RFC 3261 allows multiple qop tokens. Prefer "auth" if present as
+                    # it is the only mode supported by ``aiosip`` today.
+                    qop_options = [part.strip() for part in qop_value.split(",")]
+                    if "auth" in qop_options:
+                        qop_value = "auth"
+                    else:
+                        qop_value = qop_options[0]
+                    auth["qop"] = qop_value
+
                 ha1 = _aiosip_md5digest(username, auth["realm"], password)
                 ha2 = _aiosip_md5digest(method, uri)
-                auth["response"] = _aiosip_md5digest(ha1, auth["nonce"], ha2)
+
+                if qop_value:
+                    if qop_value != "auth":
+                        raise ValueError(f"Unsupported qop value: {qop_value}")
+
+                    cnonce = secrets.token_hex(8)
+                    nonce_count = "00000001"
+                    auth["cnonce"] = cnonce
+                    auth["nc"] = nonce_count
+                    auth["response"] = _aiosip_md5digest(
+                        ha1,
+                        auth["nonce"],
+                        nonce_count,
+                        cnonce,
+                        qop_value,
+                        ha2,
+                    )
+                else:
+                    auth["response"] = _aiosip_md5digest(ha1, auth["nonce"], ha2)
                 return auth
+            except Exception:  # pragma: no cover - defensive fallback
+                LOGGER.debug(
+                    "Falling back to default digest parser for header %s",
+                    authenticate,
+                    exc_info=True,
+                )
 
         return _ORIGINAL_FROM_AUTHENTICATE_HEADER(
             cls, authenticate, method, uri, username, password
         )
 
+    _AioSipAuth.__str__ = _patched_auth_str
     _AioSipAuth.from_authenticate_header = classmethod(
         _patched_from_authenticate_header
     )
