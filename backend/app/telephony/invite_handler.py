@@ -136,6 +136,7 @@ async def handle_incoming_invite(
     )
 
     payload = request.payload
+    payload_length: int
     if isinstance(payload, bytes):
         try:
             payload_text = payload.decode("utf-8", errors="strict")
@@ -153,10 +154,13 @@ async def handle_incoming_invite(
                 contact_uri=contact_uri,
             )
             raise InviteHandlingError("SDP illisible") from exc
+        payload_length = len(payload)
     elif isinstance(payload, str):
         payload_text = payload
+        payload_length = len(payload)
     else:
         payload_text = str(payload)
+        payload_length = len(payload_text)
 
     normalized_payload_text = (
         payload_text.replace("\r\n", "\n").replace("\r", "\n")
@@ -173,7 +177,7 @@ async def handle_incoming_invite(
     logger.debug(
         "SDP reçu (Call-ID=%s, %d octets):\n%s",
         call_id or "inconnu",
-        len(payload) if isinstance(payload, bytes | str) else len(payload_text),
+        payload_length,
         normalized_payload_text,
     )
 
@@ -269,7 +273,9 @@ def _extract_header(request: _InviteRequest, name: str) -> str | None:
     lower_name = name.lower()
     for key, value in headers.items():
         if isinstance(key, str) and key.lower() == lower_name:
-            if isinstance(value, list | tuple) and value:
+            if isinstance(value, list) and value:
+                return str(value[0])
+            if isinstance(value, tuple) and value:
                 return str(value[0])
             return str(value)
     return None
