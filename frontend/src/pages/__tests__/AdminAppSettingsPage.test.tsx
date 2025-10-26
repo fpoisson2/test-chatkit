@@ -5,9 +5,10 @@ import { vi } from "vitest";
 
 import { AdminAppSettingsPage } from "../AdminAppSettingsPage";
 
-const { getMock, updateMock } = vi.hoisted(() => ({
+const { getMock, updateMock, listModelsMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   updateMock: vi.fn(),
+  listModelsMock: vi.fn(),
 }));
 
 vi.mock("../../auth", () => ({
@@ -37,6 +38,9 @@ vi.mock("../../utils/backend", () => ({
   appSettingsApi: {
     get: getMock,
     update: updateMock,
+  },
+  modelRegistryApi: {
+    listAdmin: listModelsMock,
   },
   isUnauthorizedError: () => false,
 }));
@@ -77,6 +81,34 @@ const baseSettings = {
 describe("AdminAppSettingsPage", () => {
   beforeEach(() => {
     getMock.mockResolvedValue({ ...baseSettings });
+    listModelsMock.mockResolvedValue([
+      {
+        id: 1,
+        name: "gpt-4o-mini",
+        display_name: "GPT-4o Mini",
+        description: null,
+        provider_id: "litellm",
+        provider_slug: "litellm",
+        supports_reasoning: false,
+        supports_previous_response_id: false,
+        supports_reasoning_summary: false,
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: 2,
+        name: "gpt-5o-mini",
+        display_name: "GPT-5o Mini",
+        description: null,
+        provider_id: "litellm",
+        provider_slug: "litellm",
+        supports_reasoning: false,
+        supports_previous_response_id: false,
+        supports_reasoning_summary: false,
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      },
+    ]);
     updateMock.mockResolvedValue({
       ...baseSettings,
       thread_title_model: "gpt-5o-mini",
@@ -174,11 +206,17 @@ describe("AdminAppSettingsPage", () => {
     fireEvent.change(promptInput, { target: { value: "Nouveau prompt" } });
     expect(promptInput).toHaveValue("Nouveau prompt");
 
-    const modelInput = screen.getByLabelText(
+    await waitFor(() => {
+      expect(listModelsMock).toHaveBeenCalledWith("test-token");
+    });
+
+    const modelSelect = await screen.findByLabelText(
       "admin.appSettings.threadTitle.modelLabel",
     );
-    await userEvent.clear(modelInput);
-    await userEvent.type(modelInput, "gpt-5o-mini");
+    await waitFor(() => {
+      expect(modelSelect).not.toHaveAttribute("disabled");
+    });
+    await userEvent.selectOptions(modelSelect, "gpt-5o-mini");
 
     const submitButton = screen.getByRole("button", {
       name: "admin.appSettings.actions.save",

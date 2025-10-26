@@ -100,14 +100,19 @@ const fr: TranslationDictionary = {
   "admin.appSettings.threadTitle.modelLabel":
     "Modèle pour les titres de fils",
   "admin.appSettings.threadTitle.modelPlaceholder":
-    "ex. gpt-4o-mini, gpt-4o-realtime-preview",
+    "Sélectionnez un modèle",
   "admin.appSettings.threadTitle.modelHint":
-    "Indiquez l'identifiant du modèle utilisé pour générer les titres automatiques.",
+    "Choisissez un modèle dans la liste ou sélectionnez l'option personnalisée pour saisir un identifiant.",
   "admin.appSettings.threadTitle.modelStatus.custom":
     "Un modèle personnalisé est actuellement appliqué.",
   "admin.appSettings.threadTitle.modelStatus.default":
     "Le modèle par défaut est utilisé.",
   "admin.appSettings.threadTitle.modelDefaultLabel": "Modèle par défaut",
+  "admin.appSettings.threadTitle.modelLoadingOption":
+    "Chargement des modèles…",
+  "admin.appSettings.threadTitle.modelCustomOption": "Autre modèle…",
+  "admin.appSettings.threadTitle.modelCustomLabel":
+    "Identifiant du modèle personnalisé",
   "admin.appSettings.model.cardTitle": "Fournisseur de modèles",
   "admin.appSettings.model.cardDescription":
     "Configurez le fournisseur utilisé pour exécuter les agents ChatKit.",
@@ -155,6 +160,8 @@ const fr: TranslationDictionary = {
     "Le prompt doit contenir au moins un caractère.",
   "admin.appSettings.errors.threadTitleModelRequired":
     "Indiquez le modèle à utiliser pour les titres automatiques.",
+  "admin.appSettings.errors.threadTitleModelsLoadFailed":
+    "Impossible de charger la liste des modèles disponibles.",
   "admin.appSettings.errors.invalidSipPort":
     "Le port SIP doit être un entier compris entre 1 et 65535.",
   "admin.appSettings.errors.invalidSipTransport":
@@ -626,14 +633,18 @@ const en: TranslationDictionary = {
   "admin.appSettings.threadTitle.defaultLabel": "Default prompt",
   "admin.appSettings.threadTitle.modelLabel": "Thread title model",
   "admin.appSettings.threadTitle.modelPlaceholder":
-    "e.g. gpt-4o-mini, gpt-4o-realtime-preview",
+    "Select a model",
   "admin.appSettings.threadTitle.modelHint":
-    "Enter the model identifier used to generate automatic titles.",
+    "Pick a model from the list or choose the custom option to type an identifier.",
   "admin.appSettings.threadTitle.modelStatus.custom":
     "A custom model is currently active.",
   "admin.appSettings.threadTitle.modelStatus.default":
     "The default model is in use.",
   "admin.appSettings.threadTitle.modelDefaultLabel": "Default model",
+  "admin.appSettings.threadTitle.modelLoadingOption":
+    "Loading models…",
+  "admin.appSettings.threadTitle.modelCustomOption": "Custom model…",
+  "admin.appSettings.threadTitle.modelCustomLabel": "Custom model identifier",
   "admin.appSettings.model.cardTitle": "Model provider",
   "admin.appSettings.model.cardDescription":
     "Control the provider used to run ChatKit agents.",
@@ -676,6 +687,8 @@ const en: TranslationDictionary = {
     "The prompt must contain at least one character.",
   "admin.appSettings.errors.threadTitleModelRequired":
     "Enter the model used for automatic titles.",
+  "admin.appSettings.errors.threadTitleModelsLoadFailed":
+    "Unable to load the list of available models.",
   "admin.appSettings.errors.invalidSipPort":
     "The SIP port must be an integer between 1 and 65535.",
   "admin.appSettings.errors.invalidSipTransport":
