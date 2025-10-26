@@ -194,7 +194,7 @@ def _run_ad_hoc_migrations() -> None:
                     connection.execute(
                         text(
                             "ALTER TABLE app_settings ALTER COLUMN thread_title_model "
-                            "SET DEFAULT :default_model"
+                            "SET DEFAULT CAST(:default_model AS VARCHAR(128))"
                         ),
                         {"default_model": DEFAULT_THREAD_TITLE_MODEL},
                     )
