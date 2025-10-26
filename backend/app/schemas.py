@@ -372,9 +372,9 @@ class AvailableModelBase(BaseModel):
     def _ensure_provider_pair(self) -> AvailableModelBase:
         has_id = self.provider_id is not None
         has_slug = self.provider_slug is not None
-        if has_id != has_slug:
+        if has_id and not has_slug:
             raise ValueError(
-                "provider_id et provider_slug doivent être fournis ensemble"
+                "provider_slug doit être fourni lorsque provider_id est défini"
             )
         return self
 
