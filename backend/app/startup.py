@@ -31,6 +31,7 @@ from .models import (
 from .security import hash_password
 from .telephony.invite_handler import (
     InviteHandlingError,
+    _extract_header,
     handle_incoming_invite,
     send_sip_reply,
 )
@@ -57,6 +58,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         )
         contact_uri = config.contact_uri() if config is not None else None
         media_port = getattr(settings, "sip_media_port", None)
+        via_header = _extract_header(request, "Via")
 
         if media_port is None:
             logger.warning(
@@ -68,6 +70,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     486,
                     reason="Busy Here",
                     contact_uri=contact_uri,
+                    via_header=via_header,
                 )
             return
 
@@ -81,6 +84,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     480,
                     reason="Temporarily Unavailable",
                     contact_uri=contact_uri,
+                    via_header=via_header,
                 )
             return
 
@@ -105,6 +109,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     500,
                     reason="Server Internal Error",
                     contact_uri=contact_uri,
+                    via_header=via_header,
                 )
 
     return _on_invite
