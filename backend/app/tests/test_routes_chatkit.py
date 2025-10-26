@@ -5,7 +5,7 @@ import importlib.util
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from importlib import import_module
 from io import BytesIO
 from pathlib import Path
@@ -13,8 +13,10 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from agents.items import MessageOutputItem
 from fastapi import HTTPException, status
 from fastapi.responses import FileResponse
+from openai.types.responses import ResponseOutputMessage, ResponseOutputText
 from starlette.datastructures import UploadFile
 
 if (
@@ -30,12 +32,17 @@ ROOT_DIR = Path(__file__).resolve().parents[3]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
+from backend.app.chatkit_server.context import ChatKitRequestContext  # noqa: E402
+
 from chatkit.store import NotFoundError  # noqa: E402
 from chatkit.types import (  # noqa: E402
+    ActiveStatus,
     InferenceOptions,
     ThreadCreateParams,
+    ThreadMetadata,
     ThreadsCreateReq,
     UserMessageInput,
+    UserMessageItem,
     UserMessageTextContent,
 )
 
@@ -140,6 +147,67 @@ def test_chatkit_endpoint_uses_forwarded_headers_when_env_not_overridden(
         context = captured.get("context")
         assert context is not None
         assert context.public_base_url == "https://public.example"
+
+    asyncio.run(_run())
+
+
+def test_thread_title_falls_back_to_message_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _run() -> None:
+        server_module = import_module("backend.app.chatkit_server.server")
+        app_chatkit = import_module("backend.app.chatkit")
+
+        monkeypatch.setattr(app_chatkit, "_server", None, raising=False)
+
+        server = server_module.DemoChatKitServer.__new__(
+            server_module.DemoChatKitServer
+        )
+        server._title_agent = SimpleNamespace()
+
+        async def _fake_run(*args: Any, **kwargs: Any):
+            message = ResponseOutputMessage(
+                id="out-1",
+                role="assistant",
+                status="completed",
+                type="message",
+                content=[
+                    ResponseOutputText(
+                        type="output_text",
+                        text="   Nouveau titre \n",
+                        annotations=[],
+                    )
+                ],
+            )
+            return SimpleNamespace(
+                final_output=None,
+                new_items=[
+                    MessageOutputItem(agent=SimpleNamespace(), raw_item=message)
+                ],
+            )
+
+        monkeypatch.setattr(server_module.Runner, "run", _fake_run)
+
+        thread = ThreadMetadata(
+            id="thread-123",
+            created_at=datetime.now(timezone.utc),
+            status=ActiveStatus(),
+        )
+
+        user_message = UserMessageItem(
+            id="msg-1",
+            thread_id="thread-123",
+            created_at=datetime.now(timezone.utc),
+            content=[UserMessageTextContent(text="Bonjour")],
+            attachments=[],
+            inference_options=InferenceOptions(),
+        )
+
+        context = ChatKitRequestContext(user_id="user-1", email="demo@example.com")
+
+        await server._maybe_update_thread_title(thread, user_message, context)
+
+        assert thread.title == "Nouveau titre"
 
     asyncio.run(_run())
 
@@ -501,7 +569,6 @@ def test_demo_server_handles_attachment_creation(
     async def _run() -> None:
         app_chatkit = import_module("backend.app.chatkit")
         server_module = import_module("backend.app.chatkit_server.server")
-        from backend.app.chatkit_server.context import ChatKitRequestContext
 
         saved: dict[str, Any] = {}
 
@@ -541,7 +608,7 @@ def test_demo_server_handles_attachment_creation(
                     workflow_display_name=None,
                     id="wf-def-1",
                     version=1,
-                    updated_at=datetime.now(datetime.UTC),
+                    updated_at=datetime.now(timezone.utc),
                 )
 
         monkeypatch.setattr(server_module, "PostgresChatKitStore", _InMemoryStore)
@@ -594,7 +661,6 @@ def test_demo_server_injects_workflow_metadata(monkeypatch: pytest.MonkeyPatch) 
     async def _run() -> None:
         app_chatkit = import_module("backend.app.chatkit")
         server_module = import_module("backend.app.chatkit_server.server")
-        from backend.app.chatkit_server.context import ChatKitRequestContext
 
         captured: dict[str, Any] = {}
 

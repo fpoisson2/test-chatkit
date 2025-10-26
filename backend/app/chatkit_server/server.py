@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from agents import Agent, RunConfig, Runner
+from agents.items import ItemHelpers
 from openai.types.responses import (
     ResponseInputContentParam,
     ResponseInputFileParam,
@@ -696,14 +697,30 @@ class DemoChatKitServer(ChatKitServer[ChatKitRequestContext]):
             )
             return
 
-        raw_title = getattr(run, "final_output", "")
+        raw_title = getattr(run, "final_output", None)
+        if not isinstance(raw_title, str):
+            if raw_title is not None:
+                try:
+                    raw_title = str(raw_title)
+                except Exception:  # pragma: no cover - conversion sécuritaire
+                    raw_title = ""
+            else:
+                raw_title = ""
+
+        if not raw_title:
+            new_items = getattr(run, "new_items", None)
+            if isinstance(new_items, list):
+                try:
+                    raw_title = ItemHelpers.text_message_outputs(new_items)
+                except Exception:  # pragma: no cover - robustesse best effort
+                    raw_title = ""
+
         if isinstance(raw_title, str):
-            normalized_title = re.sub(r"\s+", " ", raw_title).strip().strip("\"'`”’“«»")
+            normalized_title = (
+                re.sub(r"\s+", " ", raw_title).strip().strip("\"'`”’“«»")
+            )
         else:
-            try:
-                normalized_title = str(raw_title).strip()
-            except Exception:  # pragma: no cover - conversion sécuritaire
-                normalized_title = ""
+            normalized_title = ""
 
         if not normalized_title:
             normalized_title = "Nouvelle conversation"
