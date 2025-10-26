@@ -122,10 +122,49 @@ class VoiceSettingsUpdateRequest(BaseModel):
     )
 
 
+class ModelProviderSettings(BaseModel):
+    id: str
+    provider: str
+    api_base: str
+    api_key_hint: str | None = None
+    has_api_key: bool = False
+    is_default: bool = False
+
+
+class ModelProviderSettingsUpdate(BaseModel):
+    id: str | None = Field(
+        default=None,
+        description="Identifiant interne de la configuration (laisser vide pour une nouvelle entrée).",
+        max_length=128,
+    )
+    provider: constr(strip_whitespace=True, min_length=1, max_length=64)
+    api_base: constr(strip_whitespace=True, min_length=1, max_length=512)
+    api_key: str | None = Field(
+        default=None,
+        description="Clé API à associer à ce fournisseur (laisser vide pour conserver la valeur existante).",
+        max_length=512,
+    )
+    delete_api_key: bool = Field(
+        default=False,
+        description="Indique s'il faut supprimer la clé API enregistrée.",
+    )
+    is_default: bool = Field(
+        default=False,
+        description="Marque cette configuration comme fournisseur par défaut.",
+    )
+
+
 class AppSettingsResponse(BaseModel):
     thread_title_prompt: str
     default_thread_title_prompt: str
     is_custom_thread_title_prompt: bool
+    model_provider: str
+    model_api_base: str
+    is_model_provider_overridden: bool
+    is_model_api_base_overridden: bool
+    is_model_api_key_managed: bool
+    model_api_key_hint: str | None = None
+    model_providers: list[ModelProviderSettings] = Field(default_factory=list)
     sip_trunk_uri: str | None = None
     sip_trunk_username: str | None = None
     sip_trunk_password: str | None = None
@@ -144,6 +183,37 @@ class AppSettingsUpdateRequest(BaseModel):
             "à la valeur par défaut."
         ),
         max_length=4000,
+    )
+    model_provider: str | None = Field(
+        default=None,
+        description=(
+            "Identifiant du fournisseur de modèles à utiliser. Laisser vide pour "
+            "conserver la configuration d'environnement."
+        ),
+        max_length=64,
+    )
+    model_api_base: str | None = Field(
+        default=None,
+        description=(
+            "URL de base de l'API du fournisseur. Requis si un fournisseur "
+            "personnalisé est défini."
+        ),
+        max_length=512,
+    )
+    model_api_key: str | None = Field(
+        default=None,
+        description=(
+            "Nouvelle clé API à stocker pour le fournisseur sélectionné. "
+            "Envoyer null pour effacer la clé enregistrée."
+        ),
+        max_length=512,
+    )
+    model_providers: list[ModelProviderSettingsUpdate] | None = Field(
+        default=None,
+        description=(
+            "Liste complète des fournisseurs disponibles. Passer une liste vide pour"
+            " tout supprimer."
+        ),
     )
     sip_trunk_uri: str | None = Field(
         default=None,

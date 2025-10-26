@@ -57,6 +57,40 @@ const fr: TranslationDictionary = {
   "admin.appSettings.threadTitle.status.default":
     "Le prompt par défaut est utilisé.",
   "admin.appSettings.threadTitle.defaultLabel": "Prompt par défaut",
+  "admin.appSettings.model.cardTitle": "Fournisseur de modèles",
+  "admin.appSettings.model.cardDescription":
+    "Configurez le fournisseur utilisé pour exécuter les agents ChatKit.",
+  "admin.appSettings.model.enableCustomLabel":
+    "Remplacer la configuration d'environnement",
+  "admin.appSettings.model.customConfigHint":
+    "Définissez un ou plusieurs fournisseurs, leurs URL et leurs clés pour utiliser un proxy personnalisé.",
+  "admin.appSettings.model.environmentSummary":
+    "Configuration actuelle : fournisseur {{provider}}, base {{base}}.",
+  "admin.appSettings.model.providerUnknown": "inconnu",
+  "admin.appSettings.model.baseUnknown": "non définie",
+  "admin.appSettings.model.providerLabel": "Fournisseur de modèles",
+  "admin.appSettings.model.providerOpenAI": "OpenAI (API publique)",
+  "admin.appSettings.model.providerLiteLLM":
+    "LiteLLM (proxy compatible OpenAI)",
+  "admin.appSettings.model.providerCustom": "Autre fournisseur…",
+  "admin.appSettings.model.providerNameLabel": "Identifiant du fournisseur",
+  "admin.appSettings.model.providerNamePlaceholder": "ex. gemini, claude, litellm",
+  "admin.appSettings.model.defaultProviderLabel":
+    "Définir comme fournisseur par défaut",
+  "admin.appSettings.model.removeProvider": "Supprimer ce fournisseur",
+  "admin.appSettings.model.addProvider": "Ajouter un fournisseur",
+  "admin.appSettings.model.apiBaseLabel": "URL de base de l'API",
+  "admin.appSettings.model.apiBaseHint":
+    "L'URL doit commencer par http:// ou https:// et pointer vers le proxy à utiliser.",
+  "admin.appSettings.model.apiKeyLabel": "Clé API",
+  "admin.appSettings.model.apiKeyPlaceholder":
+    "Saisissez une nouvelle clé pour la stocker côté serveur",
+  "admin.appSettings.model.apiKeyHelp":
+    "Laissez vide pour conserver la clé actuelle ou utiliser la variable d'environnement.",
+  "admin.appSettings.model.apiKeyStoredHint":
+    "Une clé est enregistrée ({{hint}}). Saisissez une nouvelle clé pour la remplacer.",
+  "admin.appSettings.model.apiKeyUnknownHint": "clé masquée",
+  "admin.appSettings.model.apiKeyClearLabel": "Supprimer la clé enregistrée",
   "admin.appSettings.success.saved": "Paramètres enregistrés avec succès.",
   "admin.appSettings.success.reset": "Le prompt par défaut est rétabli.",
   "admin.appSettings.errors.loadFailed":
@@ -73,6 +107,16 @@ const fr: TranslationDictionary = {
     "Le transport SIP doit être vide ou parmi udp, tcp, tls.",
   "admin.appSettings.errors.sessionExpired":
     "Session expirée, veuillez vous reconnecter.",
+  "admin.appSettings.errors.modelProviderRequired":
+    "Indiquez l'identifiant du fournisseur lorsque la configuration personnalisée est activée.",
+  "admin.appSettings.errors.modelApiBaseRequired":
+    "Indiquez l'URL de base de l'API lorsque la configuration personnalisée est activée.",
+  "admin.appSettings.errors.modelProvidersRequired":
+    "Ajoutez au moins un fournisseur lorsque la configuration personnalisée est activée.",
+  "admin.appSettings.errors.modelDefaultRequired":
+    "Sélectionnez un fournisseur par défaut.",
+  "admin.appSettings.errors.invalidModelApiBase":
+    "L'URL de base du fournisseur doit être valide et utiliser http ou https.",
   "admin.appSettings.actions.save": "Enregistrer le prompt",
   "admin.appSettings.actions.reset": "Revenir au prompt par défaut",
   "admin.appSettings.sipTrunk.cardTitle": "Trunk SIP",
@@ -484,6 +528,39 @@ const en: TranslationDictionary = {
   "admin.appSettings.threadTitle.status.default":
     "The default prompt is in use.",
   "admin.appSettings.threadTitle.defaultLabel": "Default prompt",
+  "admin.appSettings.model.cardTitle": "Model provider",
+  "admin.appSettings.model.cardDescription":
+    "Control the provider used to run ChatKit agents.",
+  "admin.appSettings.model.enableCustomLabel":
+    "Override environment configuration",
+  "admin.appSettings.model.customConfigHint":
+    "Provide one or more providers, their base URLs and API keys to use a custom proxy.",
+  "admin.appSettings.model.environmentSummary":
+    "Current configuration: provider {{provider}}, base {{base}}.",
+  "admin.appSettings.model.providerUnknown": "unknown",
+  "admin.appSettings.model.baseUnknown": "not set",
+  "admin.appSettings.model.providerLabel": "Model provider",
+  "admin.appSettings.model.providerOpenAI": "OpenAI (public API)",
+  "admin.appSettings.model.providerLiteLLM":
+    "LiteLLM (OpenAI-compatible proxy)",
+  "admin.appSettings.model.providerCustom": "Other provider…",
+  "admin.appSettings.model.providerNameLabel": "Provider identifier",
+  "admin.appSettings.model.providerNamePlaceholder": "e.g. gemini, claude, litellm",
+  "admin.appSettings.model.defaultProviderLabel": "Set as default provider",
+  "admin.appSettings.model.removeProvider": "Remove this provider",
+  "admin.appSettings.model.addProvider": "Add provider",
+  "admin.appSettings.model.apiBaseLabel": "API base URL",
+  "admin.appSettings.model.apiBaseHint":
+    "The URL must start with http:// or https:// and point to the proxy to use.",
+  "admin.appSettings.model.apiKeyLabel": "API key",
+  "admin.appSettings.model.apiKeyPlaceholder":
+    "Enter a new key to store it on the server",
+  "admin.appSettings.model.apiKeyHelp":
+    "Leave empty to keep the current key or use the environment variable.",
+  "admin.appSettings.model.apiKeyStoredHint":
+    "A key is stored ({{hint}}). Enter a new key to replace it.",
+  "admin.appSettings.model.apiKeyUnknownHint": "hidden value",
+  "admin.appSettings.model.apiKeyClearLabel": "Remove the stored key",
   "admin.appSettings.success.saved": "Settings saved successfully.",
   "admin.appSettings.success.reset": "Default prompt restored.",
   "admin.appSettings.errors.loadFailed": "Unable to load general settings.",
@@ -497,6 +574,16 @@ const en: TranslationDictionary = {
     "The SIP transport must be empty or one of udp, tcp, tls.",
   "admin.appSettings.errors.sessionExpired":
     "Session expired, please sign in again.",
+  "admin.appSettings.errors.modelProviderRequired":
+    "Provide the provider identifier when the custom configuration is enabled.",
+  "admin.appSettings.errors.modelApiBaseRequired":
+    "Provide the provider base URL when the custom configuration is enabled.",
+  "admin.appSettings.errors.modelProvidersRequired":
+    "Add at least one provider when the custom configuration is enabled.",
+  "admin.appSettings.errors.modelDefaultRequired":
+    "Select a default provider.",
+  "admin.appSettings.errors.invalidModelApiBase":
+    "The provider base URL must be valid and use http or https.",
   "admin.appSettings.actions.save": "Save prompt",
   "admin.appSettings.actions.reset": "Revert to default prompt",
   "admin.appSettings.sipTrunk.cardTitle": "SIP trunk",

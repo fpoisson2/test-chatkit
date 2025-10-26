@@ -186,10 +186,35 @@ export type VoiceSettingsUpdatePayload = {
   prompt_variables?: Record<string, string>;
 };
 
+export type ModelProviderProfile = {
+  id: string;
+  provider: string;
+  api_base: string;
+  api_key_hint: string | null;
+  has_api_key: boolean;
+  is_default: boolean;
+};
+
+export type ModelProviderUpdatePayload = {
+  id?: string | null;
+  provider: string;
+  api_base: string;
+  api_key?: string | null;
+  delete_api_key?: boolean;
+  is_default: boolean;
+};
+
 export type AppSettings = {
   thread_title_prompt: string;
   default_thread_title_prompt: string;
   is_custom_thread_title_prompt: boolean;
+  model_provider: string;
+  model_api_base: string;
+  is_model_provider_overridden: boolean;
+  is_model_api_base_overridden: boolean;
+  is_model_api_key_managed: boolean;
+  model_api_key_hint: string | null;
+  model_providers: ModelProviderProfile[];
   sip_trunk_uri: string | null;
   sip_trunk_username: string | null;
   sip_trunk_password: string | null;
@@ -202,6 +227,10 @@ export type AppSettings = {
 
 export type AppSettingsUpdatePayload = {
   thread_title_prompt?: string | null;
+  model_provider?: string | null;
+  model_api_base?: string | null;
+  model_api_key?: string | null;
+  model_providers?: ModelProviderUpdatePayload[] | null;
   sip_trunk_uri?: string | null;
   sip_trunk_username?: string | null;
   sip_trunk_password?: string | null;

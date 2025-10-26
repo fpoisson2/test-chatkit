@@ -5,9 +5,10 @@ import json
 import logging
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
+from threading import RLock
 from typing import Any
 
 from dotenv import load_dotenv
@@ -22,6 +23,21 @@ DEFAULT_THREAD_TITLE_PROMPT = (
 
 
 DEFAULT_SIP_MEDIA_PORT = 40000
+
+ADMIN_MODEL_API_KEY_ENV = "APP_SETTINGS_MODEL_API_KEY"
+
+_RUNTIME_SETTINGS_OVERRIDES: dict[str, Any] | None = None
+_RUNTIME_SETTINGS_LOCK = RLock()
+
+
+@dataclass(frozen=True)
+class ModelProviderConfig:
+    """Profil de connexion pour un fournisseur de modèles."""
+
+    provider: str
+    api_base: str
+    api_key: str | None
+    is_default: bool = False
 
 
 @dataclass(frozen=True)
@@ -98,6 +114,8 @@ class Settings:
         model_api_key_env: Nom de la variable d'environnement contenant la clé API.
         model_api_key: Valeur de la clé API active pour le fournisseur choisi.
         openai_api_key: Jeton API OpenAI (présent uniquement si défini dans l'env).
+        model_providers: Profils de connexion disponibles (incluant les clés chiffrées
+            côté administration) permettant d'activer plusieurs fournisseurs.
         chatkit_workflow_id: Identifiant du workflow hébergé (optionnel).
         sip_bind_host: Hôte d'écoute du serveur SIP (optionnel).
         sip_bind_port: Port d'écoute du serveur SIP (optionnel).
@@ -139,6 +157,7 @@ class Settings:
     model_api_key_env: str
     model_api_key: str
     openai_api_key: str | None
+    model_providers: tuple[ModelProviderConfig, ...]
     chatkit_workflow_id: str | None
     chatkit_realtime_model: str
     chatkit_realtime_instructions: str
@@ -377,6 +396,14 @@ class Settings:
             model_api_key_env=model_api_key_env,
             model_api_key=model_api_key,
             openai_api_key=openai_api_key_value,
+            model_providers=(
+                ModelProviderConfig(
+                    provider=model_provider,
+                    api_base=model_api_base,
+                    api_key=model_api_key,
+                    is_default=True,
+                ),
+            ),
             chatkit_workflow_id=env.get("CHATKIT_WORKFLOW_ID"),
             chatkit_realtime_model=env.get(
                 "CHATKIT_REALTIME_MODEL",
@@ -441,7 +468,59 @@ class Settings:
         )
 
 
+def _get_runtime_overrides() -> dict[str, Any] | None:
+    with _RUNTIME_SETTINGS_LOCK:
+        if _RUNTIME_SETTINGS_OVERRIDES is None:
+            return None
+        return dict(_RUNTIME_SETTINGS_OVERRIDES)
+
+
+def _apply_runtime_overrides(
+    base: Settings, overrides: Mapping[str, Any]
+) -> Settings:
+    if not overrides:
+        return base
+    allowed_keys = set(Settings.__dataclass_fields__.keys())
+    sanitized = {key: value for key, value in overrides.items() if key in allowed_keys}
+    if not sanitized:
+        return base
+    updated = replace(base, **sanitized)
+    if (
+        "model_api_key" in sanitized
+        and "openai_api_key" not in sanitized
+        and updated.model_provider == "openai"
+        and updated.model_api_key_env == "OPENAI_API_KEY"
+    ):
+        updated = replace(updated, openai_api_key=sanitized["model_api_key"])
+    return updated
+
+
+def set_runtime_settings_overrides(overrides: Mapping[str, Any] | None) -> None:
+    global _RUNTIME_SETTINGS_OVERRIDES
+    with _RUNTIME_SETTINGS_LOCK:
+        if overrides:
+            _RUNTIME_SETTINGS_OVERRIDES = dict(overrides)
+        else:
+            _RUNTIME_SETTINGS_OVERRIDES = None
+        get_settings.cache_clear()
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     load_dotenv()
-    return Settings.from_env(os.environ)
+    base_settings = Settings.from_env(os.environ)
+    overrides = _get_runtime_overrides()
+    if overrides:
+        base_settings = _apply_runtime_overrides(base_settings, overrides)
+    return base_settings
+
+
+class SettingsProxy:
+    def __getattr__(self, item: str) -> Any:
+        return getattr(get_settings(), item)
+
+    def __repr__(self) -> str:  # pragma: no cover - debug helper
+        return repr(get_settings())
+
+
+settings_proxy = SettingsProxy()

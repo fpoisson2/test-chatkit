@@ -188,6 +188,11 @@ class AppSettings(Base):
     sip_contact_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
     sip_contact_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sip_contact_transport: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    model_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    model_api_base: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model_api_key_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model_api_key_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    model_provider_configs: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

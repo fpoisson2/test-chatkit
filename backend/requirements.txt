@@ -4,6 +4,7 @@ aiosip
 fastapi
 openai
 openai-chatkit @ file:../chatkit-python
+cryptography
 uvicorn[standard]
 python-dotenv
 httpx
