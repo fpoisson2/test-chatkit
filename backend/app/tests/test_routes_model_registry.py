@@ -41,6 +41,7 @@ def _create_model(
     name: str,
     provider_slug: str | None = "litellm",
     provider_id: str | None = "primary",
+    store: bool | None = False,
 ) -> AvailableModel:
     now = datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC)
     model = AvailableModel(
@@ -52,6 +53,7 @@ def _create_model(
         supports_reasoning=False,
         supports_previous_response_id=True,
         supports_reasoning_summary=True,
+        store=store,
         created_at=now,
         updated_at=now,
     )
@@ -75,6 +77,7 @@ def test_update_model_persists_changes(session_factory: sessionmaker[Session]) -
                 supports_reasoning_summary=False,
                 provider_id="primary-eu",
                 provider_slug="LiteLLM",
+                store=None,
             )
 
             result = await model_registry.update_model(
@@ -89,6 +92,7 @@ def test_update_model_persists_changes(session_factory: sessionmaker[Session]) -
             assert result.supports_reasoning_summary is False
             assert result.provider_id == "primary-eu"
             assert result.provider_slug == "litellm"
+            assert result.store is None
 
             stored = session.scalar(
                 select(AvailableModel).where(AvailableModel.id == model.id)
@@ -98,6 +102,7 @@ def test_update_model_persists_changes(session_factory: sessionmaker[Session]) -
             assert stored.display_name == "GPT-4o Mini 2024"
             assert stored.provider_slug == "litellm"
             assert stored.supports_previous_response_id is False
+            assert stored.store is None
 
     asyncio.run(_run())
 

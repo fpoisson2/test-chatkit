@@ -360,6 +360,7 @@ class AvailableModelBase(BaseModel):
     supports_reasoning: bool = False
     supports_previous_response_id: bool = True
     supports_reasoning_summary: bool = True
+    store: bool | None = None
 
     @field_validator("provider_id")
     @classmethod
@@ -391,6 +392,13 @@ class AvailableModelBase(BaseModel):
             )
         return self
 
+    @field_validator("store")
+    @classmethod
+    def _validate_store(cls, value: bool | None) -> bool | None:
+        if value is True:
+            raise ValueError("store ne peut prendre que false ou null")
+        return value
+
 
 class AvailableModelCreateRequest(AvailableModelBase):
     pass
@@ -413,6 +421,7 @@ class AvailableModelUpdateRequest(BaseModel):
     supports_reasoning: bool | None = None
     supports_previous_response_id: bool | None = None
     supports_reasoning_summary: bool | None = None
+    store: bool | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -435,6 +444,13 @@ class AvailableModelUpdateRequest(BaseModel):
         if not candidate:
             raise ValueError("provider_slug ne peut pas être vide")
         return candidate.lower()
+
+    @field_validator("store")
+    @classmethod
+    def _validate_store(cls, value: bool | None) -> bool | None:
+        if value is True:
+            raise ValueError("store ne peut prendre que false ou null")
+        return value
 
 
 class AvailableModelResponse(AvailableModelBase):

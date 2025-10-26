@@ -107,6 +107,7 @@ describe("AdminModelsPage", () => {
       supports_reasoning: false,
       supports_previous_response_id: true,
       supports_reasoning_summary: true,
+      store: false,
       created_at: "2024-01-01T00:00:00Z",
       updated_at: "2024-01-01T00:00:00Z",
     });
@@ -120,6 +121,7 @@ describe("AdminModelsPage", () => {
       supports_reasoning: false,
       supports_previous_response_id: true,
       supports_reasoning_summary: true,
+      store: false,
       created_at: "2024-01-01T00:00:00Z",
       updated_at: "2024-01-01T00:00:00Z",
     });
@@ -189,6 +191,7 @@ describe("AdminModelsPage", () => {
         supports_reasoning_summary: true,
         provider_id: "primary",
         provider_slug: "litellm",
+        store: false,
       });
     });
   });
@@ -204,6 +207,7 @@ describe("AdminModelsPage", () => {
       supports_reasoning: false,
       supports_previous_response_id: true,
       supports_reasoning_summary: true,
+      store: false,
       created_at: "2024-01-01T00:00:00Z",
       updated_at: "2024-01-01T00:00:00Z",
     };
@@ -244,6 +248,7 @@ describe("AdminModelsPage", () => {
           provider_id: existingModel.provider_id,
           provider_slug: existingModel.provider_slug,
           supports_previous_response_id: false,
+          store: false,
         }),
       );
     });

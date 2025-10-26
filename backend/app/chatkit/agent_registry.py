@@ -940,9 +940,7 @@ def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
     return agent
 
 
-def _resolve_agent_provider_binding_for_model(
-    model_name: str | None,
-) -> AgentProviderBinding | None:
+def _load_available_model(model_name: str | None) -> AvailableModel | None:
     if not isinstance(model_name, str):
         return None
     normalized = model_name.strip()
@@ -951,7 +949,7 @@ def _resolve_agent_provider_binding_for_model(
     try:
         session = SessionLocal()
         try:
-            available_model = session.scalar(
+            return session.scalar(
                 select(AvailableModel).where(AvailableModel.name == normalized)
             )
         finally:
@@ -964,6 +962,11 @@ def _resolve_agent_provider_binding_for_model(
         )
         return None
 
+
+def _resolve_agent_provider_binding_for_model(
+    model_name: str | None,
+) -> AgentProviderBinding | None:
+    available_model = _load_available_model(model_name)
     if available_model is None:
         return None
 
@@ -981,12 +984,24 @@ def _build_thread_title_agent() -> Agent:
         model = resolve_thread_title_model()
     except Exception:  # pragma: no cover - configuration best effort
         model = DEFAULT_THREAD_TITLE_MODEL
-    provider_binding = _resolve_agent_provider_binding_for_model(model)
+    available_model = _load_available_model(model)
+    provider_binding = None
+    store_value: bool | None = False
+    if available_model is not None:
+        provider_binding = get_agent_provider_binding(
+            available_model.provider_id, available_model.provider_slug
+        )
+        if available_model.store is not None:
+            store_value = available_model.store
+
+    if store_value is None:
+        store_value = False
+
     base_kwargs: dict[str, Any] = {
         "name": "TitreFil",
         "model": model or DEFAULT_THREAD_TITLE_MODEL,
         "instructions": instructions,
-        "model_settings": _model_settings(store=True),
+        "model_settings": _model_settings(store=store_value),
     }
     if provider_binding is not None:
         base_kwargs["_provider_binding"] = provider_binding

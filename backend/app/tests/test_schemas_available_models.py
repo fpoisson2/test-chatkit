@@ -29,6 +29,7 @@ def _base_payload(**overrides):
         "supports_reasoning": False,
         "supports_previous_response_id": True,
         "supports_reasoning_summary": True,
+        "store": False,
     }
     payload.update(overrides)
     return payload
@@ -48,13 +49,20 @@ def test_available_model_rejects_provider_id_without_slug() -> None:
         )
 
 
+def test_available_model_rejects_store_true() -> None:
+    with pytest.raises(ValidationError):
+        AvailableModelCreateRequest(**_base_payload(store=True))
+
+
 def test_available_model_update_normalizes_optional_fields() -> None:
     request = AvailableModelUpdateRequest(
         name="  gpt-4o-mini  ",
         display_name="  GPT-4o Mini  ",
         provider_slug="OpenAI",
+        store=None,
     )
 
     assert request.name == "gpt-4o-mini"
     assert request.display_name == "GPT-4o Mini"
     assert request.provider_slug == "openai"
+    assert request.store is None

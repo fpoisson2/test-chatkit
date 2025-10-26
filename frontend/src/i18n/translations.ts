@@ -66,6 +66,12 @@ const fr: TranslationDictionary = {
     "Réponses incrémentales (previous_response_id) prises en charge",
   "admin.models.form.supportsReasoningSummary":
     "Résumé de raisonnement (reasoning_summary) pris en charge",
+  "admin.models.form.storeLabel": "Stockage des réponses",
+  "admin.models.form.storeHint":
+    "Certains proxys exigent de désactiver le stockage automatique des réponses (store=false).",
+  "admin.models.form.storeOptionDisabled": "Désactiver le stockage (false)",
+  "admin.models.form.storeOptionDefault":
+    "Suivre le comportement par défaut du fournisseur (null)",
   "admin.models.errors.missingModelId": "Indiquez l'identifiant du modèle.",
   "admin.models.errors.missingProvider": "Sélectionnez un fournisseur pour ce modèle.",
   "admin.models.errors.providersLoadFailed":
@@ -601,6 +607,12 @@ const en: TranslationDictionary = {
     "Supports incremental responses (previous_response_id)",
   "admin.models.form.supportsReasoningSummary":
     "Supports reasoning summary (reasoning_summary)",
+  "admin.models.form.storeLabel": "Response storage",
+  "admin.models.form.storeHint":
+    "Some proxies require disabling automatic response storage (store=false).",
+  "admin.models.form.storeOptionDisabled": "Disable storage (false)",
+  "admin.models.form.storeOptionDefault":
+    "Use the provider default behaviour (null)",
   "admin.models.errors.missingModelId": "Enter the model identifier.",
   "admin.models.errors.missingProvider": "Select a provider for this model.",
   "admin.models.errors.providersLoadFailed":

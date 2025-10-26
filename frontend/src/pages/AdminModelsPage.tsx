@@ -86,6 +86,8 @@ const buildProviderOptions = (settings: AppSettings): ProviderOption[] => {
   );
 };
 
+type StoreOption = "disabled" | "default";
+
 type ModelFormState = {
   name: string;
   display_name: string;
@@ -95,6 +97,7 @@ type ModelFormState = {
   supports_reasoning_summary: boolean;
   provider_id: string;
   provider_slug: string;
+  store_option: StoreOption;
 };
 
 const buildDefaultFormState = (
@@ -108,6 +111,7 @@ const buildDefaultFormState = (
   supports_reasoning_summary: true,
   provider_id: "",
   provider_slug: "",
+  store_option: "disabled",
   ...overrides,
 });
 
@@ -121,6 +125,7 @@ const buildFormFromModel = (model: AvailableModel): ModelFormState =>
     supports_reasoning_summary: model.supports_reasoning_summary,
     provider_id: model.provider_id ?? "",
     provider_slug: model.provider_slug ?? "",
+    store_option: model.store === false ? "disabled" : "default",
   });
 
 export const AdminModelsPage = () => {
@@ -295,6 +300,7 @@ export const AdminModelsPage = () => {
 
     const trimmedDisplayName = form.display_name.trim();
     const trimmedDescription = form.description.trim();
+    const storeValue = form.store_option === "disabled" ? false : null;
 
     if (editingModelId !== null) {
       const payload: AvailableModelUpdatePayload = {
@@ -306,6 +312,7 @@ export const AdminModelsPage = () => {
         supports_reasoning_summary: form.supports_reasoning_summary,
         provider_id: providerId,
         provider_slug: normalizedProviderSlug,
+        store: storeValue,
       };
 
       try {
@@ -349,6 +356,7 @@ export const AdminModelsPage = () => {
       supports_reasoning_summary: form.supports_reasoning_summary,
       provider_id: providerId,
       provider_slug: normalizedProviderSlug,
+      store: storeValue,
     };
 
     try {
@@ -385,6 +393,7 @@ export const AdminModelsPage = () => {
     resetForm({
       provider_id: form.provider_id,
       provider_slug: form.provider_slug,
+      store_option: form.store_option,
     });
     setError(null);
     setSuccess(null);
@@ -498,6 +507,31 @@ export const AdminModelsPage = () => {
               </label>
               <p className="admin-form__hint">
                 {t("admin.models.form.providerSelectHint")}
+              </p>
+              <label className="label" htmlFor="model-store-option">
+                {t("admin.models.form.storeLabel")}
+                <select
+                  id="model-store-option"
+                  className="input"
+                  value={form.store_option}
+                  onChange={(event) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      store_option: event.target.value as StoreOption,
+                    }))
+                  }
+                  disabled={isLoading || isLoadingProviders}
+                >
+                  <option value="disabled">
+                    {t("admin.models.form.storeOptionDisabled")}
+                  </option>
+                  <option value="default">
+                    {t("admin.models.form.storeOptionDefault")}
+                  </option>
+                </select>
+              </label>
+              <p className="admin-form__hint">
+                {t("admin.models.form.storeHint")}
               </p>
               <label className="label">
                 Description (optionnel)

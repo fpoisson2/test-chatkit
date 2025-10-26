@@ -179,6 +179,14 @@ def _run_ad_hoc_migrations() -> None:
                         "supports_reasoning_summary BOOLEAN NOT NULL DEFAULT TRUE"
                     )
                 )
+            if "store" not in available_models_columns:
+                logger.info(
+                    "Migration du schéma available_models : ajout de la colonne "
+                    "store"
+                )
+                connection.execute(
+                    text("ALTER TABLE available_models ADD COLUMN store BOOLEAN")
+                )
 
         if "voice_settings" not in table_names:
             logger.info("Création de la table voice_settings manquante")
