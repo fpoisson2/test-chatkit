@@ -101,6 +101,7 @@ from ..image_utils import (
     save_agent_image_file,
 )
 from ..models import WorkflowDefinition, WorkflowStep, WorkflowTransition
+from ..token_sanitizer import sanitize_model_like
 from ..vector_store.ingestion import (
     evaluate_state_expression,
     ingest_document,
@@ -1926,6 +1927,22 @@ async def run_workflow(
             )
 
         provider_binding = agent_provider_bindings.get(current_slug)
+
+        if provider_binding is not None:
+            slug = (provider_binding.provider_slug or "").lower()
+            if slug == "groq":
+                try:
+                    agent.model_settings = sanitize_model_like(
+                        agent.model_settings, allow_reasoning_summary=False
+                    )
+                except Exception:
+                    logger.debug(
+                        (
+                            "Impossible de nettoyer reasoning.summary pour le "
+                            "fournisseur groq"
+                        ),
+                        exc_info=True,
+                    )
 
         result = Runner.run_streamed(
             agent,
