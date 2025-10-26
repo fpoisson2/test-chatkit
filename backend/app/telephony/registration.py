@@ -41,6 +41,7 @@ import urllib.parse
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from typing import Any
+from urllib.request import parse_http_list, parse_keqv_list
 
 if not hasattr(asyncio, "coroutine"):  # pragma: no cover - compatibility shim
     asyncio.coroutine = types.coroutine  # type: ignore[attr-defined]
@@ -57,6 +58,50 @@ except Exception as exc:  # pragma: no cover - exercised when dependency missing
     _AIOSIP_IMPORT_ERROR = exc
 else:
     _AIOSIP_IMPORT_ERROR = None
+    from aiosip.auth import Auth as _AioSipAuth
+    from aiosip.auth import md5digest as _aiosip_md5digest
+
+    _ORIGINAL_FROM_AUTHENTICATE_HEADER = _AioSipAuth.from_authenticate_header.__func__
+
+    def _patched_from_authenticate_header(
+        cls,
+        authenticate: str,
+        method: str,
+        uri: str,
+        username: str,
+        password: str,
+    ):
+        """Parse ``WWW-Authenticate`` directives more permissively."""
+
+        if authenticate.startswith("Digest"):
+            params_section = authenticate[7:].strip()
+            try:
+                parsed_params = parse_keqv_list(parse_http_list(params_section))
+            except Exception:  # pragma: no cover - defensive fallback
+                LOGGER.debug(
+                    "Falling back to default digest parser for header %s",
+                    authenticate,
+                    exc_info=True,
+                )
+            else:
+                auth = cls()
+                auth.method = "Digest"
+                for key, value in parsed_params.items():
+                    auth[key] = value
+                auth["username"] = username
+                auth["uri"] = uri
+                ha1 = _aiosip_md5digest(username, auth["realm"], password)
+                ha2 = _aiosip_md5digest(method, uri)
+                auth["response"] = _aiosip_md5digest(ha1, auth["nonce"], ha2)
+                return auth
+
+        return _ORIGINAL_FROM_AUTHENTICATE_HEADER(
+            cls, authenticate, method, uri, username, password
+        )
+
+    _AioSipAuth.from_authenticate_header = classmethod(
+        _patched_from_authenticate_header
+    )
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
