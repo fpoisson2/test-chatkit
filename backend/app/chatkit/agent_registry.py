@@ -16,6 +16,7 @@ from agents.models.openai_provider import OpenAIProvider
 from agents.tool import ComputerTool
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field, create_model
+from sqlalchemy import select
 
 from ..admin_settings import (
     ResolvedModelProviderCredentials,
@@ -37,6 +38,7 @@ from ..config import (
 )
 from ..database import SessionLocal
 from ..model_providers._shared import normalize_api_base
+from ..models import AvailableModel
 from ..token_sanitizer import sanitize_model_like
 from ..tool_factory import (
     build_computer_use_tool,
@@ -903,6 +905,7 @@ AGENT_RESPONSE_FORMATS: weakref.WeakKeyDictionary[Agent, dict[str, Any]] = (
 
 def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
     response_format = kwargs.pop("_response_format_override", None)
+    provider_binding = kwargs.pop("_provider_binding", None)
     agent = Agent(**kwargs)
     if response_format is not None:
         try:
@@ -926,7 +929,47 @@ def _instantiate_agent(kwargs: dict[str, Any]) -> Agent:
                 "Impossible de mémoriser le response_format pour l'agent %s",
                 getattr(agent, "name", "<inconnu>"),
             )
+    if provider_binding is not None:
+        try:
+            agent._chatkit_provider_binding = provider_binding
+        except Exception:
+            logger.debug(
+                "Impossible d'attacher provider_binding à l'agent %s",
+                getattr(agent, "name", "<inconnu>"),
+            )
     return agent
+
+
+def _resolve_agent_provider_binding_for_model(
+    model_name: str | None,
+) -> AgentProviderBinding | None:
+    if not isinstance(model_name, str):
+        return None
+    normalized = model_name.strip()
+    if not normalized:
+        return None
+    try:
+        session = SessionLocal()
+        try:
+            available_model = session.scalar(
+                select(AvailableModel).where(AvailableModel.name == normalized)
+            )
+        finally:
+            session.close()
+    except Exception as exc:  # pragma: no cover - récupération best effort
+        logger.debug(
+            "Impossible de récupérer le modèle %s pour le fournisseur",
+            normalized,
+            exc_info=exc,
+        )
+        return None
+
+    if available_model is None:
+        return None
+
+    return get_agent_provider_binding(
+        available_model.provider_id, available_model.provider_slug
+    )
 
 
 def _build_thread_title_agent() -> Agent:
@@ -938,12 +981,15 @@ def _build_thread_title_agent() -> Agent:
         model = resolve_thread_title_model()
     except Exception:  # pragma: no cover - configuration best effort
         model = DEFAULT_THREAD_TITLE_MODEL
+    provider_binding = _resolve_agent_provider_binding_for_model(model)
     base_kwargs: dict[str, Any] = {
         "name": "TitreFil",
         "model": model or DEFAULT_THREAD_TITLE_MODEL,
         "instructions": instructions,
         "model_settings": _model_settings(store=True),
     }
+    if provider_binding is not None:
+        base_kwargs["_provider_binding"] = provider_binding
     return _instantiate_agent(_build_agent_kwargs(base_kwargs, None))
 
 
@@ -974,6 +1020,7 @@ __all__ = [
     "_build_agent_kwargs",
     "_build_custom_agent",
     "_build_thread_title_agent",
+    "_resolve_agent_provider_binding_for_model",
     "_coerce_agent_tools",
     "_create_response_format_from_pydantic",
     "_instantiate_agent",
