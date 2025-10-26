@@ -514,6 +514,16 @@ class SIPRegistrationManager:
                     )
                 except OSError as exc:
                     bind_error = exc
+                    fallback_config = self._fallback_bind_host(config, exc)
+                    if fallback_config is not None:
+                        config = fallback_config
+                        local_host = config.bind_host or config.contact_host
+                        local_addr = (local_host, config.contact_port)
+                        dialog_kwargs = self._dialog_transport_kwargs(
+                            config.transport
+                        )
+                        continue
+
                     fallback_config = self._fallback_contact_port(config, exc)
                     if fallback_config is None:
                         break
@@ -528,7 +538,7 @@ class SIPRegistrationManager:
                 assert bind_error is not None
                 raise ValueError(
                     "Impossible d'ouvrir une socket SIP locale sur "
-                    f"{config.contact_host}:{config.contact_port} : {bind_error}. "
+                    f"{local_host}:{config.contact_port} : {bind_error}. "
                     "Vérifiez que l'hôte de contact correspond à une interface "
                     "réseau locale et que le port n'est pas déjà utilisé."
                 ) from bind_error
@@ -870,6 +880,39 @@ class SIPRegistrationManager:
             candidate_port,
         )
         updated = replace(config, contact_port=candidate_port)
+        self._config = updated
+        return updated
+
+    def _fallback_bind_host(
+        self, config: SIPRegistrationConfig, exc: OSError
+    ) -> SIPRegistrationConfig | None:
+        """Handle binding errors when the configured host is unavailable."""
+
+        if exc.errno not in {errno.EADDRNOTAVAIL, errno.EINVAL}:
+            return None
+
+        current_host = config.bind_host or config.contact_host
+        if not current_host:
+            return None
+
+        if current_host in {"0.0.0.0", "::"}:
+            return None
+
+        try:
+            parsed_host = ipaddress.ip_address(current_host)
+        except ValueError:
+            fallback_host = "0.0.0.0"
+        else:
+            fallback_host = "::" if parsed_host.version == 6 else "0.0.0.0"
+
+        LOGGER.warning(
+            "Impossible d'utiliser l'hôte SIP %s pour l'écoute locale, "
+            "tentative avec %s.",
+            current_host,
+            fallback_host,
+        )
+
+        updated = replace(config, bind_host=fallback_host)
         self._config = updated
         return updated
 

@@ -830,7 +830,9 @@ def test_register_once_reports_bind_error(monkeypatch: pytest.MonkeyPatch) -> No
 
         fake_app = SimpleNamespace(
             start_dialog=AsyncMock(
-                side_effect=OSError(99, "Cannot assign requested address")
+                side_effect=OSError(
+                    errno.EADDRNOTAVAIL, "Cannot assign requested address"
+                )
             )
         )
         fake_application = MagicMock(return_value=fake_app)
@@ -854,7 +856,53 @@ def test_register_once_reports_bind_error(monkeypatch: pytest.MonkeyPatch) -> No
 
     message = str(excinfo.value)
     assert "Impossible d'ouvrir une socket SIP locale" in message
-    assert "montreal5.voip.ms:5060" in message
+    assert "0.0.0.0:5060" in message
+
+
+def test_register_once_retries_with_available_bind_host(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(loop=loop)
+
+        dialog = SimpleNamespace(register=AsyncMock(return_value=None))
+        start_dialog = AsyncMock(
+            side_effect=[
+                OSError(errno.EADDRNOTAVAIL, "Cannot assign requested address"),
+                dialog,
+            ]
+        )
+        fake_app = SimpleNamespace(start_dialog=start_dialog)
+        fake_application = MagicMock(return_value=fake_app)
+        monkeypatch.setattr(
+            "backend.app.telephony.registration.aiosip",
+            SimpleNamespace(Application=fake_application),
+        )
+
+        config = SIPRegistrationConfig(
+            uri="sip:alice@example.com",
+            username="alice",
+            password="secret",
+            contact_host="192.168.1.116",
+            contact_port=5060,
+        )
+        manager._config = config
+
+        caplog.set_level(logging.WARNING)
+        loop.run_until_complete(manager._register_once(config))
+    finally:
+        loop.close()
+
+    assert start_dialog.await_count == 2
+    first_call = start_dialog.await_args_list[0]
+    second_call = start_dialog.await_args_list[1]
+    assert first_call.kwargs["local_addr"] == ("192.168.1.116", 5060)
+    assert second_call.kwargs["local_addr"] == ("0.0.0.0", 5060)
+    assert manager._dialog is dialog
+    assert manager._config.bind_host == "0.0.0.0"
+    assert manager._active_config.bind_host == "0.0.0.0"
+    assert "tentative avec" in caplog.text
 
 
 def test_register_once_retries_with_available_port(
