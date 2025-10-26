@@ -105,6 +105,8 @@ def test_settings_default_sip_media_port() -> None:
     assert settings.sip_bind_host == config_module.DEFAULT_SIP_BIND_HOST
     assert settings.sip_bind_port == config_module.DEFAULT_SIP_BIND_PORT
     assert settings.sip_media_port == config_module.DEFAULT_SIP_MEDIA_PORT
+    assert settings.sip_trunk_uri is None
+    assert settings.sip_registrar is None
     assert settings.sip_contact_host is None
     assert settings.sip_contact_port is None
     assert settings.sip_contact_transport is None
@@ -143,6 +145,36 @@ def test_settings_custom_sip_contact_endpoint() -> None:
     assert settings.sip_contact_host == "198.51.100.10"
     assert settings.sip_contact_port == 5070
     assert settings.sip_contact_transport == "UDP"
+
+
+def test_settings_sip_transport_alias() -> None:
+    env = _base_env()
+    env.update(
+        {
+            "OPENAI_API_KEY": "sk-test",
+            "SIP_TRANSPORT": "udp",
+        }
+    )
+
+    settings = Settings.from_env(env)
+
+    assert settings.sip_contact_transport == "udp"
+
+
+def test_settings_sip_registrar_builds_trunk_uri() -> None:
+    env = _base_env()
+    env.update(
+        {
+            "OPENAI_API_KEY": "sk-test",
+            "SIP_USERNAME": "102",
+            "SIP_REGISTRAR": "192.168.1.155",  # sans schéma
+        }
+    )
+
+    settings = Settings.from_env(env)
+
+    assert settings.sip_trunk_uri == "sip:102@192.168.1.155"
+    assert settings.sip_registrar == "192.168.1.155"
 
 
 def test_set_runtime_settings_overrides_applies_custom_provider() -> None:
