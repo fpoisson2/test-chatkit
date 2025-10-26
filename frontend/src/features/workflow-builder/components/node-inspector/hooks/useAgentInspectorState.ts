@@ -522,6 +522,7 @@ export const useAgentInspectorState = ({
         name: matchedModel.name,
         providerId: matchedModel.provider_id ?? null,
         providerSlug: matchedModel.provider_slug ?? null,
+        store: matchedModel.store ?? null,
       })
     : "";
   const supportsReasoning = matchedModel?.supports_reasoning ?? isReasoningModel(agentModel);

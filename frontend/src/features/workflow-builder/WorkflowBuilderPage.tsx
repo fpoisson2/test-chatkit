@@ -2685,7 +2685,12 @@ const WorkflowBuilderPage = () => {
   const handleAgentModelChange = useCallback(
     (
       nodeId: string,
-      selection: { model: string; providerId?: string | null; providerSlug?: string | null },
+      selection: {
+        model: string;
+        providerId?: string | null;
+        providerSlug?: string | null;
+        store?: boolean | null;
+      },
     ) => {
       updateNodeData(nodeId, (data) => {
         if (!isAgentKind(data.kind)) {
@@ -2693,6 +2698,11 @@ const WorkflowBuilderPage = () => {
         }
         let nextParameters = setAgentModel(data.parameters, selection.model);
         nextParameters = setAgentModelProvider(nextParameters, selection);
+        if (selection.store === false) {
+          nextParameters = setAgentStorePreference(nextParameters, false);
+        } else if (selection.store === null) {
+          nextParameters = setAgentStorePreference(nextParameters, null);
+        }
         if (!isReasoningModel(selection.model)) {
           nextParameters = setAgentReasoningEffort(nextParameters, "");
           nextParameters = setAgentReasoningSummary(nextParameters, "");

@@ -21,7 +21,12 @@ type VoiceAgentInspectorSectionProps = {
   parameters: FlowNode["data"]["parameters"];
   onAgentModelChange: (
     nodeId: string,
-    selection: { model: string; providerId?: string | null; providerSlug?: string | null },
+    selection: {
+      model: string;
+      providerId?: string | null;
+      providerSlug?: string | null;
+      store?: boolean | null;
+    },
   ) => void;
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onVoiceAgentVoiceChange: (nodeId: string, value: string) => void;
