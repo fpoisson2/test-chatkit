@@ -1031,6 +1031,9 @@ class SIPRegistrationManager:
         to_header = self._format_register_to_header(config.uri)
         if to_header:
             headers["To"] = to_header
+        via_header = self._format_register_via(config)
+        if via_header:
+            headers["Via"] = via_header
         return headers
 
     @staticmethod
@@ -1039,6 +1042,80 @@ class SIPRegistrationManager:
             return None
         candidate = value.strip()
         return candidate or None
+
+    @staticmethod
+    def _strip_port_from_contact_host(host: str) -> str:
+        """Return ``host`` without an embedded port declaration."""
+
+        candidate = host.strip()
+        if not candidate:
+            return ""
+
+        if candidate.startswith("["):
+            closing = candidate.find("]")
+            if closing > 0:
+                return candidate[1:closing]
+
+        # IPv6 literals contain multiple colons; keep them unchanged.
+        host_part = candidate
+        try:
+            ipaddress.ip_address(host_part)
+        except ValueError:
+            # ``ip_address`` rejects scoped IPv6 addresses (with ``%``).  Remove
+            # the scope identifier before retrying and re-attach it afterwards.
+            if "%" in host_part:
+                without_scope, _, scope_suffix = host_part.partition("%")
+                try:
+                    ipaddress.ip_address(without_scope)
+                except ValueError:
+                    host_part = candidate
+                else:
+                    if scope_suffix:
+                        return f"{without_scope}%{scope_suffix}"
+                    return without_scope
+            if ":" in host_part:
+                hostname, potential_port = host_part.rsplit(":", 1)
+                if hostname and potential_port.isdigit():
+                    return hostname
+            return candidate
+        else:
+            return host_part
+
+    @staticmethod
+    def _format_register_via(config: SIPRegistrationConfig) -> str | None:
+        host_value = SIPRegistrationManager._normalize_optional_string(
+            config.contact_host
+        )
+        port = config.contact_port
+        if not host_value or not isinstance(port, int) or port <= 0:
+            return None
+
+        stripped_host = SIPRegistrationManager._strip_port_from_contact_host(host_value)
+        if not stripped_host:
+            return None
+
+        host_for_ip_lookup = stripped_host.split("%", 1)[0]
+        try:
+            ip_obj = ipaddress.ip_address(host_for_ip_lookup)
+        except ValueError:
+            formatted_host = stripped_host
+        else:
+            if isinstance(ip_obj, ipaddress.IPv6Address):
+                if "%" in stripped_host:
+                    formatted_host = f"[{stripped_host}]"
+                else:
+                    formatted_host = f"[{host_for_ip_lookup}]"
+            else:
+                formatted_host = host_for_ip_lookup
+
+        transport = SIPRegistrationManager._normalize_transport(config.transport)
+        if not transport:
+            transport_token = "UDP"
+        else:
+            transport_token = transport.upper()
+
+        branch = f"z9hG4bK{secrets.token_hex(8)}"
+        return f"SIP/2.0/{transport_token} {formatted_host}:{port};branch={branch}"
 
     def _call_dialog_register(
         self,
