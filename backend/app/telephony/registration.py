@@ -432,7 +432,12 @@ class SIPRegistrationManager:
                 except Exception as exc:  # pragma: no cover - network failures
                     self._last_error = exc
                     LOGGER.exception("SIP registration attempt failed", exc_info=exc)
-                    await asyncio.sleep(backoff)
+                    try:
+                        await asyncio.wait_for(
+                            self._reload_event.wait(), timeout=backoff
+                        )
+                    except asyncio.TimeoutError:
+                        self._reload_event.set()
                     backoff = min(backoff * 2, self._max_retry_interval)
                     continue
 
@@ -488,15 +493,37 @@ class SIPRegistrationManager:
                 resolved_port,
             )
         remote_addr = (resolved_host, resolved_port)
-        local_host = config.bind_host or config.contact_host
-        local_addr = (local_host, config.contact_port)
-
         request_uri = self._registrar_request_uri(config.uri)
 
         if self._dialog is None:
             dialog_kwargs = self._dialog_transport_kwargs(config.transport)
             bind_error: BaseException | None = None
+            last_local_addr: tuple[str, int] | None = None
             while self._dialog is None:
+                local_host = config.bind_host or config.contact_host
+                if not local_host:
+                    bind_error = ValueError(
+                        "Impossible de déterminer l'hôte local pour le SIP "
+                        "REGISTER. Vérifiez la configuration du contact."
+                    )
+                    break
+
+                candidate_port = self._find_available_contact_port(local_host)
+                if candidate_port is None:
+                    bind_error = ValueError(
+                        "Impossible de déterminer un port SIP disponible sur "
+                        f"{local_host}. Vérifiez que l'hôte de contact est "
+                        "accessible depuis cette machine."
+                    )
+                    break
+
+                if candidate_port != config.contact_port:
+                    config = replace(config, contact_port=candidate_port)
+                    self._config = config
+
+                local_addr = (local_host, candidate_port)
+                last_local_addr = local_addr
+
                 try:
                     self._dialog = await self._app.start_dialog(
                         from_uri=config.uri,
@@ -509,21 +536,33 @@ class SIPRegistrationManager:
                     )
                 except OSError as exc:
                     bind_error = exc
-                    fallback_config = self._fallback_contact_port(config, exc)
-                    if fallback_config is None:
-                        break
-                    config = fallback_config
-                    local_host = config.bind_host or config.contact_host
-                    local_addr = (local_host, config.contact_port)
-                    dialog_kwargs = self._dialog_transport_kwargs(config.transport)
-                    continue
+                    fallback_config = self._fallback_bind_host(config, exc)
+                    if fallback_config is not None:
+                        config = fallback_config
+                        dialog_kwargs = self._dialog_transport_kwargs(
+                            config.transport
+                        )
+                        continue
+
+                    if exc.errno == errno.EADDRINUSE:
+                        LOGGER.warning(
+                            "Port SIP %s indisponible sur %s, nouvelle tentative "
+                            "avec un port éphémère.",
+                            candidate_port,
+                            local_host,
+                        )
+                        continue
                 break
 
             if self._dialog is None:
                 assert bind_error is not None
+                if last_local_addr is not None:
+                    local_host, local_port = last_local_addr
+                else:
+                    local_host, local_port = config.contact_host, config.contact_port
                 raise ValueError(
                     "Impossible d'ouvrir une socket SIP locale sur "
-                    f"{config.contact_host}:{config.contact_port} : {bind_error}. "
+                    f"{local_host}:{local_port} : {bind_error}. "
                     "Vérifiez que l'hôte de contact correspond à une interface "
                     "réseau locale et que le port n'est pas déjà utilisé."
                 ) from bind_error
@@ -840,31 +879,36 @@ class SIPRegistrationManager:
         # service runs behind NAT; listen on all interfaces instead.
         return "0.0.0.0"
 
-    def _fallback_contact_port(
+    def _fallback_bind_host(
         self, config: SIPRegistrationConfig, exc: OSError
     ) -> SIPRegistrationConfig | None:
-        """Handle contact port binding errors with an automatic fallback."""
+        """Handle binding errors when the configured host is unavailable."""
 
-        if exc.errno != errno.EADDRINUSE:
+        if exc.errno not in {errno.EADDRNOTAVAIL, errno.EINVAL}:
             return None
 
-        candidate_port = self._find_available_contact_port(config.contact_host)
-        if candidate_port is None:
-            LOGGER.warning(
-                "Port SIP %s indisponible sur %s et aucun port alternatif "
-                "n'a pu être détecté automatiquement.",
-                config.contact_port,
-                config.contact_host,
-            )
+        current_host = config.bind_host or config.contact_host
+        if not current_host:
             return None
+
+        if current_host in {"0.0.0.0", "::"}:
+            return None
+
+        try:
+            parsed_host = ipaddress.ip_address(current_host)
+        except ValueError:
+            fallback_host = "0.0.0.0"
+        else:
+            fallback_host = "::" if parsed_host.version == 6 else "0.0.0.0"
 
         LOGGER.warning(
-            "Port SIP %s indisponible sur %s, tentative avec le port %s.",
-            config.contact_port,
-            config.contact_host,
-            candidate_port,
+            "Impossible d'utiliser l'hôte SIP %s pour l'écoute locale, "
+            "tentative avec %s.",
+            current_host,
+            fallback_host,
         )
-        updated = replace(config, contact_port=candidate_port)
+
+        updated = replace(config, bind_host=fallback_host)
         self._config = updated
         return updated
 
