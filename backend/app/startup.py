@@ -6,7 +6,8 @@ import logging
 from typing import Any
 
 from fastapi import FastAPI
-from sqlalchemy import inspect, select, text
+from sqlalchemy import String, inspect, select, text
+from sqlalchemy.sql import bindparam
 
 from .admin_settings import (
     apply_runtime_model_overrides,
@@ -183,10 +184,13 @@ def _run_ad_hoc_migrations() -> None:
                         "VARCHAR(128)"
                     )
                 )
+                default_model_param = bindparam(
+                    "default_model", type_=String(128)
+                )
                 connection.execute(
                     text(
                         "UPDATE app_settings SET thread_title_model = :default_model"
-                    ),
+                    ).bindparams(default_model_param),
                     {"default_model": DEFAULT_THREAD_TITLE_MODEL},
                 )
                 dialect = connection.dialect.name
@@ -194,8 +198,8 @@ def _run_ad_hoc_migrations() -> None:
                     connection.execute(
                         text(
                             "ALTER TABLE app_settings ALTER COLUMN thread_title_model "
-                            "SET DEFAULT CAST(:default_model AS VARCHAR(128))"
-                        ),
+                            "SET DEFAULT :default_model"
+                        ).bindparams(default_model_param),
                         {"default_model": DEFAULT_THREAD_TITLE_MODEL},
                     )
                     connection.execute(
