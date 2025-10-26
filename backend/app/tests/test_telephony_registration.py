@@ -148,6 +148,78 @@ def test_apply_config_from_settings_uses_stored_contact_values(
     assert config.bind_host == "198.51.100.5"
 
 
+def test_apply_config_from_settings_autodetects_port_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    applied: list[SIPRegistrationConfig | None] = []
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(loop=loop)
+
+        def fake_apply_config(config: SIPRegistrationConfig | None) -> None:
+            applied.append(config)
+
+        monkeypatch.setattr(manager, "apply_config", fake_apply_config)
+        monkeypatch.setattr(
+            manager,
+            "_find_available_contact_port",
+            MagicMock(return_value=5074),
+        )
+
+        stored = AppSettings(thread_title_prompt="Prompt")
+        stored.sip_trunk_uri = "sip:alice@example.com"
+        stored.sip_trunk_username = "alice"
+        stored.sip_trunk_password = "secret"
+        stored.sip_contact_host = "198.51.100.5"
+        stored.sip_contact_port = 0
+
+        session = MagicMock()
+        loop.run_until_complete(manager.apply_config_from_settings(session, stored))
+    finally:
+        loop.close()
+
+    assert applied, "apply_config should be invoked"
+    config = applied[0]
+    assert isinstance(config, SIPRegistrationConfig)
+    assert config.contact_host == "198.51.100.5"
+    assert config.contact_port == 5074
+
+
+def test_apply_config_from_settings_disables_when_port_autodetect_fails(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    applied: list[SIPRegistrationConfig | None] = []
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(loop=loop)
+
+        def fake_apply_config(config: SIPRegistrationConfig | None) -> None:
+            applied.append(config)
+
+        monkeypatch.setattr(manager, "apply_config", fake_apply_config)
+        monkeypatch.setattr(
+            manager,
+            "_find_available_contact_port",
+            MagicMock(return_value=None),
+        )
+
+        stored = AppSettings(thread_title_prompt="Prompt")
+        stored.sip_trunk_uri = "sip:alice@example.com"
+        stored.sip_trunk_username = "alice"
+        stored.sip_trunk_password = "secret"
+        stored.sip_contact_host = "198.51.100.5"
+        stored.sip_contact_port = 0
+
+        session = MagicMock()
+        caplog.set_level(logging.WARNING)
+        loop.run_until_complete(manager.apply_config_from_settings(session, stored))
+    finally:
+        loop.close()
+
+    assert applied == [None]
+    assert "détection automatique du port SIP impossible" in caplog.text
+
+
 def test_apply_config_from_settings_respects_bind_host_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
