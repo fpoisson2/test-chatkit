@@ -40,7 +40,7 @@ import secrets
 import socket
 import types
 import urllib.parse
-from collections.abc import Awaitable, Callable, MutableMapping
+from collections.abc import Awaitable, Callable, Mapping, MutableMapping
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -134,12 +134,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import AppSettings
+from .invite_handler import send_sip_reply
 
 __all__ = ["SIPRegistrationConfig", "SIPRegistrationManager"]
 
 LOGGER = logging.getLogger(__name__)
 
 _DEFAULT_SIP_PORT = 5060
+
+_OPTIONS_ALLOW_HEADER = (
+    "INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH"
+)
 
 
 @dataclass(slots=True)
@@ -323,6 +328,8 @@ class SIPRegistrationManager:
         if router is None:
             return
 
+        self._configure_options_route(router)
+
         if self._invite_handler is None:
             if hasattr(router, "routes") and isinstance(router.routes, dict):
                 router.routes.pop("INVITE", None)
@@ -333,6 +340,45 @@ class SIPRegistrationManager:
             add_route("INVITE", self._invite_handler)
         elif hasattr(router, "routes") and isinstance(router.routes, dict):
             router.routes["INVITE"] = self._invite_handler
+
+    def _configure_options_route(self, router: Any) -> None:
+        add_route = getattr(router, "add_route", None)
+        handler = self._handle_incoming_options
+        if callable(add_route):
+            add_route("OPTIONS", handler)
+            return
+
+        routes = getattr(router, "routes", None)
+        if isinstance(routes, dict):
+            routes["OPTIONS"] = handler
+
+    async def _handle_incoming_options(self, dialog: Any, request: Any) -> None:
+        call_id: str | None = None
+        headers_obj = getattr(request, "headers", None)
+        if isinstance(headers_obj, Mapping):
+            call_id = (
+                headers_obj.get("Call-ID")
+                or headers_obj.get("call-id")
+                or headers_obj.get("Call-id")
+            )
+
+        contact_uri: str | None = None
+        config = self._active_config or self._config
+        if config is not None:
+            with contextlib.suppress(Exception):
+                contact_uri = config.contact_uri()
+
+        try:
+            await send_sip_reply(
+                dialog,
+                200,
+                reason="OK",
+                headers={"Allow": _OPTIONS_ALLOW_HEADER},
+                call_id=call_id,
+                contact_uri=contact_uri,
+            )
+        except Exception:  # pragma: no cover - network dependent
+            LOGGER.exception("Impossible de répondre à la requête SIP OPTIONS")
 
     async def start(self) -> None:
         """Start the background registration task if it is not already running."""

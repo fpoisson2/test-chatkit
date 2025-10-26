@@ -23,6 +23,7 @@ os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 from backend.app.models import AppSettings  # noqa: E402
 from backend.app.telephony.registration import (  # noqa: E402
     _DEFAULT_SIP_PORT,
+    _OPTIONS_ALLOW_HEADER,
     SIPRegistrationConfig,
     SIPRegistrationManager,
 )
@@ -480,11 +481,53 @@ def test_set_invite_handler_configures_router() -> None:
 
         manager.set_invite_handler(handler)
         assert dummy_app.router.routes["INVITE"] is handler
+        assert "OPTIONS" in dummy_app.router.routes
 
         manager.set_invite_handler(None)
         assert "INVITE" not in dummy_app.router.routes
+        assert "OPTIONS" in dummy_app.router.routes
     finally:
         loop.close()
+
+
+def test_options_handler_replies_with_success() -> None:
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(loop=loop)
+        manager._config = SIPRegistrationConfig(  # type: ignore[assignment]
+            uri="sip:alice@example.com",
+            username="alice",
+            password="secret",
+            contact_host="198.51.100.10",
+            contact_port=5070,
+        )
+        manager._active_config = manager._config  # type: ignore[assignment]
+
+        replies: list[tuple[int, dict[str, object]]] = []
+
+        class DummyDialog:
+            async def reply(  # type: ignore[no-untyped-def]
+                self, status_code: int, **kwargs: object
+            ) -> None:
+                replies.append((status_code, kwargs))
+
+        request = SimpleNamespace(headers={"Call-ID": "abc123"})
+
+        loop.run_until_complete(
+            manager._handle_incoming_options(DummyDialog(), request)  # type: ignore[arg-type]
+        )
+    finally:
+        loop.run_until_complete(asyncio.sleep(0))
+        loop.close()
+
+    assert replies, "A SIP reply should be sent"
+    status, params = replies[0]
+    assert status == 200
+    headers = params.get("headers")
+    assert isinstance(headers, dict)
+    assert headers.get("Allow") == _OPTIONS_ALLOW_HEADER
+    assert headers.get("Contact") == "<sip:alice@198.51.100.10:5070>"
+    assert params.get("reason") == "OK"
 
 
 def test_register_once_uses_resolved_registrar_ip(
