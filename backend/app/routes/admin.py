@@ -56,6 +56,8 @@ async def patch_app_settings(
     kwargs: dict[str, object] = {}
     if "thread_title_prompt" in payload.model_fields_set:
         kwargs["thread_title_prompt"] = payload.thread_title_prompt
+    if "thread_title_model" in payload.model_fields_set:
+        kwargs["thread_title_model"] = payload.thread_title_model
     if "sip_trunk_uri" in payload.model_fields_set:
         kwargs["sip_trunk_uri"] = payload.sip_trunk_uri
     if "sip_trunk_username" in payload.model_fields_set:

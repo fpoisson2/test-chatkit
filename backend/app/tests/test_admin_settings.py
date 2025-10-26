@@ -36,9 +36,10 @@ def session_factory(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture
-def default_prompt(monkeypatch: pytest.MonkeyPatch) -> str:
+def default_settings(monkeypatch: pytest.MonkeyPatch):
     defaults = types.SimpleNamespace(
         thread_title_prompt="Prompt par défaut",
+        thread_title_model="gpt-5-nano",
         model_provider="openai",
         model_api_base="https://api.openai.com",
         is_model_api_key_managed=False,
@@ -53,19 +54,21 @@ def default_prompt(monkeypatch: pytest.MonkeyPatch) -> str:
         ),
     )
     monkeypatch.setattr(admin_settings, "get_settings", lambda: defaults)
-    return defaults.thread_title_prompt
+    return defaults
 
 
 def test_resolve_thread_title_prompt_uses_default(
-    session_factory: sessionmaker[Session], default_prompt: str
+    session_factory: sessionmaker[Session], default_settings
 ) -> None:
     with session_factory() as session:
         prompt = admin_settings.resolve_thread_title_prompt(session=session)
-    assert prompt == default_prompt
+        model = admin_settings.resolve_thread_title_model(session=session)
+    assert prompt == default_settings.thread_title_prompt
+    assert model == default_settings.thread_title_model
 
 
 def test_update_admin_settings_creates_override(
-    session_factory: sessionmaker[Session], default_prompt: str
+    session_factory: sessionmaker[Session], default_settings
 ) -> None:
     with session_factory() as session:
         result = admin_settings.update_admin_settings(
@@ -79,11 +82,13 @@ def test_update_admin_settings_creates_override(
 
     with session_factory() as session:
         prompt = admin_settings.resolve_thread_title_prompt(session=session)
+        model = admin_settings.resolve_thread_title_model(session=session)
     assert prompt == "Nouveau prompt personnalisé"
+    assert model == default_settings.thread_title_model
 
 
 def test_update_admin_settings_reset_to_default(
-    session_factory: sessionmaker[Session], default_prompt: str
+    session_factory: sessionmaker[Session], default_settings
 ) -> None:
     with session_factory() as session:
         admin_settings.update_admin_settings(session, thread_title_prompt="Custom")
@@ -96,11 +101,34 @@ def test_update_admin_settings_reset_to_default(
         assert override is None
         prompt = admin_settings.resolve_thread_title_prompt(session=session)
 
-    assert prompt == default_prompt
+    assert prompt == default_settings.thread_title_prompt
+    model = admin_settings.resolve_thread_title_model()
+    assert model == default_settings.thread_title_model
+
+
+def test_update_admin_settings_updates_model(
+    session_factory: sessionmaker[Session], default_settings
+) -> None:
+    with session_factory() as session:
+        admin_settings.update_admin_settings(
+            session,
+            thread_title_model=" gpt-4o-mini ",
+        )
+
+    model = admin_settings.resolve_thread_title_model()
+    assert model == "gpt-4o-mini"
+
+    with session_factory() as session:
+        admin_settings.update_admin_settings(session, thread_title_model=None)
+
+    assert (
+        admin_settings.resolve_thread_title_model()
+        == default_settings.thread_title_model
+    )
 
 
 def test_serialize_admin_settings_marks_custom_value(
-    session_factory: sessionmaker[Session], default_prompt: str
+    session_factory: sessionmaker[Session], default_settings
 ) -> None:
     with session_factory() as session:
         result = admin_settings.update_admin_settings(
@@ -111,6 +139,9 @@ def test_serialize_admin_settings_marks_custom_value(
     payload = admin_settings.serialize_admin_settings(override)
     assert payload["thread_title_prompt"] == "Prompt ajusté"
     assert payload["is_custom_thread_title_prompt"] is True
+    assert payload["thread_title_model"] == default_settings.thread_title_model
+    assert payload["default_thread_title_model"] == default_settings.thread_title_model
+    assert payload["is_custom_thread_title_model"] is False
     assert payload["model_provider"] == "openai"
     assert payload["model_api_base"] == "https://api.openai.com"
     assert payload["is_model_provider_overridden"] is False
@@ -129,10 +160,18 @@ def test_serialize_admin_settings_marks_custom_value(
         admin_settings.update_admin_settings(session, thread_title_prompt="  ")
 
     payload = admin_settings.serialize_admin_settings(
-        None, default_prompt=default_prompt
+        None, default_prompt=default_settings.thread_title_prompt
     )
-    assert payload["thread_title_prompt"] == default_prompt
+    assert payload["thread_title_prompt"] == default_settings.thread_title_prompt
     assert payload["is_custom_thread_title_prompt"] is False
+    assert (
+        payload["thread_title_model"] == default_settings.thread_title_model
+    )
+    assert (
+        payload["default_thread_title_model"]
+        == default_settings.thread_title_model
+    )
+    assert payload["is_custom_thread_title_model"] is False
     assert payload["model_provider"] == "openai"
     assert payload["model_api_base"] == "https://api.openai.com"
     assert payload["is_model_provider_overridden"] is False

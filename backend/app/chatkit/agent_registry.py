@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field, create_model
 from ..admin_settings import (
     ResolvedModelProviderCredentials,
     resolve_model_provider_credentials,
+    resolve_thread_title_model,
     resolve_thread_title_prompt,
 )
 from ..chatkit_server.actions import (
@@ -28,7 +29,12 @@ from ..chatkit_server.actions import (
     _sanitize_widget_field_name,
     _StrictSchemaBase,
 )
-from ..config import DEFAULT_THREAD_TITLE_PROMPT, ModelProviderConfig, get_settings
+from ..config import (
+    DEFAULT_THREAD_TITLE_MODEL,
+    DEFAULT_THREAD_TITLE_PROMPT,
+    ModelProviderConfig,
+    get_settings,
+)
 from ..database import SessionLocal
 from ..model_providers._shared import normalize_api_base
 from ..token_sanitizer import sanitize_model_like
@@ -928,9 +934,13 @@ def _build_thread_title_agent() -> Agent:
         instructions = resolve_thread_title_prompt()
     except Exception:  # pragma: no cover - configuration best effort
         instructions = DEFAULT_THREAD_TITLE_PROMPT
+    try:
+        model = resolve_thread_title_model()
+    except Exception:  # pragma: no cover - configuration best effort
+        model = DEFAULT_THREAD_TITLE_MODEL
     base_kwargs: dict[str, Any] = {
         "name": "TitreFil",
-        "model": "gpt-5-nano",
+        "model": model or DEFAULT_THREAD_TITLE_MODEL,
         "instructions": instructions,
         "model_settings": _model_settings(store=True),
     }
