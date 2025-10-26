@@ -97,6 +97,17 @@ const fr: TranslationDictionary = {
   "admin.appSettings.threadTitle.status.default":
     "Le prompt par défaut est utilisé.",
   "admin.appSettings.threadTitle.defaultLabel": "Prompt par défaut",
+  "admin.appSettings.threadTitle.modelLabel":
+    "Modèle pour les titres de fils",
+  "admin.appSettings.threadTitle.modelPlaceholder":
+    "ex. gpt-4o-mini, gpt-4o-realtime-preview",
+  "admin.appSettings.threadTitle.modelHint":
+    "Indiquez l'identifiant du modèle utilisé pour générer les titres automatiques.",
+  "admin.appSettings.threadTitle.modelStatus.custom":
+    "Un modèle personnalisé est actuellement appliqué.",
+  "admin.appSettings.threadTitle.modelStatus.default":
+    "Le modèle par défaut est utilisé.",
+  "admin.appSettings.threadTitle.modelDefaultLabel": "Modèle par défaut",
   "admin.appSettings.model.cardTitle": "Fournisseur de modèles",
   "admin.appSettings.model.cardDescription":
     "Configurez le fournisseur utilisé pour exécuter les agents ChatKit.",
@@ -132,7 +143,8 @@ const fr: TranslationDictionary = {
   "admin.appSettings.model.apiKeyUnknownHint": "clé masquée",
   "admin.appSettings.model.apiKeyClearLabel": "Supprimer la clé enregistrée",
   "admin.appSettings.success.saved": "Paramètres enregistrés avec succès.",
-  "admin.appSettings.success.reset": "Le prompt par défaut est rétabli.",
+  "admin.appSettings.success.reset":
+    "Le prompt et le modèle par défaut sont rétablis.",
   "admin.appSettings.errors.loadFailed":
     "Impossible de charger les paramètres généraux.",
   "admin.appSettings.errors.saveFailed":
@@ -141,6 +153,8 @@ const fr: TranslationDictionary = {
     "Impossible de réinitialiser le prompt.",
   "admin.appSettings.errors.promptRequired":
     "Le prompt doit contenir au moins un caractère.",
+  "admin.appSettings.errors.threadTitleModelRequired":
+    "Indiquez le modèle à utiliser pour les titres automatiques.",
   "admin.appSettings.errors.invalidSipPort":
     "Le port SIP doit être un entier compris entre 1 et 65535.",
   "admin.appSettings.errors.invalidSipTransport":
@@ -157,8 +171,8 @@ const fr: TranslationDictionary = {
     "Sélectionnez un fournisseur par défaut.",
   "admin.appSettings.errors.invalidModelApiBase":
     "L'URL de base du fournisseur doit être valide et utiliser http ou https.",
-  "admin.appSettings.actions.save": "Enregistrer le prompt",
-  "admin.appSettings.actions.reset": "Revenir au prompt par défaut",
+  "admin.appSettings.actions.save": "Enregistrer les paramètres",
+  "admin.appSettings.actions.reset": "Revenir aux valeurs par défaut",
   "admin.appSettings.sipTrunk.cardTitle": "Trunk SIP",
   "admin.appSettings.sipTrunk.cardDescription":
     "Configurez l'accès SIP utilisé pour la téléphonie entrante.",
@@ -610,6 +624,16 @@ const en: TranslationDictionary = {
   "admin.appSettings.threadTitle.status.default":
     "The default prompt is in use.",
   "admin.appSettings.threadTitle.defaultLabel": "Default prompt",
+  "admin.appSettings.threadTitle.modelLabel": "Thread title model",
+  "admin.appSettings.threadTitle.modelPlaceholder":
+    "e.g. gpt-4o-mini, gpt-4o-realtime-preview",
+  "admin.appSettings.threadTitle.modelHint":
+    "Enter the model identifier used to generate automatic titles.",
+  "admin.appSettings.threadTitle.modelStatus.custom":
+    "A custom model is currently active.",
+  "admin.appSettings.threadTitle.modelStatus.default":
+    "The default model is in use.",
+  "admin.appSettings.threadTitle.modelDefaultLabel": "Default model",
   "admin.appSettings.model.cardTitle": "Model provider",
   "admin.appSettings.model.cardDescription":
     "Control the provider used to run ChatKit agents.",
@@ -644,12 +668,14 @@ const en: TranslationDictionary = {
   "admin.appSettings.model.apiKeyUnknownHint": "hidden value",
   "admin.appSettings.model.apiKeyClearLabel": "Remove the stored key",
   "admin.appSettings.success.saved": "Settings saved successfully.",
-  "admin.appSettings.success.reset": "Default prompt restored.",
+  "admin.appSettings.success.reset": "Default prompt and model restored.",
   "admin.appSettings.errors.loadFailed": "Unable to load general settings.",
   "admin.appSettings.errors.saveFailed": "Unable to save the custom prompt.",
   "admin.appSettings.errors.resetFailed": "Unable to reset the prompt.",
   "admin.appSettings.errors.promptRequired":
     "The prompt must contain at least one character.",
+  "admin.appSettings.errors.threadTitleModelRequired":
+    "Enter the model used for automatic titles.",
   "admin.appSettings.errors.invalidSipPort":
     "The SIP port must be an integer between 1 and 65535.",
   "admin.appSettings.errors.invalidSipTransport":
@@ -666,8 +692,8 @@ const en: TranslationDictionary = {
     "Select a default provider.",
   "admin.appSettings.errors.invalidModelApiBase":
     "The provider base URL must be valid and use http or https.",
-  "admin.appSettings.actions.save": "Save prompt",
-  "admin.appSettings.actions.reset": "Revert to default prompt",
+  "admin.appSettings.actions.save": "Save settings",
+  "admin.appSettings.actions.reset": "Revert to defaults",
   "admin.appSettings.sipTrunk.cardTitle": "SIP trunk",
   "admin.appSettings.sipTrunk.cardDescription":
     "Configure the SIP access used for inbound telephony.",

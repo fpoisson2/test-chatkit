@@ -208,6 +208,9 @@ export type AppSettings = {
   thread_title_prompt: string;
   default_thread_title_prompt: string;
   is_custom_thread_title_prompt: boolean;
+  thread_title_model: string;
+  default_thread_title_model: string;
+  is_custom_thread_title_model: boolean;
   model_provider: string;
   model_api_base: string;
   is_model_provider_overridden: boolean;
@@ -227,6 +230,7 @@ export type AppSettings = {
 
 export type AppSettingsUpdatePayload = {
   thread_title_prompt?: string | null;
+  thread_title_model?: string | null;
   model_provider?: string | null;
   model_api_base?: string | null;
   model_api_key?: string | null;
