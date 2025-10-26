@@ -1,39 +1,39 @@
 import copy
 
-import pytest
 from backend.app.token_sanitizer import sanitize_model_like, sanitize_value
 
 
-@pytest.mark.parametrize(
-    "payload,expected,removed",
-    [
-        (
-            {
-                "reasoning": {
-                    "effort": "medium",
-                    "verbosity": "verbose",
-                    "summary": "auto",
-                }
-            },
-            {
-                "reasoning": {"effort": "medium", "summary": "auto"},
-                "text": {"verbosity": "verbose"},
-            },
-            True,
-        ),
-        (
-            {"reasoning": {"effort": "medium", "summary": "auto"}},
-            {"reasoning": {"effort": "medium", "summary": "auto"}},
-            False,
-        ),
-    ],
-)
-def test_sanitize_value_removes_unsupported_reasoning(payload, expected, removed):
-    """Vérifie la suppression des champs de raisonnement non supportés."""
+def test_sanitize_value_preserves_reasoning_summary_by_default():
+    """La configuration reasoning.summary reste intacte si elle est supportée."""
 
-    sanitized, has_removed = sanitize_value(payload)
-    assert sanitized == expected
-    assert has_removed is removed
+    payload = {
+        "reasoning": {
+            "effort": "medium",
+            "verbosity": "verbose",
+            "summary": "auto",
+        }
+    }
+
+    sanitized, removed = sanitize_value(payload)
+
+    assert sanitized == {
+        "reasoning": {"effort": "medium", "summary": "auto"},
+        "text": {"verbosity": "verbose"},
+    }
+    assert removed is True
+
+
+def test_sanitize_value_removes_summary_when_disabled():
+    """Retire reasoning.summary lorsque le fournisseur ne le supporte pas."""
+
+    payload = {"reasoning": {"effort": "medium", "summary": "auto"}}
+
+    sanitized, removed = sanitize_value(
+        payload, allow_reasoning_summary=False
+    )
+
+    assert sanitized == {"reasoning": {"effort": "medium"}}
+    assert removed is True
 
 
 class _DummyModelSettings:
@@ -56,7 +56,7 @@ class _DummyModelSettings:
         return cls(**data)
 
 
-def test_sanitize_model_like_removes_reasoning_verbosity():
+def test_sanitize_model_like_moves_reasoning_verbosity():
     """Vérifie le nettoyage du champ reasoning.verbosity dans les modèles."""
 
     settings = _DummyModelSettings(
@@ -74,7 +74,7 @@ def test_sanitize_model_like_returns_original_when_unchanged():
     """Confirme qu'aucun objet n'est dupliqué lorsque rien n'est supprimé."""
 
     settings = _DummyModelSettings(
-        reasoning={"effort": "medium", "summary": "auto"},
+        reasoning={"effort": "medium"},
         other="value",
     )
 
@@ -120,3 +120,33 @@ def test_sanitize_value_ignores_non_string_reasoning_verbosity():
 
     assert sanitized == {}
     assert removed is True
+
+
+def test_sanitize_model_like_removes_summary_for_groq_settings():
+    """Supprime reasoning.summary lorsque la prise en charge est désactivée."""
+
+    from agents import ModelSettings
+
+    settings = ModelSettings(reasoning={"effort": "medium", "summary": "auto"})
+
+    sanitized = sanitize_model_like(
+        settings, allow_reasoning_summary=False
+    )
+
+    assert sanitized is not settings
+    reasoning = getattr(sanitized, "reasoning", None)
+    assert reasoning is not None
+    assert getattr(reasoning, "summary", None) is None
+
+
+def test_sanitize_model_like_keeps_summary_for_native_models():
+    """Ne touche pas reasoning.summary lorsqu'il est supporté."""
+
+    from agents import ModelSettings
+
+    settings = ModelSettings(reasoning={"summary": "auto"})
+
+    sanitized = sanitize_model_like(settings)
+
+    assert sanitized is not settings
+    assert getattr(sanitized.reasoning, "summary", None) == "auto"
