@@ -45,6 +45,9 @@ const baseSettings = {
   thread_title_prompt: "Prompt par défaut",
   default_thread_title_prompt: "Prompt par défaut",
   is_custom_thread_title_prompt: false,
+  thread_title_model: "gpt-4o-mini",
+  default_thread_title_model: "gpt-4o-mini",
+  is_custom_thread_title_model: false,
   model_provider: "litellm",
   model_api_base: "http://localhost:4000",
   is_model_provider_overridden: true,
@@ -76,6 +79,8 @@ describe("AdminAppSettingsPage", () => {
     getMock.mockResolvedValue({ ...baseSettings });
     updateMock.mockResolvedValue({
       ...baseSettings,
+      thread_title_model: "gpt-5o-mini",
+      is_custom_thread_title_model: true,
       model_provider: "gemini",
       model_api_base: "https://generativelanguage.googleapis.com",
       is_model_provider_overridden: true,
@@ -169,6 +174,12 @@ describe("AdminAppSettingsPage", () => {
     fireEvent.change(promptInput, { target: { value: "Nouveau prompt" } });
     expect(promptInput).toHaveValue("Nouveau prompt");
 
+    const modelInput = screen.getByLabelText(
+      "admin.appSettings.threadTitle.modelLabel",
+    );
+    await userEvent.clear(modelInput);
+    await userEvent.type(modelInput, "gpt-5o-mini");
+
     const submitButton = screen.getByRole("button", {
       name: "admin.appSettings.actions.save",
     });
@@ -177,6 +188,7 @@ describe("AdminAppSettingsPage", () => {
     await waitFor(() => {
       expect(updateMock).toHaveBeenCalledWith("test-token", {
         thread_title_prompt: "Nouveau prompt",
+        thread_title_model: "gpt-5o-mini",
         sip_trunk_uri: null,
         sip_trunk_username: null,
         sip_trunk_password: null,

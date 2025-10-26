@@ -29,6 +29,7 @@ export const AdminAppSettingsPage = () => {
   const { t } = useI18n();
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [prompt, setPrompt] = useState("");
+  const [threadTitleModel, setThreadTitleModel] = useState("");
   const [sipTrunkUri, setSipTrunkUri] = useState("");
   const [sipTrunkUsername, setSipTrunkUsername] = useState("");
   const [sipTrunkPassword, setSipTrunkPassword] = useState("");
@@ -42,6 +43,7 @@ export const AdminAppSettingsPage = () => {
   const [useCustomModelConfig, setUseCustomModelConfig] = useState(false);
   const [providerRows, setProviderRows] = useState<ProviderRowState[]>([]);
   const promptRef = useRef("");
+  const threadTitleModelRef = useRef("");
   const providerIdRef = useRef(0);
   const tRef = useRef(t);
   const logoutRef = useRef(logout);
@@ -115,6 +117,9 @@ export const AdminAppSettingsPage = () => {
     const promptValue = data.thread_title_prompt ?? "";
     setPrompt(promptValue);
     promptRef.current = promptValue;
+    const modelValue = data.thread_title_model ?? "";
+    setThreadTitleModel(modelValue);
+    threadTitleModelRef.current = modelValue;
     setSipTrunkUri(data.sip_trunk_uri ?? "");
     setSipTrunkUsername(data.sip_trunk_username ?? "");
     setSipTrunkPassword(data.sip_trunk_password ?? "");
@@ -220,6 +225,12 @@ export const AdminAppSettingsPage = () => {
       return;
     }
 
+    const normalizedModel = threadTitleModelRef.current.trim();
+    if (!normalizedModel) {
+      setError(t("admin.appSettings.errors.threadTitleModelRequired"));
+      return;
+    }
+
     setSaving(true);
     try {
       const normalizedHost = sipContactHost.trim();
@@ -247,6 +258,7 @@ export const AdminAppSettingsPage = () => {
 
       const payload: AppSettingsUpdatePayload = {
         thread_title_prompt: trimmed,
+        thread_title_model: normalizedModel,
         sip_trunk_uri: sipTrunkUri.trim() || null,
         sip_trunk_username: sipTrunkUsername.trim() || null,
         sip_trunk_password: sipTrunkPassword.trim() || null,
@@ -355,6 +367,7 @@ export const AdminAppSettingsPage = () => {
     try {
       const updated = await appSettingsApi.update(token, {
         thread_title_prompt: null,
+        thread_title_model: null,
       });
       applySettings(updated);
       setSuccess(t("admin.appSettings.success.reset"));
@@ -377,6 +390,8 @@ export const AdminAppSettingsPage = () => {
   const isBusy = isLoading || isSaving;
   const isCustomPrompt = settings?.is_custom_thread_title_prompt ?? false;
   const defaultPrompt = settings?.default_thread_title_prompt ?? "";
+  const isCustomModel = settings?.is_custom_thread_title_model ?? false;
+  const defaultModel = settings?.default_thread_title_model ?? "";
   const effectiveProvider = settings?.model_provider ?? "";
   const effectiveBase = settings?.model_api_base ?? "";
 
@@ -596,6 +611,39 @@ export const AdminAppSettingsPage = () => {
                 </p>
               )}
               <div className="admin-form__divider" aria-hidden="true" />
+              <label className="label" htmlFor="thread-title-model">
+                {t("admin.appSettings.threadTitle.modelLabel")}
+                <input
+                  id="thread-title-model"
+                  name="thread-title-model"
+                  className="input"
+                  type="text"
+                  value={threadTitleModel}
+                  onChange={(event) => {
+                    setThreadTitleModel(event.target.value);
+                    threadTitleModelRef.current = event.target.value;
+                  }}
+                  placeholder={t(
+                    "admin.appSettings.threadTitle.modelPlaceholder",
+                  )}
+                  disabled={isBusy}
+                />
+              </label>
+              <p className="admin-form__hint">
+                {t("admin.appSettings.threadTitle.modelHint")}
+              </p>
+              <p className="admin-form__hint">
+                {isCustomModel
+                  ? t("admin.appSettings.threadTitle.modelStatus.custom")
+                  : t("admin.appSettings.threadTitle.modelStatus.default")}
+              </p>
+              <div className="admin-form__default-block" aria-live="polite">
+                <strong>
+                  {t("admin.appSettings.threadTitle.modelDefaultLabel")}
+                </strong>
+                <pre>{defaultModel}</pre>
+              </div>
+              <div className="admin-form__divider" aria-hidden="true" />
               <label className="label" htmlFor="thread-title-prompt">
                 {t("admin.appSettings.threadTitle.fieldLabel")}
                 <textarea
@@ -736,7 +784,7 @@ export const AdminAppSettingsPage = () => {
                   type="button"
                   className="button button--ghost"
                   onClick={handleReset}
-                  disabled={isBusy || !isCustomPrompt}
+                  disabled={isBusy || (!isCustomPrompt && !isCustomModel)}
                 >
                   {t("admin.appSettings.actions.reset")}
                 </button>
