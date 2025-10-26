@@ -58,6 +58,50 @@ except Exception as exc:  # pragma: no cover - exercised when dependency missing
 else:
     _AIOSIP_IMPORT_ERROR = None
 
+    # ``aiosip`` 0.1.0 parses ``WWW-Authenticate`` challenge parameters by
+    # splitting on the literal string `", "`.  Some SIP servers (including the
+    # version of Asterisk used in our tests) omit the space after commas, which
+    # makes the upstream parser crash with ``ValueError``.  Monkey patch the
+    # classmethod to accept both formats until the library grows a proper fix.
+    from aiosip import auth as _aiosip_auth
+
+    def _robust_from_authenticate_header(
+        cls: type[_aiosip_auth.Auth],
+        authenticate: str,
+        method: str,
+        uri: str,
+        username: str,
+        password: str,
+    ) -> _aiosip_auth.Auth:
+        auth = cls()
+
+        if not authenticate.startswith("Digest"):
+            msg = "Authentication method not supported"
+            raise ValueError(msg)
+
+        auth.method = "Digest"
+        params = authenticate[7:]
+        for param in params.split(","):
+            key, sep, value = param.strip().partition("=")
+            if not sep:
+                continue
+            value = value.strip()
+            if value.startswith('"') and value.endswith('"'):
+                value = value[1:-1]
+            auth[key] = value
+
+        auth["username"] = username
+        auth["uri"] = uri
+
+        ha1 = _aiosip_auth.md5digest(username, auth["realm"], password)
+        ha2 = _aiosip_auth.md5digest(method, uri)
+        auth["response"] = _aiosip_auth.md5digest(ha1, auth["nonce"], ha2)
+        return auth
+
+    _aiosip_auth.Auth.from_authenticate_header = classmethod(  # type: ignore[assignment]
+        _robust_from_authenticate_header
+    )
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
