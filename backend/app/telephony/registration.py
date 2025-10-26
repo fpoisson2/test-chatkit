@@ -40,7 +40,7 @@ import secrets
 import socket
 import types
 import urllib.parse
-from collections.abc import Awaitable, Callable, Mapping, MutableMapping
+from collections.abc import Awaitable, Callable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -145,6 +145,63 @@ _DEFAULT_SIP_PORT = 5060
 _OPTIONS_ALLOW_HEADER = (
     "INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH"
 )
+
+
+def _format_endpoint(value: object) -> str:
+    """Return a printable representation of a socket endpoint."""
+
+    if isinstance(value, list | tuple):
+        seq: Sequence[object] = value
+        if len(seq) >= 2:
+            host = seq[0]
+            port = seq[1]
+            rest = ":".join(str(item) for item in seq[2:] if item not in (None, ""))
+            base = f"{host}:{port}"
+            if rest:
+                base = f"{base} ({rest})"
+            return base
+        return ":".join(str(item) for item in seq if item not in (None, ""))
+    return str(value)
+
+
+def _describe_transport(holder: object) -> str | None:
+    """Extract human-readable transport details from an ``aiosip`` object."""
+
+    if holder is None:
+        return None
+
+    transport = getattr(holder, "transport", None) or getattr(
+        holder, "_transport", None
+    )
+    if transport is None:
+        return None
+
+    get_extra_info = getattr(transport, "get_extra_info", None)
+    if not callable(get_extra_info):
+        return repr(transport)
+
+    description_parts: list[str] = []
+    with contextlib.suppress(Exception):
+        peer = get_extra_info("peername")
+        if peer:
+            description_parts.append(f"peer={_format_endpoint(peer)}")
+    with contextlib.suppress(Exception):
+        local = get_extra_info("sockname")
+        if local:
+            description_parts.append(f"local={_format_endpoint(local)}")
+
+    if description_parts:
+        return ", ".join(description_parts)
+    return repr(transport)
+
+
+def _get_header_value(headers: Mapping[str, object], name: str) -> object | None:
+    """Retrieve a header value using case-insensitive lookups."""
+
+    for candidate in (name, name.lower(), name.upper()):
+        if candidate in headers:
+            return headers[candidate]
+    return None
 
 
 @dataclass(slots=True)
@@ -385,6 +442,23 @@ class SIPRegistrationManager:
             with contextlib.suppress(Exception):
                 contact_uri = config.contact_uri()
 
+        request_headers = getattr(request, "headers", None)
+        via_header: object | None = None
+        if isinstance(request_headers, Mapping):
+            via_header = _get_header_value(request_headers, "Via")
+
+        request_transport = _describe_transport(request)
+        dialog_transport = _describe_transport(dialog)
+
+        if via_header or request_transport or dialog_transport:
+            LOGGER.info(
+                "OPTIONS reçu via=%s req=%s dialog=%s contact=%s",
+                via_header,
+                request_transport,
+                dialog_transport,
+                contact_uri,
+            )
+
         create_response = getattr(request, "create_response", None)
         reply_method = getattr(request, "reply", None)
         if callable(create_response) and callable(reply_method):
@@ -421,16 +495,19 @@ class SIPRegistrationManager:
                         "Impossible de répondre à la requête SIP OPTIONS"
                     )
                 else:
+                    LOGGER.info(
+                        "OPTIONS 200 via request.reply contact=%s via=%s req=%s",
+                        contact_uri,
+                        via_header,
+                        request_transport,
+                    )
                     return
 
         call_id: str | None = None
-        headers_obj = getattr(request, "headers", None)
-        if isinstance(headers_obj, Mapping):
-            call_id = (
-                headers_obj.get("Call-ID")
-                or headers_obj.get("call-id")
-                or headers_obj.get("Call-id")
-            )
+        if isinstance(request_headers, Mapping):
+            call_id_value = _get_header_value(request_headers, "Call-ID")
+            if isinstance(call_id_value, str):
+                call_id = call_id_value
 
         try:
             await send_sip_reply(
@@ -444,6 +521,13 @@ class SIPRegistrationManager:
             )
         except Exception:  # pragma: no cover - network dependent
             LOGGER.exception("Impossible de répondre à la requête SIP OPTIONS")
+        else:
+            LOGGER.info(
+                "OPTIONS 200 via send_sip_reply contact=%s via=%s dialog=%s",
+                contact_uri,
+                via_header,
+                dialog_transport,
+            )
 
     async def _handle_incoming_options_dispatcher(
         self, request: Any, message: Any
@@ -453,6 +537,27 @@ class SIPRegistrationManager:
         if config is not None:
             with contextlib.suppress(Exception):
                 contact_uri = config.contact_uri()
+
+        via_header: object | None = None
+        message_headers = getattr(message, "headers", None)
+        if isinstance(message_headers, Mapping):
+            via_header = _get_header_value(message_headers, "Via")
+        if via_header is None:
+            request_headers = getattr(request, "headers", None)
+            if isinstance(request_headers, Mapping):
+                via_header = _get_header_value(request_headers, "Via")
+
+        request_transport = _describe_transport(request)
+        message_transport = _describe_transport(message)
+
+        if via_header or request_transport or message_transport:
+            LOGGER.info(
+                "OPTIONS dispatcher via=%s req=%s msg=%s contact=%s",
+                via_header,
+                request_transport,
+                message_transport,
+                contact_uri,
+            )
 
         try:
             response = request.create_response(200, "OK")
@@ -482,6 +587,14 @@ class SIPRegistrationManager:
             await request.reply(response)
         except Exception:  # pragma: no cover - network dependent
             LOGGER.exception("Impossible de répondre à la requête SIP OPTIONS")
+        else:
+            LOGGER.info(
+                "OPTIONS 200 via dispatcher.reply contact=%s via=%s req=%s msg=%s",
+                contact_uri,
+                via_header,
+                request_transport,
+                message_transport,
+            )
 
     async def start(self) -> None:
         """Start the background registration task if it is not already running."""
