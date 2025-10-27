@@ -2194,64 +2194,64 @@ async def run_workflow(
             except Exception as exc:  # pragma: no cover
                 raise_step_error(step_key, title, exc)
 
-        last_response_id = getattr(result, "last_response_id", None)
-        if last_response_id is not None and (
-            model_capabilities is None
-            or model_capabilities.supports_previous_response_id
-        ):
-            agent_context.previous_response_id = last_response_id
-            thread_metadata = getattr(agent_context, "thread", None)
-            should_persist_thread = False
-            if thread_metadata is not None:
-                existing_metadata = getattr(thread_metadata, "metadata", None)
-                if isinstance(existing_metadata, Mapping):
-                    stored_response_id = existing_metadata.get("previous_response_id")
-                    if stored_response_id != last_response_id:
-                        existing_metadata["previous_response_id"] = last_response_id
-                        should_persist_thread = True
-                else:
-                    thread_metadata.metadata = {
-                        "previous_response_id": last_response_id
-                    }
-                    should_persist_thread = True
-
-            store = getattr(agent_context, "store", None)
-            request_context = getattr(agent_context, "request_context", None)
-            if (
-                should_persist_thread
-                and store is not None
-                and request_context is not None
-                and hasattr(store, "save_thread")
+            last_response_id = getattr(result, "last_response_id", None)
+            if last_response_id is not None and (
+                model_capabilities is None
+                or model_capabilities.supports_previous_response_id
             ):
-                try:
-                    await store.save_thread(  # type: ignore[arg-type]
-                        thread_metadata,
-                        context=request_context,
-                    )
-                except Exception as exc:  # pragma: no cover - persistance best effort
-                    logger.warning(
-                        "Impossible d'enregistrer previous_response_id pour le fil %s",
-                        getattr(thread_metadata, "id", "<inconnu>"),
-                        exc_info=exc,
-                    )
+                agent_context.previous_response_id = last_response_id
+                thread_metadata = getattr(agent_context, "thread", None)
+                should_persist_thread = False
+                if thread_metadata is not None:
+                    existing_metadata = getattr(thread_metadata, "metadata", None)
+                    if isinstance(existing_metadata, Mapping):
+                        stored_response_id = existing_metadata.get("previous_response_id")
+                        if stored_response_id != last_response_id:
+                            existing_metadata["previous_response_id"] = last_response_id
+                            should_persist_thread = True
+                    else:
+                        thread_metadata.metadata = {
+                            "previous_response_id": last_response_id
+                        }
+                        should_persist_thread = True
 
-        conversation_history.extend([item.to_input_item() for item in result.new_items])
-        if result.new_items:
-            try:
-                logger.debug(
-                    "Éléments ajoutés par l'agent %s : %s",
-                    agent_key,
-                    json.dumps(
-                        [item.to_input_item() for item in result.new_items],
-                        ensure_ascii=False,
-                        default=str,
-                    ),
-                )
-            except TypeError:
-                logger.debug(
-                    "Éléments ajoutés par l'agent %s non sérialisables en JSON",
-                    agent_key,
-                )
+                store = getattr(agent_context, "store", None)
+                request_context = getattr(agent_context, "request_context", None)
+                if (
+                    should_persist_thread
+                    and store is not None
+                    and request_context is not None
+                    and hasattr(store, "save_thread")
+                ):
+                    try:
+                        await store.save_thread(  # type: ignore[arg-type]
+                            thread_metadata,
+                            context=request_context,
+                        )
+                    except Exception as exc:  # pragma: no cover - persistance best effort
+                        logger.warning(
+                            "Impossible d'enregistrer previous_response_id pour le fil %s",
+                            getattr(thread_metadata, "id", "<inconnu>"),
+                            exc_info=exc,
+                        )
+
+            conversation_history.extend([item.to_input_item() for item in result.new_items])
+            if result.new_items:
+                try:
+                    logger.debug(
+                        "Éléments ajoutés par l'agent %s : %s",
+                        agent_key,
+                        json.dumps(
+                            [item.to_input_item() for item in result.new_items],
+                            ensure_ascii=False,
+                            default=str,
+                        ),
+                    )
+                except TypeError:
+                    logger.debug(
+                        "Éléments ajoutés par l'agent %s non sérialisables en JSON",
+                        agent_key,
+                    )
             logger.info(
                 "Fin de l'exécution de l'agent %s (étape=%s)",
                 metadata_for_images.get("agent_key")
