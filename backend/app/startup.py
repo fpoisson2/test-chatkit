@@ -21,7 +21,10 @@ from .admin_settings import (
 )
 from .chatkit import get_chatkit_server
 from .chatkit_realtime import create_realtime_voice_session
-from .chatkit_server.context import ChatKitRequestContext
+from .chatkit_server.context import (
+    ChatKitRequestContext,
+    _set_wait_state_metadata,
+)
 from .chatkit_sessions import SessionSecretParser
 from .config import DEFAULT_THREAD_TITLE_MODEL, settings_proxy
 from .database import (
@@ -472,6 +475,55 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             metadata["client_secret_expires_at"] = (
                 parsed_secret.expires_at_isoformat()
             )
+
+        # Créer un wait_state pour que le frontend puisse détecter la session vocale
+        if store is not None and thread_id:
+            try:
+                thread = await store.load_thread(thread_id, chatkit_context)
+
+                # Créer l'événement voice_session.created
+                voice_event = {
+                    "type": "voice_session.created",
+                    "step": {
+                        "slug": "sip-voice-session",
+                        "title": "Appel SIP"
+                    },
+                    "client_secret": client_secret,
+                    "session": {
+                        "model": voice_model,
+                        "voice": voice_name or "alloy",
+                        "instructions": instructions,
+                        "realtime": {
+                            "start_mode": "auto",
+                            "stop_mode": "manual",
+                            "tools": {}
+                        }
+                    },
+                    "tool_permissions": {}
+                }
+
+                # Créer le wait_state
+                wait_state = {
+                    "type": "voice",
+                    "voice_event": voice_event,
+                    "voice_event_consumed": False
+                }
+
+                # Mettre à jour le thread avec le wait_state
+                _set_wait_state_metadata(thread, wait_state)
+                await store.save_thread(thread, chatkit_context)
+
+                logger.info(
+                    "Wait state vocal créé pour le thread %s (Call-ID=%s)",
+                    thread_id,
+                    session.call_id,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "Erreur lors de la création du wait_state pour Call-ID=%s",
+                    session.call_id,
+                    exc_info=exc,
+                )
 
         hooks = VoiceBridgeHooks(
             close_dialog=lambda: _close_dialog(session),
