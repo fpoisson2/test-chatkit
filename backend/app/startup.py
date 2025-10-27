@@ -730,7 +730,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
 
         # Attacher les callbacks dialog AVANT d'envoyer le 200 OK
         # pour capturer l'ACK qui arrive juste après
-        await _attach_dialog_callbacks(dialog, sip_handler)
+        _attach_dialog_callbacks(dialog, sip_handler)
 
         # Maintenant envoyer le 200 OK
         try:
