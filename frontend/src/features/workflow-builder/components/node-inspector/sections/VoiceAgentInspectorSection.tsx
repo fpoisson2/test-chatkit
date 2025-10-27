@@ -1,13 +1,17 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
 import { useI18n } from "../../../../../i18n";
-import type { AvailableModel } from "../../../../../utils/backend";
+import {
+  testMcpToolConnection,
+  type AvailableModel,
+} from "../../../../../utils/backend";
 import type {
   FlowNode,
   VoiceAgentTool,
   VoiceAgentStartBehavior,
   VoiceAgentStopBehavior,
   WorkflowSummary,
+  McpSseToolConfig,
 } from "../../../types";
 import {
   VOICE_AGENT_START_BEHAVIOR_OPTIONS,
@@ -22,6 +26,7 @@ import { ToolSettingsPanel } from "./ToolSettingsPanel";
 type VoiceAgentInspectorSectionProps = {
   nodeId: string;
   parameters: FlowNode["data"]["parameters"];
+  token: string | null;
   onAgentModelChange: (
     nodeId: string,
     selection: {
@@ -54,11 +59,16 @@ type VoiceAgentInspectorSectionProps = {
   onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowToolToggle: (nodeId: string, slug: string, enabled: boolean) => void;
+  onAgentMcpSseConfigChange: (
+    nodeId: string,
+    config: McpSseToolConfig | null,
+  ) => void;
 };
 
 export const VoiceAgentInspectorSection = ({
   nodeId,
   parameters,
+  token,
   onAgentModelChange,
   onAgentProviderChange,
   onAgentMessageChange,
@@ -74,8 +84,13 @@ export const VoiceAgentInspectorSection = ({
   onAgentWidgetValidationToolChange,
   onAgentWorkflowValidationToolChange,
   onAgentWorkflowToolToggle,
+  onAgentMcpSseConfigChange,
 }: VoiceAgentInspectorSectionProps) => {
   const { t } = useI18n();
+  const handleTestMcpSseConnection = useCallback(
+    (config: McpSseToolConfig) => testMcpToolConnection(token ?? null, config),
+    [token],
+  );
   const {
     voiceModel,
     voiceProviderId,
@@ -282,6 +297,8 @@ export const VoiceAgentInspectorSection = ({
           onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
           onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
           onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
+          onAgentMcpSseConfigChange={onAgentMcpSseConfigChange}
+          onTestMcpSseConnection={handleTestMcpSseConnection}
         />
       </div>
     </>

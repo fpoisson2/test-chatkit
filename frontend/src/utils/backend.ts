@@ -1,4 +1,5 @@
 import type { WorkflowSummary } from "../types/workflows";
+import type { McpSseToolConfig } from "./workflows";
 
 const sanitizeBackendUrl = (value: string): string => value.trim();
 
@@ -166,6 +167,20 @@ export type CreateUserPayload = {
   is_admin: boolean;
 };
 
+export type McpTestConnectionPayload = {
+  type: "mcp";
+  transport: "http_sse";
+  url: string;
+  authorization?: string;
+};
+
+export type McpTestConnectionResponse = {
+  status: string;
+  detail?: string;
+  status_code?: number;
+  tool_names?: string[];
+};
+
 export type VoiceSettings = {
   instructions: string;
   model: string;
@@ -319,6 +334,29 @@ export const normalizeHostedWorkflowMetadata = (
     available: Boolean(entry.available),
     managed: Boolean(entry.managed),
   };
+};
+
+export const testMcpToolConnection = async (
+  token: string | null,
+  config: McpSseToolConfig,
+): Promise<McpTestConnectionResponse> => {
+  const payload: McpTestConnectionPayload = {
+    type: "mcp",
+    transport: "http_sse",
+    url: config.url,
+  };
+
+  if (config.authorization && config.authorization.trim()) {
+    payload.authorization = config.authorization.trim();
+  }
+
+  const response = await requestWithFallback("/api/tools/mcp/test-connection", {
+    method: "POST",
+    headers: withAuthHeaders(token),
+    body: JSON.stringify(payload),
+  });
+
+  return response.json();
 };
 
 let hostedWorkflowCache: HostedWorkflowMetadata[] | null | undefined;

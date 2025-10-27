@@ -77,6 +77,7 @@ import {
   setAgentWorkflowTools,
   setAgentWidgetValidationToolEnabled,
   setAgentWebSearchConfig,
+  setAgentMcpSseConfig,
   setVoiceAgentVoice,
   setVoiceAgentStartBehavior,
   setVoiceAgentStopBehavior,
@@ -121,6 +122,7 @@ import {
   getParallelSplitBranches,
   type WorkflowToolConfig,
   type StartTelephonyRealtimeOverrides,
+  type McpSseToolConfig,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
@@ -3365,6 +3367,24 @@ const WorkflowBuilderPage = () => {
           return data;
         }
         const nextParameters = setAgentComputerUseConfig(data.parameters, config);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleAgentMcpSseConfigChange = useCallback(
+    (nodeId: string, config: McpSseToolConfig | null) => {
+      updateNodeData(nodeId, (data) => {
+        if (!isAgentKind(data.kind) && data.kind !== "voice_agent") {
+          return data;
+        }
+        const nextParameters = setAgentMcpSseConfig(data.parameters, config);
         return {
           ...data,
           parameters: nextParameters,
@@ -7347,6 +7367,7 @@ const WorkflowBuilderPage = () => {
             onAgentFileSearchChange={handleAgentFileSearchChange}
             onAgentImageGenerationChange={handleAgentImageGenerationChange}
             onAgentComputerUseChange={handleAgentComputerUseChange}
+            onAgentMcpSseConfigChange={handleAgentMcpSseConfigChange}
             workflows={workflows}
             currentWorkflowId={selectedWorkflowId}
             onVoiceAgentVoiceChange={handleVoiceAgentVoiceChange}

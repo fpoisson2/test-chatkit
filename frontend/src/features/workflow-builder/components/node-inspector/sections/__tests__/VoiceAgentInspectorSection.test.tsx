@@ -37,6 +37,7 @@ const renderSection = (overrides: Partial<Parameters<typeof VoiceAgentInspectorS
   const defaultProps: Parameters<typeof VoiceAgentInspectorSection>[0] = {
     nodeId: "voice-1",
     parameters: {},
+    token: null,
     onAgentModelChange: vi.fn(),
     onAgentProviderChange: vi.fn(),
     onAgentMessageChange: vi.fn(),
@@ -52,6 +53,7 @@ const renderSection = (overrides: Partial<Parameters<typeof VoiceAgentInspectorS
     onAgentWidgetValidationToolChange: vi.fn(),
     onAgentWorkflowValidationToolChange: vi.fn(),
     onAgentWorkflowToolToggle: vi.fn(),
+    onAgentMcpSseConfigChange: vi.fn(),
     ...overrides,
   };
 

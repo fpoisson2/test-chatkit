@@ -118,5 +118,6 @@ export type {
   VoiceAgentStopBehavior,
   WorkflowToolConfig,
   ParallelBranch,
+  McpSseToolConfig,
 } from "../../utils/workflows";
 export type { WorkflowSummary, WorkflowVersionSummary } from "../../types/workflows";

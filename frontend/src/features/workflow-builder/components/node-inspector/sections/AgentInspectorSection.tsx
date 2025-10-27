@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
-import type {
-  AvailableModel,
-  VectorStoreSummary,
-  WidgetTemplateSummary,
+import {
+  testMcpToolConnection,
+  type AvailableModel,
+  type VectorStoreSummary,
+  type WidgetTemplateSummary,
 } from "../../../../../utils/backend";
 import { collectWidgetBindings } from "../../../../../utils/widgetPreview";
 import { useI18n } from "../../../../../i18n";
@@ -15,6 +16,7 @@ import type {
   ImageGenerationToolConfig,
   WebSearchConfig,
   WorkflowSummary,
+  McpSseToolConfig,
 } from "../../../types";
 import {
   DEFAULT_IMAGE_TOOL_CONFIG,
@@ -104,6 +106,10 @@ type AgentInspectorSectionProps = {
     nodeId: string,
     config: ComputerUseConfig | null,
   ) => void;
+  onAgentMcpSseConfigChange: (
+    nodeId: string,
+    config: McpSseToolConfig | null,
+  ) => void;
   onAgentWeatherToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
@@ -151,6 +157,7 @@ export const AgentInspectorSection = ({
   onAgentFileSearchChange,
   onAgentImageGenerationChange,
   onAgentComputerUseChange,
+  onAgentMcpSseConfigChange,
   onAgentWeatherToolChange,
   onAgentWidgetValidationToolChange,
   onAgentWorkflowValidationToolChange,
@@ -287,6 +294,10 @@ export const AgentInspectorSection = ({
   );
 
   const { t } = useI18n();
+  const handleTestMcpSseConnection = useCallback(
+    (config: McpSseToolConfig) => testMcpToolConnection(token ?? null, config),
+    [token],
+  );
   const storePreferenceLocked = matchedModel?.store === false;
   const resolvedStoreResponses = storePreferenceLocked ? false : storeResponses;
   const widgetSelectId = useId();
@@ -1305,6 +1316,8 @@ export const AgentInspectorSection = ({
           onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
           onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
           onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
+          onAgentMcpSseConfigChange={onAgentMcpSseConfigChange}
+          onTestMcpSseConnection={handleTestMcpSseConnection}
         />
       </div>
     </>

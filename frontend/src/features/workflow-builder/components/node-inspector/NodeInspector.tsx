@@ -49,6 +49,7 @@ import type {
   WidgetVariableAssignment,
   WorkflowSummary,
   ParallelBranch,
+  McpSseToolConfig,
 } from "../../types";
 import { labelForKind } from "../../utils";
 import { TrashIcon } from "./components/TrashIcon";
@@ -122,6 +123,7 @@ export type NodeInspectorProps = {
   onAgentFileSearchChange: (nodeId: string, config: FileSearchConfig | null) => void;
   onAgentImageGenerationChange: (nodeId: string, config: ImageGenerationToolConfig | null) => void;
   onAgentComputerUseChange: (nodeId: string, config: ComputerUseConfig | null) => void;
+  onAgentMcpSseConfigChange: (nodeId: string, config: McpSseToolConfig | null) => void;
   workflows: WorkflowSummary[];
   currentWorkflowId: number | null;
   onVoiceAgentVoiceChange: (nodeId: string, value: string) => void;
@@ -171,6 +173,7 @@ export type NodeInspectorProps = {
   onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowToolToggle: (nodeId: string, slug: string, enabled: boolean) => void;
+  onAgentMcpSseConfigChange: (nodeId: string, config: McpSseToolConfig | null) => void;
   vectorStores: VectorStoreSummary[];
   vectorStoresLoading: boolean;
   vectorStoresError: string | null;
@@ -224,6 +227,7 @@ const NodeInspector = ({
   onAgentFileSearchChange,
   onAgentImageGenerationChange,
   onAgentComputerUseChange,
+  onAgentMcpSseConfigChange,
   workflows,
   currentWorkflowId,
   onVoiceAgentVoiceChange,
@@ -534,6 +538,7 @@ const NodeInspector = ({
           onAgentFileSearchChange={onAgentFileSearchChange}
           onAgentImageGenerationChange={onAgentImageGenerationChange}
           onAgentComputerUseChange={onAgentComputerUseChange}
+          onAgentMcpSseConfigChange={onAgentMcpSseConfigChange}
           onAgentWeatherToolChange={onAgentWeatherToolChange}
           onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
           onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
@@ -545,6 +550,7 @@ const NodeInspector = ({
         <VoiceAgentInspectorSection
           nodeId={node.id}
           parameters={parameters}
+          token={token}
           onAgentModelChange={onAgentModelChange}
           onAgentProviderChange={onAgentProviderChange}
           onAgentMessageChange={onAgentMessageChange}
@@ -560,6 +566,7 @@ const NodeInspector = ({
           onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
           onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
           onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
+          onAgentMcpSseConfigChange={onAgentMcpSseConfigChange}
         />
       ) : null}
 
