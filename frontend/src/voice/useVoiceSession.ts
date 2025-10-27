@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RealtimeItem, RealtimeMessageItem } from "@openai/agents/realtime";
 
+import { useAuth } from "../auth";
 import { useRealtimeSession } from "./useRealtimeSession";
-import { useVoiceSecret } from "./useVoiceSecret";
-import type { VoiceSessionSecret } from "./useVoiceSecret";
 
 type VoiceSessionStatus = "idle" | "connecting" | "connected" | "error";
 
@@ -23,6 +21,7 @@ type VoiceSessionError = {
 
 type StartOptions = {
   preserveHistory?: boolean;
+  stream: MediaStream;
 };
 
 type StopOptions = {
@@ -47,16 +46,20 @@ const formatErrorMessage = (error: unknown): string => {
   }
 };
 
-const resolveApiKey = (clientSecret: VoiceSessionSecret["client_secret"]): string | null => {
-  if (typeof clientSecret === "string") {
-    return clientSecret;
-  }
-  if (clientSecret && typeof clientSecret === "object" && "value" in clientSecret) {
-    const { value } = clientSecret;
-    return typeof value === "string" ? value : null;
-  }
-  return null;
+type RealtimeContent = {
+  type: string;
+  text: string;
 };
+
+type RealtimeMessageItem = {
+  type: "message";
+  itemId: string;
+  role: "user" | "assistant";
+  status: string;
+  content: RealtimeContent[];
+};
+
+type RealtimeItem = RealtimeMessageItem | { type: string };
 
 const isMessageItem = (item: RealtimeItem): item is RealtimeMessageItem => item.type === "message";
 
@@ -155,7 +158,7 @@ export type UseVoiceSessionResult = {
 };
 
 export const useVoiceSession = (): UseVoiceSessionResult => {
-  const { fetchSecret } = useVoiceSecret();
+  const { token } = useAuth();
   const [status, setStatus] = useState<VoiceSessionStatus>("idle");
   const [isListening, setIsListening] = useState(false);
   const [transcripts, setTranscripts] = useState<VoiceTranscript[]>(() => parseStoredTranscripts());
@@ -163,7 +166,6 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
   const [webrtcError, setWebrtcError] = useState<string | null>(null);
 
   const suppressEmptyHistoryRef = useRef(false);
-  const startSessionRef = useRef<((options?: StartOptions) => Promise<void>) | null>(null);
 
   const addError = useCallback((message: string) => {
     setErrors((prev) => {
@@ -240,13 +242,6 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
     [addError],
   );
 
-  const handleRefreshDue = useCallback(() => {
-    const start = startSessionRef.current;
-    if (start) {
-      void start({ preserveHistory: true });
-    }
-  }, []);
-
   const { connect, disconnect } = useRealtimeSession({
     onHistoryUpdated: handleHistoryUpdated,
     onConnectionChange: handleConnectionChange,
@@ -254,7 +249,6 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
     onAgentEnd: handleAgentEnd,
     onTransportError: handleTransportError,
     onError: handleSessionError,
-    onRefreshDue: handleRefreshDue,
   });
 
   const stopSession = useCallback(
@@ -275,9 +269,17 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
   }, [stopSession]);
 
   const startSession = useCallback(
-    async ({ preserveHistory = false }: StartOptions = {}) => {
+    async ({ preserveHistory = false, stream }: StartOptions) => {
       if (status === "connecting") {
         return;
+      }
+
+      if (!token) {
+        const message = "Authentification requise pour démarrer la session vocale.";
+        addError(message);
+        setWebrtcError(message);
+        setStatus("error");
+        throw new Error(message);
       }
 
       suppressEmptyHistoryRef.current = preserveHistory;
@@ -292,16 +294,17 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       setStatus("connecting");
 
       try {
-        const secret = await fetchSecret();
-        const apiKey = resolveApiKey(secret.client_secret);
-        if (!apiKey) {
-          throw new Error("Secret temps réel invalide renvoyé par le serveur.");
-        }
-
-        await connect({ secret, apiKey });
+        await connect({ token, localStream: stream });
         setStatus("connected");
         setIsListening(true);
       } catch (error) {
+        stream.getTracks().forEach((track) => {
+          try {
+            track.stop();
+          } catch {
+            /* noop */
+          }
+        });
         disconnect();
         setIsListening(false);
         setStatus("error");
@@ -316,15 +319,11 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       resetTranscripts,
       disconnect,
       clearErrors,
-      fetchSecret,
       connect,
       addError,
+      token,
     ],
   );
-
-  useEffect(() => {
-    startSessionRef.current = startSession;
-  }, [startSession]);
 
   const value = useMemo<UseVoiceSessionResult>(
     () => ({

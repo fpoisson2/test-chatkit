@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { VoiceChat } from "../VoiceChat";
@@ -51,6 +51,30 @@ describe("VoiceChat", () => {
 
     expect(await screen.findByText("Permission microphone refusée.")).toBeInTheDocument();
     expect(startSessionMock).not.toHaveBeenCalled();
+  });
+
+  test("démarre la session voix lorsque le micro est autorisé", async () => {
+    const stopMock = vi.fn();
+    const stream = {
+      getTracks: () => [{ stop: stopMock }],
+    } as unknown as MediaStream;
+    const getUserMedia = vi.fn().mockResolvedValue(stream);
+    startSessionMock.mockResolvedValue(undefined);
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+
+    render(<VoiceChat />);
+
+    const startButton = screen.getByRole("button", { name: "Démarrer l'écoute" });
+    fireEvent.click(startButton);
+
+    await waitFor(() => {
+      expect(startSessionMock).toHaveBeenCalledTimes(1);
+    });
+    expect(startSessionMock).toHaveBeenCalledWith({ preserveHistory: false, stream });
   });
 });
 

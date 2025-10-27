@@ -41,9 +41,8 @@ export const VoiceChat = () => {
     setIsRequestingMic(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
       setMicroPermission("granted");
-      await startSession({ preserveHistory: false });
+      await startSession({ preserveHistory: false, stream });
     } catch (error) {
       if (error instanceof DOMException && (error.name === "NotAllowedError" || error.name === "SecurityError")) {
         setMicroPermission("denied");

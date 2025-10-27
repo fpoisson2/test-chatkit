@@ -1,253 +1,359 @@
 import { useCallback, useEffect, useRef } from "react";
-import { RealtimeAgent, RealtimeItem, RealtimeSession, TransportEvent, tool } from "@openai/agents/realtime";
 
-import type { VoiceSessionSecret } from "./useVoiceSecret";
+const DEFAULT_OFFER_ENDPOINT = "/api/chatkit/voice/webrtc/offer";
+const DEFAULT_TEARDOWN_ENDPOINT = "/api/chatkit/voice/webrtc/teardown";
 
-const SECRET_REFRESH_BUFFER_MS = 60_000;
-const SECRET_MIN_REFRESH_DELAY_MS = 10_000;
+export type RealtimeConnectionStatus =
+  | "connected"
+  | "connecting"
+  | "disconnected";
 
-type RealtimeConnectionStatus = "connected" | "connecting" | "disconnected";
-
-type RealtimeSessionHandlers = {
-  onHistoryUpdated?: (history: RealtimeItem[]) => void;
+export type RealtimeSessionHandlers = {
+  onHistoryUpdated?: (history: unknown[]) => void;
   onConnectionChange?: (status: RealtimeConnectionStatus) => void;
   onTransportError?: (error: unknown) => void;
   onAgentStart?: () => void;
   onAgentEnd?: () => void;
   onError?: (error: unknown) => void;
-  onRefreshDue?: () => void;
-  onEndSession?: () => void;
 };
 
-type ConnectOptions = {
-  secret: VoiceSessionSecret;
-  apiKey: string;
+export type ConnectOptions = {
+  token: string;
+  localStream: MediaStream;
+  offerEndpoint?: string;
+  teardownEndpoint?: string;
 };
 
-type UseRealtimeSessionResult = {
-  connect: (options: ConnectOptions) => Promise<void>;
-  disconnect: () => void;
+type GatewayTranscripts = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  status?: string;
+}[];
+
+type OfferResponse = {
+  session_id: string;
+  answer: RTCSessionDescriptionInit;
+  expires_at?: string | null;
 };
 
-const buildPromptUpdate = (secret: VoiceSessionSecret): Record<string, unknown> | null => {
-  const prompt: Record<string, unknown> = {};
-  const promptId = typeof secret.prompt_id === "string" ? secret.prompt_id.trim() : "";
-  if (promptId) {
-    prompt.id = promptId;
-  }
-  const promptVersion =
-    typeof secret.prompt_version === "string" ? secret.prompt_version.trim() : "";
-  if (promptVersion) {
-    prompt.version = promptVersion;
-  }
-  const variablesSource = secret.prompt_variables ?? {};
-  const variableEntries = Object.entries(variablesSource).filter(([key]) => key.trim().length > 0);
-  if (variableEntries.length > 0) {
-    const variables: Record<string, string> = {};
-    variableEntries.forEach(([key, value]) => {
-      const trimmedKey = key.trim();
-      if (!trimmedKey) {
-        return;
+type TeardownResponse = {
+  session_id: string;
+  transcripts?: GatewayTranscripts;
+  error?: string | null;
+};
+
+const waitForIceCompletion = (pc: RTCPeerConnection): Promise<void> =>
+  new Promise((resolve) => {
+    if (pc.iceGatheringState === "complete") {
+      resolve();
+      return;
+    }
+    const checkState = () => {
+      if (pc.iceGatheringState === "complete") {
+        pc.removeEventListener("icegatheringstatechange", checkState);
+        resolve();
       }
-      variables[trimmedKey] = value;
-    });
-    if (Object.keys(variables).length > 0) {
-      prompt.variables = variables;
-    }
-  }
-  if (Object.keys(prompt).length === 0) {
-    return null;
-  }
-  return { prompt };
+    };
+    pc.addEventListener("icegatheringstatechange", checkState);
+  });
+
+const convertTranscriptsToHistory = (transcripts: GatewayTranscripts) => {
+  return transcripts.map((entry) => ({
+    type: "message",
+    itemId: entry.id,
+    role: entry.role,
+    status: entry.status ?? "completed",
+    content: [
+      {
+        type: entry.role === "assistant" ? "output_text" : "input_text",
+        text: entry.text,
+      },
+    ],
+  }));
 };
 
-const applySessionUpdate = (session: RealtimeSession, update: Record<string, unknown>) => {
-  const candidate = session as unknown as {
-    sendSessionUpdate?: (payload: Record<string, unknown>) => void;
-    updateSession?: (payload: { session: Record<string, unknown> }) => void;
-    send?: (event: Record<string, unknown>) => void;
-  };
-
-  try {
-    if (typeof candidate.sendSessionUpdate === "function") {
-      candidate.sendSessionUpdate(update);
-      return;
-    }
-    if (typeof candidate.updateSession === "function") {
-      candidate.updateSession({ session: update });
-      return;
-    }
-    if (typeof candidate.send === "function") {
-      candidate.send({ type: "session.update", session: update });
-    }
-  } catch (error) {
-    if (import.meta.env.DEV) {
-      console.warn("Échec de l'application des paramètres Realtime", error);
-    }
-  }
-};
-
-const createRefreshDelay = (secret: VoiceSessionSecret): number | null => {
+const createRemoteAudioElement = () => {
   if (typeof window === "undefined") {
     return null;
   }
-  const expiresAt = secret.expires_at ?? null;
-  if (!expiresAt) {
-    return null;
-  }
-  const expiryDate = Date.parse(expiresAt);
-  if (Number.isNaN(expiryDate)) {
-    return null;
-  }
-  const delay = Math.max(
-    SECRET_MIN_REFRESH_DELAY_MS,
-    expiryDate - Date.now() - SECRET_REFRESH_BUFFER_MS,
-  );
-  if (!Number.isFinite(delay) || delay <= 0) {
-    return SECRET_MIN_REFRESH_DELAY_MS;
-  }
-  return delay;
+  const element = document.createElement("audio");
+  element.autoplay = true;
+  element.controls = false;
+  element.playsInline = true;
+  element.muted = false;
+  element.style.display = "none";
+  document.body.appendChild(element);
+  return element;
 };
+
+const destroyRemoteAudioElement = (element: HTMLAudioElement | null) => {
+  if (!element) {
+    return;
+  }
+  try {
+    element.pause();
+  } catch {
+    /* noop */
+  }
+  if (element.srcObject instanceof MediaStream) {
+    element.srcObject.getTracks().forEach((track) => {
+      try {
+        track.stop();
+      } catch {
+        /* noop */
+      }
+    });
+  }
+  element.srcObject = null;
+  if (element.parentNode) {
+    element.parentNode.removeChild(element);
+  }
+};
+
+const buildHeaders = (token: string) => ({
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${token}`,
+});
 
 export const useRealtimeSession = (
   handlers: RealtimeSessionHandlers,
-): UseRealtimeSessionResult => {
+) => {
   const handlersRef = useRef(handlers);
-  const sessionRef = useRef<RealtimeSession | null>(null);
-  const listenersRef = useRef<(() => void)[]>([]);
-  const refreshTimerRef = useRef<number | null>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const tokenRef = useRef<string | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const offerEndpointRef = useRef<string>(DEFAULT_OFFER_ENDPOINT);
+  const teardownEndpointRef = useRef<string>(DEFAULT_TEARDOWN_ENDPOINT);
+  const disconnectingRef = useRef(false);
 
   useEffect(() => {
     handlersRef.current = handlers;
   }, [handlers]);
 
-  const clearRefreshTimer = useCallback(() => {
-    if (typeof window === "undefined") {
-      refreshTimerRef.current = null;
+  const cleanupLocalStream = useCallback(() => {
+    const stream = localStreamRef.current;
+    if (!stream) {
       return;
     }
-    if (refreshTimerRef.current !== null) {
-      window.clearTimeout(refreshTimerRef.current);
-      refreshTimerRef.current = null;
+    stream.getTracks().forEach((track) => {
+      try {
+        track.stop();
+      } catch {
+        /* noop */
+      }
+    });
+    localStreamRef.current = null;
+  }, []);
+
+  const cleanupRemote = useCallback(() => {
+    destroyRemoteAudioElement(remoteAudioRef.current);
+    remoteAudioRef.current = null;
+    if (remoteStreamRef.current) {
+      remoteStreamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {
+          /* noop */
+        }
+      });
+      remoteStreamRef.current = null;
     }
   }, []);
 
-  const detachListeners = useCallback(() => {
-    listenersRef.current.forEach((unsubscribe) => {
-      try {
-        unsubscribe();
-      } catch {
-        // Ignorer les erreurs de désinscription pour ne pas bloquer le nettoyage.
-      }
-    });
-    listenersRef.current = [];
+  const notifyConnection = useCallback((status: RealtimeConnectionStatus) => {
+    handlersRef.current.onConnectionChange?.(status);
   }, []);
 
   const disconnect = useCallback(() => {
-    clearRefreshTimer();
-    detachListeners();
-    const currentSession = sessionRef.current;
-    if (currentSession) {
-      const candidate = currentSession as RealtimeSession & { disconnect?: () => void };
-      if (typeof candidate.disconnect === "function") {
-        try {
-          candidate.disconnect();
-        } catch {
-          candidate.close();
-        }
-      } else {
-        currentSession.close();
-      }
+    if (disconnectingRef.current) {
+      return;
     }
-    sessionRef.current = null;
-  }, [clearRefreshTimer, detachListeners]);
+    disconnectingRef.current = true;
+
+    void (async () => {
+      const pc = pcRef.current;
+      pcRef.current = null;
+      if (pc) {
+        try {
+          pc.ontrack = null;
+          pc.oniceconnectionstatechange = null;
+          pc.onconnectionstatechange = null;
+          await pc.close();
+        } catch {
+          /* noop */
+        }
+      }
+
+      const sessionId = sessionIdRef.current;
+      const token = tokenRef.current;
+      const teardownEndpoint = teardownEndpointRef.current;
+      sessionIdRef.current = null;
+
+      cleanupLocalStream();
+      cleanupRemote();
+      notifyConnection("disconnected");
+      handlersRef.current.onAgentEnd?.();
+
+      if (sessionId && token) {
+        try {
+          const response = await fetch(teardownEndpoint, {
+            method: "POST",
+            headers: buildHeaders(token),
+            body: JSON.stringify({ session_id: sessionId }),
+          });
+          if (response.ok) {
+            const payload = (await response.json()) as TeardownResponse;
+            const transcripts = Array.isArray(payload.transcripts)
+              ? payload.transcripts
+              : [];
+            if (transcripts.length > 0) {
+              handlersRef.current.onHistoryUpdated?.(
+                convertTranscriptsToHistory(transcripts),
+              );
+            }
+            if (payload.error) {
+              handlersRef.current.onError?.(payload.error);
+            }
+          } else {
+            handlersRef.current.onTransportError?.(
+              new Error(
+                `Échec de la fermeture de la session WebRTC (HTTP ${response.status}).`,
+              ),
+            );
+          }
+        } catch (error) {
+          handlersRef.current.onTransportError?.(error);
+        }
+      }
+
+      disconnectingRef.current = false;
+    })();
+  }, [cleanupLocalStream, cleanupRemote, notifyConnection]);
 
   useEffect(() => () => {
     disconnect();
   }, [disconnect]);
 
-  const scheduleRefresh = useCallback(
-    (secret: VoiceSessionSecret) => {
-      clearRefreshTimer();
-      const delay = createRefreshDelay(secret);
-      if (delay === null) {
-        return;
-      }
-      if (typeof window === "undefined") {
-        return;
-      }
-      refreshTimerRef.current = window.setTimeout(() => {
-        handlersRef.current.onRefreshDue?.();
-      }, delay);
-    },
-    [clearRefreshTimer],
-  );
-
-  const attachSessionListeners = useCallback(
-    (session: RealtimeSession) => {
-      const register = (event: string, handler: (...args: any[]) => void) => {
-        session.on(event as never, handler as never);
-        listenersRef.current.push(() => {
-          session.off(event as never, handler as never);
-        });
-      };
-
-      register("history_updated", (history: RealtimeItem[]) => {
-        handlersRef.current.onHistoryUpdated?.(history);
-      });
-
-      register("transport_event", (event: TransportEvent) => {
-        const type = (event as { type?: string }).type;
-        if (type === "connection_change") {
-          const statusValue = (event as { status?: RealtimeConnectionStatus }).status;
-          if (statusValue === "connected" || statusValue === "connecting" || statusValue === "disconnected") {
-            handlersRef.current.onConnectionChange?.(statusValue);
-          }
-        } else if (type === "error") {
-          handlersRef.current.onTransportError?.((event as { error?: unknown }).error);
-        }
-      });
-
-      register("agent_start", () => {
-        handlersRef.current.onAgentStart?.();
-      });
-
-      register("agent_end", () => {
-        handlersRef.current.onAgentEnd?.();
-      });
-
-      register("error", ({ error }: { error: unknown }) => {
-        handlersRef.current.onError?.(error);
-      });
-    },
-    [],
-  );
-
   const connect = useCallback(
-    async ({ secret, apiKey }: ConnectOptions) => {
+    async ({
+      token,
+      localStream,
+      offerEndpoint = DEFAULT_OFFER_ENDPOINT,
+      teardownEndpoint = DEFAULT_TEARDOWN_ENDPOINT,
+    }: ConnectOptions) => {
       disconnect();
 
-      const agent = new RealtimeAgent({
-        name: "Assistant vocal ChatKit",
-        instructions: secret.instructions,
+      tokenRef.current = token;
+      offerEndpointRef.current = offerEndpoint;
+      teardownEndpointRef.current = teardownEndpoint;
+
+      const pc = new RTCPeerConnection();
+      pcRef.current = pc;
+      sessionIdRef.current = null;
+      localStreamRef.current = localStream;
+      notifyConnection("connecting");
+
+      localStream.getTracks().forEach((track) => {
+        pc.addTrack(track, localStream);
       });
-      const session = new RealtimeSession(agent, { transport: "webrtc" });
-      sessionRef.current = session;
-      attachSessionListeners(session);
+
+      const remoteStream = new MediaStream();
+      remoteStreamRef.current = remoteStream;
+      const audioElement = createRemoteAudioElement();
+      if (audioElement) {
+        audioElement.srcObject = remoteStream;
+        remoteAudioRef.current = audioElement;
+        audioElement.play().catch(() => {
+          try {
+            audioElement.muted = true;
+            audioElement.play().catch(() => {
+              /* noop */
+            });
+          } catch {
+            /* noop */
+          }
+        });
+      }
+
+      pc.addEventListener("track", (event) => {
+        event.streams.forEach((stream) => {
+          stream.getAudioTracks().forEach((track) => {
+            remoteStream.addTrack(track);
+            track.onunmute = () => {
+              handlersRef.current.onAgentStart?.();
+            };
+            track.onmute = () => {
+              handlersRef.current.onAgentEnd?.();
+            };
+            track.onended = () => {
+              handlersRef.current.onAgentEnd?.();
+            };
+          });
+        });
+      });
+
+      pc.addEventListener("iceconnectionstatechange", () => {
+        const state = pc.iceConnectionState;
+        if (state === "failed") {
+          handlersRef.current.onTransportError?.(
+            new Error("Connexion WebRTC échouée"),
+          );
+          disconnect();
+        } else if (state === "connected") {
+          notifyConnection("connected");
+        }
+      });
+
+      pc.addEventListener("connectionstatechange", () => {
+        if (pc.connectionState === "connected") {
+          notifyConnection("connected");
+        } else if (pc.connectionState === "disconnected") {
+          disconnect();
+        }
+      });
 
       try {
-        await session.connect({ apiKey, model: secret.model });
-        const promptUpdate = buildPromptUpdate(secret);
-        if (promptUpdate) {
-          applySessionUpdate(session, promptUpdate);
+        const offer = await pc.createOffer({ offerToReceiveAudio: true });
+        await pc.setLocalDescription(offer);
+        await waitForIceCompletion(pc);
+
+        const localDescription = pc.localDescription;
+        if (!localDescription) {
+          throw new Error("Impossible de générer une offre WebRTC valide.");
         }
-        scheduleRefresh(secret);
+
+        const response = await fetch(offerEndpoint, {
+          method: "POST",
+          headers: buildHeaders(token),
+          body: JSON.stringify({ offer: localDescription }),
+        });
+        if (!response.ok) {
+          throw new Error(
+            `Échec de la création de la session WebRTC (HTTP ${response.status}).`,
+          );
+        }
+
+        const payload = (await response.json()) as OfferResponse;
+        sessionIdRef.current = payload.session_id;
+
+        const answer = payload.answer;
+        if (!answer?.sdp) {
+          throw new Error("Réponse WebRTC invalide renvoyée par le serveur.");
+        }
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        notifyConnection("connected");
       } catch (error) {
+        handlersRef.current.onError?.(error);
+        cleanupLocalStream();
         disconnect();
         throw error;
       }
     },
-    [attachSessionListeners, disconnect, scheduleRefresh],
+    [cleanupLocalStream, disconnect, notifyConnection],
   );
 
   return {
@@ -256,5 +362,5 @@ export const useRealtimeSession = (
   };
 };
 
-export type { RealtimeSessionHandlers, RealtimeConnectionStatus, ConnectOptions };
+export type { GatewayTranscripts };
 
