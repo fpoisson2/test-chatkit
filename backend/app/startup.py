@@ -91,27 +91,10 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 "Impossible de lier on_message au dialogue SIP", exc_info=True
             )
 
-        register = getattr(dialog, "register", None)
-        if callable(register):
-            for method in ("ACK", "BYE"):
-                try:
-                    decorator = register(method)
-                except Exception:  # pragma: no cover - dépend d'aiosip
-                    logger.debug(
-                        "Échec de l'enregistrement du handler %s sur le dialogue",
-                        method,
-                        exc_info=True,
-                    )
-                    continue
-                if callable(decorator):
-                    try:
-                        decorator(_on_message)
-                    except Exception:  # pragma: no cover - dépend d'aiosip
-                        logger.debug(
-                            "Échec du décorateur register(%s) sur le dialogue",
-                            method,
-                            exc_info=True,
-                        )
+        # `aiosip.Dialog.register` est dédié aux messages SIP REGISTER.
+        # Utiliser ce mécanisme ici provoquerait une corruption des en-têtes
+        # (les journaux d'erreur le montrent), d'où la limitation au hook
+        # `on_message` ci-dessus.
 
     def _sanitize_phone_candidate(raw: Any) -> str | None:
         values: list[Any]
