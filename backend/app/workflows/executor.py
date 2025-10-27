@@ -2130,7 +2130,7 @@ async def run_workflow(
                     exc_info=True,
                 )
 
-        # Connecter les serveurs MCP si présents
+        # Connecter les serveurs MCP si présents AVANT de démarrer l'agent
         mcp_servers = getattr(agent, "mcp_servers", None)
         connected_mcp_servers: list[MCPServer] = []
         if mcp_servers:
@@ -2264,15 +2264,15 @@ async def run_workflow(
             # Déconnecter les serveurs MCP
             for server in connected_mcp_servers:
                 try:
-                    await server.disconnect()
+                    await server.cleanup()
                     logger.debug(
-                        "Serveur MCP %s déconnecté pour l'agent %s",
+                        "Serveur MCP %s nettoyé pour l'agent %s",
                         getattr(server, "name", "<inconnu>"),
                         getattr(agent, "name", "<inconnu>"),
                     )
                 except Exception as exc:
                     logger.warning(
-                        "Erreur lors de la déconnexion du serveur MCP %s : %s",
+                        "Erreur lors du nettoyage du serveur MCP %s : %s",
                         getattr(server, "name", "<inconnu>"),
                         exc,
                     )
