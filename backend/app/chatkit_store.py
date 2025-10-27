@@ -382,12 +382,7 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
             )
             payload = item.model_dump(mode="json")
             created_at = _ensure_timezone(getattr(item, "created_at", None))
-            stmt = select(ChatThreadItem).where(
-                ChatThreadItem.id == item.id,
-                ChatThreadItem.thread_id == thread_id,
-                ChatThreadItem.owner_id == owner_id,
-            )
-            existing = session.execute(stmt).scalar_one_or_none()
+            existing = session.get(ChatThreadItem, item.id)
             if existing is None:
                 session.add(
                     ChatThreadItem(
@@ -399,6 +394,10 @@ class PostgresChatKitStore(Store[ChatKitRequestContext]):
                     )
                 )
             else:
+                if existing.owner_id != owner_id or existing.thread_id != thread_id:
+                    raise NotFoundError(
+                        f"Élément {item.id} introuvable dans le fil {thread_id}"
+                    )
                 existing.payload = payload
                 existing.created_at = created_at
             session.commit()
