@@ -243,7 +243,6 @@ class TelephonyVoiceBridge:
 
         async def forward_audio() -> None:
             nonlocal inbound_audio_bytes
-            appended = False
             try:
                 async for packet in rtp_stream:
                     pcm = self._decode_packet(packet)
@@ -257,20 +256,12 @@ class TelephonyVoiceBridge:
                             "audio": encoded,
                         }
                     )
-                    appended = True
                     if not should_continue():
                         break
             finally:
-                # Avec VAD activé, l'API gère automatiquement le commit et la création de réponse
-                # On commit manuellement uniquement si l'appel se termine pendant que l'utilisateur parle
-                if appended:
-                    try:
-                        await send_json({"type": "input_audio_buffer.commit"})
-                    except Exception as exc:  # pragma: no cover - fermeture concurrente
-                        logger.debug(
-                            "Impossible d'envoyer le commit final Realtime : %s",
-                            exc,
-                        )
+                # Mode conversation : le VAD gère automatiquement le commit et la création de réponse
+                # Pas de commit manuel, l'API le fait quand speech_stopped est détecté
+                logger.debug("Fin du flux audio RTP, attente de la fermeture de session")
                 await request_stop()
 
         transcript_buffers: dict[str, list[str]] = {}
