@@ -2,8 +2,10 @@
 
 from .invite_handler import (
     InviteHandlingError,
+    InviteSessionDescription,
     handle_incoming_invite,
 )
+from .rtp import RtpUdpEndpoint
 from .sip_server import (
     SipCallRequestHandler,
     SipCallSession,
@@ -31,7 +33,9 @@ __all__ = [
     "SipCallSession",
     "SipCallRequestHandler",
     "InviteHandlingError",
+    "InviteSessionDescription",
     "handle_incoming_invite",
+    "RtpUdpEndpoint",
     "RtpPacket",
     "TelephonyVoiceBridge",
     "VoiceBridgeError",

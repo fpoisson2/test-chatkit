@@ -22,6 +22,15 @@ class SelectedCodec:
     clock_rate: int
 
 
+@dataclass(frozen=True)
+class InviteSessionDescription:
+    """Paramètres négociés pour une session RTP."""
+
+    connection_address: str
+    media_port: int
+    codec: SelectedCodec
+
+
 _STATIC_PAYLOADS: dict[int, tuple[str, int]] = {
     0: ("pcmu", 8000),
     18: ("g729", 8000),
@@ -128,6 +137,29 @@ class InviteHandlingError(RuntimeError):
     """Erreur levée lorsqu'un ``INVITE`` ne peut pas être accepté."""
 
 
+def _extract_connection_address(lines: list[str]) -> str | None:
+    session_connection: str | None = None
+    audio_connection: str | None = None
+    in_audio_section = False
+
+    for line in lines:
+        if line.startswith("m="):
+            in_audio_section = line.startswith("m=audio")
+            continue
+        if not line.startswith("c="):
+            continue
+        parts = line[2:].strip().split()
+        if len(parts) < 3:
+            continue
+        candidate = parts[2]
+        if in_audio_section:
+            audio_connection = candidate
+        elif session_connection is None:
+            session_connection = candidate
+
+    return audio_connection or session_connection
+
+
 async def handle_incoming_invite(
     dialog: _InviteDialog,
     request: _InviteRequest,
@@ -136,7 +168,7 @@ async def handle_incoming_invite(
     media_port: int,
     preferred_codecs: Iterable[str] = ("pcmu", "g729"),
     contact_uri: str | None = None,
-) -> None:
+) -> InviteSessionDescription:
     """Répondre à un ``INVITE`` SIP en négociant une session RTP simple."""
 
     call_id = _extract_header(request, "Call-ID")
@@ -310,6 +342,13 @@ async def handle_incoming_invite(
         payload=sdp_answer,
         call_id=call_id,
         contact_uri=contact_uri,
+    )
+
+    connection_address = _extract_connection_address(sdp_lines) or ""
+    return InviteSessionDescription(
+        connection_address=connection_address,
+        media_port=offered_port,
+        codec=codec,
     )
 
 

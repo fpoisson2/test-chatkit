@@ -42,10 +42,12 @@ from .models import (
 from .security import hash_password
 from .telephony.invite_handler import (
     InviteHandlingError,
+    InviteSessionDescription,
     handle_incoming_invite,
     send_sip_reply,
 )
 from .telephony.registration import SIPRegistrationManager
+from .telephony.rtp import RtpUdpEndpoint
 from .telephony.sip_server import (
     SipCallRequestHandler,
     SipCallSession,
@@ -178,10 +180,18 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         metadata = session.metadata.get("telephony")
         if not isinstance(metadata, dict):
             return
+        endpoint = metadata.pop("rtp_endpoint", None)
         metadata.pop("rtp_stream_factory", None)
         metadata.pop("send_audio", None)
         metadata.pop("client_secret", None)
         metadata["voice_session_active"] = False
+        if endpoint is not None:
+            close_method = getattr(endpoint, "close", None)
+            if callable(close_method):
+                try:
+                    await close_method()
+                except Exception:  # pragma: no cover - best effort
+                    logger.debug("Fermeture du flux RTP impossible", exc_info=True)
 
     async def _resume_workflow(
         session: SipCallSession, transcripts: list[dict[str, str]]
@@ -316,6 +326,57 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 "voice_session_active": False,
             }
         )
+
+        request = session.request
+        negotiation = getattr(request, "_chatkit_negotiation", None)
+        media_tuple = getattr(request, "_chatkit_media", None)
+        if isinstance(negotiation, InviteSessionDescription):
+            remote_host = negotiation.connection_address
+            remote_port = negotiation.media_port
+            local_host = settings.sip_bind_host
+            local_port = getattr(settings, "sip_media_port", None)
+            if isinstance(media_tuple, tuple) and len(media_tuple) == 2:
+                candidate_host = media_tuple[0]
+                candidate_port = media_tuple[1]
+                if isinstance(candidate_host, str) and candidate_host:
+                    local_host = candidate_host
+                try:
+                    local_port = int(candidate_port)
+                except (TypeError, ValueError):  # pragma: no cover - garde-fou
+                    pass
+            if remote_host and remote_port:
+                try:
+                    endpoint = RtpUdpEndpoint(
+                        local_host=local_host or settings.sip_bind_host,
+                        local_port=int(local_port or settings.sip_media_port),
+                        remote_host=remote_host,
+                        remote_port=int(remote_port),
+                        payload_type=negotiation.codec.payload_type,
+                        codec=negotiation.codec.name,
+                        clock_rate=negotiation.codec.clock_rate,
+                    )
+                except Exception:  # pragma: no cover - dépend réseau
+                    logger.exception(
+                        "Impossible de préparer le transport RTP (Call-ID=%s)",
+                        session.call_id,
+                    )
+                else:
+                    telephony_metadata.update(
+                        {
+                            "rtp_remote_host": remote_host,
+                            "rtp_remote_port": int(remote_port),
+                            "rtp_payload_type": negotiation.codec.payload_type,
+                            "rtp_codec": negotiation.codec.name,
+                            "rtp_clock_rate": negotiation.codec.clock_rate,
+                            "rtp_endpoint": endpoint,
+                            "rtp_stream_factory": endpoint.stream,
+                            "send_audio": endpoint.send,
+                        }
+                    )
+            else:
+                logger.warning(
+                    "Adresse RTP distante absente pour Call-ID=%s", session.call_id
+                )
 
         if context.route is None:
             logger.info(
@@ -489,7 +550,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             return
 
         try:
-            await handle_incoming_invite(
+            negotiation = await handle_incoming_invite(
                 dialog,
                 request,
                 media_host=media_host,
@@ -512,6 +573,9 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     contact_uri=contact_uri,
                 )
             return
+
+        request._chatkit_negotiation = negotiation  # type: ignore[attr-defined]
+        request._chatkit_media = (media_host, int(media_port))  # type: ignore[attr-defined]
 
         try:
             await sip_handler.handle_invite(request, dialog=dialog)
