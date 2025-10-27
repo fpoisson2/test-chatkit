@@ -521,7 +521,14 @@ class SIPRegistrationManager:
                 dialog,
                 200,
                 reason="OK",
-                headers={"Allow": _OPTIONS_ALLOW_HEADER},
+                headers={
+                    key: value
+                    for key, value in (
+                        ("Allow", _OPTIONS_ALLOW_HEADER),
+                        ("Via", via_header_text),
+                    )
+                    if value is not None
+                },
                 call_id=call_id,
                 contact_uri=contact_uri,
                 log=False,

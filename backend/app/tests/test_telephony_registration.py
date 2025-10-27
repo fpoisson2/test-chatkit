@@ -717,7 +717,12 @@ def test_options_handler_fallbacks_to_dialog_reply() -> None:
             ) -> None:
                 replies.append((status_code, kwargs))
 
-        request = SimpleNamespace(headers={"Call-ID": "abc123"})
+        request = SimpleNamespace(
+            headers={
+                "Call-ID": "abc123",
+                "Via": "SIP/2.0/UDP 192.168.1.155:5060;branch=z9hG4bKviaFallback",
+            }
+        )
 
         loop.run_until_complete(
             manager._handle_incoming_options(DummyDialog(), request)  # type: ignore[arg-type]
@@ -733,6 +738,10 @@ def test_options_handler_fallbacks_to_dialog_reply() -> None:
     assert isinstance(headers, dict)
     assert headers.get("Allow") == _OPTIONS_ALLOW_HEADER
     assert headers.get("Contact") == "<sip:alice@198.51.100.10:5070>"
+    assert (
+        headers.get("Via")
+        == "SIP/2.0/UDP 192.168.1.155:5060;branch=z9hG4bKviaFallback"
+    )
     assert params.get("reason") == "OK"
 
 
