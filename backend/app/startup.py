@@ -542,12 +542,15 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             raise
 
         # Récupérer la session créée et y stocker les callbacks RTP
-        call_id = getattr(request, "headers", {}).get("Call-ID")
-        if call_id:
-            if isinstance(call_id, list | tuple) and call_id:
-                call_id = str(call_id[0])
+        call_id_raw = getattr(request, "headers", {}).get("Call-ID")
+        call_id: str | None = None
+        session: SipCallSession | None = None
+
+        if call_id_raw:
+            if isinstance(call_id_raw, list | tuple) and call_id_raw:
+                call_id = str(call_id_raw[0])
             else:
-                call_id = str(call_id)
+                call_id = str(call_id_raw)
 
             session = sip_handler.get_session(call_id)
             if session:
@@ -599,6 +602,23 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     contact_uri=contact_uri,
                 )
             return
+
+        # Démarrer la session RTP immédiatement après le 200 OK
+        # Le téléphone commence déjà à envoyer de l'audio, pas besoin d'attendre l'ACK
+        if session:
+            logger.info(
+                "Démarrage immédiat de la session RTP pour Call-ID=%s",
+                call_id,
+            )
+            try:
+                await sip_handler.start_rtp_session(session)
+            except Exception as exc:
+                logger.exception(
+                    "Erreur lors du démarrage de la session RTP pour %s",
+                    call_id,
+                    exc_info=exc,
+                )
+                await rtp_server.stop()
 
     return _on_invite
 
