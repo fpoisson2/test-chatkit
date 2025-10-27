@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "ChatKit FastAPI session backend and React scaffold"
 requires-python = ">=3.10"
 dependencies = [
-    "aiosip",
+    "pjsua",
     "fastapi",
     "openai",
     "openai-agents[litellm]",

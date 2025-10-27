@@ -73,9 +73,9 @@ from .workflows.service import WorkflowService
 logger = logging.getLogger("chatkit.server")
 
 for noisy_logger in (
-    "aiosip",
-    "aiosip.protocol",
-    "aiosip.application",
+    "pjsua",
+    "pjsip",
+    "pjsua.lib",
     # La librairie `websockets` est très verbeuse en DEBUG et noie nos journaux.
     # On force un niveau plus élevé tant qu'aucune configuration spécifique
     # n'a été appliquée par l'utilisateur.
@@ -103,15 +103,14 @@ def _build_invite_handler(manager: SIPRegistrationManager):
 
         try:
             dialog.on_message = _on_message  # type: ignore[attr-defined]
-        except Exception:  # pragma: no cover - dépend des implémentations aiosip
+        except Exception:  # pragma: no cover - dépend des implémentations PJSIP
             logger.debug(
                 "Impossible de lier on_message au dialogue SIP", exc_info=True
             )
 
-        # `aiosip.Dialog.register` est dédié aux messages SIP REGISTER.
-        # Utiliser ce mécanisme ici provoquerait une corruption des en-têtes
-        # (les journaux d'erreur le montrent), d'où la limitation au hook
-        # `on_message` ci-dessus.
+        # Les stacks PJSIP exposent des callbacks spécialisés pour REGISTER.
+        # Forcer leur utilisation ici corrompt certains en-têtes INVITE,
+        # d'où la limitation au hook `on_message` ci-dessus.
 
     def _sanitize_phone_candidate(raw: Any) -> str | None:
         values: list[Any]
@@ -732,7 +731,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             logger.warning("Traitement de l'INVITE interrompu : %s", exc)
             await rtp_server.stop()
             return
-        except Exception as exc:  # pragma: no cover - dépend de aiosip
+        except Exception as exc:  # pragma: no cover - dépend de la pile SIP
             logger.exception(
                 "Erreur inattendue lors du traitement d'un INVITE",
                 exc_info=exc,

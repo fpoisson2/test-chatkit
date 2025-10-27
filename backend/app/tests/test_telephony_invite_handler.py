@@ -33,7 +33,7 @@ class DummyDialog:
         self.replies: list[tuple[int, dict[str, object]]] = []
 
     async def reply(self, status_code: int, **kwargs) -> None:
-        # Simuler le comportement async d'un dialogue aiosip
+        # Simuler le comportement async d'un dialogue SIP
         await asyncio.sleep(0)
         self.replies.append((status_code, kwargs))
 

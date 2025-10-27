@@ -1,6 +1,6 @@
 # Core dependencies
 openai-agents[litellm]
-aiosip
+pjsua
 fastapi
 openai
 openai-chatkit @ file:../chatkit-python
