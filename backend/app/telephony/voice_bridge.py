@@ -203,7 +203,7 @@ class TelephonyVoiceBridge:
         url = build_realtime_ws_url(model, api_base=api_base, settings=self._settings)
         headers = {
             "Authorization": f"Bearer {client_secret}",
-            "OpenAI-Beta": "realtime=v1",
+            # Note: "OpenAI-Beta: realtime=v1" retiré pour utiliser l'API GA
         }
 
         logger.info(
