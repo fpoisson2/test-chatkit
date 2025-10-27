@@ -98,7 +98,8 @@ def test_attach_dialog_callbacks_preserves_existing_bye_list() -> None:
     assert dialog.callbacks["bye"] is existing
 
 
-def test_attach_dialog_callbacks_patches_stop_dialog_for_unsubscriptable() -> None:
+@pytest.mark.anyio
+async def test_stop_dialog_fallback_handles_unsubscriptable() -> None:
     handler = SipCallRequestHandler()
 
     class DummyApp:
@@ -116,13 +117,14 @@ def test_attach_dialog_callbacks_patches_stop_dialog_for_unsubscriptable() -> No
     _attach_dialog_callbacks(dialog, handler)
 
     # The patched method should swallow the TypeError and perform cleanup.
-    app.stop_dialog(dialog)
+    await app.stop_dialog(dialog)
 
     assert app.calls == 1
     assert app._dialogs == {}
 
 
-def test_attach_dialog_callbacks_preserves_other_type_errors() -> None:
+@pytest.mark.anyio
+async def test_attach_dialog_callbacks_preserves_other_type_errors() -> None:
     handler = SipCallRequestHandler()
 
     class DummyApp:
@@ -135,7 +137,7 @@ def test_attach_dialog_callbacks_preserves_other_type_errors() -> None:
     _attach_dialog_callbacks(dialog, handler)
 
     with pytest.raises(TypeError, match="boom"):
-        app.stop_dialog(dialog)
+        await app.stop_dialog(dialog)
 
 @pytest.mark.anyio
 async def test_handle_invite_accepts_supported_codec() -> None:

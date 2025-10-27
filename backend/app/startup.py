@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime
+import inspect as pyinspect
 import logging
 import os
 import re
@@ -134,9 +135,9 @@ def _attach_dialog_callbacks(dialog: Any, handler: SipCallRequestHandler) -> Non
         return
 
     @wraps(bound_stop_dialog)
-    def _stop_dialog_with_fallback(self: Any, dialog_obj: Any) -> Any:
+    async def _stop_dialog_with_fallback(self: Any, dialog_obj: Any) -> Any:
         try:
-            return bound_stop_dialog(dialog_obj)
+            result = bound_stop_dialog(dialog_obj)
         except TypeError as exc:
             message = str(exc)
             if "subscriptable" not in message:
@@ -172,6 +173,11 @@ def _attach_dialog_callbacks(dialog: Any, handler: SipCallRequestHandler) -> Non
                     )
 
             return None
+
+        if asyncio.iscoroutine(result) or pyinspect.isawaitable(result):
+            return await result
+
+        return result
 
     _stop_dialog_with_fallback.__wrapped_stop_dialog__ = bound_stop_dialog  # type: ignore[attr-defined]
     stop_dialog_func._chatkit_wrapped = True  # type: ignore[attr-defined]
