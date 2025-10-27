@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import datetime
 import logging
+import re
 from typing import Any
 
 from fastapi import FastAPI
@@ -13,6 +15,10 @@ from .admin_settings import (
     apply_runtime_model_overrides,
     get_thread_title_prompt_override,
 )
+from .chatkit import get_chatkit_server
+from .chatkit_realtime import create_realtime_voice_session
+from .chatkit_server.context import ChatKitRequestContext
+from .chatkit_sessions import SessionSecretParser
 from .config import DEFAULT_THREAD_TITLE_MODEL, settings_proxy
 from .database import (
     SessionLocal,
@@ -40,6 +46,13 @@ from .telephony.invite_handler import (
     send_sip_reply,
 )
 from .telephony.registration import SIPRegistrationManager
+from .telephony.sip_server import (
+    SipCallRequestHandler,
+    SipCallSession,
+    TelephonyRouteSelectionError,
+    resolve_workflow_for_phone_number,
+)
+from .telephony.voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
 from .vector_store import (
     WORKFLOW_VECTOR_STORE_DESCRIPTION,
     WORKFLOW_VECTOR_STORE_METADATA,
@@ -47,6 +60,7 @@ from .vector_store import (
     WORKFLOW_VECTOR_STORE_TITLE,
     JsonVectorStoreService,
 )
+from .workflows.service import WorkflowService
 
 logger = logging.getLogger("chatkit.server")
 
@@ -58,6 +72,386 @@ settings = settings_proxy
 
 
 def _build_invite_handler(manager: SIPRegistrationManager):
+    workflow_service = WorkflowService()
+    session_secret_parser = SessionSecretParser()
+
+    async def _attach_dialog_callbacks(
+        dialog: Any, handler: SipCallRequestHandler
+    ) -> None:
+        if dialog is None:
+            return
+
+        async def _on_message(message: Any) -> None:
+            await handler.handle_request(message, dialog=dialog)
+
+        try:
+            dialog.on_message = _on_message  # type: ignore[attr-defined]
+        except Exception:  # pragma: no cover - dépend des implémentations aiosip
+            logger.debug(
+                "Impossible de lier on_message au dialogue SIP", exc_info=True
+            )
+
+        # `aiosip.Dialog.register` est dédié aux messages SIP REGISTER.
+        # Utiliser ce mécanisme ici provoquerait une corruption des en-têtes
+        # (les journaux d'erreur le montrent), d'où la limitation au hook
+        # `on_message` ci-dessus.
+
+    def _sanitize_phone_candidate(raw: Any) -> str | None:
+        values: list[Any]
+        if isinstance(raw, list | tuple):
+            values = list(raw)
+        else:
+            values = [raw]
+
+        for value in values:
+            if value is None:
+                continue
+            text = str(value).strip()
+            if not text:
+                continue
+            match = re.search(r"sip:(?P<number>[^@>;]+)", text, flags=re.IGNORECASE)
+            candidate = match.group("number") if match else text
+            digits = "".join(
+                ch for ch in candidate if ch.isdigit() or ch in {"+", "#", "*"}
+            )
+            if digits:
+                return digits
+            if candidate:
+                return candidate
+        return None
+
+    def _extract_incoming_number(request: Any) -> str | None:
+        headers = getattr(request, "headers", None)
+        items = getattr(headers, "items", None)
+        iterable: list[tuple[Any, Any]]
+        if callable(items):
+            try:
+                iterable = list(items())
+            except Exception:  # pragma: no cover - garde-fou
+                iterable = []
+        elif isinstance(headers, dict):
+            iterable = list(headers.items())
+        else:
+            iterable = []
+
+        normalized: dict[str, Any] = {}
+        for key, value in iterable:
+            if isinstance(key, str):
+                normalized[key.lower()] = value
+
+        for header_name in (
+            "x-original-to",
+            "x-called-number",
+            "p-called-party-id",
+            "p-asserted-identity",
+            "to",
+            "from",
+        ):
+            if header_name not in normalized:
+                continue
+            candidate = _sanitize_phone_candidate(normalized[header_name])
+            if candidate:
+                return candidate
+        return None
+
+    async def _close_dialog(session: SipCallSession) -> None:
+        dialog = session.dialog
+        if dialog is None:
+            return
+        for method_name in ("bye", "close"):
+            method = getattr(dialog, method_name, None)
+            if not callable(method):
+                continue
+            try:
+                outcome = method()
+                if asyncio.iscoroutine(outcome):
+                    await outcome
+            except Exception:  # pragma: no cover - best effort
+                logger.debug(
+                    "Fermeture du dialogue SIP via %s échouée",
+                    method_name,
+                    exc_info=True,
+                )
+            break
+
+    async def _clear_voice_state(session: SipCallSession) -> None:
+        metadata = session.metadata.get("telephony")
+        if not isinstance(metadata, dict):
+            return
+        metadata.pop("rtp_stream_factory", None)
+        metadata.pop("send_audio", None)
+        metadata.pop("client_secret", None)
+        metadata["voice_session_active"] = False
+
+    async def _resume_workflow(
+        session: SipCallSession, transcripts: list[dict[str, str]]
+    ) -> None:
+        metadata = session.metadata.get("telephony")
+        transcript_count = len(transcripts)
+        if not isinstance(metadata, dict):
+            logger.info(
+                "Reprise workflow ignorée (Call-ID=%s, aucun contexte)",
+                session.call_id,
+            )
+            return
+
+        resume_callable = metadata.get("resume_workflow_callable")
+        if callable(resume_callable):
+            try:
+                await resume_callable(transcripts)
+            except Exception:  # pragma: no cover - dépend des hooks
+                logger.exception(
+                    "Erreur lors de la reprise du workflow (Call-ID=%s)",
+                    session.call_id,
+                )
+            else:
+                logger.info(
+                    "Workflow repris via hook personnalisé "
+                    "(Call-ID=%s, transcriptions=%d)",
+                    session.call_id,
+                    transcript_count,
+                )
+            return
+
+        thread_id = metadata.get("thread_id")
+        if not thread_id:
+            logger.info(
+                "Reprise workflow non configurée (Call-ID=%s, transcriptions=%d)",
+                session.call_id,
+                transcript_count,
+            )
+            return
+
+        server = get_chatkit_server()
+        context = ChatKitRequestContext(
+            user_id=f"sip:{session.call_id}",
+            email=None,
+            authorization=None,
+            public_base_url=settings.backend_public_base_url,
+            voice_model=metadata.get("voice_model"),
+            voice_instructions=metadata.get("voice_instructions"),
+            voice_voice=metadata.get("voice_voice"),
+            voice_prompt_variables=metadata.get("voice_prompt_variables"),
+        )
+
+        post_callable = getattr(server, "post", None)
+        if callable(post_callable):
+            payload = {
+                "type": "user_message",
+                "thread_id": thread_id,
+                "message": {"content": []},
+                "metadata": {"source": "sip", "transcripts": transcripts},
+            }
+            try:
+                await post_callable(payload, context)
+            except Exception:  # pragma: no cover - dépend du serveur ChatKit
+                logger.exception(
+                    "Échec de la reprise du workflow via post() (Call-ID=%s)",
+                    session.call_id,
+                )
+            else:
+                logger.info(
+                    "Workflow repris via ChatKitServer.post "
+                    "(Call-ID=%s, transcriptions=%d)",
+                    session.call_id,
+                    transcript_count,
+                )
+            return
+
+        logger.info(
+            "Aucune méthode de reprise disponible pour Call-ID=%s", session.call_id
+        )
+
+    async def _register_session(
+        session: SipCallSession, request: Any
+    ) -> None:
+        incoming_number = _extract_incoming_number(request)
+        logger.info(
+            "Appel SIP initialisé (Call-ID=%s, numéro entrant=%s)",
+            session.call_id,
+            incoming_number or "<inconnu>",
+        )
+
+        telephony_metadata = session.metadata.setdefault("telephony", {})
+        telephony_metadata.update(
+            {
+                "call_id": session.call_id,
+                "incoming_number": incoming_number,
+            }
+        )
+
+        with SessionLocal() as db_session:
+            try:
+                context = resolve_workflow_for_phone_number(
+                    workflow_service,
+                    phone_number=incoming_number or "",
+                    session=db_session,
+                )
+            except TelephonyRouteSelectionError as exc:
+                logger.warning(
+                    "Aucune route téléphonie active pour Call-ID=%s (%s)",
+                    session.call_id,
+                    incoming_number or "<inconnu>",
+                )
+                telephony_metadata["workflow_resolution_error"] = str(exc)
+                return
+            except Exception as exc:  # pragma: no cover - dépend BDD
+                logger.exception(
+                    "Résolution du workflow téléphonie impossible (Call-ID=%s)",
+                    session.call_id,
+                    exc_info=exc,
+                )
+                telephony_metadata["workflow_resolution_error"] = str(exc)
+                return
+
+        workflow_obj = getattr(context.workflow_definition, "workflow", None)
+        workflow_slug = getattr(workflow_obj, "slug", None)
+        telephony_metadata.update(
+            {
+                "workflow_slug": workflow_slug,
+                "voice_model": context.voice_model,
+                "voice_instructions": context.voice_instructions,
+                "voice_voice": context.voice_voice,
+                "voice_prompt_variables": dict(context.voice_prompt_variables),
+                "voice_session_active": False,
+            }
+        )
+
+        if context.route is None:
+            logger.info(
+                "Route téléphonie par défaut retenue (Call-ID=%s, workflow=%s)",
+                session.call_id,
+                workflow_slug or "<inconnu>",
+            )
+        else:
+            telephony_metadata.update(
+                {
+                    "route_label": context.route.label,
+                    "route_workflow_slug": context.route.workflow_slug,
+                    "route_priority": context.route.priority,
+                }
+            )
+            logger.info(
+                "Route téléphonie sélectionnée (Call-ID=%s) : label=%s, "
+                "workflow=%s, priorité=%s",
+                session.call_id,
+                context.route.label or "<sans-label>",
+                context.route.workflow_slug or workflow_slug or "<inconnu>",
+                context.route.priority,
+            )
+
+    async def _start_rtp(session: SipCallSession) -> None:
+        metadata = session.metadata.get("telephony") or {}
+        voice_model = metadata.get("voice_model")
+        instructions = metadata.get("voice_instructions")
+        voice_name = metadata.get("voice_voice")
+        rtp_stream_factory = metadata.get("rtp_stream_factory")
+        send_audio = metadata.get("send_audio")
+
+        if not voice_model or not instructions:
+            logger.error(
+                "Paramètres voix incomplets pour Call-ID=%s", session.call_id
+            )
+            return
+
+        if not callable(rtp_stream_factory) or not callable(send_audio):
+            logger.error(
+                "Flux RTP non configuré pour Call-ID=%s (stream=%s, send=%s)",
+                session.call_id,
+                bool(callable(rtp_stream_factory)),
+                bool(callable(send_audio)),
+            )
+            return
+
+        metadata["voice_session_active"] = True
+        logger.info(
+            "Démarrage du pont voix Realtime (Call-ID=%s, modèle=%s, voix=%s)",
+            session.call_id,
+            voice_model,
+            voice_name or "<auto>",
+        )
+
+        client_secret = metadata.get("client_secret")
+        if client_secret is None:
+            secret_payload = await create_realtime_voice_session(
+                user_id=f"sip:{session.call_id}",
+                model=voice_model,
+                instructions=instructions,
+                voice=voice_name,
+            )
+            parsed_secret = session_secret_parser.parse(secret_payload)
+            client_secret = parsed_secret.as_text()
+            if not client_secret:
+                logger.error(
+                    "Client secret Realtime introuvable pour Call-ID=%s",
+                    session.call_id,
+                )
+                return
+            metadata["client_secret"] = client_secret
+            metadata["client_secret_expires_at"] = (
+                parsed_secret.expires_at_isoformat()
+            )
+
+        hooks = VoiceBridgeHooks(
+            close_dialog=lambda: _close_dialog(session),
+            clear_voice_state=lambda: _clear_voice_state(session),
+            resume_workflow=lambda transcripts: _resume_workflow(
+                session, transcripts
+            ),
+        )
+        voice_bridge = TelephonyVoiceBridge(hooks=hooks)
+
+        try:
+            stats = await voice_bridge.run(
+                client_secret=client_secret,
+                model=voice_model,
+                instructions=instructions,
+                voice=voice_name,
+                rtp_stream=rtp_stream_factory(),
+                send_to_peer=send_audio,
+            )
+        except Exception as exc:  # pragma: no cover - dépend réseau
+            logger.exception(
+                "Session Realtime en erreur (Call-ID=%s)",
+                session.call_id,
+                exc_info=exc,
+            )
+            metadata["voice_bridge_error"] = repr(exc)
+            raise
+        else:
+            metadata["voice_bridge_stats"] = {
+                "duration_seconds": stats.duration_seconds,
+                "inbound_audio_bytes": stats.inbound_audio_bytes,
+                "outbound_audio_bytes": stats.outbound_audio_bytes,
+                "transcript_count": stats.transcript_count,
+                "error": repr(stats.error) if stats.error else None,
+            }
+            logger.info(
+                "Session Realtime terminée (Call-ID=%s, durée=%.2fs, "
+                "transcriptions=%d)",
+                session.call_id,
+                stats.duration_seconds,
+                stats.transcript_count,
+            )
+
+    async def _terminate_session(
+        session: SipCallSession, dialog: Any | None
+    ) -> None:
+        del dialog  # Le nettoyage spécifique est géré par les hooks.
+        await _clear_voice_state(session)
+        metadata = session.metadata.get("telephony") or {}
+        logger.info(
+            "Session SIP terminée (Call-ID=%s, numéro=%s)",
+            session.call_id,
+            metadata.get("incoming_number") or "<inconnu>",
+        )
+
+    sip_handler = SipCallRequestHandler(
+        invite_callback=_register_session,
+        start_rtp_callback=_start_rtp,
+        terminate_callback=_terminate_session,
+    )
+
     async def _on_invite(dialog: Any, request: Any) -> None:
         config = manager.active_config
         media_host = (
@@ -104,6 +498,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             )
         except InviteHandlingError as exc:
             logger.warning("Traitement de l'INVITE interrompu : %s", exc)
+            return
         except Exception as exc:  # pragma: no cover - dépend de aiosip
             logger.exception(
                 "Erreur inattendue lors du traitement d'un INVITE",
@@ -116,6 +511,17 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     reason="Server Internal Error",
                     contact_uri=contact_uri,
                 )
+            return
+
+        try:
+            await sip_handler.handle_invite(request, dialog=dialog)
+        except Exception:  # pragma: no cover - dépend des callbacks
+            logger.exception(
+                "Erreur lors de la gestion applicative de l'INVITE"
+            )
+            raise
+
+        await _attach_dialog_callbacks(dialog, sip_handler)
 
     return _on_invite
 
