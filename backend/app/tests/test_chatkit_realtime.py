@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import asyncio
 import os
 import sys
+from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
@@ -21,18 +24,25 @@ ModelProviderConfig = config_module.ModelProviderConfig
 
 
 class _DummyResponse:
-    status_code = 200
-
-    def __init__(self, payload: dict[str, object]) -> None:
+    def __init__(self, payload: dict[str, object], status_code: int = 200) -> None:
         self._payload = payload
+        self.status_code = status_code
 
     def json(self) -> dict[str, object]:
         return self._payload
 
 
 class _DummyAsyncClient:
-    def __init__(self, *, captured: dict[str, object], **_: object) -> None:
+    def __init__(
+        self,
+        *,
+        captured: dict[str, object],
+        response_factory: "ResponseFactory" | None = None,
+        **_: object,
+    ) -> None:
         self._captured = captured
+        self._response_factory = response_factory
+        self._call_count = 0
 
     async def __aenter__(self) -> "_DummyAsyncClient":
         return self
@@ -41,10 +51,15 @@ class _DummyAsyncClient:
         return False
 
     async def post(self, url: str, json: object, headers: dict[str, str]):
-        self._captured["url"] = url
-        self._captured["json"] = json
-        self._captured["headers"] = headers
+        request_data = {"url": url, "json": json, "headers": headers}
+        self._captured.setdefault("requests", []).append(request_data)
+        self._call_count += 1
+        if self._response_factory is not None:
+            return self._response_factory(request_data, self._call_count)
         return _DummyResponse({"client_secret": {"value": "secret"}})
+
+
+ResponseFactory = Callable[[dict[str, object], int], _DummyResponse]
 
 
 class _FakeSettings:
@@ -87,12 +102,23 @@ def test_create_realtime_voice_session_prefers_openai_slug(
             model="gpt-realtime",
             instructions="Bonjour",
             provider_slug="openai",
+            voice="verse",
         )
     )
 
     assert response == {"client_secret": {"value": "secret"}}
-    assert captured["url"] == "https://api.openai.com/v1/realtime/client_secrets"
-    headers = captured["headers"]
+    requests = captured.get("requests")
+    assert isinstance(requests, list)
+    assert len(requests) == 1
+    request = requests[0]
+    assert request["url"] == "https://api.openai.com/v1/realtime/client_secrets"
+    payload = request["json"]
+    assert isinstance(payload, dict)
+    assert payload.get("voice") == "verse"
+    session_payload = payload.get("session")
+    assert isinstance(session_payload, dict)
+    assert "voice" not in session_payload
+    headers = request["headers"]
     assert isinstance(headers, dict)
     assert headers.get("Authorization") == "Bearer openai-key"
 
@@ -131,7 +157,81 @@ def test_openai_slug_ignores_mismatched_provider_id(
     )
 
     assert response == {"client_secret": {"value": "secret"}}
-    assert captured["url"] == "https://api.openai.com/v1/realtime/client_secrets"
-    headers = captured["headers"]
+    requests = captured.get("requests")
+    assert isinstance(requests, list)
+    assert len(requests) == 1
+    request = requests[0]
+    assert request["url"] == "https://api.openai.com/v1/realtime/client_secrets"
+    headers = request["headers"]
     assert isinstance(headers, dict)
     assert headers.get("Authorization") == "Bearer openai-key"
+
+
+def test_voice_parameter_fallback_to_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(chatkit_realtime, "get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr(
+        chatkit_realtime,
+        "resolve_model_provider_credentials",
+        lambda provider_id: None,
+    )
+
+    def _response_factory(
+        request: dict[str, object], call_count: int
+    ) -> _DummyResponse:
+        if call_count == 1:
+            return _DummyResponse(
+                {
+                    "error": {
+                        "message": "Unknown parameter: 'voice'.",
+                        "type": "invalid_request_error",
+                        "param": "voice",
+                        "code": "unknown_parameter",
+                    }
+                },
+                status_code=400,
+            )
+        return _DummyResponse({"client_secret": {"value": "secret"}})
+
+    monkeypatch.setattr(
+        chatkit_realtime.httpx,
+        "AsyncClient",
+        lambda **kwargs: _DummyAsyncClient(
+            captured=captured, response_factory=_response_factory, **kwargs
+        ),
+    )
+
+    response = asyncio.run(
+        chatkit_realtime.create_realtime_voice_session(
+            user_id="user-voice",
+            model="gpt-realtime",
+            instructions="Bonjour",
+            provider_slug="openai",
+            voice="alloy",
+        )
+    )
+
+    assert response == {"client_secret": {"value": "secret"}}
+    requests = captured.get("requests")
+    assert isinstance(requests, list)
+    assert len(requests) == 2
+
+    first_request = requests[0]
+    assert first_request["url"] == "https://api.openai.com/v1/realtime/client_secrets"
+    first_payload = first_request["json"]
+    assert isinstance(first_payload, dict)
+    assert first_payload.get("voice") == "alloy"
+    session_payload = first_payload.get("session")
+    assert isinstance(session_payload, dict)
+    assert "voice" not in session_payload
+
+    second_request = requests[1]
+    assert second_request["url"] == "https://api.openai.com/v1/realtime/client_secrets"
+    second_payload = second_request["json"]
+    assert isinstance(second_payload, dict)
+    assert "voice" not in second_payload
+    session_payload = second_payload.get("session")
+    assert isinstance(session_payload, dict)
+    assert session_payload.get("voice") == "alloy"
