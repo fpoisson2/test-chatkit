@@ -152,6 +152,11 @@ def _merge_voice_settings(
                 # Chercher les blocs de type agent ou voice-agent
                 if step_kind in ("agent", "voice-agent", "voice_agent"):
                     params = getattr(step, "parameters", {})
+                    logger.info(
+                        "Paramètres complets du bloc %s : %s",
+                        step_slug,
+                        list(params.keys()) if isinstance(params, dict) else type(params),
+                    )
                     if isinstance(params, dict):
                         # Utiliser les paramètres du bloc agent si disponibles
                         if params.get("model"):
