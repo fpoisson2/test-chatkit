@@ -144,6 +144,8 @@ class VoiceSettings(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     instructions: Mapped[str] = mapped_column(Text, nullable=False)
     model: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    provider_slug: Mapped[str | None] = mapped_column(String(64), nullable=True)
     voice: Mapped[str] = mapped_column(String(64), nullable=False)
     prompt_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(64), nullable=True)

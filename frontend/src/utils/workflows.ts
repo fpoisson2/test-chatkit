@@ -1175,6 +1175,12 @@ export const resolveVoiceAgentParameters = (
   let result = base;
 
   result = setAgentModel(result, getAgentModel(rawParameters) || DEFAULT_VOICE_AGENT_MODEL);
+  const providerId = getAgentModelProviderId(rawParameters).trim();
+  const providerSlug = getAgentModelProviderSlug(rawParameters).trim().toLowerCase();
+  result = setAgentModelProvider(result, {
+    providerId: providerId || null,
+    providerSlug: providerSlug || null,
+  });
   result = setVoiceAgentVoice(result, getVoiceAgentVoice(rawParameters));
   result = setVoiceAgentStartBehavior(result, getVoiceAgentStartBehavior(rawParameters));
   result = setVoiceAgentStopBehavior(result, getVoiceAgentStopBehavior(rawParameters));

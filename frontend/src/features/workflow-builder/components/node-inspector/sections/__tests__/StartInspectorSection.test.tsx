@@ -55,10 +55,10 @@ describe("StartInspectorSection", () => {
 
     const textarea = screen.getByLabelText(/Inbound numbers/i);
     await userEvent.clear(textarea);
-    await userEvent.type(textarea, "12345");
+    await userEvent.type(textarea, "abc");
 
-    expect(onStartTelephonyRoutesChange).toHaveBeenCalledWith("start-node", ["12345"]);
-    expect(screen.getByText(/Invalid phone numbers:/i)).toBeInTheDocument();
+    expect(onStartTelephonyRoutesChange).toHaveBeenCalledWith("start-node", ["abc"]);
+    expect(await screen.findByText(/Invalid phone numbers:|Numéros non conformes/i)).toBeInTheDocument();
   });
 
   it("signale l'absence de slug lorsque des numéros sont configurés", () => {

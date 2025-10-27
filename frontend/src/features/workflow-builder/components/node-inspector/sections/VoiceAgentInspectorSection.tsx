@@ -1,4 +1,7 @@
+import { useMemo } from "react";
+
 import { useI18n } from "../../../../../i18n";
+import type { AvailableModel } from "../../../../../utils/backend";
 import type {
   FlowNode,
   VoiceAgentTool,
@@ -28,6 +31,10 @@ type VoiceAgentInspectorSectionProps = {
       store?: boolean | null;
     },
   ) => void;
+  onAgentProviderChange: (
+    nodeId: string,
+    selection: { providerId?: string | null; providerSlug?: string | null },
+  ) => void;
   onAgentMessageChange: (nodeId: string, value: string) => void;
   onVoiceAgentVoiceChange: (nodeId: string, value: string) => void;
   onVoiceAgentStartBehaviorChange: (
@@ -41,6 +48,8 @@ type VoiceAgentInspectorSectionProps = {
   onVoiceAgentToolChange: (nodeId: string, tool: VoiceAgentTool, enabled: boolean) => void;
   workflows: WorkflowSummary[];
   currentWorkflowId: number | null;
+  availableModels: AvailableModel[];
+  availableModelsLoading: boolean;
   onAgentWeatherToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
@@ -51,6 +60,7 @@ export const VoiceAgentInspectorSection = ({
   nodeId,
   parameters,
   onAgentModelChange,
+  onAgentProviderChange,
   onAgentMessageChange,
   onVoiceAgentVoiceChange,
   onVoiceAgentStartBehaviorChange,
@@ -58,17 +68,116 @@ export const VoiceAgentInspectorSection = ({
   onVoiceAgentToolChange,
   workflows,
   currentWorkflowId,
+  availableModels,
+  availableModelsLoading,
   onAgentWeatherToolChange,
   onAgentWidgetValidationToolChange,
   onAgentWorkflowValidationToolChange,
   onAgentWorkflowToolToggle,
 }: VoiceAgentInspectorSectionProps) => {
   const { t } = useI18n();
-  const { voiceModel, voiceId, instructions, startBehavior, stopBehavior, tools } =
-    useVoiceAgentInspectorState({ parameters });
+  const {
+    voiceModel,
+    voiceProviderId,
+    voiceProviderSlug,
+    voiceId,
+    instructions,
+    startBehavior,
+    stopBehavior,
+    tools,
+  } = useVoiceAgentInspectorState({ parameters });
+
+  const providerOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const options: {
+      value: string;
+      id: string | null;
+      slug: string | null;
+      label: string;
+    }[] = [];
+    for (const model of availableModels) {
+      const slug = model.provider_slug?.trim().toLowerCase() ?? "";
+      const id = model.provider_id?.trim() ?? "";
+      if (!slug && !id) {
+        continue;
+      }
+      const key = `${id}|${slug}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      const baseLabel = slug || id || t("workflowBuilder.agentInspector.providerPlaceholder");
+      const label = slug && id ? `${slug} (${id})` : baseLabel;
+      options.push({ value: key, id: id || null, slug: slug || null, label });
+    }
+    const trimmedSlug = voiceProviderSlug.trim();
+    const trimmedId = voiceProviderId.trim();
+    if ((trimmedSlug || trimmedId) && !seen.has(`${trimmedId}|${trimmedSlug}`)) {
+      const baseLabel = trimmedSlug || trimmedId;
+      const label = trimmedSlug && trimmedId ? `${trimmedSlug} (${trimmedId})` : baseLabel;
+      options.push({
+        value: `${trimmedId}|${trimmedSlug}`,
+        id: trimmedId || null,
+        slug: trimmedSlug || null,
+        label: baseLabel ? label : t("workflowBuilder.agentInspector.providerPlaceholder"),
+      });
+    }
+    return options.sort((a, b) => a.label.localeCompare(b.label, "fr"));
+  }, [availableModels, t, voiceProviderId, voiceProviderSlug]);
+
+  const selectedProviderValue = useMemo(() => {
+    if (!voiceProviderId && !voiceProviderSlug) {
+      return "";
+    }
+    const matchById = providerOptions.find(
+      (option) => voiceProviderId && option.id === voiceProviderId,
+    );
+    if (matchById) {
+      return matchById.value;
+    }
+    const matchBySlug = providerOptions.find(
+      (option) => voiceProviderSlug && option.slug === voiceProviderSlug,
+    );
+    if (matchBySlug) {
+      return matchBySlug.value;
+    }
+    if (voiceProviderId || voiceProviderSlug) {
+      return `${voiceProviderId.trim()}|${voiceProviderSlug.trim()}`;
+    }
+    return "";
+  }, [providerOptions, voiceProviderId, voiceProviderSlug]);
 
   return (
     <>
+      <label className={styles.nodeInspectorInlineField}>
+        <span className={styles.nodeInspectorLabel}>
+          {t("workflowBuilder.agentInspector.providerLabel")}
+        </span>
+        <select
+          value={selectedProviderValue}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (!value) {
+              onAgentProviderChange(nodeId, { providerId: null, providerSlug: null });
+              return;
+            }
+            const option = providerOptions.find((candidate) => candidate.value === value);
+            onAgentProviderChange(nodeId, {
+              providerId: option?.id ?? null,
+              providerSlug: option?.slug ?? null,
+            });
+          }}
+          disabled={availableModelsLoading}
+        >
+          <option value="">{t("workflowBuilder.agentInspector.providerPlaceholder")}</option>
+          {providerOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
       <label className={styles.nodeInspectorInlineField}>
         <span className={styles.nodeInspectorLabel}>
           {t("workflowBuilder.voiceInspector.modelLabel")}

@@ -599,6 +599,34 @@ def _run_ad_hoc_migrations() -> None:
             VoiceSettings.__table__.create(bind=connection)
             table_names.add("voice_settings")
 
+        if "voice_settings" in table_names:
+            voice_settings_columns = {
+                column["name"]
+                for column in inspect(connection).get_columns("voice_settings")
+            }
+            if "provider_id" not in voice_settings_columns:
+                logger.info(
+                    "Migration du schéma voice_settings : ajout de la colonne "
+                    "provider_id",
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE voice_settings ADD COLUMN provider_id "
+                        "VARCHAR(128)"
+                    )
+                )
+            if "provider_slug" not in voice_settings_columns:
+                logger.info(
+                    "Migration du schéma voice_settings : ajout de la colonne "
+                    "provider_slug",
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE voice_settings ADD COLUMN provider_slug "
+                        "VARCHAR(64)"
+                    )
+                )
+
         if "app_settings" not in table_names:
             logger.info("Création de la table app_settings manquante")
             AppSettings.__table__.create(bind=connection)

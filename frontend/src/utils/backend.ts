@@ -169,6 +169,8 @@ export type CreateUserPayload = {
 export type VoiceSettings = {
   instructions: string;
   model: string;
+  provider_id: string | null;
+  provider_slug: string | null;
   voice: string;
   prompt_id: string | null;
   prompt_version: string | null;
@@ -180,6 +182,8 @@ export type VoiceSettings = {
 export type VoiceSettingsUpdatePayload = {
   instructions?: string | null;
   model?: string | null;
+  provider_id?: string | null;
+  provider_slug?: string | null;
   voice?: string | null;
   prompt_id?: string | null;
   prompt_version?: string | null;

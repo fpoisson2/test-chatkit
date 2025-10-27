@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 from fastapi import HTTPException, status
 
+from .admin_settings import resolve_model_provider_credentials
 from .config import get_settings
 from .token_sanitizer import sanitize_value
 
@@ -18,6 +19,8 @@ async def create_realtime_voice_session(
     user_id: str,
     model: str,
     instructions: str,
+    provider_id: str | None = None,
+    provider_slug: str | None = None,
     voice: str | None = None,
     realtime: Mapping[str, Any] | None = None,
     tools: Sequence[Any] | None = None,
@@ -48,17 +51,47 @@ async def create_realtime_voice_session(
             sanitized_request,
         )
 
+    normalized_provider_id = (
+        provider_id.strip() if isinstance(provider_id, str) else ""
+    )
+    normalized_provider_slug = (
+        provider_slug.strip().lower() if isinstance(provider_slug, str) else ""
+    )
+
+    api_base = settings.model_api_base
+    api_key = settings.model_api_key
+
+    credentials = None
+    if normalized_provider_id:
+        credentials = resolve_model_provider_credentials(normalized_provider_id)
+    if credentials is None and normalized_provider_id:
+        for config in settings.model_providers:
+            if config.id == normalized_provider_id:
+                credentials = config
+                break
+    if credentials is None and normalized_provider_slug:
+        for config in settings.model_providers:
+            if config.provider == normalized_provider_slug:
+                credentials = config
+                break
+
+    if credentials is not None:
+        candidate_base = getattr(credentials, "api_base", "")
+        if isinstance(candidate_base, str) and candidate_base.strip():
+            api_base = candidate_base.strip()
+        candidate_key = getattr(credentials, "api_key", None)
+        if isinstance(candidate_key, str) and candidate_key.strip():
+            api_key = candidate_key.strip()
+
     headers = {
-        "Authorization": f"Bearer {settings.model_api_key}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "OpenAI-Beta": "realtime=v1",
     }
 
     timeout = httpx.Timeout(30.0, connect=10.0, read=None)
     try:
-        async with httpx.AsyncClient(
-            base_url=settings.model_api_base, timeout=timeout
-        ) as client:
+        async with httpx.AsyncClient(base_url=api_base, timeout=timeout) as client:
             response = await client.post(
                 "/v1/realtime/client_secrets",
                 json=payload,

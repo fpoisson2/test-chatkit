@@ -541,12 +541,28 @@ async def create_voice_session(
     resolved_voice = (
         req.voice or voice_settings.voice or app_settings.chatkit_realtime_voice
     )
+    resolved_provider_id = req.model_provider_id or voice_settings.provider_id
+    resolved_provider_slug_raw = (
+        req.model_provider_slug
+        or voice_settings.provider_slug
+        or getattr(app_settings, "model_provider", None)
+    )
+    resolved_provider_slug = (
+        resolved_provider_slug_raw.strip().lower()
+        if isinstance(resolved_provider_slug_raw, str)
+        else None
+    )
+    if isinstance(resolved_provider_id, str):
+        resolved_provider_id = resolved_provider_id.strip() or None
     user_id = f"user:{current_user.id}"
 
     secret_payload = await create_realtime_voice_session(
         user_id=user_id,
         model=resolved_model,
         instructions=resolved_instructions,
+        voice=resolved_voice,
+        provider_id=resolved_provider_id,
+        provider_slug=resolved_provider_slug,
     )
 
     parser = SessionSecretParser()
@@ -569,6 +585,8 @@ async def create_voice_session(
         client_secret=parsed_secret.raw,
         expires_at=parsed_secret.expires_at_isoformat(),
         model=resolved_model,
+        model_provider_id=resolved_provider_id,
+        model_provider_slug=resolved_provider_slug,
         instructions=resolved_instructions,
         voice=resolved_voice,
         prompt_id=voice_settings.prompt_id,

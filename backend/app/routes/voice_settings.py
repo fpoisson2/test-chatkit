@@ -44,6 +44,12 @@ async def patch_voice_settings(
                 detail="Le modèle Realtime ne peut pas être vide.",
             )
         updates["model"] = model
+    if payload.provider_slug is not None:
+        provider_slug = payload.provider_slug.strip().lower()
+        updates["provider_slug"] = provider_slug or None
+    if payload.provider_id is not None:
+        provider_id = payload.provider_id.strip()
+        updates["provider_id"] = provider_id or None
     if payload.voice is not None:
         voice = payload.voice.strip()
         if not voice:

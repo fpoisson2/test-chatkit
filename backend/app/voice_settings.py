@@ -35,9 +35,16 @@ def get_or_create_voice_settings(session: Session) -> VoiceSettings:
         return settings
 
     defaults = get_settings()
+    provider_slug = (
+        defaults.model_provider.strip().lower()
+        if isinstance(defaults.model_provider, str)
+        else None
+    )
     settings = VoiceSettings(
         instructions=defaults.chatkit_realtime_instructions,
         model=defaults.chatkit_realtime_model,
+        provider_id=None,
+        provider_slug=provider_slug if provider_slug else None,
         voice=defaults.chatkit_realtime_voice,
         prompt_variables={},
     )
@@ -56,6 +63,8 @@ def update_voice_settings(
     prompt_id: str | None | object = _UNSET,
     prompt_version: str | None | object = _UNSET,
     prompt_variables: dict[str, Any] | object = _UNSET,
+    provider_id: str | None | object = _UNSET,
+    provider_slug: str | None | object = _UNSET,
 ) -> VoiceSettings:
     settings = get_or_create_voice_settings(session)
 
@@ -63,6 +72,18 @@ def update_voice_settings(
         settings.instructions = instructions
     if model is not None:
         settings.model = model
+    if provider_id is not _UNSET:
+        if isinstance(provider_id, str):
+            normalized = provider_id.strip()
+            settings.provider_id = normalized or None
+        else:
+            settings.provider_id = None
+    if provider_slug is not _UNSET:
+        if isinstance(provider_slug, str):
+            normalized_slug = provider_slug.strip().lower()
+            settings.provider_slug = normalized_slug or None
+        else:
+            settings.provider_slug = None
     if voice is not None:
         settings.voice = voice
     if prompt_id is not _UNSET:
