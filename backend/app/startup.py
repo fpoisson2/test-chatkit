@@ -251,10 +251,24 @@ def _build_invite_handler(manager: SIPRegistrationManager):
 
         post_callable = getattr(server, "post", None)
         if callable(post_callable):
+            # Extraire les messages de l'utilisateur depuis les transcriptions
+            user_messages = [
+                t.get("text", "").strip()
+                for t in transcripts
+                if t.get("role") == "user" and t.get("text", "").strip()
+            ]
+            # Combiner tous les messages de l'utilisateur
+            combined_text = " ".join(user_messages) if user_messages else ""
+
+            # Construire le payload avec le contenu de l'utilisateur
+            message_content = []
+            if combined_text:
+                message_content.append({"type": "input_text", "text": combined_text})
+
             payload = {
                 "type": "user_message",
                 "thread_id": thread_id,
-                "message": {"content": []},
+                "message": {"content": message_content},
                 "metadata": {"source": "sip", "transcripts": transcripts},
             }
             try:
@@ -267,9 +281,10 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             else:
                 logger.info(
                     "Workflow repris via ChatKitServer.post "
-                    "(Call-ID=%s, transcriptions=%d)",
+                    "(Call-ID=%s, transcriptions=%d, texte=%s)",
                     session.call_id,
                     transcript_count,
+                    combined_text[:50] + "..." if len(combined_text) > 50 else combined_text,
                 )
             return
 
