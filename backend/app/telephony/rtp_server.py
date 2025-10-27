@@ -120,21 +120,43 @@ class RtpServer:
         Args:
             pcm_data: Audio au format PCM16 (16-bit linear, 16kHz ou 8kHz)
         """
-        if not self._running or not self._transport or not self._remote_addr:
+        if not self._running:
+            logger.warning("RTP send_audio: serveur non démarré")
             return
+        if not self._transport:
+            logger.warning("RTP send_audio: transport non disponible")
+            return
+        if not self._remote_addr:
+            logger.warning("RTP send_audio: adresse distante inconnue")
+            return
+
+        logger.debug(
+            "RTP send_audio: réception de %d octets PCM, envoi vers %s:%d",
+            len(pcm_data),
+            self._remote_addr[0],
+            self._remote_addr[1],
+        )
 
         # Convertir PCM16 en codec de sortie (PCMU par défaut)
         encoded_payload = self._encode_audio(pcm_data)
         if not encoded_payload:
+            logger.warning("RTP send_audio: échec d'encodage audio")
             return
+
+        logger.debug(
+            "RTP send_audio: audio encodé en %d octets %s",
+            len(encoded_payload),
+            self._config.output_codec.upper(),
+        )
 
         # Construire le paquet RTP
         rtp_packet = self._build_rtp_packet(encoded_payload)
 
         try:
             self._transport.sendto(rtp_packet, self._remote_addr)
+            logger.debug("RTP send_audio: paquet envoyé (%d octets)", len(rtp_packet))
         except Exception as exc:
-            logger.debug("Erreur lors de l'envoi RTP : %s", exc)
+            logger.error("Erreur lors de l'envoi RTP : %s", exc)
 
     def _encode_audio(self, pcm_data: bytes) -> bytes:
         """Encode le PCM16 dans le codec de sortie."""
