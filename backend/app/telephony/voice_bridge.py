@@ -370,7 +370,7 @@ class TelephonyVoiceBridge:
             await send_json(
                 {
                     "type": "session.update",
-                    "session": self._build_session_update(instructions, voice),
+                    "session": self._build_session_update(model, instructions, voice),
                 }
             )
 
@@ -454,16 +454,24 @@ class TelephonyVoiceBridge:
             logger.exception("Hook de pont voix en erreur")
 
     def _build_session_update(
-        self, instructions: str, voice: str | None
+        self, model: str, instructions: str, voice: str | None
     ) -> dict[str, Any]:
+        # Format API GA (non-beta)
         payload: dict[str, Any] = {
+            "type": "realtime",
+            "model": model,
             "instructions": instructions,
-            "modalities": ["text", "audio"],
-            "input_audio_format": "pcm16",
-            "output_audio_format": "pcm16",
+            "audio": {
+                "input": {
+                    "format": {"type": "audio/pcm", "rate": 24000},
+                },
+                "output": {
+                    "format": {"type": "audio/pcm", "rate": 24000},
+                },
+            },
         }
         if voice:
-            payload["voice"] = voice
+            payload["audio"]["output"]["voice"] = voice
         return payload
 
     def _decode_packet(self, packet: RtpPacket) -> bytes:
