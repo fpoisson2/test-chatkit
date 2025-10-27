@@ -160,6 +160,11 @@ class RtpServer:
 
             try:
                 self._transport.sendto(rtp_packet, self._remote_addr)
+                # Petit délai pour espacer les paquets et éviter les rafales
+                # 160 octets à 8kHz = 20ms, mais on envoie plus rapidement (5ms)
+                # pour ne pas ralentir le flux tout en évitant la saturation
+                if i < num_packets - 1:  # Pas de délai après le dernier paquet
+                    await asyncio.sleep(0.005)
             except Exception as exc:
                 logger.error("Erreur lors de l'envoi RTP paquet %d/%d : %s", i+1, num_packets, exc)
 
