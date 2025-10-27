@@ -70,6 +70,8 @@ class TelephonyCallContext(TelephonyRouteResolution):
     voice_instructions: str | None
     voice_voice: str | None
     voice_prompt_variables: dict[str, str]
+    voice_provider_id: str | None = None
+    voice_provider_slug: str | None = None
 
 
 class TelephonyRouteSelectionError(RuntimeError):
@@ -107,7 +109,7 @@ def _merge_voice_settings(
     session: Session | None,
     overrides: TelephonyRouteOverrides | None,
     settings: Settings,
-) -> tuple[str, str, str, dict[str, str]]:
+) -> tuple[str, str, str, dict[str, str], str | None, str | None]:
     db: Session
     owns_session = False
     if session is None:
@@ -130,6 +132,8 @@ def _merge_voice_settings(
         prompt_variables = _sanitize_prompt_variables(
             getattr(voice_settings, "prompt_variables", {}) or {}
         )
+        provider_id = getattr(voice_settings, "provider_id", None)
+        provider_slug = getattr(voice_settings, "provider_slug", None)
     finally:
         if owns_session:
             db.close()
@@ -144,7 +148,7 @@ def _merge_voice_settings(
         if overrides.prompt_variables:
             prompt_variables.update(overrides.prompt_variables)
 
-    return model, instructions, voice, prompt_variables
+    return model, instructions, voice, prompt_variables, provider_id, provider_slug
 
 
 def _match_route(
@@ -240,8 +244,10 @@ def resolve_workflow_for_phone_number(
             "courante.",
             getattr(definition.workflow, "slug", "<inconnu>"),
         )
-        model, instructions, voice, prompt_variables = _merge_voice_settings(
-            session=session, overrides=None, settings=effective_settings
+        model, instructions, voice, prompt_variables, provider_id, provider_slug = (
+            _merge_voice_settings(
+                session=session, overrides=None, settings=effective_settings
+            )
         )
         return TelephonyCallContext(
             workflow_definition=definition,
@@ -252,6 +258,8 @@ def resolve_workflow_for_phone_number(
             voice_instructions=instructions,
             voice_voice=voice,
             voice_prompt_variables=prompt_variables,
+            voice_provider_id=provider_id,
+            voice_provider_slug=provider_slug,
         )
     else:
         logger.info(
@@ -325,8 +333,10 @@ def resolve_workflow_for_phone_number(
                 route.workflow_slug,
             )
 
-    model, instructions, voice, prompt_variables = _merge_voice_settings(
-        session=session, overrides=route.overrides, settings=effective_settings
+    model, instructions, voice, prompt_variables, provider_id, provider_slug = (
+        _merge_voice_settings(
+            session=session, overrides=route.overrides, settings=effective_settings
+        )
     )
 
     logger.info(
@@ -346,6 +356,8 @@ def resolve_workflow_for_phone_number(
         voice_instructions=instructions,
         voice_voice=voice,
         voice_prompt_variables=prompt_variables,
+        voice_provider_id=provider_id,
+        voice_provider_slug=provider_slug,
     )
 
 

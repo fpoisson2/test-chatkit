@@ -327,6 +327,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 "voice_instructions": context.voice_instructions,
                 "voice_voice": context.voice_voice,
                 "voice_prompt_variables": dict(context.voice_prompt_variables),
+                "voice_provider_id": context.voice_provider_id,
+                "voice_provider_slug": context.voice_provider_slug,
                 "voice_session_active": False,
             }
         )
@@ -359,6 +361,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         voice_model = metadata.get("voice_model")
         instructions = metadata.get("voice_instructions")
         voice_name = metadata.get("voice_voice")
+        voice_provider_id = metadata.get("voice_provider_id")
+        voice_provider_slug = metadata.get("voice_provider_slug")
         rtp_stream_factory = metadata.get("rtp_stream_factory")
         send_audio = metadata.get("send_audio")
 
@@ -379,10 +383,11 @@ def _build_invite_handler(manager: SIPRegistrationManager):
 
         metadata["voice_session_active"] = True
         logger.info(
-            "Démarrage du pont voix Realtime (Call-ID=%s, modèle=%s, voix=%s)",
+            "Démarrage du pont voix Realtime (Call-ID=%s, modèle=%s, voix=%s, provider=%s)",
             session.call_id,
             voice_model,
             voice_name or "<auto>",
+            voice_provider_slug or voice_provider_id or "<défaut>",
         )
 
         client_secret = metadata.get("client_secret")
@@ -392,6 +397,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 model=voice_model,
                 instructions=instructions,
                 voice=voice_name,
+                provider_id=voice_provider_id,
+                provider_slug=voice_provider_slug,
             )
             parsed_secret = session_secret_parser.parse(secret_payload)
             client_secret = parsed_secret.as_text()
