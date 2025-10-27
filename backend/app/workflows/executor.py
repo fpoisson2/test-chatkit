@@ -2122,6 +2122,111 @@ async def run_workflow(
                 return edge
         return candidates[0]
 
+    async def _run_parallel_split(step: WorkflowStep) -> str:
+        nonlocal last_step_context
+        params = step.parameters or {}
+        join_slug_raw = params.get("join_slug")
+        if not isinstance(join_slug_raw, str) or not join_slug_raw.strip():
+            raise WorkflowExecutionError(
+                step.slug,
+                _node_title(step) or step.slug,
+                RuntimeError("Parallel split sans jointure associée."),
+                list(steps),
+            )
+
+        join_slug = join_slug_raw.strip()
+        if join_slug not in nodes_by_slug:
+            raise WorkflowExecutionError(
+                step.slug,
+                _node_title(step) or step.slug,
+                RuntimeError(f"Nœud de jointure {join_slug} introuvable."),
+                list(steps),
+            )
+
+        outgoing = edges_by_source.get(step.slug, [])
+        if len(outgoing) < 2:
+            raise WorkflowExecutionError(
+                step.slug,
+                _node_title(step) or step.slug,
+                RuntimeError("Parallel split sans branches sortantes suffisantes."),
+                list(steps),
+            )
+
+        branches_metadata: dict[str, str | None] = {}
+        raw_branches = params.get("branches")
+        if isinstance(raw_branches, Sequence):
+            for entry in raw_branches:
+                if isinstance(entry, Mapping):
+                    slug_value = entry.get("slug")
+                    if isinstance(slug_value, str) and slug_value.strip():
+                        label_value = entry.get("label")
+                        branches_metadata[slug_value.strip()] = (
+                            label_value.strip()
+                            if isinstance(label_value, str) and label_value.strip()
+                            else None
+                        )
+
+        async def _snapshot_branch(target_slug: str) -> tuple[str, dict[str, Any]]:
+            snapshot_state = copy.deepcopy(state)
+            snapshot_history = copy.deepcopy(conversation_history)
+            snapshot_context = (
+                copy.deepcopy(last_step_context)
+                if last_step_context is not None
+                else None
+            )
+
+            payload: dict[str, Any] = {
+                "state": snapshot_state,
+                "conversation_history": snapshot_history,
+            }
+            if snapshot_context is not None:
+                payload["last_step_context"] = snapshot_context
+
+            label = branches_metadata.get(target_slug)
+            if label is not None:
+                payload["label"] = label
+
+            return target_slug, payload
+
+        branch_tasks = [
+            asyncio.create_task(_snapshot_branch(edge.target_step.slug))
+            for edge in outgoing
+        ]
+        branch_results = await asyncio.gather(*branch_tasks)
+
+        branches_payload: dict[str, Any] = {
+            slug: result for slug, result in branch_results
+        }
+
+        parallel_payload = {
+            "split_slug": step.slug,
+            "join_slug": join_slug,
+            "branches": branches_payload,
+        }
+
+        existing_parallel = state.get("parallel_outputs")
+        if isinstance(existing_parallel, Mapping):
+            updated_parallel = dict(existing_parallel)
+        else:
+            updated_parallel = {}
+        updated_parallel[join_slug] = copy.deepcopy(parallel_payload)
+        state["parallel_outputs"] = updated_parallel
+
+        title = _node_title(step)
+        await record_step(step.slug, title, parallel_payload)
+
+        last_context_payload: dict[str, Any] = {
+            "parallel_split": parallel_payload,
+            "output": parallel_payload,
+            "output_structured": parallel_payload,
+            "output_parsed": parallel_payload,
+            "output_text": json.dumps(parallel_payload, ensure_ascii=False),
+        }
+
+        last_step_context = last_context_payload
+
+        return join_slug
+
     def _fallback_to_start(node_kind: str, node_slug: str) -> bool:
         nonlocal current_slug
         if not agent_steps_ordered:
@@ -2705,6 +2810,53 @@ async def run_workflow(
             transition = _next_edge(current_slug)
             if transition is None:
                 if _fallback_to_start("user_message", current_node.slug):
+                    continue
+                break
+            current_slug = transition.target_step.slug
+            continue
+
+        if current_node.kind == "parallel_split":
+            join_slug = await _run_parallel_split(current_node)
+            current_slug = join_slug
+            continue
+
+        if current_node.kind == "parallel_join":
+            title = _node_title(current_node)
+            parallel_map = state.get("parallel_outputs")
+            join_payload: Mapping[str, Any] | None = None
+            if isinstance(parallel_map, Mapping):
+                candidate = parallel_map.get(current_node.slug)
+                if isinstance(candidate, Mapping):
+                    join_payload = candidate
+
+            sanitized_join_payload = (
+                copy.deepcopy(dict(join_payload)) if join_payload is not None else {}
+            )
+
+            await record_step(current_node.slug, title, sanitized_join_payload)
+
+            join_context = {
+                "parallel_join": sanitized_join_payload,
+                "output": sanitized_join_payload,
+                "output_structured": sanitized_join_payload,
+                "output_parsed": sanitized_join_payload,
+                "output_text": json.dumps(
+                    sanitized_join_payload, ensure_ascii=False
+                ),
+            }
+            last_step_context = join_context
+
+            if isinstance(parallel_map, Mapping):
+                updated_parallel = dict(parallel_map)
+                updated_parallel.pop(current_node.slug, None)
+                if updated_parallel:
+                    state["parallel_outputs"] = updated_parallel
+                else:
+                    state.pop("parallel_outputs", None)
+
+            transition = _next_edge(current_slug)
+            if transition is None:
+                if _fallback_to_start(current_node.kind, current_node.slug):
                     continue
                 break
             current_slug = transition.target_step.slug
