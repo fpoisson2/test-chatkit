@@ -101,6 +101,33 @@ def test_build_mcp_tool_adds_bearer_prefix(monkeypatch: pytest.MonkeyPatch) -> N
     assert params["headers"]["Authorization"] == "Bearer token-value"
 
 
+def test_build_mcp_tool_supports_legacy_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    class _StubServer:
+        def __init__(self, *, params: dict[str, Any], cache_tools_list: bool) -> None:
+            captured["params"] = params
+            captured["cache_tools_list"] = cache_tools_list
+
+    monkeypatch.setattr(tool_factory_module, "MCPServerSse", _StubServer)
+
+    payload = {
+        "type": "mcp",
+        "kind": "sse",
+        "server_url": "https://legacy.example/mcp",
+        "authorization": "legacy-token",
+    }
+
+    server = tool_factory_module.build_mcp_tool(payload)
+
+    assert isinstance(server, _StubServer)
+    params = captured["params"]
+    assert params["url"] == "https://legacy.example/mcp"
+    assert params["headers"]["Authorization"] == "Bearer legacy-token"
+
+
 def test_build_mcp_tool_rejects_empty_bearer(monkeypatch: pytest.MonkeyPatch) -> None:
     class _FailingServer:
         def __init__(self, **_kwargs: Any) -> None:  # pragma: no cover - garde-fou

@@ -811,15 +811,30 @@ def build_mcp_tool(payload: Any) -> MCPServerSse:
     if isinstance(tool_type, str) and tool_type.strip().lower() not in {"", "mcp"}:
         raise ValueError("Le type d'outil MCP doit être 'mcp'.")
 
-    transport = config.get("transport")
-    if not isinstance(transport, str) or transport.strip().lower() != "http_sse":
+    raw_transport = config.get("transport")
+    if raw_transport is None:
+        raw_transport = config.get("kind")
+
+    if not isinstance(raw_transport, str) or not raw_transport.strip():
+        raise ValueError("Le transport MCP supporté est 'http_sse'.")
+
+    normalized_transport = raw_transport.strip().lower()
+    if normalized_transport in {"sse", "http_sse"}:
+        normalized_transport = "http_sse"
+    else:
         raise ValueError("Le transport MCP supporté est 'http_sse'.")
 
     url = config.get("url")
-    if not isinstance(url, str) or not url.strip():
-        raise ValueError("Le champ 'url' est obligatoire pour une connexion MCP.")
-
-    normalized_url = url.strip()
+    normalized_url: str | None = None
+    if isinstance(url, str) and url.strip():
+        normalized_url = url.strip()
+    if normalized_url is None:
+        server_url = config.get("server_url")
+        if not isinstance(server_url, str) or not server_url.strip():
+            raise ValueError(
+                "Le champ 'url' est obligatoire pour une connexion MCP."
+            )
+        normalized_url = server_url.strip()
 
     headers: dict[str, str] | None = None
     authorization = config.get("authorization")
