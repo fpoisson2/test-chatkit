@@ -174,7 +174,7 @@ class TelephonyVoiceBridge:
         | None = None,
         voice_session_checker: VoiceSessionChecker | None = None,
         input_codec: str = "pcmu",
-        target_sample_rate: int = 16_000,
+        target_sample_rate: int = 24_000,
         receive_timeout: float = 0.5,
         settings: Settings | None = None,
     ) -> None:
@@ -538,7 +538,11 @@ class TelephonyVoiceBridge:
                     str(entry) for entry in value if isinstance(entry, str | bytes)
                 )
         delta = message.get("delta")
-        if isinstance(delta, Mapping):
+        # API GA : delta est directement une string base64
+        if isinstance(delta, str):
+            chunks.append(delta)
+        # API beta : delta est un objet avec audio/chunk à l'intérieur
+        elif isinstance(delta, Mapping):
             nested = delta.get("audio") or delta.get("chunk")
             if isinstance(nested, str):
                 chunks.append(nested)
@@ -550,6 +554,10 @@ class TelephonyVoiceBridge:
 
     def _extract_transcript_text(self, message: Mapping[str, Any]) -> str | None:
         delta = message.get("delta")
+        # API GA : pour les transcriptions, delta peut être directement une string
+        if isinstance(delta, str) and delta.strip():
+            return delta
+        # API beta : delta est un objet avec text/transcript à l'intérieur
         if isinstance(delta, Mapping):
             for key in ("text", "transcript"):
                 value = delta.get(key)
