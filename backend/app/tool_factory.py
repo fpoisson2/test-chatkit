@@ -12,6 +12,7 @@ from dataclasses import field
 from typing import TYPE_CHECKING, Any
 
 from agents import FunctionTool, RunContextWrapper, WebSearchTool, function_tool
+from agents.mcp import MCPServerSse
 from agents.tool import ComputerTool
 
 try:  # pragma: no cover - dépend des versions du SDK Agents
@@ -114,6 +115,45 @@ _WORKFLOW_VALIDATION_TOOL_DEFAULT_DESCRIPTION = (
     "Valide la configuration d'un graphe de workflow ChatKit et "
     "renvoie la version normalisée ainsi que les erreurs éventuelles."
 )
+
+
+def _coerce_positive_float(value: Any, *, field_name: str) -> float | None:
+    """Convertit la valeur fournie en float strictement positif."""
+
+    if value is None:
+        return None
+
+    candidate: float
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        candidate = float(value)
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            message = (
+                f"Le champ {field_name} doit être un nombre strictement positif "
+                "lorsque fourni."
+            )
+            raise ValueError(message)
+        try:
+            candidate = float(stripped)
+        except ValueError as exc:  # pragma: no cover - chemin exceptionnel
+            message = (
+                f"Le champ {field_name} doit être un nombre strictement positif."
+            )
+            raise ValueError(message) from exc
+    else:
+        message = (
+            f"Le champ {field_name} doit être un nombre strictement positif."
+        )
+        raise ValueError(message)
+
+    if candidate <= 0:
+        message = (
+            f"Le champ {field_name} doit être un nombre strictement positif."
+        )
+        raise ValueError(message)
+
+    return candidate
 
 
 def sanitize_web_search_user_location(payload: Any) -> dict[str, str] | None:
@@ -752,6 +792,118 @@ def build_weather_tool(payload: Any) -> FunctionTool | None:
     return tool
 
 
+def _extract_mcp_payload(payload: Any) -> Mapping[str, Any]:
+    if isinstance(payload, Mapping):
+        return payload
+
+    raise ValueError("La configuration MCP doit être un objet JSON.")
+
+
+def build_mcp_tool(payload: Any) -> MCPServerSse:
+    """Construit une instance réutilisable de serveur MCP via SSE."""
+
+    if isinstance(payload, MCPServerSse):
+        return payload
+
+    config = dict(_extract_mcp_payload(payload))
+
+    tool_type = config.get("type") or config.get("name")
+    if isinstance(tool_type, str) and tool_type.strip().lower() not in {"", "mcp"}:
+        raise ValueError("Le type d'outil MCP doit être 'mcp'.")
+
+    raw_transport = config.get("transport")
+    if raw_transport is None:
+        raw_transport = config.get("kind")
+
+    if not isinstance(raw_transport, str) or not raw_transport.strip():
+        raise ValueError("Le transport MCP supporté est 'http_sse'.")
+
+    normalized_transport = raw_transport.strip().lower()
+    if normalized_transport in {"sse", "http_sse"}:
+        normalized_transport = "http_sse"
+    else:
+        raise ValueError("Le transport MCP supporté est 'http_sse'.")
+
+    url = config.get("url")
+    normalized_url: str | None = None
+    if isinstance(url, str) and url.strip():
+        normalized_url = url.strip()
+    if normalized_url is None:
+        server_url = config.get("server_url")
+        if not isinstance(server_url, str) or not server_url.strip():
+            raise ValueError(
+                "Le champ 'url' est obligatoire pour une connexion MCP."
+            )
+        normalized_url = server_url.strip()
+
+    headers: dict[str, str] | None = None
+    authorization = config.get("authorization")
+    if authorization is not None:
+        if not isinstance(authorization, str):
+            raise ValueError(
+                "Le champ 'authorization' doit être une chaîne de caractères."
+            )
+
+        token = authorization.strip()
+        if not token:
+            raise ValueError(
+                "Le champ 'authorization' ne peut pas être une chaîne vide."
+            )
+
+        normalized_token = token
+        lower_token = token.lower()
+        if lower_token.startswith("bearer "):
+            normalized_token = token[7:].strip()
+        elif lower_token == "bearer":
+            normalized_token = ""
+
+        if not normalized_token:
+            raise ValueError(
+                "Le champ 'authorization' doit contenir un jeton Bearer valide."
+            )
+
+        headers = {"Authorization": f"Bearer {normalized_token}"}
+
+    timeout = _coerce_positive_float(config.get("timeout"), field_name="timeout")
+    sse_read_timeout = _coerce_positive_float(
+        config.get("sse_read_timeout"), field_name="sse_read_timeout"
+    )
+    client_session_timeout = _coerce_positive_float(
+        config.get("client_session_timeout_seconds"),
+        field_name="client_session_timeout_seconds",
+    )
+
+    params: dict[str, Any] = {"url": normalized_url}
+    if headers:
+        params["headers"] = headers
+    if timeout is not None:
+        params["timeout"] = timeout
+    if sse_read_timeout is not None:
+        params["sse_read_timeout"] = sse_read_timeout
+
+    name_candidate = config.get("name")
+    tool_name: str | None = None
+    if isinstance(name_candidate, str):
+        stripped = name_candidate.strip()
+        tool_name = stripped or None
+
+    logger.info(
+        "Initialisation d'une connexion MCP SSE vers un serveur externe : %s",
+        normalized_url,
+    )
+
+    kwargs: dict[str, Any] = {
+        "params": params,
+        "cache_tools_list": True,
+    }
+    if tool_name is not None:
+        kwargs["name"] = tool_name
+    if client_session_timeout is not None:
+        kwargs["client_session_timeout_seconds"] = client_session_timeout
+
+    return MCPServerSse(**kwargs)
+
+
 def validate_workflow_graph(
     graph: Mapping[str, Any] | str,
 ) -> WorkflowValidationResult:
@@ -1297,6 +1449,7 @@ __all__ = [
     "WorkflowValidationResult",
     "build_file_search_tool",
     "build_image_generation_tool",
+    "build_mcp_tool",
     "build_weather_tool",
     "build_workflow_tool",
     "build_workflow_validation_tool",

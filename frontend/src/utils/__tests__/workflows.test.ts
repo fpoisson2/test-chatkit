@@ -8,11 +8,13 @@ import {
   DEFAULT_VOICE_AGENT_STOP_BEHAVIOR,
   DEFAULT_VOICE_AGENT_VOICE,
   getAgentNestedWorkflow,
+  getAgentMcpSseConfig,
   getAgentWorkflowTools,
   getWidgetNodeConfig,
   resolveVoiceAgentParameters,
   resolveWidgetNodeParameters,
   setAgentNestedWorkflow,
+  setAgentMcpSseConfig,
   setAgentWorkflowTools,
   setWidgetNodeDefinitionExpression,
   setWidgetNodeSlug,
@@ -27,6 +29,7 @@ import {
   setStartTelephonyRealtimeOverrides,
   resolveStartParameters,
   type WorkflowToolConfig,
+  type McpSseToolConfig,
 } from "../workflows";
 
 describe("widget_source override", () => {
@@ -237,6 +240,54 @@ describe("start telephony helpers", () => {
         },
       },
     });
+  });
+});
+
+describe("mcp sse tool helpers", () => {
+  it("extrait une configuration normalisée depuis les paramètres", () => {
+    const parameters: AgentParameters = {
+      tools: [
+        {
+          type: "mcp",
+          transport: "http_sse",
+          url: "  https://ha.local/mcp  ",
+          authorization: "  Bearer secret  ",
+        },
+      ],
+    };
+
+    expect(getAgentMcpSseConfig(parameters)).toEqual({
+      url: "https://ha.local/mcp",
+      authorization: "Bearer secret",
+    });
+  });
+
+  it("met à jour et supprime la configuration MCP selon l'URL fournie", () => {
+    const baseTool = { type: "function", function: { name: "other" } };
+    const initial: AgentParameters = { tools: [baseTool] };
+
+    const config: McpSseToolConfig = {
+      url: "  https://ha.local/mcp  ",
+      authorization: "",
+    };
+
+    const withConfig = setAgentMcpSseConfig(initial, config);
+    expect(withConfig).toEqual({
+      tools: [
+        baseTool,
+        {
+          type: "mcp",
+          transport: "http_sse",
+          url: "https://ha.local/mcp",
+        },
+      ],
+    });
+
+    const cleared = setAgentMcpSseConfig(withConfig, { url: "   ", authorization: "" });
+    expect(cleared).toEqual({ tools: [baseTool] });
+
+    const fullyCleared = setAgentMcpSseConfig({ tools: [] }, null);
+    expect(fullyCleared).toEqual({});
   });
 });
 

@@ -27,6 +27,7 @@ from agents import (
     Runner,
     TResponseInputItem,
 )
+from agents.mcp import MCPServer
 from pydantic import BaseModel
 
 from chatkit.agents import (
@@ -2129,113 +2130,181 @@ async def run_workflow(
                     exc_info=True,
                 )
 
-        result = Runner.run_streamed(
-            agent,
-            input=[*conversation_history],
-            run_config=_workflow_run_config(
-                response_format_override, provider_binding=provider_binding
-            ),
-            context=runner_context,
-            previous_response_id=(
-                None
-                if model_capabilities is not None
-                and not model_capabilities.supports_previous_response_id
-                else getattr(agent_context, "previous_response_id", None)
-            ),
-        )
-        try:
-            async for event in stream_agent_response(agent_context, result):
-                logger.debug(
-                    "Évènement %s reçu pour l'étape %s",
-                    getattr(event, "type", type(event).__name__),
-                    metadata_for_images.get("step_slug"),
-                )
-                if _should_forward_agent_event(
-                    event, suppress=suppress_stream_events
-                ):
-                    await _emit_stream_event(event)
-                delta_text = _extract_delta(event)
-                if delta_text:
-                    accumulated_text += delta_text
-                    await _emit_step_stream(
-                        WorkflowStepStreamUpdate(
-                            key=step_key,
-                            title=title,
-                            index=step_index,
-                            delta=delta_text,
-                            text=accumulated_text,
+        # Connecter les serveurs MCP si présents AVANT de démarrer l'agent
+        mcp_servers = getattr(agent, "mcp_servers", None)
+        connected_mcp_servers: list[MCPServer] = []
+        if mcp_servers:
+            for server in mcp_servers:
+                if isinstance(server, MCPServer):
+                    try:
+                        await server.connect()
+                        connected_mcp_servers.append(server)
+                        logger.debug(
+                            "Serveur MCP %s connecté pour l'agent %s",
+                            getattr(server, "name", "<inconnu>"),
+                            getattr(agent, "name", "<inconnu>"),
                         )
-                    )
-                await _inspect_event_for_images(event)
-        except Exception as exc:  # pragma: no cover
-            raise_step_error(step_key, title, exc)
+                    except Exception as exc:
+                        logger.warning(
+                            "Impossible de connecter le serveur MCP %s : %s",
+                            getattr(server, "name", "<inconnu>"),
+                            exc,
+                            exc_info=True,
+                        )
 
-        last_response_id = getattr(result, "last_response_id", None)
-        if last_response_id is not None and (
-            model_capabilities is None
-            or model_capabilities.supports_previous_response_id
-        ):
-            agent_context.previous_response_id = last_response_id
-            thread_metadata = getattr(agent_context, "thread", None)
-            should_persist_thread = False
-            if thread_metadata is not None:
-                existing_metadata = getattr(thread_metadata, "metadata", None)
-                if isinstance(existing_metadata, Mapping):
-                    stored_response_id = existing_metadata.get("previous_response_id")
-                    if stored_response_id != last_response_id:
-                        existing_metadata["previous_response_id"] = last_response_id
-                        should_persist_thread = True
-                else:
-                    thread_metadata.metadata = {
-                        "previous_response_id": last_response_id
-                    }
-                    should_persist_thread = True
-
-            store = getattr(agent_context, "store", None)
-            request_context = getattr(agent_context, "request_context", None)
-            if (
-                should_persist_thread
-                and store is not None
-                and request_context is not None
-                and hasattr(store, "save_thread")
-            ):
+            # Mettre à jour agent.mcp_servers pour ne garder que les serveurs connectés
+            if connected_mcp_servers:
                 try:
-                    await store.save_thread(  # type: ignore[arg-type]
-                        thread_metadata,
-                        context=request_context,
+                    agent.mcp_servers = connected_mcp_servers
+                    logger.debug(
+                        "%d serveur(s) MCP connecté(s) sur %d configuré(s) pour l'agent %s",
+                        len(connected_mcp_servers),
+                        len(mcp_servers),
+                        getattr(agent, "name", "<inconnu>"),
                     )
-                except Exception as exc:  # pragma: no cover - persistance best effort
+                except Exception as exc:
                     logger.warning(
-                        "Impossible d'enregistrer previous_response_id pour le fil %s",
-                        getattr(thread_metadata, "id", "<inconnu>"),
-                        exc_info=exc,
+                        "Impossible de mettre à jour agent.mcp_servers : %s",
+                        exc,
+                    )
+            else:
+                # Aucun serveur connecté, vider la liste
+                try:
+                    agent.mcp_servers = []
+                    logger.warning(
+                        "Aucun serveur MCP n'a pu se connecter pour l'agent %s",
+                        getattr(agent, "name", "<inconnu>"),
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Impossible de vider agent.mcp_servers : %s",
+                        exc,
                     )
 
-        conversation_history.extend([item.to_input_item() for item in result.new_items])
-        if result.new_items:
+        try:
+            result = Runner.run_streamed(
+                agent,
+                input=[*conversation_history],
+                run_config=_workflow_run_config(
+                    response_format_override, provider_binding=provider_binding
+                ),
+                context=runner_context,
+                previous_response_id=(
+                    None
+                    if model_capabilities is not None
+                    and not model_capabilities.supports_previous_response_id
+                    else getattr(agent_context, "previous_response_id", None)
+                ),
+            )
             try:
-                logger.debug(
-                    "Éléments ajoutés par l'agent %s : %s",
-                    agent_key,
-                    json.dumps(
-                        [item.to_input_item() for item in result.new_items],
-                        ensure_ascii=False,
-                        default=str,
-                    ),
-                )
-            except TypeError:
-                logger.debug(
-                    "Éléments ajoutés par l'agent %s non sérialisables en JSON",
-                    agent_key,
-                )
-        logger.info(
-            "Fin de l'exécution de l'agent %s (étape=%s)",
-            metadata_for_images.get("agent_key")
-            or metadata_for_images.get("agent_label")
-            or step_key,
-            metadata_for_images.get("step_slug"),
-        )
-        return result
+                async for event in stream_agent_response(agent_context, result):
+                    logger.debug(
+                        "Évènement %s reçu pour l'étape %s",
+                        getattr(event, "type", type(event).__name__),
+                        metadata_for_images.get("step_slug"),
+                    )
+                    if _should_forward_agent_event(
+                        event, suppress=suppress_stream_events
+                    ):
+                        await _emit_stream_event(event)
+                    delta_text = _extract_delta(event)
+                    if delta_text:
+                        accumulated_text += delta_text
+                        await _emit_step_stream(
+                            WorkflowStepStreamUpdate(
+                                key=step_key,
+                                title=title,
+                                index=step_index,
+                                delta=delta_text,
+                                text=accumulated_text,
+                            )
+                        )
+                    await _inspect_event_for_images(event)
+            except Exception as exc:  # pragma: no cover
+                raise_step_error(step_key, title, exc)
+
+            last_response_id = getattr(result, "last_response_id", None)
+            if last_response_id is not None and (
+                model_capabilities is None
+                or model_capabilities.supports_previous_response_id
+            ):
+                agent_context.previous_response_id = last_response_id
+                thread_metadata = getattr(agent_context, "thread", None)
+                should_persist_thread = False
+                if thread_metadata is not None:
+                    existing_metadata = getattr(thread_metadata, "metadata", None)
+                    if isinstance(existing_metadata, Mapping):
+                        stored_response_id = existing_metadata.get("previous_response_id")
+                        if stored_response_id != last_response_id:
+                            existing_metadata["previous_response_id"] = last_response_id
+                            should_persist_thread = True
+                    else:
+                        thread_metadata.metadata = {
+                            "previous_response_id": last_response_id
+                        }
+                        should_persist_thread = True
+
+                store = getattr(agent_context, "store", None)
+                request_context = getattr(agent_context, "request_context", None)
+                if (
+                    should_persist_thread
+                    and store is not None
+                    and request_context is not None
+                    and hasattr(store, "save_thread")
+                ):
+                    try:
+                        await store.save_thread(  # type: ignore[arg-type]
+                            thread_metadata,
+                            context=request_context,
+                        )
+                    except Exception as exc:  # pragma: no cover - persistance best effort
+                        logger.warning(
+                            "Impossible d'enregistrer previous_response_id pour le fil %s",
+                            getattr(thread_metadata, "id", "<inconnu>"),
+                            exc_info=exc,
+                        )
+
+            conversation_history.extend([item.to_input_item() for item in result.new_items])
+            if result.new_items:
+                try:
+                    logger.debug(
+                        "Éléments ajoutés par l'agent %s : %s",
+                        agent_key,
+                        json.dumps(
+                            [item.to_input_item() for item in result.new_items],
+                            ensure_ascii=False,
+                            default=str,
+                        ),
+                    )
+                except TypeError:
+                    logger.debug(
+                        "Éléments ajoutés par l'agent %s non sérialisables en JSON",
+                        agent_key,
+                    )
+            logger.info(
+                "Fin de l'exécution de l'agent %s (étape=%s)",
+                metadata_for_images.get("agent_key")
+                or metadata_for_images.get("agent_label")
+                or step_key,
+                metadata_for_images.get("step_slug"),
+            )
+            return result
+        finally:
+            # Déconnecter les serveurs MCP
+            for server in connected_mcp_servers:
+                try:
+                    await server.cleanup()
+                    logger.debug(
+                        "Serveur MCP %s nettoyé pour l'agent %s",
+                        getattr(server, "name", "<inconnu>"),
+                        getattr(agent, "name", "<inconnu>"),
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Erreur lors du nettoyage du serveur MCP %s : %s",
+                        getattr(server, "name", "<inconnu>"),
+                        exc,
+                    )
 
     def _node_title(step: WorkflowStep) -> str:
         if getattr(step, "display_name", None):

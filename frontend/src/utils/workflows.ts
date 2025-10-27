@@ -20,6 +20,11 @@ export type ComputerUseConfig = {
   start_url?: string;
 };
 
+export type McpSseToolConfig = {
+  url: string;
+  authorization: string;
+};
+
 export type WorkflowToolConfig = {
   slug: string;
   name?: string;
@@ -2590,6 +2595,53 @@ const sanitizeComputerUseConfig = (
   return payload;
 };
 
+const isMcpSseTool = (value: unknown): value is Record<string, unknown> => {
+  if (!isPlainRecord(value)) {
+    return false;
+  }
+  const type = value.type;
+  if (typeof type !== "string" || type.trim().toLowerCase() !== "mcp") {
+    return false;
+  }
+  const transport = value.transport;
+  if (typeof transport !== "string" || transport.trim().toLowerCase() !== "http_sse") {
+    return false;
+  }
+  return typeof value.url === "string";
+};
+
+const sanitizeMcpSseConfig = (
+  config: Partial<McpSseToolConfig> | null | undefined,
+): McpSseToolConfig | null => {
+  if (!config) {
+    return null;
+  }
+
+  const url = typeof config.url === "string" ? config.url.trim() : "";
+  if (!url) {
+    return null;
+  }
+
+  const authorization =
+    typeof config.authorization === "string" ? config.authorization.trim() : "";
+
+  return { url, authorization };
+};
+
+const buildMcpSseToolEntry = (config: McpSseToolConfig): Record<string, unknown> => {
+  const entry: Record<string, unknown> = {
+    type: "mcp",
+    transport: "http_sse",
+    url: config.url,
+  };
+
+  if (config.authorization) {
+    entry.authorization = config.authorization;
+  }
+
+  return entry;
+};
+
 const WEATHER_FUNCTION_TOOL_NAME = "fetch_weather";
 
 const WEATHER_FUNCTION_TOOL_DESCRIPTION =
@@ -3287,6 +3339,37 @@ export const getAgentComputerUseConfig = (
   return null;
 };
 
+export const getAgentMcpSseConfig = (
+  parameters: AgentParameters | null | undefined,
+): McpSseToolConfig | null => {
+  if (!parameters) {
+    return null;
+  }
+
+  const tools = (parameters as Record<string, unknown>).tools;
+  if (!Array.isArray(tools)) {
+    return null;
+  }
+
+  for (const tool of tools) {
+    if (!isMcpSseTool(tool)) {
+      continue;
+    }
+
+    const url = typeof tool.url === "string" ? tool.url.trim() : "";
+    if (!url) {
+      continue;
+    }
+
+    const authorization =
+      typeof tool.authorization === "string" ? tool.authorization.trim() : "";
+
+    return { url, authorization };
+  }
+
+  return null;
+};
+
 export const getAgentImageGenerationConfig = (
   parameters: AgentParameters | null | undefined,
 ): ImageGenerationToolConfig | null => {
@@ -3405,6 +3488,28 @@ export const setAgentComputerUseConfig = (
   };
 
   return { ...next, tools: [...tools, toolEntry] };
+};
+
+export const setAgentMcpSseConfig = (
+  parameters: AgentParameters,
+  config: McpSseToolConfig | null,
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const sanitized = sanitizeMcpSseConfig(config);
+  const tools = Array.isArray(next.tools)
+    ? (next.tools as unknown[]).filter((tool) => !isMcpSseTool(tool))
+    : [];
+
+  if (!sanitized) {
+    if (tools.length === 0) {
+      const { tools: _ignored, ...rest } = next as Record<string, unknown>;
+      return stripEmpty(rest);
+    }
+    return { ...next, tools };
+  }
+
+  const entry = buildMcpSseToolEntry(sanitized);
+  return { ...next, tools: [...tools, entry] };
 };
 
 export const setAgentImageGenerationConfig = (

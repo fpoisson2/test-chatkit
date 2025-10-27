@@ -320,6 +320,33 @@ const fr: TranslationDictionary = {
     "Aucun autre workflow disponible pour être ajouté comme outil.",
   "workflowBuilder.agentInspector.workflowToolsMissing":
     "Le workflow « {{slug}} » n'est plus disponible. Retirez-le de la configuration.",
+  "workflowBuilder.agentInspector.mcpSectionTitle": "Serveur MCP Home Assistant",
+  "workflowBuilder.agentInspector.mcpSectionDescription":
+    "Connectez un serveur MCP existant (ex. Home Assistant) pour exposer ses outils à l'agent.",
+  "workflowBuilder.agentInspector.mcpUrlLabel": "URL du serveur MCP",
+  "workflowBuilder.agentInspector.mcpAuthorizationLabel":
+    "Clé d'autorisation (Bearer …)",
+  "workflowBuilder.agentInspector.mcpAuthorizationPlaceholder": "Bearer …",
+  "workflowBuilder.agentInspector.mcpAuthorizationHelp":
+    "Laissez vide si le serveur n'exige pas d'authentification.",
+  "workflowBuilder.agentInspector.mcpTestButton": "Tester la connexion",
+  "workflowBuilder.agentInspector.mcpTestStatus.ok":
+    "Connexion établie. {{count}} outil(s) disponible(s).",
+  "workflowBuilder.agentInspector.mcpTestStatus.unauthorized":
+    "Authentification refusée par le serveur MCP.",
+  "workflowBuilder.agentInspector.mcpTestStatus.forbidden":
+    "Accès refusé par le serveur MCP.",
+  "workflowBuilder.agentInspector.mcpTestStatus.http_error":
+    "Le serveur MCP a renvoyé le statut HTTP {{statusCode}}.",
+  "workflowBuilder.agentInspector.mcpTestStatus.timeout":
+    "Le serveur MCP n'a pas répondu avant l'expiration du délai.",
+  "workflowBuilder.agentInspector.mcpTestStatus.error":
+    "Test de connexion impossible : {{detail}}",
+  "workflowBuilder.agentInspector.mcpTestStatus.invalidConfig":
+    "Renseignez une URL MCP valide avant de lancer le test.",
+  "workflowBuilder.agentInspector.mcpTestStatus.loading": "Test de connexion en cours…",
+  "workflowBuilder.agentInspector.mcpTestStatus.toolListLabel": "Outils disponibles",
+  "workflowBuilder.agentInspector.mcpTestStatus.errorUnknown": "erreur inconnue",
   "workflowBuilder.agentInspector.modelsLoading": "Chargement des modèles disponibles…",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Ajoute l'outil image_generation pour produire des visuels. Actuellement, seule l'API Images d'OpenAI est prise en charge.",
@@ -874,6 +901,33 @@ const en: TranslationDictionary = {
     "No other workflows are available to expose as tools.",
   "workflowBuilder.agentInspector.workflowToolsMissing":
     "The \"{{slug}}\" workflow is no longer available. Remove it from the configuration.",
+  "workflowBuilder.agentInspector.mcpSectionTitle": "Home Assistant MCP server",
+  "workflowBuilder.agentInspector.mcpSectionDescription":
+    "Connect an existing MCP server (e.g. Home Assistant) to expose its tools to the agent.",
+  "workflowBuilder.agentInspector.mcpUrlLabel": "MCP server URL",
+  "workflowBuilder.agentInspector.mcpAuthorizationLabel":
+    "Authorization header (Bearer …)",
+  "workflowBuilder.agentInspector.mcpAuthorizationPlaceholder": "Bearer …",
+  "workflowBuilder.agentInspector.mcpAuthorizationHelp":
+    "Leave empty if the server does not require authentication.",
+  "workflowBuilder.agentInspector.mcpTestButton": "Test connection",
+  "workflowBuilder.agentInspector.mcpTestStatus.ok":
+    "Connection established. {{count}} tool(s) available.",
+  "workflowBuilder.agentInspector.mcpTestStatus.unauthorized":
+    "Authentication rejected by the MCP server.",
+  "workflowBuilder.agentInspector.mcpTestStatus.forbidden":
+    "Access denied by the MCP server.",
+  "workflowBuilder.agentInspector.mcpTestStatus.http_error":
+    "The MCP server returned HTTP status {{statusCode}}.",
+  "workflowBuilder.agentInspector.mcpTestStatus.timeout":
+    "The MCP server did not respond before the timeout.",
+  "workflowBuilder.agentInspector.mcpTestStatus.error":
+    "Unable to test the connection: {{detail}}",
+  "workflowBuilder.agentInspector.mcpTestStatus.invalidConfig":
+    "Provide a valid MCP URL before running the test.",
+  "workflowBuilder.agentInspector.mcpTestStatus.loading": "Testing connection…",
+  "workflowBuilder.agentInspector.mcpTestStatus.toolListLabel": "Available tools",
+  "workflowBuilder.agentInspector.mcpTestStatus.errorUnknown": "unknown error",
   "workflowBuilder.agentInspector.modelsLoading": "Loading available models…",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Enables the image_generation tool to produce visuals. At the moment, only OpenAI's Images API is supported.",
