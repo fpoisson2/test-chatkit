@@ -98,6 +98,45 @@ def test_attach_dialog_callbacks_preserves_existing_bye_list() -> None:
     assert dialog.callbacks["bye"] is existing
 
 
+def test_attach_dialog_callbacks_patches_stop_dialog_for_unsubscriptable() -> None:
+    handler = SipCallRequestHandler()
+
+    class DummyApp:
+        def __init__(self) -> None:
+            self.calls = 0
+            self._dialogs: dict[str, object] = {"abc": object()}
+
+        def stop_dialog(self, dialog: object) -> None:
+            self.calls += 1
+            raise TypeError("'Dialog' object is not subscriptable")
+
+    app = DummyApp()
+    dialog = SimpleNamespace(callbacks={}, app=app, call_id="abc")
+
+    _attach_dialog_callbacks(dialog, handler)
+
+    # The patched method should swallow the TypeError and perform cleanup.
+    app.stop_dialog(dialog)
+
+    assert app.calls == 1
+    assert app._dialogs == {}
+
+
+def test_attach_dialog_callbacks_preserves_other_type_errors() -> None:
+    handler = SipCallRequestHandler()
+
+    class DummyApp:
+        def stop_dialog(self, dialog: object) -> None:
+            raise TypeError("boom")
+
+    app = DummyApp()
+    dialog = SimpleNamespace(callbacks={}, app=app, call_id="abc")
+
+    _attach_dialog_callbacks(dialog, handler)
+
+    with pytest.raises(TypeError, match="boom"):
+        app.stop_dialog(dialog)
+
 @pytest.mark.anyio
 async def test_handle_invite_accepts_supported_codec() -> None:
     dialog = DummyDialog()

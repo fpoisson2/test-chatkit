@@ -8,6 +8,7 @@ import os
 import re
 import uuid
 from collections.abc import MutableMapping
+from functools import wraps
 from typing import Any
 
 from fastapi import FastAPI
@@ -119,6 +120,62 @@ def _attach_dialog_callbacks(dialog: Any, handler: SipCallRequestHandler) -> Non
             "Callbacks SIP non mutables détectés (%s), BYE ignoré",
             type(callbacks).__name__,
         )
+
+    app = getattr(dialog, "app", None)
+    if app is None:
+        return
+
+    bound_stop_dialog = getattr(app, "stop_dialog", None)
+    if not callable(bound_stop_dialog):
+        return
+
+    stop_dialog_func = getattr(bound_stop_dialog, "__func__", bound_stop_dialog)
+    if getattr(stop_dialog_func, "_chatkit_wrapped", False):  # type: ignore[attr-defined]
+        return
+
+    @wraps(bound_stop_dialog)
+    def _stop_dialog_with_fallback(self: Any, dialog_obj: Any) -> Any:
+        try:
+            return bound_stop_dialog(dialog_obj)
+        except TypeError as exc:
+            message = str(exc)
+            if "subscriptable" not in message:
+                raise
+
+            call_id = getattr(dialog_obj, "call_id", None)
+            if call_id is None:
+                raise
+
+            logger.debug(
+                "Arrêt SIP fallback pour le dialogue %s (stop_dialog non compatible)",
+                call_id,
+            )
+
+            try:
+                dialog_obj.callbacks = {}
+            except Exception:  # pragma: no cover - best effort
+                logger.debug(
+                    "Impossible de réinitialiser les callbacks du dialogue SIP %s",
+                    call_id,
+                    exc_info=True,
+                )
+
+            registry = getattr(self, "_dialogs", None)
+            if isinstance(registry, MutableMapping):
+                try:
+                    registry.pop(call_id, None)
+                except Exception:  # pragma: no cover - best effort
+                    logger.debug(
+                        "Impossible de retirer le dialogue SIP %s du registre",
+                        call_id,
+                        exc_info=True,
+                    )
+
+            return None
+
+    _stop_dialog_with_fallback.__wrapped_stop_dialog__ = bound_stop_dialog  # type: ignore[attr-defined]
+    stop_dialog_func._chatkit_wrapped = True  # type: ignore[attr-defined]
+    app.stop_dialog = _stop_dialog_with_fallback.__get__(app, type(app))
 
 
 def _build_invite_handler(manager: SIPRegistrationManager):
