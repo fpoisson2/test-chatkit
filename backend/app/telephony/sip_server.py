@@ -147,6 +147,10 @@ def _merge_voice_settings(
             voice = overrides.voice
         if overrides.prompt_variables:
             prompt_variables.update(overrides.prompt_variables)
+        if getattr(overrides, "provider_id", None):
+            provider_id = overrides.provider_id
+        if getattr(overrides, "provider_slug", None):
+            provider_slug = overrides.provider_slug
 
     return model, instructions, voice, prompt_variables, provider_id, provider_slug
 

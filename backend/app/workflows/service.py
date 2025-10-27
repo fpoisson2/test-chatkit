@@ -178,6 +178,8 @@ class TelephonyRouteOverrides:
     voice: str | None
     instructions: str | None
     prompt_variables: dict[str, str]
+    provider_id: str | None = None
+    provider_slug: str | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -318,6 +320,8 @@ def _normalize_route_overrides(payload: Any) -> TelephonyRouteOverrides:
         _sanitize_text("voice"),
         _sanitize_text("instructions"),
         prompt_variables,
+        _sanitize_text("provider_id"),
+        _sanitize_text("provider_slug"),
     )
 
 
