@@ -530,33 +530,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         # Utiliser le port réel du serveur RTP pour la négociation SDP
         actual_media_port = rtp_server.local_port
 
-        try:
-            await handle_incoming_invite(
-                dialog,
-                request,
-                media_host=media_host,
-                media_port=actual_media_port,
-                contact_uri=contact_uri,
-            )
-        except InviteHandlingError as exc:
-            logger.warning("Traitement de l'INVITE interrompu : %s", exc)
-            await rtp_server.stop()
-            return
-        except Exception as exc:  # pragma: no cover - dépend de aiosip
-            logger.exception(
-                "Erreur inattendue lors du traitement d'un INVITE",
-                exc_info=exc,
-            )
-            await rtp_server.stop()
-            with contextlib.suppress(Exception):
-                await send_sip_reply(
-                    dialog,
-                    500,
-                    reason="Server Internal Error",
-                    contact_uri=contact_uri,
-                )
-            return
-
+        # Enregistrer la session et attacher les callbacks AVANT d'envoyer le 200 OK
+        # pour que l'ACK soit capturé correctement
         try:
             await sip_handler.handle_invite(request, dialog=dialog)
         except Exception:  # pragma: no cover - dépend des callbacks
@@ -591,8 +566,39 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     call_id,
                 )
                 await rtp_server.stop()
+                return
 
+        # Attacher les callbacks dialog AVANT d'envoyer le 200 OK
+        # pour capturer l'ACK qui arrive juste après
         await _attach_dialog_callbacks(dialog, sip_handler)
+
+        # Maintenant envoyer le 200 OK
+        try:
+            await handle_incoming_invite(
+                dialog,
+                request,
+                media_host=media_host,
+                media_port=actual_media_port,
+                contact_uri=contact_uri,
+            )
+        except InviteHandlingError as exc:
+            logger.warning("Traitement de l'INVITE interrompu : %s", exc)
+            await rtp_server.stop()
+            return
+        except Exception as exc:  # pragma: no cover - dépend de aiosip
+            logger.exception(
+                "Erreur inattendue lors du traitement d'un INVITE",
+                exc_info=exc,
+            )
+            await rtp_server.stop()
+            with contextlib.suppress(Exception):
+                await send_sip_reply(
+                    dialog,
+                    500,
+                    reason="Server Internal Error",
+                    contact_uri=contact_uri,
+                )
+            return
 
     return _on_invite
 
