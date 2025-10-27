@@ -133,11 +133,17 @@ async def default_websocket_connector(
     )
 
 
-def build_realtime_ws_url(model: str, *, settings: Settings | None = None) -> str:
+def build_realtime_ws_url(
+    model: str, *, api_base: str | None = None, settings: Settings | None = None
+) -> str:
     """Construit l'URL WebSocket Realtime pour le modèle demandé."""
 
-    effective_settings = settings or get_settings()
-    base = effective_settings.model_api_base.rstrip("/")
+    if api_base:
+        base = api_base.rstrip("/")
+    else:
+        effective_settings = settings or get_settings()
+        base = effective_settings.model_api_base.rstrip("/")
+
     if base.startswith("https://"):
         ws_base = "wss://" + base[len("https://") :]
     elif base.startswith("http://"):
@@ -185,10 +191,11 @@ class TelephonyVoiceBridge:
         voice: str | None,
         rtp_stream: AsyncIterator[RtpPacket],
         send_to_peer: Callable[[bytes], Awaitable[None]],
+        api_base: str | None = None,
     ) -> VoiceBridgeStats:
         """Démarre le pont voix jusqu'à la fin de session ou erreur."""
 
-        url = build_realtime_ws_url(model, settings=self._settings)
+        url = build_realtime_ws_url(model, api_base=api_base, settings=self._settings)
         headers = {
             "Authorization": f"Bearer {client_secret}",
             "OpenAI-Beta": "realtime=v1",

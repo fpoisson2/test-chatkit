@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import datetime
 import logging
+import os
 import re
 from typing import Any
 
@@ -422,6 +423,11 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         )
         voice_bridge = TelephonyVoiceBridge(hooks=hooks)
 
+        # Déterminer le base URL pour le provider (OpenAI, etc.)
+        realtime_api_base: str | None = None
+        if voice_provider_slug == "openai":
+            realtime_api_base = os.environ.get("CHATKIT_API_BASE") or "https://api.openai.com"
+
         try:
             stats = await voice_bridge.run(
                 client_secret=client_secret,
@@ -430,6 +436,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 voice=voice_name,
                 rtp_stream=rtp_stream_factory(),
                 send_to_peer=send_audio,
+                api_base=realtime_api_base,
             )
         except Exception as exc:  # pragma: no cover - dépend réseau
             logger.exception(
