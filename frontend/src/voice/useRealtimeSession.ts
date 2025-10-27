@@ -198,13 +198,29 @@ export const useRealtimeSession = (
 
       register("transport_event", (event: TransportEvent) => {
         const type = (event as { type?: string }).type;
+
         if (type === "connection_change") {
           const statusValue = (event as { status?: RealtimeConnectionStatus }).status;
           if (statusValue === "connected" || statusValue === "connecting" || statusValue === "disconnected") {
             handlersRef.current.onConnectionChange?.(statusValue);
           }
-        } else if (type === "error") {
+          return;
+        }
+
+        if (type === "error") {
           handlersRef.current.onTransportError?.((event as { error?: unknown }).error);
+          return;
+        }
+
+        if (type === "input_audio_buffer.speech_started") {
+          const session = sessionRef.current;
+          try {
+            session?.interrupt();
+          } catch (error) {
+            if (import.meta.env.DEV) {
+              console.warn("Impossible d'interrompre la lecture audio Realtime", error);
+            }
+          }
         }
       });
 
