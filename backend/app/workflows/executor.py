@@ -286,6 +286,18 @@ class WorkflowRunSummary:
 
 
 @dataclass
+class WorkflowRuntimeSnapshot:
+    state: dict[str, Any]
+    conversation_history: list[TResponseInputItem]
+    last_step_context: dict[str, Any] | None
+    steps: list[WorkflowStepSummary]
+    current_slug: str
+    stop_at_slug: str | None = None
+    branch_id: str | None = None
+    branch_label: str | None = None
+
+
+@dataclass
 class WorkflowStepStreamUpdate:
     key: str
     title: str
@@ -417,83 +429,107 @@ async def run_workflow(
     thread_items_history: list[ThreadItem] | None = None,
     current_user_message: UserMessageItem | None = None,
     workflow_call_stack: tuple[tuple[str, str | int], ...] | None = None,
+    runtime_snapshot: WorkflowRuntimeSnapshot | None = None,
 ) -> WorkflowRunSummary:
     workflow_payload = workflow_input.model_dump()
-    steps: list[WorkflowStepSummary] = []
-    auto_started = bool(workflow_payload.get("auto_start_was_triggered"))
-    initial_user_text = _normalize_user_text(workflow_payload["input_as_text"])
-    workflow_payload["input_as_text"] = initial_user_text
-    current_input_item_id = workflow_payload.get("source_item_id")
-    if not isinstance(current_input_item_id, str) and current_user_message is not None:
-        candidate_id = getattr(current_user_message, "id", None)
-        current_input_item_id = candidate_id if isinstance(candidate_id, str) else None
-    conversation_history: list[TResponseInputItem] = []
-    thread = getattr(agent_context, "thread", None)
-    pending_wait_state = (
-        _get_wait_state_metadata(thread) if thread is not None else None
+    steps: list[WorkflowStepSummary] = (
+        runtime_snapshot.steps if runtime_snapshot is not None else []
     )
+    auto_started = False
+    thread = getattr(agent_context, "thread", None)
+    pending_wait_state: Mapping[str, Any] | None = None
     resume_from_wait_slug: str | None = None
+    conversation_history: list[TResponseInputItem]
+    state: dict[str, Any]
+    last_step_context: dict[str, Any] | None
 
-    voice_overrides = _extract_voice_overrides(agent_context)
+    current_input_item_id = workflow_payload.get("source_item_id")
 
-    if pending_wait_state:
-        restored_history = _clone_conversation_history_snapshot(
-            pending_wait_state.get("conversation_history")
+    if runtime_snapshot is None:
+        auto_started = bool(workflow_payload.get("auto_start_was_triggered"))
+        initial_user_text = _normalize_user_text(workflow_payload["input_as_text"])
+        workflow_payload["input_as_text"] = initial_user_text
+        conversation_history = []
+        pending_wait_state = (
+            _get_wait_state_metadata(thread) if thread is not None else None
         )
-        if restored_history:
-            conversation_history.extend(restored_history)
-
-    # Convertir l'historique des thread items si fourni
-    # IMPORTANT : exclure le message utilisateur actuel (source_item_id)
-    # pour éviter la duplication
-    if thread_items_history and thread_item_converter:
-        try:
-            # Filtrer le message utilisateur actuel de l'historique
-            filtered_history = [
-                item
-                for item in thread_items_history
-                if not (
-                    isinstance(current_input_item_id, str)
-                    and item.id == current_input_item_id
-                )
-            ]
-            if filtered_history:
-                converted_history = await thread_item_converter.to_agent_input(
-                    filtered_history
-                )
-                if converted_history:
-                    conversation_history.extend(converted_history)
-        except Exception as exc:
-            logger.warning(
-                "Impossible de convertir l'historique des thread items, poursuite "
-                "sans historique",
-                exc_info=exc,
+        if (
+            not isinstance(current_input_item_id, str)
+            and current_user_message is not None
+        ):
+            candidate_id = getattr(current_user_message, "id", None)
+            current_input_item_id = (
+                candidate_id if isinstance(candidate_id, str) else None
             )
 
-    # Ajouter le message utilisateur actuel
-    restored_state: dict[str, Any] | None = None
-    if pending_wait_state:
-        stored_state = pending_wait_state.get("state")
-        if isinstance(stored_state, Mapping):
-            restored_state = copy.deepcopy(dict(stored_state))
+        if pending_wait_state:
+            restored_history = _clone_conversation_history_snapshot(
+                pending_wait_state.get("conversation_history")
+            )
+            if restored_history:
+                conversation_history.extend(restored_history)
 
-    user_history_items = await _build_user_message_history_items(
-        converter=thread_item_converter,
-        message=current_user_message,
-        fallback_text=initial_user_text,
-    )
-    if user_history_items:
-        conversation_history.extend(user_history_items)
-    state: dict[str, Any] = {
-        "has_all_details": False,
-        "infos_manquantes": initial_user_text,
-        "should_finalize": False,
-    }
-    if restored_state:
-        state.update(restored_state)
-        state["infos_manquantes"] = initial_user_text
+        if thread_items_history and thread_item_converter:
+            try:
+                filtered_history = [
+                    item
+                    for item in thread_items_history
+                    if not (
+                        isinstance(current_input_item_id, str)
+                        and item.id == current_input_item_id
+                    )
+                ]
+                if filtered_history:
+                    converted_history = await thread_item_converter.to_agent_input(
+                        filtered_history
+                    )
+                    if converted_history:
+                        conversation_history.extend(converted_history)
+            except Exception as exc:
+                logger.warning(
+                    "Impossible de convertir l'historique des thread items, poursuite "
+                    "sans historique",
+                    exc_info=exc,
+                )
+
+        user_history_items = await _build_user_message_history_items(
+            converter=thread_item_converter,
+            message=current_user_message,
+            fallback_text=initial_user_text,
+        )
+        if user_history_items:
+            conversation_history.extend(user_history_items)
+
+        restored_state: dict[str, Any] | None = None
+        if pending_wait_state:
+            stored_state = pending_wait_state.get("state")
+            if isinstance(stored_state, Mapping):
+                restored_state = copy.deepcopy(dict(stored_state))
+
+        state = {
+            "has_all_details": False,
+            "infos_manquantes": initial_user_text,
+            "should_finalize": False,
+        }
+        if restored_state:
+            state.update(restored_state)
+            state["infos_manquantes"] = initial_user_text
+        last_step_context = None
+    else:
+        initial_user_text = _normalize_user_text(
+            workflow_payload.get("input_as_text", "")
+        )
+        conversation_history = copy.deepcopy(runtime_snapshot.conversation_history)
+        state = copy.deepcopy(runtime_snapshot.state)
+        last_step_context = (
+            copy.deepcopy(runtime_snapshot.last_step_context)
+            if runtime_snapshot.last_step_context is not None
+            else None
+        )
+
     final_output: dict[str, Any] | None = None
-    last_step_context: dict[str, Any] | None = None
+
+    voice_overrides = _extract_voice_overrides(agent_context)
 
     service = workflow_service or WorkflowService()
 
@@ -881,6 +917,64 @@ async def run_workflow(
                 return False
         return False
 
+    stop_at_slug = runtime_snapshot.stop_at_slug if runtime_snapshot else None
+    active_branch_id = runtime_snapshot.branch_id if runtime_snapshot else None
+    active_branch_label = (
+        runtime_snapshot.branch_label if runtime_snapshot else None
+    )
+
+    def _branch_prefixed_slug(slug: str) -> str:
+        if active_branch_id:
+            return f"{active_branch_id}:{slug}"
+        return slug
+
+    def _branch_prefixed_title(title: str | None) -> str:
+        if not active_branch_id:
+            return title or ""
+        prefix = active_branch_label or active_branch_id
+        if title and title.strip():
+            return f"[{prefix}] {title}"
+        return f"[{prefix}]"
+
+    async def _emit_stream_event(event: ThreadStreamEvent) -> None:
+        if on_stream_event is None:
+            return
+        if active_branch_id:
+            try:
+                event.workflow_branch_id = active_branch_id  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            if active_branch_label:
+                try:
+                    event.workflow_branch_label = active_branch_label  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+        await on_stream_event(event)
+
+    async def _emit_step_stream(update: WorkflowStepStreamUpdate) -> None:
+        if on_step_stream is None:
+            return
+        if active_branch_id:
+            update = WorkflowStepStreamUpdate(
+                key=_branch_prefixed_slug(update.key),
+                title=_branch_prefixed_title(update.title),
+                index=update.index,
+                delta=update.delta,
+                text=update.text,
+            )
+        await on_step_stream(update)
+
+    def _format_step_summary(
+        step_key: str, title: str, payload: Any
+    ) -> WorkflowStepSummary:
+        formatted_output = _format_step_output(payload)
+        summary = WorkflowStepSummary(
+            key=_branch_prefixed_slug(step_key),
+            title=_branch_prefixed_title(title),
+            output=formatted_output,
+        )
+        return summary
+
     def _resolve_assistant_stream_config(step: WorkflowStep) -> _AssistantStreamConfig:
         raw_params = step.parameters or {}
         params = raw_params if isinstance(raw_params, Mapping) else {}
@@ -920,14 +1014,14 @@ async def run_workflow(
             created_at=datetime.now(),
             content=[AssistantMessageContent(text="")],
         )
-        await on_stream_event(ThreadItemAddedEvent(item=assistant_item))
+        await _emit_stream_event(ThreadItemAddedEvent(item=assistant_item))
         first_chunk = True
         content_index = 0
         for chunk in _iter_stream_chunks(text):
             if not first_chunk and delay_seconds > 0:
                 await asyncio.sleep(delay_seconds)
             first_chunk = False
-            await on_stream_event(
+            await _emit_stream_event(
                 ThreadItemUpdated(
                     item_id=assistant_item.id,
                     update=AssistantMessageContentPartTextDelta(
@@ -942,7 +1036,7 @@ async def run_workflow(
             created_at=assistant_item.created_at,
             content=[AssistantMessageContent(text=text)],
         )
-        await on_stream_event(ThreadItemDoneEvent(item=final_item))
+        await _emit_stream_event(ThreadItemDoneEvent(item=final_item))
 
     _VOICE_DEFAULT_START_MODE = "manual"
     _VOICE_DEFAULT_STOP_MODE = "auto"
@@ -1147,15 +1241,10 @@ async def run_workflow(
         return RunConfig(**kwargs)
 
     async def record_step(step_key: str, title: str, payload: Any) -> None:
-        formatted_output = _format_step_output(payload)
+        summary = _format_step_summary(step_key, title, payload)
         print(
             "[Workflow] Payload envoyé pour l'étape "
-            f"{step_key} ({title}) :\n{formatted_output}"
-        )
-        summary = WorkflowStepSummary(
-            key=step_key,
-            title=title,
-            output=formatted_output,
+            f"{summary.key} ({summary.title}) :\n{summary.output}"
         )
         steps.append(summary)
         if on_step is not None:
@@ -1775,7 +1864,7 @@ async def run_workflow(
                 widget,
                 generate_id=_generate_item_id,
             ):
-                await on_stream_event(event)
+                await _emit_stream_event(event)
         except Exception as exc:  # pragma: no cover - dépend du SDK Agents
             logger.exception(
                 "Impossible de diffuser le widget %s pour %s",
@@ -1897,16 +1986,15 @@ async def run_workflow(
                     len(image.partials[-1]),
                 )
 
-        if on_step_stream is not None:
-            await on_step_stream(
-                WorkflowStepStreamUpdate(
-                    key=step_key,
-                    title=title,
-                    index=step_index,
-                    delta="",
-                    text="",
-                )
+        await _emit_step_stream(
+            WorkflowStepStreamUpdate(
+                key=step_key,
+                title=title,
+                index=step_index,
+                delta="",
+                text="",
             )
+        )
         accumulated_text = ""
         response_format_override = getattr(agent, "_chatkit_response_format", None)
         if response_format_override is None:
@@ -1962,23 +2050,22 @@ async def run_workflow(
                     getattr(event, "type", type(event).__name__),
                     metadata_for_images.get("step_slug"),
                 )
-                if on_stream_event is not None and _should_forward_agent_event(
+                if _should_forward_agent_event(
                     event, suppress=suppress_stream_events
                 ):
-                    await on_stream_event(event)
-                if on_step_stream is not None:
-                    delta_text = _extract_delta(event)
-                    if delta_text:
-                        accumulated_text += delta_text
-                        await on_step_stream(
-                            WorkflowStepStreamUpdate(
-                                key=step_key,
-                                title=title,
-                                index=step_index,
-                                delta=delta_text,
-                                text=accumulated_text,
-                            )
+                    await _emit_stream_event(event)
+                delta_text = _extract_delta(event)
+                if delta_text:
+                    accumulated_text += delta_text
+                    await _emit_step_stream(
+                        WorkflowStepStreamUpdate(
+                            key=step_key,
+                            title=title,
+                            index=step_index,
+                            delta=delta_text,
+                            text=accumulated_text,
                         )
+                    )
                 await _inspect_event_for_images(event)
         except Exception as exc:  # pragma: no cover
             raise_step_error(step_key, title, exc)
@@ -2166,37 +2253,72 @@ async def run_workflow(
                             else None
                         )
 
-        async def _snapshot_branch(target_slug: str) -> tuple[str, dict[str, Any]]:
-            snapshot_state = copy.deepcopy(state)
-            snapshot_history = copy.deepcopy(conversation_history)
-            snapshot_context = (
-                copy.deepcopy(last_step_context)
-                if last_step_context is not None
-                else None
+        async def _execute_branch(
+            edge: WorkflowTransition,
+        ) -> tuple[str, dict[str, Any], list[WorkflowStepSummary]]:
+            branch_slug = edge.target_step.slug
+            branch_label = branches_metadata.get(branch_slug)
+            branch_steps: list[WorkflowStepSummary] = []
+            branch_snapshot = WorkflowRuntimeSnapshot(
+                state=copy.deepcopy(state),
+                conversation_history=copy.deepcopy(conversation_history),
+                last_step_context=(
+                    copy.deepcopy(last_step_context)
+                    if last_step_context is not None
+                    else None
+                ),
+                steps=branch_steps,
+                current_slug=branch_slug,
+                stop_at_slug=join_slug,
+                branch_id=branch_slug,
+                branch_label=branch_label,
             )
 
-            payload: dict[str, Any] = {
-                "state": snapshot_state,
-                "conversation_history": snapshot_history,
+            branch_summary = await run_workflow(
+                workflow_input,
+                agent_context=agent_context,
+                on_step=None,
+                on_step_stream=on_step_stream,
+                on_stream_event=on_stream_event,
+                on_widget_step=on_widget_step,
+                workflow_service=workflow_service,
+                workflow_definition=definition,
+                workflow_slug=workflow_slug,
+                thread_item_converter=None,
+                thread_items_history=None,
+                current_user_message=current_user_message,
+                workflow_call_stack=workflow_call_stack,
+                runtime_snapshot=branch_snapshot,
+            )
+
+            branch_payload: dict[str, Any] = {
+                "label": branch_label,
+                "final_output": copy.deepcopy(branch_summary.final_output),
+                "last_context": copy.deepcopy(branch_summary.last_context),
+                "state": copy.deepcopy(branch_summary.state),
+                "final_node_slug": branch_summary.final_node_slug,
+                "steps": [
+                    {
+                        "key": summary.key,
+                        "title": summary.title,
+                        "output": summary.output,
+                    }
+                    for summary in branch_steps
+                ],
             }
-            if snapshot_context is not None:
-                payload["last_step_context"] = snapshot_context
 
-            label = branches_metadata.get(target_slug)
-            if label is not None:
-                payload["label"] = label
-
-            return target_slug, payload
+            return branch_slug, branch_payload, branch_steps
 
         branch_tasks = [
-            asyncio.create_task(_snapshot_branch(edge.target_step.slug))
-            for edge in outgoing
+            asyncio.create_task(_execute_branch(edge)) for edge in outgoing
         ]
         branch_results = await asyncio.gather(*branch_tasks)
 
-        branches_payload: dict[str, Any] = {
-            slug: result for slug, result in branch_results
-        }
+        branches_payload: dict[str, Any] = {}
+        branch_step_collections: list[list[WorkflowStepSummary]] = []
+        for slug, payload, branch_steps in branch_results:
+            branches_payload[slug] = payload
+            branch_step_collections.append(branch_steps)
 
         parallel_payload = {
             "split_slug": step.slug,
@@ -2214,6 +2336,12 @@ async def run_workflow(
 
         title = _node_title(step)
         await record_step(step.slug, title, parallel_payload)
+
+        for branch_steps in branch_step_collections:
+            for summary in branch_steps:
+                steps.append(summary)
+                if on_step is not None:
+                    await on_step(summary, len(steps))
 
         last_context_payload: dict[str, Any] = {
             "parallel_split": parallel_payload,
@@ -2240,12 +2368,18 @@ async def run_workflow(
         current_slug = start_step.slug
         return True
 
-    current_slug = resume_from_wait_slug or start_step.slug
+    if runtime_snapshot is not None:
+        current_slug = runtime_snapshot.current_slug
+    else:
+        current_slug = resume_from_wait_slug or start_step.slug
     final_node_slug: str | None = None
     final_end_state: WorkflowEndState | None = None
     guard = 0
     while guard < 1000:
         guard += 1
+        if stop_at_slug is not None and current_slug == stop_at_slug:
+            final_node_slug = current_slug
+            break
         current_node = nodes_by_slug.get(current_slug)
         if current_node is None:
             raise WorkflowExecutionError(
@@ -2334,7 +2468,9 @@ async def run_workflow(
                         )
                     ],
                 )
-                await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
+                await _emit_stream_event(
+                    ThreadItemDoneEvent(item=assistant_message)
+                )
 
             transition = _next_edge(current_slug)
             if transition is None:
@@ -2456,8 +2592,8 @@ async def run_workflow(
                     created_at=datetime.now(),
                     content=[AssistantMessageContent(text=sanitized_message)],
                 )
-                await on_stream_event(ThreadItemAddedEvent(item=assistant_message))
-                await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
+                await _emit_stream_event(ThreadItemAddedEvent(item=assistant_message))
+                await _emit_stream_event(ThreadItemDoneEvent(item=assistant_message))
 
             wait_state_payload: dict[str, Any] = {
                 "slug": current_node.slug,
@@ -2581,10 +2717,10 @@ async def run_workflow(
                                 quoted_text=None,
                                 inference_options=InferenceOptions(),
                             )
-                            await on_stream_event(
+                            await _emit_stream_event(
                                 ThreadItemAddedEvent(item=user_item)
                             )
-                            await on_stream_event(
+                            await _emit_stream_event(
                                 ThreadItemDoneEvent(item=user_item)
                             )
                     else:
@@ -2611,10 +2747,10 @@ async def run_workflow(
                                 created_at=datetime.now(),
                                 content=[AssistantMessageContent(text=text_value)],
                             )
-                            await on_stream_event(
+                            await _emit_stream_event(
                                 ThreadItemAddedEvent(item=assistant_item)
                             )
-                            await on_stream_event(
+                            await _emit_stream_event(
                                 ThreadItemDoneEvent(item=assistant_item)
                             )
 
@@ -2655,7 +2791,7 @@ async def run_workflow(
                     config=(current_node.parameters or {}).get(
                         "vector_store_ingestion"
                     ),
-                    step_slug=current_node.slug,
+                    step_slug=_branch_prefixed_slug(current_node.slug),
                     step_title=title,
                     step_context=last_step_context,
                     state=state,
@@ -2712,8 +2848,8 @@ async def run_workflow(
                         content=json.dumps(event_payload, ensure_ascii=False),
                     ),
                 )
-                await on_stream_event(ThreadItemAddedEvent(item=task_item))
-                await on_stream_event(ThreadItemDoneEvent(item=task_item))
+                await _emit_stream_event(ThreadItemAddedEvent(item=task_item))
+                await _emit_stream_event(ThreadItemDoneEvent(item=task_item))
 
             step_payload = {
                 "status": "waiting_for_voice",
@@ -2775,8 +2911,12 @@ async def run_workflow(
                         created_at=datetime.now(),
                         content=[AssistantMessageContent(text=sanitized_message)],
                     )
-                    await on_stream_event(ThreadItemAddedEvent(item=assistant_message))
-                    await on_stream_event(ThreadItemDoneEvent(item=assistant_message))
+                    await _emit_stream_event(
+                        ThreadItemAddedEvent(item=assistant_message)
+                    )
+                    await _emit_stream_event(
+                        ThreadItemDoneEvent(item=assistant_message)
+                    )
 
             transition = _next_edge(current_slug)
             if transition is None:
@@ -2804,8 +2944,8 @@ async def run_workflow(
                     quoted_text=None,
                     inference_options=InferenceOptions(),
                 )
-                await on_stream_event(ThreadItemAddedEvent(item=user_item))
-                await on_stream_event(ThreadItemDoneEvent(item=user_item))
+                await _emit_stream_event(ThreadItemAddedEvent(item=user_item))
+                await _emit_stream_event(ThreadItemDoneEvent(item=user_item))
 
             transition = _next_edge(current_slug)
             if transition is None:
@@ -2866,7 +3006,7 @@ async def run_workflow(
             title = _node_title(current_node)
             await ingest_workflow_step(
                 config=current_node.parameters or {},
-                step_slug=current_node.slug,
+                step_slug=_branch_prefixed_slug(current_node.slug),
                 step_title=title,
                 step_context=last_step_context,
                 state=state,
@@ -2892,7 +3032,7 @@ async def run_workflow(
             else:
                 rendered_widget = await _stream_response_widget(
                     widget_config,
-                    step_slug=current_node.slug,
+                    step_slug=_branch_prefixed_slug(current_node.slug),
                     step_title=title,
                     step_context=last_step_context,
                 )
@@ -3149,7 +3289,7 @@ async def run_workflow(
 
             await ingest_workflow_step(
                 config=(current_node.parameters or {}).get("vector_store_ingestion"),
-                step_slug=current_node.slug,
+                step_slug=_branch_prefixed_slug(current_node.slug),
                 step_title=title,
                 step_context=last_step_context,
                 state=state,
@@ -3160,7 +3300,7 @@ async def run_workflow(
             if widget_config is not None:
                 rendered_widget = await _stream_response_widget(
                     widget_config,
-                    step_slug=current_node.slug,
+                    step_slug=_branch_prefixed_slug(current_node.slug),
                     step_title=title,
                     step_context=last_step_context,
                 )
@@ -3214,7 +3354,8 @@ async def run_workflow(
 
         agent_key = current_node.agent_key or current_node.slug
         position = agent_positions.get(current_slug, total_runtime_steps)
-        step_identifier = f"{agent_key}_{position}"
+        base_step_identifier = f"{agent_key}_{position}"
+        step_identifier = _branch_prefixed_slug(base_step_identifier)
         agent = agent_instances[current_slug]
         title = _node_title(current_node)
         widget_config = widget_configs_by_step.get(current_node.slug)
@@ -3321,7 +3462,7 @@ async def run_workflow(
             suppress_stream_events=widget_config is not None,
             step_metadata={
                 "agent_key": agent_key,
-                "step_slug": current_node.slug,
+                "step_slug": _branch_prefixed_slug(current_node.slug),
                 "step_title": title,
             },
         )
@@ -3381,19 +3522,19 @@ async def run_workflow(
 
         if image_urls:
             last_step_context["generated_image_urls"] = image_urls
-            if links_text and on_stream_event is not None:
-                links_message = AssistantMessageItem(
-                    id=agent_context.generate_id("message"),
-                    thread_id=agent_context.thread.id,
-                    created_at=datetime.now(),
-                    content=[AssistantMessageContent(text=links_text)],
-                )
-                await on_stream_event(ThreadItemAddedEvent(item=links_message))
-                await on_stream_event(ThreadItemDoneEvent(item=links_message))
+        if links_text and on_stream_event is not None:
+            links_message = AssistantMessageItem(
+                id=agent_context.generate_id("message"),
+                thread_id=agent_context.thread.id,
+                created_at=datetime.now(),
+                content=[AssistantMessageContent(text=links_text)],
+            )
+            await _emit_stream_event(ThreadItemAddedEvent(item=links_message))
+            await _emit_stream_event(ThreadItemDoneEvent(item=links_message))
 
         await ingest_workflow_step(
             config=(current_node.parameters or {}).get("vector_store_ingestion"),
-            step_slug=current_node.slug,
+            step_slug=_branch_prefixed_slug(current_node.slug),
             step_title=title,
             step_context=last_step_context,
             state=state,
@@ -3404,7 +3545,7 @@ async def run_workflow(
         if widget_config is not None:
             rendered_widget = await _stream_response_widget(
                 widget_config,
-                step_slug=current_node.slug,
+                step_slug=_branch_prefixed_slug(current_node.slug),
                 step_title=title,
                 step_context=last_step_context,
             )
@@ -3440,6 +3581,7 @@ async def run_workflow(
         if transition is None:
             break
         current_slug = transition.target_step.slug
+        continue
 
     if guard >= 1000:
         raise WorkflowExecutionError(
