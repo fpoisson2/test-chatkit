@@ -109,6 +109,43 @@ async def test_handle_invite_accepts_supported_codec() -> None:
 
 
 @pytest.mark.anyio
+async def test_handle_invite_accepts_codec_with_channel_information() -> None:
+    dialog = DummyDialog()
+    invite = _make_invite(
+        "\r\n".join(
+            [
+                "v=0",
+                "o=- 12345 67890 IN IP4 198.51.100.10",
+                "s=-",
+                "c=IN IP4 198.51.100.10",
+                "t=0 0",
+                "m=audio 49170 RTP/AVP 107 0",
+                "a=rtpmap:107 opus/48000/2",
+                "a=rtpmap:0 PCMU/8000",
+            ]
+        )
+    )
+
+    await handle_incoming_invite(
+        dialog,
+        invite,
+        media_host="203.0.113.5",
+        media_port=5006,
+        preferred_codecs=("opus", "pcmu"),
+        contact_uri="<sip:bot@203.0.113.5:5060>",
+    )
+
+    statuses = [status for status, _ in dialog.replies]
+    assert statuses == [100, 180, 200]
+
+    final_reply = dialog.replies[-1][1]
+    payload = final_reply["payload"]
+    assert isinstance(payload, str)
+    assert "m=audio 5006 RTP/AVP 107" in payload
+    assert "a=rtpmap:107 OPUS/48000" in payload
+
+
+@pytest.mark.anyio
 async def test_handle_invite_accepts_payload_already_decoded() -> None:
     dialog = DummyDialog()
     invite = _make_invite(

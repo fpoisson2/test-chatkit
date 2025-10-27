@@ -36,10 +36,33 @@ def _parse_payload_map(sdp_lines: Iterable[str]) -> dict[int, tuple[str, int]]:
         try:
             payload_part, encoding = line[len("a=rtpmap:") :].split(" ", 1)
             payload = int(payload_part)
-            codec_name, clock_rate_text = encoding.split("/", 1)
-            clock_rate = int(clock_rate_text.split(" ", 1)[0])
-        except (ValueError, IndexError):
+        except ValueError:
             logger.debug("Ligne rtpmap ignorée (mal formée) : %s", line)
+            continue
+
+        encoding = encoding.strip()
+        if not encoding:
+            logger.debug("Ligne rtpmap ignorée (codec absent) : %s", line)
+            continue
+
+        encoding_main = encoding.split(" ", 1)[0]
+        codec_parts = encoding_main.split("/")
+        if len(codec_parts) < 2:
+            logger.debug("Ligne rtpmap ignorée (codec incomplet) : %s", line)
+            continue
+
+        codec_name = codec_parts[0]
+        clock_rate_text = codec_parts[1]
+
+        match = re.match(r"(\d+)", clock_rate_text)
+        if match is None:
+            logger.debug("Ligne rtpmap ignorée (horloge invalide) : %s", line)
+            continue
+
+        try:
+            clock_rate = int(match.group(1))
+        except ValueError:  # pragma: no cover - guard rail
+            logger.debug("Ligne rtpmap ignorée (horloge non numérique) : %s", line)
             continue
         payload_map[payload] = (codec_name.lower(), clock_rate)
     return payload_map
