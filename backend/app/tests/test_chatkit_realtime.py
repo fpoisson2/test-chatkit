@@ -37,14 +37,14 @@ class _DummyAsyncClient:
         self,
         *,
         captured: dict[str, object],
-        response_factory: "ResponseFactory" | None = None,
+        response_factory: ResponseFactory | None = None,
         **_: object,
     ) -> None:
         self._captured = captured
         self._response_factory = response_factory
         self._call_count = 0
 
-    async def __aenter__(self) -> "_DummyAsyncClient":
+    async def __aenter__(self) -> _DummyAsyncClient:
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> bool:  # noqa: ANN001
@@ -235,3 +235,196 @@ def test_voice_parameter_fallback_to_session(monkeypatch: pytest.MonkeyPatch) ->
     session_payload = second_payload.get("session")
     assert isinstance(session_payload, dict)
     assert session_payload.get("voice") == "alloy"
+
+
+def test_realtime_parameter_top_level_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(chatkit_realtime, "get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr(
+        chatkit_realtime,
+        "resolve_model_provider_credentials",
+        lambda provider_id: None,
+    )
+    monkeypatch.setattr(
+        chatkit_realtime.httpx,
+        "AsyncClient",
+        lambda **kwargs: _DummyAsyncClient(captured=captured, **kwargs),
+    )
+
+    response = asyncio.run(
+        chatkit_realtime.create_realtime_voice_session(
+            user_id="user-realtime",
+            model="gpt-realtime",
+            instructions="Bonjour",
+            provider_slug="openai",
+            realtime={"latency": "low"},
+        )
+    )
+
+    assert response == {"client_secret": {"value": "secret"}}
+    requests = captured.get("requests")
+    assert isinstance(requests, list)
+    assert len(requests) == 1
+    first_request = requests[0]
+    payload = first_request["json"]
+    assert isinstance(payload, dict)
+    assert payload.get("realtime") == {"latency": "low"}
+    session_payload = payload.get("session")
+    assert isinstance(session_payload, dict)
+    assert "realtime" not in session_payload
+
+
+def test_realtime_parameter_fallback_to_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(chatkit_realtime, "get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr(
+        chatkit_realtime,
+        "resolve_model_provider_credentials",
+        lambda provider_id: None,
+    )
+
+    def _response_factory(
+        request: dict[str, object], call_count: int
+    ) -> _DummyResponse:
+        if call_count == 1:
+            return _DummyResponse(
+                {
+                    "error": {
+                        "message": "Unknown parameter: 'realtime'.",
+                        "type": "invalid_request_error",
+                        "param": "realtime",
+                        "code": "unknown_parameter",
+                    }
+                },
+                status_code=400,
+            )
+        return _DummyResponse({"client_secret": {"value": "secret"}})
+
+    monkeypatch.setattr(
+        chatkit_realtime.httpx,
+        "AsyncClient",
+        lambda **kwargs: _DummyAsyncClient(
+            captured=captured, response_factory=_response_factory, **kwargs
+        ),
+    )
+
+    response = asyncio.run(
+        chatkit_realtime.create_realtime_voice_session(
+            user_id="user-realtime",
+            model="gpt-realtime",
+            instructions="Bonjour",
+            provider_slug="openai",
+            realtime={"latency": "low"},
+        )
+    )
+
+    assert response == {"client_secret": {"value": "secret"}}
+    requests = captured.get("requests")
+    assert isinstance(requests, list)
+    assert len(requests) == 2
+
+    first_payload = requests[0]["json"]
+    assert isinstance(first_payload, dict)
+    assert first_payload.get("realtime") == {"latency": "low"}
+    first_session_payload = first_payload.get("session")
+    assert isinstance(first_session_payload, dict)
+    assert "realtime" not in first_session_payload
+
+    second_payload = requests[1]["json"]
+    assert isinstance(second_payload, dict)
+    assert "realtime" not in second_payload
+    second_session_payload = second_payload.get("session")
+    assert isinstance(second_session_payload, dict)
+    assert second_session_payload.get("realtime") == {"latency": "low"}
+
+
+def test_realtime_parameter_fallback_to_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(chatkit_realtime, "get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr(
+        chatkit_realtime,
+        "resolve_model_provider_credentials",
+        lambda provider_id: None,
+    )
+
+    def _response_factory(
+        request: dict[str, object], call_count: int
+    ) -> _DummyResponse:
+        if call_count == 1:
+            return _DummyResponse(
+                {
+                    "error": {
+                        "message": "Unknown parameter: 'realtime'.",
+                        "type": "invalid_request_error",
+                        "param": "realtime",
+                        "code": "unknown_parameter",
+                    }
+                },
+                status_code=400,
+            )
+        if call_count == 2:
+            return _DummyResponse(
+                {
+                    "error": {
+                        "message": "Unknown parameter: 'session.realtime'.",
+                        "type": "invalid_request_error",
+                        "param": "session.realtime",
+                        "code": "unknown_parameter",
+                    }
+                },
+                status_code=400,
+            )
+        return _DummyResponse({"client_secret": {"value": "secret"}})
+
+    monkeypatch.setattr(
+        chatkit_realtime.httpx,
+        "AsyncClient",
+        lambda **kwargs: _DummyAsyncClient(
+            captured=captured, response_factory=_response_factory, **kwargs
+        ),
+    )
+
+    response = asyncio.run(
+        chatkit_realtime.create_realtime_voice_session(
+            user_id="user-realtime",
+            model="gpt-realtime",
+            instructions="Bonjour",
+            provider_slug="openai",
+            realtime={"latency": "low"},
+        )
+    )
+
+    assert response == {"client_secret": {"value": "secret"}}
+    requests = captured.get("requests")
+    assert isinstance(requests, list)
+    assert len(requests) == 3
+
+    first_payload = requests[0]["json"]
+    assert isinstance(first_payload, dict)
+    assert first_payload.get("realtime") == {"latency": "low"}
+
+    second_payload = requests[1]["json"]
+    assert isinstance(second_payload, dict)
+    assert "realtime" not in second_payload
+    second_session_payload = second_payload.get("session")
+    assert isinstance(second_session_payload, dict)
+    assert second_session_payload.get("realtime") == {"latency": "low"}
+
+    third_payload = requests[2]["json"]
+    assert isinstance(third_payload, dict)
+    assert "realtime" not in third_payload
+    third_session_payload = third_payload.get("session")
+    assert isinstance(third_session_payload, dict)
+    assert "realtime" not in third_session_payload
