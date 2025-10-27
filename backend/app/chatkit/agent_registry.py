@@ -11,6 +11,7 @@ from functools import lru_cache
 from typing import Any
 
 from agents import Agent, ModelSettings, WebSearchTool
+from agents.mcp import MCPServer
 from agents.models.interface import ModelProvider
 from agents.models.openai_provider import OpenAIProvider
 from agents.tool import ComputerTool
@@ -867,7 +868,32 @@ def _build_agent_kwargs(
         coerced_tools = _coerce_agent_tools(
             merged["tools"], base_kwargs.get("tools") if base_kwargs else None
         )
-        merged["tools"] = coerced_tools
+
+        normalized_tools: list[Any] = []
+        extracted_mcp_servers: list[MCPServer] = []
+        if coerced_tools:
+            for tool in coerced_tools:
+                if isinstance(tool, MCPServer):
+                    extracted_mcp_servers.append(tool)
+                elif tool is not None:
+                    normalized_tools.append(tool)
+
+        merged["tools"] = normalized_tools
+        coerced_tools = normalized_tools
+
+        if extracted_mcp_servers or "mcp_servers" in merged:
+            existing_mcp_servers = merged.get("mcp_servers")
+            cloned_existing = (
+                _clone_tools(existing_mcp_servers)
+                if existing_mcp_servers is not None
+                else []
+            )
+            filtered_existing = [
+                server for server in cloned_existing if isinstance(server, MCPServer)
+            ]
+            if extracted_mcp_servers:
+                filtered_existing.extend(extracted_mcp_servers)
+            merged["mcp_servers"] = filtered_existing
 
         if coerced_tools and any(
             isinstance(tool, ComputerTool) for tool in coerced_tools if tool is not None

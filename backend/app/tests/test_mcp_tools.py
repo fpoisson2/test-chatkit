@@ -185,6 +185,90 @@ def test_coerce_agent_tools_propagates_errors(monkeypatch: pytest.MonkeyPatch) -
         )
 
 
+class _StubMcpServer(agent_registry.MCPServer):
+    def __init__(self, name: str = "stub") -> None:
+        super().__init__()
+        self._name = name
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    async def connect(self) -> None:  # pragma: no cover - interface
+        return None
+
+    async def cleanup(self) -> None:  # pragma: no cover - interface
+        return None
+
+    async def list_tools(self, run_context=None, agent=None) -> list[Any]:
+        return []
+
+    async def call_tool(
+        self, tool_name: str, arguments: dict[str, Any] | None
+    ) -> Any:
+        return None
+
+    async def list_prompts(self) -> list[Any]:
+        return []
+
+    async def get_prompt(
+        self, name: str, arguments: dict[str, Any] | None = None
+    ) -> Any:
+        return None
+
+
+def test_build_agent_kwargs_routes_mcp_servers(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_server = _StubMcpServer()
+
+    monkeypatch.setattr(agent_registry, "build_mcp_tool", lambda *_: stub_server)
+
+    result = agent_registry._build_agent_kwargs(
+        {"name": "Base"},
+        {
+            "tools": [
+                {
+                    "type": "mcp",
+                    "transport": "http_sse",
+                    "url": "https://mcp.example",
+                }
+            ]
+        },
+    )
+
+    assert result["tools"] == []
+    assert result["mcp_servers"] == [stub_server]
+
+
+def test_build_agent_kwargs_preserves_existing_mcp_servers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    existing = _StubMcpServer(name="existing")
+    created: list[_StubMcpServer] = []
+
+    def _builder(_config: Any) -> _StubMcpServer:
+        server = _StubMcpServer(name="new")
+        created.append(server)
+        return server
+
+    monkeypatch.setattr(agent_registry, "build_mcp_tool", _builder)
+
+    result = agent_registry._build_agent_kwargs(
+        {"name": "Base", "mcp_servers": [existing]},
+        {
+            "tools": [
+                {
+                    "type": "mcp",
+                    "transport": "http_sse",
+                    "url": "https://mcp.example",
+                }
+            ]
+        },
+    )
+
+    assert result["tools"] == []
+    assert result["mcp_servers"] == [existing, created[0]]
+
+
 def test_probe_mcp_connection_success(monkeypatch: pytest.MonkeyPatch) -> None:
     class _StubServer:
         def __init__(self) -> None:
