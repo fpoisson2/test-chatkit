@@ -130,33 +130,38 @@ class RtpServer:
             logger.warning("RTP send_audio: adresse distante inconnue")
             return
 
-        logger.debug(
-            "RTP send_audio: réception de %d octets PCM, envoi vers %s:%d",
-            len(pcm_data),
-            self._remote_addr[0],
-            self._remote_addr[1],
-        )
-
         # Convertir PCM16 en codec de sortie (PCMU par défaut)
         encoded_payload = self._encode_audio(pcm_data)
         if not encoded_payload:
             logger.warning("RTP send_audio: échec d'encodage audio")
             return
 
+        # Découper en paquets de 160 octets (20ms d'audio à 8kHz)
+        # Les téléphones SIP s'attendent à des paquets de taille standard
+        PACKET_SIZE = 160
+        num_packets = (len(encoded_payload) + PACKET_SIZE - 1) // PACKET_SIZE
+
         logger.debug(
-            "RTP send_audio: audio encodé en %d octets %s",
+            "RTP send_audio: %d octets PCM -> %d octets %s -> %d paquets de %d octets",
+            len(pcm_data),
             len(encoded_payload),
             self._config.output_codec.upper(),
+            num_packets,
+            PACKET_SIZE,
         )
 
-        # Construire le paquet RTP
-        rtp_packet = self._build_rtp_packet(encoded_payload)
+        for i in range(num_packets):
+            start = i * PACKET_SIZE
+            end = min(start + PACKET_SIZE, len(encoded_payload))
+            chunk = encoded_payload[start:end]
 
-        try:
-            self._transport.sendto(rtp_packet, self._remote_addr)
-            logger.debug("RTP send_audio: paquet envoyé (%d octets)", len(rtp_packet))
-        except Exception as exc:
-            logger.error("Erreur lors de l'envoi RTP : %s", exc)
+            # Construire et envoyer le paquet RTP
+            rtp_packet = self._build_rtp_packet(chunk)
+
+            try:
+                self._transport.sendto(rtp_packet, self._remote_addr)
+            except Exception as exc:
+                logger.error("Erreur lors de l'envoi RTP paquet %d/%d : %s", i+1, num_packets, exc)
 
     def _encode_audio(self, pcm_data: bytes) -> bytes:
         """Encode le PCM16 dans le codec de sortie."""
