@@ -57,6 +57,9 @@ class _FakeWebSocket:
     async def close(self, code: int = 1000) -> None:
         self.closed = True
 
+    async def push(self, message: dict[str, Any]) -> None:
+        await self._responses.put(message)
+
 
 class _FakeRtpStream(AsyncIterator[RtpPacket]):
     def __init__(self, packets: list[RtpPacket]) -> None:
@@ -257,6 +260,75 @@ async def test_voice_bridge_cancels_active_response_before_new_commit() -> None:
 
     cancel_payload = fake_ws.sent[cancel_index]
     assert cancel_payload["response"]["id"] == "resp-42"
+
+
+@pytest.mark.anyio
+async def test_voice_bridge_drops_canceled_response_audio() -> None:
+    pcm_samples = struct.pack("<4h", 0, 500, -500, 1000)
+    mu_law = audioop.lin2ulaw(pcm_samples, 2)
+    packets = [
+        RtpPacket(payload=mu_law, timestamp=0, sequence_number=1),
+        RtpPacket(payload=mu_law, timestamp=160, sequence_number=2),
+    ]
+    stream = _FakeRtpStream(packets)
+
+    outbound_audio: list[bytes] = []
+
+    async def _send_to_peer(chunk: bytes) -> None:
+        outbound_audio.append(chunk)
+
+    fake_ws = _FakeWebSocket([])
+
+    async def _connector(url: str, headers: dict[str, str]) -> _FakeWebSocket:
+        return fake_ws
+
+    bridge = TelephonyVoiceBridge(
+        hooks=VoiceBridgeHooks(),
+        websocket_connector=_connector,
+        voice_session_checker=lambda: True,
+        receive_timeout=0.05,
+    )
+
+    run_task = asyncio.create_task(
+        bridge.run(
+            client_secret="secret-token",
+            model="gpt-voice",
+            instructions="Ignorez",
+            voice=None,
+            rtp_stream=stream,
+            send_to_peer=_send_to_peer,
+        )
+    )
+
+    await fake_ws.push({"type": "response.created", "response": {"id": "resp-99"}})
+
+    # Attendre que le pont annule la réponse active lorsque le nouvel audio arrive.
+    while not any(entry["type"] == "response.cancel" for entry in fake_ws.sent):
+        if run_task.done():
+            break
+        await asyncio.sleep(0)
+
+    assert any(entry["type"] == "response.cancel" for entry in fake_ws.sent)
+
+    late_audio = base64.b64encode(b"late-audio").decode("ascii")
+    await fake_ws.push(
+        {
+            "type": "response.output_audio.delta",
+            "response_id": "resp-99",
+            "delta": {"audio": late_audio},
+        }
+    )
+    await fake_ws.push(
+        {
+            "type": "response.completed",
+            "response": {"id": "resp-99", "output": []},
+        }
+    )
+
+    stats = await run_task
+
+    assert outbound_audio == []
+    assert stats.transcripts == []
 
 
 @pytest.mark.anyio

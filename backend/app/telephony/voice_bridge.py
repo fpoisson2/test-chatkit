@@ -242,7 +242,7 @@ class TelephonyVoiceBridge:
             await websocket.send(payload)  # type: ignore[arg-type]
 
         async def forward_audio() -> None:
-            nonlocal inbound_audio_bytes, active_response_id
+            nonlocal inbound_audio_bytes, active_response_id, canceled_response_ids
             appended = False
             try:
                 async for packet in rtp_stream:
@@ -251,6 +251,7 @@ class TelephonyVoiceBridge:
                         continue
                     inbound_audio_bytes += len(pcm)
                     if active_response_id:
+                        canceled_response_ids.add(active_response_id)
                         await send_json(
                             {
                                 "type": "response.cancel",
@@ -290,9 +291,11 @@ class TelephonyVoiceBridge:
 
         transcript_buffers: dict[str, list[str]] = {}
         active_response_id: str | None = None
+        canceled_response_ids: set[str] = set()
 
         async def handle_realtime() -> None:
             nonlocal outbound_audio_bytes, error, active_response_id
+            nonlocal canceled_response_ids
             while True:
                 try:
                     raw = await asyncio.wait_for(
@@ -317,11 +320,13 @@ class TelephonyVoiceBridge:
                 message_type = str(message.get("type") or "").strip()
                 if message_type == "session.ended":
                     active_response_id = None
+                    canceled_response_ids.clear()
                     break
                 if message_type == "error":
                     description = self._extract_error_message(message)
                     error = VoiceBridgeError(description)
                     active_response_id = None
+                    canceled_response_ids.clear()
                     break
 
                 if message_type == "response.created":
@@ -335,6 +340,8 @@ class TelephonyVoiceBridge:
                 if message_type.endswith("audio.delta"):
                     response_id = self._extract_response_id(message)
                     if response_id:
+                        if response_id in canceled_response_ids:
+                            continue
                         active_response_id = response_id
                     for chunk in self._extract_audio_chunks(message):
                         try:
@@ -353,6 +360,8 @@ class TelephonyVoiceBridge:
                     response_id = self._extract_response_id(message)
                     text = self._extract_transcript_text(message)
                     if response_id and text:
+                        if response_id in canceled_response_ids:
+                            continue
                         transcript_buffers.setdefault(response_id, []).append(text)
                     if not should_continue():
                         break
@@ -361,6 +370,8 @@ class TelephonyVoiceBridge:
                 if message_type == "response.completed":
                     response = message.get("response")
                     response_id = self._extract_response_id(message)
+                    if response_id:
+                        canceled_response_ids.discard(response_id)
                     combined_entry: dict[str, str] | None = None
                     if response_id and response_id in transcript_buffers:
                         combined_parts = transcript_buffers.pop(response_id)
@@ -385,7 +396,19 @@ class TelephonyVoiceBridge:
                         transcripts.append(combined_entry)
                     if response_id and response_id == active_response_id:
                         active_response_id = None
-                    break
+                    if not should_continue():
+                        break
+                    continue
+
+                if message_type in {"response.canceled", "response.cancelled"}:
+                    response_id = self._extract_response_id(message)
+                    if response_id:
+                        canceled_response_ids.discard(response_id)
+                        if response_id == active_response_id:
+                            active_response_id = None
+                    if not should_continue():
+                        break
+                    continue
             await request_stop()
 
         stats: VoiceBridgeStats | None = None
