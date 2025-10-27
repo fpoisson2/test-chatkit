@@ -165,10 +165,11 @@ def _merge_voice_settings(
                             instructions = params["instructions"]
                         if params.get("voice"):
                             voice = params["voice"]
-                        if params.get("provider_id"):
-                            provider_id = params["provider_id"]
-                        if params.get("provider_slug"):
-                            provider_slug = params["provider_slug"]
+                        # Les clés pour le provider sont model_provider et model_provider_slug
+                        if params.get("model_provider"):
+                            provider_id = params["model_provider"]
+                        if params.get("model_provider_slug"):
+                            provider_slug = params["model_provider_slug"]
                         logger.info(
                             "Paramètres voix extraits du bloc %s (kind=%s) : "
                             "model=%s, voice=%s, provider=%s",
