@@ -40,6 +40,8 @@ from chatkit.types import (  # noqa: E402
 )
 
 routes_chatkit = import_module("backend.app.routes.chatkit")
+schemas_module = import_module("backend.app.schemas")
+VoiceSessionRequest = schemas_module.VoiceSessionRequest
 
 
 class _StubUser:
@@ -209,6 +211,59 @@ def test_chatkit_endpoint_falls_back_to_request_base_url(
         context = captured.get("context")
         assert context is not None
         assert context.public_base_url == "http://backend.internal:9000"
+
+    asyncio.run(_run())
+
+
+def test_voice_session_slug_override_clears_provider_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _run() -> None:
+        captured: dict[str, object] = {}
+
+        class _StubSettings:
+            chatkit_realtime_model = "fallback-model"
+            chatkit_realtime_instructions = "fallback-instructions"
+            chatkit_realtime_voice = "fallback-voice"
+            model_provider = "groq"
+
+        class _StubVoiceSettings:
+            instructions = "voice instructions"
+            model = "voice-model"
+            voice = "voice-id"
+            provider_id = "groq-provider"
+            provider_slug = "groq"
+            prompt_id = None
+            prompt_version = None
+            prompt_variables: dict[str, str] = {}
+
+        async def _fake_create_realtime_voice_session(**kwargs):
+            captured.update(kwargs)
+            return {"client_secret": {"value": "secret"}}
+
+        monkeypatch.setattr(routes_chatkit, "get_settings", lambda: _StubSettings())
+        monkeypatch.setattr(
+            routes_chatkit,
+            "get_or_create_voice_settings",
+            lambda session: _StubVoiceSettings(),
+        )
+        monkeypatch.setattr(
+            routes_chatkit,
+            "create_realtime_voice_session",
+            _fake_create_realtime_voice_session,
+        )
+
+        request = VoiceSessionRequest(model_provider_slug="openai")
+        response = await routes_chatkit.create_voice_session(
+            request,
+            current_user=_StubUser(),
+            session=SimpleNamespace(),
+        )
+
+        assert captured["provider_slug"] == "openai"
+        assert captured["provider_id"] is None
+        assert response.model_provider_slug == "openai"
+        assert response.model_provider_id is None
 
     asyncio.run(_run())
 

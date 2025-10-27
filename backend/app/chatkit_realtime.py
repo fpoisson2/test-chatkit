@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -51,37 +52,91 @@ async def create_realtime_voice_session(
             sanitized_request,
         )
 
-    normalized_provider_id = (
-        provider_id.strip() if isinstance(provider_id, str) else ""
-    )
-    normalized_provider_slug = (
-        provider_slug.strip().lower() if isinstance(provider_slug, str) else ""
-    )
+    def _clean_identifier(value: Any) -> str:
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate:
+                return candidate
+        return ""
+
+    def _clean_slug(value: Any) -> str:
+        if isinstance(value, str):
+            candidate = value.strip().lower()
+            if candidate:
+                return candidate
+        return ""
+
+    def _clean_url(value: Any) -> str | None:
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate:
+                return candidate.rstrip("/")
+        return None
+
+    def _clean_secret(value: Any) -> str | None:
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate:
+                return candidate
+        return None
+
+    normalized_provider_id = _clean_identifier(provider_id)
+    normalized_provider_slug = _clean_slug(provider_slug)
 
     api_base = settings.model_api_base
     api_key = settings.model_api_key
 
+    provider_base_override: str | None = None
+    provider_key_override: str | None = None
+
     credentials = None
     if normalized_provider_id:
         credentials = resolve_model_provider_credentials(normalized_provider_id)
-    if credentials is None and normalized_provider_id:
+        if (
+            credentials is not None
+            and normalized_provider_slug
+            and getattr(credentials, "provider", None) != normalized_provider_slug
+        ):
+            credentials = None
+    if credentials is not None:
+        provider_base_override = _clean_url(getattr(credentials, "api_base", None))
+        provider_key_override = _clean_secret(getattr(credentials, "api_key", None))
+    elif normalized_provider_id:
         for config in settings.model_providers:
             if config.id == normalized_provider_id:
-                credentials = config
-                break
-    if credentials is None and normalized_provider_slug:
-        for config in settings.model_providers:
-            if config.provider == normalized_provider_slug:
-                credentials = config
+                if (
+                    normalized_provider_slug
+                    and config.provider != normalized_provider_slug
+                ):
+                    break
+                provider_base_override = _clean_url(config.api_base)
+                provider_key_override = _clean_secret(config.api_key)
                 break
 
-    if credentials is not None:
-        candidate_base = getattr(credentials, "api_base", "")
-        if isinstance(candidate_base, str) and candidate_base.strip():
-            api_base = candidate_base.strip()
-        candidate_key = getattr(credentials, "api_key", None)
-        if isinstance(candidate_key, str) and candidate_key.strip():
-            api_key = candidate_key.strip()
+    if provider_base_override is None and normalized_provider_slug:
+        for config in settings.model_providers:
+            if config.provider == normalized_provider_slug:
+                provider_base_override = _clean_url(config.api_base)
+                provider_key_override = _clean_secret(config.api_key)
+                break
+
+    if provider_base_override is None and normalized_provider_slug:
+        default_provider = _clean_slug(getattr(settings, "model_provider", None))
+        if default_provider and default_provider == normalized_provider_slug:
+            provider_base_override = _clean_url(settings.model_api_base)
+            provider_key_override = _clean_secret(settings.model_api_key)
+
+    if provider_base_override is None and normalized_provider_slug == "openai":
+        openai_base_env = _clean_url(os.environ.get("CHATKIT_API_BASE"))
+        provider_base_override = openai_base_env or "https://api.openai.com"
+        openai_key = _clean_secret(getattr(settings, "openai_api_key", None))
+        if openai_key:
+            provider_key_override = openai_key
+
+    if provider_base_override:
+        api_base = provider_base_override
+    if provider_key_override:
+        api_key = provider_key_override
 
     headers = {
         "Authorization": f"Bearer {api_key}",
