@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentParameters } from "../workflows";
+import type { AgentMcpToolConfig, AgentParameters } from "../workflows";
 import {
   createVoiceAgentParameters,
   DEFAULT_VOICE_AGENT_MODEL,
@@ -26,6 +26,9 @@ import {
   getStartTelephonyRealtimeOverrides,
   setStartTelephonyRealtimeOverrides,
   resolveStartParameters,
+  getAgentMcpTools,
+  setAgentMcpTools,
+  validateAgentMcpTools,
   type WorkflowToolConfig,
 } from "../workflows";
 
@@ -444,5 +447,242 @@ describe("workflow tool helpers", () => {
     expect(next.tools).toEqual([
       { type: "function", function: { name: "fetch_weather" } },
     ]);
+  });
+});
+
+describe("agent MCP tool helpers", () => {
+  const baseConfig: AgentMcpToolConfig = {
+    id: "mcp-test",
+    transport: "hosted",
+    serverLabel: "",
+    serverUrl: "",
+    connectorId: "",
+    authorization: "",
+    headersText: "",
+    allowedToolsText: "",
+    requireApprovalMode: "never",
+    requireApprovalCustom: "",
+    description: "",
+    url: "",
+    command: "",
+    argsText: "",
+    envText: "",
+    cwd: "",
+  };
+
+  it("extracts hosted, HTTP and stdio definitions from parameters", () => {
+    const parameters: AgentParameters = {
+      tools: [
+        {
+          type: "mcp",
+          mcp: {
+            kind: "hosted",
+            server_label: "Docs",
+            server_url: "https://example.com/mcp",
+            connector_id: "connector-123",
+            authorization: "Bearer 123",
+            headers: { Authorization: "Bearer 123" },
+            allowed_tools: ["search", "read"],
+            require_approval: { default: "auto" },
+          },
+        },
+        { type: "function", function: { name: "fetch_weather" } },
+        {
+          type: "mcp",
+          url: "https://remote.example.com/mcp",
+          headers: { "X-Api-Key": "secret" },
+          allowed_tools: { allow: ["browse"] },
+          require_approval: "always",
+          mcp: {
+            kind: "http",
+            server_description: "Remote", 
+          },
+        },
+        {
+          type: "mcp",
+          mcp: {
+            kind: "stdio",
+            server_label: "Local",
+            command: "./run.sh",
+            args: ["--serve"],
+            env: { TOKEN: "abc" },
+            cwd: "/srv/service",
+          },
+        },
+      ],
+    };
+
+    const configs = getAgentMcpTools(parameters);
+
+    expect(configs).toHaveLength(3);
+    expect(configs[0]).toEqual(
+      expect.objectContaining({
+        transport: "hosted",
+        serverLabel: "Docs",
+        serverUrl: "https://example.com/mcp",
+        connectorId: "connector-123",
+        authorization: "Bearer 123",
+        headersText: "Authorization: Bearer 123",
+        allowedToolsText: "search\nread",
+        requireApprovalMode: "custom",
+        requireApprovalCustom: '{\n  "default": "auto"\n}',
+      }),
+    );
+
+    expect(configs[1]).toEqual(
+      expect.objectContaining({
+        transport: "http",
+        serverLabel: "",
+        description: "Remote",
+        url: "https://remote.example.com/mcp",
+        headersText: "X-Api-Key: secret",
+        allowedToolsText: expect.stringContaining("browse"),
+        requireApprovalMode: "always",
+      }),
+    );
+
+    expect(configs[2]).toEqual(
+      expect.objectContaining({
+        transport: "stdio",
+        serverLabel: "Local",
+        command: "./run.sh",
+        argsText: "--serve",
+        envText: "TOKEN: abc",
+        cwd: "/srv/service",
+      }),
+    );
+  });
+
+  it("validates missing targets and malformed fields", () => {
+    const configs: AgentMcpToolConfig[] = [
+      {
+        ...baseConfig,
+        id: "mcp-1",
+        serverLabel: "",
+        transport: "hosted",
+        serverUrl: "",
+        connectorId: "",
+        headersText: "missing", // invalid format (no separator)
+        envText: "BAD",
+        allowedToolsText: "{not-json}",
+      },
+      {
+        ...baseConfig,
+        id: "mcp-2",
+        transport: "http",
+        serverLabel: "Remote",
+        url: "",
+        requireApprovalMode: "custom",
+        requireApprovalCustom: "not json",
+      },
+      {
+        ...baseConfig,
+        id: "mcp-3",
+        transport: "stdio",
+        serverLabel: "Local",
+        command: "",
+      },
+    ];
+
+    const validation = validateAgentMcpTools(configs);
+
+    expect(validation).toEqual([
+      {
+        id: "mcp-1",
+        errors: {
+          serverLabel: "missing",
+          connection: "missingTarget",
+          headers: "invalid",
+          env: "invalid",
+          allowedTools: "invalid",
+        },
+      },
+      {
+        id: "mcp-2",
+        errors: {
+          connection: "missingUrl",
+          requireApproval: "invalid",
+        },
+      },
+      {
+        id: "mcp-3",
+        errors: {
+          connection: "missingCommand",
+        },
+      },
+    ]);
+  });
+
+  it("serialises MCP tools back into the agent parameters", () => {
+    const parameters: AgentParameters = {
+      tools: [
+        { type: "function", function: { name: "fetch_weather" } },
+        { type: "mcp", mcp: { kind: "http", server_label: "legacy" } },
+      ],
+    };
+
+    const configs: AgentMcpToolConfig[] = [
+      {
+        ...baseConfig,
+        id: "mcp-new",
+        serverLabel: "Hosted",
+        transport: "hosted",
+        serverUrl: "https://api.example.com",
+        connectorId: "connector-9",
+        description: "Hosted API",
+        authorization: "Bearer 123",
+        headersText: "X-Test: value",
+        allowedToolsText: "alpha\nbeta",
+      },
+      {
+        ...baseConfig,
+        id: "mcp-stdio",
+        serverLabel: "Local",
+        transport: "stdio",
+        command: "./serve",
+        argsText: "--port\n8080",
+        envText: "TOKEN=abc",
+        cwd: "/srv/app",
+      },
+    ];
+
+    const next = setAgentMcpTools(parameters, configs);
+
+    expect(next.tools).toHaveLength(3);
+    const [preserved, hosted, stdio] = next.tools ?? [];
+
+    expect(preserved).toEqual({
+      type: "function",
+      function: { name: "fetch_weather" },
+    });
+
+    expect(hosted).toEqual({
+      type: "mcp",
+      mcp: expect.objectContaining({
+        kind: "hosted",
+        server_label: "Hosted",
+        server_url: "https://api.example.com",
+        connector_id: "connector-9",
+        server_description: "Hosted API",
+        authorization: "Bearer 123",
+        headers: { "X-Test": "value" },
+        ui_headers_text: "X-Test: value",
+        ui_allowed_tools: "alpha\nbeta",
+        allowed_tools: ["alpha", "beta"],
+      }),
+    });
+
+    expect(stdio).toEqual({
+      type: "mcp",
+      mcp: expect.objectContaining({
+        kind: "stdio",
+        server_label: "Local",
+        command: "./serve",
+        args: ["--port", "8080"],
+        env: { TOKEN: "abc" },
+        ui_env_text: "TOKEN=abc",
+        cwd: "/srv/app",
+      }),
+    });
   });
 });

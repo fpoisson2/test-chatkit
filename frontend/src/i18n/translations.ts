@@ -320,6 +320,69 @@ const fr: TranslationDictionary = {
     "Aucun autre workflow disponible pour être ajouté comme outil.",
   "workflowBuilder.agentInspector.workflowToolsMissing":
     "Le workflow « {{slug}} » n'est plus disponible. Retirez-le de la configuration.",
+  "workflowBuilder.agentInspector.mcpSectionTitle": "Serveurs MCP existants",
+  "workflowBuilder.agentInspector.mcpSectionDescription":
+    "Connectez des serveurs MCP déjà déployés et exposez leurs outils à l'agent.",
+  "workflowBuilder.agentInspector.mcpAddServer": "Ajouter un serveur MCP",
+  "workflowBuilder.agentInspector.mcpServerHeading": "Serveur MCP {{label}}",
+  "workflowBuilder.agentInspector.mcpServerPlaceholder": "Serveur {{index}}",
+  "workflowBuilder.agentInspector.mcpDeleteServer": "Retirer ce serveur",
+  "workflowBuilder.agentInspector.mcpEmptyState":
+    "Aucun serveur MCP n'est configuré.",
+  "workflowBuilder.agentInspector.mcpTransportLabel": "Mode de connexion",
+  "workflowBuilder.agentInspector.mcpTransportHosted": "Hosted MCP (hébergé)",
+  "workflowBuilder.agentInspector.mcpTransportHttp": "HTTP streamable",
+  "workflowBuilder.agentInspector.mcpTransportSse": "Flux SSE",
+  "workflowBuilder.agentInspector.mcpTransportStdio": "Processus local (stdio)",
+  "workflowBuilder.agentInspector.mcpServerLabel": "Libellé du serveur",
+  "workflowBuilder.agentInspector.mcpServerUrl": "URL du serveur MCP",
+  "workflowBuilder.agentInspector.mcpConnectorId": "Identifiant du connecteur",
+  "workflowBuilder.agentInspector.mcpAuthorization": "Jeton d'authentification",
+  "workflowBuilder.agentInspector.mcpAuthorizationHint":
+    "Optionnel. Envoyé dans l'en-tête Authorization des requêtes sortantes.",
+  "workflowBuilder.agentInspector.mcpHeaders": "En-têtes HTTP supplémentaires",
+  "workflowBuilder.agentInspector.mcpHeadersHint":
+    "Une paire clé: valeur par ligne (ex. Authorization: Bearer …).",
+  "workflowBuilder.agentInspector.mcpHttpUrl": "URL du serveur HTTP",
+  "workflowBuilder.agentInspector.mcpSseUrl": "URL du serveur SSE",
+  "workflowBuilder.agentInspector.mcpStdioCommand": "Commande à exécuter",
+  "workflowBuilder.agentInspector.mcpStdioArgs": "Arguments de la commande",
+  "workflowBuilder.agentInspector.mcpStdioArgsHint": "Saisissez un argument par ligne.",
+  "workflowBuilder.agentInspector.mcpStdioEnv": "Variables d'environnement",
+  "workflowBuilder.agentInspector.mcpStdioEnvHint":
+    "Saisissez key=value par ligne.",
+  "workflowBuilder.agentInspector.mcpStdioCwd": "Répertoire de travail (optionnel)",
+  "workflowBuilder.agentInspector.mcpDescription": "Description du serveur",
+  "workflowBuilder.agentInspector.mcpDescriptionHint":
+    "Optionnel. Apparait dans la liste des outils.",
+  "workflowBuilder.agentInspector.mcpAllowedTools": "Filtrer les outils accessibles",
+  "workflowBuilder.agentInspector.mcpAllowedToolsHint":
+    "Une entrée par ligne ou collez un objet JSON compatible (allowed_tools).",
+  "workflowBuilder.agentInspector.mcpRequireApproval": "Approbation requise",
+  "workflowBuilder.agentInspector.mcpRequireApprovalAlways":
+    "Toujours (toutes les actions nécessitent une approbation)",
+  "workflowBuilder.agentInspector.mcpRequireApprovalNever": "Jamais",
+  "workflowBuilder.agentInspector.mcpRequireApprovalCustom": "Personnalisé (JSON)",
+  "workflowBuilder.agentInspector.mcpRequireApprovalCustomLabel":
+    "Règles d'approbation (JSON)",
+  "workflowBuilder.agentInspector.mcpRequireApprovalCustomHint":
+    "Fournissez un objet JSON valide conformément au schéma MCP require_approval.",
+  "workflowBuilder.agentInspector.mcpValidationMissingLabel":
+    "Ajoutez un libellé pour identifier ce serveur MCP.",
+  "workflowBuilder.agentInspector.mcpValidationMissingTarget":
+    "Indiquez l'URL du serveur ou un identifiant de connecteur.",
+  "workflowBuilder.agentInspector.mcpValidationMissingUrl":
+    "Indiquez l'URL du serveur distant.",
+  "workflowBuilder.agentInspector.mcpValidationMissingCommand":
+    "Indiquez la commande à exécuter.",
+  "workflowBuilder.agentInspector.mcpValidationInvalidHeaders":
+    "Format invalide : utilisez « clé: valeur » par ligne.",
+  "workflowBuilder.agentInspector.mcpValidationInvalidEnv":
+    "Format invalide : utilisez « clé=valeur » par ligne.",
+  "workflowBuilder.agentInspector.mcpValidationInvalidAllowedTools":
+    "Impossible d'interpréter ce filtre. Fournissez un JSON valide ou une liste de noms.",
+  "workflowBuilder.agentInspector.mcpValidationInvalidRequireApproval":
+    "JSON d'approbation invalide. Vérifiez la structure require_approval.",
   "workflowBuilder.agentInspector.modelsLoading": "Chargement des modèles disponibles…",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Ajoute l'outil image_generation pour produire des visuels. Actuellement, seule l'API Images d'OpenAI est prise en charge.",
@@ -846,6 +909,66 @@ const en: TranslationDictionary = {
     "No other workflows are available to expose as tools.",
   "workflowBuilder.agentInspector.workflowToolsMissing":
     "The \"{{slug}}\" workflow is no longer available. Remove it from the configuration.",
+  "workflowBuilder.agentInspector.mcpSectionTitle": "Existing MCP servers",
+  "workflowBuilder.agentInspector.mcpSectionDescription":
+    "Connect already deployed MCP servers and expose their tools to the agent.",
+  "workflowBuilder.agentInspector.mcpAddServer": "Add MCP server",
+  "workflowBuilder.agentInspector.mcpServerHeading": "MCP server {{label}}",
+  "workflowBuilder.agentInspector.mcpServerPlaceholder": "Server {{index}}",
+  "workflowBuilder.agentInspector.mcpDeleteServer": "Remove this server",
+  "workflowBuilder.agentInspector.mcpEmptyState": "No MCP server configured yet.",
+  "workflowBuilder.agentInspector.mcpTransportLabel": "Connection mode",
+  "workflowBuilder.agentInspector.mcpTransportHosted": "Hosted MCP",
+  "workflowBuilder.agentInspector.mcpTransportHttp": "HTTP streamable",
+  "workflowBuilder.agentInspector.mcpTransportSse": "SSE stream",
+  "workflowBuilder.agentInspector.mcpTransportStdio": "Local process (stdio)",
+  "workflowBuilder.agentInspector.mcpServerLabel": "Server label",
+  "workflowBuilder.agentInspector.mcpServerUrl": "MCP server URL",
+  "workflowBuilder.agentInspector.mcpConnectorId": "Connector identifier",
+  "workflowBuilder.agentInspector.mcpAuthorization": "Authorization token",
+  "workflowBuilder.agentInspector.mcpAuthorizationHint":
+    "Optional. Sent inside the Authorization header for outgoing requests.",
+  "workflowBuilder.agentInspector.mcpHeaders": "Additional HTTP headers",
+  "workflowBuilder.agentInspector.mcpHeadersHint":
+    "One key: value pair per line (e.g. Authorization: Bearer …).",
+  "workflowBuilder.agentInspector.mcpHttpUrl": "HTTP server URL",
+  "workflowBuilder.agentInspector.mcpSseUrl": "SSE server URL",
+  "workflowBuilder.agentInspector.mcpStdioCommand": "Command to execute",
+  "workflowBuilder.agentInspector.mcpStdioArgs": "Command arguments",
+  "workflowBuilder.agentInspector.mcpStdioArgsHint": "Provide one argument per line.",
+  "workflowBuilder.agentInspector.mcpStdioEnv": "Environment variables",
+  "workflowBuilder.agentInspector.mcpStdioEnvHint": "Enter key=value per line.",
+  "workflowBuilder.agentInspector.mcpStdioCwd": "Working directory (optional)",
+  "workflowBuilder.agentInspector.mcpDescription": "Server description",
+  "workflowBuilder.agentInspector.mcpDescriptionHint":
+    "Optional. Shown in the tool list.",
+  "workflowBuilder.agentInspector.mcpAllowedTools": "Filter allowed tools",
+  "workflowBuilder.agentInspector.mcpAllowedToolsHint":
+    "One entry per line or paste a compatible allowed_tools JSON object.",
+  "workflowBuilder.agentInspector.mcpRequireApproval": "Approval requirement",
+  "workflowBuilder.agentInspector.mcpRequireApprovalAlways":
+    "Always (every action requires approval)",
+  "workflowBuilder.agentInspector.mcpRequireApprovalNever": "Never",
+  "workflowBuilder.agentInspector.mcpRequireApprovalCustom": "Custom (JSON)",
+  "workflowBuilder.agentInspector.mcpRequireApprovalCustomLabel": "Approval rules (JSON)",
+  "workflowBuilder.agentInspector.mcpRequireApprovalCustomHint":
+    "Provide valid JSON matching the MCP require_approval schema.",
+  "workflowBuilder.agentInspector.mcpValidationMissingLabel":
+    "Provide a label to identify this MCP server.",
+  "workflowBuilder.agentInspector.mcpValidationMissingTarget":
+    "Provide the server URL or a connector identifier.",
+  "workflowBuilder.agentInspector.mcpValidationMissingUrl":
+    "Provide the remote server URL.",
+  "workflowBuilder.agentInspector.mcpValidationMissingCommand":
+    "Provide the command to execute.",
+  "workflowBuilder.agentInspector.mcpValidationInvalidHeaders":
+    "Invalid format: use `key: value` on each line.",
+  "workflowBuilder.agentInspector.mcpValidationInvalidEnv":
+    "Invalid format: use `key=value` on each line.",
+  "workflowBuilder.agentInspector.mcpValidationInvalidAllowedTools":
+    "Unable to parse this filter. Provide valid JSON or a list of tool names.",
+  "workflowBuilder.agentInspector.mcpValidationInvalidRequireApproval":
+    "Invalid approval JSON. Check the require_approval structure.",
   "workflowBuilder.agentInspector.modelsLoading": "Loading available models…",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Enables the image_generation tool to produce visuals. At the moment, only OpenAI's Images API is supported.",

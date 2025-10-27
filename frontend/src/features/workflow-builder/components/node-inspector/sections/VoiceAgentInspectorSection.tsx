@@ -1,6 +1,9 @@
+import { useMemo } from "react";
+
 import { useI18n } from "../../../../../i18n";
 import type {
   FlowNode,
+  AgentMcpToolConfig,
   VoiceAgentTool,
   VoiceAgentStartBehavior,
   VoiceAgentStopBehavior,
@@ -15,6 +18,10 @@ import { ToggleRow } from "../components/ToggleRow";
 import styles from "../NodeInspector.module.css";
 import { useVoiceAgentInspectorState } from "../hooks/useVoiceAgentInspectorState";
 import { ToolSettingsPanel } from "./ToolSettingsPanel";
+import {
+  getAgentMcpTools,
+  validateAgentMcpTools,
+} from "../../../../../utils/workflows";
 
 type VoiceAgentInspectorSectionProps = {
   nodeId: string;
@@ -45,6 +52,7 @@ type VoiceAgentInspectorSectionProps = {
   onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowToolToggle: (nodeId: string, slug: string, enabled: boolean) => void;
+  onAgentMcpToolsChange: (nodeId: string, configs: AgentMcpToolConfig[]) => void;
 };
 
 export const VoiceAgentInspectorSection = ({
@@ -62,10 +70,13 @@ export const VoiceAgentInspectorSection = ({
   onAgentWidgetValidationToolChange,
   onAgentWorkflowValidationToolChange,
   onAgentWorkflowToolToggle,
+  onAgentMcpToolsChange,
 }: VoiceAgentInspectorSectionProps) => {
   const { t } = useI18n();
   const { voiceModel, voiceId, instructions, startBehavior, stopBehavior, tools } =
     useVoiceAgentInspectorState({ parameters });
+  const mcpTools = useMemo(() => getAgentMcpTools(parameters), [parameters]);
+  const mcpValidation = useMemo(() => validateAgentMcpTools(mcpTools), [mcpTools]);
 
   return (
     <>
@@ -169,6 +180,9 @@ export const VoiceAgentInspectorSection = ({
           parameters={parameters}
           workflows={workflows}
           currentWorkflowId={currentWorkflowId}
+          mcpTools={mcpTools}
+          mcpValidation={mcpValidation}
+          onAgentMcpToolsChange={onAgentMcpToolsChange}
           onAgentWeatherToolChange={onAgentWeatherToolChange}
           onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
           onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}

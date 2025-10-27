@@ -49,6 +49,7 @@ const renderSection = (overrides: Partial<Parameters<typeof VoiceAgentInspectorS
     onAgentWidgetValidationToolChange: vi.fn(),
     onAgentWorkflowValidationToolChange: vi.fn(),
     onAgentWorkflowToolToggle: vi.fn(),
+    onAgentMcpToolsChange: vi.fn(),
     ...overrides,
   };
 

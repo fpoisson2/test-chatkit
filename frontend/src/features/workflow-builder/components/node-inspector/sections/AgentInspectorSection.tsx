@@ -8,6 +8,7 @@ import type {
 import { collectWidgetBindings } from "../../../../../utils/widgetPreview";
 import { useI18n } from "../../../../../i18n";
 import type {
+  AgentMcpToolConfig,
   AgentNestedWorkflowSelection,
   ComputerUseConfig,
   FileSearchConfig,
@@ -104,6 +105,10 @@ type AgentInspectorSectionProps = {
     nodeId: string,
     config: ComputerUseConfig | null,
   ) => void;
+  onAgentMcpToolsChange: (
+    nodeId: string,
+    configs: AgentMcpToolConfig[],
+  ) => void;
   onAgentWeatherToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
@@ -151,6 +156,7 @@ export const AgentInspectorSection = ({
   onAgentFileSearchChange,
   onAgentImageGenerationChange,
   onAgentComputerUseChange,
+  onAgentMcpToolsChange,
   onAgentWeatherToolChange,
   onAgentWidgetValidationToolChange,
   onAgentWorkflowValidationToolChange,
@@ -187,6 +193,8 @@ export const AgentInspectorSection = ({
     computerUseDisplayHeightValue,
     computerUseEnvironmentValue,
     computerUseStartUrlValue,
+    mcpTools,
+    mcpValidation,
     imageGenerationConfig,
     imageGenerationEnabled,
     imageModelValue,
@@ -1301,6 +1309,9 @@ export const AgentInspectorSection = ({
           parameters={parameters}
           workflows={workflows}
           currentWorkflowId={currentWorkflowId}
+          mcpTools={mcpTools}
+          mcpValidation={mcpValidation}
+          onAgentMcpToolsChange={onAgentMcpToolsChange}
           onAgentWeatherToolChange={onAgentWeatherToolChange}
           onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
           onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}

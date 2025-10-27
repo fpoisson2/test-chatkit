@@ -31,6 +31,7 @@ import {
   type StartTelephonyRealtimeOverrides,
 } from "../../../../utils/workflows";
 import type {
+  AgentMcpToolConfig,
   AgentNestedWorkflowSelection,
   ComputerUseConfig,
   FileSearchConfig,
@@ -117,6 +118,7 @@ export type NodeInspectorProps = {
   onAgentFileSearchChange: (nodeId: string, config: FileSearchConfig | null) => void;
   onAgentImageGenerationChange: (nodeId: string, config: ImageGenerationToolConfig | null) => void;
   onAgentComputerUseChange: (nodeId: string, config: ComputerUseConfig | null) => void;
+  onAgentMcpToolsChange: (nodeId: string, configs: AgentMcpToolConfig[]) => void;
   workflows: WorkflowSummary[];
   currentWorkflowId: number | null;
   onVoiceAgentVoiceChange: (nodeId: string, value: string) => void;
@@ -217,6 +219,7 @@ const NodeInspector = ({
   onAgentFileSearchChange,
   onAgentImageGenerationChange,
   onAgentComputerUseChange,
+  onAgentMcpToolsChange,
   workflows,
   currentWorkflowId,
   onVoiceAgentVoiceChange,
@@ -507,6 +510,7 @@ const NodeInspector = ({
           onAgentFileSearchChange={onAgentFileSearchChange}
           onAgentImageGenerationChange={onAgentImageGenerationChange}
           onAgentComputerUseChange={onAgentComputerUseChange}
+          onAgentMcpToolsChange={onAgentMcpToolsChange}
           onAgentWeatherToolChange={onAgentWeatherToolChange}
           onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
           onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
@@ -530,6 +534,7 @@ const NodeInspector = ({
           onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
           onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
           onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
+          onAgentMcpToolsChange={onAgentMcpToolsChange}
         />
       ) : null}
 

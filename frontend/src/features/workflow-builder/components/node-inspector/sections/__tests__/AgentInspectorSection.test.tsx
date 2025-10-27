@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -33,8 +33,14 @@ const baseWorkflows: WorkflowSummary[] = [
   },
 ];
 
-const renderSection = (overrides: Partial<Parameters<typeof AgentInspectorSection>[0]> = {}) => {
-  const onAgentNestedWorkflowChange = vi.fn();
+const renderSection = (
+  overrides: Partial<Parameters<typeof AgentInspectorSection>[0]> = {},
+) => {
+  const {
+    onAgentNestedWorkflowChange = vi.fn(),
+    onAgentMcpToolsChange = vi.fn(),
+    ...rest
+  } = overrides;
   render(
     <I18nProvider>
       <AgentInspectorSection
@@ -78,15 +84,16 @@ const renderSection = (overrides: Partial<Parameters<typeof AgentInspectorSectio
         onAgentFileSearchChange={vi.fn()}
         onAgentImageGenerationChange={vi.fn()}
         onAgentComputerUseChange={vi.fn()}
+        onAgentMcpToolsChange={onAgentMcpToolsChange}
         onAgentWeatherToolChange={vi.fn()}
         onAgentWidgetValidationToolChange={vi.fn()}
         onAgentWorkflowValidationToolChange={vi.fn()}
         onAgentWorkflowToolToggle={vi.fn()}
-        {...overrides}
+        {...rest}
       />
     </I18nProvider>,
   );
-  return { onAgentNestedWorkflowChange };
+  return { onAgentNestedWorkflowChange, onAgentMcpToolsChange };
 };
 
 describe("AgentInspectorSection", () => {
@@ -176,6 +183,62 @@ describe("AgentInspectorSection", () => {
     await userEvent.click(toggle);
 
     expect(onAgentWorkflowToolToggle).toHaveBeenCalledWith("agent-1", "secondary", true);
+  });
+
+  it("renders MCP controls and forwards value changes", async () => {
+    const parameters = {
+      tools: [
+        {
+          type: "mcp",
+          mcp: {
+            kind: "http",
+            server_label: "Docs",
+            url: "https://example.com/mcp",
+            headers: { Authorization: "Bearer token" },
+          },
+        },
+      ],
+    };
+
+    const { onAgentMcpToolsChange } = renderSection({ parameters });
+
+    expect(
+      screen.getByRole("button", { name: /Add MCP server/i }),
+    ).toBeInTheDocument();
+
+    const labelInput = screen.getByLabelText(/Server label/i);
+    expect(labelInput).toHaveValue("Docs");
+
+    fireEvent.change(labelInput, { target: { value: "Documentation" } });
+
+    const lastCall = onAgentMcpToolsChange.mock.calls.at(-1);
+    expect(lastCall?.[0]).toBe("agent-1");
+    const lastConfigs = lastCall?.[1] as unknown[] | undefined;
+    expect(Array.isArray(lastConfigs)).toBe(true);
+    expect((lastConfigs?.[0] as { serverLabel?: string })?.serverLabel).toBe(
+      "Documentation",
+    );
+  });
+
+  it("allows adding a new MCP server entry", async () => {
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1700000000000);
+
+    try {
+      const onAgentMcpToolsChange = vi.fn();
+      renderSection({ onAgentMcpToolsChange });
+
+      const addButton = screen.getByRole("button", { name: /Add MCP server/i });
+      await userEvent.click(addButton);
+
+      expect(onAgentMcpToolsChange).toHaveBeenCalledWith(
+        "agent-1",
+        expect.arrayContaining([
+          expect.objectContaining({ id: "mcp-1700000000000" }),
+        ]),
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it("serializes the store flag in model options", () => {

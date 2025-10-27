@@ -443,6 +443,34 @@
   color: var(--text-primary, #0f172a);
 }
 
+.nodeInspectorAddButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  background-color: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nodeInspectorAddButton:hover {
+  background-color: rgba(37, 99, 235, 0.18);
+}
+
+.nodeInspectorRemoveLink {
+  background: none;
+  border: none;
+  color: #b91c1c;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
 .nodeInspectorDisclosureLabel {
   display: flex;
   align-items: center;

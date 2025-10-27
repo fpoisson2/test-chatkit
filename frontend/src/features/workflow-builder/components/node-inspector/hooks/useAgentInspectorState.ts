@@ -26,6 +26,7 @@ import {
   getAgentModelProviderSlug,
   getAgentReasoningEffort,
   getAgentReasoningSummary,
+  getAgentMcpTools,
   getAgentResponseFormat,
   getAgentShowSearchSources,
   getAgentStorePreference,
@@ -37,6 +38,7 @@ import {
   getAgentWorkflowValidationToolEnabled,
   getAgentWorkflowTools,
   getAgentWidgetValidationToolEnabled,
+  validateAgentMcpTools,
 } from "../../../../../utils/workflows";
 import type {
   FlowNode,
@@ -104,6 +106,8 @@ type AgentInspectorState = {
   computerUseDisplayHeightValue: string;
   computerUseEnvironmentValue: string;
   computerUseStartUrlValue: string;
+  mcpTools: ReturnType<typeof getAgentMcpTools>;
+  mcpValidation: ReturnType<typeof validateAgentMcpTools>;
   imageGenerationConfig: ImageGenerationToolConfig | null;
   imageGenerationEnabled: boolean;
   imageModelValue: string;
@@ -201,6 +205,11 @@ export const useAgentInspectorState = ({
   const fileSearchEnabled = Boolean(fileSearchConfig);
   const computerUseConfig = getAgentComputerUseConfig(parameters);
   const computerUseEnabled = Boolean(computerUseConfig);
+  const mcpTools = getAgentMcpTools(parameters);
+  const mcpValidation = useMemo(
+    () => validateAgentMcpTools(mcpTools),
+    [mcpTools],
+  );
   const imageGenerationConfig = getAgentImageGenerationConfig(parameters);
   const imageGenerationEnabled = Boolean(imageGenerationConfig);
 
@@ -581,6 +590,8 @@ export const useAgentInspectorState = ({
     computerUseDisplayHeightValue,
     computerUseEnvironmentValue,
     computerUseStartUrlValue,
+    mcpTools,
+    mcpValidation,
     imageGenerationConfig,
     imageGenerationEnabled,
     imageModelValue,

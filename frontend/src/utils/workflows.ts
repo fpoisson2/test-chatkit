@@ -26,6 +26,41 @@ export type WorkflowToolConfig = {
   initialMessage?: string;
 };
 
+export type AgentMcpTransport = "hosted" | "http" | "sse" | "stdio";
+
+export type AgentMcpRequireApprovalMode = "always" | "never" | "custom";
+
+export type AgentMcpToolConfig = {
+  id: string;
+  transport: AgentMcpTransport;
+  serverLabel: string;
+  serverUrl: string;
+  connectorId: string;
+  authorization: string;
+  headersText: string;
+  allowedToolsText: string;
+  requireApprovalMode: AgentMcpRequireApprovalMode;
+  requireApprovalCustom: string;
+  description: string;
+  url: string;
+  command: string;
+  argsText: string;
+  envText: string;
+  cwd: string;
+};
+
+export type AgentMcpToolValidation = {
+  id: string;
+  errors: {
+    serverLabel?: "missing";
+    connection?: "missingTarget" | "missingUrl" | "missingCommand";
+    headers?: "invalid";
+    env?: "invalid";
+    allowedTools?: "invalid";
+    requireApproval?: "invalid";
+  };
+};
+
 export const DEFAULT_END_MESSAGE = "Workflow terminé";
 
 export const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
@@ -2604,6 +2639,374 @@ const normalizeWorkflowToolNameCandidate = (
   return undefined;
 };
 
+const normalizeMultilineInput = (value: string): string => value.replace(/\r\n/g, "\n");
+
+const parseKeyValueText = (
+  text: string,
+): { map: Record<string, string> | null; invalidLineCount: number } => {
+  if (!text) {
+    return { map: null, invalidLineCount: 0 };
+  }
+
+  const normalized = normalizeMultilineInput(text);
+  const result: Record<string, string> = {};
+  let invalidLineCount = 0;
+
+  normalized.split("\n").forEach((line) => {
+    if (!line.trim()) {
+      return;
+    }
+
+    const colonIndex = line.indexOf(":");
+    const equalIndex = line.indexOf("=");
+    const separatorIndex = colonIndex >= 0 ? colonIndex : equalIndex;
+
+    if (separatorIndex < 0) {
+      invalidLineCount += 1;
+      return;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line.slice(separatorIndex + 1).trim();
+
+    if (!key) {
+      invalidLineCount += 1;
+      return;
+    }
+
+    result[key] = value;
+  });
+
+  return {
+    map: Object.keys(result).length > 0 ? result : null,
+    invalidLineCount,
+  };
+};
+
+const stringifyKeyValueRecord = (value: unknown): string => {
+  if (!isPlainRecord(value)) {
+    return "";
+  }
+
+  const lines: string[] = [];
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof key !== "string") {
+      continue;
+    }
+    if (raw === undefined || raw === null) {
+      continue;
+    }
+    if (typeof raw === "object" && !Array.isArray(raw)) {
+      continue;
+    }
+    lines.push(`${key}: ${String(raw)}`);
+  }
+
+  return lines.join("\n");
+};
+
+const parseAllowedToolsText = (
+  text: string,
+): {
+  value: string[] | Record<string, unknown> | null;
+  error: boolean;
+} => {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return { value: null, error: false };
+  }
+
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        const normalized = parsed
+          .map((entry) =>
+            typeof entry === "string" ? entry.trim() : String(entry).trim(),
+          )
+          .filter((entry) => entry.length > 0);
+        return {
+          value: normalized.length > 0 ? normalized : null,
+          error: false,
+        };
+      }
+      if (parsed && typeof parsed === "object") {
+        return {
+          value: parsed as Record<string, unknown>,
+          error: false,
+        };
+      }
+      return { value: null, error: true };
+    } catch {
+      return { value: null, error: true };
+    }
+  }
+
+  const entries = trimmed
+    .split(/[\n,]+/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  if (entries.length === 0) {
+    return { value: null, error: false };
+  }
+
+  return { value: entries, error: false };
+};
+
+const parseRequireApprovalCustom = (
+  text: string,
+): { value: unknown | null; error: boolean } => {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return { value: null, error: false };
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (
+      parsed === "always" ||
+      parsed === "never" ||
+      (parsed && typeof parsed === "object")
+    ) {
+      return { value: parsed, error: false };
+    }
+    return { value: null, error: true };
+  } catch {
+    return { value: null, error: true };
+  }
+};
+
+const parseArgsText = (text: string): string[] | null => {
+  if (!text) {
+    return null;
+  }
+  const normalized = normalizeMultilineInput(text);
+  const values = normalized
+    .split("\n")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  return values.length > 0 ? values : null;
+};
+
+const normalizeMcpTransport = (value: unknown): AgentMcpTransport | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase().replace(/-/g, "_");
+  if (!normalized) {
+    return null;
+  }
+  if (["host", "hosted", "remote", "openai"].includes(normalized)) {
+    return "hosted";
+  }
+  if (["http", "streamable_http", "streamablehttp", "streamable"].includes(normalized)) {
+    return "http";
+  }
+  if (["sse", "event_stream", "server_sent_events"].includes(normalized)) {
+    return "sse";
+  }
+  if (["stdio", "std_io", "process"].includes(normalized)) {
+    return "stdio";
+  }
+  return null;
+};
+
+const resolveMcpTransport = (
+  config: Record<string, unknown>,
+): AgentMcpTransport => {
+  for (const key of ["kind", "mode", "transport", "server_type"]) {
+    const value = normalizeMcpTransport(config[key]);
+    if (value) {
+      return value;
+    }
+  }
+
+  const command = toOptionalString(config.command);
+  if (command) {
+    return "stdio";
+  }
+
+  const url = toOptionalString(config.url);
+  if (url) {
+    const transport = normalizeMcpTransport("http");
+    return transport ?? "http";
+  }
+
+  const serverUrl = toOptionalString(config.server_url);
+  if (serverUrl) {
+    return "hosted";
+  }
+
+  return "hosted";
+};
+
+const extractMcpConfig = (entry: Record<string, unknown>): Record<string, unknown> => {
+  const config: Record<string, unknown> = {};
+  let nested: Record<string, unknown> | null = null;
+
+  for (const key of ["mcp", "server", "config"]) {
+    const candidate = entry[key];
+    if (isPlainRecord(candidate)) {
+      nested = candidate as Record<string, unknown>;
+      break;
+    }
+  }
+
+  if (nested) {
+    Object.assign(config, nested);
+  }
+
+  for (const [key, value] of Object.entries(entry)) {
+    if (config[key] === undefined) {
+      config[key] = value;
+    }
+  }
+
+  return config;
+};
+
+const isMcpToolEntry = (value: unknown): value is Record<string, unknown> => {
+  if (!isPlainRecord(value)) {
+    return false;
+  }
+
+  const rawType = value.type ?? value.tool ?? value.name;
+  if (typeof rawType === "string" && rawType.trim().toLowerCase() === "mcp") {
+    return true;
+  }
+
+  return (
+    isPlainRecord(value.mcp) ||
+    isPlainRecord(value.server) ||
+    isPlainRecord(value.config)
+  );
+};
+
+const buildMcpToolEntry = (config: AgentMcpToolConfig): Record<string, unknown> => {
+  const entry: Record<string, unknown> = { type: "mcp" };
+  const nested: Record<string, unknown> = {};
+  entry.mcp = nested;
+
+  nested.kind = config.transport;
+
+  const label = config.serverLabel.trim();
+  if (label) {
+    nested.server_label = label;
+  }
+
+  const description = config.description.trim();
+  if (description) {
+    nested.server_description = description;
+  }
+
+  const serverUrl = config.serverUrl.trim();
+  if (serverUrl) {
+    nested.server_url = serverUrl;
+  }
+
+  const connectorId = config.connectorId.trim();
+  if (connectorId) {
+    nested.connector_id = connectorId;
+  }
+
+  const authorization = config.authorization.trim();
+  if (authorization) {
+    nested.authorization = authorization;
+  }
+
+  const remoteUrl = config.url.trim();
+  if (remoteUrl) {
+    nested.url = remoteUrl;
+  }
+
+  const command = config.command.trim();
+  if (command) {
+    nested.command = command;
+  }
+
+  const cwd = config.cwd.trim();
+  if (cwd) {
+    nested.cwd = cwd;
+  }
+
+  const normalizedHeadersText = normalizeMultilineInput(config.headersText);
+  const trimmedHeaders = normalizedHeadersText.trim();
+  if (trimmedHeaders) {
+    nested.ui_headers_text = normalizedHeadersText;
+    const headersResult = parseKeyValueText(normalizedHeadersText);
+    if (headersResult.map) {
+      nested.headers = headersResult.map;
+    } else {
+      delete nested.headers;
+    }
+  } else {
+    delete nested.ui_headers_text;
+    delete nested.headers;
+  }
+
+  const normalizedEnvText = normalizeMultilineInput(config.envText);
+  const trimmedEnv = normalizedEnvText.trim();
+  if (trimmedEnv) {
+    nested.ui_env_text = normalizedEnvText;
+    const envResult = parseKeyValueText(normalizedEnvText);
+    if (envResult.map) {
+      nested.env = envResult.map;
+    } else {
+      delete nested.env;
+    }
+  } else {
+    delete nested.ui_env_text;
+    delete nested.env;
+  }
+
+  const normalizedAllowedText = normalizeMultilineInput(config.allowedToolsText);
+  const trimmedAllowed = normalizedAllowedText.trim();
+  if (trimmedAllowed) {
+    nested.ui_allowed_tools = normalizedAllowedText;
+    const allowedResult = parseAllowedToolsText(normalizedAllowedText);
+    if (!allowedResult.error && allowedResult.value !== null) {
+      nested.allowed_tools = allowedResult.value;
+    } else if (!allowedResult.error) {
+      delete nested.allowed_tools;
+    }
+  } else {
+    delete nested.ui_allowed_tools;
+    delete nested.allowed_tools;
+  }
+
+  if (config.requireApprovalMode === "always" || config.requireApprovalMode === "never") {
+    nested.require_approval = config.requireApprovalMode;
+    delete nested.ui_require_approval;
+  } else {
+    const normalizedApproval = normalizeMultilineInput(
+      config.requireApprovalCustom,
+    );
+    const trimmedApproval = normalizedApproval.trim();
+    if (trimmedApproval) {
+      nested.ui_require_approval = normalizedApproval;
+      const approvalResult = parseRequireApprovalCustom(normalizedApproval);
+      if (!approvalResult.error && approvalResult.value !== null) {
+        nested.require_approval = approvalResult.value;
+      } else if (!approvalResult.error) {
+        delete nested.require_approval;
+      }
+    } else {
+      delete nested.ui_require_approval;
+      delete nested.require_approval;
+    }
+  }
+
+  const args = parseArgsText(config.argsText);
+  if (args) {
+    nested.args = args;
+  } else {
+    delete nested.args;
+  }
+
+  return entry;
+};
+
 const toOptionalBoolean = (value: unknown): boolean | undefined => {
   if (typeof value === "boolean") {
     return value;
@@ -3109,6 +3512,187 @@ export const setAgentWorkflowTools = (
 
   const workflowEntries = sanitizedConfigs.map(buildWorkflowToolEntry);
   return { ...next, tools: [...preservedTools, ...workflowEntries] };
+};
+
+export const getAgentMcpTools = (
+  parameters: AgentParameters | null | undefined,
+): AgentMcpToolConfig[] => {
+  if (!parameters) {
+    return [];
+  }
+
+  const tools = (parameters as Record<string, unknown>).tools;
+  if (!Array.isArray(tools)) {
+    return [];
+  }
+
+  const configs: AgentMcpToolConfig[] = [];
+  tools.forEach((tool, index) => {
+    if (!isMcpToolEntry(tool)) {
+      return;
+    }
+
+    const entry = tool as Record<string, unknown>;
+    const config = extractMcpConfig(entry);
+    const transport = resolveMcpTransport(config);
+    const serverLabel =
+      toOptionalString(config.server_label) ??
+      toOptionalString(config.label) ??
+      toOptionalString(config.name) ??
+      "";
+    const serverUrl = toOptionalString(config.server_url) ?? "";
+    const connectorId = toOptionalString(config.connector_id) ?? "";
+    const authorization = toOptionalString(config.authorization) ?? "";
+    const remoteUrl = toOptionalString(config.url) ?? "";
+    const description =
+      toOptionalString(config.server_description) ??
+      toOptionalString(config.description) ??
+      "";
+    const command = toOptionalString(config.command) ?? "";
+    const cwd = toOptionalString(config.cwd) ?? "";
+    const argsText = Array.isArray(config.args)
+      ? config.args
+          .map((item) => (typeof item === "string" ? item : String(item)))
+          .join("\n")
+      : "";
+
+    const headersText =
+      typeof config.ui_headers_text === "string"
+        ? normalizeMultilineInput(config.ui_headers_text)
+        : stringifyKeyValueRecord(config.headers);
+
+    const envText =
+      typeof config.ui_env_text === "string"
+        ? normalizeMultilineInput(config.ui_env_text)
+        : stringifyKeyValueRecord(config.env);
+
+    let allowedToolsText = "";
+    if (typeof config.ui_allowed_tools === "string") {
+      allowedToolsText = normalizeMultilineInput(config.ui_allowed_tools);
+    } else if (Array.isArray(config.allowed_tools)) {
+      allowedToolsText = config.allowed_tools
+        .map((item) => (typeof item === "string" ? item : String(item)))
+        .join("\n");
+    } else if (isPlainRecord(config.allowed_tools)) {
+      allowedToolsText = JSON.stringify(config.allowed_tools, null, 2);
+    }
+
+    let requireApprovalMode: AgentMcpRequireApprovalMode = "never";
+    let requireApprovalCustom = "";
+    const approval = config.require_approval;
+    if (typeof approval === "string") {
+      const normalized = approval.trim().toLowerCase();
+      if (normalized === "always" || normalized === "never") {
+        requireApprovalMode = normalized;
+      }
+    } else if (approval && typeof approval === "object") {
+      requireApprovalMode = "custom";
+      requireApprovalCustom = JSON.stringify(approval, null, 2);
+    }
+
+    if (typeof config.ui_require_approval === "string") {
+      const normalized = normalizeMultilineInput(config.ui_require_approval);
+      if (normalized.trim()) {
+        requireApprovalMode = "custom";
+        requireApprovalCustom = normalized;
+      }
+    }
+
+    configs.push({
+      id: `mcp-${index}`,
+      transport,
+      serverLabel,
+      serverUrl,
+      connectorId,
+      authorization,
+      headersText,
+      allowedToolsText,
+      requireApprovalMode,
+      requireApprovalCustom,
+      description,
+      url: remoteUrl,
+      command,
+      argsText,
+      envText,
+      cwd,
+    });
+  });
+
+  return configs;
+};
+
+export const validateAgentMcpTools = (
+  configs: AgentMcpToolConfig[],
+): AgentMcpToolValidation[] =>
+  configs.map((config) => {
+    const errors: AgentMcpToolValidation["errors"] = {};
+
+    if (!config.serverLabel.trim()) {
+      errors.serverLabel = "missing";
+    }
+
+    if (config.transport === "hosted") {
+      if (!config.serverUrl.trim() && !config.connectorId.trim()) {
+        errors.connection = "missingTarget";
+      }
+    } else if (config.transport === "http" || config.transport === "sse") {
+      if (!config.url.trim()) {
+        errors.connection = "missingUrl";
+      }
+    } else if (config.transport === "stdio") {
+      if (!config.command.trim()) {
+        errors.connection = "missingCommand";
+      }
+    }
+
+    const headersResult = parseKeyValueText(config.headersText);
+    if (headersResult.invalidLineCount > 0) {
+      errors.headers = "invalid";
+    }
+
+    const envResult = parseKeyValueText(config.envText);
+    if (envResult.invalidLineCount > 0) {
+      errors.env = "invalid";
+    }
+
+    const allowedResult = parseAllowedToolsText(config.allowedToolsText);
+    if (allowedResult.error) {
+      errors.allowedTools = "invalid";
+    }
+
+    if (config.requireApprovalMode === "custom") {
+      const approvalResult = parseRequireApprovalCustom(
+        config.requireApprovalCustom,
+      );
+      if (approvalResult.error) {
+        errors.requireApproval = "invalid";
+      }
+    }
+
+    return { id: config.id, errors };
+  });
+
+export const setAgentMcpTools = (
+  parameters: AgentParameters,
+  configs: AgentMcpToolConfig[],
+): AgentParameters => {
+  const next = { ...parameters } as AgentParameters;
+  const tools = Array.isArray(next.tools)
+    ? ([...(next.tools as unknown[])] as unknown[])
+    : [];
+
+  const preserved = tools.filter((tool) => !isMcpToolEntry(tool));
+  const entries = configs.map(buildMcpToolEntry);
+
+  if (entries.length === 0) {
+    if (preserved.length === 0) {
+      const { tools: _ignored, ...rest } = next as Record<string, unknown>;
+      return stripEmpty(rest);
+    }
+    return { ...next, tools: preserved };
+  }
+
+  return { ...next, tools: [...preserved, ...entries] };
 };
 
 export const getAgentComputerUseConfig = (

@@ -60,6 +60,7 @@ import {
   setAgentComputerUseConfig,
   setAgentReasoningEffort,
   setAgentReasoningSummary,
+  setAgentMcpTools,
   setAgentTextVerbosity,
   setAgentResponseFormatKind,
   setAgentResponseFormatName,
@@ -125,6 +126,7 @@ import {
 } from "./importWorkflow";
 import type {
   AgentParameters,
+  AgentMcpToolConfig,
   AgentNestedWorkflowSelection,
   ComputerUseConfig,
   FileSearchConfig,
@@ -3299,6 +3301,24 @@ const WorkflowBuilderPage = () => {
           return data;
         }
         const nextParameters = setAgentComputerUseConfig(data.parameters, config);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleAgentMcpToolsChange = useCallback(
+    (nodeId: string, configs: AgentMcpToolConfig[]) => {
+      updateNodeData(nodeId, (data) => {
+        if (!isAgentKind(data.kind)) {
+          return data;
+        }
+        const nextParameters = setAgentMcpTools(data.parameters, configs);
         return {
           ...data,
           parameters: nextParameters,
@@ -7199,6 +7219,7 @@ const WorkflowBuilderPage = () => {
             onAgentFileSearchChange={handleAgentFileSearchChange}
             onAgentImageGenerationChange={handleAgentImageGenerationChange}
             onAgentComputerUseChange={handleAgentComputerUseChange}
+            onAgentMcpToolsChange={handleAgentMcpToolsChange}
             workflows={workflows}
             currentWorkflowId={selectedWorkflowId}
             onVoiceAgentVoiceChange={handleVoiceAgentVoiceChange}

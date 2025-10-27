@@ -102,6 +102,10 @@ export type AgentNestedWorkflowSelection = {
 
 export type {
   AgentParameters,
+  AgentMcpRequireApprovalMode,
+  AgentMcpToolConfig,
+  AgentMcpToolValidation,
+  AgentMcpTransport,
   AgentVectorStoreIngestionConfig,
   ComputerUseConfig,
   ImageGenerationToolConfig,
