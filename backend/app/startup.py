@@ -352,47 +352,6 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             }
         )
 
-        # Créer un nouveau thread pour cet appel
-        thread_id = str(uuid.uuid4())
-        thread = ThreadMetadata(
-            id=thread_id,
-            created_at=datetime.datetime.now(datetime.UTC),
-        )
-
-        # Sauvegarder le thread dans le store ChatKit
-        server = get_chatkit_server()
-        store = getattr(server, "store", None)
-        if store is not None:
-            chatkit_context = ChatKitRequestContext(
-                user_id=f"sip:{session.call_id}",
-                email=None,
-                authorization=None,
-                public_base_url=settings.backend_public_base_url,
-                voice_model=context.voice_model,
-                voice_instructions=context.voice_instructions,
-                voice_voice=context.voice_voice,
-                voice_prompt_variables=context.voice_prompt_variables,
-            )
-            try:
-                await store.save_thread(thread, chatkit_context)
-                telephony_metadata["thread_id"] = thread_id
-                logger.info(
-                    "Thread créé pour l'appel SIP (Call-ID=%s, thread_id=%s)",
-                    session.call_id,
-                    thread_id,
-                )
-            except Exception as exc:
-                logger.exception(
-                    "Erreur lors de la création du thread pour Call-ID=%s",
-                    session.call_id,
-                    exc_info=exc,
-                )
-        else:
-            logger.warning(
-                "Store ChatKit non disponible, thread non créé pour Call-ID=%s",
-                session.call_id,
-            )
-
         if context.route is None:
             logger.info(
                 "Route téléphonie par défaut retenue (Call-ID=%s, workflow=%s)",
@@ -440,6 +399,47 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 bool(callable(send_audio)),
             )
             return
+
+        # Créer un nouveau thread pour cet appel avant de démarrer la session vocale
+        thread_id = str(uuid.uuid4())
+        thread = ThreadMetadata(
+            id=thread_id,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        # Sauvegarder le thread dans le store ChatKit
+        server = get_chatkit_server()
+        store = getattr(server, "store", None)
+        if store is not None:
+            chatkit_context = ChatKitRequestContext(
+                user_id=f"sip:{session.call_id}",
+                email=None,
+                authorization=None,
+                public_base_url=settings.backend_public_base_url,
+                voice_model=voice_model,
+                voice_instructions=instructions,
+                voice_voice=voice_name,
+                voice_prompt_variables=metadata.get("voice_prompt_variables"),
+            )
+            try:
+                await store.save_thread(thread, chatkit_context)
+                metadata["thread_id"] = thread_id
+                logger.info(
+                    "Thread créé pour l'appel SIP (Call-ID=%s, thread_id=%s)",
+                    session.call_id,
+                    thread_id,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "Erreur lors de la création du thread pour Call-ID=%s",
+                    session.call_id,
+                    exc_info=exc,
+                )
+        else:
+            logger.warning(
+                "Store ChatKit non disponible, thread non créé pour Call-ID=%s",
+                session.call_id,
+            )
 
         metadata["voice_session_active"] = True
         logger.info(
