@@ -27,6 +27,7 @@ from agents import (
     Runner,
     TResponseInputItem,
 )
+from agents.mcp import MCPServer
 from pydantic import BaseModel
 
 from chatkit.agents import (
@@ -2129,7 +2130,30 @@ async def run_workflow(
                     exc_info=True,
                 )
 
-        result = Runner.run_streamed(
+        # Connecter les serveurs MCP si présents
+        mcp_servers = getattr(agent, "mcp_servers", None)
+        connected_mcp_servers: list[MCPServer] = []
+        if mcp_servers:
+            for server in mcp_servers:
+                if isinstance(server, MCPServer):
+                    try:
+                        await server.connect()
+                        connected_mcp_servers.append(server)
+                        logger.debug(
+                            "Serveur MCP %s connecté pour l'agent %s",
+                            getattr(server, "name", "<inconnu>"),
+                            getattr(agent, "name", "<inconnu>"),
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Impossible de connecter le serveur MCP %s : %s",
+                            getattr(server, "name", "<inconnu>"),
+                            exc,
+                            exc_info=True,
+                        )
+
+        try:
+            result = Runner.run_streamed(
             agent,
             input=[*conversation_history],
             run_config=_workflow_run_config(
@@ -2228,14 +2252,30 @@ async def run_workflow(
                     "Éléments ajoutés par l'agent %s non sérialisables en JSON",
                     agent_key,
                 )
-        logger.info(
-            "Fin de l'exécution de l'agent %s (étape=%s)",
-            metadata_for_images.get("agent_key")
-            or metadata_for_images.get("agent_label")
-            or step_key,
-            metadata_for_images.get("step_slug"),
-        )
-        return result
+            logger.info(
+                "Fin de l'exécution de l'agent %s (étape=%s)",
+                metadata_for_images.get("agent_key")
+                or metadata_for_images.get("agent_label")
+                or step_key,
+                metadata_for_images.get("step_slug"),
+            )
+            return result
+        finally:
+            # Déconnecter les serveurs MCP
+            for server in connected_mcp_servers:
+                try:
+                    await server.disconnect()
+                    logger.debug(
+                        "Serveur MCP %s déconnecté pour l'agent %s",
+                        getattr(server, "name", "<inconnu>"),
+                        getattr(agent, "name", "<inconnu>"),
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Erreur lors de la déconnexion du serveur MCP %s : %s",
+                        getattr(server, "name", "<inconnu>"),
+                        exc,
+                    )
 
     def _node_title(step: WorkflowStep) -> str:
         if getattr(step, "display_name", None):
