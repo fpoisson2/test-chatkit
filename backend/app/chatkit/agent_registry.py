@@ -11,9 +11,10 @@ from functools import lru_cache
 from typing import Any
 
 from agents import Agent, ModelSettings, WebSearchTool
+from agents.mcp.server import MCPServer
 from agents.models.interface import ModelProvider
 from agents.models.openai_provider import OpenAIProvider
-from agents.tool import ComputerTool
+from agents.tool import ComputerTool, HostedMCPTool
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field, create_model
 from sqlalchemy import select
@@ -44,6 +45,7 @@ from ..tool_factory import (
     build_computer_use_tool,
     build_file_search_tool,
     build_image_generation_tool,
+    build_mcp_tool,
     build_weather_tool,
     build_web_search_tool,
     build_widget_validation_tool,
@@ -555,6 +557,10 @@ def _coerce_agent_tools(
             coerced.append(entry)
             continue
 
+        if isinstance(entry, HostedMCPTool | MCPServer):
+            coerced.append(entry)
+            continue
+
         if isinstance(entry, dict):
             tool_type = entry.get("type") or entry.get("tool") or entry.get("name")
             normalized_type = (
@@ -663,6 +669,19 @@ def _coerce_agent_tools(
                 tool = build_weather_tool(function_payload)
                 if tool is None:
                     tool = build_widget_validation_tool(function_payload)
+                if tool is not None:
+                    coerced.append(tool)
+                continue
+
+            if normalized_type == "mcp":
+                try:
+                    tool = build_mcp_tool(entry)
+                except Exception as exc:  # pragma: no cover - robustesse best effort
+                    logger.warning(
+                        "Impossible de construire l'outil MCP : %s",
+                        exc,
+                    )
+                    continue
                 if tool is not None:
                     coerced.append(tool)
                 continue
@@ -858,6 +877,33 @@ def _build_agent_kwargs(
         coerced_tools = _coerce_agent_tools(
             merged["tools"], base_kwargs.get("tools") if base_kwargs else None
         )
+
+        if isinstance(coerced_tools, Sequence) and not isinstance(
+            coerced_tools, str | bytes | bytearray
+        ):
+            resolved_tools: list[Any] = []
+            resolved_mcp_servers: list[MCPServer] = []
+            for tool in coerced_tools:
+                if isinstance(tool, MCPServer):
+                    resolved_mcp_servers.append(tool)
+                    continue
+                if tool is not None:
+                    resolved_tools.append(tool)
+
+            coerced_tools = resolved_tools
+            if resolved_mcp_servers:
+                existing_servers = merged.get("mcp_servers")
+                if isinstance(existing_servers, Sequence) and not isinstance(
+                    existing_servers, str | bytes | bytearray
+                ):
+                    merged_servers = list(existing_servers)
+                elif existing_servers is None:
+                    merged_servers = []
+                else:
+                    merged_servers = [existing_servers]
+                merged_servers.extend(resolved_mcp_servers)
+                merged["mcp_servers"] = merged_servers
+
         merged["tools"] = coerced_tools
 
         if coerced_tools and any(

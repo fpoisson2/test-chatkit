@@ -106,6 +106,48 @@ def test_get_definition_by_slug_unknown_slug_raises(
         workflow_service.get_definition_by_slug("unknown-workflow")
 
 
+def test_normalize_agent_tools_accepts_mcp_hosted(
+    workflow_service: WorkflowService,
+) -> None:
+    tools = workflow_service._normalize_agent_tools(
+        [
+            {
+                "type": "mcp",
+                "mcp": {
+                    "kind": "hosted",
+                    "label": "docs",
+                    "server_url": "https://example.com/mcp",
+                },
+            }
+        ],
+        node_slug="agent.tools",
+    )
+
+    assert isinstance(tools, list)
+    assert tools[0]["type"] == "mcp"
+    assert tools[0]["mcp"]["server_url"] == "https://example.com/mcp"
+
+
+def test_normalize_agent_tools_invalid_mcp_configuration(
+    workflow_service: WorkflowService,
+) -> None:
+    with pytest.raises(WorkflowValidationError) as exc_info:
+        workflow_service._normalize_agent_tools(
+            [
+                {
+                    "type": "mcp",
+                    "mcp": {
+                        "kind": "hosted",
+                        "server_url": "https://example.com/mcp",
+                    },
+                }
+            ],
+            node_slug="agent.tools",
+        )
+
+    assert "server_label" in str(exc_info.value)
+
+
 def test_update_current_rejects_nested_self_reference(
     workflow_service: WorkflowService,
 ) -> None:

@@ -2360,6 +2360,27 @@ class WorkflowService:
                     else:
                         sanitized["workflow"] = normalized_reference
 
+                normalized_type = sanitized.get("type")
+                normalized_type_value = (
+                    normalized_type.strip().lower()
+                    if isinstance(normalized_type, str)
+                    else ""
+                )
+                if normalized_type_value == "mcp":
+                    try:
+                        from ..tool_factory import build_mcp_tool as _build_mcp_tool
+                    except Exception as exc:  # pragma: no cover - import best effort
+                        raise WorkflowValidationError(
+                            "La validation des serveurs MCP est indisponible."
+                        ) from exc
+
+                    try:
+                        _build_mcp_tool(sanitized, raise_on_error=True)
+                    except ValueError as exc:
+                        raise WorkflowValidationError(
+                            f"Configuration MCP invalide pour {tool_label}: {exc}"
+                        ) from exc
+
                 normalized.append(sanitized)
                 continue
 

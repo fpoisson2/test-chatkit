@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import re
 import unicodedata
 from collections.abc import Mapping
@@ -12,7 +13,13 @@ from dataclasses import field
 from typing import TYPE_CHECKING, Any
 
 from agents import FunctionTool, RunContextWrapper, WebSearchTool, function_tool
-from agents.tool import ComputerTool
+from agents.mcp.server import (
+    MCPServer,
+    MCPServerSse,
+    MCPServerStdio,
+    MCPServerStreamableHttp,
+)
+from agents.tool import ComputerTool, HostedMCPTool
 
 try:  # pragma: no cover - dépend des versions du SDK Agents
     from agents.tool import ImageGeneration as _AgentImageGenerationConfig
@@ -58,6 +65,7 @@ logger = logging.getLogger("chatkit.server")
 ImageGenerationTool = _AgentImageGenerationTool
 
 _SUPPORTED_IMAGE_OUTPUT_FORMATS = frozenset({"png", "jpeg", "webp"})
+_SUPPORTED_MCP_ENCODING_ERROR_HANDLERS = frozenset({"strict", "ignore", "replace"})
 
 _WEATHER_FUNCTION_TOOL_ALIASES = {"fetch_weather", "get_weather"}
 
@@ -158,6 +166,458 @@ def build_web_search_tool(payload: Any) -> WebSearchTool | None:
             "Impossible d'instancier WebSearchTool avec la configuration %s", config
         )
         return None
+
+
+def _mcp_failure(
+    message: str, *, raise_on_error: bool, exc: Exception | None = None
+) -> None:
+    if raise_on_error:
+        raise ValueError(message) from exc
+    if exc is not None:
+        logger.warning("%s", message, exc_info=exc)
+    else:
+        logger.warning("%s", message)
+
+
+def _coerce_str(value: Any) -> str | None:
+    if isinstance(value, str):
+        candidate = value.strip()
+        return candidate or None
+    if isinstance(value, bytes):
+        try:
+            decoded = value.decode("utf-8", errors="ignore").strip()
+        except Exception:
+            return None
+        return decoded or None
+    return None
+
+
+def _coerce_non_empty_str(value: Any) -> str | None:
+    result = _coerce_str(value)
+    if result:
+        return result
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        candidate = str(value).strip()
+        return candidate or None
+    return None
+
+
+def _coerce_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return value != 0
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if not normalized:
+            return None
+        if normalized in {"true", "1", "yes", "y", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "n", "off"}:
+            return False
+    return None
+
+
+def _coerce_positive_float(value: Any) -> float | None:
+    candidate: float | None = None
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        candidate = float(value)
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            try:
+                candidate = float(stripped)
+            except ValueError:
+                candidate = None
+    if candidate is None:
+        return None
+    if math.isnan(candidate) or math.isinf(candidate):
+        return None
+    if candidate <= 0:
+        return None
+    return candidate
+
+
+def _coerce_non_negative_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int | float):
+        integer = int(value)
+        if integer < 0:
+            return None
+        return integer
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.startswith("-"):
+            return None
+        if stripped:
+            try:
+                integer = int(float(stripped))
+            except ValueError:
+                return None
+            if integer < 0:
+                return None
+            return integer
+    return None
+
+
+def _coerce_headers(value: Any) -> dict[str, str] | None:
+    if not isinstance(value, Mapping):
+        return None
+    headers: dict[str, str] = {}
+    for key, raw in value.items():
+        if not isinstance(key, str):
+            continue
+        normalized_key = key.strip()
+        if not normalized_key:
+            continue
+        candidate = None
+        if isinstance(raw, str):
+            candidate = raw.strip()
+        elif isinstance(raw, int | float) and not isinstance(raw, bool):
+            candidate = str(raw)
+        if candidate is not None:
+            headers[normalized_key] = candidate
+    return headers or None
+
+
+def _coerce_env(value: Any) -> dict[str, str] | None:
+    if not isinstance(value, Mapping):
+        return None
+    env: dict[str, str] = {}
+    for key, raw in value.items():
+        normalized_key = _coerce_non_empty_str(key)
+        if not normalized_key:
+            continue
+        normalized_value = _coerce_non_empty_str(raw)
+        if normalized_value is None:
+            continue
+        env[normalized_key] = normalized_value
+    return env or None
+
+
+def _coerce_args(value: Any) -> list[str] | None:
+    if not isinstance(value, list | tuple | set):
+        return None
+    args: list[str] = []
+    for entry in value:
+        candidate = _coerce_non_empty_str(entry)
+        if candidate:
+            args.append(candidate)
+    return args or None
+
+
+def _normalize_mcp_kind(value: Any) -> str | None:
+    normalized = _coerce_str(value)
+    if not normalized:
+        return None
+    lowered = normalized.lower().replace("-", "_")
+    if lowered in {"host", "hosted", "remote", "openai"}:
+        return "hosted"
+    if lowered in {"http", "streamable_http", "streamablehttp", "streamable"}:
+        return "streamable_http"
+    if lowered in {"sse", "event_stream", "server_sent_events"}:
+        return "sse"
+    if lowered in {"stdio", "std_io", "process"}:
+        return "stdio"
+    return None
+
+
+def _merge_mcp_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    merged: dict[str, Any] = {}
+    nested = None
+    for key in ("mcp", "server", "config"):
+        candidate = payload.get(key)
+        if isinstance(candidate, Mapping):
+            nested = candidate
+            break
+    if isinstance(nested, Mapping):
+        merged.update(nested)
+    for key in (
+        "type",
+        "tool",
+        "name",
+        "label",
+        "server_label",
+        "server_url",
+        "url",
+        "connector_id",
+        "authorization",
+        "headers",
+        "allowed_tools",
+        "require_approval",
+        "server_description",
+        "description",
+        "kind",
+        "mode",
+        "transport",
+        "server_type",
+        "cache_tools_list",
+        "client_session_timeout_seconds",
+        "use_structured_content",
+        "max_retry_attempts",
+        "retry_backoff_seconds_base",
+        "timeout",
+        "sse_read_timeout",
+        "terminate_on_close",
+        "args",
+        "env",
+        "cwd",
+        "encoding",
+        "encoding_error_handler",
+        "command",
+    ):
+        if key in payload and key not in merged:
+            merged[key] = payload[key]
+    return merged
+
+
+def _resolve_mcp_kind(config: Mapping[str, Any]) -> str | None:
+    for key in ("kind", "mode", "transport", "server_type"):
+        if key in config:
+            kind = _normalize_mcp_kind(config[key])
+            if kind:
+                return kind
+    if "command" in config:
+        return "stdio"
+    if "url" in config and _coerce_str(config["url"]):
+        return "streamable_http"
+    if "server_url" in config and _coerce_str(config["server_url"]):
+        return "hosted"
+    return None
+
+
+def _coerce_mcp_allowed_tools(value: Any) -> Any:
+    if isinstance(value, list | tuple):
+        return [entry for entry in value]
+    if isinstance(value, Mapping):
+        return dict(value)
+    return None
+
+
+def _coerce_mcp_require_approval(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return dict(value)
+    return None
+
+
+def build_mcp_tool(
+    payload: Any, *, raise_on_error: bool = False
+) -> HostedMCPTool | MCPServer | None:
+    """Construit une configuration MCP supportant les serveurs existants."""
+
+    if isinstance(payload, HostedMCPTool | MCPServer):
+        return payload
+
+    if not isinstance(payload, Mapping):
+        return _mcp_failure(
+            "Configuration MCP invalide : un dictionnaire est attendu.",
+            raise_on_error=raise_on_error,
+        )
+
+    config = _merge_mcp_payload(payload)
+    if not config:
+        return _mcp_failure(
+            "Configuration MCP vide ou non reconnue.",
+            raise_on_error=raise_on_error,
+        )
+
+    server_kind = _resolve_mcp_kind(config)
+    if server_kind is None:
+        return _mcp_failure(
+            "Type de serveur MCP non reconnu : "
+            "spécifiez 'hosted', 'http', 'sse' ou 'stdio'.",
+            raise_on_error=raise_on_error,
+        )
+
+    if server_kind == "hosted":
+        label = (
+            _coerce_non_empty_str(config.get("server_label"))
+            or _coerce_non_empty_str(config.get("label"))
+            or _coerce_non_empty_str(config.get("name"))
+        )
+        if not label:
+            return _mcp_failure(
+                "Configuration MCP hébergée invalide : 'server_label' est requis.",
+                raise_on_error=raise_on_error,
+            )
+
+        server_url = _coerce_non_empty_str(
+            config.get("server_url") or config.get("url")
+        )
+        connector_id = _coerce_non_empty_str(config.get("connector_id"))
+        if not server_url and not connector_id:
+            return _mcp_failure(
+                "Configuration MCP hébergée invalide : "
+                "'server_url' ou 'connector_id' est requis.",
+                raise_on_error=raise_on_error,
+            )
+
+        tool_config: dict[str, Any] = {"type": "mcp", "server_label": label}
+        if server_url:
+            tool_config["server_url"] = server_url
+        if connector_id:
+            tool_config["connector_id"] = connector_id
+
+        authorization = _coerce_non_empty_str(
+            config.get("authorization") or config.get("auth_token")
+        )
+        if authorization:
+            tool_config["authorization"] = authorization
+
+        headers = _coerce_headers(config.get("headers"))
+        if headers:
+            tool_config["headers"] = headers
+
+        allowed_tools = _coerce_mcp_allowed_tools(config.get("allowed_tools"))
+        if allowed_tools is not None:
+            tool_config["allowed_tools"] = allowed_tools
+
+        require_approval = _coerce_mcp_require_approval(
+            config.get("require_approval")
+        )
+        if require_approval is not None:
+            tool_config["require_approval"] = require_approval
+
+        description = _coerce_non_empty_str(
+            config.get("server_description") or config.get("description")
+        )
+        if description:
+            tool_config["server_description"] = description
+
+        try:
+            return HostedMCPTool(tool_config=tool_config)
+        except Exception as exc:  # pragma: no cover - dépend du SDK Agents
+            return _mcp_failure(
+                "Impossible d'instancier HostedMCPTool avec la configuration fournie.",
+                raise_on_error=raise_on_error,
+                exc=exc,
+            )
+
+    cache_tools_list = _coerce_bool(config.get("cache_tools_list"))
+    cache = cache_tools_list if cache_tools_list is not None else False
+    name_override = _coerce_non_empty_str(
+        config.get("name") or config.get("label") or config.get("server_label")
+    )
+    client_timeout = _coerce_positive_float(
+        config.get("client_session_timeout_seconds")
+    )
+    use_structured_content = _coerce_bool(config.get("use_structured_content"))
+    max_retry_attempts = _coerce_non_negative_int(config.get("max_retry_attempts"))
+    retry_backoff = _coerce_positive_float(config.get("retry_backoff_seconds_base"))
+
+    kwargs: dict[str, Any] = {"cache_tools_list": cache}
+    if name_override:
+        kwargs["name"] = name_override
+    if client_timeout is not None:
+        kwargs["client_session_timeout_seconds"] = client_timeout
+    if use_structured_content is not None:
+        kwargs["use_structured_content"] = use_structured_content
+    if max_retry_attempts is not None:
+        kwargs["max_retry_attempts"] = max_retry_attempts
+    if retry_backoff is not None:
+        kwargs["retry_backoff_seconds_base"] = retry_backoff
+
+    if server_kind == "streamable_http":
+        url = _coerce_non_empty_str(config.get("url"))
+        if not url:
+            return _mcp_failure(
+                "Configuration MCP HTTP invalide : 'url' est requis.",
+                raise_on_error=raise_on_error,
+            )
+
+        params: dict[str, Any] = {"url": url}
+        headers = _coerce_headers(config.get("headers"))
+        if headers:
+            params["headers"] = headers
+
+        timeout = _coerce_positive_float(config.get("timeout"))
+        if timeout is not None:
+            params["timeout"] = timeout
+
+        sse_timeout = _coerce_positive_float(config.get("sse_read_timeout"))
+        if sse_timeout is not None:
+            params["sse_read_timeout"] = sse_timeout
+
+        terminate = _coerce_bool(config.get("terminate_on_close"))
+        if terminate is not None:
+            params["terminate_on_close"] = terminate
+
+        try:
+            return MCPServerStreamableHttp(params=params, **kwargs)
+        except Exception as exc:  # pragma: no cover - dépend du SDK Agents
+            return _mcp_failure(
+                "Impossible d'instancier MCPServerStreamableHttp "
+                "avec la configuration fournie.",
+                raise_on_error=raise_on_error,
+                exc=exc,
+            )
+
+    if server_kind == "sse":
+        url = _coerce_non_empty_str(config.get("url"))
+        if not url:
+            return _mcp_failure(
+                "Configuration MCP SSE invalide : 'url' est requis.",
+                raise_on_error=raise_on_error,
+            )
+
+        params = {"url": url}
+        headers = _coerce_headers(config.get("headers"))
+        if headers:
+            params["headers"] = headers
+        timeout = _coerce_positive_float(config.get("timeout"))
+        if timeout is not None:
+            params["timeout"] = timeout
+        sse_timeout = _coerce_positive_float(config.get("sse_read_timeout"))
+        if sse_timeout is not None:
+            params["sse_read_timeout"] = sse_timeout
+
+        try:
+            return MCPServerSse(params=params, **kwargs)
+        except Exception as exc:  # pragma: no cover - dépend du SDK Agents
+            return _mcp_failure(
+                "Impossible d'instancier MCPServerSse avec la configuration fournie.",
+                raise_on_error=raise_on_error,
+                exc=exc,
+            )
+
+    if server_kind == "stdio":
+        command = _coerce_non_empty_str(config.get("command"))
+        if not command:
+            return _mcp_failure(
+                "Configuration MCP stdio invalide : 'command' est requis.",
+                raise_on_error=raise_on_error,
+            )
+
+        params: dict[str, Any] = {"command": command}
+        args = _coerce_args(config.get("args"))
+        if args:
+            params["args"] = args
+        env = _coerce_env(config.get("env"))
+        if env:
+            params["env"] = env
+        cwd = _coerce_non_empty_str(config.get("cwd"))
+        if cwd:
+            params["cwd"] = cwd
+        encoding = _coerce_non_empty_str(config.get("encoding"))
+        if encoding:
+            params["encoding"] = encoding
+        handler = _coerce_non_empty_str(config.get("encoding_error_handler"))
+        if handler and handler in _SUPPORTED_MCP_ENCODING_ERROR_HANDLERS:
+            params["encoding_error_handler"] = handler
+
+        try:
+            return MCPServerStdio(params=params, **kwargs)
+        except Exception as exc:  # pragma: no cover - dépend du SDK Agents
+            return _mcp_failure(
+                "Impossible d'instancier MCPServerStdio avec la configuration fournie.",
+                raise_on_error=raise_on_error,
+                exc=exc,
+            )
+
+    return _mcp_failure(
+        "Type de serveur MCP non géré.", raise_on_error=raise_on_error
+    )
 
 
 def _normalize_image_generation_field(key: str, value: Any) -> Any:
@@ -1295,6 +1755,7 @@ __all__ = [
     "ImageGenerationTool",
     "WidgetValidationResult",
     "WorkflowValidationResult",
+    "build_mcp_tool",
     "build_file_search_tool",
     "build_image_generation_tool",
     "build_weather_tool",
