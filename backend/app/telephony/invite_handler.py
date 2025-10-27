@@ -142,6 +142,21 @@ async def handle_incoming_invite(
     call_id = _extract_header(request, "Call-ID")
     from_header = _extract_header(request, "From")
     to_header = _extract_header(request, "To")
+    via_header = _extract_header(request, "Via")
+
+    base_headers: dict[str, str] | None = None
+    if via_header:
+        base_headers = {"Via": via_header}
+
+    def make_headers(extra: Mapping[str, str] | None = None) -> dict[str, str] | None:
+        if base_headers is None and not extra:
+            return None
+        merged: dict[str, str] = {}
+        if base_headers:
+            merged.update(base_headers)
+        if extra:
+            merged.update(extra)
+        return merged
 
     logger.info(
         "INVITE reçu (Call-ID=%s, From=%s, To=%s)",
@@ -154,6 +169,7 @@ async def handle_incoming_invite(
         dialog,
         100,
         reason="Trying",
+        headers=make_headers(),
         call_id=call_id,
         contact_uri=contact_uri,
     )
@@ -173,6 +189,7 @@ async def handle_incoming_invite(
                 dialog,
                 400,
                 reason="Bad Request",
+                headers=make_headers(),
                 call_id=call_id,
                 contact_uri=contact_uri,
             )
@@ -215,6 +232,7 @@ async def handle_incoming_invite(
             dialog,
             603,
             reason="Decline",
+            headers=make_headers(),
             call_id=call_id,
             contact_uri=contact_uri,
         )
@@ -244,6 +262,7 @@ async def handle_incoming_invite(
             dialog,
             603,
             reason="Decline",
+            headers=make_headers(),
             call_id=call_id,
             contact_uri=contact_uri,
         )
@@ -253,6 +272,7 @@ async def handle_incoming_invite(
         dialog,
         180,
         reason="Ringing",
+        headers=make_headers(),
         call_id=call_id,
         contact_uri=contact_uri,
     )
@@ -281,7 +301,7 @@ async def handle_incoming_invite(
         dialog,
         200,
         reason="OK",
-        headers={"Content-Type": "application/sdp"},
+        headers=make_headers({"Content-Type": "application/sdp"}),
         payload=sdp_answer,
         call_id=call_id,
         contact_uri=contact_uri,
