@@ -72,8 +72,17 @@ from .workflows.service import WorkflowService
 
 logger = logging.getLogger("chatkit.server")
 
-for _aiosip_logger in ("aiosip", "aiosip.protocol", "aiosip.application"):
-    logger_instance = logging.getLogger(_aiosip_logger)
+for noisy_logger in (
+    "aiosip",
+    "aiosip.protocol",
+    "aiosip.application",
+    # La librairie `websockets` est très verbeuse en DEBUG et noie nos journaux.
+    # On force un niveau plus élevé tant qu'aucune configuration spécifique
+    # n'a été appliquée par l'utilisateur.
+    "websockets.client",
+    "websockets.asyncio.client",
+):
+    logger_instance = logging.getLogger(noisy_logger)
     if logger_instance.level == logging.NOTSET:
         logger_instance.setLevel(logging.INFO)
 settings = settings_proxy
@@ -285,12 +294,17 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     session.call_id,
                 )
             else:
+                preview_text = (
+                    f"{combined_text[:50]}..."
+                    if len(combined_text) > 50
+                    else combined_text
+                )
                 logger.info(
                     "Workflow repris via ChatKitServer.post "
                     "(Call-ID=%s, transcriptions=%d, texte=%s)",
                     session.call_id,
                     transcript_count,
-                    combined_text[:50] + "..." if len(combined_text) > 50 else combined_text,
+                    preview_text,
                 )
             return
 
@@ -446,7 +460,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
 
         metadata["voice_session_active"] = True
         logger.info(
-            "Démarrage du pont voix Realtime (Call-ID=%s, modèle=%s, voix=%s, provider=%s)",
+            "Démarrage du pont voix Realtime (Call-ID=%s, modèle=%s, voix=%s, "
+            "provider=%s)",
             session.call_id,
             voice_model,
             voice_name or "<auto>",
@@ -681,7 +696,11 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             if session:
                 telephony_metadata = session.metadata.setdefault("telephony", {})
                 telephony_metadata["rtp_server"] = rtp_server
-                telephony_metadata["rtp_stream_factory"] = lambda: rtp_server.packet_stream()
+
+                def _rtp_stream_factory() -> Any:
+                    return rtp_server.packet_stream()
+
+                telephony_metadata["rtp_stream_factory"] = _rtp_stream_factory
                 telephony_metadata["send_audio"] = rtp_server.send_audio
                 logger.info(
                     "Serveur RTP configuré pour Call-ID=%s (port=%d)",
