@@ -16,11 +16,13 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 
+from backend.app.startup import _attach_dialog_callbacks  # noqa: E402
 from backend.app.telephony.invite_handler import (  # noqa: E402
     InviteHandlingError,
     handle_incoming_invite,
     send_sip_reply,
 )
+from backend.app.telephony.sip_server import SipCallRequestHandler  # noqa: E402
 
 
 @pytest.fixture
@@ -66,6 +68,34 @@ def _make_invite(
     else:
         payload = sdp.encode("utf-8")
     return SimpleNamespace(payload=payload, headers=headers)
+
+
+def _make_dialog_with_callbacks(callbacks: dict[str, list[object]]) -> SimpleNamespace:
+    dialog = SimpleNamespace(callbacks=callbacks)
+    return dialog
+
+
+def test_attach_dialog_callbacks_adds_bye_bucket() -> None:
+    handler = SipCallRequestHandler()
+    dialog = _make_dialog_with_callbacks({})
+
+    _attach_dialog_callbacks(dialog, handler)
+
+    assert hasattr(dialog, "on_message")
+    assert callable(dialog.on_message)
+    assert dialog.callbacks["BYE"] == []
+    assert dialog.callbacks["bye"] is dialog.callbacks["BYE"]
+
+
+def test_attach_dialog_callbacks_preserves_existing_bye_list() -> None:
+    handler = SipCallRequestHandler()
+    existing = ["keep"]
+    dialog = _make_dialog_with_callbacks({"BYE": existing})
+
+    _attach_dialog_callbacks(dialog, handler)
+
+    assert dialog.callbacks["BYE"] is existing
+    assert dialog.callbacks["bye"] is existing
 
 
 @pytest.mark.anyio

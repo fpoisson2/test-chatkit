@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import uuid
+from collections.abc import MutableMapping
 from typing import Any
 
 from fastapi import FastAPI
@@ -88,30 +89,41 @@ for noisy_logger in (
 settings = settings_proxy
 
 
+def _attach_dialog_callbacks(dialog: Any, handler: SipCallRequestHandler) -> None:
+    """Prépare les callbacks nécessaires sur le dialogue aiosip."""
+
+    if dialog is None:
+        return
+
+    async def _on_message(message: Any) -> None:
+        await handler.handle_request(message, dialog=dialog)
+
+    try:
+        dialog.on_message = _on_message  # type: ignore[attr-defined]
+    except Exception:  # pragma: no cover - dépend des implémentations aiosip
+        logger.debug("Impossible de lier on_message au dialogue SIP", exc_info=True)
+
+    callbacks = getattr(dialog, "callbacks", None)
+    if isinstance(callbacks, MutableMapping):
+        try:
+            bye_list = callbacks.setdefault("BYE", [])
+        except Exception:  # pragma: no cover - dépend de l'implémentation aiosip
+            logger.debug(
+                "Impossible de préparer le callback BYE pour le dialogue SIP",
+                exc_info=True,
+            )
+        else:
+            callbacks.setdefault("bye", bye_list)
+    elif callbacks is not None:
+        logger.debug(
+            "Callbacks SIP non mutables détectés (%s), BYE ignoré",
+            type(callbacks).__name__,
+        )
+
+
 def _build_invite_handler(manager: SIPRegistrationManager):
     workflow_service = WorkflowService()
     session_secret_parser = SessionSecretParser()
-
-    async def _attach_dialog_callbacks(
-        dialog: Any, handler: SipCallRequestHandler
-    ) -> None:
-        if dialog is None:
-            return
-
-        async def _on_message(message: Any) -> None:
-            await handler.handle_request(message, dialog=dialog)
-
-        try:
-            dialog.on_message = _on_message  # type: ignore[attr-defined]
-        except Exception:  # pragma: no cover - dépend des implémentations aiosip
-            logger.debug(
-                "Impossible de lier on_message au dialogue SIP", exc_info=True
-            )
-
-        # `aiosip.Dialog.register` est dédié aux messages SIP REGISTER.
-        # Utiliser ce mécanisme ici provoquerait une corruption des en-têtes
-        # (les journaux d'erreur le montrent), d'où la limitation au hook
-        # `on_message` ci-dessus.
 
     def _sanitize_phone_candidate(raw: Any) -> str | None:
         values: list[Any]
@@ -189,6 +201,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     method_name,
                     exc_info=True,
                 )
+                continue
             break
 
     async def _clear_voice_state(session: SipCallSession) -> None:
