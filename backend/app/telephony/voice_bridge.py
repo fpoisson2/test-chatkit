@@ -152,6 +152,11 @@ def build_realtime_ws_url(
         ws_base = base
         if not ws_base.startswith("ws"):
             ws_base = "wss://" + ws_base.lstrip("/")
+
+    # Ajouter /v1 si ce n'est pas déjà présent dans le chemin
+    if not ws_base.endswith("/v1") and "/v1/" not in ws_base:
+        ws_base = f"{ws_base}/v1"
+
     return f"{ws_base}/realtime?model={quote(model, safe='')}"
 
 
