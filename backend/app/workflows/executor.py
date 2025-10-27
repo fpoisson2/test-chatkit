@@ -2154,20 +2154,20 @@ async def run_workflow(
 
         try:
             result = Runner.run_streamed(
-            agent,
-            input=[*conversation_history],
-            run_config=_workflow_run_config(
-                response_format_override, provider_binding=provider_binding
-            ),
-            context=runner_context,
-            previous_response_id=(
-                None
-                if model_capabilities is not None
-                and not model_capabilities.supports_previous_response_id
-                else getattr(agent_context, "previous_response_id", None)
-            ),
-        )
-        try:
+                agent,
+                input=[*conversation_history],
+                run_config=_workflow_run_config(
+                    response_format_override, provider_binding=provider_binding
+                ),
+                context=runner_context,
+                previous_response_id=(
+                    None
+                    if model_capabilities is not None
+                    and not model_capabilities.supports_previous_response_id
+                    else getattr(agent_context, "previous_response_id", None)
+                ),
+            )
+            try:
             async for event in stream_agent_response(agent_context, result):
                 logger.debug(
                     "Évènement %s reçu pour l'étape %s",
