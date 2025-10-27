@@ -239,9 +239,21 @@ async def test_voice_bridge_cancels_active_response_before_new_commit() -> None:
     sent_types = [entry["type"] for entry in fake_ws.sent]
     assert "response.cancel" in sent_types
     assert "response.create" in sent_types
+    assert "input_audio_buffer.commit" in sent_types
     cancel_index = sent_types.index("response.cancel")
+    commit_index = sent_types.index("input_audio_buffer.commit")
     create_index = sent_types.index("response.create")
-    assert cancel_index < create_index
+    assert cancel_index < commit_index < create_index
+
+    append_indices = [
+        idx for idx, message_type in enumerate(sent_types)
+        if message_type == "input_audio_buffer.append"
+    ]
+    assert append_indices, "Le pont doit envoyer l'audio utilisateur après annulation"
+    # La première trame audio suivante doit être envoyée après l'annulation et
+    # avant la nouvelle séquence commit/response.create.
+    assert append_indices[0] > cancel_index
+    assert append_indices[-1] < commit_index
 
     cancel_payload = fake_ws.sent[cancel_index]
     assert cancel_payload["response"]["id"] == "resp-42"
