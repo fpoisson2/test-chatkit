@@ -44,6 +44,7 @@ from ..tool_factory import (
     build_computer_use_tool,
     build_file_search_tool,
     build_image_generation_tool,
+    build_mcp_tool,
     build_weather_tool,
     build_web_search_tool,
     build_widget_validation_tool,
@@ -583,6 +584,14 @@ def _coerce_agent_tools(
                 tool = build_computer_use_tool(entry)
                 if tool is not None:
                     coerced.append(tool)
+                continue
+
+            if normalized_type == "mcp":
+                if "mcp" in entry:
+                    tool = build_mcp_tool(entry.get("mcp"))
+                else:
+                    tool = build_mcp_tool(entry)
+                coerced.append(tool)
                 continue
 
             if normalized_type == "workflow":
