@@ -18,11 +18,11 @@ from .routes import (
 )
 
 try:  # pragma: no cover - dépendance optionnelle pour le SDK ChatKit
-    from .routes import chatkit
+    from .routes import chatkit as chatkit_routes
 except (
     ModuleNotFoundError
 ):  # pragma: no cover - utilisé dans l'environnement de tests sans SDK
-    chatkit = None  # type: ignore[assignment]
+    chatkit_routes = None  # type: ignore[assignment]
 from .startup import register_startup_events
 
 settings = get_settings()
@@ -41,8 +41,8 @@ app.include_router(users.router)
 app.include_router(admin.router)
 app.include_router(docs.router)
 app.include_router(model_registry.router)
-if chatkit and hasattr(chatkit, "router"):
-    app.include_router(chatkit.router)
+if chatkit_routes and hasattr(chatkit_routes, "router"):
+    app.include_router(chatkit_routes.router)
 app.include_router(tools.router)
 app.include_router(vector_stores.router)
 app.include_router(voice_settings.router)
