@@ -198,10 +198,9 @@ async def handle_incoming_invite(
         )
 
     logger.debug(
-        "SDP reçu (Call-ID=%s, %d octets):\n%s",
+        "SDP reçu (Call-ID=%s, %d octets)",
         call_id or "inconnu",
         payload_length,
-        normalized_payload_text,
     )
 
     sdp_lines = [
@@ -272,9 +271,10 @@ async def handle_incoming_invite(
     )
 
     logger.debug(
-        "SDP de réponse généré (Call-ID=%s) :\n%s",
+        "SDP de réponse généré (Call-ID=%s, codec=%s, port=%s)",
         call_id or "inconnu",
-        sdp_answer,
+        codec.name,
+        media_port,
     )
 
     await send_sip_reply(
