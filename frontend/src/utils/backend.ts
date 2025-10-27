@@ -152,6 +152,35 @@ export const fetchChatkitSession = async ({
   return response.json();
 };
 
+export type TestMcpConnectionPayload = {
+  type?: "mcp";
+  mcp: Record<string, unknown>;
+};
+
+export type TestMcpConnectionResponse = {
+  ok: boolean;
+  message: string;
+};
+
+export const testMcpConnection = async ({
+  token,
+  payload,
+  signal,
+}: {
+  token: string | null | undefined;
+  payload: TestMcpConnectionPayload;
+  signal?: AbortSignal;
+}): Promise<TestMcpConnectionResponse> => {
+  const response = await requestWithFallback("/api/tools/mcp/test-connection", {
+    method: "POST",
+    headers: withAuthHeaders(token ?? null),
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  return response.json();
+};
+
 export type EditableUser = {
   id: number;
   email: string;

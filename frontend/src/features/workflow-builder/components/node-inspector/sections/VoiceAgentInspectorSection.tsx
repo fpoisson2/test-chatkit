@@ -25,6 +25,7 @@ import {
 
 type VoiceAgentInspectorSectionProps = {
   nodeId: string;
+  token: string | null;
   parameters: FlowNode["data"]["parameters"];
   onAgentModelChange: (
     nodeId: string,
@@ -57,6 +58,7 @@ type VoiceAgentInspectorSectionProps = {
 
 export const VoiceAgentInspectorSection = ({
   nodeId,
+  token,
   parameters,
   onAgentModelChange,
   onAgentMessageChange,
@@ -177,6 +179,7 @@ export const VoiceAgentInspectorSection = ({
         ))}
         <ToolSettingsPanel
           nodeId={nodeId}
+          authToken={token}
           parameters={parameters}
           workflows={workflows}
           currentWorkflowId={currentWorkflowId}

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useI18n } from "../../../../../i18n";
 import {
@@ -6,7 +6,9 @@ import {
   getAgentWidgetValidationToolEnabled,
   getAgentWorkflowTools,
   getAgentWorkflowValidationToolEnabled,
+  serializeAgentMcpToolConfig,
 } from "../../../../../utils/workflows";
+import { testMcpConnection } from "../../../../../utils/backend";
 import type {
   AgentMcpRequireApprovalMode,
   AgentMcpToolConfig,
@@ -20,6 +22,7 @@ import styles from "../NodeInspector.module.css";
 
 type ToolSettingsPanelProps = {
   nodeId: string;
+  authToken: string | null;
   parameters: FlowNode["data"]["parameters"];
   workflows: WorkflowSummary[];
   currentWorkflowId: number | null;
@@ -32,8 +35,14 @@ type ToolSettingsPanelProps = {
   onAgentWorkflowToolToggle: (nodeId: string, slug: string, enabled: boolean) => void;
 };
 
+type McpConnectionState = {
+  status: "idle" | "testing" | "success" | "error";
+  message: string | null;
+};
+
 export const ToolSettingsPanel = ({
   nodeId,
+  authToken,
   parameters,
   workflows,
   currentWorkflowId,
@@ -46,6 +55,118 @@ export const ToolSettingsPanel = ({
   onAgentWorkflowToolToggle,
 }: ToolSettingsPanelProps) => {
   const { t } = useI18n();
+
+  const [connectionStates, setConnectionStates] = useState<
+    Record<string, McpConnectionState>
+  >({});
+
+  useEffect(() => {
+    setConnectionStates((prev) => {
+      const ids = new Set(mcpTools.map((tool) => tool.id));
+      let changed = false;
+      const next: Record<string, McpConnectionState> = {};
+      for (const tool of mcpTools) {
+        const existing = prev[tool.id];
+        if (existing) {
+          next[tool.id] = existing;
+        } else {
+          next[tool.id] = { status: "idle", message: null };
+          changed = true;
+        }
+      }
+      for (const key of Object.keys(prev)) {
+        if (!ids.has(key)) {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [mcpTools]);
+
+  const setConnectionState = useCallback(
+    (toolId: string, state: McpConnectionState) => {
+      setConnectionStates((prev) => {
+        const current = prev[toolId];
+        if (
+          current &&
+          current.status === state.status &&
+          current.message === state.message
+        ) {
+          return prev;
+        }
+        return { ...prev, [toolId]: state };
+      });
+    },
+    [],
+  );
+
+  const resetConnectionState = useCallback(
+    (toolId: string) => {
+      setConnectionStates((prev) => {
+        const current = prev[toolId];
+        if (!current || (current.status === "idle" && current.message === null)) {
+          return prev;
+        }
+        return { ...prev, [toolId]: { status: "idle", message: null } };
+      });
+    },
+    [],
+  );
+
+  const removeConnectionState = useCallback((toolId: string) => {
+    setConnectionStates((prev) => {
+      if (!(toolId in prev)) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[toolId];
+      return next;
+    });
+  }, []);
+
+  const handleTestConnection = useCallback(
+    async (tool: AgentMcpToolConfig) => {
+      setConnectionState(tool.id, {
+        status: "testing",
+        message: t("workflowBuilder.agentInspector.mcpTestConnectionInProgress"),
+      });
+
+      try {
+        const response = await testMcpConnection({
+          token: authToken,
+          payload: serializeAgentMcpToolConfig(tool),
+        });
+        const fallbackSuccess = t(
+          "workflowBuilder.agentInspector.mcpTestConnectionSuccessGeneric",
+        );
+        const fallbackError = t(
+          "workflowBuilder.agentInspector.mcpTestConnectionUnexpectedError",
+        );
+
+        if (response.ok) {
+          setConnectionState(tool.id, {
+            status: "success",
+            message: response.message?.trim() || fallbackSuccess,
+          });
+        } else {
+          setConnectionState(tool.id, {
+            status: "error",
+            message: response.message?.trim() || fallbackError,
+          });
+        }
+      } catch (error) {
+        const fallbackMessage =
+          error instanceof Error && error.message
+            ? error.message
+            : t("workflowBuilder.agentInspector.mcpTestConnectionUnexpectedError");
+        setConnectionState(tool.id, {
+          status: "error",
+          message: fallbackMessage,
+        });
+      }
+    },
+    [authToken, setConnectionState, t],
+  );
 
   const weatherFunctionEnabled = getAgentWeatherToolEnabled(parameters);
   const widgetValidationFunctionEnabled = getAgentWidgetValidationToolEnabled(parameters);
@@ -94,11 +215,13 @@ export const ToolSettingsPanel = ({
       tool.id === toolId ? { ...tool, ...updates } : tool,
     );
     onAgentMcpToolsChange(nodeId, next);
+    resetConnectionState(toolId);
   };
 
   const handleMcpToolRemove = (toolId: string) => {
     const next = mcpTools.filter((tool) => tool.id !== toolId);
     onAgentMcpToolsChange(nodeId, next);
+    removeConnectionState(toolId);
   };
 
   const handleAddMcpTool = () => {
@@ -159,6 +282,15 @@ export const ToolSettingsPanel = ({
           const envError = validation.env === "invalid";
           const allowedToolsError = validation.allowedTools === "invalid";
           const approvalError = validation.requireApproval === "invalid";
+          const connectionState =
+            connectionStates[tool.id] ?? { status: "idle", message: null };
+          const isTesting = connectionState.status === "testing";
+          const statusClass =
+            connectionState.status === "success"
+              ? styles.nodeInspectorStatusSuccess
+              : connectionState.status === "error"
+                ? styles.nodeInspectorStatusError
+                : styles.nodeInspectorStatusPending;
           const displayLabel =
             tool.serverLabel.trim() ||
             t("workflowBuilder.agentInspector.mcpServerPlaceholder", {
@@ -481,6 +613,28 @@ export const ToolSettingsPanel = ({
                   </label>
                 </>
               ) : null}
+
+              <div className={styles.nodeInspectorField}>
+                <button
+                  type="button"
+                  className={styles.nodeInspectorSecondaryButton}
+                  onClick={() => handleTestConnection(tool)}
+                  disabled={isTesting}
+                >
+                  {isTesting
+                    ? t(
+                        "workflowBuilder.agentInspector.mcpTestConnectionWorking",
+                      )
+                    : t("workflowBuilder.agentInspector.mcpTestConnection")}
+                </button>
+                {connectionState.message ? (
+                  <p
+                    className={`${styles.nodeInspectorStatusMessage} ${statusClass}`}
+                  >
+                    {connectionState.message}
+                  </p>
+                ) : null}
+              </div>
 
               <label className={styles.nodeInspectorField}>
                 <span className={styles.nodeInspectorLabel}>

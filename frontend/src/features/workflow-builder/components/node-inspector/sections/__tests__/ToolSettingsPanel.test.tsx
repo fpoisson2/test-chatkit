@@ -5,6 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../../../../../i18n";
 import type { AgentMcpToolConfig, AgentMcpToolValidation } from "../../../types";
 import { ToolSettingsPanel } from "../ToolSettingsPanel";
+import * as backendApi from "../../../../../../utils/backend";
+
+const mockTestMcpConnection = vi.spyOn(backendApi, "testMcpConnection");
 
 type PanelOverrides = Partial<Parameters<typeof ToolSettingsPanel>[0]>;
 
@@ -30,6 +33,7 @@ const baseConfig: AgentMcpToolConfig = {
 const renderPanel = (overrides: PanelOverrides = {}) => {
   const defaultValidation: AgentMcpToolValidation[] = overrides.mcpValidation ?? [];
   const defaultTools: AgentMcpToolConfig[] = overrides.mcpTools ?? [];
+  const authToken = overrides.authToken ?? null;
 
   const onAgentMcpToolsChange = overrides.onAgentMcpToolsChange ?? vi.fn();
   const onAgentWeatherToolChange = overrides.onAgentWeatherToolChange ?? vi.fn();
@@ -43,6 +47,7 @@ const renderPanel = (overrides: PanelOverrides = {}) => {
     <I18nProvider>
       <ToolSettingsPanel
         nodeId="agent-1"
+        authToken={authToken}
         parameters={overrides.parameters ?? {}}
         workflows={overrides.workflows ?? []}
         currentWorkflowId={overrides.currentWorkflowId ?? null}
@@ -67,6 +72,10 @@ const renderPanel = (overrides: PanelOverrides = {}) => {
 };
 
 describe("ToolSettingsPanel MCP configuration", () => {
+  beforeEach(() => {
+    mockTestMcpConnection.mockReset();
+  });
+
   it("shows validation messages for hosted configuration", () => {
     renderPanel({
       mcpTools: [
@@ -179,5 +188,47 @@ describe("ToolSettingsPanel MCP configuration", () => {
     await userEvent.click(toggle);
 
     expect(onAgentWeatherToolChange).toHaveBeenCalledWith("agent-1", true);
+  });
+
+  it("tests MCP connection and surfaces success feedback", async () => {
+    mockTestMcpConnection.mockResolvedValueOnce({
+      ok: true,
+      message: "Connexion établie",
+    });
+
+    renderPanel({ authToken: "token-123", mcpTools: [{ ...baseConfig }] });
+
+    const button = screen.getByRole("button", {
+      name: /tester la connexion|test connection/i,
+    });
+
+    await userEvent.click(button);
+
+    await screen.findByText("Connexion établie");
+
+    expect(mockTestMcpConnection).toHaveBeenCalledWith({
+      token: "token-123",
+      payload: expect.objectContaining({
+        type: "mcp",
+        mcp: expect.objectContaining({ kind: "hosted" }),
+      }),
+    });
+  });
+
+  it("shows an error message when the MCP connection fails", async () => {
+    mockTestMcpConnection.mockResolvedValueOnce({
+      ok: false,
+      message: "Auth error",
+    });
+
+    renderPanel({ mcpTools: [{ ...baseConfig }] });
+
+    const button = screen.getByRole("button", {
+      name: /tester la connexion|test connection/i,
+    });
+
+    await userEvent.click(button);
+
+    await screen.findByText("Auth error");
   });
 });

@@ -461,6 +461,47 @@
   background-color: rgba(37, 99, 235, 0.18);
 }
 
+.nodeInspectorSecondaryButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+  background-color: #ffffff;
+  color: var(--color-text-strong);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.nodeInspectorSecondaryButton:not(:disabled):hover {
+  background-color: rgba(37, 99, 235, 0.08);
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+.nodeInspectorSecondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.nodeInspectorStatusMessage {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+}
+
+.nodeInspectorStatusSuccess {
+  color: #16a34a;
+}
+
+.nodeInspectorStatusError {
+  color: #b91c1c;
+}
+
+.nodeInspectorStatusPending {
+  color: #2563eb;
+}
+
 .nodeInspectorRemoveLink {
   background: none;
   border: none;

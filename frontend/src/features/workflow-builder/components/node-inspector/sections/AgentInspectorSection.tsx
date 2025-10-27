@@ -1306,6 +1306,7 @@ export const AgentInspectorSection = ({
 
         <ToolSettingsPanel
           nodeId={nodeId}
+          authToken={token}
           parameters={parameters}
           workflows={workflows}
           currentWorkflowId={currentWorkflowId}

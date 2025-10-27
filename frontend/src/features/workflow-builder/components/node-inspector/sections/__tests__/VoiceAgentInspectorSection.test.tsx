@@ -36,6 +36,7 @@ const baseWorkflows: WorkflowSummary[] = [
 const renderSection = (overrides: Partial<Parameters<typeof VoiceAgentInspectorSection>[0]> = {}) => {
   const defaultProps: Parameters<typeof VoiceAgentInspectorSection>[0] = {
     nodeId: "voice-1",
+    token: null,
     parameters: {},
     onAgentModelChange: vi.fn(),
     onAgentMessageChange: vi.fn(),

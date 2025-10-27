@@ -3007,6 +3007,10 @@ const buildMcpToolEntry = (config: AgentMcpToolConfig): Record<string, unknown> 
   return entry;
 };
 
+export const serializeAgentMcpToolConfig = (
+  config: AgentMcpToolConfig,
+): Record<string, unknown> => buildMcpToolEntry(config);
+
 const toOptionalBoolean = (value: unknown): boolean | undefined => {
   if (typeof value === "boolean") {
     return value;

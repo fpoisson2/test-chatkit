@@ -383,6 +383,13 @@ const fr: TranslationDictionary = {
     "Impossible d'interpréter ce filtre. Fournissez un JSON valide ou une liste de noms.",
   "workflowBuilder.agentInspector.mcpValidationInvalidRequireApproval":
     "JSON d'approbation invalide. Vérifiez la structure require_approval.",
+  "workflowBuilder.agentInspector.mcpTestConnection": "Tester la connexion",
+  "workflowBuilder.agentInspector.mcpTestConnectionWorking": "Test en cours…",
+  "workflowBuilder.agentInspector.mcpTestConnectionInProgress": "Test de connexion en cours…",
+  "workflowBuilder.agentInspector.mcpTestConnectionUnexpectedError":
+    "La connexion au serveur MCP a échoué.",
+  "workflowBuilder.agentInspector.mcpTestConnectionSuccessGeneric":
+    "Connexion MCP réussie.",
   "workflowBuilder.agentInspector.modelsLoading": "Chargement des modèles disponibles…",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Ajoute l'outil image_generation pour produire des visuels. Actuellement, seule l'API Images d'OpenAI est prise en charge.",
@@ -969,6 +976,14 @@ const en: TranslationDictionary = {
     "Unable to parse this filter. Provide valid JSON or a list of tool names.",
   "workflowBuilder.agentInspector.mcpValidationInvalidRequireApproval":
     "Invalid approval JSON. Check the require_approval structure.",
+  "workflowBuilder.agentInspector.mcpTestConnection": "Test connection",
+  "workflowBuilder.agentInspector.mcpTestConnectionWorking": "Testing…",
+  "workflowBuilder.agentInspector.mcpTestConnectionInProgress":
+    "Testing MCP connection…",
+  "workflowBuilder.agentInspector.mcpTestConnectionUnexpectedError":
+    "Unable to reach the MCP server.",
+  "workflowBuilder.agentInspector.mcpTestConnectionSuccessGeneric":
+    "MCP connection succeeded.",
   "workflowBuilder.agentInspector.modelsLoading": "Loading available models…",
   "workflowBuilder.agentInspector.imageToolToggleHelp":
     "Enables the image_generation tool to produce visuals. At the moment, only OpenAI's Images API is supported.",

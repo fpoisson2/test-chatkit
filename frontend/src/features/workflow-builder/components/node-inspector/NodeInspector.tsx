@@ -521,6 +521,7 @@ const NodeInspector = ({
       {kind === "voice_agent" ? (
         <VoiceAgentInspectorSection
           nodeId={node.id}
+          token={token}
           parameters={parameters}
           onAgentModelChange={onAgentModelChange}
           onAgentMessageChange={onAgentMessageChange}
