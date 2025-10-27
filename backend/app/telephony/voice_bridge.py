@@ -7,6 +7,7 @@ import audioop
 import base64
 import json
 import logging
+import struct
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
@@ -176,6 +177,7 @@ class TelephonyVoiceBridge:
         input_codec: str = "pcmu",
         target_sample_rate: int = 24_000,
         receive_timeout: float = 0.5,
+        vad_threshold: float = 500.0,
         settings: Settings | None = None,
     ) -> None:
         self._hooks = hooks
@@ -185,7 +187,23 @@ class TelephonyVoiceBridge:
         self._input_codec = input_codec.lower()
         self._target_sample_rate = target_sample_rate
         self._receive_timeout = max(0.1, receive_timeout)
+        self._vad_threshold = vad_threshold
         self._settings = settings or get_settings()
+
+    @staticmethod
+    def _calculate_audio_energy(pcm_data: bytes) -> float:
+        """Calcule l'énergie RMS de l'audio PCM16."""
+        if not pcm_data or len(pcm_data) < 2:
+            return 0.0
+
+        # Convertir bytes en samples int16
+        num_samples = len(pcm_data) // 2
+        samples = struct.unpack(f"{num_samples}h", pcm_data)
+
+        # Calculer RMS (Root Mean Square)
+        sum_squares = sum(s * s for s in samples)
+        rms = (sum_squares / num_samples) ** 0.5
+        return rms
 
     async def run(
         self,
@@ -242,13 +260,25 @@ class TelephonyVoiceBridge:
             await websocket.send(payload)  # type: ignore[arg-type]
 
         async def forward_audio() -> None:
-            nonlocal inbound_audio_bytes
+            nonlocal inbound_audio_bytes, agent_is_speaking
             try:
                 async for packet in rtp_stream:
                     pcm = self._decode_packet(packet)
                     if not pcm:
                         continue
                     inbound_audio_bytes += len(pcm)
+
+                    # VAD local : détecter si l'utilisateur parle pendant que l'agent parle
+                    energy = self._calculate_audio_energy(pcm)
+                    if energy > self._vad_threshold and agent_is_speaking:
+                        if not audio_interrupted.is_set():
+                            logger.info(
+                                "VAD local : interruption détectée (énergie=%.1f, seuil=%.1f)",
+                                energy,
+                                self._vad_threshold
+                            )
+                            audio_interrupted.set()
+
                     encoded = base64.b64encode(pcm).decode("ascii")
                     await send_json(
                         {
@@ -266,9 +296,11 @@ class TelephonyVoiceBridge:
 
         transcript_buffers: dict[str, list[str]] = {}
         audio_interrupted = asyncio.Event()
+        last_response_id: str | None = None
+        agent_is_speaking = False
 
         async def handle_realtime() -> None:
-            nonlocal outbound_audio_bytes, error
+            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking
             while True:
                 try:
                     raw = await asyncio.wait_for(
@@ -304,8 +336,8 @@ class TelephonyVoiceBridge:
                     audio_interrupted.set()
                     continue
                 if message_type == "input_audio_buffer.speech_stopped":
-                    logger.info("Fin de parole utilisateur - autoriser nouvelle réponse agent")
-                    audio_interrupted.clear()
+                    logger.debug("Fin de parole utilisateur détectée")
+                    # Ne PAS réinitialiser le flag ici - on attend la nouvelle réponse
                     continue
                 if message_type == "response.cancelled":
                     logger.info("Réponse annulée par l'API")
@@ -315,10 +347,31 @@ class TelephonyVoiceBridge:
                     continue
 
                 if message_type.endswith("audio.delta"):
+                    # Vérifier le response_id pour détecter une nouvelle réponse
+                    response_id = self._extract_response_id(message)
+
+                    # Si c'est une nouvelle réponse (response_id différent), réinitialiser le flag
+                    if response_id and response_id != last_response_id:
+                        if audio_interrupted.is_set():
+                            logger.info(
+                                "Nouvelle réponse %s détectée - réinitialisation du flag d'interruption",
+                                response_id
+                            )
+                        audio_interrupted.clear()
+                        last_response_id = response_id
+                        agent_is_speaking = True
+                        logger.debug("Agent commence à parler (réponse %s)", response_id)
+
+                    # Marquer que l'agent parle
+                    if not agent_is_speaking:
+                        agent_is_speaking = True
+                        logger.debug("Agent commence à parler")
+
                     # Ne pas envoyer l'audio si l'utilisateur a interrompu
                     if audio_interrupted.is_set():
                         logger.debug("Audio delta ignoré (utilisateur a interrompu)")
                         continue
+
                     for chunk in self._extract_audio_chunks(message):
                         try:
                             pcm = base64.b64decode(chunk)
@@ -341,7 +394,11 @@ class TelephonyVoiceBridge:
                         break
                     continue
 
-                if message_type == "response.completed":
+                if message_type == "response.completed" or message_type == "response.done":
+                    # L'agent a fini de parler
+                    agent_is_speaking = False
+                    logger.debug("Agent a fini de parler")
+
                     response = message.get("response")
                     response_id = self._extract_response_id(message)
                     combined_entry: dict[str, str] | None = None
@@ -366,7 +423,10 @@ class TelephonyVoiceBridge:
                             transcripts.append(combined_entry)
                     elif combined_entry:
                         transcripts.append(combined_entry)
-                    break
+
+                    if message_type == "response.completed":
+                        break
+                    continue
             await request_stop()
 
         stats: VoiceBridgeStats | None = None
