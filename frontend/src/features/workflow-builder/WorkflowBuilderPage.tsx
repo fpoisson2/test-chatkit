@@ -385,6 +385,24 @@ const WorkflowBuilderPage = () => {
     (status: number) => t("workflowBuilder.save.failureWithStatus", { status }),
     [t],
   );
+
+  const extractSaveErrorMessage = useCallback(
+    async (response: Response) => {
+      try {
+        const payload = (await response.json()) as { detail?: unknown };
+        if (payload && typeof payload.detail === "string") {
+          const trimmed = payload.detail.trim();
+          if (trimmed) {
+            return trimmed;
+          }
+        }
+      } catch (error) {
+        console.error("Impossible de lire la réponse d'erreur de sauvegarde", error);
+      }
+      return formatSaveFailureWithStatus(response.status);
+    },
+    [formatSaveFailureWithStatus],
+  );
   const authHeader = useMemo(
     () => (token ? { Authorization: `Bearer ${token}` } : {}),
     [token],
@@ -5642,7 +5660,8 @@ const WorkflowBuilderPage = () => {
               body: JSON.stringify({ graph: graphPayload, mark_as_active: false }),
             });
             if (!response.ok) {
-              throw new Error(formatSaveFailureWithStatus(response.status));
+              const message = await extractSaveErrorMessage(response);
+              throw new Error(message);
             }
             const created: WorkflowVersionResponse = await response.json();
             const summary: WorkflowVersionSummary = {
@@ -5729,7 +5748,8 @@ const WorkflowBuilderPage = () => {
           body: JSON.stringify({ graph: graphPayload }),
         });
         if (!response.ok) {
-          throw new Error(formatSaveFailureWithStatus(response.status));
+          const message = await extractSaveErrorMessage(response);
+          throw new Error(message);
         }
         const updated: WorkflowVersionResponse = await response.json();
         const summary: WorkflowVersionSummary = {
@@ -5799,7 +5819,7 @@ const WorkflowBuilderPage = () => {
     conditionGraphError,
     deviceType,
     draftDisplayName,
-    formatSaveFailureWithStatus,
+    extractSaveErrorMessage,
     loadVersions,
     nodes,
     persistViewportMemory,
