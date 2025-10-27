@@ -828,12 +828,26 @@ def build_mcp_tool(payload: Any) -> MCPServerSse:
             raise ValueError(
                 "Le champ 'authorization' doit être une chaîne de caractères."
             )
+
         token = authorization.strip()
         if not token:
             raise ValueError(
                 "Le champ 'authorization' ne peut pas être une chaîne vide."
             )
-        headers = {"Authorization": token}
+
+        normalized_token = token
+        lower_token = token.lower()
+        if lower_token.startswith("bearer "):
+            normalized_token = token[7:].strip()
+        elif lower_token == "bearer":
+            normalized_token = ""
+
+        if not normalized_token:
+            raise ValueError(
+                "Le champ 'authorization' doit contenir un jeton Bearer valide."
+            )
+
+        headers = {"Authorization": f"Bearer {normalized_token}"}
 
     timeout = _coerce_positive_float(config.get("timeout"), field_name="timeout")
     sse_read_timeout = _coerce_positive_float(

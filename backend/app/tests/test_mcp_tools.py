@@ -77,6 +77,48 @@ def test_build_mcp_tool_constructs_server(monkeypatch: pytest.MonkeyPatch) -> No
     assert created["client_session_timeout_seconds"] == 5
 
 
+def test_build_mcp_tool_adds_bearer_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class _StubServer:
+        def __init__(self, *, params: dict[str, Any], cache_tools_list: bool) -> None:
+            captured["params"] = params
+            captured["cache_tools_list"] = cache_tools_list
+
+    monkeypatch.setattr(tool_factory_module, "MCPServerSse", _StubServer)
+
+    payload = {
+        "type": "mcp",
+        "transport": "http_sse",
+        "url": "https://ha.ve2fpd.com/mcp_server/sse",
+        "authorization": "token-value",
+    }
+
+    server = tool_factory_module.build_mcp_tool(payload)
+
+    assert isinstance(server, _StubServer)
+    params = captured["params"]
+    assert params["headers"]["Authorization"] == "Bearer token-value"
+
+
+def test_build_mcp_tool_rejects_empty_bearer(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _FailingServer:
+        def __init__(self, **_kwargs: Any) -> None:  # pragma: no cover - garde-fou
+            raise AssertionError("MCPServerSse ne doit pas être instancié")
+
+    monkeypatch.setattr(tool_factory_module, "MCPServerSse", _FailingServer)
+
+    payload = {
+        "type": "mcp",
+        "transport": "http_sse",
+        "url": "https://ha.ve2fpd.com/mcp_server/sse",
+        "authorization": "Bearer   ",
+    }
+
+    with pytest.raises(ValueError):
+        tool_factory_module.build_mcp_tool(payload)
+
+
 def test_coerce_agent_tools_supports_mcp(monkeypatch: pytest.MonkeyPatch) -> None:
     def _fake_builder(config: Any) -> str:
         assert isinstance(config, dict)
