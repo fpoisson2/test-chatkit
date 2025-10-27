@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 import math
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -58,6 +58,40 @@ class VoiceSessionResponse(BaseModel):
     prompt_id: str | None = None
     prompt_version: str | None = None
     prompt_variables: dict[str, str] = Field(default_factory=dict)
+
+
+class RTCSessionDescription(BaseModel):
+    type: Literal["offer", "answer"]
+    sdp: str
+
+
+class VoiceWebRTCOfferRequest(VoiceSessionRequest):
+    offer: RTCSessionDescription
+
+
+class VoiceWebRTCOfferResponse(BaseModel):
+    session_id: str
+    answer: RTCSessionDescription
+    expires_at: str | None = None
+
+
+class VoiceWebRTCTeardownRequest(BaseModel):
+    session_id: str
+
+
+class VoiceWebRTCTranscript(BaseModel):
+    id: str
+    role: Literal["user", "assistant"]
+    text: str
+    status: Literal["completed", "in_progress", "incomplete"] = "completed"
+
+
+class VoiceWebRTCTeardownResponse(BaseModel):
+    session_id: str
+    closed: bool
+    transcripts: list[VoiceWebRTCTranscript] = Field(default_factory=list)
+    error: str | None = None
+    stats: dict[str, float | int] = Field(default_factory=dict)
 
 
 class HostedWorkflowOption(BaseModel):

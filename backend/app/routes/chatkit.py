@@ -83,9 +83,16 @@ from ..schemas import (
     SessionRequest,
     VoiceSessionRequest,
     VoiceSessionResponse,
+    VoiceWebRTCOfferRequest,
+    VoiceWebRTCOfferResponse,
+    VoiceWebRTCTeardownRequest,
+    VoiceWebRTCTeardownResponse,
+    VoiceWebRTCTranscript,
 )
 from ..security import decode_agent_image_token
+from ..telephony.voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
 from ..voice_settings import get_or_create_voice_settings
+from ..voice_webrtc_gateway import VoiceWebRTCGateway, VoiceWebRTCGatewayError
 from ..workflows import (
     HostedWorkflowConfig,
     HostedWorkflowNotFoundError,
@@ -104,6 +111,15 @@ logger = logging.getLogger("chatkit.voice")
 
 
 LEGACY_HOSTED_SLUG = "hosted-workflow"
+
+
+try:  # pragma: no cover - aiortc peut être absent dans certains environnements
+    from aiortc import RTCSessionDescription as AiortcRTCSessionDescription
+except ImportError:  # pragma: no cover
+    AiortcRTCSessionDescription = None  # type: ignore[assignment]
+
+
+voice_webrtc_gateway = VoiceWebRTCGateway()
 
 
 def get_chatkit_server():
@@ -608,6 +624,198 @@ async def create_voice_session(
         prompt_id=voice_settings.prompt_id,
         prompt_version=voice_settings.prompt_version,
         prompt_variables=voice_settings.prompt_variables,
+    )
+
+
+@router.post(
+    "/api/chatkit/voice/webrtc/offer",
+    response_model=VoiceWebRTCOfferResponse,
+)
+async def create_voice_webrtc_offer(
+    req: VoiceWebRTCOfferRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    if AiortcRTCSessionDescription is None:  # pragma: no cover
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Le support WebRTC n'est pas disponible sur ce serveur.",
+        )
+
+    app_settings = get_settings()
+    voice_settings = get_or_create_voice_settings(session)
+
+    resolved_model = (
+        req.model or voice_settings.model or app_settings.chatkit_realtime_model
+    )
+    resolved_instructions = (
+        req.instructions
+        or voice_settings.instructions
+        or app_settings.chatkit_realtime_instructions
+    )
+    resolved_voice = (
+        req.voice or voice_settings.voice or app_settings.chatkit_realtime_voice
+    )
+
+    provider_id_field_set = "model_provider_id" in req.model_fields_set
+    provider_slug_field_set = "model_provider_slug" in req.model_fields_set
+
+    if provider_id_field_set:
+        resolved_provider_id_raw = req.model_provider_id
+    else:
+        resolved_provider_id_raw = voice_settings.provider_id
+
+    if isinstance(resolved_provider_id_raw, str):
+        resolved_provider_id = resolved_provider_id_raw.strip() or None
+    else:
+        resolved_provider_id = None
+
+    if provider_slug_field_set:
+        resolved_provider_slug_source = req.model_provider_slug
+    elif voice_settings.provider_slug:
+        resolved_provider_slug_source = voice_settings.provider_slug
+    else:
+        resolved_provider_slug_source = getattr(app_settings, "model_provider", None)
+
+    trimmed_slug = (
+        resolved_provider_slug_source.strip().lower()
+        if isinstance(resolved_provider_slug_source, str)
+        else ""
+    )
+    resolved_provider_slug = trimmed_slug or None
+
+    if provider_slug_field_set and trimmed_slug and not provider_id_field_set:
+        resolved_provider_id = None
+
+    user_id = f"user:{current_user.id}"
+
+    secret_payload = await create_realtime_voice_session(
+        user_id=user_id,
+        model=resolved_model,
+        instructions=resolved_instructions,
+        voice=resolved_voice,
+        provider_id=resolved_provider_id,
+        provider_slug=resolved_provider_slug,
+    )
+
+    parser = SessionSecretParser()
+    parsed_secret = parser.parse(secret_payload)
+    client_secret = parsed_secret.as_text()
+    if not client_secret:
+        summary = summarize_payload_shape(secret_payload)
+        logger.error(
+            "Client secret introuvable pour la passerelle WebRTC : %s",
+            summary,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "ChatKit Realtime response missing client_secret",
+                "payload_summary": summary,
+            },
+        )
+
+    try:
+        offer = AiortcRTCSessionDescription(sdp=req.offer.sdp, type=req.offer.type)
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "Invalid WebRTC offer", "message": str(exc)},
+        ) from exc
+
+    bridge = TelephonyVoiceBridge(hooks=VoiceBridgeHooks(), input_codec="pcm")
+
+    try:
+        session_obj, answer = await voice_webrtc_gateway.create_session(
+            bridge=bridge,
+            client_secret=client_secret,
+            offer=offer,
+            model=resolved_model,
+            instructions=resolved_instructions,
+            voice=resolved_voice,
+            api_base=None,
+        )
+    except VoiceWebRTCGatewayError as exc:
+        logger.exception("Échec de la création de la session WebRTC voix", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": str(exc)},
+        ) from exc
+
+    return VoiceWebRTCOfferResponse(
+        session_id=session_obj.session_id,
+        answer={"type": answer.type, "sdp": answer.sdp},
+        expires_at=parsed_secret.expires_at_isoformat(),
+    )
+
+
+@router.post(
+    "/api/chatkit/voice/webrtc/teardown",
+    response_model=VoiceWebRTCTeardownResponse,
+)
+async def teardown_voice_webrtc_session(
+    req: VoiceWebRTCTeardownRequest,
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        result = await voice_webrtc_gateway.teardown(req.session_id)
+    except VoiceWebRTCGatewayError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": str(exc)},
+        ) from exc
+
+    stats = result.stats
+    transcripts: list[VoiceWebRTCTranscript] = []
+    if stats and isinstance(stats.transcripts, list):
+        for index, entry in enumerate(stats.transcripts):
+            if not isinstance(entry, dict):
+                continue
+            text = str(entry.get("text") or "").strip()
+            if not text:
+                continue
+            role_raw = str(entry.get("role") or "assistant").strip().lower()
+            role = "user" if role_raw == "user" else "assistant"
+            status_value = str(entry.get("status") or "completed").strip().lower()
+            allowed_status = {"completed", "in_progress", "incomplete"}
+            normalized_status = (
+                status_value if status_value in allowed_status else "completed"
+            )
+            transcript_id = entry.get("id")
+            if isinstance(transcript_id, str) and transcript_id.strip():
+                identifier = transcript_id.strip()
+            else:
+                identifier = f"{req.session_id}-{index}" if index else req.session_id
+            transcripts.append(
+                VoiceWebRTCTranscript(
+                    id=identifier,
+                    role=role,
+                    text=text,
+                    status=normalized_status,
+                )
+            )
+
+    stats_payload: dict[str, float | int] = {}
+    error_message: str | None = None
+    if stats is not None:
+        stats_payload = {
+            "duration_seconds": stats.duration_seconds,
+            "inbound_audio_bytes": stats.inbound_audio_bytes,
+            "outbound_audio_bytes": stats.outbound_audio_bytes,
+            "transcript_count": stats.transcript_count,
+        }
+        if stats.error is not None:
+            error_message = str(stats.error)
+
+    if result.error is not None and not error_message:
+        error_message = str(result.error)
+
+    return VoiceWebRTCTeardownResponse(
+        session_id=req.session_id,
+        closed=True,
+        transcripts=transcripts,
+        error=error_message,
+        stats=stats_payload,
     )
 
 

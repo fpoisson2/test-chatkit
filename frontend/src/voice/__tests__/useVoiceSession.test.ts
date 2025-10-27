@@ -8,17 +8,17 @@ type MockHandlers = {
   onAgentEnd?: () => void;
   onTransportError?: (error: unknown) => void;
   onError?: (error: unknown) => void;
-  onRefreshDue?: () => void;
 };
 
-const fetchSecretMock = vi.fn();
 const realtimeHandlers: { current: MockHandlers | null } = { current: null };
 const connectMock = vi.fn(async () => {});
 const disconnectMock = vi.fn(() => {});
 
-vi.mock("../useVoiceSecret", () => ({
+let authToken: string | null = "test-token";
+
+vi.mock("../../auth", () => ({
   __esModule: true,
-  useVoiceSecret: () => ({ fetchSecret: fetchSecretMock }),
+  useAuth: () => ({ token: authToken }),
 }));
 
 vi.mock("../useRealtimeSession", () => ({
@@ -36,11 +36,11 @@ const { useVoiceSession } = await import("../useVoiceSession");
 
 describe("useVoiceSession", () => {
   beforeEach(() => {
-    fetchSecretMock.mockReset();
     connectMock.mockReset();
     disconnectMock.mockReset();
     realtimeHandlers.current = null;
     window.localStorage.clear();
+    authToken = "test-token";
   });
 
   afterEach(() => {
@@ -48,22 +48,23 @@ describe("useVoiceSession", () => {
   });
 
   it("démarre une session et gère les transitions de statut", async () => {
-    const secret = {
-      client_secret: "sk-test",
-      instructions: "Parlez-moi",
-      model: "gpt-voice",
-      voice: "alloy",
-    };
-    fetchSecretMock.mockResolvedValue(secret);
     connectMock.mockResolvedValue(undefined);
 
     const { result } = renderHook(() => useVoiceSession());
 
+    const stopMock = vi.fn();
+    const mockStream = {
+      getTracks: () => [{ stop: stopMock }],
+    } as unknown as MediaStream;
+
     await act(async () => {
-      await result.current.startSession();
+      await result.current.startSession({ preserveHistory: false, stream: mockStream });
     });
 
-    expect(connectMock).toHaveBeenCalledWith({ apiKey: "sk-test", secret });
+    expect(connectMock).toHaveBeenCalledWith({
+      token: "test-token",
+      localStream: mockStream,
+    });
     expect(result.current.status).toBe("connected");
     expect(result.current.isListening).toBe(true);
 
@@ -97,18 +98,14 @@ describe("useVoiceSession", () => {
   });
 
   it("met en cache l'historique dans le stockage local", async () => {
-    const secret = {
-      client_secret: "sk-test",
-      instructions: "Parlez-moi",
-      model: "gpt-voice",
-      voice: "alloy",
-    };
-    fetchSecretMock.mockResolvedValue(secret);
-
     const { result, unmount } = renderHook(() => useVoiceSession());
 
+    const mockStream = {
+      getTracks: () => [{ stop: vi.fn() }],
+    } as unknown as MediaStream;
+
     await act(async () => {
-      await result.current.startSession();
+      await result.current.startSession({ preserveHistory: false, stream: mockStream });
     });
 
     act(() => {
@@ -143,24 +140,32 @@ describe("useVoiceSession", () => {
     unmountRerender();
   });
 
-  it("passe en erreur lorsque la récupération du secret échoue", async () => {
-    fetchSecretMock.mockRejectedValue(new Error("Secret introuvable"));
+  it("passe en erreur lorsque l'authentification est absente", async () => {
+    authToken = null;
 
     const { result } = renderHook(() => useVoiceSession());
+
+    const mockStream = {
+      getTracks: () => [{ stop: vi.fn() }],
+    } as unknown as MediaStream;
 
     let thrown: unknown;
     await act(async () => {
       try {
-        await result.current.startSession();
+        await result.current.startSession({ preserveHistory: false, stream: mockStream });
       } catch (error) {
         thrown = error;
       }
     });
 
-    expect((thrown as Error).message).toBe("Secret introuvable");
+    expect((thrown as Error).message).toBe("Authentification requise pour démarrer la session vocale.");
     expect(result.current.status).toBe("error");
-    expect(result.current.webrtcError).toBe("Secret introuvable");
-    expect(result.current.errors[0]?.message).toBe("Secret introuvable");
+    expect(result.current.webrtcError).toBe(
+      "Authentification requise pour démarrer la session vocale.",
+    );
+    expect(result.current.errors[0]?.message).toBe(
+      "Authentification requise pour démarrer la session vocale.",
+    );
     expect(connectMock).not.toHaveBeenCalled();
   });
 });

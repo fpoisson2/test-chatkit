@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { RealtimeItem } from "@openai/agents/realtime";
 
 import { useAuth } from "../auth";
 import { makeApiEndpointCandidates } from "../utils/backend";
 import { useRealtimeSession } from "../voice/useRealtimeSession";
-import type { VoiceSessionSecret } from "../voice/useVoiceSecret";
 
 type VoiceSessionStatus = "idle" | "connecting" | "connected" | "error";
 
@@ -55,31 +53,12 @@ type TranscriptSnapshot = {
 
 const POLL_INTERVAL_MS = 2000; // Poll every 2 seconds
 
-const resolveApiKey = (
-  clientSecret: string | { value: string; expires_at: number },
-): string | null => {
-  if (typeof clientSecret === "string") {
-    return clientSecret;
-  }
-  if (clientSecret && typeof clientSecret === "object" && "value" in clientSecret) {
-    const { value } = clientSecret;
-    return typeof value === "string" ? value : null;
-  }
-  return null;
-};
-
-const resolveExpiresAt = (
-  clientSecret: string | { value: string; expires_at: number },
-): number => {
-  if (
-    clientSecret &&
-    typeof clientSecret === "object" &&
-    "expires_at" in clientSecret &&
-    typeof clientSecret.expires_at === "number"
-  ) {
-    return clientSecret.expires_at * 1000; // Convert to milliseconds
-  }
-  return Date.now() + 60000; // Default to 1 minute
+type RealtimeItem = {
+  type: string;
+  itemId?: string;
+  role?: string;
+  status?: string;
+  content?: { type: string; text?: string; transcript?: string }[];
 };
 
 export const useWorkflowVoiceSession = ({
@@ -415,32 +394,37 @@ export const useWorkflowVoiceSession = ({
 
       setStatus("connecting");
 
+      let stream: MediaStream | null = null;
       try {
-        const apiKey = resolveApiKey(payload.client_secret);
-        if (!apiKey) {
-          throw new Error("Secret client invalide dans l'événement voice_session.created");
+        if (!token) {
+          throw new Error("Authentification requise pour la session vocale.");
         }
 
-        const expiresAt = resolveExpiresAt(payload.client_secret);
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error("API microphone non disponible.");
+        }
 
-        const secret: VoiceSessionSecret = {
-          client_secret: apiKey,
-          model: payload.session.model,
-          voice: payload.session.voice,
-          instructions: payload.session.instructions,
-          expires_at: expiresAt,
-        };
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
         console.log("[WorkflowVoiceSession] Starting voice session:", {
           step: payload.step,
-          model: secret.model,
-          voice: secret.voice,
+          model: payload.session.model,
+          voice: payload.session.voice,
         });
 
-        await connect({ secret, apiKey });
+        await connect({ token, localStream: stream });
         setStatus("connected");
         setIsListening(true);
       } catch (error) {
+        if (stream) {
+          stream.getTracks().forEach((track) => {
+            try {
+              track.stop();
+            } catch {
+              /* noop */
+            }
+          });
+        }
         disconnect();
         setIsListening(false);
         setStatus("error");
@@ -450,7 +434,7 @@ export const useWorkflowVoiceSession = ({
         console.error("[WorkflowVoiceSession] Failed to start voice session:", error);
       }
     },
-    [connect, disconnect, onError],
+    [connect, disconnect, onError, token],
   );
 
   const stopVoiceSession = useCallback(async () => {
