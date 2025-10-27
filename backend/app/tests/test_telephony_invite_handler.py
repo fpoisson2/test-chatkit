@@ -154,6 +154,7 @@ async def test_handle_invite_accepts_codec_with_channel_information() -> None:
 async def test_handle_invite_reuses_via_header_from_request() -> None:
     dialog = DummyDialog()
     via_header = "SIP/2.0/UDP 198.51.100.20:5070;branch=z9hG4bKabc123"
+    cseq_header = "4711 INVITE"
     invite = _make_invite(
         "\r\n".join(
             [
@@ -166,7 +167,7 @@ async def test_handle_invite_reuses_via_header_from_request() -> None:
                 "a=rtpmap:0 PCMU/8000",
             ]
         ),
-        headers={"Via": via_header},
+        headers={"Via": via_header, "CSeq": cseq_header},
     )
 
     await handle_incoming_invite(
@@ -182,10 +183,12 @@ async def test_handle_invite_reuses_via_header_from_request() -> None:
         headers = kwargs["headers"]
         assert headers is not None
         assert headers["Via"] == via_header
+        assert headers["CSeq"] == cseq_header
         assert headers["Contact"] == "<sip:bot@203.0.113.7:5060>"
 
     final_headers = dialog.replies[-1][1]["headers"]
     assert final_headers["Content-Type"] == "application/sdp"
+    assert final_headers["CSeq"] == cseq_header
 
 
 @pytest.mark.anyio

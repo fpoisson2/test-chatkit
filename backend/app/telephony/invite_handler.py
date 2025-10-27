@@ -143,10 +143,15 @@ async def handle_incoming_invite(
     from_header = _extract_header(request, "From")
     to_header = _extract_header(request, "To")
     via_header = _extract_header(request, "Via")
+    cseq_header = _extract_header(request, "CSeq")
 
     base_headers: dict[str, str] | None = None
-    if via_header:
-        base_headers = {"Via": via_header}
+    if via_header or cseq_header:
+        base_headers = {}
+        if via_header:
+            base_headers["Via"] = via_header
+        if cseq_header:
+            base_headers["CSeq"] = cseq_header
 
     def make_headers(extra: Mapping[str, str] | None = None) -> dict[str, str] | None:
         if base_headers is None and not extra:
