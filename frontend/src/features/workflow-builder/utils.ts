@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { MarkerType, type EdgeOptions } from "reactflow";
 
-import { getStateAssignments } from "../../utils/workflows";
+import { getParallelSplitBranches, getParallelSplitJoinSlug, getStateAssignments } from "../../utils/workflows";
 import type { AgentParameters } from "./types";
 import type { FlowEdge, FlowNode, NodeKind } from "./types";
 
@@ -17,6 +17,8 @@ export const NODE_COLORS: Record<NodeKind, string> = {
   assistant_message: "#ef4444",
   user_message: "#14b8a6",
   json_vector_store: "#0891b2",
+  parallel_split: "#84cc16",
+  parallel_join: "#06b6d4",
   widget: "#ec4899",
   end: "#7c3aed",
 };
@@ -33,6 +35,8 @@ export const NODE_BACKGROUNDS: Record<NodeKind, string> = {
   assistant_message: "rgba(239, 68, 68, 0.14)",
   user_message: "rgba(20, 184, 166, 0.14)",
   json_vector_store: "rgba(8, 145, 178, 0.18)",
+  parallel_split: "rgba(132, 204, 22, 0.16)",
+  parallel_join: "rgba(6, 182, 212, 0.18)",
   widget: "rgba(236, 72, 153, 0.15)",
   end: "rgba(124, 58, 237, 0.12)",
 };
@@ -49,6 +53,8 @@ const NODE_GLOW_COLORS: Record<NodeKind, string> = {
   assistant_message: "rgba(239, 68, 68, 0.45)",
   user_message: "rgba(20, 184, 166, 0.45)",
   json_vector_store: "rgba(8, 145, 178, 0.5)",
+  parallel_split: "rgba(132, 204, 22, 0.45)",
+  parallel_join: "rgba(6, 182, 212, 0.5)",
   widget: "rgba(236, 72, 153, 0.45)",
   end: "rgba(124, 58, 237, 0.45)",
 };
@@ -119,6 +125,22 @@ export const prepareNodeParametersForSave = (
   kind: NodeKind,
   parameters: AgentParameters,
 ): AgentParameters => {
+  if (kind === "parallel_split") {
+    const joinSlug = getParallelSplitJoinSlug(parameters);
+    const branches = getParallelSplitBranches(parameters);
+    const payload: Record<string, unknown> = {};
+    if (joinSlug.trim()) {
+      payload.join_slug = joinSlug.trim();
+    }
+    payload.branches = branches.map((branch) => {
+      const trimmedLabel = branch.label.trim();
+      return trimmedLabel
+        ? { slug: branch.slug, label: trimmedLabel }
+        : { slug: branch.slug };
+    });
+    return payload as AgentParameters;
+  }
+
   if (kind !== "state") {
     return parameters;
   }
@@ -190,37 +212,27 @@ export const buildNodeStyle = (
   return style;
 };
 
-export const labelForKind = (kind: NodeKind) => {
-  switch (kind) {
-    case "start":
-      return "Début";
-    case "agent":
-      return "Agent";
-    case "voice_agent":
-      return "Agent vocal";
-    case "condition":
-      return "Condition";
-    case "state":
-      return "État";
-    case "transform":
-      return "Transformation";
-    case "watch":
-      return "Watch";
-    case "wait_for_user_input":
-      return "Attente utilisateur";
-    case "assistant_message":
-      return "Message assistant";
-    case "user_message":
-      return "Message utilisateur";
-    case "json_vector_store":
-      return "Stockage JSON";
-    case "widget":
-      return "Widget";
-    case "end":
-      return "Fin";
-    default:
-      return kind;
-  }
+const NODE_KIND_LABEL_KEYS: Record<NodeKind, string> = {
+  start: "workflowBuilder.node.kind.start",
+  agent: "workflowBuilder.node.kind.agent",
+  voice_agent: "workflowBuilder.node.kind.voice_agent",
+  condition: "workflowBuilder.node.kind.condition",
+  state: "workflowBuilder.node.kind.state",
+  transform: "workflowBuilder.node.kind.transform",
+  watch: "workflowBuilder.node.kind.watch",
+  wait_for_user_input: "workflowBuilder.node.kind.wait_for_user_input",
+  assistant_message: "workflowBuilder.node.kind.assistant_message",
+  user_message: "workflowBuilder.node.kind.user_message",
+  json_vector_store: "workflowBuilder.node.kind.json_vector_store",
+  parallel_split: "workflowBuilder.node.kind.parallel_split",
+  parallel_join: "workflowBuilder.node.kind.parallel_join",
+  widget: "workflowBuilder.node.kind.widget",
+  end: "workflowBuilder.node.kind.end",
+};
+
+export const labelForKind = (kind: NodeKind, translate?: (key: string) => string) => {
+  const key = NODE_KIND_LABEL_KEYS[kind] ?? kind;
+  return translate ? translate(key) : key;
 };
 
 export const slugifyWorkflowName = (label: string): string => {

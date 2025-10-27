@@ -1,5 +1,10 @@
 export type AgentParameters = Record<string, unknown>;
 
+export type ParallelBranch = {
+  slug: string;
+  label: string;
+};
+
 export type ImageGenerationToolConfig = {
   model: string;
   size?: string;
@@ -334,6 +339,65 @@ export const getConditionValue = (parameters: AgentParameters | null | undefined
   return "";
 };
 
+const generateParallelBranchSlug = (preferred: string | null | undefined, seen: Set<string>): string => {
+  const base = typeof preferred === "string" ? preferred.trim() : "";
+  if (base && !seen.has(base)) {
+    seen.add(base);
+    return base;
+  }
+
+  let index = 1;
+  while (true) {
+    const candidate = base ? `${base}-${index}` : `branch_${seen.size + index}`;
+    if (!seen.has(candidate)) {
+      seen.add(candidate);
+      return candidate;
+    }
+    index += 1;
+  }
+};
+
+const ensureParallelBranches = (value: unknown): ParallelBranch[] => {
+  const sanitized: ParallelBranch[] = [];
+  const seen = new Set<string>();
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (!isPlainRecord(entry)) {
+        continue;
+      }
+      const slug = generateParallelBranchSlug(entry.slug, seen);
+      const label = typeof entry.label === "string" ? entry.label : "";
+      sanitized.push({ slug, label });
+    }
+  }
+
+  while (sanitized.length < 2) {
+    const slug = generateParallelBranchSlug(null, seen);
+    sanitized.push({ slug, label: "" });
+  }
+
+  return sanitized;
+};
+
+export const getParallelSplitJoinSlug = (parameters: AgentParameters | null | undefined): string => {
+  if (!parameters) {
+    return "";
+  }
+  const raw = (parameters as Record<string, unknown>).join_slug;
+  return typeof raw === "string" ? raw.trim() : "";
+};
+
+export const getParallelSplitBranches = (
+  parameters: AgentParameters | null | undefined,
+): ParallelBranch[] => {
+  if (!parameters) {
+    return ensureParallelBranches(null);
+  }
+  const branches = (parameters as Record<string, unknown>).branches;
+  return ensureParallelBranches(branches);
+};
+
 export const setStartAutoRun = (
   parameters: AgentParameters,
   autoRun: boolean,
@@ -550,6 +614,54 @@ export const setConditionValue = (
   }
   (next as Record<string, unknown>).value = trimmed;
   return stripEmpty(next as Record<string, unknown>);
+};
+
+export const setParallelSplitJoinSlug = (
+  parameters: AgentParameters,
+  joinSlug: string,
+): AgentParameters => {
+  const next = { ...parameters } as Record<string, unknown>;
+  const trimmed = joinSlug.trim();
+  if (!trimmed) {
+    delete next.join_slug;
+  } else {
+    next.join_slug = trimmed;
+  }
+  return stripEmpty(next);
+};
+
+export const setParallelSplitBranches = (
+  parameters: AgentParameters,
+  branches: ParallelBranch[],
+): AgentParameters => {
+  const normalized = ensureParallelBranches(branches.map((branch) => ({ ...branch })));
+  const next = { ...parameters } as Record<string, unknown>;
+  next.branches = normalized.map((branch) => ({
+    slug: branch.slug,
+    label: branch.label.trim(),
+  }));
+  return stripEmpty(next);
+};
+
+export const createParallelSplitParameters = (): AgentParameters => {
+  const branches = ensureParallelBranches([]);
+  return {
+    join_slug: "",
+    branches: branches.map((branch) => ({ slug: branch.slug, label: branch.label })),
+  } satisfies AgentParameters;
+};
+
+export const createParallelJoinParameters = (): AgentParameters => ({});
+
+export const resolveParallelSplitParameters = (
+  parameters: AgentParameters | null | undefined,
+): AgentParameters => {
+  const joinSlug = getParallelSplitJoinSlug(parameters);
+  const branches = getParallelSplitBranches(parameters);
+  return {
+    join_slug: joinSlug,
+    branches: branches.map((branch) => ({ slug: branch.slug, label: branch.label })),
+  } satisfies AgentParameters;
 };
 
 export const setEndMessage = (

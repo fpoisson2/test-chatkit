@@ -10,6 +10,7 @@ import {
   type VectorStoreSummary,
   type WidgetTemplateSummary,
 } from "../../../../utils/backend";
+import { useI18n } from "../../../../i18n";
 import {
   getAssistantMessage,
   getAssistantMessageStreamDelay,
@@ -28,6 +29,8 @@ import {
   getUserMessage,
   getVectorStoreNodeConfig,
   getWaitForUserInputMessage,
+  getParallelSplitJoinSlug,
+  getParallelSplitBranches,
   type StartTelephonyRealtimeOverrides,
 } from "../../../../utils/workflows";
 import type {
@@ -45,6 +48,7 @@ import type {
   WebSearchConfig,
   WidgetVariableAssignment,
   WorkflowSummary,
+  ParallelBranch,
 } from "../../types";
 import { labelForKind } from "../../utils";
 import { TrashIcon } from "./components/TrashIcon";
@@ -62,6 +66,7 @@ import { TransformInspectorSection } from "./sections/TransformInspectorSection"
 import { UserMessageInspectorSection } from "./sections/UserMessageInspectorSection";
 import { WaitForUserInputInspectorSection } from "./sections/WaitForUserInputInspectorSection";
 import { WatchInspectorSection } from "./sections/WatchInspectorSection";
+import { ParallelSplitInspectorSection } from "./sections/ParallelSplitInspectorSection";
 import { WidgetInspectorSection } from "./sections/WidgetInspectorSection";
 
 export type NodeInspectorProps = {
@@ -151,6 +156,8 @@ export type NodeInspectorProps = {
   onConditionPathChange: (nodeId: string, value: string) => void;
   onConditionModeChange: (nodeId: string, value: string) => void;
   onConditionValueChange: (nodeId: string, value: string) => void;
+  onParallelJoinSlugChange: (nodeId: string, value: string) => void;
+  onParallelBranchesChange: (nodeId: string, branches: ParallelBranch[]) => void;
   availableModels: AvailableModel[];
   availableModelsLoading: boolean;
   availableModelsError: string | null;
@@ -229,6 +236,8 @@ const NodeInspector = ({
   onConditionPathChange,
   onConditionModeChange,
   onConditionValueChange,
+  onParallelJoinSlugChange,
+  onParallelBranchesChange,
   availableModels,
   availableModelsLoading,
   availableModelsError,
@@ -253,6 +262,7 @@ const NodeInspector = ({
   onRemove,
 }: NodeInspectorProps) => {
   const { token } = useAuth();
+  const { t } = useI18n();
   const { kind, displayName, parameters } = node.data;
   const isFixed = kind === "start";
 
@@ -265,6 +275,13 @@ const NodeInspector = ({
   const userMessage = kind === "user_message" ? getUserMessage(parameters) : "";
   const waitForUserInputMessage =
     kind === "wait_for_user_input" ? getWaitForUserInputMessage(parameters) : "";
+
+  const parallelJoinSlug =
+    kind === "parallel_split" ? getParallelSplitJoinSlug(parameters) : "";
+  const parallelBranches = useMemo<ParallelBranch[]>(
+    () => (kind === "parallel_split" ? getParallelSplitBranches(parameters) : []),
+    [kind, parameters],
+  );
 
   const [userMessageDraft, setUserMessageDraft] = useState(userMessage);
 
@@ -342,7 +359,7 @@ const NodeInspector = ({
       <div className={styles.nodeInspectorHeader}>
         <div className={styles.nodeInspectorSummary}>
           <span className={styles.nodeInspectorTitle}>
-            {displayName.trim() ? displayName : `Bloc ${labelForKind(kind)}`}
+            {displayName.trim() ? displayName : `Bloc ${labelForKind(kind, t)}`}
           </span>
           <span className={styles.nodeInspectorSubtitle}>Identifiant : {node.data.slug}</span>
         </div>
@@ -363,7 +380,7 @@ const NodeInspector = ({
         <dt>Identifiant</dt>
         <dd>{node.data.slug}</dd>
         <dt>Type</dt>
-        <dd>{labelForKind(kind)}</dd>
+        <dd>{labelForKind(kind, t)}</dd>
       </dl>
 
       <label className={styles.nodeInspectorDisplayNameField}>
@@ -402,6 +419,16 @@ const NodeInspector = ({
           onConditionPathChange={onConditionPathChange}
           onConditionModeChange={onConditionModeChange}
           onConditionValueChange={onConditionValueChange}
+        />
+      ) : null}
+
+      {kind === "parallel_split" ? (
+        <ParallelSplitInspectorSection
+          nodeId={node.id}
+          joinSlug={parallelJoinSlug}
+          branches={parallelBranches}
+          onJoinSlugChange={onParallelJoinSlugChange}
+          onBranchesChange={onParallelBranchesChange}
         />
       ) : null}
 

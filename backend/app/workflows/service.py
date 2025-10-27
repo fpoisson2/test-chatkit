@@ -1970,6 +1970,8 @@ class WorkflowService:
                 "user_message",
                 "json_vector_store",
                 "widget",
+                "parallel_split",
+                "parallel_join",
                 "end",
             }:
                 raise WorkflowValidationError(
@@ -2024,6 +2026,91 @@ class WorkflowService:
                     parameters.pop("tools", None)
                 else:
                     parameters["tools"] = normalized_tools
+
+            if kind == "parallel_split":
+                join_slug_raw = parameters.get("join_slug")
+                if join_slug_raw is None:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} doit préciser la jointure à "
+                        "rejoindre."
+                    )
+                if not isinstance(join_slug_raw, str):
+                    raise WorkflowValidationError(
+                        f"La jointure du nœud parallel_split {slug} doit être une "
+                        "chaîne."
+                    )
+                join_slug = join_slug_raw.strip()
+                if not join_slug:
+                    raise WorkflowValidationError(
+                        f"La jointure du nœud parallel_split {slug} doit être "
+                        "renseignée."
+                    )
+                parameters["join_slug"] = join_slug
+
+                raw_branches = parameters.get("branches")
+                if raw_branches is None:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} doit définir au moins deux "
+                        "branches."
+                    )
+                if not isinstance(raw_branches, Sequence) or isinstance(
+                    raw_branches, str | bytes | bytearray
+                ):
+                    raise WorkflowValidationError(
+                        f"Les branches du nœud parallel_split {slug} doivent être une "
+                        "liste."
+                    )
+
+                sanitized_branches: list[dict[str, str]] = []
+                seen_branch_slugs: set[str] = set()
+                for branch in raw_branches:
+                    if not isinstance(branch, Mapping):
+                        raise WorkflowValidationError(
+                            "Chaque branche parallèle doit être un objet JSON."
+                        )
+                    raw_branch_slug = branch.get("slug")
+                    if not isinstance(raw_branch_slug, str):
+                        raise WorkflowValidationError(
+                            "Chaque branche parallèle doit préciser un identifiant "
+                            "(slug)."
+                        )
+                    branch_slug = raw_branch_slug.strip()
+                    if not branch_slug:
+                        raise WorkflowValidationError(
+                            "Chaque branche parallèle doit posséder un identifiant non "
+                            "vide."
+                        )
+                    if branch_slug in seen_branch_slugs:
+                        raise WorkflowValidationError(
+                            f"Le nœud parallel_split {slug} contient des identifiants "
+                            "de branche en double."
+                        )
+                    seen_branch_slugs.add(branch_slug)
+
+                    label: str | None = None
+                    raw_label = branch.get("label")
+                    if raw_label is None:
+                        label = None
+                    elif isinstance(raw_label, str):
+                        stripped_label = raw_label.strip()
+                        label = stripped_label or None
+                    else:
+                        raise WorkflowValidationError(
+                            "Le libellé d'une branche parallèle doit être une chaîne."
+                        )
+
+                    payload: dict[str, str] = {"slug": branch_slug}
+                    if label is not None:
+                        payload["label"] = label
+                    sanitized_branches.append(payload)
+
+                if len(sanitized_branches) < 2:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} doit définir au moins deux "
+                        "branches."
+                    )
+
+                parameters["branches"] = sanitized_branches
 
             node = NormalizedNode(
                 slug=slug,
@@ -2401,6 +2488,8 @@ class WorkflowService:
 
         end_nodes = [slug for slug, node in nodes_by_slug.items() if node.kind == "end"]
 
+        join_to_split: dict[str, str] = {}
+
         for slug, node in nodes_by_slug.items():
             outgoing = adjacency.get(slug, [])
             incoming = reverse_adjacency.get(slug, [])
@@ -2440,6 +2529,59 @@ class WorkflowService:
                     raise WorkflowValidationError(
                         f"Le bloc watch {slug} doit comporter exactement une entrée."
                     )
+            if node.kind == "parallel_split":
+                if len(outgoing) < 2:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} doit comporter au moins deux "
+                        "sorties."
+                    )
+                join_slug_raw = node.parameters.get("join_slug")
+                join_slug = (
+                    join_slug_raw.strip()
+                    if isinstance(join_slug_raw, str)
+                    else ""
+                )
+                if not join_slug:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} doit préciser une jointure "
+                        "associée."
+                    )
+                join_node = nodes_by_slug.get(join_slug)
+                if join_node is None:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} référence une jointure "
+                        f"inconnue ({join_slug})."
+                    )
+                if join_node.kind != "parallel_join":
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} doit référencer un "
+                        "parallel_join valide."
+                    )
+                if join_slug == slug:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} ne peut pas se rejoindre "
+                        "lui-même."
+                    )
+                if join_slug in join_to_split and join_to_split[join_slug] != slug:
+                    raise WorkflowValidationError(
+                        f"La jointure {join_slug} est déjà associée au nœud "
+                        f"parallel_split {join_to_split[join_slug]}."
+                    )
+                join_to_split[join_slug] = slug
+
+                branches = node.parameters.get("branches")
+                branch_count = len(branches) if isinstance(branches, Sequence) else 0
+                if branch_count != len(outgoing):
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_split {slug} doit définir autant de "
+                        "branches que de sorties."
+                    )
+            if node.kind == "parallel_join":
+                if len(incoming) < 2:
+                    raise WorkflowValidationError(
+                        f"Le nœud parallel_join {slug} doit comporter au moins deux "
+                        "entrées."
+                    )
 
         visited: set[str] = set()
         stack: set[str] = set()
@@ -2464,6 +2606,15 @@ class WorkflowService:
                 raise WorkflowValidationError(
                     f"Le nœud de fin {end_slug} n'est pas accessible depuis le "
                     "début du workflow."
+                )
+
+        for join_slug, node in nodes_by_slug.items():
+            if node.kind != "parallel_join":
+                continue
+            if join_slug not in join_to_split:
+                raise WorkflowValidationError(
+                    f"Le nœud parallel_join {join_slug} doit être associé à un "
+                    "parallel_split."
                 )
 
         reachable_terminals = [slug for slug in visited if not adjacency.get(slug)]

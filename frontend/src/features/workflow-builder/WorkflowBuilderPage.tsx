@@ -91,6 +91,8 @@ import {
   setConditionMode,
   setConditionPath,
   setConditionValue,
+  setParallelSplitJoinSlug,
+  setParallelSplitBranches,
   stringifyAgentParameters,
   createVectorStoreNodeParameters,
   getVectorStoreNodeConfig,
@@ -112,6 +114,11 @@ import {
   createVoiceAgentParameters,
   resolveVoiceAgentParameters,
   resolveStartParameters,
+  createParallelSplitParameters,
+  createParallelJoinParameters,
+  resolveParallelSplitParameters,
+  getParallelSplitJoinSlug,
+  getParallelSplitBranches,
   type WorkflowToolConfig,
   type StartTelephonyRealtimeOverrides,
 } from "../../utils/workflows";
@@ -146,6 +153,7 @@ import type {
   VoiceAgentTool,
   VoiceAgentStartBehavior,
   VoiceAgentStopBehavior,
+  ParallelBranch,
 } from "./types";
 import {
   AUTO_SAVE_DELAY_MS,
@@ -1693,7 +1701,11 @@ const WorkflowBuilderPage = () => {
                         ? resolveWidgetNodeParameters(node.parameters)
                         : node.kind === "start"
                           ? resolveStartParameters(node.parameters)
-                          : resolveAgentParameters(null, node.parameters);
+                          : node.kind === "parallel_split"
+                            ? resolveParallelSplitParameters(node.parameters)
+                            : node.kind === "parallel_join"
+                              ? ({ ...(node.parameters ?? {}) } as AgentParameters)
+                              : resolveAgentParameters(null, node.parameters);
             const baseNode: FlowNode = {
               id: node.slug,
               position: positionFromMetadata ?? { x: 150 * index, y: 120 * index },
@@ -3138,6 +3150,42 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleParallelJoinSlugChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "parallel_split") {
+          return data;
+        }
+        const nextParameters = setParallelSplitJoinSlug(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleParallelBranchesChange = useCallback(
+    (nodeId: string, branches: ParallelBranch[]) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "parallel_split") {
+          return data;
+        }
+        const nextParameters = setParallelSplitBranches(data.parameters, branches);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleWidgetNodeSlugChange = useCallback(
     (nodeId: string, slug: string) => {
       updateNodeData(nodeId, (data) => {
@@ -3949,6 +3997,62 @@ const WorkflowBuilderPage = () => {
       },
       draggable: true,
     };
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
+
+  const handleAddParallelSplitNode = useCallback(() => {
+    const slug = `parallel-split-${Date.now()}`;
+    const joinSlug = `parallel-join-${Date.now()}`;
+    const parameters = {
+      ...createParallelSplitParameters(),
+      join_slug: joinSlug,
+    };
+    const displayName = humanizeSlug(slug);
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 420, y: 200 },
+      data: {
+        slug,
+        kind: "parallel_split",
+        displayName,
+        label: displayName,
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
+        metadata: {},
+      },
+      draggable: true,
+    } satisfies FlowNode;
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
+
+  const handleAddParallelJoinNode = useCallback(() => {
+    const slug = `parallel-join-${Date.now()}`;
+    const parameters = createParallelJoinParameters();
+    const displayName = humanizeSlug(slug);
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 520, y: 220 },
+      data: {
+        slug,
+        kind: "parallel_join",
+        displayName,
+        label: displayName,
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
+        metadata: {},
+      },
+      draggable: true,
+    } satisfies FlowNode;
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
 
@@ -6384,108 +6488,76 @@ const WorkflowBuilderPage = () => {
     selectedWorkflowId,
   ]);
 
-  const blockLibraryItems = useMemo(
-    () => [
-      {
-        key: "agent",
-        label: "Agent",
-        shortLabel: "A",
-        color: NODE_COLORS.agent,
-        onClick: handleAddAgentNode,
-      },
+  const blockLibraryItems = useMemo(() => {
+    const definitions: Array<{
+      key: string;
+      kind: NodeKind;
+      shortLabel: string;
+      onClick: () => void;
+    }> = [
+      { key: "agent", kind: "agent", shortLabel: "A", onClick: handleAddAgentNode },
       {
         key: "voice-agent",
-        label: "Agent vocal",
-        shortLabel: "V",
-        color: NODE_COLORS.voice_agent,
+        kind: "voice_agent",
+        shortLabel: "AV",
         onClick: handleAddVoiceAgentNode,
       },
-      {
-        key: "condition",
-        label: "Condition",
-        shortLabel: "C",
-        color: NODE_COLORS.condition,
-        onClick: handleAddConditionNode,
-      },
-      {
-        key: "state",
-        label: "Bloc état",
-        shortLabel: "É",
-        color: NODE_COLORS.state,
-        onClick: handleAddStateNode,
-      },
-      {
-        key: "watch",
-        label: "Bloc watch",
-        shortLabel: "W",
-        color: NODE_COLORS.watch,
-        onClick: handleAddWatchNode,
-      },
-      {
-        key: "transform",
-        label: "Bloc transform",
-        shortLabel: "T",
-        color: NODE_COLORS.transform,
-        onClick: handleAddTransformNode,
-      },
+      { key: "condition", kind: "condition", shortLabel: "C", onClick: handleAddConditionNode },
+      { key: "parallel-split", kind: "parallel_split", shortLabel: "SP", onClick: handleAddParallelSplitNode },
+      { key: "parallel-join", kind: "parallel_join", shortLabel: "JP", onClick: handleAddParallelJoinNode },
+      { key: "state", kind: "state", shortLabel: "É", onClick: handleAddStateNode },
+      { key: "watch", kind: "watch", shortLabel: "W", onClick: handleAddWatchNode },
+      { key: "transform", kind: "transform", shortLabel: "T", onClick: handleAddTransformNode },
       {
         key: "wait-for-user-input",
-        label: "Wait for user input",
+        kind: "wait_for_user_input",
         shortLabel: "AU",
-        color: NODE_COLORS.wait_for_user_input,
         onClick: handleAddWaitForUserInputNode,
       },
       {
         key: "assistant-message",
-        label: "Message assistant",
+        kind: "assistant_message",
         shortLabel: "MA",
-        color: NODE_COLORS.assistant_message,
         onClick: handleAddAssistantMessageNode,
       },
       {
         key: "user-message",
-        label: "Message utilisateur",
+        kind: "user_message",
         shortLabel: "MU",
-        color: NODE_COLORS.user_message,
         onClick: handleAddUserMessageNode,
       },
       {
         key: "json-vector-store",
-        label: "Stockage JSON",
+        kind: "json_vector_store",
         shortLabel: "VS",
-        color: NODE_COLORS.json_vector_store,
         onClick: handleAddVectorStoreNode,
       },
-      {
-        key: "widget",
-        label: "Bloc widget",
-        shortLabel: "W",
-        color: NODE_COLORS.widget,
-        onClick: handleAddWidgetNode,
-      },
-      {
-        key: "end",
-        label: "Fin",
-        shortLabel: "F",
-        color: NODE_COLORS.end,
-        onClick: handleAddEndNode,
-      },
-    ],
-    [
-      handleAddAgentNode,
-      handleAddVoiceAgentNode,
-      handleAddConditionNode,
-      handleAddStateNode,
-      handleAddWatchNode,
-      handleAddTransformNode,
-      handleAddWaitForUserInputNode,
-      handleAddAssistantMessageNode,
-      handleAddUserMessageNode,
-      handleAddVectorStoreNode,
-      handleAddWidgetNode,
-      handleAddEndNode,
-    ],
-  );
+      { key: "widget", kind: "widget", shortLabel: "W", onClick: handleAddWidgetNode },
+      { key: "end", kind: "end", shortLabel: "F", onClick: handleAddEndNode },
+    ];
+
+    return definitions.map((definition) => ({
+      ...definition,
+      label: labelForKind(definition.kind, t),
+      color: NODE_COLORS[definition.kind],
+    }));
+  }, [
+    t,
+    handleAddAgentNode,
+    handleAddVoiceAgentNode,
+    handleAddConditionNode,
+    handleAddParallelSplitNode,
+    handleAddParallelJoinNode,
+    handleAddStateNode,
+    handleAddWatchNode,
+    handleAddTransformNode,
+    handleAddWaitForUserInputNode,
+    handleAddAssistantMessageNode,
+    handleAddUserMessageNode,
+    handleAddVectorStoreNode,
+    handleAddWidgetNode,
+    handleAddEndNode,
+  ]);
 
   const updateBlockLibraryTransforms = useCallback(() => {
     if (!isMobileLayout || typeof window === "undefined") {
@@ -7105,7 +7177,7 @@ const WorkflowBuilderPage = () => {
 
   const isPrimaryActionDisabled = !versionSummaryForPromotion || isDeploying;
   const selectedElementLabel = selectedNode
-    ? selectedNode.data.displayName.trim() || labelForKind(selectedNode.data.kind)
+    ? selectedNode.data.displayName.trim() || labelForKind(selectedNode.data.kind, t)
     : selectedEdge
       ? `${selectedEdge.source} → ${selectedEdge.target}`
       : "";
@@ -7208,6 +7280,8 @@ const WorkflowBuilderPage = () => {
             onConditionPathChange={handleConditionPathChange}
             onConditionModeChange={handleConditionModeChange}
             onConditionValueChange={handleConditionValueChange}
+            onParallelJoinSlugChange={handleParallelJoinSlugChange}
+            onParallelBranchesChange={handleParallelBranchesChange}
             availableModels={availableModels}
             availableModelsLoading={availableModelsLoading}
             availableModelsError={availableModelsError}

@@ -398,6 +398,70 @@
   font-size: 0.95rem;
 }
 
+.nodeInspectorBranchList {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.nodeInspectorSectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.nodeInspectorBranchItem {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.65rem;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.5rem;
+  background-color: rgba(226, 232, 240, 0.2);
+}
+
+.nodeInspectorBranchHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.nodeInspectorBranchSlug {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.nodeInspectorBranchRemoveButton {
+  border: none;
+  background: none;
+  color: #dc2626;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nodeInspectorBranchRemoveButton[disabled] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.nodeInspectorBranchAddButton {
+  border: 1px solid rgba(37, 99, 235, 0.35);
+  background-color: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+  font-weight: 600;
+  border-radius: 9999px;
+  padding: 0.35rem 0.85rem;
+  cursor: pointer;
+}
+
+.nodeInspectorBranchAddButton:hover,
+.nodeInspectorBranchAddButton:focus {
+  background-color: rgba(37, 99, 235, 0.18);
+  border-color: rgba(37, 99, 235, 0.45);
+}
+
 .nodeInspectorMutedNote {
   color: #64748b;
   font-size: 0.9rem;

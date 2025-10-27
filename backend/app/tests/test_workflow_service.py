@@ -31,6 +31,59 @@ def _load_workflow_defaults() -> WorkflowDefaults:
     return WorkflowDefaults.from_mapping(payload)
 
 
+def _build_parallel_graph() -> dict[str, object]:
+    join_slug = "parallel-join-1"
+    return {
+        "nodes": [
+            {"slug": "start", "kind": "start", "is_enabled": True},
+            {
+                "slug": "split",
+                "kind": "parallel_split",
+                "is_enabled": True,
+                "parameters": {
+                    "join_slug": join_slug,
+                    "branches": [
+                        {"slug": "branch-a", "label": "Branche A"},
+                        {"slug": "branch-b", "label": "Branche B"},
+                    ],
+                },
+            },
+            {
+                "slug": "agent-a",
+                "kind": "assistant_message",
+                "is_enabled": True,
+                "parameters": {"message": "A"},
+            },
+            {
+                "slug": "agent-b",
+                "kind": "assistant_message",
+                "is_enabled": True,
+                "parameters": {"message": "B"},
+            },
+            {
+                "slug": join_slug,
+                "kind": "parallel_join",
+                "is_enabled": True,
+                "parameters": {},
+            },
+            {
+                "slug": "end",
+                "kind": "end",
+                "is_enabled": True,
+                "parameters": {"message": "Fin"},
+            },
+        ],
+        "edges": [
+            {"source": "start", "target": "split"},
+            {"source": "split", "target": "agent-a"},
+            {"source": "split", "target": "agent-b"},
+            {"source": "agent-a", "target": join_slug},
+            {"source": "agent-b", "target": join_slug},
+            {"source": join_slug, "target": "end"},
+        ],
+    }
+
+
 @pytest.fixture()
 def workflow_service(tmp_path: Path) -> WorkflowService:
     database_path = tmp_path / "workflow.db"
@@ -231,6 +284,100 @@ def test_update_current_normalizes_nested_workflow_slug(
     assert serialized_agent["parameters"]["workflow"] == {
         "slug": target_definition.workflow.slug
     }
+
+
+def test_parallel_split_join_workflow_is_valid(
+    workflow_service: WorkflowService,
+) -> None:
+    created = workflow_service.create_workflow(
+        slug="parallel-valid",
+        display_name="Workflow parallèle",
+        graph_payload=_build_parallel_graph(),
+    )
+
+    kinds = {step.kind for step in created.steps}
+    assert "parallel_split" in kinds
+    assert "parallel_join" in kinds
+
+
+def test_parallel_split_requires_matching_join(
+    workflow_service: WorkflowService,
+) -> None:
+    graph_payload = _build_parallel_graph()
+    for node in graph_payload["nodes"]:
+        if node["slug"] == "split":
+            node["parameters"]["join_slug"] = "missing-join"
+            break
+
+    with pytest.raises(WorkflowValidationError) as exc_info:
+        workflow_service.create_workflow(
+            slug="parallel-missing-join",
+            display_name="Workflow invalide",
+            graph_payload=graph_payload,
+        )
+
+    assert "jointure inconnue" in str(exc_info.value)
+
+
+def test_parallel_join_requires_multiple_inputs(
+    workflow_service: WorkflowService,
+) -> None:
+    graph_payload = _build_parallel_graph()
+    graph_payload["edges"] = [
+        edge
+        for edge in graph_payload["edges"]
+        if not (edge["source"] == "agent-b" and edge["target"] == "parallel-join-1")
+    ]
+
+    with pytest.raises(WorkflowValidationError) as exc_info:
+        workflow_service.create_workflow(
+            slug="parallel-single-input",
+            display_name="Workflow invalide",
+            graph_payload=graph_payload,
+        )
+
+    assert "au moins deux entrées" in str(exc_info.value)
+
+
+def test_parallel_split_requires_multiple_outputs(
+    workflow_service: WorkflowService,
+) -> None:
+    graph_payload = _build_parallel_graph()
+    graph_payload["edges"] = [
+        edge
+        for edge in graph_payload["edges"]
+        if not (edge["source"] == "split" and edge["target"] == "agent-b")
+    ]
+
+    with pytest.raises(WorkflowValidationError) as exc_info:
+        workflow_service.create_workflow(
+            slug="parallel-single-output",
+            display_name="Workflow invalide",
+            graph_payload=graph_payload,
+        )
+
+    assert "au moins deux sorties" in str(exc_info.value)
+
+
+def test_parallel_split_requires_branch_alignment(
+    workflow_service: WorkflowService,
+) -> None:
+    graph_payload = _build_parallel_graph()
+    for node in graph_payload["nodes"]:
+        if node["slug"] == "split":
+            node["parameters"]["branches"].append(
+                {"slug": "branch-c", "label": "Branche C"}
+            )
+            break
+
+    with pytest.raises(WorkflowValidationError) as exc_info:
+        workflow_service.create_workflow(
+            slug="parallel-branches",
+            display_name="Workflow invalide",
+            graph_payload=graph_payload,
+        )
+
+    assert "autant de branches" in str(exc_info.value)
 
 
 def test_create_hosted_workflow_persists_entry(
