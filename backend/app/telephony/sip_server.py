@@ -109,6 +109,7 @@ def _merge_voice_settings(
     session: Session | None,
     overrides: TelephonyRouteOverrides | None,
     settings: Settings,
+    workflow_definition: WorkflowDefinition | None = None,
 ) -> tuple[str, str, str, dict[str, str], str | None, str | None]:
     db: Session
     owns_session = False
@@ -134,6 +135,39 @@ def _merge_voice_settings(
         )
         provider_id = getattr(voice_settings, "provider_id", None)
         provider_slug = getattr(voice_settings, "provider_slug", None)
+
+        # Chercher le premier bloc agent vocal dans le workflow pour ses paramètres
+        if workflow_definition is not None:
+            steps = getattr(workflow_definition, "steps", [])
+            for step in steps:
+                step_kind = getattr(step, "kind", "")
+                # Chercher les blocs de type agent ou voice-agent
+                if step_kind in ("agent", "voice-agent"):
+                    params = getattr(step, "parameters", {})
+                    if isinstance(params, dict):
+                        step_slug = getattr(step, "slug", "<inconnu>")
+                        # Utiliser les paramètres du bloc agent si disponibles
+                        if params.get("model"):
+                            model = params["model"]
+                        if params.get("instructions"):
+                            instructions = params["instructions"]
+                        if params.get("voice"):
+                            voice = params["voice"]
+                        if params.get("provider_id"):
+                            provider_id = params["provider_id"]
+                        if params.get("provider_slug"):
+                            provider_slug = params["provider_slug"]
+                        logger.info(
+                            "Paramètres voix extraits du bloc %s (kind=%s) : "
+                            "model=%s, voice=%s, provider=%s",
+                            step_slug,
+                            step_kind,
+                            model,
+                            voice,
+                            provider_slug or provider_id or "<aucun>",
+                        )
+                    # Utiliser le premier bloc agent trouvé
+                    break
     finally:
         if owns_session:
             db.close()
@@ -250,7 +284,10 @@ def resolve_workflow_for_phone_number(
         )
         model, instructions, voice, prompt_variables, provider_id, provider_slug = (
             _merge_voice_settings(
-                session=session, overrides=None, settings=effective_settings
+                session=session,
+                overrides=None,
+                settings=effective_settings,
+                workflow_definition=definition,
             )
         )
         return TelephonyCallContext(
@@ -339,7 +376,10 @@ def resolve_workflow_for_phone_number(
 
     model, instructions, voice, prompt_variables, provider_id, provider_slug = (
         _merge_voice_settings(
-            session=session, overrides=route.overrides, settings=effective_settings
+            session=session,
+            overrides=route.overrides,
+            settings=effective_settings,
+            workflow_definition=selected_definition,
         )
     )
 
