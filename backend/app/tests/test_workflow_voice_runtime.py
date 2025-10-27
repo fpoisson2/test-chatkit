@@ -211,6 +211,8 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
         "model": "gpt-voice",
         "voice": "ember",
         "instructions": "Répondez brièvement.",
+        "provider_id": None,
+        "provider_slug": None,
         "realtime": {
             "start_mode": "auto",
             "stop_mode": "manual",

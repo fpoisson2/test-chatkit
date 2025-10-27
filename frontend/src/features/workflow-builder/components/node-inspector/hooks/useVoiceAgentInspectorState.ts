@@ -5,6 +5,8 @@ import {
   DEFAULT_VOICE_AGENT_VOICE,
   getAgentMessage,
   getAgentModel,
+  getAgentModelProviderId,
+  getAgentModelProviderSlug,
   getVoiceAgentStartBehavior,
   getVoiceAgentStopBehavior,
   getVoiceAgentTools,
@@ -19,6 +21,8 @@ import type {
 
 export type VoiceAgentInspectorState = {
   voiceModel: string;
+  voiceProviderId: string;
+  voiceProviderSlug: string;
   voiceId: string;
   instructions: string;
   startBehavior: VoiceAgentStartBehavior;
@@ -34,6 +38,8 @@ export const buildVoiceAgentInspectorState = (
   parameters: FlowNode["data"]["parameters"],
 ): VoiceAgentInspectorState => {
   const model = getAgentModel(parameters).trim() || DEFAULT_VOICE_AGENT_MODEL;
+  const providerId = getAgentModelProviderId(parameters).trim();
+  const providerSlug = getAgentModelProviderSlug(parameters).trim().toLowerCase();
   const instructions = getAgentMessage(parameters);
   const voice = getVoiceAgentVoice(parameters) || DEFAULT_VOICE_AGENT_VOICE;
   const startBehavior = getVoiceAgentStartBehavior(parameters);
@@ -42,6 +48,8 @@ export const buildVoiceAgentInspectorState = (
 
   return {
     voiceModel: model,
+    voiceProviderId: providerId,
+    voiceProviderSlug: providerSlug,
     voiceId: voice,
     instructions,
     startBehavior,

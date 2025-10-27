@@ -38,6 +38,8 @@ export type VoiceSessionSecret = {
   expires_at?: string | null;
   instructions: string;
   model: string;
+  model_provider_id?: string | null;
+  model_provider_slug?: string | null;
   voice: string;
   prompt_id?: string | null;
   prompt_version?: string | null;

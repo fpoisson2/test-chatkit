@@ -27,6 +27,14 @@ class VoiceSessionRequest(BaseModel):
         default=None,
         description="Modèle Realtime à utiliser (optionnel).",
     )
+    model_provider_id: str | None = Field(
+        default=None,
+        description="Identifiant du fournisseur à utiliser (optionnel).",
+    )
+    model_provider_slug: str | None = Field(
+        default=None,
+        description="Slug du fournisseur à utiliser (optionnel).",
+    )
     instructions: str | None = Field(
         default=None,
         description="Instructions transmises à l'agent vocal (optionnel).",
@@ -43,6 +51,8 @@ class VoiceSessionResponse(BaseModel):
     client_secret: dict[str, Any] | str
     expires_at: str | None = None
     model: str
+    model_provider_id: str | None = None
+    model_provider_slug: str | None = None
     instructions: str
     voice: str
     prompt_id: str | None = None
@@ -99,6 +109,8 @@ class ChatKitWorkflowResponse(BaseModel):
 class VoiceSettingsResponse(BaseModel):
     instructions: str
     model: str
+    provider_id: str | None = None
+    provider_slug: str | None = None
     voice: str
     prompt_id: str | None = None
     prompt_version: str | None = None
@@ -115,6 +127,14 @@ class VoiceSettingsUpdateRequest(BaseModel):
         default=None, description="Instructions vocales personnalisées."
     )
     model: str | None = Field(default=None, description="Modèle Realtime à utiliser.")
+    provider_id: str | None = Field(
+        default=None,
+        description="Identifiant du fournisseur Realtime (optionnel).",
+    )
+    provider_slug: str | None = Field(
+        default=None,
+        description="Slug du fournisseur Realtime (optionnel).",
+    )
     voice: str | None = Field(
         default=None, description="Identifiant de la voix Realtime."
     )

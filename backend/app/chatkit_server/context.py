@@ -94,6 +94,8 @@ class ChatKitRequestContext:
     voice_instructions: str | None = None
     voice_voice: str | None = None
     voice_prompt_variables: Mapping[str, str] | None = None
+    voice_model_provider_id: str | None = None
+    voice_model_provider_slug: str | None = None
 
     def trace_metadata(self) -> dict[str, str]:
         """Retourne des métadonnées de trace compatibles avec l'Agents SDK."""

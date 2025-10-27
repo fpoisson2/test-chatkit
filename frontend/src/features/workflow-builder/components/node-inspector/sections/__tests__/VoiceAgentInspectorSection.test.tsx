@@ -38,6 +38,7 @@ const renderSection = (overrides: Partial<Parameters<typeof VoiceAgentInspectorS
     nodeId: "voice-1",
     parameters: {},
     onAgentModelChange: vi.fn(),
+    onAgentProviderChange: vi.fn(),
     onAgentMessageChange: vi.fn(),
     onVoiceAgentVoiceChange: vi.fn(),
     onVoiceAgentStartBehaviorChange: vi.fn(),
@@ -45,6 +46,8 @@ const renderSection = (overrides: Partial<Parameters<typeof VoiceAgentInspectorS
     onVoiceAgentToolChange: vi.fn(),
     workflows: baseWorkflows,
     currentWorkflowId: 1,
+    availableModels: [],
+    availableModelsLoading: false,
     onAgentWeatherToolChange: vi.fn(),
     onAgentWidgetValidationToolChange: vi.fn(),
     onAgentWorkflowValidationToolChange: vi.fn(),
@@ -101,6 +104,39 @@ describe("VoiceAgentInspectorSection", () => {
     await userEvent.click(toggle);
 
     expect(onAgentWorkflowToolToggle).toHaveBeenCalledWith("voice-1", "secondary", true);
+  });
+
+  it("allows selecting a provider", async () => {
+    const onAgentProviderChange = vi.fn();
+    const availableModels = [
+      {
+        id: 1,
+        name: "gpt-voice",
+        display_name: "GPT Voice",
+        description: null,
+        provider_id: null,
+        provider_slug: "openai",
+        supports_reasoning: false,
+        supports_previous_response_id: true,
+        supports_reasoning_summary: true,
+        store: null,
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+      },
+    ];
+
+    renderSection({
+      onAgentProviderChange,
+      availableModels,
+    });
+
+    const select = screen.getByLabelText(/Fournisseur|Provider/i);
+    await userEvent.selectOptions(select, [`|openai`]);
+
+    expect(onAgentProviderChange).toHaveBeenCalledWith("voice-1", {
+      providerId: null,
+      providerSlug: "openai",
+    });
   });
 });
 

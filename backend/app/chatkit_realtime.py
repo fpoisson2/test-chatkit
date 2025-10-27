@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Mapping, Sequence
 from typing import Any
 
 import httpx
 from fastapi import HTTPException, status
 
+from .admin_settings import resolve_model_provider_credentials
 from .config import get_settings
 from .token_sanitizer import sanitize_value
 
@@ -18,6 +20,8 @@ async def create_realtime_voice_session(
     user_id: str,
     model: str,
     instructions: str,
+    provider_id: str | None = None,
+    provider_slug: str | None = None,
     voice: str | None = None,
     realtime: Mapping[str, Any] | None = None,
     tools: Sequence[Any] | None = None,
@@ -48,19 +52,120 @@ async def create_realtime_voice_session(
             sanitized_request,
         )
 
+    def _clean_identifier(value: Any) -> str:
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate:
+                return candidate
+        return ""
+
+    def _clean_slug(value: Any) -> str:
+        if isinstance(value, str):
+            candidate = value.strip().lower()
+            if candidate:
+                return candidate
+        return ""
+
+    def _clean_url(value: Any) -> str | None:
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate:
+                return candidate.rstrip("/")
+        return None
+
+    def _clean_secret(value: Any) -> str | None:
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate:
+                return candidate
+        return None
+
+    normalized_provider_id = _clean_identifier(provider_id)
+    normalized_provider_slug = _clean_slug(provider_slug)
+
+    api_base = settings.model_api_base
+    api_key = settings.model_api_key
+
+    provider_base_override: str | None = None
+    provider_key_override: str | None = None
+
+    credentials = None
+    if normalized_provider_id:
+        credentials = resolve_model_provider_credentials(normalized_provider_id)
+        if (
+            credentials is not None
+            and normalized_provider_slug
+            and getattr(credentials, "provider", None) != normalized_provider_slug
+        ):
+            credentials = None
+    if credentials is not None:
+        provider_base_override = _clean_url(getattr(credentials, "api_base", None))
+        provider_key_override = _clean_secret(getattr(credentials, "api_key", None))
+    elif normalized_provider_id:
+        for config in settings.model_providers:
+            if config.id == normalized_provider_id:
+                if (
+                    normalized_provider_slug
+                    and config.provider != normalized_provider_slug
+                ):
+                    break
+                provider_base_override = _clean_url(config.api_base)
+                provider_key_override = _clean_secret(config.api_key)
+                break
+
+    if provider_base_override is None and normalized_provider_slug:
+        for config in settings.model_providers:
+            if config.provider == normalized_provider_slug:
+                provider_base_override = _clean_url(config.api_base)
+                provider_key_override = _clean_secret(config.api_key)
+                break
+
+    if provider_base_override is None and normalized_provider_slug:
+        default_provider = _clean_slug(getattr(settings, "model_provider", None))
+        if default_provider and default_provider == normalized_provider_slug:
+            provider_base_override = _clean_url(settings.model_api_base)
+            provider_key_override = _clean_secret(settings.model_api_key)
+
+    if provider_base_override is None and normalized_provider_slug == "openai":
+        openai_base_env = _clean_url(os.environ.get("CHATKIT_API_BASE"))
+        provider_base_override = openai_base_env or "https://api.openai.com"
+        openai_key = _clean_secret(getattr(settings, "openai_api_key", None))
+        if openai_key:
+            provider_key_override = openai_key
+
+    if provider_base_override:
+        api_base = provider_base_override
+    if provider_key_override:
+        api_key = provider_key_override
+
     headers = {
-        "Authorization": f"Bearer {settings.model_api_key}",
+        "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "OpenAI-Beta": "realtime=v1",
     }
 
     timeout = httpx.Timeout(30.0, connect=10.0, read=None)
+
+    base_url = httpx.URL(api_base)
+    normalized_path = base_url.path.rstrip("/")
+    path_segments = [segment for segment in normalized_path.split("/") if segment]
+    has_version_segment = bool(path_segments) and path_segments[-1].lower() == "v1"
+
+    if has_version_segment:
+        target_path = f"{normalized_path}/realtime/client_secrets"
+    else:
+        base_path = normalized_path or ""
+        target_path = f"{base_path}/v1/realtime/client_secrets"
+
+    if not target_path.startswith("/"):
+        target_path = "/" + target_path
+
+    endpoint_url = base_url.copy_with(path=target_path, query=None, fragment=None)
+
     try:
-        async with httpx.AsyncClient(
-            base_url=settings.model_api_base, timeout=timeout
-        ) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
-                "/v1/realtime/client_secrets",
+                str(endpoint_url),
                 json=payload,
                 headers=headers,
             )

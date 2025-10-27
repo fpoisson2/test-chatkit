@@ -7,6 +7,7 @@ import {
   createVoiceAgentParameters,
   setAgentMessage,
   setAgentModel,
+  setAgentModelProvider,
   setVoiceAgentStartBehavior,
   setVoiceAgentStopBehavior,
   setVoiceAgentToolEnabled,
@@ -20,6 +21,8 @@ describe("useVoiceAgentInspectorState", () => {
     const state = buildVoiceAgentInspectorState(parameters);
 
     expect(state.voiceModel).toBe(DEFAULT_VOICE_AGENT_MODEL);
+    expect(state.voiceProviderId).toBe("");
+    expect(state.voiceProviderSlug).toBe("");
     expect(state.voiceId).toBe(DEFAULT_VOICE_AGENT_VOICE);
     expect(state.instructions).toBe("");
     expect(state.startBehavior).toBe("manual");
@@ -33,6 +36,10 @@ describe("useVoiceAgentInspectorState", () => {
   it("reflects custom realtime settings", () => {
     let parameters = createVoiceAgentParameters();
     parameters = setAgentModel(parameters, "gpt-4o-realtime-custom");
+    parameters = setAgentModelProvider(parameters, {
+      providerId: null,
+      providerSlug: "openai",
+    });
     parameters = setVoiceAgentVoice(parameters, "verse");
     parameters = setAgentMessage(parameters, "Stay concise");
     parameters = setVoiceAgentStartBehavior(parameters, "auto");
@@ -43,6 +50,8 @@ describe("useVoiceAgentInspectorState", () => {
     const state = buildVoiceAgentInspectorState(parameters);
 
     expect(state.voiceModel).toBe("gpt-4o-realtime-custom");
+    expect(state.voiceProviderId).toBe("");
+    expect(state.voiceProviderSlug).toBe("openai");
     expect(state.voiceId).toBe("verse");
     expect(state.instructions).toBe("Stay concise");
     expect(state.startBehavior).toBe("auto");

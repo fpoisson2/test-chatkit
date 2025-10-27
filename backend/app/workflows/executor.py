@@ -136,12 +136,16 @@ class _VoicePreferenceOverrides:
     instructions: str | None
     voice: str | None
     prompt_variables: dict[str, str]
+    provider_id: str | None
+    provider_slug: str | None
 
     def is_empty(self) -> bool:
         return not (
             (self.model and self.model.strip())
             or (self.instructions and self.instructions.strip())
             or (self.voice and self.voice.strip())
+            or (self.provider_id and self.provider_id.strip())
+            or (self.provider_slug and self.provider_slug.strip())
             or self.prompt_variables
         )
 
@@ -168,16 +172,31 @@ def _extract_voice_overrides(
     else:
         prompt_variables = {}
 
+    provider_id_raw = getattr(request_context, "voice_model_provider_id", None)
+    provider_slug_raw = getattr(request_context, "voice_model_provider_slug", None)
+
     sanitized_model = model if isinstance(model, str) and model.strip() else None
     sanitized_instructions = (
         instructions if isinstance(instructions, str) and instructions.strip() else None
     )
     sanitized_voice = voice if isinstance(voice, str) and voice.strip() else None
+    sanitized_provider_id = (
+        provider_id_raw.strip()
+        if isinstance(provider_id_raw, str) and provider_id_raw.strip()
+        else None
+    )
+    sanitized_provider_slug = (
+        provider_slug_raw.strip().lower()
+        if isinstance(provider_slug_raw, str) and provider_slug_raw.strip()
+        else None
+    )
     overrides = _VoicePreferenceOverrides(
         sanitized_model,
         sanitized_instructions,
         sanitized_voice,
         prompt_variables,
+        sanitized_provider_id,
+        sanitized_provider_slug,
     )
 
     return None if overrides.is_empty() else overrides
@@ -1030,6 +1049,38 @@ async def run_workflow(
             fallback=settings.chatkit_realtime_voice,
         )
 
+        provider_id_override = getattr(overrides, "provider_id", None)
+        provider_slug_override = getattr(overrides, "provider_slug", None)
+
+        raw_provider_id = params.get("model_provider_id")
+        step_provider_id = (
+            raw_provider_id.strip()
+            if isinstance(raw_provider_id, str) and raw_provider_id.strip()
+            else None
+        )
+        raw_provider_slug = params.get("model_provider_slug")
+        if not isinstance(raw_provider_slug, str) or not raw_provider_slug.strip():
+            fallback_slug = params.get("model_provider")
+            raw_provider_slug = (
+                fallback_slug if isinstance(fallback_slug, str) else None
+            )
+        step_provider_slug = (
+            raw_provider_slug.strip().lower()
+            if isinstance(raw_provider_slug, str) and raw_provider_slug.strip()
+            else None
+        )
+
+        provider_id = (
+            provider_id_override
+            if provider_id_override
+            else step_provider_id
+        )
+        provider_slug = (
+            provider_slug_override
+            if provider_slug_override
+            else step_provider_slug
+        )
+
         realtime_raw = params.get("realtime")
         realtime = realtime_raw if isinstance(realtime_raw, Mapping) else {}
 
@@ -1113,6 +1164,10 @@ async def run_workflow(
             "realtime": realtime_config,
             "tools": sanitized_tools,
         }
+        if provider_id:
+            voice_context["model_provider_id"] = provider_id
+        if provider_slug:
+            voice_context["model_provider_slug"] = provider_slug
         if tool_metadata:
             voice_context["tool_metadata"] = tool_metadata
         prompt_variables: dict[str, str] = {}
@@ -1129,6 +1184,10 @@ async def run_workflow(
             "tools": sanitized_tools,
             "tool_definitions": sanitized_tools,
         }
+        if provider_id:
+            event_context["model_provider_id"] = provider_id
+        if provider_slug:
+            event_context["model_provider_slug"] = provider_slug
         if tool_metadata:
             event_context["tool_metadata"] = tool_metadata
         if prompt_variables:
@@ -2627,6 +2686,8 @@ async def run_workflow(
                     model=event_context["model"],
                     voice=event_context.get("voice"),
                     instructions=event_context["instructions"],
+                    provider_id=event_context.get("model_provider_id"),
+                    provider_slug=event_context.get("model_provider_slug"),
                     realtime=event_context.get("realtime"),
                     tools=event_context.get("tools"),
                 )
