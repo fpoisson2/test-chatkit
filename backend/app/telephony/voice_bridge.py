@@ -274,6 +274,7 @@ class TelephonyVoiceBridge:
                 await request_stop()
 
         transcript_buffers: dict[str, list[str]] = {}
+        audio_interrupted = asyncio.Event()
 
         async def handle_realtime() -> None:
             nonlocal outbound_audio_bytes, error
@@ -306,18 +307,33 @@ class TelephonyVoiceBridge:
                     error = VoiceBridgeError(description)
                     break
 
-                # Événements VAD - l'API gère automatiquement l'interruption
+                # Événements VAD et interruption
                 if message_type == "input_audio_buffer.speech_started":
-                    logger.debug("Détection de parole utilisateur - interruption automatique")
+                    logger.info("Détection de parole utilisateur - interruption de l'agent")
+                    audio_interrupted.set()
                     continue
                 if message_type == "input_audio_buffer.speech_stopped":
                     logger.debug("Fin de parole utilisateur détectée")
                     continue
                 if message_type == "response.cancelled":
-                    logger.debug("Réponse annulée suite à interruption utilisateur")
+                    logger.debug("Réponse annulée par l'API")
+                    audio_interrupted.set()
+                    continue
+                if message_type == "audio_interrupted" or message_type == "response.audio_interrupted":
+                    logger.info("Audio interrompu par l'utilisateur")
+                    audio_interrupted.set()
+                    continue
+
+                # Réinitialiser le flag d'interruption au début d'une nouvelle réponse
+                if message_type == "response.created" or message_type == "response.started":
+                    audio_interrupted.clear()
                     continue
 
                 if message_type.endswith("audio.delta"):
+                    # Ne pas envoyer l'audio si l'utilisateur a interrompu
+                    if audio_interrupted.is_set():
+                        logger.debug("Audio delta ignoré (utilisateur a interrompu)")
+                        continue
                     for chunk in self._extract_audio_chunks(message):
                         try:
                             pcm = base64.b64decode(chunk)
