@@ -261,21 +261,14 @@ class TelephonyVoiceBridge:
                     if not should_continue():
                         break
             finally:
+                # Avec VAD activé, l'API gère automatiquement le commit et la création de réponse
+                # On commit manuellement uniquement si l'appel se termine pendant que l'utilisateur parle
                 if appended:
                     try:
                         await send_json({"type": "input_audio_buffer.commit"})
-                        await send_json(
-                            {
-                                "type": "response.create",
-                                "response": {
-                                    "modalities": ["text", "audio"],
-                                    "conversation": "default",
-                                },
-                            }
-                        )
                     except Exception as exc:  # pragma: no cover - fermeture concurrente
                         logger.debug(
-                            "Impossible d'envoyer la séquence de commit Realtime : %s",
+                            "Impossible d'envoyer le commit final Realtime : %s",
                             exc,
                         )
                 await request_stop()
@@ -312,6 +305,17 @@ class TelephonyVoiceBridge:
                     description = self._extract_error_message(message)
                     error = VoiceBridgeError(description)
                     break
+
+                # Événements VAD - l'API gère automatiquement l'interruption
+                if message_type == "input_audio_buffer.speech_started":
+                    logger.debug("Détection de parole utilisateur - interruption automatique")
+                    continue
+                if message_type == "input_audio_buffer.speech_stopped":
+                    logger.debug("Fin de parole utilisateur détectée")
+                    continue
+                if message_type == "response.cancelled":
+                    logger.debug("Réponse annulée suite à interruption utilisateur")
+                    continue
 
                 if message_type.endswith("audio.delta"):
                     for chunk in self._extract_audio_chunks(message):
@@ -468,6 +472,12 @@ class TelephonyVoiceBridge:
                 "output": {
                     "format": {"type": "audio/pcm", "rate": 24000},
                 },
+            },
+            "turn_detection": {
+                "type": "server_vad",
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 500,
             },
         }
         if voice:
