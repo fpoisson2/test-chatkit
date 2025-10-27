@@ -15,7 +15,9 @@ logger = logging.getLogger("chatkit.server")
 settings = get_settings()
 
 engine: Engine = create_engine(settings.database_url, future=True, pool_pre_ping=True)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+SessionLocal = sessionmaker(
+    bind=engine, autoflush=False, autocommit=False, expire_on_commit=False
+)
 
 
 def get_session() -> Iterator[Session]:

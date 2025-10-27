@@ -139,13 +139,20 @@ def _merge_voice_settings(
         # Chercher le premier bloc agent vocal dans le workflow pour ses paramètres
         if workflow_definition is not None:
             steps = getattr(workflow_definition, "steps", [])
+            logger.debug(
+                "Recherche de bloc agent vocal dans le workflow (nombre de steps=%d)",
+                len(steps),
+            )
             for step in steps:
                 step_kind = getattr(step, "kind", "")
+                step_slug = getattr(step, "slug", "<inconnu>")
+                logger.debug(
+                    "Bloc trouvé : slug=%s, kind=%s", step_slug, step_kind
+                )
                 # Chercher les blocs de type agent ou voice-agent
                 if step_kind in ("agent", "voice-agent"):
                     params = getattr(step, "parameters", {})
                     if isinstance(params, dict):
-                        step_slug = getattr(step, "slug", "<inconnu>")
                         # Utiliser les paramètres du bloc agent si disponibles
                         if params.get("model"):
                             model = params["model"]
