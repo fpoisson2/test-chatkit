@@ -40,7 +40,34 @@ class VoiceWebRTCSessionResult:
     error: Exception | None = None
 
 
-class _PcmAudioTrack(MediaStreamTrack):
+# Lorsque aiortc n'est pas installé, MediaStreamTrack vaut None et la
+# définition de la classe échoue. On fournit donc une base factice pour
+# permettre l'import du module même sans les dépendances facultatives.
+if MediaStreamTrack is None:  # pragma: no cover - dépendance absente
+    class _MediaStreamTrackBase:
+        """Base factice utilisée lorsque aiortc n'est pas disponible."""
+
+        kind = "audio"
+        readyState = "ended"
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            raise VoiceWebRTCGatewayError(
+                "La dépendance aiortc est requise pour gérer le pont WebRTC voix.",
+            )
+
+        async def recv(self, *args: Any, **kwargs: Any) -> Any:
+            raise VoiceWebRTCGatewayError(
+                "La dépendance aiortc est requise pour gérer le pont WebRTC voix.",
+            )
+
+        def stop(self) -> None:
+            return
+
+else:  # pragma: no cover - dépendance présente
+    _MediaStreamTrackBase = MediaStreamTrack
+
+
+class _PcmAudioTrack(_MediaStreamTrackBase):
     """Piste audio sortante alimentée par des chunks PCM 16 bits."""
 
     kind = "audio"
