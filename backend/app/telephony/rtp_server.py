@@ -145,11 +145,11 @@ class RtpServer:
         codec = self._config.output_codec.lower()
 
         # Conversion du taux d'échantillonnage si nécessaire
-        # Realtime envoie du PCM16 à 16kHz, mais PCMU attend du 8kHz
+        # OpenAI Realtime GA envoie du PCM16 à 24kHz, mais PCMU attend du 8kHz
         if codec in ("pcmu", "pcma"):
-            # Convertir de 16kHz à 8kHz
+            # Convertir de 24kHz à 8kHz
             try:
-                pcm_8k, _ = audioop.ratecv(pcm_data, 2, 1, 16_000, 8_000, None)
+                pcm_8k, _ = audioop.ratecv(pcm_data, 2, 1, 24_000, 8_000, None)
             except Exception as exc:
                 logger.debug("Erreur lors de la conversion de taux : %s", exc)
                 return b""
