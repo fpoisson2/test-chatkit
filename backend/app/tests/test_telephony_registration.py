@@ -614,7 +614,89 @@ def test_set_invite_handler_configures_router() -> None:
         loop.close()
 
 
+def test_set_invite_handler_configures_dispatcher() -> None:
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(loop=loop)
+
+        class _Dispatcher:
+            def __init__(self) -> None:
+                self.registered: dict[str, object] = {}
+
+            def register(self, method: str):  # type: ignore[no-untyped-def]
+                def decorator(handler):  # type: ignore[no-untyped-def]
+                    self.registered[method] = handler
+                    return handler
+
+                return decorator
+
+        dummy_app = SimpleNamespace(dispatcher=_Dispatcher())
+        manager._app = dummy_app  # type: ignore[attr-defined]
+
+        manager.set_invite_handler(None)
+        assert "OPTIONS" in dummy_app.dispatcher.registered
+    finally:
+        loop.close()
+
+
 def test_options_handler_replies_with_success() -> None:
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(loop=loop)
+        manager._config = SIPRegistrationConfig(  # type: ignore[assignment]
+            uri="sip:alice@example.com",
+            username="alice",
+            password="secret",
+            contact_host="198.51.100.10",
+            contact_port=5070,
+        )
+        manager._active_config = manager._config  # type: ignore[assignment]
+
+        created: list[tuple[int, str]] = []
+        replied: list[object] = []
+
+        via_header = "SIP/2.0/UDP 192.168.1.155:5060;branch=z9hG4bKabc123"
+
+        class DummyResponse:
+            def __init__(self) -> None:
+                self.headers: dict[str, str] = {}
+
+        class DummyRequest:
+            def __init__(self) -> None:
+                self.headers = {"Via": via_header}
+
+            def create_response(  # type: ignore[no-untyped-def]
+                self, status_code: int, reason: str
+            ) -> DummyResponse:
+                created.append((status_code, reason))
+                return DummyResponse()
+
+            async def reply(self, response: DummyResponse) -> None:
+                replied.append(response)
+
+        class DummyDialog:
+            async def reply(self, *args: object, **kwargs: object) -> None:  # type: ignore[no-untyped-def]
+                raise AssertionError("dialog.reply ne devrait pas être appelé")
+
+        request = DummyRequest()
+
+        loop.run_until_complete(
+            manager._handle_incoming_options(DummyDialog(), request)  # type: ignore[arg-type]
+        )
+    finally:
+        loop.run_until_complete(asyncio.sleep(0))
+        loop.close()
+
+    assert created == [(200, "OK")]
+    assert replied, "A SIP reply should be sent"
+    response = replied[0]
+    assert isinstance(response, DummyResponse)
+    assert response.headers["Allow"] == _OPTIONS_ALLOW_HEADER
+    assert response.headers["Contact"] == "<sip:alice@198.51.100.10:5070>"
+    assert response.headers["Via"] == via_header
+
+
+def test_options_handler_fallbacks_to_dialog_reply() -> None:
     loop = asyncio.new_event_loop()
     try:
         manager = SIPRegistrationManager(loop=loop)
@@ -635,7 +717,13 @@ def test_options_handler_replies_with_success() -> None:
             ) -> None:
                 replies.append((status_code, kwargs))
 
-        request = SimpleNamespace(headers={"Call-ID": "abc123"})
+        request = SimpleNamespace(
+            headers={
+                "Call-ID": "abc123",
+                "Via": "SIP/2.0/UDP 192.168.1.155:5060;branch=z9hG4bKviaFallback",
+                "CSeq": "42 OPTIONS",
+            }
+        )
 
         loop.run_until_complete(
             manager._handle_incoming_options(DummyDialog(), request)  # type: ignore[arg-type]
@@ -651,7 +739,64 @@ def test_options_handler_replies_with_success() -> None:
     assert isinstance(headers, dict)
     assert headers.get("Allow") == _OPTIONS_ALLOW_HEADER
     assert headers.get("Contact") == "<sip:alice@198.51.100.10:5070>"
+    assert (
+        headers.get("Via")
+        == "SIP/2.0/UDP 192.168.1.155:5060;branch=z9hG4bKviaFallback"
+    )
+    assert headers.get("CSeq") == "42 OPTIONS"
     assert params.get("reason") == "OK"
+
+
+def test_options_dispatcher_handler_replies_with_success() -> None:
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(loop=loop)
+        manager._config = SIPRegistrationConfig(  # type: ignore[assignment]
+            uri="sip:alice@example.com",
+            username="alice",
+            password="secret",
+            contact_host="198.51.100.10",
+            contact_port=5070,
+        )
+        manager._active_config = manager._config  # type: ignore[assignment]
+
+        created: list[tuple[int, str]] = []
+        replies: list[object] = []
+
+        class DummyResponse:
+            def __init__(self) -> None:
+                self.headers: dict[str, str] = {}
+
+        class DummyRequest:
+            def create_response(  # type: ignore[no-untyped-def]
+                self, status_code: int, reason: str
+            ) -> DummyResponse:
+                created.append((status_code, reason))
+                return DummyResponse()
+
+            async def reply(self, response: DummyResponse) -> None:
+                replies.append(response)
+
+        via_header = "SIP/2.0/UDP 192.168.1.155:5060;branch=z9hG4bKdef456"
+
+        message = SimpleNamespace(headers={"Via": via_header})
+
+        loop.run_until_complete(
+            manager._handle_incoming_options_dispatcher(
+                DummyRequest(), message
+            )
+        )
+    finally:
+        loop.run_until_complete(asyncio.sleep(0))
+        loop.close()
+
+    assert created == [(200, "OK")]
+    assert replies, "A SIP reply should be sent"
+    response = replies[0]
+    assert isinstance(response, DummyResponse)
+    assert response.headers["Allow"] == _OPTIONS_ALLOW_HEADER
+    assert response.headers["Contact"] == "<sip:alice@198.51.100.10:5070>"
+    assert response.headers["Via"] == via_header
 
 
 def test_register_once_uses_resolved_registrar_ip(
@@ -1098,7 +1243,31 @@ def test_build_register_headers_includes_preformatted_via() -> None:
     via_header = headers.get("Via")
     assert via_header is not None
     assert re.fullmatch(
-        r"SIP/2\.0/TCP 198\.51\.100\.10:5070;branch=z9hG4bK[0-9a-f]{16}", via_header
+        r"SIP/2\.0/TCP 198\.51\.100\.10:5070;branch=z9hG4bK[0-9a-f]{16};rport",
+        via_header,
+    )
+
+
+def test_build_register_headers_strips_port_from_contact_host() -> None:
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(loop=loop)
+        config = SIPRegistrationConfig(
+            uri="sip:alice@example.com",
+            username="alice",
+            password="secret",
+            contact_host="198.51.100.10:6000",
+            contact_port=5080,
+        )
+        headers = manager._build_register_headers(config)
+    finally:
+        loop.close()
+
+    via_header = headers.get("Via")
+    assert via_header is not None
+    assert re.fullmatch(
+        r"SIP/2\.0/UDP 198\.51\.100\.10:5080;branch=z9hG4bK[0-9a-f]{16};rport",
+        via_header,
     )
 
 
@@ -1120,5 +1289,6 @@ def test_build_register_headers_formats_ipv6_host_for_via() -> None:
     via_header = headers.get("Via")
     assert via_header is not None
     assert re.fullmatch(
-        r"SIP/2\.0/UDP \[2001:db8::1\]:5080;branch=z9hG4bK[0-9a-f]{16}", via_header
+        r"SIP/2\.0/UDP \[2001:db8::1\]:5080;branch=z9hG4bK[0-9a-f]{16};rport",
+        via_header,
     )

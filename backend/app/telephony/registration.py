@@ -40,7 +40,7 @@ import secrets
 import socket
 import types
 import urllib.parse
-from collections.abc import Awaitable, Callable, Mapping, MutableMapping
+from collections.abc import Awaitable, Callable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -145,6 +145,63 @@ _DEFAULT_SIP_PORT = 5060
 _OPTIONS_ALLOW_HEADER = (
     "INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH"
 )
+
+
+def _format_endpoint(value: object) -> str:
+    """Return a printable representation of a socket endpoint."""
+
+    if isinstance(value, list | tuple):
+        seq: Sequence[object] = value
+        if len(seq) >= 2:
+            host = seq[0]
+            port = seq[1]
+            rest = ":".join(str(item) for item in seq[2:] if item not in (None, ""))
+            base = f"{host}:{port}"
+            if rest:
+                base = f"{base} ({rest})"
+            return base
+        return ":".join(str(item) for item in seq if item not in (None, ""))
+    return str(value)
+
+
+def _describe_transport(holder: object) -> str | None:
+    """Extract human-readable transport details from an ``aiosip`` object."""
+
+    if holder is None:
+        return None
+
+    transport = getattr(holder, "transport", None) or getattr(
+        holder, "_transport", None
+    )
+    if transport is None:
+        return None
+
+    get_extra_info = getattr(transport, "get_extra_info", None)
+    if not callable(get_extra_info):
+        return repr(transport)
+
+    description_parts: list[str] = []
+    with contextlib.suppress(Exception):
+        peer = get_extra_info("peername")
+        if peer:
+            description_parts.append(f"peer={_format_endpoint(peer)}")
+    with contextlib.suppress(Exception):
+        local = get_extra_info("sockname")
+        if local:
+            description_parts.append(f"local={_format_endpoint(local)}")
+
+    if description_parts:
+        return ", ".join(description_parts)
+    return repr(transport)
+
+
+def _get_header_value(headers: Mapping[str, object], name: str) -> object | None:
+    """Retrieve a header value using case-insensitive lookups."""
+
+    for candidate in (name, name.lower(), name.upper()):
+        if candidate in headers:
+            return headers[candidate]
+    return None
 
 
 @dataclass(slots=True)
@@ -325,10 +382,15 @@ class SIPRegistrationManager:
 
     def _configure_invite_route(self, app: Any) -> None:
         router = getattr(app, "router", None)
+        if router is not None:
+            self._configure_options_route(router)
+
+        dispatcher = getattr(app, "dispatcher", None)
+        if dispatcher is not None:
+            self._configure_options_dispatcher(dispatcher)
+
         if router is None:
             return
-
-        self._configure_options_route(router)
 
         if self._invite_handler is None:
             if hasattr(router, "routes") and isinstance(router.routes, dict):
@@ -352,34 +414,213 @@ class SIPRegistrationManager:
         if isinstance(routes, dict):
             routes["OPTIONS"] = handler
 
-    async def _handle_incoming_options(self, dialog: Any, request: Any) -> None:
-        call_id: str | None = None
-        headers_obj = getattr(request, "headers", None)
-        if isinstance(headers_obj, Mapping):
-            call_id = (
-                headers_obj.get("Call-ID")
-                or headers_obj.get("call-id")
-                or headers_obj.get("Call-id")
-            )
+    def _configure_options_dispatcher(self, dispatcher: Any) -> None:
+        handler = self._handle_incoming_options_dispatcher
+        register = getattr(dispatcher, "register", None)
+        if callable(register):
+            try:
+                decorator = register("OPTIONS")
+            except Exception:  # pragma: no cover - depends on aiosip internals
+                decorator = None
+            if callable(decorator):
+                decorator(handler)
+                return
 
+        add_method = getattr(dispatcher, "add_method", None)
+        if callable(add_method):
+            add_method("OPTIONS", handler)
+            return
+
+        routes = getattr(dispatcher, "routes", None)
+        if isinstance(routes, dict):
+            routes["OPTIONS"] = handler
+
+    async def _handle_incoming_options(self, dialog: Any, request: Any) -> None:
         contact_uri: str | None = None
         config = self._active_config or self._config
         if config is not None:
             with contextlib.suppress(Exception):
                 contact_uri = config.contact_uri()
 
+        request_headers = getattr(request, "headers", None)
+        via_header: object | None = None
+        via_header_text: str | None = None
+        if isinstance(request_headers, Mapping):
+            via_header = _get_header_value(request_headers, "Via")
+            if via_header is not None:
+                via_header_text = str(via_header).strip() or None
+
+        request_transport = _describe_transport(request)
+        dialog_transport = _describe_transport(dialog)
+
+        if via_header_text or request_transport or dialog_transport:
+            LOGGER.info(
+                "OPTIONS reçu via=%s req=%s dialog=%s contact=%s",
+                via_header_text,
+                request_transport,
+                dialog_transport,
+                contact_uri,
+            )
+
+        create_response = getattr(request, "create_response", None)
+        reply_method = getattr(request, "reply", None)
+        if callable(create_response) and callable(reply_method):
+            try:
+                response = create_response(200, "OK")
+            except Exception:  # pragma: no cover - network dependent
+                LOGGER.exception(
+                    "Impossible de préparer la réponse à la requête SIP OPTIONS"
+                )
+            else:
+                headers_obj = getattr(response, "headers", None)
+                if isinstance(headers_obj, MutableMapping):
+                    headers_obj["Allow"] = _OPTIONS_ALLOW_HEADER
+                    if contact_uri:
+                        headers_obj.setdefault("Contact", contact_uri)
+                    if via_header_text:
+                        headers_obj["Via"] = via_header_text
+                else:
+                    merged_headers = {"Allow": _OPTIONS_ALLOW_HEADER}
+                    if contact_uri:
+                        merged_headers.setdefault("Contact", contact_uri)
+                    if via_header_text:
+                        merged_headers["Via"] = via_header_text
+                    try:
+                        response.headers = merged_headers  # type: ignore[attr-defined]
+                    except Exception:  # pragma: no cover - depends on aiosip internals
+                        LOGGER.debug(
+                            "Impossible d'attacher les en-têtes SIP OPTIONS "
+                            "à la réponse"
+                        )
+
+                try:
+                    result = reply_method(response)
+                    if inspect.isawaitable(result):
+                        await result
+                except Exception:  # pragma: no cover - network dependent
+                    LOGGER.exception(
+                        "Impossible de répondre à la requête SIP OPTIONS"
+                    )
+                else:
+                    LOGGER.info(
+                        "OPTIONS 200 via request.reply contact=%s via=%s req=%s",
+                        contact_uri,
+                        via_header_text,
+                        request_transport,
+                    )
+                    return
+
+        call_id: str | None = None
+        cseq_text: str | None = None
+        if isinstance(request_headers, Mapping):
+            call_id_value = _get_header_value(request_headers, "Call-ID")
+            if isinstance(call_id_value, str):
+                call_id = call_id_value
+            cseq_value = _get_header_value(request_headers, "CSeq")
+            if cseq_value is not None:
+                cseq_text = str(cseq_value).strip() or None
+
         try:
             await send_sip_reply(
                 dialog,
                 200,
                 reason="OK",
-                headers={"Allow": _OPTIONS_ALLOW_HEADER},
+                headers={
+                    key: value
+                    for key, value in (
+                        ("Allow", _OPTIONS_ALLOW_HEADER),
+                        ("Via", via_header_text),
+                        ("CSeq", cseq_text),
+                    )
+                    if value is not None
+                },
                 call_id=call_id,
                 contact_uri=contact_uri,
                 log=False,
             )
         except Exception:  # pragma: no cover - network dependent
             LOGGER.exception("Impossible de répondre à la requête SIP OPTIONS")
+        else:
+            LOGGER.info(
+                "OPTIONS 200 via send_sip_reply contact=%s via=%s dialog=%s",
+                contact_uri,
+                via_header_text,
+                dialog_transport,
+            )
+
+    async def _handle_incoming_options_dispatcher(
+        self, request: Any, message: Any
+    ) -> None:
+        contact_uri: str | None = None
+        config = self._active_config or self._config
+        if config is not None:
+            with contextlib.suppress(Exception):
+                contact_uri = config.contact_uri()
+
+        via_header: object | None = None
+        via_header_text: str | None = None
+        message_headers = getattr(message, "headers", None)
+        if isinstance(message_headers, Mapping):
+            via_header = _get_header_value(message_headers, "Via")
+        if via_header is None:
+            request_headers = getattr(request, "headers", None)
+            if isinstance(request_headers, Mapping):
+                via_header = _get_header_value(request_headers, "Via")
+        if via_header is not None:
+            via_header_text = str(via_header).strip() or None
+
+        request_transport = _describe_transport(request)
+        message_transport = _describe_transport(message)
+
+        if via_header_text or request_transport or message_transport:
+            LOGGER.info(
+                "OPTIONS dispatcher via=%s req=%s msg=%s contact=%s",
+                via_header_text,
+                request_transport,
+                message_transport,
+                contact_uri,
+            )
+
+        try:
+            response = request.create_response(200, "OK")
+        except Exception:  # pragma: no cover - network dependent
+            LOGGER.exception(
+                "Impossible de préparer la réponse à la requête SIP OPTIONS"
+            )
+            return
+
+        headers_obj = getattr(response, "headers", None)
+        if isinstance(headers_obj, MutableMapping):
+            headers_obj["Allow"] = _OPTIONS_ALLOW_HEADER
+            if contact_uri:
+                headers_obj.setdefault("Contact", contact_uri)
+            if via_header_text:
+                headers_obj["Via"] = via_header_text
+        else:
+            merged_headers = {"Allow": _OPTIONS_ALLOW_HEADER}
+            if contact_uri:
+                merged_headers.setdefault("Contact", contact_uri)
+            if via_header_text:
+                merged_headers["Via"] = via_header_text
+            try:
+                response.headers = merged_headers  # type: ignore[attr-defined]
+            except Exception:  # pragma: no cover - depends on aiosip internals
+                LOGGER.debug(
+                    "Impossible d'attacher les en-têtes SIP OPTIONS à la réponse"
+                )
+
+        try:
+            await request.reply(response)
+        except Exception:  # pragma: no cover - network dependent
+            LOGGER.exception("Impossible de répondre à la requête SIP OPTIONS")
+        else:
+            LOGGER.info(
+                "OPTIONS 200 via dispatcher.reply contact=%s via=%s req=%s msg=%s",
+                contact_uri,
+                via_header_text,
+                request_transport,
+                message_transport,
+            )
 
     async def start(self) -> None:
         """Start the background registration task if it is not already running."""
@@ -1034,6 +1275,7 @@ class SIPRegistrationManager:
         via_header = self._format_register_via(config)
         if via_header:
             headers["Via"] = via_header
+            LOGGER.info("REGISTER Via généré : %s", via_header)
         return headers
 
     @staticmethod
@@ -1044,21 +1286,69 @@ class SIPRegistrationManager:
         return candidate or None
 
     @staticmethod
+    def _strip_port_from_contact_host(host: str) -> str:
+        """Return ``host`` without an embedded port declaration."""
+
+        candidate = host.strip()
+        if not candidate:
+            return ""
+
+        if candidate.startswith("["):
+            closing = candidate.find("]")
+            if closing > 0:
+                return candidate[1:closing]
+
+        # IPv6 literals contain multiple colons; keep them unchanged.
+        host_part = candidate
+        try:
+            ipaddress.ip_address(host_part)
+        except ValueError:
+            # ``ip_address`` rejects scoped IPv6 addresses (with ``%``).  Remove
+            # the scope identifier before retrying and re-attach it afterwards.
+            if "%" in host_part:
+                without_scope, _, scope_suffix = host_part.partition("%")
+                try:
+                    ipaddress.ip_address(without_scope)
+                except ValueError:
+                    host_part = candidate
+                else:
+                    if scope_suffix:
+                        return f"{without_scope}%{scope_suffix}"
+                    return without_scope
+            if ":" in host_part:
+                hostname, potential_port = host_part.rsplit(":", 1)
+                if hostname and potential_port.isdigit():
+                    return hostname
+            return candidate
+        else:
+            return host_part
+
+    @staticmethod
     def _format_register_via(config: SIPRegistrationConfig) -> str | None:
-        host = SIPRegistrationManager._normalize_optional_string(config.contact_host)
+        host_value = SIPRegistrationManager._normalize_optional_string(
+            config.contact_host
+        )
         port = config.contact_port
-        if not host or not isinstance(port, int) or port <= 0:
+        if not host_value or not isinstance(port, int) or port <= 0:
             return None
 
+        stripped_host = SIPRegistrationManager._strip_port_from_contact_host(host_value)
+        if not stripped_host:
+            return None
+
+        host_for_ip_lookup = stripped_host.split("%", 1)[0]
         try:
-            ip_obj = ipaddress.ip_address(host)
+            ip_obj = ipaddress.ip_address(host_for_ip_lookup)
         except ValueError:
-            formatted_host = host
+            formatted_host = stripped_host
         else:
             if isinstance(ip_obj, ipaddress.IPv6Address):
-                formatted_host = f"[{host}]"
+                if "%" in stripped_host:
+                    formatted_host = f"[{stripped_host}]"
+                else:
+                    formatted_host = f"[{host_for_ip_lookup}]"
             else:
-                formatted_host = host
+                formatted_host = host_for_ip_lookup
 
         transport = SIPRegistrationManager._normalize_transport(config.transport)
         if not transport:
@@ -1067,7 +1357,9 @@ class SIPRegistrationManager:
             transport_token = transport.upper()
 
         branch = f"z9hG4bK{secrets.token_hex(8)}"
-        return f"SIP/2.0/{transport_token} {formatted_host}:{port};branch={branch}"
+        return (
+            f"SIP/2.0/{transport_token} {formatted_host}:{port};branch={branch};rport"
+        )
 
     def _call_dialog_register(
         self,
