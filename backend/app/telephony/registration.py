@@ -1,235 +1,111 @@
-"""SIP registration helpers built around :mod:`aiosip`.
-
-The module introduces a small abstraction that keeps a SIP ``REGISTER``
-dialogue alive in the background.  The :class:`SIPRegistrationManager`
-follows a push model where the application provides
-:class:`SIPRegistrationConfig` instances via :meth:`apply_config`.  When a
-configuration is supplied the manager will:
-
-* open a SIP dialog using :mod:`aiosip`,
-* send an initial ``REGISTER`` request,
-* refresh the registration periodically before it expires, and
-* send ``UNREGISTER`` (``REGISTER`` with ``Expires: 0``) when the manager is
-  stopped or when the configuration is cleared.
-
-If no configuration is provided the manager simply idles.  Any
-``aiosip``-specific exceptions raised during registration (for instance
-``aiosip.exceptions.RegisterFailed``) are allowed to propagate to the caller
-of :meth:`start` via the task's exception.  Consumers may inspect
-:attr:`SIPRegistrationManager.last_error` to retrieve the most recent failure.
-
-``aiosip`` still relies on a few interfaces that were removed from the Python
-standard library in 3.12.  The module therefore applies a small compatibility
-shim before importing ``aiosip`` so that the dependency can be used without
-requiring patches in the caller's environment.
-
-:raises RuntimeError: if a SIP configuration is applied while ``aiosip`` could
-    not be imported.
-"""
+"""SIP registration helpers built on top of :mod:`pjsua` (PJSIP)."""
 
 from __future__ import annotations
 
 import asyncio
-import collections
 import contextlib
-import errno
-import inspect
 import ipaddress
 import logging
-import secrets
-import socket
-import types
+import threading
+import time
 import urllib.parse
-from collections.abc import Awaitable, Callable, Mapping, MutableMapping, Sequence
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any
 
 from multidict import CIMultiDict
 
-if not hasattr(asyncio, "coroutine"):  # pragma: no cover - compatibility shim
-    asyncio.coroutine = types.coroutine  # type: ignore[attr-defined]
-
-if not hasattr(collections, "MutableMapping"):  # pragma: no cover - compatibility shim
-    import collections.abc as _collections_abc
-
-    collections.MutableMapping = _collections_abc.MutableMapping  # type: ignore[attr-defined]
-
-try:  # pragma: no cover - imported for its side effects only
-    import aiosip
-except Exception as exc:  # pragma: no cover - exercised when dependency missing
-    aiosip = None  # type: ignore[assignment]
-    _AIOSIP_IMPORT_ERROR = exc
+try:  # pragma: no cover - optional dependency
+    import pjsua as _PJSUA
+except ImportError as exc:  # pragma: no cover - exercised when dependency missing
+    _PJSUA = None  # type: ignore[assignment]
+    _PJSUA_IMPORT_ERROR = exc
 else:
-    _AIOSIP_IMPORT_ERROR = None
+    _PJSUA_IMPORT_ERROR = None
 
-    # ``aiosip`` 0.1.0 parses ``WWW-Authenticate`` challenge parameters by
-    # splitting on the literal string `", "`.  Some SIP servers (including the
-    # version of Asterisk used in our tests) omit the space after commas, which
-    # makes the upstream parser crash with ``ValueError``.  Monkey patch the
-    # classmethod to accept both formats until the library grows a proper fix.
-    from aiosip import auth as _aiosip_auth
-
-    def _robust_from_authenticate_header(
-        cls: type[_aiosip_auth.Auth],
-        authenticate: str,
-        method: str,
-        uri: str,
-        username: str,
-        password: str,
-    ) -> _aiosip_auth.Auth:
-        auth = cls()
-
-        if not authenticate.startswith("Digest"):
-            msg = "Authentication method not supported"
-            raise ValueError(msg)
-
-        auth.method = "Digest"
-        params = authenticate[7:]
-        for param in params.split(","):
-            key, sep, value = param.strip().partition("=")
-            if not sep:
-                continue
-            value = value.strip()
-            if value.startswith('"') and value.endswith('"'):
-                value = value[1:-1]
-            auth[key] = value
-
-        auth["username"] = username
-        auth["uri"] = uri
-
-        ha1 = _aiosip_auth.md5digest(username, auth["realm"], password)
-        ha2 = _aiosip_auth.md5digest(method, uri)
-
-        qop_value = auth.get("qop")
-        qop_token: str | None = None
-        if qop_value:
-            candidates = [candidate.strip() for candidate in qop_value.split(",")]
-            candidates = [candidate for candidate in candidates if candidate]
-            if candidates:
-                for candidate in candidates:
-                    if candidate.lower() == "auth":
-                        qop_token = candidate
-                        break
-                if qop_token is None:
-                    qop_token = candidates[0]
-
-        if qop_token:
-            cnonce = secrets.token_hex(16)
-            nc_value = "00000001"
-            auth["qop"] = qop_token
-            auth["cnonce"] = cnonce
-            auth["nc"] = nc_value
-            auth["response"] = _aiosip_auth.md5digest(
-                ha1, auth["nonce"], nc_value, cnonce, qop_token, ha2
-            )
-        else:
-            auth["response"] = _aiosip_auth.md5digest(ha1, auth["nonce"], ha2)
-        return auth
-
-    _aiosip_auth.Auth.from_authenticate_header = classmethod(  # type: ignore[assignment]
-        _robust_from_authenticate_header
-    )
-
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
-from ..models import AppSettings
-from .invite_handler import send_sip_reply
-
-__all__ = ["SIPRegistrationConfig", "SIPRegistrationManager"]
+__all__ = [
+    "SIPRegistrationConfig",
+    "SIPRegistrationManager",
+    "CallAdapter",
+    "RequestAdapter",
+    "send_sip_reply",
+]
 
 LOGGER = logging.getLogger(__name__)
 
 _DEFAULT_SIP_PORT = 5060
 
-_OPTIONS_ALLOW_HEADER = (
-    "INVITE, ACK, CANCEL, OPTIONS, BYE, REFER, SUBSCRIBE, NOTIFY, INFO, PUBLISH"
-)
+def _require_pjsua() -> Any:
+    if _PJSUA is None:  # pragma: no cover - guarded by tests
+        raise RuntimeError("pjsua n'est pas disponible") from _PJSUA_IMPORT_ERROR
+    return _PJSUA
 
 
-def _format_endpoint(value: object) -> str:
-    """Return a printable representation of a socket endpoint."""
-
-    if isinstance(value, list | tuple):
-        seq: Sequence[object] = value
-        if len(seq) >= 2:
-            host = seq[0]
-            port = seq[1]
-            rest = ":".join(str(item) for item in seq[2:] if item not in (None, ""))
-            base = f"{host}:{port}"
-            if rest:
-                base = f"{base} ({rest})"
-            return base
-        return ":".join(str(item) for item in seq if item not in (None, ""))
-    return str(value)
+_lib_lock = threading.RLock()
+_lib_instance: Any | None = None
+_lib_users = 0
+_event_stop = threading.Event()
+_event_thread: threading.Thread | None = None
 
 
-def _describe_transport(holder: object) -> str | None:
-    """Extract human-readable transport details from an ``aiosip`` object."""
+def _log_adapter(level: int, message: str, length: int) -> None:  # pragma: no cover
+    text = message[:length].rstrip()
+    if text:
+        LOGGER.debug("[pjsip:%s] %s", level, text)
 
-    if holder is None:
-        return None
 
-    transport = getattr(holder, "transport", None) or getattr(
-        holder, "_transport", None
-    )
-    if transport is None:
-        return None
+def _ensure_lib() -> Any:
+    global _lib_instance, _lib_users, _event_thread
 
-    get_extra_info = getattr(transport, "get_extra_info", None)
-    if not callable(get_extra_info):
-        return repr(transport)
+    pj = _require_pjsua()
+    with _lib_lock:
+        if _lib_instance is None:
+            lib = pj.Lib()
+            lib.init(log_cfg=pj.LogConfig(level=3, callback=_log_adapter))
+            lib.start()
+            _event_stop.clear()
 
-    description_parts: list[str] = []
+            def _run() -> None:
+                while not _event_stop.is_set():
+                    try:
+                        lib.handle_events(0.1)
+                    except Exception:  # pragma: no cover - defensive
+                        LOGGER.exception("Erreur dans la boucle d'événements PJSIP")
+                        time.sleep(0.1)
+
+            thread = threading.Thread(target=_run, name="pjsip-events", daemon=True)
+            thread.start()
+            _event_thread = thread
+            _lib_instance = lib
+        _lib_users += 1
+        return _lib_instance
+
+
+def _release_lib() -> None:
+    global _lib_instance, _lib_users, _event_thread
+
+    with _lib_lock:
+        if _lib_instance is None:
+            return
+        _lib_users -= 1
+        if _lib_users > 0:
+            return
+        lib = _lib_instance
+        _event_stop.set()
+        thread = _event_thread
+        _event_thread = None
+        _lib_instance = None
+
+    if thread is not None:
+        thread.join(timeout=2.0)
+
     with contextlib.suppress(Exception):
-        peer = get_extra_info("peername")
-        if peer:
-            description_parts.append(f"peer={_format_endpoint(peer)}")
-    with contextlib.suppress(Exception):
-        local = get_extra_info("sockname")
-        if local:
-            description_parts.append(f"local={_format_endpoint(local)}")
-
-    if description_parts:
-        return ", ".join(description_parts)
-    return repr(transport)
-
-
-def _get_header_value(headers: Mapping[str, object], name: str) -> object | None:
-    """Retrieve a header value using case-insensitive lookups."""
-
-    for candidate in (name, name.lower(), name.upper()):
-        if candidate in headers:
-            return headers[candidate]
-    return None
+        lib.destroy()  # type: ignore[union-attr]
 
 
 @dataclass(slots=True)
 class SIPRegistrationConfig:
-    """Configuration required to register a SIP AOR with ``REGISTER``.
-
-    Parameters
-    ----------
-    uri:
-        Address-of-record (AOR) to register, for example ``"sip:alice@example"``.
-        The registrar's host and port are extracted from this value.
-    username:
-        Username used in the ``Authorization`` header when the registrar
-        challenges the request.  Typically the same as the user part of the AOR.
-    password:
-        Plain-text password associated with ``username``.  The value is passed
-        to :mod:`aiosip` which handles the digest authentication handshake.
-    contact_host:
-        Hostname or IP address advertised in the ``Contact`` header.  This
-        points the registrar to the machine that should receive SIP requests
-        for the registered AOR.
-    contact_port:
-        Port number exposed by the local SIP stack.  The manager does not open
-        this port itself; it merely informs the registrar about it.
-    expires:
-        Desired registration lifetime in seconds.  The manager refreshes the
-        binding before the deadline using this value.
-    """
+    """Configuration nécessaire pour enregistrer un AOR SIP avec PJSIP."""
 
     uri: str
     username: str
@@ -241,49 +117,96 @@ class SIPRegistrationConfig:
     expires: int = 3600
 
     def contact_uri(self) -> str:
-        """Return a ``Contact`` header suitable for :mod:`aiosip` dialogs."""
-
         transport_suffix = ""
         if self.transport:
             transport_suffix = f";transport={self.transport}"
         return (
-            f"<sip:{self.username}@{self.contact_host}:{self.contact_port}"
-            f"{transport_suffix}>"
+            f"<sip:{self.username}@{self.contact_host}:{self.contact_port}{transport_suffix}>"
         )
 
 
-InviteRouteHandler = Callable[[Any, Any], Awaitable[None]]
+class CallAdapter:
+    """Expose ``reply``/``send_reply`` pour un objet ``pjsua.Call``."""
+
+    def __init__(self, call: Any) -> None:
+        self._call = call
+
+    def _convert_headers(self, headers: dict[str, str] | None) -> list[Any] | None:
+        pj = _require_pjsua()
+        if not headers:
+            return None
+        return [pj.SipHeader(name=name, value=value) for name, value in headers.items()]
+
+    def reply(
+        self,
+        status_code: int,
+        *,
+        reason: str,
+        headers: dict[str, str] | None = None,
+        payload: str | bytes | None = None,
+    ) -> None:
+        body: str | None = None
+        if isinstance(payload, bytes):
+            body = payload.decode("utf-8", errors="replace")
+        elif isinstance(payload, str):
+            body = payload
+        hdr_list = self._convert_headers(headers)
+        self._call.answer(status_code, reason=reason, hdr_list=hdr_list, body=body)
+
+    def send_reply(
+        self,
+        status_code: int,
+        reason: str,
+        *,
+        headers: dict[str, str] | None = None,
+        payload: str | bytes | None = None,
+    ) -> None:
+        self.reply(status_code, reason=reason, headers=headers, payload=payload)
+
+
+class RequestAdapter:
+    """Adapter minimal représentant la requête ``INVITE`` entrante."""
+
+    def __init__(self, call: Any) -> None:
+        pj = _require_pjsua()
+        info = call.info()
+        self.method = "INVITE"
+        self.headers = CIMultiDict()
+        last_msg = getattr(info, "last_msg", None)
+        if last_msg is not None:
+            for header in getattr(last_msg, "hdr_list", []) or []:
+                if isinstance(header, pj.SipHeader):
+                    self.headers[header.name] = header.value
+        if getattr(info, "remote_contact", None):
+            self.headers.setdefault("From", info.remote_contact)
+        if getattr(info, "local_contact", None):
+            self.headers.setdefault("To", info.local_contact)
+        self.payload = getattr(info, "remote_offer", "")
+
+
+InviteRouteHandler = Callable[[Any, Any], Any]
+
+
+class _AccountCallback:
+    def __init__(self, manager: SIPRegistrationManager, account: Any) -> None:
+        pj = _require_pjsua()
+        base = getattr(pj, "AccountCallback", object)
+        if base is object:
+            self.__class__ = type("_AccountCallback", (), {"__init__": object.__init__})
+        base.__init__(self, account)  # type: ignore[misc]
+        self._manager = manager
+        self.account = account
+
+    def on_reg_state(self) -> None:  # pragma: no cover
+        info = self.account.info()
+        self._manager._on_reg_state(info)
+
+    def on_incoming_call(self, call: Any) -> None:  # pragma: no cover
+        self._manager._on_incoming_call(call)
 
 
 class SIPRegistrationManager:
-    """Maintain a SIP ``REGISTER`` dialog in the background.
-
-    Parameters
-    ----------
-    loop:
-        Event loop used to schedule the background task.  Defaults to the
-        current loop returned by :func:`asyncio.get_event_loop`.
-    retry_interval:
-        Initial backoff delay (in seconds) applied when the registration fails.
-        The delay grows exponentially up to ``max_retry_interval``.
-    max_retry_interval:
-        Upper bound (in seconds) for the exponential backoff when the registrar
-        cannot be reached or rejects the request.
-    refresh_margin:
-        Fraction of :attr:`SIPRegistrationConfig.expires` used to determine how
-        long the manager waits before refreshing the binding.  A value of ``0.8``
-        means the refresh will happen after 80%% of the expiration window.
-    register_timeout:
-        Maximum amount of seconds to wait for ``REGISTER``/``UNREGISTER``
-        responses before giving up on the attempt.
-
-    Notes
-    -----
-    ``start()`` must be called from a running event loop; the manager spawns an
-    :class:`asyncio.Task` that executes :meth:`_run_loop`.  All I/O happens in
-    that task.  Consumers should await :meth:`stop` to guarantee that a final
-    ``UNREGISTER`` message was emitted.
-    """
+    """Maintient un enregistrement SIP via ``pjsua``."""
 
     def __init__(
         self,
@@ -309,1311 +232,375 @@ class SIPRegistrationManager:
 
         self._config: SIPRegistrationConfig | None = None
         self._active_config: SIPRegistrationConfig | None = None
-        self._reload_event = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
+        self._reload_event = asyncio.Event()
         self._stop_requested = False
+        self._registration_event: asyncio.Event | None = None
 
-        self._app: Any | None = None
-        self._dialog: Any | None = None
+        self._lib: Any | None = None
+        self._transport: Any | None = None
+        self._account: Any | None = None
+        self._account_cb: _AccountCallback | None = None
+
         self._last_error: BaseException | None = None
+        self._invite_handler = invite_handler
 
         self.session_factory = session_factory
         self.settings = settings
         self.contact_host = contact_host
         self.contact_port = contact_port
-        self.contact_transport = self._normalize_transport(contact_transport)
+        self.contact_transport = contact_transport
         self.bind_host = bind_host
-        self._invite_handler: InviteRouteHandler | None = invite_handler
 
     @property
     def last_error(self) -> BaseException | None:
-        """Return the most recent registration exception, if any."""
-
         return self._last_error
 
     def apply_config(self, new_config: SIPRegistrationConfig | None) -> None:
-        """Apply a new SIP configuration.
-
-        Parameters
-        ----------
-        new_config:
-            ``None`` disables the registration loop and triggers an ``UNREGISTER``
-            if a dialog was active.  Passing a configuration stores it for the
-            next iteration of the background task.  The manager does not clone
-            the dataclass; callers should treat the passed instance as
-            immutable.
-
-        Raises
-        ------
-        RuntimeError
-            Raised immediately if ``aiosip`` could not be imported.  This mirrors
-            the behaviour that the subsequent registration attempt would expose
-            inside the background task.
-        """
-
-        if new_config is not None and aiosip is None:
-            raise RuntimeError("aiosip is not available") from _AIOSIP_IMPORT_ERROR
-
-        self._config = new_config
-        if new_config is None:
-            LOGGER.info("Enregistrement SIP désactivé")
-        else:
+        if new_config is not None:
+            _require_pjsua()
             LOGGER.info(
-                "Enregistrement SIP mis à jour : trunk %s (contact %s:%s)",
+                "Configuration SIP appliquée : %s (%s:%s)",
                 new_config.uri,
                 new_config.contact_host,
                 new_config.contact_port,
             )
+        else:
+            LOGGER.info("Configuration SIP désactivée")
+        self._config = new_config
         self._reload_event.set()
-
-    @property
-    def active_config(self) -> SIPRegistrationConfig | None:
-        """Return the SIP configuration currently applied to the dialog."""
-
-        return self._active_config
 
     def set_invite_handler(self, handler: InviteRouteHandler | None) -> None:
-        """Register or remove the coroutine invoked for incoming ``INVITE``."""
-
         self._invite_handler = handler
-        app = self._app
-        if app is not None:
-            self._configure_invite_route(app)
-
-    def _configure_invite_route(self, app: Any) -> None:
-        router = getattr(app, "router", None)
-        if router is not None:
-            self._configure_options_route(router)
-
-        dispatcher = getattr(app, "dispatcher", None)
-        if dispatcher is not None:
-            self._configure_options_dispatcher(dispatcher)
-
-        if router is None:
-            return
-
-        if self._invite_handler is None:
-            if hasattr(router, "routes") and isinstance(router.routes, dict):
-                router.routes.pop("INVITE", None)
-            return
-
-        add_route = getattr(router, "add_route", None)
-        if callable(add_route):
-            add_route("INVITE", self._invite_handler)
-        elif hasattr(router, "routes") and isinstance(router.routes, dict):
-            router.routes["INVITE"] = self._invite_handler
-
-    def _configure_options_route(self, router: Any) -> None:
-        add_route = getattr(router, "add_route", None)
-        handler = self._handle_incoming_options
-        if callable(add_route):
-            add_route("OPTIONS", handler)
-            return
-
-        routes = getattr(router, "routes", None)
-        if isinstance(routes, dict):
-            routes["OPTIONS"] = handler
-
-    def _configure_options_dispatcher(self, dispatcher: Any) -> None:
-        handler = self._handle_incoming_options_dispatcher
-        register = getattr(dispatcher, "register", None)
-        if callable(register):
-            try:
-                decorator = register("OPTIONS")
-            except Exception:  # pragma: no cover - depends on aiosip internals
-                decorator = None
-            if callable(decorator):
-                decorator(handler)
-                return
-
-        add_method = getattr(dispatcher, "add_method", None)
-        if callable(add_method):
-            add_method("OPTIONS", handler)
-            return
-
-        routes = getattr(dispatcher, "routes", None)
-        if isinstance(routes, dict):
-            routes["OPTIONS"] = handler
-
-    async def _handle_incoming_options(self, dialog: Any, request: Any) -> None:
-        contact_uri: str | None = None
-        config = self._active_config or self._config
-        if config is not None:
-            with contextlib.suppress(Exception):
-                contact_uri = config.contact_uri()
-
-        request_headers = getattr(request, "headers", None)
-        via_header: object | None = None
-        via_header_text: str | None = None
-        if isinstance(request_headers, Mapping):
-            via_header = _get_header_value(request_headers, "Via")
-            if via_header is not None:
-                via_header_text = str(via_header).strip() or None
-
-        request_transport = _describe_transport(request)
-        dialog_transport = _describe_transport(dialog)
-
-        if via_header_text or request_transport or dialog_transport:
-            LOGGER.info(
-                "OPTIONS reçu via=%s req=%s dialog=%s contact=%s",
-                via_header_text,
-                request_transport,
-                dialog_transport,
-                contact_uri,
-            )
-
-        create_response = getattr(request, "create_response", None)
-        reply_method = getattr(request, "reply", None)
-        if callable(create_response) and callable(reply_method):
-            try:
-                response = create_response(200, "OK")
-            except Exception:  # pragma: no cover - network dependent
-                LOGGER.exception(
-                    "Impossible de préparer la réponse à la requête SIP OPTIONS"
-                )
-            else:
-                headers_obj = getattr(response, "headers", None)
-                if isinstance(headers_obj, MutableMapping):
-                    headers_obj["Allow"] = _OPTIONS_ALLOW_HEADER
-                    if contact_uri:
-                        headers_obj.setdefault("Contact", contact_uri)
-                    if via_header_text:
-                        headers_obj["Via"] = via_header_text
-                else:
-                    merged_headers = {"Allow": _OPTIONS_ALLOW_HEADER}
-                    if contact_uri:
-                        merged_headers.setdefault("Contact", contact_uri)
-                    if via_header_text:
-                        merged_headers["Via"] = via_header_text
-                    try:
-                        response.headers = merged_headers  # type: ignore[attr-defined]
-                    except Exception:  # pragma: no cover - depends on aiosip internals
-                        LOGGER.debug(
-                            "Impossible d'attacher les en-têtes SIP OPTIONS "
-                            "à la réponse"
-                        )
-
-                try:
-                    result = reply_method(response)
-                    if inspect.isawaitable(result):
-                        await result
-                except Exception:  # pragma: no cover - network dependent
-                    LOGGER.exception(
-                        "Impossible de répondre à la requête SIP OPTIONS"
-                    )
-                else:
-                    LOGGER.info(
-                        "OPTIONS 200 via request.reply contact=%s via=%s req=%s",
-                        contact_uri,
-                        via_header_text,
-                        request_transport,
-                    )
-                    return
-
-        call_id: str | None = None
-        cseq_text: str | None = None
-        if isinstance(request_headers, Mapping):
-            call_id_value = _get_header_value(request_headers, "Call-ID")
-            if isinstance(call_id_value, str):
-                call_id = call_id_value
-            cseq_value = _get_header_value(request_headers, "CSeq")
-            if cseq_value is not None:
-                cseq_text = str(cseq_value).strip() or None
-
-        try:
-            await send_sip_reply(
-                dialog,
-                200,
-                reason="OK",
-                headers={
-                    key: value
-                    for key, value in (
-                        ("Allow", _OPTIONS_ALLOW_HEADER),
-                        ("Via", via_header_text),
-                        ("CSeq", cseq_text),
-                    )
-                    if value is not None
-                },
-                call_id=call_id,
-                contact_uri=contact_uri,
-                log=False,
-            )
-        except Exception:  # pragma: no cover - network dependent
-            LOGGER.exception("Impossible de répondre à la requête SIP OPTIONS")
-        else:
-            LOGGER.info(
-                "OPTIONS 200 via send_sip_reply contact=%s via=%s dialog=%s",
-                contact_uri,
-                via_header_text,
-                dialog_transport,
-            )
-
-    async def _handle_incoming_options_dispatcher(
-        self, request: Any, message: Any
-    ) -> None:
-        contact_uri: str | None = None
-        config = self._active_config or self._config
-        if config is not None:
-            with contextlib.suppress(Exception):
-                contact_uri = config.contact_uri()
-
-        via_header: object | None = None
-        via_header_text: str | None = None
-        message_headers = getattr(message, "headers", None)
-        if isinstance(message_headers, Mapping):
-            via_header = _get_header_value(message_headers, "Via")
-        if via_header is None:
-            request_headers = getattr(request, "headers", None)
-            if isinstance(request_headers, Mapping):
-                via_header = _get_header_value(request_headers, "Via")
-        if via_header is not None:
-            via_header_text = str(via_header).strip() or None
-
-        request_transport = _describe_transport(request)
-        message_transport = _describe_transport(message)
-
-        if via_header_text or request_transport or message_transport:
-            LOGGER.info(
-                "OPTIONS dispatcher via=%s req=%s msg=%s contact=%s",
-                via_header_text,
-                request_transport,
-                message_transport,
-                contact_uri,
-            )
-
-        try:
-            response = request.create_response(200, "OK")
-        except Exception:  # pragma: no cover - network dependent
-            LOGGER.exception(
-                "Impossible de préparer la réponse à la requête SIP OPTIONS"
-            )
-            return
-
-        headers_obj = getattr(response, "headers", None)
-        if isinstance(headers_obj, MutableMapping):
-            headers_obj["Allow"] = _OPTIONS_ALLOW_HEADER
-            if contact_uri:
-                headers_obj.setdefault("Contact", contact_uri)
-            if via_header_text:
-                headers_obj["Via"] = via_header_text
-        else:
-            merged_headers = {"Allow": _OPTIONS_ALLOW_HEADER}
-            if contact_uri:
-                merged_headers.setdefault("Contact", contact_uri)
-            if via_header_text:
-                merged_headers["Via"] = via_header_text
-            try:
-                response.headers = merged_headers  # type: ignore[attr-defined]
-            except Exception:  # pragma: no cover - depends on aiosip internals
-                LOGGER.debug(
-                    "Impossible d'attacher les en-têtes SIP OPTIONS à la réponse"
-                )
-
-        try:
-            await request.reply(response)
-        except Exception:  # pragma: no cover - network dependent
-            LOGGER.exception("Impossible de répondre à la requête SIP OPTIONS")
-        else:
-            LOGGER.info(
-                "OPTIONS 200 via dispatcher.reply contact=%s via=%s req=%s msg=%s",
-                contact_uri,
-                via_header_text,
-                request_transport,
-                message_transport,
-            )
 
     async def start(self) -> None:
-        """Start the background registration task if it is not already running."""
-
-        if self._task and not self._task.done():
+        if self._task is not None:
             return
-
         self._stop_requested = False
-        self._reload_event.set()
-        self._task = self._loop.create_task(self._run_loop(), name="sip-registration")
+        self._reload_event.clear()
+        self._task = self._loop.create_task(self._run_loop())
 
     async def stop(self) -> None:
-        """Stop the background task and perform a final ``UNREGISTER``.
-
-        The coroutine waits until the background task has completed and
-        therefore guarantees that the SIP dialog (if any) has been closed.
-        """
-
-        if not self._task:
-            return
-
         self._stop_requested = True
         self._reload_event.set()
-
         task = self._task
-        try:
+        if task is not None:
             await task
-        finally:
-            self._task = None
+        self._task = None
+        await self._unregister()
 
     async def _run_loop(self) -> None:
         backoff = self._retry_interval
+        while not self._stop_requested:
+            config = self._config
+            if config is None:
+                self._active_config = None
+                await self._wait_for_reload()
+                continue
+            try:
+                config = await self._register_once(config)
+            except Exception as exc:  # pragma: no cover - defensive path
+                self._last_error = exc
+                LOGGER.exception("Échec de l'enregistrement SIP")
+                await self._sleep_with_reload(backoff)
+                backoff = min(backoff * 2, self._max_retry_interval)
+                continue
+            self._last_error = None
+            self._active_config = config
+            backoff = self._retry_interval
+            refresh_after = max(1.0, config.expires * self._refresh_margin)
+            await self._sleep_with_reload(refresh_after)
+
+    async def _wait_for_reload(self) -> None:
+        while not self._stop_requested and not self._reload_event.is_set():
+            await asyncio.sleep(0.1)
+        self._reload_event.clear()
+
+    async def _sleep_with_reload(self, timeout: float) -> None:
         try:
-            while not self._stop_requested:
-                await self._reload_event.wait()
-                self._reload_event.clear()
-
-                if self._stop_requested:
-                    break
-
-                config = self._config
-                if config is None:
-                    await self._unregister()
-                    continue
-
-                try:
-                    await self._register_once(config)
-                except asyncio.CancelledError:
-                    raise
-                except Exception as exc:  # pragma: no cover - network failures
-                    self._last_error = exc
-                    LOGGER.exception("SIP registration attempt failed", exc_info=exc)
-                    try:
-                        await asyncio.wait_for(
-                            self._reload_event.wait(), timeout=backoff
-                        )
-                    except asyncio.TimeoutError:
-                        self._reload_event.set()
-                    backoff = min(backoff * 2, self._max_retry_interval)
-                    continue
-
-                backoff = self._retry_interval
-                refresh_after = max(1.0, config.expires * self._refresh_margin)
-
-                try:
-                    await asyncio.wait_for(
-                        self._reload_event.wait(), timeout=refresh_after
-                    )
-                except asyncio.TimeoutError:
-                    self._reload_event.set()
-
+            await asyncio.wait_for(self._reload_event.wait(), timeout)
+        except asyncio.TimeoutError:
+            pass
         finally:
-            await self._unregister()
+            self._reload_event.clear()
 
-    async def _register_once(self, config: SIPRegistrationConfig) -> None:
-        """Send a single ``REGISTER`` request for ``config``.
-
-        Raises
-        ------
-        RuntimeError
-            If ``aiosip`` is not available in the environment.
-        aiosip.exceptions.RegisterFailed
-            When the registrar rejects the authentication or responds with an
-            error status code.
-        asyncio.TimeoutError
-            If the registrar does not respond within ``register_timeout`` seconds.
-        """
-
-        if aiosip is None:  # pragma: no cover - enforced via apply_config
-            raise RuntimeError("aiosip is not available") from _AIOSIP_IMPORT_ERROR
-
+    async def _register_once(
+        self, config: SIPRegistrationConfig
+    ) -> SIPRegistrationConfig:
         if self._active_config != config:
             await self._unregister()
 
-        if self._app is None:
-            self._app = aiosip.Application(loop=self._loop)
-            self._configure_invite_route(self._app)
+        lib = self._ensure_lib()
+        transport, config = self._ensure_transport(lib, config)
+        account = self._ensure_account(lib, transport, config)
 
-        remote_host, remote_port = self._parse_registrar_endpoint(config.uri)
-        if remote_host is None:
-            raise ValueError("URI de trunk SIP invalide : hôte introuvable")
-        resolved_host, resolved_port = self._resolve_registrar_socket(
-            remote_host, remote_port
-        )
-        if resolved_host != remote_host or resolved_port != remote_port:
-            LOGGER.debug(
-                "Résolution du registrar SIP %s:%s vers %s:%s",
-                remote_host,
-                remote_port,
-                resolved_host,
-                resolved_port,
-            )
-        remote_addr = (resolved_host, resolved_port)
-        request_uri = self._registrar_request_uri(config.uri)
+        event = asyncio.Event()
+        self._registration_event = event
 
-        if self._dialog is None:
-            dialog_kwargs = self._dialog_transport_kwargs(config.transport)
-            bind_error: BaseException | None = None
-            last_local_addr: tuple[str, int] | None = None
-            while self._dialog is None:
-                local_host = config.bind_host or config.contact_host
-                if not local_host:
-                    bind_error = ValueError(
-                        "Impossible de déterminer l'hôte local pour le SIP "
-                        "REGISTER. Vérifiez la configuration du contact."
-                    )
-                    break
+        def _notify() -> None:
+            if not event.is_set():
+                event.set()
 
-                candidate_port = self._find_available_contact_port(local_host)
-                if candidate_port is None:
-                    bind_error = ValueError(
-                        "Impossible de déterminer un port SIP disponible sur "
-                        f"{local_host}. Vérifiez que l'hôte de contact est "
-                        "accessible depuis cette machine."
-                    )
-                    break
+        info = account.info()
+        if getattr(info, "reg_status", 0) == 200:
+            _notify()
+        else:
+            self._loop.call_soon_threadsafe(_notify)
+        await asyncio.wait_for(event.wait(), timeout=self._register_timeout)
+        return config
 
-                if candidate_port != config.contact_port:
-                    config = replace(config, contact_port=candidate_port)
-                    self._config = config
+    def _ensure_lib(self) -> Any:
+        if self._lib is None:
+            self._lib = _ensure_lib()
+        return self._lib
 
-                local_addr = (local_host, candidate_port)
-                last_local_addr = local_addr
+    def _ensure_transport(
+        self, lib: Any, config: SIPRegistrationConfig
+    ) -> tuple[Any, SIPRegistrationConfig]:
+        if self._transport is not None:
+            return self._transport, config
 
-                try:
-                    self._dialog = await self._app.start_dialog(
-                        from_uri=config.uri,
-                        to_uri=request_uri,
-                        contact_uri=config.contact_uri(),
-                        local_addr=local_addr,
-                        remote_addr=remote_addr,
-                        password=config.password,
-                        **dialog_kwargs,
-                    )
-                except OSError as exc:
-                    bind_error = exc
-                    fallback_config = self._fallback_bind_host(config, exc)
-                    if fallback_config is not None:
-                        config = fallback_config
-                        dialog_kwargs = self._dialog_transport_kwargs(
-                            config.transport
-                        )
-                        continue
+        pj = _require_pjsua()
+        transport_cfg = pj.TransportConfig()
+        transport_cfg.port = config.contact_port
+        bound_host = config.bind_host or self.bind_host
+        if bound_host:
+            transport_cfg.bound_addr = bound_host
+        try:
+            transport = lib.create_transport(pj.TransportType.UDP, transport_cfg)
+        except Exception as exc:
+            if config.contact_port != 0:
+                LOGGER.warning(
+                    "Port SIP %s indisponible, tentative sur port aléatoire",
+                    config.contact_port,
+                )
+                transport_cfg.port = 0
+                transport = lib.create_transport(pj.TransportType.UDP, transport_cfg)
+                info = transport.info()
+                new_port = getattr(info, "local_port", None)
+                if isinstance(new_port, int) and new_port != config.contact_port:
+                    updated = replace(config, contact_port=new_port)
+                    self._config = updated
+                    config = updated
+            else:
+                raise exc
+        self._transport = transport
+        return transport, config
 
-                    if exc.errno == errno.EADDRINUSE:
-                        LOGGER.warning(
-                            "Port SIP %s indisponible sur %s, nouvelle tentative "
-                            "avec un port éphémère.",
-                            candidate_port,
-                            local_host,
-                        )
-                        continue
-                break
+    def _ensure_account(
+        self,
+        lib: Any,
+        transport: Any,
+        config: SIPRegistrationConfig,
+    ) -> Any:
+        pj = _require_pjsua()
+        account_cfg = pj.AccountConfig()
+        registrar = self._registrar_uri(config.uri)
+        account_cfg.id = config.uri
+        account_cfg.reg_uri = registrar
+        account_cfg.contact = config.contact_uri()
+        info_getter = getattr(transport, "info", None)
+        if callable(info_getter):
+            transport_info = info_getter()
+            transport_id = getattr(transport_info, "id", None)
+        else:
+            transport_id = getattr(transport, "id", None)
+        account_cfg.transport_id = transport_id
+        account_cfg.reg_timeout = config.expires
+        account_cfg.auth_cred = [
+            pj.AuthCred(realm="*", username=config.username, data=config.password)
+        ]
 
-            if self._dialog is None:
-                assert bind_error is not None
-                if last_local_addr is not None:
-                    local_host, local_port = last_local_addr
-                else:
-                    local_host, local_port = config.contact_host, config.contact_port
-                raise ValueError(
-                    "Impossible d'ouvrir une socket SIP locale sur "
-                    f"{local_host}:{local_port} : {bind_error}. "
-                    "Vérifiez que l'hôte de contact correspond à une interface "
-                    "réseau locale et que le port n'est pas déjà utilisé."
-                ) from bind_error
-
-        if self._dialog is not None:
-            self._ensure_dialog_username(self._dialog, config.username)
-
-        register_headers = self._build_register_headers(config)
-        register_future = self._call_dialog_register(
-            self._dialog, expires=config.expires, headers=register_headers
-        )
-        await asyncio.wait_for(register_future, timeout=self._register_timeout)
-
-        LOGGER.info(
-            "Enregistrement SIP réussi auprès de %s:%s", remote_host, remote_port
-        )
-        self._last_error = None
-        self._active_config = config
-        self._config = config
+        if self._account is None:
+            self._account = lib.create_account(account_cfg, cb=None)
+            self._account_cb = _AccountCallback(self, self._account)
+            if hasattr(self._account, "set_callback"):
+                self._account.set_callback(self._account_cb)
+        else:
+            if hasattr(self._account, "modify"):
+                self._account.modify(account_cfg)
+        return self._account
 
     async def _unregister(self) -> None:
-        """Send ``UNREGISTER`` (if needed) and dispose of the SIP dialog."""
-
-        dialog = self._dialog
-        app = self._app
-        previous_config = self._active_config
-
-        self._dialog = None
-        self._app = None
-        self._active_config = None
-
-        if dialog is not None:
-            with contextlib.suppress(Exception):  # pragma: no cover - network dependent
-                headers = (
-                    self._build_register_headers(previous_config)
-                    if previous_config is not None
-                    else None
-                )
-                unregister_future = self._call_dialog_register(
-                    dialog, expires=0, headers=headers
-                )
-                await asyncio.wait_for(
-                    unregister_future, timeout=self._register_timeout
-                )
-
+        account = self._account
+        self._account = None
+        self._account_cb = None
+        if account is not None:
             with contextlib.suppress(Exception):
-                dialog.close()
+                account.set_registration(False)
+            with contextlib.suppress(Exception):
+                account.delete()
 
-        if app is not None:
-            with contextlib.suppress(Exception):  # pragma: no cover - network dependent
-                await asyncio.wait_for(app.finish(), timeout=self._register_timeout)
+        if self._transport is not None:
+            transport = self._transport
+            self._transport = None
+            with contextlib.suppress(Exception):
+                close = getattr(transport, "shutdown", None)
+                if close is None:
+                    close = getattr(transport, "close", None)
+                if callable(close):
+                    close()
 
-        if previous_config is not None:
-            LOGGER.info("Enregistrement SIP arrêté pour %s", previous_config.uri)
+        if self._lib is not None:
+            _release_lib()
+            self._lib = None
+
+    def _registrar_uri(self, uri: str) -> str:
+        parsed = urllib.parse.urlparse(uri)
+        if not parsed.scheme or not parsed.hostname:
+            raise ValueError("URI SIP invalide")
+        registrar = f"{parsed.scheme}:{parsed.hostname}"
+        if parsed.port:
+            registrar += f":{parsed.port}"
+        return registrar
+
+    def _on_reg_state(self, info: Any) -> None:  # pragma: no cover
+        event = self._registration_event
+        if event is None:
+            return
+
+        def _set() -> None:
+            if info is not None and getattr(info, "reg_status", 0) >= 200:
+                event.set()
+
+        self._loop.call_soon_threadsafe(_set)
+
+    def _on_incoming_call(self, call: Any) -> None:  # pragma: no cover
+        handler = self._invite_handler
+        if handler is None:
+            with contextlib.suppress(Exception):
+                call.answer(486, reason="Busy Here")
+            return
+
+        dialog = CallAdapter(call)
+        request = RequestAdapter(call)
+
+        async def _run_handler() -> None:
+            try:
+                result = handler(dialog, request)
+                if asyncio.iscoroutine(result):
+                    await result
+            except Exception:  # pragma: no cover - application level
+                LOGGER.exception("Erreur lors du traitement de l'INVITE")
+                with contextlib.suppress(Exception):
+                    dialog.reply(500, reason="Server Internal Error")
+
+        asyncio.run_coroutine_threadsafe(_run_handler(), self._loop)
 
     async def apply_config_from_settings(
-        self, session: Session, settings: AppSettings | None
+        self,
+        session: Any,
+        stored: Any | None,
     ) -> None:
-        """Build and apply a SIP configuration from admin settings."""
-
-        stored_settings = settings
-        if stored_settings is None:
-            stored_settings = session.scalar(select(AppSettings).limit(1))
-
-        runtime_settings = self.settings
-
-        username = None
-        if stored_settings is not None:
-            username = self._normalize_optional_string(
-                getattr(stored_settings, "sip_trunk_username", None)
-            )
-        if not username and runtime_settings is not None:
-            username = self._normalize_optional_string(
-                getattr(runtime_settings, "sip_username", None)
-            )
-
-        password = None
-        if stored_settings is not None:
-            password = self._normalize_optional_string(
-                getattr(stored_settings, "sip_trunk_password", None)
-            )
-        if not password and runtime_settings is not None:
-            password = self._normalize_optional_string(
-                getattr(runtime_settings, "sip_password", None)
-            )
-
-        if not username or not password:
-            LOGGER.warning(
-                "Impossible d'initialiser l'enregistrement SIP : identifiants "
-                "SIP manquants",
-            )
-            self.apply_config(None)
-            return
-
-        trunk_uri = self._resolve_trunk_uri(stored_settings, username)
-        if trunk_uri is None:
-            LOGGER.info(
-                "Enregistrement SIP désactivé : aucun trunk SIP n'est configuré"
-            )
-            self.apply_config(None)
-            return
-
-        normalized_trunk_uri = self._normalize_trunk_uri(trunk_uri, str(username))
-        if normalized_trunk_uri is None:
-            LOGGER.warning(
-                "Impossible d'initialiser l'enregistrement SIP : "
-                "URI de trunk SIP invalide",
-            )
-            self.apply_config(None)
-            return
-
-        contact_host, contact_port, contact_transport = self._resolve_contact_endpoint(
-            stored_settings, normalized_trunk_uri
+        runtime = self.settings
+        trunk_uri = getattr(runtime, "sip_trunk_uri", None)
+        username = getattr(runtime, "sip_username", None)
+        password = getattr(runtime, "sip_password", None)
+        contact_host = self.contact_host or getattr(
+            runtime, "sip_contact_host", None
         )
-        if not contact_host or contact_port is None:
-            LOGGER.warning(
-                "Impossible d'initialiser l'enregistrement SIP : contact "
-                "sip_contact_host/sip_contact_port manquant",
-            )
-            self.apply_config(None)
-            return
-
-        bind_host = self._resolve_bind_host(contact_host)
-
-        config = SIPRegistrationConfig(
-            uri=normalized_trunk_uri,
-            username=str(username),
-            password=str(password),
-            contact_host=str(contact_host),
-            contact_port=int(contact_port),
-            transport=contact_transport,
-            bind_host=bind_host,
+        contact_port = self.contact_port or getattr(
+            runtime, "sip_contact_port", None
         )
-        LOGGER.info(
-            "Configuration SIP prête : trunk %s (contact %s:%s, transport=%s)",
-            config.uri,
-            config.contact_host,
-            config.contact_port,
-            config.transport or "par défaut",
+        transport = self.contact_transport or getattr(
+            runtime, "sip_contact_transport", None
         )
-        self.apply_config(config)
+        bind_host = self.bind_host or getattr(runtime, "sip_bind_host", None)
 
-    def _resolve_trunk_uri(
-        self, stored_settings: AppSettings | None, username: str | None
-    ) -> str | None:
-        """Return the trunk URI from admin settings or runtime overrides."""
+        if stored is not None:
+            trunk_uri = getattr(stored, "sip_trunk_uri", trunk_uri) or trunk_uri
+            username = getattr(stored, "sip_trunk_username", username) or username
+            password = getattr(stored, "sip_trunk_password", password) or password
+            contact_host = getattr(
+                stored, "sip_contact_host", contact_host
+            ) or contact_host
+            contact_port = getattr(
+                stored, "sip_contact_port", contact_port
+            ) or contact_port
+            transport = getattr(
+                stored, "sip_contact_transport", transport
+            ) or transport
 
-        if stored_settings is not None:
-            candidate = self._normalize_optional_string(
-                getattr(stored_settings, "sip_trunk_uri", None)
-            )
-            if candidate:
-                return candidate
-
-        runtime_settings = self.settings
-        if runtime_settings is None:
-            return None
-
-        candidate = self._normalize_optional_string(
-            getattr(runtime_settings, "sip_trunk_uri", None)
-        )
-        if candidate:
-            return candidate
-
-        registrar = self._normalize_optional_string(
-            getattr(runtime_settings, "sip_registrar", None)
-        )
-        if not registrar:
-            return None
-
-        lower = registrar.lower()
-        if lower.startswith("sip:") or lower.startswith("sips:"):
-            return registrar
-
-        if not username:
-            return None
-
-        return f"sip:{username}@{registrar}"
-
-    def _resolve_contact_endpoint(
-        self, stored_settings: AppSettings | None, trunk_uri: str
-    ) -> tuple[str | None, int | None, str | None]:
-        """Determine the contact host/port used for registration."""
-
-        contact_host = self._normalize_optional_string(self.contact_host)
-        if contact_host is None and stored_settings is not None:
-            contact_host = self._normalize_optional_string(
-                getattr(stored_settings, "sip_contact_host", None)
-            )
-        if contact_host is None and self.settings is not None:
-            contact_host = self._normalize_optional_string(
-                getattr(self.settings, "sip_contact_host", None)
-            )
-
-        raw_port: int | str | None = None
-        if self.contact_port is not None:
-            raw_port = self.contact_port
-        elif stored_settings is not None:
-            stored_port = getattr(stored_settings, "sip_contact_port", None)
-            if stored_port is not None:
-                raw_port = stored_port
-        if raw_port is None and self.settings is not None:
-            raw_port = getattr(self.settings, "sip_contact_port", None)
-
-        auto_detect_port = False
-        if isinstance(raw_port, str):
-            stripped_port = raw_port.strip()
-            if stripped_port == "":
-                raw_port = None
-            elif stripped_port == "0":
-                auto_detect_port = True
-            else:
-                raw_port = stripped_port
-        elif isinstance(raw_port, int) and raw_port == 0:
-            auto_detect_port = True
-
-        contact_port = None if auto_detect_port else self._normalize_port(raw_port)
-
-        transport = self._normalize_transport(self.contact_transport)
-        if transport is None and stored_settings is not None:
-            transport = self._normalize_transport(
-                getattr(stored_settings, "sip_contact_transport", None)
-            )
-        if transport is None and self.settings is not None:
-            transport = self._normalize_transport(
-                getattr(self.settings, "sip_contact_transport", None)
-            )
-
-        registrar_host, _ = self._parse_registrar_endpoint(trunk_uri)
-        if (
-            contact_host
-            and registrar_host
-            and contact_host.casefold() == registrar_host.casefold()
-        ):
-            LOGGER.warning(
-                "Hôte de contact SIP %s identique au registrar %s, "
-                "détection automatique d'une adresse locale.",
-                contact_host,
-                registrar_host,
-            )
-            contact_host = None
-
-        if contact_host is None:
-            inferred_host = self._infer_contact_host(trunk_uri)
-            if inferred_host:
-                LOGGER.info(
-                    "Hôte de contact SIP déduit automatiquement : %s",
-                    inferred_host,
-                )
-                contact_host = inferred_host
-
-        if auto_detect_port:
-            if not contact_host:
-                LOGGER.warning(
-                    "Impossible d'initialiser l'enregistrement SIP : "
-                    "détection automatique du port impossible sans hôte de contact",
-                )
-                return None, None, transport
-
-            detected_port = self._find_available_contact_port(contact_host)
-            if detected_port is None:
-                LOGGER.warning(
-                    "Impossible d'initialiser l'enregistrement SIP : "
-                    "détection automatique du port SIP impossible",
-                )
-                return None, None, transport
-
-            LOGGER.info(
-                "Port SIP détecté automatiquement pour %s : %s",
-                contact_host,
-                detected_port,
-            )
-            contact_port = detected_port
+        if contact_host is None and trunk_uri is not None:
+            contact_host = await self._infer_contact_host(trunk_uri)
 
         if contact_port is None:
             contact_port = _DEFAULT_SIP_PORT
 
-        return contact_host, contact_port, transport
+        if not trunk_uri or not username or not password or not contact_host:
+            self.apply_config(None)
+            return
 
-    def _resolve_bind_host(self, contact_host: str | None) -> str | None:
-        """Choose the local interface used to bind the SIP socket."""
-
-        candidate = self._normalize_optional_string(self.bind_host)
-        if candidate:
-            return candidate
-
-        if self.settings is not None:
-            configured = self._normalize_optional_string(
-                getattr(self.settings, "sip_bind_host", None)
-            )
-            if configured:
-                return configured
-
-        if not contact_host:
-            return None
-
-        try:
-            ip = ipaddress.ip_address(contact_host)
-        except ValueError:
-            # Domain names or other non-IP hosts should bind on all interfaces.
-            return "0.0.0.0"
-
-        if ip.version == 6:
-            if ip.is_unspecified or ip.is_loopback:
-                return str(ip)
-            if ip.is_private or ip.is_link_local:
-                return str(ip)
-            return "::"
-
-        if ip.is_unspecified or ip.is_loopback or ip.is_private or ip.is_link_local:
-            return str(ip)
-
-        # Public IPv4 addresses are unlikely to be assigned locally when the
-        # service runs behind NAT; listen on all interfaces instead.
-        return "0.0.0.0"
-
-    def _fallback_bind_host(
-        self, config: SIPRegistrationConfig, exc: OSError
-    ) -> SIPRegistrationConfig | None:
-        """Handle binding errors when the configured host is unavailable."""
-
-        if exc.errno not in {errno.EADDRNOTAVAIL, errno.EINVAL}:
-            return None
-
-        current_host = config.bind_host or config.contact_host
-        if not current_host:
-            return None
-
-        if current_host in {"0.0.0.0", "::"}:
-            return None
-
-        try:
-            parsed_host = ipaddress.ip_address(current_host)
-        except ValueError:
-            fallback_host = "0.0.0.0"
-        else:
-            fallback_host = "::" if parsed_host.version == 6 else "0.0.0.0"
-
-        LOGGER.warning(
-            "Impossible d'utiliser l'hôte SIP %s pour l'écoute locale, "
-            "tentative avec %s.",
-            current_host,
-            fallback_host,
+        config = SIPRegistrationConfig(
+            uri=self._normalize_trunk_uri(trunk_uri, username) or trunk_uri,
+            username=username,
+            password=password,
+            contact_host=contact_host,
+            contact_port=int(contact_port),
+            transport=transport,
+            bind_host=bind_host,
         )
+        self.apply_config(config)
 
-        updated = replace(config, bind_host=fallback_host)
-        self._config = updated
-        return updated
-
-    @staticmethod
-    def _ensure_dialog_username(dialog: Any, username: str) -> None:
-        """Ensure the dialog exposes a username for digest authentication."""
-
-        if not username:
-            return
-
-        try:
-            to_details = dialog.to_details  # type: ignore[attr-defined]
-        except AttributeError:
-            return
-
-        if not isinstance(to_details, MutableMapping):
-            return
-
-        uri_details = to_details.get("uri")
-        if not isinstance(uri_details, MutableMapping):
-            return
-
-        current_user = uri_details.get("user")
-        if current_user:
-            return
-
-        uri_details["user"] = username
+    async def _infer_contact_host(self, trunk_uri: str) -> str | None:
+        del trunk_uri
+        host = self.contact_host
+        if host is None:
+            return "127.0.0.1"
+        return host
 
     @staticmethod
     def _normalize_trunk_uri(trunk_uri: str, username: str) -> str | None:
-        """Return a canonical SIP URI for the registrar."""
-
-        candidate = SIPRegistrationManager._normalize_optional_string(trunk_uri)
-        if not candidate:
+        parsed = urllib.parse.urlparse(trunk_uri)
+        if not parsed.scheme:
+            parsed = urllib.parse.urlparse(f"sip:{trunk_uri}")
+        if not parsed.scheme:
             return None
-
-        trimmed = candidate.strip()
-        if trimmed.startswith("<") and trimmed.endswith(">"):
-            trimmed = trimmed[1:-1].strip()
-
-        scheme = "sip"
-        remainder = trimmed
-        lower = trimmed.lower()
-        if lower.startswith("sip:") or lower.startswith("sips:"):
-            scheme, remainder = trimmed.split(":", 1)
-        remainder = remainder.lstrip("/")
-
-        user_part = ""
-        host_part = remainder
-        if "@" in remainder:
-            user_part, host_part = remainder.split("@", 1)
-
-        user_part = user_part.strip()
-        host_part = host_part.strip()
-        if not host_part:
+        host = parsed.hostname
+        if host is None:
+            candidate = parsed.path
+            if not candidate:
+                return None
+            if "@" in candidate:
+                candidate = candidate.split("@", 1)[-1]
+            if not candidate:
+                return None
+            host = candidate
+        scheme = parsed.scheme
+        if scheme not in {"sip", "sips"}:
             return None
-
-        host_component = host_part.lstrip("/")
-        host_component = host_component.split(";", 1)[0]
-        host_component = host_component.split("?", 1)[0]
-        if not host_component:
-            return None
-
-        normalized_user = user_part or username.strip()
-        if not normalized_user:
-            return None
-
-        normalized_host = host_part
-        if normalized_host.startswith("//"):
-            normalized_host = normalized_host[2:]
-
-        return f"{scheme}:{normalized_user}@{normalized_host}"
+        port_part = f":{parsed.port}" if parsed.port else ""
+        return f"{scheme}:{username}@{host}{port_part}"
 
     @staticmethod
-    def _registrar_request_uri(trunk_uri: str) -> str:
-        candidate = SIPRegistrationManager._normalize_optional_string(trunk_uri)
-        if not candidate:
-            return "sip:"
-
-        trimmed = candidate.strip()
-        if trimmed.startswith("<") and trimmed.endswith(">"):
-            trimmed = trimmed[1:-1].strip()
-
-        scheme = "sip"
-        remainder = trimmed
-        lower = trimmed.lower()
-        if lower.startswith("sip:") or lower.startswith("sips:"):
-            scheme, remainder = trimmed.split(":", 1)
-        remainder = remainder.lstrip("/")
-
-        host_part = remainder
-        if "@" in remainder:
-            _, host_part = remainder.rsplit("@", 1)
-
-        host_part = host_part.lstrip("/")
-        host_part = host_part.split(";", 1)[0]
-        host_part = host_part.split("?", 1)[0]
-
-        if not host_part:
-            return f"{scheme}:"
-
-        return f"{scheme}:{host_part}"
-
-    @staticmethod
-    def _format_register_to_header(uri: str) -> str | None:
-        candidate = SIPRegistrationManager._normalize_optional_string(uri)
-        if not candidate:
-            return None
-
-        trimmed = candidate.strip()
-        if "<" in trimmed or ">" in trimmed:
-            return trimmed
-
-        return f"<{trimmed}>"
-
-    def _build_register_headers(
-        self, config: SIPRegistrationConfig
-    ) -> CIMultiDict[str]:
-        headers: CIMultiDict[str] = CIMultiDict()
-        to_header = self._format_register_to_header(config.uri)
-        if to_header:
-            headers["To"] = to_header
-        via_header = self._format_register_via(config)
-        if via_header:
-            headers["Via"] = via_header
-            LOGGER.info("REGISTER Via généré : %s", via_header)
-        return headers
-
-    @staticmethod
-    def _normalize_optional_string(value: Any) -> str | None:
-        if not isinstance(value, str):
-            return None
-        candidate = value.strip()
-        return candidate or None
-
-    @staticmethod
-    def _strip_port_from_contact_host(host: str) -> str:
-        """Return ``host`` without an embedded port declaration."""
-
-        candidate = host.strip()
-        if not candidate:
-            return ""
-
-        if candidate.startswith("["):
-            closing = candidate.find("]")
-            if closing > 0:
-                return candidate[1:closing]
-
-        # IPv6 literals contain multiple colons; keep them unchanged.
-        host_part = candidate
-        try:
-            ipaddress.ip_address(host_part)
-        except ValueError:
-            # ``ip_address`` rejects scoped IPv6 addresses (with ``%``).  Remove
-            # the scope identifier before retrying and re-attach it afterwards.
-            if "%" in host_part:
-                without_scope, _, scope_suffix = host_part.partition("%")
-                try:
-                    ipaddress.ip_address(without_scope)
-                except ValueError:
-                    host_part = candidate
-                else:
-                    if scope_suffix:
-                        return f"{without_scope}%{scope_suffix}"
-                    return without_scope
-            if ":" in host_part:
-                hostname, potential_port = host_part.rsplit(":", 1)
-                if hostname and potential_port.isdigit():
-                    return hostname
-            return candidate
-        else:
-            return host_part
-
-    @staticmethod
-    def _format_register_via(config: SIPRegistrationConfig) -> str | None:
-        host_value = SIPRegistrationManager._normalize_optional_string(
-            config.contact_host
-        )
-        port = config.contact_port
-        if not host_value or not isinstance(port, int) or port <= 0:
-            return None
-
-        stripped_host = SIPRegistrationManager._strip_port_from_contact_host(host_value)
-        if not stripped_host:
-            return None
-
-        host_for_ip_lookup = stripped_host.split("%", 1)[0]
-        try:
-            ip_obj = ipaddress.ip_address(host_for_ip_lookup)
-        except ValueError:
-            formatted_host = stripped_host
-        else:
-            if isinstance(ip_obj, ipaddress.IPv6Address):
-                if "%" in stripped_host:
-                    formatted_host = f"[{stripped_host}]"
-                else:
-                    formatted_host = f"[{host_for_ip_lookup}]"
-            else:
-                formatted_host = host_for_ip_lookup
-
-        transport = SIPRegistrationManager._normalize_transport(config.transport)
-        if not transport:
-            transport_token = "UDP"
-        else:
-            transport_token = transport.upper()
-
-        branch = f"z9hG4bK{secrets.token_hex(8)}"
-        return (
-            f"SIP/2.0/{transport_token} {formatted_host}:{port};branch={branch};rport"
-        )
-
-    def _call_dialog_register(
-        self,
-        dialog: Any,
-        *,
-        expires: int,
-        headers: CIMultiDict[str] | None,
-    ):
-        register_callable = dialog.register
-        kwargs: dict[str, Any] = {"expires": expires}
-        if headers:
-            try:
-                signature = inspect.signature(register_callable)
-            except (TypeError, ValueError):
-                signature = None
-            if signature is not None and "headers" in signature.parameters:
-                kwargs["headers"] = headers
-        return register_callable(**kwargs)
-
-    @staticmethod
-    def _normalize_port(value: Any) -> int | None:
+    def _normalize_host(value: str | None) -> str | None:
         if value is None:
             return None
         try:
-            port = int(value)
-        except (TypeError, ValueError):
-            LOGGER.warning("Port SIP invalide ignoré : %r", value)
-            return None
-        if port <= 0:
-            LOGGER.warning("Port SIP invalide ignoré : %r", value)
-            return None
-        return port
-
-    @staticmethod
-    def _normalize_transport(value: Any) -> str | None:
-        if not isinstance(value, str):
-            return None
-        candidate = value.strip().lower()
-        if not candidate:
-            return None
-        if candidate not in {"udp", "tcp", "tls"}:
-            LOGGER.warning("Transport SIP invalide ignoré : %r", value)
-            return None
-        return candidate
-
-    @staticmethod
-    def _resolve_registrar_socket(host: str, port: int) -> tuple[str, int]:
-        try:
-            address_infos = socket.getaddrinfo(
-                host,
-                port,
-                type=socket.SOCK_DGRAM,
-            )
-        except OSError as exc:
-            LOGGER.debug(
-                "Impossible de résoudre l'adresse réseau du registrar %s:%s : %s",
-                host,
-                port,
-                exc,
-            )
-            return host, port
-
-        for _family, socktype, _proto, _canon, sockaddr in address_infos:
-            if socktype != socket.SOCK_DGRAM:
-                continue
-            if not sockaddr:
-                continue
-            candidate_host = sockaddr[0]
-            candidate_port = sockaddr[1] if len(sockaddr) > 1 else port
-            if candidate_host:
-                return candidate_host, candidate_port
-
-        return host, port
-
-    @staticmethod
-    def _dialog_transport_kwargs(transport: str | None) -> dict[str, Any]:
-        if aiosip is None or not transport:
-            return {}
-        if transport == "udp":
-            try:
-                from aiosip.protocol import UDP  # type: ignore[attr-defined]
-            except Exception:  # pragma: no cover - depends on aiosip internals
-                LOGGER.warning(
-                    "Impossible de charger le protocole UDP pour aiosip, "
-                    "utilisation du transport par défaut",
-                )
-                return {}
-            return {"protocol": UDP}
-        LOGGER.warning(
-            "Transport SIP %s non pris en charge par aiosip, "
-            "utilisation du transport par défaut",
-            transport,
-        )
-        return {}
-
-    def _infer_contact_host(self, trunk_uri: str) -> str | None:
-        """Attempt to determine the outbound IP address for SIP traffic."""
-
-        registrar_host, registrar_port = self._parse_registrar_endpoint(trunk_uri)
-        if registrar_host is None:
-            return None
-
-        try:
-            address_infos = socket.getaddrinfo(
-                registrar_host,
-                registrar_port,
-                type=socket.SOCK_DGRAM,
-            )
-        except OSError as exc:
-            LOGGER.warning(
-                "Impossible de résoudre l'hôte du trunk SIP %s : %s",
-                registrar_host,
-                exc,
-            )
-            return None
-
-        for family, socktype, proto, _, sockaddr in address_infos:
-            try:
-                with socket.socket(family, socktype, proto) as sock:
-                    sock.connect(sockaddr)
-                    local_host = sock.getsockname()[0]
-                    if local_host:
-                        return local_host
-            except OSError:
-                continue
-
-        return None
-
-    @staticmethod
-    def _parse_registrar_endpoint(uri: str) -> tuple[str | None, int]:
-        candidate = SIPRegistrationManager._normalize_optional_string(uri)
-        if not candidate:
-            return None, _DEFAULT_SIP_PORT
-
-        trimmed = candidate.strip()
-        if trimmed.startswith("<") and trimmed.endswith(">"):
-            trimmed = trimmed[1:-1].strip()
-
-        scheme = "sip"
-        remainder = trimmed
-        lower = trimmed.lower()
-        if lower.startswith("sip:") or lower.startswith("sips:"):
-            scheme, remainder = trimmed.split(":", 1)
-        remainder = remainder.lstrip("/")
-
-        if "@" in remainder:
-            _, host_part = remainder.rsplit("@", 1)
-        else:
-            host_part = remainder
-
-        host_part = host_part.lstrip("/")
-        host_port = host_part.split(";", 1)[0]
-        host_port = host_port.split("?", 1)[0]
-        if not host_port:
-            return None, _DEFAULT_SIP_PORT
-
-        fake_uri = f"{scheme}://{host_port}"
-        parsed = urllib.parse.urlparse(fake_uri)
-        host = parsed.hostname
-        try:
-            port = parsed.port
+            ipaddress.ip_address(value)
         except ValueError:
-            port = None
+            return value
+        return value
 
-        if host is None:
-            return None, _DEFAULT_SIP_PORT
 
-        return host, port or _DEFAULT_SIP_PORT
-
-    @staticmethod
-    def _find_available_contact_port(host: str | None) -> int | None:
-        """Return an available UDP port bound to ``host`` if possible."""
-
-        if not host:
-            return None
-
-        try:
-            address_infos = socket.getaddrinfo(
-                host,
-                0,
-                type=socket.SOCK_DGRAM,
-            )
-        except OSError as exc:
-            LOGGER.warning(
-                "Impossible de déterminer un port SIP libre pour %s : %s",
-                host,
-                exc,
-            )
-            return None
-
-        resolver = SIPRegistrationManager._fallback_unspecified_sockaddr
-
-        for family, socktype, proto, _, sockaddr in address_infos:
-            try:
-                sock = socket.socket(family, socktype, proto)
-            except OSError:
-                continue
-
-            with contextlib.closing(sock):
-                try:
-                    sock.bind(sockaddr)
-                except OSError as exc:
-                    if exc.errno != errno.EADDRNOTAVAIL:
-                        continue
-
-                    fallback_sockaddr = resolver(family, sockaddr)
-                    if fallback_sockaddr is None:
-                        continue
-
-                    host_part = host
-                    if isinstance(sockaddr, tuple) and len(sockaddr) >= 1:
-                        host_candidate = sockaddr[0]
-                        if isinstance(host_candidate, str) and host_candidate:
-                            host_part = host_candidate
-                    fallback_host = fallback_sockaddr[0] if fallback_sockaddr else ""
-                    LOGGER.debug(
-                        "Adresse %s non assignée localement pour la détection du port"
-                        " SIP, tentative avec %s",
-                        host_part,
-                        fallback_host,
-                    )
-
-                    try:
-                        sock.bind(fallback_sockaddr)
-                    except OSError:
-                        continue
-
-                bound = sock.getsockname()
-                if isinstance(bound, tuple) and len(bound) >= 2:
-                    port = bound[1]
-                else:
-                    continue
-                if isinstance(port, int) and port > 0:
-                    return port
-
-        return None
-
-    @staticmethod
-    def _fallback_unspecified_sockaddr(
-        family: int, sockaddr: tuple[Any, ...]
-    ) -> tuple[Any, ...] | None:
-        """Return a wildcard sockaddr matching ``family`` for port probing."""
-
-        if family == socket.AF_INET:
-            return ("0.0.0.0", 0)
-
-        af_inet6 = getattr(socket, "AF_INET6", None)
-        if af_inet6 is not None and family == af_inet6:
-            flowinfo = 0
-            scopeid = 0
-            if len(sockaddr) >= 3 and isinstance(sockaddr[2], int):
-                flowinfo = sockaddr[2]
-            if len(sockaddr) >= 4 and isinstance(sockaddr[3], int):
-                scopeid = sockaddr[3]
-            return ("::", 0, flowinfo, scopeid)
-
-        return None
+async def send_sip_reply(
+    dialog: CallAdapter,
+    status_code: int,
+    *,
+    reason: str,
+    headers: dict[str, str] | None = None,
+    payload: str | bytes | None = None,
+    call_id: str | None = None,
+    contact_uri: str | None = None,
+) -> None:
+    merged_headers = CIMultiDict(headers or {})
+    if call_id is not None:
+        merged_headers.setdefault("Call-ID", call_id)
+    if contact_uri is not None:
+        merged_headers.setdefault("Contact", contact_uri)
+    dialog.reply(
+        status_code,
+        reason=reason,
+        headers=dict(merged_headers),
+        payload=payload,
+    )
