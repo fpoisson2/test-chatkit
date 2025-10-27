@@ -313,20 +313,14 @@ class TelephonyVoiceBridge:
                     audio_interrupted.set()
                     continue
                 if message_type == "input_audio_buffer.speech_stopped":
-                    logger.debug("Fin de parole utilisateur détectée")
+                    logger.info("Fin de parole utilisateur - autoriser nouvelle réponse agent")
+                    audio_interrupted.clear()
                     continue
                 if message_type == "response.cancelled":
-                    logger.debug("Réponse annulée par l'API")
-                    audio_interrupted.set()
+                    logger.info("Réponse annulée par l'API")
                     continue
                 if message_type == "audio_interrupted" or message_type == "response.audio_interrupted":
                     logger.info("Audio interrompu par l'utilisateur")
-                    audio_interrupted.set()
-                    continue
-
-                # Réinitialiser le flag d'interruption au début d'une nouvelle réponse
-                if message_type == "response.created" or message_type == "response.started":
-                    audio_interrupted.clear()
                     continue
 
                 if message_type.endswith("audio.delta"):
