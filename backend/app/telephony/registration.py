@@ -511,10 +511,14 @@ class SIPRegistrationManager:
                     return
 
         call_id: str | None = None
+        cseq_text: str | None = None
         if isinstance(request_headers, Mapping):
             call_id_value = _get_header_value(request_headers, "Call-ID")
             if isinstance(call_id_value, str):
                 call_id = call_id_value
+            cseq_value = _get_header_value(request_headers, "CSeq")
+            if cseq_value is not None:
+                cseq_text = str(cseq_value).strip() or None
 
         try:
             await send_sip_reply(
@@ -526,6 +530,7 @@ class SIPRegistrationManager:
                     for key, value in (
                         ("Allow", _OPTIONS_ALLOW_HEADER),
                         ("Via", via_header_text),
+                        ("CSeq", cseq_text),
                     )
                     if value is not None
                 },

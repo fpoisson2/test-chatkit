@@ -721,6 +721,7 @@ def test_options_handler_fallbacks_to_dialog_reply() -> None:
             headers={
                 "Call-ID": "abc123",
                 "Via": "SIP/2.0/UDP 192.168.1.155:5060;branch=z9hG4bKviaFallback",
+                "CSeq": "42 OPTIONS",
             }
         )
 
@@ -742,6 +743,7 @@ def test_options_handler_fallbacks_to_dialog_reply() -> None:
         headers.get("Via")
         == "SIP/2.0/UDP 192.168.1.155:5060;branch=z9hG4bKviaFallback"
     )
+    assert headers.get("CSeq") == "42 OPTIONS"
     assert params.get("reason") == "OK"
 
 
