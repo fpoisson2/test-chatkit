@@ -91,6 +91,8 @@ import {
   setConditionMode,
   setConditionPath,
   setConditionValue,
+  setParallelSplitJoinSlug,
+  setParallelSplitBranches,
   stringifyAgentParameters,
   createVectorStoreNodeParameters,
   getVectorStoreNodeConfig,
@@ -112,6 +114,11 @@ import {
   createVoiceAgentParameters,
   resolveVoiceAgentParameters,
   resolveStartParameters,
+  createParallelSplitParameters,
+  createParallelJoinParameters,
+  resolveParallelSplitParameters,
+  getParallelSplitJoinSlug,
+  getParallelSplitBranches,
   type WorkflowToolConfig,
   type StartTelephonyRealtimeOverrides,
 } from "../../utils/workflows";
@@ -146,6 +153,7 @@ import type {
   VoiceAgentTool,
   VoiceAgentStartBehavior,
   VoiceAgentStopBehavior,
+  ParallelBranch,
 } from "./types";
 import {
   AUTO_SAVE_DELAY_MS,
@@ -376,6 +384,24 @@ const WorkflowBuilderPage = () => {
   const formatSaveFailureWithStatus = useCallback(
     (status: number) => t("workflowBuilder.save.failureWithStatus", { status }),
     [t],
+  );
+
+  const extractSaveErrorMessage = useCallback(
+    async (response: Response) => {
+      try {
+        const payload = (await response.json()) as { detail?: unknown };
+        if (payload && typeof payload.detail === "string") {
+          const trimmed = payload.detail.trim();
+          if (trimmed) {
+            return trimmed;
+          }
+        }
+      } catch (error) {
+        console.error("Impossible de lire la réponse d'erreur de sauvegarde", error);
+      }
+      return formatSaveFailureWithStatus(response.status);
+    },
+    [formatSaveFailureWithStatus],
   );
   const authHeader = useMemo(
     () => (token ? { Authorization: `Bearer ${token}` } : {}),
@@ -1693,7 +1719,11 @@ const WorkflowBuilderPage = () => {
                         ? resolveWidgetNodeParameters(node.parameters)
                         : node.kind === "start"
                           ? resolveStartParameters(node.parameters)
-                          : resolveAgentParameters(null, node.parameters);
+                          : node.kind === "parallel_split"
+                            ? resolveParallelSplitParameters(node.parameters)
+                            : node.kind === "parallel_join"
+                              ? ({ ...(node.parameters ?? {}) } as AgentParameters)
+                              : resolveAgentParameters(null, node.parameters);
             const baseNode: FlowNode = {
               id: node.slug,
               position: positionFromMetadata ?? { x: 150 * index, y: 120 * index },
@@ -3148,6 +3178,42 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleParallelJoinSlugChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "parallel_split") {
+          return data;
+        }
+        const nextParameters = setParallelSplitJoinSlug(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleParallelBranchesChange = useCallback(
+    (nodeId: string, branches: ParallelBranch[]) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "parallel_split") {
+          return data;
+        }
+        const nextParameters = setParallelSplitBranches(data.parameters, branches);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleWidgetNodeSlugChange = useCallback(
     (nodeId: string, slug: string) => {
       updateNodeData(nodeId, (data) => {
@@ -3959,6 +4025,62 @@ const WorkflowBuilderPage = () => {
       },
       draggable: true,
     };
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
+
+  const handleAddParallelSplitNode = useCallback(() => {
+    const slug = `parallel-split-${Date.now()}`;
+    const joinSlug = `parallel-join-${Date.now()}`;
+    const parameters = {
+      ...createParallelSplitParameters(),
+      join_slug: joinSlug,
+    };
+    const displayName = humanizeSlug(slug);
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 420, y: 200 },
+      data: {
+        slug,
+        kind: "parallel_split",
+        displayName,
+        label: displayName,
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
+        metadata: {},
+      },
+      draggable: true,
+    } satisfies FlowNode;
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
+
+  const handleAddParallelJoinNode = useCallback(() => {
+    const slug = `parallel-join-${Date.now()}`;
+    const parameters = createParallelJoinParameters();
+    const displayName = humanizeSlug(slug);
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 520, y: 220 },
+      data: {
+        slug,
+        kind: "parallel_join",
+        displayName,
+        label: displayName,
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
+        metadata: {},
+      },
+      draggable: true,
+    } satisfies FlowNode;
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
 
@@ -5369,40 +5491,96 @@ const WorkflowBuilderPage = () => {
       nodes.filter((node) => node.data.isEnabled).map((node) => [node.id, node]),
     );
 
+    const joinAssignments = new Map<string, { slug: string; label: string }>();
+
     for (const node of nodes) {
-      if (!node.data.isEnabled || node.data.kind !== "condition") {
+      if (!node.data.isEnabled) {
         continue;
       }
 
       const label = node.data.displayName.trim() || node.data.slug;
-      const outgoing = edges.filter(
-        (edge) => edge.source === node.id && enabledNodes.has(edge.target),
-      );
 
-      if (outgoing.length < 2) {
-        return `Le bloc conditionnel « ${label} » doit comporter au moins deux sorties actives.`;
+      if (node.data.kind === "condition") {
+        const outgoing = edges.filter(
+          (edge) => edge.source === node.id && enabledNodes.has(edge.target),
+        );
+
+        if (outgoing.length < 2) {
+          return `Le bloc conditionnel « ${label} » doit comporter au moins deux sorties actives.`;
+        }
+
+        const seenBranches = new Set<string>();
+        let defaultCount = 0;
+
+        for (const edge of outgoing) {
+          const rawCondition = edge.data?.condition ?? "";
+          const trimmed = rawCondition.trim();
+          const normalized = trimmed ? trimmed.toLowerCase() : "default";
+
+          if (normalized === "default") {
+            defaultCount += 1;
+            if (defaultCount > 1) {
+              return `Le bloc conditionnel « ${label} » ne peut contenir qu'une seule branche par défaut.`;
+            }
+          }
+
+          if (seenBranches.has(normalized)) {
+            return `Le bloc conditionnel « ${label} » contient des branches conditionnelles en double.`;
+          }
+
+          seenBranches.add(normalized);
+        }
       }
 
-      const seenBranches = new Set<string>();
-      let defaultCount = 0;
+      if (node.data.kind === "parallel_split") {
+        const outgoing = edges.filter(
+          (edge) => edge.source === node.id && enabledNodes.has(edge.target),
+        );
 
-      for (const edge of outgoing) {
-        const rawCondition = edge.data?.condition ?? "";
-        const trimmed = rawCondition.trim();
-        const normalized = trimmed ? trimmed.toLowerCase() : "default";
-
-        if (normalized === "default") {
-          defaultCount += 1;
-          if (defaultCount > 1) {
-            return `Le bloc conditionnel « ${label} » ne peut contenir qu'une seule branche par défaut.`;
-          }
+        if (outgoing.length < 2) {
+          return `Le bloc split parallèle « ${label} » doit comporter au moins deux sorties actives.`;
         }
 
-        if (seenBranches.has(normalized)) {
-          return `Le bloc conditionnel « ${label} » contient des branches conditionnelles en double.`;
+        const joinSlug = getParallelSplitJoinSlug(node.data.parameters);
+        if (!joinSlug) {
+          return `Le bloc split parallèle « ${label} » doit préciser une jointure valide.`;
         }
 
-        seenBranches.add(normalized);
+        const joinNode = enabledNodes.get(joinSlug);
+        if (!joinNode || joinNode.data.kind !== "parallel_join") {
+          return `Le bloc split parallèle « ${label} » doit référencer un bloc de jointure valide.`;
+        }
+
+        const joinLabel = joinNode.data.displayName.trim() || joinNode.data.slug;
+        const previousAssignment = joinAssignments.get(joinSlug);
+        if (previousAssignment && previousAssignment.slug !== node.id) {
+          return `La jointure « ${joinLabel} » est déjà associée au split parallèle « ${previousAssignment.label} ».`;
+        }
+        joinAssignments.set(joinSlug, { slug: node.id, label });
+
+        const branches = getParallelSplitBranches(node.data.parameters);
+        if (branches.length !== outgoing.length) {
+          return `Le bloc split parallèle « ${label} » doit définir autant de branches que de sorties actives.`;
+        }
+      }
+    }
+
+    for (const node of nodes) {
+      if (!node.data.isEnabled || node.data.kind !== "parallel_join") {
+        continue;
+      }
+
+      const label = node.data.displayName.trim() || node.data.slug;
+      const incoming = edges.filter(
+        (edge) => edge.target === node.id && enabledNodes.has(edge.source),
+      );
+
+      if (incoming.length < 2) {
+        return `Le bloc de jointure parallèle « ${label} » doit comporter au moins deux entrées actives.`;
+      }
+
+      if (!joinAssignments.has(node.id)) {
+        return `Le bloc de jointure parallèle « ${label} » doit être associé à un split parallèle.`;
       }
     }
 
@@ -5492,7 +5670,8 @@ const WorkflowBuilderPage = () => {
               body: JSON.stringify({ graph: graphPayload, mark_as_active: false }),
             });
             if (!response.ok) {
-              throw new Error(formatSaveFailureWithStatus(response.status));
+              const message = await extractSaveErrorMessage(response);
+              throw new Error(message);
             }
             const created: WorkflowVersionResponse = await response.json();
             const summary: WorkflowVersionSummary = {
@@ -5579,7 +5758,8 @@ const WorkflowBuilderPage = () => {
           body: JSON.stringify({ graph: graphPayload }),
         });
         if (!response.ok) {
-          throw new Error(formatSaveFailureWithStatus(response.status));
+          const message = await extractSaveErrorMessage(response);
+          throw new Error(message);
         }
         const updated: WorkflowVersionResponse = await response.json();
         const summary: WorkflowVersionSummary = {
@@ -5649,7 +5829,7 @@ const WorkflowBuilderPage = () => {
     conditionGraphError,
     deviceType,
     draftDisplayName,
-    formatSaveFailureWithStatus,
+    extractSaveErrorMessage,
     loadVersions,
     nodes,
     persistViewportMemory,
@@ -6394,108 +6574,76 @@ const WorkflowBuilderPage = () => {
     selectedWorkflowId,
   ]);
 
-  const blockLibraryItems = useMemo(
-    () => [
-      {
-        key: "agent",
-        label: "Agent",
-        shortLabel: "A",
-        color: NODE_COLORS.agent,
-        onClick: handleAddAgentNode,
-      },
+  const blockLibraryItems = useMemo(() => {
+    const definitions: Array<{
+      key: string;
+      kind: NodeKind;
+      shortLabel: string;
+      onClick: () => void;
+    }> = [
+      { key: "agent", kind: "agent", shortLabel: "A", onClick: handleAddAgentNode },
       {
         key: "voice-agent",
-        label: "Agent vocal",
-        shortLabel: "V",
-        color: NODE_COLORS.voice_agent,
+        kind: "voice_agent",
+        shortLabel: "AV",
         onClick: handleAddVoiceAgentNode,
       },
-      {
-        key: "condition",
-        label: "Condition",
-        shortLabel: "C",
-        color: NODE_COLORS.condition,
-        onClick: handleAddConditionNode,
-      },
-      {
-        key: "state",
-        label: "Bloc état",
-        shortLabel: "É",
-        color: NODE_COLORS.state,
-        onClick: handleAddStateNode,
-      },
-      {
-        key: "watch",
-        label: "Bloc watch",
-        shortLabel: "W",
-        color: NODE_COLORS.watch,
-        onClick: handleAddWatchNode,
-      },
-      {
-        key: "transform",
-        label: "Bloc transform",
-        shortLabel: "T",
-        color: NODE_COLORS.transform,
-        onClick: handleAddTransformNode,
-      },
+      { key: "condition", kind: "condition", shortLabel: "C", onClick: handleAddConditionNode },
+      { key: "parallel-split", kind: "parallel_split", shortLabel: "SP", onClick: handleAddParallelSplitNode },
+      { key: "parallel-join", kind: "parallel_join", shortLabel: "JP", onClick: handleAddParallelJoinNode },
+      { key: "state", kind: "state", shortLabel: "É", onClick: handleAddStateNode },
+      { key: "watch", kind: "watch", shortLabel: "W", onClick: handleAddWatchNode },
+      { key: "transform", kind: "transform", shortLabel: "T", onClick: handleAddTransformNode },
       {
         key: "wait-for-user-input",
-        label: "Wait for user input",
+        kind: "wait_for_user_input",
         shortLabel: "AU",
-        color: NODE_COLORS.wait_for_user_input,
         onClick: handleAddWaitForUserInputNode,
       },
       {
         key: "assistant-message",
-        label: "Message assistant",
+        kind: "assistant_message",
         shortLabel: "MA",
-        color: NODE_COLORS.assistant_message,
         onClick: handleAddAssistantMessageNode,
       },
       {
         key: "user-message",
-        label: "Message utilisateur",
+        kind: "user_message",
         shortLabel: "MU",
-        color: NODE_COLORS.user_message,
         onClick: handleAddUserMessageNode,
       },
       {
         key: "json-vector-store",
-        label: "Stockage JSON",
+        kind: "json_vector_store",
         shortLabel: "VS",
-        color: NODE_COLORS.json_vector_store,
         onClick: handleAddVectorStoreNode,
       },
-      {
-        key: "widget",
-        label: "Bloc widget",
-        shortLabel: "W",
-        color: NODE_COLORS.widget,
-        onClick: handleAddWidgetNode,
-      },
-      {
-        key: "end",
-        label: "Fin",
-        shortLabel: "F",
-        color: NODE_COLORS.end,
-        onClick: handleAddEndNode,
-      },
-    ],
-    [
-      handleAddAgentNode,
-      handleAddVoiceAgentNode,
-      handleAddConditionNode,
-      handleAddStateNode,
-      handleAddWatchNode,
-      handleAddTransformNode,
-      handleAddWaitForUserInputNode,
-      handleAddAssistantMessageNode,
-      handleAddUserMessageNode,
-      handleAddVectorStoreNode,
-      handleAddWidgetNode,
-      handleAddEndNode,
-    ],
-  );
+      { key: "widget", kind: "widget", shortLabel: "W", onClick: handleAddWidgetNode },
+      { key: "end", kind: "end", shortLabel: "F", onClick: handleAddEndNode },
+    ];
+
+    return definitions.map((definition) => ({
+      ...definition,
+      label: labelForKind(definition.kind, t),
+      color: NODE_COLORS[definition.kind],
+    }));
+  }, [
+    t,
+    handleAddAgentNode,
+    handleAddVoiceAgentNode,
+    handleAddConditionNode,
+    handleAddParallelSplitNode,
+    handleAddParallelJoinNode,
+    handleAddStateNode,
+    handleAddWatchNode,
+    handleAddTransformNode,
+    handleAddWaitForUserInputNode,
+    handleAddAssistantMessageNode,
+    handleAddUserMessageNode,
+    handleAddVectorStoreNode,
+    handleAddWidgetNode,
+    handleAddEndNode,
+  ]);
 
   const updateBlockLibraryTransforms = useCallback(() => {
     if (!isMobileLayout || typeof window === "undefined") {
@@ -7115,7 +7263,7 @@ const WorkflowBuilderPage = () => {
 
   const isPrimaryActionDisabled = !versionSummaryForPromotion || isDeploying;
   const selectedElementLabel = selectedNode
-    ? selectedNode.data.displayName.trim() || labelForKind(selectedNode.data.kind)
+    ? selectedNode.data.displayName.trim() || labelForKind(selectedNode.data.kind, t)
     : selectedEdge
       ? `${selectedEdge.source} → ${selectedEdge.target}`
       : "";
@@ -7218,6 +7366,8 @@ const WorkflowBuilderPage = () => {
             onConditionPathChange={handleConditionPathChange}
             onConditionModeChange={handleConditionModeChange}
             onConditionValueChange={handleConditionValueChange}
+            onParallelJoinSlugChange={handleParallelJoinSlugChange}
+            onParallelBranchesChange={handleParallelBranchesChange}
             availableModels={availableModels}
             availableModelsLoading={availableModelsLoading}
             availableModelsError={availableModelsError}

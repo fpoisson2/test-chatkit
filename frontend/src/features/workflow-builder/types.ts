@@ -21,6 +21,8 @@ export type NodeKind =
   | "assistant_message"
   | "user_message"
   | "json_vector_store"
+  | "parallel_split"
+  | "parallel_join"
   | "widget"
   | "end";
 
@@ -115,5 +117,6 @@ export type {
   VoiceAgentStartBehavior,
   VoiceAgentStopBehavior,
   WorkflowToolConfig,
+  ParallelBranch,
 } from "../../utils/workflows";
 export type { WorkflowSummary, WorkflowVersionSummary } from "../../types/workflows";
