@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import sys
 from dataclasses import dataclass
@@ -18,6 +19,8 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 
 from backend.app.telephony.sip_server import (  # noqa: E402
+    SipCallRequestHandler,
+    SipCallSession,
     TelephonyRouteSelectionError,
     resolve_workflow_for_phone_number,
 )
@@ -223,3 +226,66 @@ def test_resolve_workflow_for_phone_number_raises_when_no_route(
             phone_number="+331234",
             session=object(),
         )
+
+
+def test_ack_starts_rtp_session_once() -> None:
+    started: list[str] = []
+
+    async def _on_start(session: SipCallSession) -> None:
+        started.append(session.call_id)
+
+    handler = SipCallRequestHandler(start_rtp_callback=_on_start)
+
+    async def _run() -> None:
+        invite = SimpleNamespace(method="INVITE", headers={"Call-ID": "abc123"})
+        await handler.handle_request(invite)
+
+        ack = SimpleNamespace(method="ACK", headers={"Call-ID": "abc123"})
+        await handler.handle_request(ack)
+
+        assert started == ["abc123"]
+        session = handler.get_session("abc123")
+        assert session is not None
+        assert session.state == "established"
+        assert session.rtp_started_at is not None
+
+        # Replaying the ACK should be ignored silently.
+        await handler.handle_request(ack)
+        assert started == ["abc123"], "ACK should not restart RTP"
+
+    asyncio.run(_run())
+
+
+def test_ack_without_session_is_ignored(caplog: pytest.LogCaptureFixture) -> None:
+    handler = SipCallRequestHandler()
+
+    async def _run() -> None:
+        ack = SimpleNamespace(method="ACK", headers={"Call-ID": "missing"})
+
+        with caplog.at_level("WARNING"):
+            await handler.handle_request(ack)
+
+        assert "sans session correspondante" in " ".join(caplog.messages)
+
+    asyncio.run(_run())
+
+
+def test_bye_terminates_session_and_calls_callback() -> None:
+    terminated: list[str] = []
+
+    async def _on_terminate(session: SipCallSession, _dialog: Any | None) -> None:
+        terminated.append(session.call_id)
+
+    handler = SipCallRequestHandler(terminate_callback=_on_terminate)
+
+    async def _run() -> None:
+        invite = SimpleNamespace(method="INVITE", headers={"Call-ID": "bye-test"})
+        await handler.handle_request(invite)
+
+        bye = SimpleNamespace(method="BYE", headers={"Call-ID": "bye-test"})
+        await handler.handle_request(bye)
+
+        assert terminated == ["bye-test"]
+        assert handler.get_session("bye-test") is None
+
+    asyncio.run(_run())
