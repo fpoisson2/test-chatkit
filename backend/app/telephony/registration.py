@@ -444,16 +444,19 @@ class SIPRegistrationManager:
 
         request_headers = getattr(request, "headers", None)
         via_header: object | None = None
+        via_header_text: str | None = None
         if isinstance(request_headers, Mapping):
             via_header = _get_header_value(request_headers, "Via")
+            if via_header is not None:
+                via_header_text = str(via_header).strip() or None
 
         request_transport = _describe_transport(request)
         dialog_transport = _describe_transport(dialog)
 
-        if via_header or request_transport or dialog_transport:
+        if via_header_text or request_transport or dialog_transport:
             LOGGER.info(
                 "OPTIONS reçu via=%s req=%s dialog=%s contact=%s",
-                via_header,
+                via_header_text,
                 request_transport,
                 dialog_transport,
                 contact_uri,
@@ -474,10 +477,14 @@ class SIPRegistrationManager:
                     headers_obj["Allow"] = _OPTIONS_ALLOW_HEADER
                     if contact_uri:
                         headers_obj.setdefault("Contact", contact_uri)
+                    if via_header_text:
+                        headers_obj["Via"] = via_header_text
                 else:
                     merged_headers = {"Allow": _OPTIONS_ALLOW_HEADER}
                     if contact_uri:
                         merged_headers.setdefault("Contact", contact_uri)
+                    if via_header_text:
+                        merged_headers["Via"] = via_header_text
                     try:
                         response.headers = merged_headers  # type: ignore[attr-defined]
                     except Exception:  # pragma: no cover - depends on aiosip internals
@@ -498,7 +505,7 @@ class SIPRegistrationManager:
                     LOGGER.info(
                         "OPTIONS 200 via request.reply contact=%s via=%s req=%s",
                         contact_uri,
-                        via_header,
+                        via_header_text,
                         request_transport,
                     )
                     return
@@ -525,7 +532,7 @@ class SIPRegistrationManager:
             LOGGER.info(
                 "OPTIONS 200 via send_sip_reply contact=%s via=%s dialog=%s",
                 contact_uri,
-                via_header,
+                via_header_text,
                 dialog_transport,
             )
 
@@ -539,6 +546,7 @@ class SIPRegistrationManager:
                 contact_uri = config.contact_uri()
 
         via_header: object | None = None
+        via_header_text: str | None = None
         message_headers = getattr(message, "headers", None)
         if isinstance(message_headers, Mapping):
             via_header = _get_header_value(message_headers, "Via")
@@ -546,14 +554,16 @@ class SIPRegistrationManager:
             request_headers = getattr(request, "headers", None)
             if isinstance(request_headers, Mapping):
                 via_header = _get_header_value(request_headers, "Via")
+        if via_header is not None:
+            via_header_text = str(via_header).strip() or None
 
         request_transport = _describe_transport(request)
         message_transport = _describe_transport(message)
 
-        if via_header or request_transport or message_transport:
+        if via_header_text or request_transport or message_transport:
             LOGGER.info(
                 "OPTIONS dispatcher via=%s req=%s msg=%s contact=%s",
-                via_header,
+                via_header_text,
                 request_transport,
                 message_transport,
                 contact_uri,
@@ -572,10 +582,14 @@ class SIPRegistrationManager:
             headers_obj["Allow"] = _OPTIONS_ALLOW_HEADER
             if contact_uri:
                 headers_obj.setdefault("Contact", contact_uri)
+            if via_header_text:
+                headers_obj["Via"] = via_header_text
         else:
             merged_headers = {"Allow": _OPTIONS_ALLOW_HEADER}
             if contact_uri:
                 merged_headers.setdefault("Contact", contact_uri)
+            if via_header_text:
+                merged_headers["Via"] = via_header_text
             try:
                 response.headers = merged_headers  # type: ignore[attr-defined]
             except Exception:  # pragma: no cover - depends on aiosip internals
@@ -591,7 +605,7 @@ class SIPRegistrationManager:
             LOGGER.info(
                 "OPTIONS 200 via dispatcher.reply contact=%s via=%s req=%s msg=%s",
                 contact_uri,
-                via_header,
+                via_header_text,
                 request_transport,
                 message_transport,
             )

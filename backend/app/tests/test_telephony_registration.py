@@ -655,11 +655,16 @@ def test_options_handler_replies_with_success() -> None:
         created: list[tuple[int, str]] = []
         replied: list[object] = []
 
+        via_header = "SIP/2.0/UDP 192.168.1.155:5060;branch=z9hG4bKabc123"
+
         class DummyResponse:
             def __init__(self) -> None:
                 self.headers: dict[str, str] = {}
 
         class DummyRequest:
+            def __init__(self) -> None:
+                self.headers = {"Via": via_header}
+
             def create_response(  # type: ignore[no-untyped-def]
                 self, status_code: int, reason: str
             ) -> DummyResponse:
@@ -688,6 +693,7 @@ def test_options_handler_replies_with_success() -> None:
     assert isinstance(response, DummyResponse)
     assert response.headers["Allow"] == _OPTIONS_ALLOW_HEADER
     assert response.headers["Contact"] == "<sip:alice@198.51.100.10:5070>"
+    assert response.headers["Via"] == via_header
 
 
 def test_options_handler_fallbacks_to_dialog_reply() -> None:
@@ -760,8 +766,14 @@ def test_options_dispatcher_handler_replies_with_success() -> None:
             async def reply(self, response: DummyResponse) -> None:
                 replies.append(response)
 
+        via_header = "SIP/2.0/UDP 192.168.1.155:5060;branch=z9hG4bKdef456"
+
+        message = SimpleNamespace(headers={"Via": via_header})
+
         loop.run_until_complete(
-            manager._handle_incoming_options_dispatcher(DummyRequest(), object())
+            manager._handle_incoming_options_dispatcher(
+                DummyRequest(), message
+            )
         )
     finally:
         loop.run_until_complete(asyncio.sleep(0))
@@ -773,6 +785,7 @@ def test_options_dispatcher_handler_replies_with_success() -> None:
     assert isinstance(response, DummyResponse)
     assert response.headers["Allow"] == _OPTIONS_ALLOW_HEADER
     assert response.headers["Contact"] == "<sip:alice@198.51.100.10:5070>"
+    assert response.headers["Via"] == via_header
 
 
 def test_register_once_uses_resolved_registrar_ip(
