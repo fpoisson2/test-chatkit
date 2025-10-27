@@ -90,10 +90,27 @@ async def create_realtime_voice_session(
     }
 
     timeout = httpx.Timeout(30.0, connect=10.0, read=None)
+
+    base_url = httpx.URL(api_base)
+    normalized_path = base_url.path.rstrip("/")
+    path_segments = [segment for segment in normalized_path.split("/") if segment]
+    has_version_segment = bool(path_segments) and path_segments[-1].lower() == "v1"
+
+    if has_version_segment:
+        target_path = f"{normalized_path}/realtime/client_secrets"
+    else:
+        base_path = normalized_path or ""
+        target_path = f"{base_path}/v1/realtime/client_secrets"
+
+    if not target_path.startswith("/"):
+        target_path = "/" + target_path
+
+    endpoint_url = base_url.copy_with(path=target_path, query=None, fragment=None)
+
     try:
-        async with httpx.AsyncClient(base_url=api_base, timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
-                "/v1/realtime/client_secrets",
+                str(endpoint_url),
                 json=payload,
                 headers=headers,
             )
