@@ -126,7 +126,7 @@ async def default_websocket_connector(
 
     return await connect(
         url,
-        extra_headers=headers,
+        additional_headers=headers,
         open_timeout=10.0,
         close_timeout=5.0,
         max_size=None,
