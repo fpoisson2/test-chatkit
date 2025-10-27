@@ -2168,31 +2168,31 @@ async def run_workflow(
                 ),
             )
             try:
-            async for event in stream_agent_response(agent_context, result):
-                logger.debug(
-                    "Évènement %s reçu pour l'étape %s",
-                    getattr(event, "type", type(event).__name__),
-                    metadata_for_images.get("step_slug"),
-                )
-                if _should_forward_agent_event(
-                    event, suppress=suppress_stream_events
-                ):
-                    await _emit_stream_event(event)
-                delta_text = _extract_delta(event)
-                if delta_text:
-                    accumulated_text += delta_text
-                    await _emit_step_stream(
-                        WorkflowStepStreamUpdate(
-                            key=step_key,
-                            title=title,
-                            index=step_index,
-                            delta=delta_text,
-                            text=accumulated_text,
-                        )
+                async for event in stream_agent_response(agent_context, result):
+                    logger.debug(
+                        "Évènement %s reçu pour l'étape %s",
+                        getattr(event, "type", type(event).__name__),
+                        metadata_for_images.get("step_slug"),
                     )
-                await _inspect_event_for_images(event)
-        except Exception as exc:  # pragma: no cover
-            raise_step_error(step_key, title, exc)
+                    if _should_forward_agent_event(
+                        event, suppress=suppress_stream_events
+                    ):
+                        await _emit_stream_event(event)
+                    delta_text = _extract_delta(event)
+                    if delta_text:
+                        accumulated_text += delta_text
+                        await _emit_step_stream(
+                            WorkflowStepStreamUpdate(
+                                key=step_key,
+                                title=title,
+                                index=step_index,
+                                delta=delta_text,
+                                text=accumulated_text,
+                            )
+                        )
+                    await _inspect_event_for_images(event)
+            except Exception as exc:  # pragma: no cover
+                raise_step_error(step_key, title, exc)
 
         last_response_id = getattr(result, "last_response_id", None)
         if last_response_id is not None and (
