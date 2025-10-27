@@ -6,11 +6,14 @@ import datetime
 import logging
 import os
 import re
+import uuid
 from typing import Any
 
 from fastapi import FastAPI
 from sqlalchemy import String, inspect, select, text
 from sqlalchemy.sql import bindparam
+
+from chatkit.types import ThreadMetadata
 
 from .admin_settings import (
     apply_runtime_model_overrides,
@@ -348,6 +351,47 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 "voice_session_active": False,
             }
         )
+
+        # Créer un nouveau thread pour cet appel
+        thread_id = str(uuid.uuid4())
+        thread = ThreadMetadata(
+            id=thread_id,
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        # Sauvegarder le thread dans le store ChatKit
+        server = get_chatkit_server()
+        store = getattr(server, "store", None)
+        if store is not None:
+            chatkit_context = ChatKitRequestContext(
+                user_id=f"sip:{session.call_id}",
+                email=None,
+                authorization=None,
+                public_base_url=settings.backend_public_base_url,
+                voice_model=context.voice_model,
+                voice_instructions=context.voice_instructions,
+                voice_voice=context.voice_voice,
+                voice_prompt_variables=context.voice_prompt_variables,
+            )
+            try:
+                await store.save_thread(thread, chatkit_context)
+                telephony_metadata["thread_id"] = thread_id
+                logger.info(
+                    "Thread créé pour l'appel SIP (Call-ID=%s, thread_id=%s)",
+                    session.call_id,
+                    thread_id,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "Erreur lors de la création du thread pour Call-ID=%s",
+                    session.call_id,
+                    exc_info=exc,
+                )
+        else:
+            logger.warning(
+                "Store ChatKit non disponible, thread non créé pour Call-ID=%s",
+                session.call_id,
+            )
 
         if context.route is None:
             logger.info(
