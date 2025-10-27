@@ -387,7 +387,7 @@ const fr: TranslationDictionary = {
   "workflowBuilder.startInspector.telephonyRoutesLabel": "Numéros entrants",
   "workflowBuilder.startInspector.telephonyRoutesPlaceholder": "Saisir un numéro par ligne…",
   "workflowBuilder.startInspector.telephonyRoutesHelp":
-    "Utilisez le format E.164 (ex. +33123456789). Laissez vide pour désactiver la redirection téléphonique.",
+    "Utilisez un numéro E.164 (ex. +33123456789) ou une extension numérique (ex. 101). Laissez vide pour désactiver la redirection téléphonique.",
   "workflowBuilder.startInspector.telephonyRoutesError": "Numéros non conformes : {{list}}",
   "workflowBuilder.startInspector.telephonyWorkflowSlugLabel": "Slug du workflow cible",
   "workflowBuilder.startInspector.telephonyWorkflowSlugHelp":
@@ -912,7 +912,7 @@ const en: TranslationDictionary = {
   "workflowBuilder.startInspector.telephonyRoutesLabel": "Inbound numbers",
   "workflowBuilder.startInspector.telephonyRoutesPlaceholder": "Enter one phone number per line…",
   "workflowBuilder.startInspector.telephonyRoutesHelp":
-    "Use the E.164 format (e.g. +33123456789). Leave empty to disable telephony routing.",
+    "Use an E.164 number (e.g. +33123456789) or a numeric extension (e.g. 101). Leave empty to disable telephony routing.",
   "workflowBuilder.startInspector.telephonyRoutesError": "Invalid phone numbers: {{list}}",
   "workflowBuilder.startInspector.telephonyWorkflowSlugLabel": "Target workflow slug",
   "workflowBuilder.startInspector.telephonyWorkflowSlugHelp":
