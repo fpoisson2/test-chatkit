@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from dataclasses import dataclass
-from typing import Any
+import time
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass, field
+from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 
@@ -21,6 +24,32 @@ from ..workflows.service import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+CallState = Literal["invited", "established", "terminated", "failed"]
+
+
+@dataclass(slots=True)
+class SipCallSession:
+    """Représente l'état d'un appel SIP géré par :class:`SipCallRequestHandler`."""
+
+    call_id: str
+    request: Any
+    dialog: Any | None = None
+    state: CallState = "invited"
+    created_at: float = field(default_factory=time.monotonic)
+    rtp_started_at: float | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def mark_established(self) -> None:
+        self.state = "established"
+        self.rtp_started_at = time.monotonic()
+
+    def mark_failed(self) -> None:
+        self.state = "failed"
+
+    def mark_terminated(self) -> None:
+        self.state = "terminated"
 
 
 @dataclass(frozen=True)
@@ -320,7 +349,166 @@ def resolve_workflow_for_phone_number(
     )
 
 
+class SipCallRequestHandler:
+    """Gestionnaire générique des requêtes SIP INVITE/ACK/BYE."""
+
+    def __init__(
+        self,
+        *,
+        invite_callback: Callable[[SipCallSession, Any], Awaitable[None]] | None = None,
+        start_rtp_callback: Callable[[SipCallSession], Awaitable[None]] | None = None,
+        terminate_callback: Callable[[SipCallSession, Any | None], Awaitable[None]]
+        | None = None,
+    ) -> None:
+        self._invite_callback = invite_callback
+        self._start_rtp_callback = start_rtp_callback
+        self._terminate_callback = terminate_callback
+        self._sessions: dict[str, SipCallSession] = {}
+        self._lock = asyncio.Lock()
+
+    async def handle_request(self, request: Any, *, dialog: Any | None = None) -> None:
+        method = getattr(request, "method", None)
+        if isinstance(method, str):
+            method = method.upper()
+        else:
+            method = None
+
+        if method == "INVITE":
+            await self.handle_invite(request, dialog=dialog)
+        elif method == "ACK":
+            await self.handle_ack(request, dialog=dialog)
+        elif method == "BYE":
+            await self.handle_bye(request, dialog=dialog)
+        else:
+            logger.debug("Requête SIP ignorée (méthode=%s)", method)
+
+    async def handle_invite(self, request: Any, *, dialog: Any | None = None) -> None:
+        call_id = self._extract_call_id(request)
+        if call_id is None:
+            logger.warning("INVITE reçu sans en-tête Call-ID")
+            return
+
+        session = SipCallSession(call_id=call_id, request=request, dialog=dialog)
+        async with self._lock:
+            previous = self._sessions.get(call_id)
+            if previous is not None:
+                logger.info(
+                    "Réinitialisation de la session SIP existante pour %s",
+                    call_id,
+                )
+            self._sessions[call_id] = session
+
+        logger.info("INVITE enregistré pour Call-ID=%s", call_id)
+
+        if self._invite_callback is not None:
+            try:
+                await self._invite_callback(session, request)
+            except Exception:  # pragma: no cover - dépend des callbacks
+                logger.exception("Erreur lors du traitement applicatif de l'INVITE")
+                async with self._lock:
+                    current = self._sessions.get(call_id)
+                    if current is session:
+                        session.mark_failed()
+                raise
+
+    async def handle_ack(self, request: Any, *, dialog: Any | None = None) -> None:
+        del dialog  # Dialog is not used directly but kept for signature symmetry.
+        call_id = self._extract_call_id(request)
+        if call_id is None:
+            logger.warning("ACK reçu sans en-tête Call-ID")
+            return
+
+        async with self._lock:
+            session = self._sessions.get(call_id)
+            if session is None:
+                logger.warning(
+                    "ACK reçu pour Call-ID=%s sans session correspondante",
+                    call_id,
+                )
+                return
+            if session.state == "established":
+                logger.info("ACK supplémentaire ignoré pour Call-ID=%s", call_id)
+                return
+            session.mark_established()
+
+        logger.info("ACK reçu pour Call-ID=%s", call_id)
+
+        try:
+            await self.start_rtp_session(session)
+        except Exception:
+            logger.exception("Impossible de démarrer la session RTP pour %s", call_id)
+            async with self._lock:
+                current = self._sessions.get(call_id)
+                if current is session:
+                    session.mark_failed()
+            raise
+
+    async def handle_bye(self, request: Any, *, dialog: Any | None = None) -> None:
+        call_id = self._extract_call_id(request)
+        if call_id is None:
+            logger.warning("BYE reçu sans en-tête Call-ID")
+            return
+
+        async with self._lock:
+            session = self._sessions.pop(call_id, None)
+
+        if session is None:
+            logger.info("BYE reçu pour une session inconnue : %s", call_id)
+            return
+
+        session.mark_terminated()
+        logger.info("BYE reçu, session terminée pour Call-ID=%s", call_id)
+
+        if self._terminate_callback is not None:
+            try:
+                await self._terminate_callback(session, dialog)
+            except Exception:  # pragma: no cover - dépend des callbacks
+                logger.exception(
+                    "Erreur lors du nettoyage applicatif de la session BYE",
+                )
+
+    async def start_rtp_session(self, session: SipCallSession) -> None:
+        if self._start_rtp_callback is None:
+            logger.info(
+                "Aucun callback RTP configuré ; session Call-ID=%s laissée inactive",
+                session.call_id,
+            )
+            return
+
+        await self._start_rtp_callback(session)
+
+    def get_session(self, call_id: str) -> SipCallSession | None:
+        return self._sessions.get(call_id)
+
+    def active_sessions(self) -> dict[str, SipCallSession]:
+        return dict(self._sessions)
+
+    @staticmethod
+    def _extract_call_id(request: Any) -> str | None:
+        headers = getattr(request, "headers", None)
+        if isinstance(headers, Mapping):
+            value = headers.get("Call-ID") or headers.get("CallId")
+        elif isinstance(headers, dict):
+            value = headers.get("Call-ID") or headers.get("CallId")
+        else:
+            value = None
+
+        if value is None:
+            return None
+
+        if isinstance(value, list | tuple):
+            for candidate in value:
+                if candidate:
+                    return str(candidate)
+            return None
+
+        text = str(value).strip()
+        return text or None
+
+
 __all__ = [
+    "SipCallSession",
+    "SipCallRequestHandler",
     "TelephonyCallContext",
     "TelephonyRouteResolution",
     "TelephonyRouteSelectionError",

@@ -54,13 +54,18 @@ class SyncDialog:
         self.replies.append((status_code, status_message, headers, payload))
 
 
-def _make_invite(sdp: str, *, as_text: bool = False) -> SimpleNamespace:
+def _make_invite(
+    sdp: str,
+    *,
+    as_text: bool = False,
+    headers: dict[str, str] | None = None,
+) -> SimpleNamespace:
     payload: str | bytes
     if as_text:
         payload = sdp
     else:
         payload = sdp.encode("utf-8")
-    return SimpleNamespace(payload=payload)
+    return SimpleNamespace(payload=payload, headers=headers)
 
 
 @pytest.mark.anyio
@@ -143,6 +148,47 @@ async def test_handle_invite_accepts_codec_with_channel_information() -> None:
     assert isinstance(payload, str)
     assert "m=audio 5006 RTP/AVP 107" in payload
     assert "a=rtpmap:107 OPUS/48000" in payload
+
+
+@pytest.mark.anyio
+async def test_handle_invite_reuses_via_header_from_request() -> None:
+    dialog = DummyDialog()
+    via_header = "SIP/2.0/UDP 198.51.100.20:5070;branch=z9hG4bKabc123"
+    cseq_header = "4711 INVITE"
+    invite = _make_invite(
+        "\r\n".join(
+            [
+                "v=0",
+                "o=- 12345 67890 IN IP4 198.51.100.10",
+                "s=-",
+                "c=IN IP4 198.51.100.10",
+                "t=0 0",
+                "m=audio 49170 RTP/AVP 0",
+                "a=rtpmap:0 PCMU/8000",
+            ]
+        ),
+        headers={"Via": via_header, "CSeq": cseq_header},
+    )
+
+    await handle_incoming_invite(
+        dialog,
+        invite,
+        media_host="203.0.113.7",
+        media_port=7000,
+        preferred_codecs=("pcmu",),
+        contact_uri="<sip:bot@203.0.113.7:5060>",
+    )
+
+    for _, kwargs in dialog.replies:
+        headers = kwargs["headers"]
+        assert headers is not None
+        assert headers["Via"] == via_header
+        assert headers["CSeq"] == cseq_header
+        assert headers["Contact"] == "<sip:bot@203.0.113.7:5060>"
+
+    final_headers = dialog.replies[-1][1]["headers"]
+    assert final_headers["Content-Type"] == "application/sdp"
+    assert final_headers["CSeq"] == cseq_header
 
 
 @pytest.mark.anyio

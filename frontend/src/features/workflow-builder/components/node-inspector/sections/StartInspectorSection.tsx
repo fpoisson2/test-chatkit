@@ -35,7 +35,31 @@ type StartInspectorSectionProps = {
   ) => void;
 };
 
-const E164_PATTERN = /^\+[1-9]\d{1,14}$/;
+const TELEPHONY_INPUT_PATTERN = /^[0-9+#*\s().-]+$/;
+
+const sanitizeTelephonyRoute = (value: string): string =>
+  value
+    .split("")
+    .filter((char) => /\d/.test(char) || char === "+" || char === "#" || char === "*")
+    .join("");
+
+const isValidTelephonyRoute = (candidate: string): boolean => {
+  const trimmed = candidate.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  if (!TELEPHONY_INPUT_PATTERN.test(trimmed)) {
+    return false;
+  }
+
+  const sanitized = sanitizeTelephonyRoute(trimmed);
+  if (!sanitized) {
+    return false;
+  }
+
+  return /\d/.test(sanitized);
+};
 
 const parseWorkflowId = (value: string): number | null => {
   const trimmed = value.trim();
@@ -111,7 +135,7 @@ export const StartInspectorSection = ({
   );
 
   const invalidRoutes = useMemo(
-    () => normalizedRoutes.filter((route) => !E164_PATTERN.test(route)),
+    () => normalizedRoutes.filter((route) => !isValidTelephonyRoute(route)),
     [normalizedRoutes],
   );
 

@@ -5,6 +5,8 @@ from .invite_handler import (
     handle_incoming_invite,
 )
 from .sip_server import (
+    SipCallRequestHandler,
+    SipCallSession,
     TelephonyCallContext,
     TelephonyRouteResolution,
     TelephonyRouteSelectionError,
@@ -26,6 +28,8 @@ __all__ = [
     "TelephonyRouteResolution",
     "TelephonyRouteSelectionError",
     "resolve_workflow_for_phone_number",
+    "SipCallSession",
+    "SipCallRequestHandler",
     "InviteHandlingError",
     "handle_incoming_invite",
     "RtpPacket",
