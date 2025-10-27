@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -8,6 +8,10 @@ import { ToolSettingsPanel } from "../ToolSettingsPanel";
 import * as backendApi from "../../../../../../utils/backend";
 
 const mockTestMcpConnection = vi.spyOn(backendApi, "testMcpConnection");
+const mockCreateMcpCredential = vi.spyOn(backendApi, "createMcpCredential");
+const mockStartMcpOAuth = vi.spyOn(backendApi, "startMcpOAuth");
+const mockCompleteMcpOAuth = vi.spyOn(backendApi, "completeMcpOAuth");
+const mockDeleteMcpCredential = vi.spyOn(backendApi, "deleteMcpCredential");
 
 type PanelOverrides = Partial<Parameters<typeof ToolSettingsPanel>[0]>;
 
@@ -28,6 +32,11 @@ const baseConfig: AgentMcpToolConfig = {
   argsText: "",
   envText: "",
   cwd: "",
+  credentialId: null,
+  credentialLabel: "",
+  credentialHint: "",
+  credentialStatus: "disconnected",
+  credentialAuthType: null,
 };
 
 const renderPanel = (overrides: PanelOverrides = {}) => {
@@ -74,6 +83,10 @@ const renderPanel = (overrides: PanelOverrides = {}) => {
 describe("ToolSettingsPanel MCP configuration", () => {
   beforeEach(() => {
     mockTestMcpConnection.mockReset();
+    mockCreateMcpCredential.mockReset();
+    mockStartMcpOAuth.mockReset();
+    mockCompleteMcpOAuth.mockReset();
+    mockDeleteMcpCredential.mockReset();
   });
 
   it("shows validation messages for hosted configuration", () => {
@@ -230,5 +243,322 @@ describe("ToolSettingsPanel MCP configuration", () => {
     await userEvent.click(button);
 
     await screen.findByText("Auth error");
+  });
+
+  it("prevents saving a credential when no API key is provided", async () => {
+    renderPanel({
+      authToken: "token-xyz",
+      mcpTools: [{ ...baseConfig }],
+    });
+
+    const saveButton = screen.getByRole("button", { name: /save key/i });
+    await userEvent.click(saveButton);
+
+    expect(
+      screen.getByText(/Enter an API key before saving it/i),
+    ).toBeInTheDocument();
+    expect(mockCreateMcpCredential).not.toHaveBeenCalled();
+  });
+
+  it("saves API key credentials and updates MCP tool metadata", async () => {
+    const nowIso = new Date().toISOString();
+    mockCreateMcpCredential.mockResolvedValueOnce({
+      id: 42,
+      label: "Docs",
+      provider: null,
+      auth_type: "api_key",
+      secret_hint: "••••token",
+      connected: true,
+      created_at: nowIso,
+      updated_at: nowIso,
+    });
+
+    const onAgentMcpToolsChange = vi.fn();
+
+    renderPanel({
+      authToken: "token-xyz",
+      mcpTools: [
+        {
+          ...baseConfig,
+          serverLabel: "Docs",
+          authorization: "",
+          credentialLabel: "",
+        },
+      ],
+      onAgentMcpToolsChange,
+    });
+
+    const apiKeyInput = screen.getByPlaceholderText(
+      /Paste the token to encrypt on the server/i,
+    );
+    await userEvent.type(apiKeyInput, "  secret-token  ");
+
+    const saveButton = screen.getByRole("button", { name: /save key/i });
+    await userEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(mockCreateMcpCredential).toHaveBeenCalledWith({
+        token: "token-xyz",
+        payload: expect.objectContaining({
+          label: "Docs",
+          authType: "api_key",
+          authorization: "secret-token",
+        }),
+      });
+    });
+
+    expect(onAgentMcpToolsChange).toHaveBeenCalledWith(
+      "agent-1",
+      expect.arrayContaining([
+        expect.objectContaining({
+          credentialId: 42,
+          credentialHint: "••••token",
+          credentialStatus: "connected",
+          credentialAuthType: "api_key",
+        }),
+      ]),
+    );
+
+    await waitFor(() => {
+      expect(apiKeyInput).toHaveValue("");
+    });
+  });
+
+  it("creates OAuth credentials, starts authorization, and opens a new window", async () => {
+    const nowIso = new Date().toISOString();
+    mockCreateMcpCredential.mockResolvedValueOnce({
+      id: 77,
+      label: "Voice",
+      provider: null,
+      auth_type: "oauth",
+      secret_hint: "hint",
+      connected: false,
+      created_at: nowIso,
+      updated_at: nowIso,
+    });
+    mockStartMcpOAuth.mockResolvedValueOnce({
+      authorization_url: "https://auth.example.com/authorize", 
+      state: "state-123",
+    });
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+    const onAgentMcpToolsChange = vi.fn();
+
+    renderPanel({
+      authToken: "token-oauth",
+      mcpTools: [
+        {
+          ...baseConfig,
+          serverLabel: "Voice",
+          credentialLabel: "",
+          credentialId: null,
+          credentialStatus: "disconnected",
+          credentialAuthType: null,
+        },
+      ],
+      onAgentMcpToolsChange,
+    });
+
+    await userEvent.type(
+      screen.getByPlaceholderText(/Authorization URL/i),
+      "https://auth.example.com/oauth",
+    );
+    await userEvent.type(
+      screen.getByPlaceholderText(/Token URL/i),
+      "https://auth.example.com/token",
+    );
+    await userEvent.type(
+      screen.getByPlaceholderText(/OAuth client ID/i),
+      "client-abc",
+    );
+    await userEvent.type(
+      screen.getByPlaceholderText(/Client secret/i),
+      "top-secret",
+    );
+    await userEvent.type(
+      screen.getByPlaceholderText(/Scopes separated/i),
+      "tools.read, tools.write",
+    );
+
+    const startButton = screen.getByRole("button", { name: /start authorization/i });
+    await userEvent.click(startButton);
+
+    await waitFor(() => {
+      expect(mockCreateMcpCredential).toHaveBeenCalledWith({
+        token: "token-oauth",
+        payload: expect.objectContaining({
+          authType: "oauth",
+          oauth: expect.objectContaining({
+            authorization_url: "https://auth.example.com/oauth",
+            token_url: "https://auth.example.com/token",
+            client_id: "client-abc",
+            client_secret: "top-secret",
+            scope: "tools.read, tools.write",
+          }),
+        }),
+      });
+    });
+
+    await waitFor(() => {
+      expect(mockStartMcpOAuth).toHaveBeenCalledWith({
+        token: "token-oauth",
+        credentialId: 77,
+        redirectUri: `${window.location.origin}/mcp/oauth/callback`,
+        scope: ["tools.read", "tools.write"],
+      });
+    });
+
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://auth.example.com/authorize",
+      "_blank",
+      "noopener,noreferrer",
+    );
+
+    expect(onAgentMcpToolsChange).toHaveBeenCalledWith(
+      "agent-1",
+      expect.arrayContaining([
+        expect.objectContaining({
+          credentialId: 77,
+          credentialStatus: "pending",
+          credentialAuthType: "oauth",
+        }),
+      ]),
+    );
+
+    openSpy.mockRestore();
+  });
+
+  it("completes OAuth flow for an existing credential", async () => {
+    const nowIso = new Date().toISOString();
+    mockStartMcpOAuth.mockResolvedValueOnce({
+      authorization_url: "https://auth.example.com/authorize", 
+      state: "state-xyz",
+    });
+    mockCompleteMcpOAuth.mockResolvedValueOnce({
+      id: 88,
+      label: "Voice",
+      provider: null,
+      auth_type: "oauth",
+      secret_hint: "hint",
+      connected: true,
+      created_at: nowIso,
+      updated_at: nowIso,
+    });
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+    const onAgentMcpToolsChange = vi.fn();
+
+    renderPanel({
+      authToken: "token-oauth",
+      mcpTools: [
+        {
+          ...baseConfig,
+          id: "mcp-2",
+          serverLabel: "Voice",
+          credentialId: 88,
+          credentialStatus: "pending",
+          credentialAuthType: "oauth",
+        },
+      ],
+      onAgentMcpToolsChange,
+    });
+
+    await userEvent.type(
+      screen.getByPlaceholderText(/Authorization URL/i),
+      "https://auth.example.com/oauth",
+    );
+    await userEvent.type(
+      screen.getByPlaceholderText(/Token URL/i),
+      "https://auth.example.com/token",
+    );
+    await userEvent.type(
+      screen.getByPlaceholderText(/OAuth client ID/i),
+      "client-abc",
+    );
+
+    const startButton = screen.getByRole("button", { name: /start authorization/i });
+    await userEvent.click(startButton);
+
+    await waitFor(() => {
+      expect(mockCreateMcpCredential).not.toHaveBeenCalled();
+      expect(mockStartMcpOAuth).toHaveBeenCalledWith({
+        token: "token-oauth",
+        credentialId: 88,
+        redirectUri: `${window.location.origin}/mcp/oauth/callback`,
+        scope: undefined,
+      });
+    });
+
+    await userEvent.type(
+      screen.getByPlaceholderText(/Authorization code/i),
+      "auth-code-123",
+    );
+
+    const completeButton = screen.getByRole("button", { name: /validate code/i });
+    await userEvent.click(completeButton);
+
+    await waitFor(() => {
+      expect(mockCompleteMcpOAuth).toHaveBeenCalledWith({
+        token: "token-oauth",
+        credentialId: 88,
+        code: "auth-code-123",
+        state: "state-xyz",
+        redirectUri: `${window.location.origin}/mcp/oauth/callback`,
+      });
+    });
+
+    expect(onAgentMcpToolsChange).toHaveBeenLastCalledWith(
+      "agent-1",
+      expect.arrayContaining([
+        expect.objectContaining({
+          credentialId: 88,
+          credentialStatus: "connected",
+          credentialHint: "hint",
+        }),
+      ]),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(/Authorization code/i)).toHaveValue("");
+    });
+
+    openSpy.mockRestore();
+  });
+
+  it("deletes stored credentials", async () => {
+    mockDeleteMcpCredential.mockResolvedValueOnce();
+    const onAgentMcpToolsChange = vi.fn();
+
+    renderPanel({
+      authToken: "token-del",
+      mcpTools: [
+        {
+          ...baseConfig,
+          credentialId: 55,
+          credentialStatus: "connected",
+          credentialAuthType: "api_key",
+        },
+      ],
+      onAgentMcpToolsChange,
+    });
+
+    const deleteButton = screen.getByRole("button", { name: /remove credentials/i });
+    await userEvent.click(deleteButton);
+
+    await waitFor(() => {
+      expect(mockDeleteMcpCredential).toHaveBeenCalledWith({
+        token: "token-del",
+        credentialId: 55,
+      });
+    });
+
+    expect(onAgentMcpToolsChange).toHaveBeenCalledWith(
+      "agent-1",
+      expect.arrayContaining([
+        expect.objectContaining({
+          credentialId: null,
+          credentialStatus: "disconnected",
+          credentialHint: "",
+        }),
+      ]),
+    );
   });
 });

@@ -383,6 +383,51 @@ const fr: TranslationDictionary = {
     "Impossible d'interpréter ce filtre. Fournissez un JSON valide ou une liste de noms.",
   "workflowBuilder.agentInspector.mcpValidationInvalidRequireApproval":
     "JSON d'approbation invalide. Vérifiez la structure require_approval.",
+  "workflowBuilder.agentInspector.mcpCredentialLabel": "Libellé des identifiants",
+  "workflowBuilder.agentInspector.mcpCredentialStatusLabel":
+    "Statut actuel : {{status}}",
+  "workflowBuilder.agentInspector.mcpCredentialHint":
+    "Indice enregistré : {{hint}}",
+  "workflowBuilder.agentInspector.mcpCredentialDefaultLabel": "Identifiant MCP",
+  "workflowBuilder.agentInspector.mcpCredentialStatus.disconnected": "déconnecté",
+  "workflowBuilder.agentInspector.mcpCredentialStatus.pending": "en attente",
+  "workflowBuilder.agentInspector.mcpCredentialStatus.connected": "connecté",
+  "workflowBuilder.agentInspector.mcpCredentialApiKeyLabel":
+    "Clé API / jeton à enregistrer",
+  "workflowBuilder.agentInspector.mcpCredentialApiKeyPlaceholder":
+    "Collez le jeton à chiffrer côté serveur",
+  "workflowBuilder.agentInspector.mcpCredentialSave": "Enregistrer la clé",
+  "workflowBuilder.agentInspector.mcpCredentialSaving": "Enregistrement…",
+  "workflowBuilder.agentInspector.mcpCredentialDelete": "Supprimer les identifiants",
+  "workflowBuilder.agentInspector.mcpCredentialDeleting": "Suppression…",
+  "workflowBuilder.agentInspector.mcpCredentialOauthLabel":
+    "Connexion OAuth (optionnelle)",
+  "workflowBuilder.agentInspector.mcpCredentialOauthAuthorizationUrl":
+    "URL d'autorisation (https://…)",
+  "workflowBuilder.agentInspector.mcpCredentialOauthTokenUrl":
+    "URL de jeton (https://…)",
+  "workflowBuilder.agentInspector.mcpCredentialOauthClientId": "Client ID OAuth",
+  "workflowBuilder.agentInspector.mcpCredentialOauthClientSecret":
+    "Secret client (optionnel)",
+  "workflowBuilder.agentInspector.mcpCredentialOauthScope":
+    "Scopes séparés par des espaces ou des virgules",
+  "workflowBuilder.agentInspector.mcpCredentialOauthStart":
+    "Démarrer l'autorisation",
+  "workflowBuilder.agentInspector.mcpCredentialOauthStarting":
+    "Redirection en cours…",
+  "workflowBuilder.agentInspector.mcpCredentialOauthCodePlaceholder":
+    "Code d'autorisation renvoyé par le fournisseur",
+  "workflowBuilder.agentInspector.mcpCredentialOauthComplete":
+    "Valider le code",
+  "workflowBuilder.agentInspector.mcpCredentialOauthCompleting": "Validation…",
+  "workflowBuilder.agentInspector.mcpCredentialApiKeyMissing":
+    "Saisissez une clé API avant de l'enregistrer.",
+  "workflowBuilder.agentInspector.mcpCredentialOauthMissing":
+    "Renseignez l'URL d'autorisation, l'URL de jeton et le client_id.",
+  "workflowBuilder.agentInspector.mcpCredentialOauthCodeMissing":
+    "Saisissez le code renvoyé par le fournisseur OAuth.",
+  "workflowBuilder.agentInspector.mcpCredentialGenericError":
+    "Impossible de gérer ces identifiants MCP pour le moment.",
   "workflowBuilder.agentInspector.mcpTestConnection": "Tester la connexion",
   "workflowBuilder.agentInspector.mcpTestConnectionWorking": "Test en cours…",
   "workflowBuilder.agentInspector.mcpTestConnectionInProgress": "Test de connexion en cours…",
@@ -976,6 +1021,49 @@ const en: TranslationDictionary = {
     "Unable to parse this filter. Provide valid JSON or a list of tool names.",
   "workflowBuilder.agentInspector.mcpValidationInvalidRequireApproval":
     "Invalid approval JSON. Check the require_approval structure.",
+  "workflowBuilder.agentInspector.mcpCredentialLabel": "Credential label",
+  "workflowBuilder.agentInspector.mcpCredentialStatusLabel":
+    "Current status: {{status}}",
+  "workflowBuilder.agentInspector.mcpCredentialHint":
+    "Stored hint: {{hint}}",
+  "workflowBuilder.agentInspector.mcpCredentialDefaultLabel": "MCP credential",
+  "workflowBuilder.agentInspector.mcpCredentialStatus.disconnected": "disconnected",
+  "workflowBuilder.agentInspector.mcpCredentialStatus.pending": "pending",
+  "workflowBuilder.agentInspector.mcpCredentialStatus.connected": "connected",
+  "workflowBuilder.agentInspector.mcpCredentialApiKeyLabel":
+    "API key / token to store",
+  "workflowBuilder.agentInspector.mcpCredentialApiKeyPlaceholder":
+    "Paste the token to encrypt on the server",
+  "workflowBuilder.agentInspector.mcpCredentialSave": "Save key",
+  "workflowBuilder.agentInspector.mcpCredentialSaving": "Saving…",
+  "workflowBuilder.agentInspector.mcpCredentialDelete": "Remove credentials",
+  "workflowBuilder.agentInspector.mcpCredentialDeleting": "Deleting…",
+  "workflowBuilder.agentInspector.mcpCredentialOauthLabel":
+    "OAuth connection (optional)",
+  "workflowBuilder.agentInspector.mcpCredentialOauthAuthorizationUrl":
+    "Authorization URL (https://…)",
+  "workflowBuilder.agentInspector.mcpCredentialOauthTokenUrl":
+    "Token URL (https://…)",
+  "workflowBuilder.agentInspector.mcpCredentialOauthClientId": "OAuth client ID",
+  "workflowBuilder.agentInspector.mcpCredentialOauthClientSecret":
+    "Client secret (optional)",
+  "workflowBuilder.agentInspector.mcpCredentialOauthScope":
+    "Scopes separated by spaces or commas",
+  "workflowBuilder.agentInspector.mcpCredentialOauthStart":
+    "Start authorization",
+  "workflowBuilder.agentInspector.mcpCredentialOauthStarting": "Redirecting…",
+  "workflowBuilder.agentInspector.mcpCredentialOauthCodePlaceholder":
+    "Authorization code returned by the provider",
+  "workflowBuilder.agentInspector.mcpCredentialOauthComplete": "Validate code",
+  "workflowBuilder.agentInspector.mcpCredentialOauthCompleting": "Validating…",
+  "workflowBuilder.agentInspector.mcpCredentialApiKeyMissing":
+    "Enter an API key before saving it.",
+  "workflowBuilder.agentInspector.mcpCredentialOauthMissing":
+    "Provide the authorization URL, token URL, and client_id.",
+  "workflowBuilder.agentInspector.mcpCredentialOauthCodeMissing":
+    "Enter the code returned by the OAuth provider.",
+  "workflowBuilder.agentInspector.mcpCredentialGenericError":
+    "Unable to manage these MCP credentials right now.",
   "workflowBuilder.agentInspector.mcpTestConnection": "Test connection",
   "workflowBuilder.agentInspector.mcpTestConnectionWorking": "Testing…",
   "workflowBuilder.agentInspector.mcpTestConnectionInProgress":

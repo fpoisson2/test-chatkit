@@ -6,9 +6,16 @@ import {
   getAgentWidgetValidationToolEnabled,
   getAgentWorkflowTools,
   getAgentWorkflowValidationToolEnabled,
+  isPlainRecord,
   serializeAgentMcpToolConfig,
 } from "../../../../../utils/workflows";
-import { testMcpConnection } from "../../../../../utils/backend";
+import {
+  completeMcpOAuth,
+  createMcpCredential,
+  deleteMcpCredential,
+  startMcpOAuth,
+  testMcpConnection,
+} from "../../../../../utils/backend";
 import type {
   AgentMcpRequireApprovalMode,
   AgentMcpToolConfig,
@@ -35,6 +42,22 @@ type ToolSettingsPanelProps = {
   onAgentWorkflowToolToggle: (nodeId: string, slug: string, enabled: boolean) => void;
 };
 
+type CredentialFormState = {
+  apiKey: string;
+  oauthAuthorizationUrl: string;
+  oauthTokenUrl: string;
+  oauthClientId: string;
+  oauthClientSecret: string;
+  oauthScope: string;
+  oauthCode: string;
+  oauthState: string | null;
+  saving: boolean;
+  oauthStarting: boolean;
+  oauthCompleting: boolean;
+  deleting: boolean;
+  error: string | null;
+};
+
 type McpConnectionState = {
   status: "idle" | "testing" | "success" | "error";
   message: string | null;
@@ -59,6 +82,9 @@ export const ToolSettingsPanel = ({
   const [connectionStates, setConnectionStates] = useState<
     Record<string, McpConnectionState>
   >({});
+  const [credentialForms, setCredentialForms] = useState<
+    Record<string, CredentialFormState>
+  >({});
 
   useEffect(() => {
     setConnectionStates((prev) => {
@@ -71,6 +97,43 @@ export const ToolSettingsPanel = ({
           next[tool.id] = existing;
         } else {
           next[tool.id] = { status: "idle", message: null };
+          changed = true;
+        }
+      }
+      for (const key of Object.keys(prev)) {
+        if (!ids.has(key)) {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [mcpTools]);
+
+  useEffect(() => {
+    setCredentialForms((prev) => {
+      const ids = new Set(mcpTools.map((tool) => tool.id));
+      let changed = false;
+      const next: Record<string, CredentialFormState> = {};
+      for (const tool of mcpTools) {
+        const existing = prev[tool.id];
+        if (existing) {
+          next[tool.id] = existing;
+        } else {
+          next[tool.id] = {
+            apiKey: "",
+            oauthAuthorizationUrl: "",
+            oauthTokenUrl: "",
+            oauthClientId: "",
+            oauthClientSecret: "",
+            oauthScope: "",
+            oauthCode: "",
+            oauthState: null,
+            saving: false,
+            oauthStarting: false,
+            oauthCompleting: false,
+            deleting: false,
+            error: null,
+          };
           changed = true;
         }
       }
@@ -100,6 +163,20 @@ export const ToolSettingsPanel = ({
     [],
   );
 
+  const updateCredentialForm = useCallback(
+    (toolId: string, updates: Partial<CredentialFormState>) => {
+      setCredentialForms((prev) => {
+        const current = prev[toolId];
+        if (!current) {
+          return prev;
+        }
+        const nextState: CredentialFormState = { ...current, ...updates };
+        return { ...prev, [toolId]: nextState };
+      });
+    },
+    [],
+  );
+
   const resetConnectionState = useCallback(
     (toolId: string) => {
       setConnectionStates((prev) => {
@@ -115,6 +192,17 @@ export const ToolSettingsPanel = ({
 
   const removeConnectionState = useCallback((toolId: string) => {
     setConnectionStates((prev) => {
+      if (!(toolId in prev)) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[toolId];
+      return next;
+    });
+  }, []);
+
+  const removeCredentialForm = useCallback((toolId: string) => {
+    setCredentialForms((prev) => {
       if (!(toolId in prev)) {
         return prev;
       }
@@ -222,6 +310,7 @@ export const ToolSettingsPanel = ({
     const next = mcpTools.filter((tool) => tool.id !== toolId);
     onAgentMcpToolsChange(nodeId, next);
     removeConnectionState(toolId);
+    removeCredentialForm(toolId);
   };
 
   const handleAddMcpTool = () => {
@@ -242,8 +331,274 @@ export const ToolSettingsPanel = ({
       argsText: "",
       envText: "",
       cwd: "",
+      credentialId: null,
+      credentialLabel: "",
+      credentialHint: "",
+      credentialStatus: "disconnected",
+      credentialAuthType: null,
     };
     onAgentMcpToolsChange(nodeId, [...mcpTools, next]);
+  };
+
+  const getSerializedMcpConfig = useCallback(
+    (tool: AgentMcpToolConfig): Record<string, unknown> => {
+      const serialized = serializeAgentMcpToolConfig(tool);
+      const candidates = [serialized.mcp, serialized.config, serialized.server];
+      for (const candidate of candidates) {
+        if (isPlainRecord(candidate)) {
+          return candidate as Record<string, unknown>;
+        }
+      }
+      return {};
+    },
+    [],
+  );
+
+  const handleSaveApiKeyCredential = async (tool: AgentMcpToolConfig) => {
+    const form = credentialForms[tool.id];
+    if (!form) {
+      return;
+    }
+
+    const trimmedKey = form.apiKey.trim();
+    if (!trimmedKey) {
+      updateCredentialForm(tool.id, {
+        error: t("workflowBuilder.agentInspector.mcpCredentialApiKeyMissing"),
+      });
+      return;
+    }
+
+    updateCredentialForm(tool.id, { saving: true, error: null });
+
+    try {
+      const configPayload = getSerializedMcpConfig(tool);
+      const headers = isPlainRecord(configPayload.headers)
+        ? (configPayload.headers as Record<string, unknown>)
+        : undefined;
+      const env = isPlainRecord(configPayload.env)
+        ? (configPayload.env as Record<string, unknown>)
+        : undefined;
+      const label =
+        tool.credentialLabel.trim() ||
+        tool.serverLabel.trim() ||
+        tool.serverUrl.trim() ||
+        t("workflowBuilder.agentInspector.mcpCredentialDefaultLabel");
+
+      const response = await createMcpCredential({
+        token: authToken,
+        payload: {
+          label,
+          provider: null,
+          authType: "api_key",
+          authorization: trimmedKey,
+          headers: headers ?? undefined,
+          env: env ?? undefined,
+        },
+      });
+
+      handleMcpToolChange(tool.id, {
+        authorization: "",
+        credentialId: response.id,
+        credentialLabel: response.label,
+        credentialHint: response.secret_hint ?? "",
+        credentialStatus: response.connected ? "connected" : "disconnected",
+        credentialAuthType: "api_key",
+      });
+
+      updateCredentialForm(tool.id, {
+        apiKey: "",
+        saving: false,
+        error: null,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : t("workflowBuilder.agentInspector.mcpCredentialGenericError");
+      updateCredentialForm(tool.id, { saving: false, error: message });
+    }
+  };
+
+  const handleStartOAuthCredential = async (tool: AgentMcpToolConfig) => {
+    const form = credentialForms[tool.id];
+    if (!form) {
+      return;
+    }
+
+    const authUrl = form.oauthAuthorizationUrl.trim();
+    const tokenUrl = form.oauthTokenUrl.trim();
+    const clientId = form.oauthClientId.trim();
+    if (!authUrl || !tokenUrl || !clientId) {
+      updateCredentialForm(tool.id, {
+        error: t("workflowBuilder.agentInspector.mcpCredentialOAuthMissing"),
+      });
+      return;
+    }
+
+    updateCredentialForm(tool.id, { oauthStarting: true, error: null });
+
+    try {
+      let credentialId = tool.credentialId;
+      const configPayload = getSerializedMcpConfig(tool);
+      const headers = isPlainRecord(configPayload.headers)
+        ? (configPayload.headers as Record<string, unknown>)
+        : undefined;
+      const env = isPlainRecord(configPayload.env)
+        ? (configPayload.env as Record<string, unknown>)
+        : undefined;
+      const label =
+        tool.credentialLabel.trim() ||
+        tool.serverLabel.trim() ||
+        tool.serverUrl.trim() ||
+        t("workflowBuilder.agentInspector.mcpCredentialDefaultLabel");
+
+      if (!credentialId || tool.credentialAuthType !== "oauth") {
+        const response = await createMcpCredential({
+          token: authToken,
+          payload: {
+            label,
+            provider: null,
+            authType: "oauth",
+            headers: headers ?? undefined,
+            env: env ?? undefined,
+            oauth: {
+              authorization_url: authUrl,
+              token_url: tokenUrl,
+              client_id: clientId,
+              client_secret: form.oauthClientSecret.trim() || undefined,
+              scope: form.oauthScope.trim() || undefined,
+            },
+          },
+        });
+
+        credentialId = response.id;
+        handleMcpToolChange(tool.id, {
+          credentialId,
+          credentialLabel: response.label,
+          credentialHint: response.secret_hint ?? "",
+          credentialStatus: response.connected ? "connected" : "disconnected",
+          credentialAuthType: "oauth",
+        });
+      }
+
+      if (!credentialId) {
+        throw new Error(
+          t("workflowBuilder.agentInspector.mcpCredentialGenericError"),
+        );
+      }
+
+      const scopeList = form.oauthScope
+        .split(/[,\s]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const redirectUri = `${window.location.origin}/mcp/oauth/callback`;
+
+      const start = await startMcpOAuth({
+        token: authToken,
+        credentialId,
+        redirectUri,
+        scope: scopeList.length > 0 ? scopeList : undefined,
+      });
+
+      handleMcpToolChange(tool.id, {
+        credentialId,
+        credentialStatus: "pending",
+        credentialAuthType: "oauth",
+      });
+
+      updateCredentialForm(tool.id, {
+        oauthState: start.state,
+        oauthStarting: false,
+        error: null,
+      });
+
+      window.open(start.authorization_url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : t("workflowBuilder.agentInspector.mcpCredentialGenericError");
+      updateCredentialForm(tool.id, { oauthStarting: false, error: message });
+    }
+  };
+
+  const handleCompleteOAuthCredential = async (tool: AgentMcpToolConfig) => {
+    const form = credentialForms[tool.id];
+    if (!form || !tool.credentialId) {
+      return;
+    }
+
+    const code = form.oauthCode.trim();
+    if (!code) {
+      updateCredentialForm(tool.id, {
+        error: t("workflowBuilder.agentInspector.mcpCredentialOAuthCodeMissing"),
+      });
+      return;
+    }
+
+    updateCredentialForm(tool.id, { oauthCompleting: true, error: null });
+
+    try {
+      const redirectUri = `${window.location.origin}/mcp/oauth/callback`;
+      const response = await completeMcpOAuth({
+        token: authToken,
+        credentialId: tool.credentialId,
+        code,
+        state: form.oauthState,
+        redirectUri,
+      });
+
+      handleMcpToolChange(tool.id, {
+        credentialId: response.id,
+        credentialLabel: response.label,
+        credentialHint: response.secret_hint ?? "",
+        credentialStatus: response.connected ? "connected" : "disconnected",
+        credentialAuthType: "oauth",
+      });
+
+      updateCredentialForm(tool.id, {
+        oauthCode: "",
+        oauthState: null,
+        oauthCompleting: false,
+        error: null,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : t("workflowBuilder.agentInspector.mcpCredentialGenericError");
+      updateCredentialForm(tool.id, { oauthCompleting: false, error: message });
+    }
+  };
+
+  const handleDeleteCredential = async (tool: AgentMcpToolConfig) => {
+    if (!tool.credentialId) {
+      return;
+    }
+
+    updateCredentialForm(tool.id, { deleting: true, error: null });
+
+    try {
+      await deleteMcpCredential({
+        token: authToken,
+        credentialId: tool.credentialId,
+      });
+
+      handleMcpToolChange(tool.id, {
+        credentialId: null,
+        credentialHint: "",
+        credentialStatus: "disconnected",
+        credentialAuthType: null,
+      });
+
+      updateCredentialForm(tool.id, { deleting: false, error: null });
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : t("workflowBuilder.agentInspector.mcpCredentialGenericError");
+      updateCredentialForm(tool.id, { deleting: false, error: message });
+    }
   };
 
   return (
@@ -310,6 +665,25 @@ export const ToolSettingsPanel = ({
                       "workflowBuilder.agentInspector.mcpValidationMissingCommand",
                     )
                   : null;
+          const credentialForm =
+            credentialForms[tool.id] ?? {
+              apiKey: "",
+              oauthAuthorizationUrl: "",
+              oauthTokenUrl: "",
+              oauthClientId: "",
+              oauthClientSecret: "",
+              oauthScope: "",
+              oauthCode: "",
+              oauthState: null,
+              saving: false,
+              oauthStarting: false,
+              oauthCompleting: false,
+              deleting: false,
+              error: null,
+            };
+          const credentialStatusLabel = t(
+            `workflowBuilder.agentInspector.mcpCredentialStatus.${tool.credentialStatus}`,
+          );
 
           return (
             <div key={tool.id} className={styles.nodeInspectorPanelInnerAccent}>
@@ -379,6 +753,183 @@ export const ToolSettingsPanel = ({
                   </option>
                 </select>
               </label>
+
+              <div className={styles.nodeInspectorField}>
+                <span className={styles.nodeInspectorLabel}>
+                  {t("workflowBuilder.agentInspector.mcpCredentialLabel")}
+                </span>
+                <input
+                  type="text"
+                  value={tool.credentialLabel}
+                  onChange={(event) =>
+                    handleMcpToolChange(tool.id, {
+                      credentialLabel: event.target.value,
+                    })
+                  }
+                />
+                <p className={styles.nodeInspectorHintTextTight}>
+                  {t("workflowBuilder.agentInspector.mcpCredentialStatusLabel", {
+                    status: credentialStatusLabel,
+                  })}
+                </p>
+                {tool.credentialHint ? (
+                  <p className={styles.nodeInspectorHintTextTight}>
+                    {t("workflowBuilder.agentInspector.mcpCredentialHint", {
+                      hint: tool.credentialHint,
+                    })}
+                  </p>
+                ) : null}
+              </div>
+
+              <label className={styles.nodeInspectorField}>
+                <span className={styles.nodeInspectorLabel}>
+                  {t("workflowBuilder.agentInspector.mcpCredentialApiKeyLabel")}
+                </span>
+                <input
+                  type="password"
+                  value={credentialForm.apiKey}
+                  onChange={(event) =>
+                    updateCredentialForm(tool.id, { apiKey: event.target.value })
+                  }
+                  placeholder={t(
+                    "workflowBuilder.agentInspector.mcpCredentialApiKeyPlaceholder",
+                  )}
+                />
+                <div className={styles.nodeInspectorInlineStack}>
+                  <button
+                    type="button"
+                    className={styles.nodeInspectorSecondaryButton}
+                    onClick={() => handleSaveApiKeyCredential(tool)}
+                    disabled={credentialForm.saving}
+                  >
+                    {credentialForm.saving
+                      ? t("workflowBuilder.agentInspector.mcpCredentialSaving")
+                      : t("workflowBuilder.agentInspector.mcpCredentialSave")}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.nodeInspectorSecondaryButton}
+                    onClick={() => handleDeleteCredential(tool)}
+                    disabled={!tool.credentialId || credentialForm.deleting}
+                  >
+                    {credentialForm.deleting
+                      ? t("workflowBuilder.agentInspector.mcpCredentialDeleting")
+                      : t("workflowBuilder.agentInspector.mcpCredentialDelete")}
+                  </button>
+                </div>
+              </label>
+
+              <div className={styles.nodeInspectorField}>
+                <span className={styles.nodeInspectorLabel}>
+                  {t("workflowBuilder.agentInspector.mcpCredentialOauthLabel")}
+                </span>
+                <input
+                  type="url"
+                  value={credentialForm.oauthAuthorizationUrl}
+                  onChange={(event) =>
+                    updateCredentialForm(tool.id, {
+                      oauthAuthorizationUrl: event.target.value,
+                    })
+                  }
+                  placeholder={t(
+                    "workflowBuilder.agentInspector.mcpCredentialOauthAuthorizationUrl",
+                  )}
+                />
+                <input
+                  type="url"
+                  value={credentialForm.oauthTokenUrl}
+                  onChange={(event) =>
+                    updateCredentialForm(tool.id, {
+                      oauthTokenUrl: event.target.value,
+                    })
+                  }
+                  placeholder={t(
+                    "workflowBuilder.agentInspector.mcpCredentialOauthTokenUrl",
+                  )}
+                />
+                <input
+                  type="text"
+                  value={credentialForm.oauthClientId}
+                  onChange={(event) =>
+                    updateCredentialForm(tool.id, {
+                      oauthClientId: event.target.value,
+                    })
+                  }
+                  placeholder={t(
+                    "workflowBuilder.agentInspector.mcpCredentialOauthClientId",
+                  )}
+                />
+                <input
+                  type="password"
+                  value={credentialForm.oauthClientSecret}
+                  onChange={(event) =>
+                    updateCredentialForm(tool.id, {
+                      oauthClientSecret: event.target.value,
+                    })
+                  }
+                  placeholder={t(
+                    "workflowBuilder.agentInspector.mcpCredentialOauthClientSecret",
+                  )}
+                />
+                <textarea
+                  value={credentialForm.oauthScope}
+                  onChange={(event) =>
+                    updateCredentialForm(tool.id, {
+                      oauthScope: normalizeMultiline(event.target.value),
+                    })
+                  }
+                  placeholder={t(
+                    "workflowBuilder.agentInspector.mcpCredentialOauthScope",
+                  )}
+                  rows={3}
+                />
+                <div className={styles.nodeInspectorInlineStack}>
+                  <button
+                    type="button"
+                    className={styles.nodeInspectorSecondaryButton}
+                    onClick={() => handleStartOAuthCredential(tool)}
+                    disabled={credentialForm.oauthStarting}
+                  >
+                    {credentialForm.oauthStarting
+                      ? t("workflowBuilder.agentInspector.mcpCredentialOauthStarting")
+                      : t("workflowBuilder.agentInspector.mcpCredentialOauthStart")}
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={credentialForm.oauthCode}
+                  onChange={(event) =>
+                    updateCredentialForm(tool.id, {
+                      oauthCode: event.target.value,
+                    })
+                  }
+                  placeholder={t(
+                    "workflowBuilder.agentInspector.mcpCredentialOauthCodePlaceholder",
+                  )}
+                />
+                <div className={styles.nodeInspectorInlineStack}>
+                  <button
+                    type="button"
+                    className={styles.nodeInspectorSecondaryButton}
+                    onClick={() => handleCompleteOAuthCredential(tool)}
+                    disabled={credentialForm.oauthCompleting}
+                  >
+                    {credentialForm.oauthCompleting
+                      ? t(
+                          "workflowBuilder.agentInspector.mcpCredentialOauthCompleting",
+                        )
+                      : t(
+                          "workflowBuilder.agentInspector.mcpCredentialOauthComplete",
+                        )}
+                  </button>
+                </div>
+              </div>
+
+              {credentialForm.error ? (
+                <p className={styles.nodeInspectorStatusMessage + " " + styles.nodeInspectorStatusError}>
+                  {credentialForm.error}
+                </p>
+              ) : null}
 
               {tool.transport === "hosted" ? (
                 <>

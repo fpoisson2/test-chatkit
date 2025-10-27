@@ -220,6 +220,28 @@ class AppSettings(Base):
     )
 
 
+class McpCredential(Base):
+    __tablename__ = "mcp_credentials"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    label: Mapped[str] = mapped_column(String(128), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    auth_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    secret_hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    encrypted_payload: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+
 class HostedWorkflow(Base):
     __tablename__ = "hosted_workflows"
 

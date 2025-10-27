@@ -1,4 +1,5 @@
 import pytest
+from backend.app.mcp.credentials import ResolvedMcpCredential
 from backend.app.tool_factory import build_mcp_tool
 
 try:
@@ -127,3 +128,88 @@ def test_build_mcp_tool_invalid_hosted_configuration_raises() -> None:
         build_mcp_tool(payload, raise_on_error=True)
 
     assert "server_label" in str(exc_info.value)
+
+
+def test_build_mcp_tool_injects_credentials_for_hosted() -> None:
+    payload = {
+        "type": "mcp",
+        "mcp": {
+            "kind": "hosted",
+            "label": "secured",
+            "server_url": "https://example.org/api",
+            "credential_id": 42,
+        },
+    }
+
+    resolved = ResolvedMcpCredential(
+        id=42,
+        label="secured",
+        provider=None,
+        auth_type="api_key",
+        authorization="Bearer secret",
+        headers={"X-Test": "demo"},
+        env={},
+        secret_hint="••••cret",
+        connected=True,
+    )
+
+    tool = build_mcp_tool(
+        payload,
+        raise_on_error=True,
+        credential_resolver=lambda _: resolved,
+    )
+
+    assert isinstance(tool, HostedMCPTool)
+    assert tool.tool_config["authorization"] == "Bearer secret"
+    assert tool.tool_config["headers"]["X-Test"] == "demo"
+
+
+def test_build_mcp_tool_http_injects_headers() -> None:
+    payload = {
+        "type": "mcp",
+        "mcp": {
+            "kind": "http",
+            "url": "https://example.com/http",
+            "credential_id": 7,
+        },
+    }
+
+    resolved = ResolvedMcpCredential(
+        id=7,
+        label="http",
+        provider=None,
+        auth_type="api_key",
+        authorization="Bearer abc",
+        headers={"X-Trace": "1"},
+        env={},
+        secret_hint="•••abc",
+        connected=True,
+    )
+
+    server = build_mcp_tool(
+        payload,
+        raise_on_error=True,
+        credential_resolver=lambda _: resolved,
+    )
+
+    assert isinstance(server, MCPServerStreamableHttp)
+    assert server.params["headers"]["Authorization"] == "Bearer abc"
+    assert server.params["headers"]["X-Trace"] == "1"
+
+
+def test_build_mcp_tool_missing_credentials_raises_with_flag() -> None:
+    payload = {
+        "type": "mcp",
+        "mcp": {
+            "kind": "http",
+            "url": "https://example.org/mcp",
+            "credential_id": 999,
+        },
+    }
+
+    with pytest.raises(ValueError):
+        build_mcp_tool(
+            payload,
+            raise_on_error=True,
+            credential_resolver=lambda _: None,
+        )

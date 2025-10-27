@@ -181,6 +181,140 @@ export const testMcpConnection = async ({
   return response.json();
 };
 
+export type CreateMcpCredentialPayload = {
+  label: string;
+  provider?: string | null;
+  authType: "api_key" | "oauth";
+  authorization?: string;
+  headers?: Record<string, unknown> | null;
+  env?: Record<string, unknown> | null;
+  oauth?: {
+    authorization_url: string;
+    token_url: string;
+    client_id: string;
+    client_secret?: string | null;
+    scope?: string | string[] | null;
+    extra_authorize_params?: Record<string, unknown> | null;
+    extra_token_params?: Record<string, unknown> | null;
+  } | null;
+};
+
+export type McpCredentialResponse = {
+  id: number;
+  label: string;
+  provider: string | null;
+  auth_type: string;
+  secret_hint: string | null;
+  connected: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type McpOAuthStartResponse = {
+  authorization_url: string;
+  state: string;
+};
+
+export const createMcpCredential = async ({
+  token,
+  payload,
+  signal,
+}: {
+  token: string | null | undefined;
+  payload: CreateMcpCredentialPayload;
+  signal?: AbortSignal;
+}): Promise<McpCredentialResponse> => {
+  const response = await requestWithFallback("/api/mcp/credentials", {
+    method: "POST",
+    headers: withAuthHeaders(token ?? null),
+    body: JSON.stringify({
+      label: payload.label,
+      provider: payload.provider ?? undefined,
+      auth_type: payload.authType,
+      authorization: payload.authorization ?? undefined,
+      headers: payload.headers ?? undefined,
+      env: payload.env ?? undefined,
+      oauth: payload.oauth ?? undefined,
+    }),
+    signal,
+  });
+
+  return response.json();
+};
+
+export const startMcpOAuth = async ({
+  token,
+  credentialId,
+  redirectUri,
+  scope,
+  signal,
+}: {
+  token: string | null | undefined;
+  credentialId: number;
+  redirectUri: string;
+  scope?: string[];
+  signal?: AbortSignal;
+}): Promise<McpOAuthStartResponse> => {
+  const response = await requestWithFallback("/api/mcp/oauth/start", {
+    method: "POST",
+    headers: withAuthHeaders(token ?? null),
+    body: JSON.stringify({
+      credential_id: credentialId,
+      redirect_uri: redirectUri,
+      scope: scope && scope.length > 0 ? scope : undefined,
+    }),
+    signal,
+  });
+
+  return response.json();
+};
+
+export const completeMcpOAuth = async ({
+  token,
+  credentialId,
+  code,
+  state,
+  redirectUri,
+  signal,
+}: {
+  token: string | null | undefined;
+  credentialId: number;
+  code: string;
+  state?: string | null;
+  redirectUri?: string | null;
+  signal?: AbortSignal;
+}): Promise<McpCredentialResponse> => {
+  const response = await requestWithFallback("/api/mcp/oauth/callback", {
+    method: "POST",
+    headers: withAuthHeaders(token ?? null),
+    body: JSON.stringify({
+      credential_id: credentialId,
+      code,
+      state: state ?? undefined,
+      redirect_uri: redirectUri ?? undefined,
+    }),
+    signal,
+  });
+
+  return response.json();
+};
+
+export const deleteMcpCredential = async ({
+  token,
+  credentialId,
+  signal,
+}: {
+  token: string | null | undefined;
+  credentialId: number;
+  signal?: AbortSignal;
+}): Promise<void> => {
+  await requestWithFallback(`/api/mcp/credentials/${credentialId}`, {
+    method: "DELETE",
+    headers: withAuthHeaders(token ?? null),
+    signal,
+  });
+};
+
 export type EditableUser = {
   id: number;
   email: string;

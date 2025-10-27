@@ -8,7 +8,7 @@ import logging
 import math
 import re
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import field
 from typing import TYPE_CHECKING, Any
 
@@ -48,6 +48,7 @@ from chatkit.types import CustomSummary, ThoughtTask, Workflow
 
 from .computer.hosted_browser import HostedBrowser, HostedBrowserError
 from .database import SessionLocal
+from .mcp.credentials import ResolvedMcpCredential, resolve_mcp_credential
 from .vector_store import JsonVectorStoreService, SearchResult
 from .weather import fetch_weather
 from .widgets import WidgetLibraryService, WidgetValidationError
@@ -261,6 +262,26 @@ def _coerce_non_negative_int(value: Any) -> int | None:
     return None
 
 
+def _coerce_positive_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        integer = int(value)
+        if integer > 0:
+            return integer
+        return None
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped or stripped.startswith("-"):
+            return None
+        try:
+            integer = int(float(stripped))
+        except ValueError:
+            return None
+        return integer if integer > 0 else None
+    return None
+
+
 def _coerce_headers(value: Any) -> dict[str, str] | None:
     if not isinstance(value, Mapping):
         return None
@@ -307,6 +328,19 @@ def _coerce_args(value: Any) -> list[str] | None:
     return args or None
 
 
+def _merge_string_dicts(
+    base: Mapping[str, str] | None, override: Mapping[str, str] | None
+) -> dict[str, str] | None:
+    if not base and not override:
+        return None
+    merged: dict[str, str] = {}
+    if base:
+        merged.update(base)
+    if override:
+        merged.update(override)
+    return merged
+
+
 def _normalize_mcp_kind(value: Any) -> str | None:
     normalized = _coerce_str(value)
     if not normalized:
@@ -342,6 +376,9 @@ def _merge_mcp_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
         "server_url",
         "url",
         "connector_id",
+        "credential_id",
+        "credential_hint",
+        "credential_type",
         "authorization",
         "headers",
         "allowed_tools",
@@ -402,7 +439,10 @@ def _coerce_mcp_require_approval(value: Any) -> Any:
 
 
 def build_mcp_tool(
-    payload: Any, *, raise_on_error: bool = False
+    payload: Any,
+    *,
+    raise_on_error: bool = False,
+    credential_resolver: Callable[[int], ResolvedMcpCredential | None] | None = None,
 ) -> HostedMCPTool | MCPServer | None:
     """Construit une configuration MCP supportant les serveurs existants."""
 
@@ -421,6 +461,42 @@ def build_mcp_tool(
             "Configuration MCP vide ou non reconnue.",
             raise_on_error=raise_on_error,
         )
+
+    credential_id = _coerce_positive_int(config.get("credential_id"))
+    if credential_id is None:
+        credential_ref = config.get("credential") or config.get("credentials")
+        if isinstance(credential_ref, Mapping):
+            credential_id = _coerce_positive_int(credential_ref.get("id"))
+
+    resolved_credentials: ResolvedMcpCredential | None = None
+    if credential_id is not None:
+        resolver = credential_resolver or resolve_mcp_credential
+        if resolver is None:
+            logger.warning(
+                "Aucun résolveur d'identifiants MCP fourni alors que credential_id=%s",
+                credential_id,
+            )
+        else:
+            try:
+                resolved_credentials = resolver(credential_id)
+            except Exception as exc:  # pragma: no cover - garde-fou
+                logger.warning(
+                    "Impossible de récupérer l'identifiant MCP %s : %s",
+                    credential_id,
+                    exc,
+                )
+                if raise_on_error:
+                    raise ValueError(
+                        "Impossible de charger les identifiants MCP demandés."
+                    ) from exc
+            if resolved_credentials is None and credential_id is not None:
+                message = (
+                    "Identifiants MCP introuvables pour credential_id="
+                    f"{credential_id}."
+                )
+                if raise_on_error:
+                    raise ValueError(message)
+                logger.warning(message)
 
     server_kind = _resolve_mcp_kind(config)
     if server_kind is None:
@@ -462,10 +538,26 @@ def build_mcp_tool(
         authorization = _coerce_non_empty_str(
             config.get("authorization") or config.get("auth_token")
         )
+        headers = _coerce_headers(config.get("headers"))
+
+        if resolved_credentials:
+            if (
+                resolved_credentials.authorization
+                and not authorization
+            ):
+                authorization = resolved_credentials.authorization
+
+            credential_headers = dict(resolved_credentials.headers)
+            if (
+                resolved_credentials.authorization
+                and "Authorization" not in credential_headers
+            ):
+                credential_headers["Authorization"] = resolved_credentials.authorization
+            headers = _merge_string_dicts(credential_headers, headers)
+
         if authorization:
             tool_config["authorization"] = authorization
 
-        headers = _coerce_headers(config.get("headers"))
         if headers:
             tool_config["headers"] = headers
 
@@ -528,6 +620,16 @@ def build_mcp_tool(
 
         params: dict[str, Any] = {"url": url}
         headers = _coerce_headers(config.get("headers"))
+
+        if resolved_credentials:
+            credential_headers = dict(resolved_credentials.headers)
+            if (
+                resolved_credentials.authorization
+                and "Authorization" not in credential_headers
+            ):
+                credential_headers["Authorization"] = resolved_credentials.authorization
+            headers = _merge_string_dicts(credential_headers, headers)
+
         if headers:
             params["headers"] = headers
 
@@ -563,6 +665,16 @@ def build_mcp_tool(
 
         params = {"url": url}
         headers = _coerce_headers(config.get("headers"))
+
+        if resolved_credentials:
+            credential_headers = dict(resolved_credentials.headers)
+            if (
+                resolved_credentials.authorization
+                and "Authorization" not in credential_headers
+            ):
+                credential_headers["Authorization"] = resolved_credentials.authorization
+            headers = _merge_string_dicts(credential_headers, headers)
+
         if headers:
             params["headers"] = headers
         timeout = _coerce_positive_float(config.get("timeout"))
@@ -594,6 +706,8 @@ def build_mcp_tool(
         if args:
             params["args"] = args
         env = _coerce_env(config.get("env"))
+        if resolved_credentials and resolved_credentials.env:
+            env = _merge_string_dicts(resolved_credentials.env, env)
         if env:
             params["env"] = env
         cwd = _coerce_non_empty_str(config.get("cwd"))

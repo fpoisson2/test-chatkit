@@ -17,9 +17,12 @@ os.environ.setdefault("AUTH_SECRET_KEY", "secret-key")
 os.environ.setdefault("OPENAI_API_KEY", "sk-test")
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test-mcp-connection.db")
 
-from agents.mcp.server import MCPServer
-from backend.app.mcp.connection import MCPConnectionStatus, probe_mcp_connection
-from backend.app.routes import tools as tools_routes
+from agents.mcp.server import MCPServer  # noqa: E402
+from backend.app.mcp.connection import (  # noqa: E402
+    MCPConnectionStatus,
+    probe_mcp_connection,
+)
+from backend.app.routes import tools as tools_routes  # noqa: E402
 
 
 class _StubServer(MCPServer):

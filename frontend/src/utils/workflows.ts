@@ -30,6 +30,8 @@ export type AgentMcpTransport = "hosted" | "http" | "sse" | "stdio";
 
 export type AgentMcpRequireApprovalMode = "always" | "never" | "custom";
 
+export type AgentMcpCredentialStatus = "disconnected" | "pending" | "connected";
+
 export type AgentMcpToolConfig = {
   id: string;
   transport: AgentMcpTransport;
@@ -47,6 +49,11 @@ export type AgentMcpToolConfig = {
   argsText: string;
   envText: string;
   cwd: string;
+  credentialId: number | null;
+  credentialLabel: string;
+  credentialHint: string;
+  credentialStatus: AgentMcpCredentialStatus;
+  credentialAuthType: "api_key" | "oauth" | null;
 };
 
 export type AgentMcpToolValidation = {
@@ -3004,6 +3011,34 @@ const buildMcpToolEntry = (config: AgentMcpToolConfig): Record<string, unknown> 
     delete nested.args;
   }
 
+  if (config.credentialId && Number.isInteger(config.credentialId)) {
+    nested.credential_id = config.credentialId;
+  } else {
+    delete nested.credential_id;
+  }
+
+  const credentialLabel = (config.credentialLabel ?? "").trim();
+  if (credentialLabel) {
+    nested.credential_label = credentialLabel;
+  } else {
+    delete nested.credential_label;
+  }
+
+  const credentialHint = (config.credentialHint ?? "").trim();
+  if (credentialHint) {
+    nested.credential_hint = credentialHint;
+  } else {
+    delete nested.credential_hint;
+  }
+
+  if (config.credentialAuthType) {
+    nested.credential_type = config.credentialAuthType;
+  } else {
+    delete nested.credential_type;
+  }
+
+  nested.ui_credential_status = config.credentialStatus;
+
   return entry;
 };
 
@@ -3602,6 +3637,27 @@ export const getAgentMcpTools = (
       }
     }
 
+    const credentialId = toOptionalInteger(config.credential_id) ?? null;
+    const credentialLabel = toOptionalString(config.credential_label) ?? "";
+    const credentialHint = toOptionalString(config.credential_hint) ?? "";
+    const credentialType = toOptionalString(config.credential_type);
+    const credentialAuthType =
+      credentialType === "api_key" || credentialType === "oauth" ? credentialType : null;
+
+    let credentialStatus: AgentMcpCredentialStatus = "disconnected";
+    const statusCandidate = toOptionalString(
+      config.ui_credential_status ?? config.credential_status,
+    );
+    if (
+      statusCandidate === "connected" ||
+      statusCandidate === "pending" ||
+      statusCandidate === "disconnected"
+    ) {
+      credentialStatus = statusCandidate;
+    } else if (credentialHint) {
+      credentialStatus = "connected";
+    }
+
     configs.push({
       id: `mcp-${index}`,
       transport,
@@ -3619,6 +3675,11 @@ export const getAgentMcpTools = (
       argsText,
       envText,
       cwd,
+      credentialId,
+      credentialLabel,
+      credentialHint,
+      credentialStatus,
+      credentialAuthType,
     });
   });
 
