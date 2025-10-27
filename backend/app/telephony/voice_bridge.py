@@ -242,7 +242,7 @@ class TelephonyVoiceBridge:
             await websocket.send(payload)  # type: ignore[arg-type]
 
         async def forward_audio() -> None:
-            nonlocal inbound_audio_bytes
+            nonlocal inbound_audio_bytes, active_response_id
             appended = False
             try:
                 async for packet in rtp_stream:
@@ -250,6 +250,14 @@ class TelephonyVoiceBridge:
                     if not pcm:
                         continue
                     inbound_audio_bytes += len(pcm)
+                    if active_response_id:
+                        await send_json(
+                            {
+                                "type": "response.cancel",
+                                "response": {"id": active_response_id},
+                            }
+                        )
+                        active_response_id = None
                     encoded = base64.b64encode(pcm).decode("ascii")
                     await send_json(
                         {
@@ -281,9 +289,10 @@ class TelephonyVoiceBridge:
                 await request_stop()
 
         transcript_buffers: dict[str, list[str]] = {}
+        active_response_id: str | None = None
 
         async def handle_realtime() -> None:
-            nonlocal outbound_audio_bytes, error
+            nonlocal outbound_audio_bytes, error, active_response_id
             while True:
                 try:
                     raw = await asyncio.wait_for(
@@ -307,13 +316,26 @@ class TelephonyVoiceBridge:
                     continue
                 message_type = str(message.get("type") or "").strip()
                 if message_type == "session.ended":
+                    active_response_id = None
                     break
                 if message_type == "error":
                     description = self._extract_error_message(message)
                     error = VoiceBridgeError(description)
+                    active_response_id = None
                     break
 
+                if message_type == "response.created":
+                    response_id = self._extract_response_id(message)
+                    if response_id:
+                        active_response_id = response_id
+                    if not should_continue():
+                        break
+                    continue
+
                 if message_type.endswith("audio.delta"):
+                    response_id = self._extract_response_id(message)
+                    if response_id:
+                        active_response_id = response_id
                     for chunk in self._extract_audio_chunks(message):
                         try:
                             pcm = base64.b64decode(chunk)
@@ -361,6 +383,8 @@ class TelephonyVoiceBridge:
                             transcripts.append(combined_entry)
                     elif combined_entry:
                         transcripts.append(combined_entry)
+                    if response_id and response_id == active_response_id:
+                        active_response_id = None
                     break
             await request_stop()
 
@@ -472,6 +496,7 @@ class TelephonyVoiceBridge:
         }
         if voice:
             payload["audio"]["output"]["voice"] = voice
+            payload["voice"] = voice
         return payload
 
     def _decode_packet(self, packet: RtpPacket) -> bytes:

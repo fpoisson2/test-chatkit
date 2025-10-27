@@ -178,8 +178,10 @@ async def test_voice_bridge_forwards_audio_and_transcripts() -> None:
     append_payload = fake_ws.sent[1]
     assert append_payload["type"] == "input_audio_buffer.append"
     pcm8k = audioop.ulaw2lin(mu_law, 2)
-    pcm16k, _ = audioop.ratecv(pcm8k, 2, 1, 8000, 16_000, None)
-    expected_audio = base64.b64encode(pcm16k).decode("ascii")
+    pcm_target, _ = audioop.ratecv(
+        pcm8k, 2, 1, 8000, bridge._target_sample_rate, None
+    )
+    expected_audio = base64.b64encode(pcm_target).decode("ascii")
     assert append_payload["audio"] == expected_audio
 
     assert fake_ws.sent[2]["type"] == "input_audio_buffer.commit"
@@ -189,6 +191,60 @@ async def test_voice_bridge_forwards_audio_and_transcripts() -> None:
     assert snapshot["total_sessions"] == 1
     assert snapshot["total_errors"] == 0
     assert snapshot["total_outbound_audio_bytes"] == len(b"assistant-audio")
+
+
+@pytest.mark.anyio
+async def test_voice_bridge_cancels_active_response_before_new_commit() -> None:
+    pcm_samples = struct.pack("<4h", 0, 500, -500, 1000)
+    mu_law = audioop.lin2ulaw(pcm_samples, 2)
+    packets = [
+        RtpPacket(payload=mu_law, timestamp=0, sequence_number=1),
+        RtpPacket(payload=mu_law, timestamp=160, sequence_number=2),
+    ]
+    stream = _FakeRtpStream(packets)
+
+    async def _send_to_peer(_: bytes) -> None:
+        return None
+
+    assistant_audio = base64.b64encode(b"assistant-stream").decode("ascii")
+    responses = [
+        {"type": "response.created", "response": {"id": "resp-42"}},
+        {
+            "type": "response.output_audio.delta",
+            "response_id": "resp-42",
+            "delta": {"audio": assistant_audio},
+        },
+    ]
+    fake_ws = _FakeWebSocket(responses)
+
+    async def _connector(url: str, headers: dict[str, str]) -> _FakeWebSocket:
+        return fake_ws
+
+    bridge = TelephonyVoiceBridge(
+        hooks=VoiceBridgeHooks(),
+        websocket_connector=_connector,
+        voice_session_checker=lambda: True,
+        receive_timeout=0.05,
+    )
+
+    await bridge.run(
+        client_secret="secret-token",
+        model="gpt-voice",
+        instructions="Test",
+        voice=None,
+        rtp_stream=stream,
+        send_to_peer=_send_to_peer,
+    )
+
+    sent_types = [entry["type"] for entry in fake_ws.sent]
+    assert "response.cancel" in sent_types
+    assert "response.create" in sent_types
+    cancel_index = sent_types.index("response.cancel")
+    create_index = sent_types.index("response.create")
+    assert cancel_index < create_index
+
+    cancel_payload = fake_ws.sent[cancel_index]
+    assert cancel_payload["response"]["id"] == "resp-42"
 
 
 @pytest.mark.anyio
