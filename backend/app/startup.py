@@ -46,6 +46,7 @@ from .telephony.invite_handler import (
     send_sip_reply,
 )
 from .telephony.registration import SIPRegistrationManager
+from .telephony.rtp_server import RtpServer, RtpServerConfig
 from .telephony.sip_server import (
     SipCallRequestHandler,
     SipCallSession,
@@ -178,6 +179,19 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         metadata = session.metadata.get("telephony")
         if not isinstance(metadata, dict):
             return
+
+        # Arrêter le serveur RTP s'il existe
+        rtp_server = metadata.pop("rtp_server", None)
+        if isinstance(rtp_server, RtpServer):
+            try:
+                await rtp_server.stop()
+            except Exception:  # pragma: no cover - best effort
+                logger.debug(
+                    "Arrêt du serveur RTP en erreur pour Call-ID=%s",
+                    session.call_id,
+                    exc_info=True,
+                )
+
         metadata.pop("rtp_stream_factory", None)
         metadata.pop("send_audio", None)
         metadata.pop("client_secret", None)
@@ -488,22 +502,52 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 )
             return
 
+        # Créer et démarrer le serveur RTP
+        rtp_config = RtpServerConfig(
+            local_host=media_host,
+            local_port=int(media_port) if media_port else 0,
+            payload_type=0,  # PCMU
+            output_codec="pcmu",
+        )
+        rtp_server = RtpServer(rtp_config)
+
+        try:
+            await rtp_server.start()
+        except Exception as exc:
+            logger.exception(
+                "Impossible de démarrer le serveur RTP",
+                exc_info=exc,
+            )
+            with contextlib.suppress(Exception):
+                await send_sip_reply(
+                    dialog,
+                    500,
+                    reason="Server Internal Error",
+                    contact_uri=contact_uri,
+                )
+            return
+
+        # Utiliser le port réel du serveur RTP pour la négociation SDP
+        actual_media_port = rtp_server.local_port
+
         try:
             await handle_incoming_invite(
                 dialog,
                 request,
                 media_host=media_host,
-                media_port=int(media_port),
+                media_port=actual_media_port,
                 contact_uri=contact_uri,
             )
         except InviteHandlingError as exc:
             logger.warning("Traitement de l'INVITE interrompu : %s", exc)
+            await rtp_server.stop()
             return
         except Exception as exc:  # pragma: no cover - dépend de aiosip
             logger.exception(
                 "Erreur inattendue lors du traitement d'un INVITE",
                 exc_info=exc,
             )
+            await rtp_server.stop()
             with contextlib.suppress(Exception):
                 await send_sip_reply(
                     dialog,
@@ -519,7 +563,34 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             logger.exception(
                 "Erreur lors de la gestion applicative de l'INVITE"
             )
+            await rtp_server.stop()
             raise
+
+        # Récupérer la session créée et y stocker les callbacks RTP
+        call_id = getattr(request, "headers", {}).get("Call-ID")
+        if call_id:
+            if isinstance(call_id, list | tuple) and call_id:
+                call_id = str(call_id[0])
+            else:
+                call_id = str(call_id)
+
+            session = sip_handler.get_session(call_id)
+            if session:
+                telephony_metadata = session.metadata.setdefault("telephony", {})
+                telephony_metadata["rtp_server"] = rtp_server
+                telephony_metadata["rtp_stream_factory"] = lambda: rtp_server.packet_stream()
+                telephony_metadata["send_audio"] = rtp_server.send_audio
+                logger.info(
+                    "Serveur RTP configuré pour Call-ID=%s (port=%d)",
+                    call_id,
+                    actual_media_port,
+                )
+            else:
+                logger.warning(
+                    "Session introuvable pour Call-ID=%s, serveur RTP non configuré",
+                    call_id,
+                )
+                await rtp_server.stop()
 
         await _attach_dialog_callbacks(dialog, sip_handler)
 
