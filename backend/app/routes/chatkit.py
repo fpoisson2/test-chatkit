@@ -50,7 +50,14 @@ except (
 if TYPE_CHECKING:  # pragma: no cover - uniquement pour l'auto-complétion
     from ..chatkit import ChatKitRequestContext
 
-from chatkit.store import NotFoundError
+try:  # pragma: no cover - dépendance optionnelle pour le SDK ChatKit
+    from chatkit.store import NotFoundError
+except (ModuleNotFoundError, ImportError):  # pragma: no cover - fallback sans SDK
+
+    class NotFoundError(Exception):
+        """Bouchon minimal lorsque le stockage ChatKit n'est pas disponible."""
+
+        pass
 
 from ..attachment_store import AttachmentUploadError
 from ..chatkit_realtime import create_realtime_voice_session
