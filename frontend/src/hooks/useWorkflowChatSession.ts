@@ -29,7 +29,35 @@ export const useWorkflowChatSession = ({
 }: UseWorkflowChatSessionOptions): UseWorkflowChatSessionResult => {
   const { control, fetchUpdates, sendUserMessage } = useChatKit(chatkitOptions);
 
-  const noopRequestRefresh = useCallback(() => undefined, []);
+  const hostedRequestRefresh = useCallback(
+    (context?: string) => {
+      if (import.meta.env.DEV) {
+        console.log('[WorkflowChat] requestRefresh appelé', { context });
+      }
+      // Force a full thread reload by re-setting the thread ID
+      // This ensures new items added directly to the store are visible
+      const currentThread = control.threadId;
+      if (currentThread && context?.includes('[Voice]')) {
+        if (import.meta.env.DEV) {
+          console.log('[WorkflowChat] Forçant rechargement du thread pour transcriptions vocales', { threadId: currentThread });
+        }
+        control.setThreadId(currentThread);
+      }
+      return fetchUpdates()
+        .then((result) => {
+          if (import.meta.env.DEV) {
+            console.log('[WorkflowChat] fetchUpdates terminé avec succès', { context, result });
+          }
+          return result;
+        })
+        .catch((err) => {
+          if (import.meta.env.DEV) {
+            console.error('[WorkflowChat] fetchUpdates a échoué', { context, err });
+          }
+        });
+    },
+    [control, fetchUpdates],
+  );
 
   const workflowSync = useChatkitWorkflowSync({
     token,
@@ -39,9 +67,10 @@ export const useWorkflowChatSession = ({
     initialThreadId,
     reportError,
     enabled: mode !== "hosted",
+    control,
   });
 
-  const requestRefresh = mode === "hosted" ? noopRequestRefresh : workflowSync.requestRefresh;
+  const requestRefresh = mode === "hosted" ? hostedRequestRefresh : workflowSync.requestRefresh;
   const chatkitWorkflowInfo = mode === "hosted" ? null : workflowSync.chatkitWorkflowInfo;
 
   return useMemo(

@@ -43,6 +43,10 @@ class VoiceSessionRequest(BaseModel):
         default=None,
         description="Identifiant de la voix souhaitée (optionnel).",
     )
+    thread_id: str | None = Field(
+        default=None,
+        description="Identifiant du thread ChatKit pour persister les transcriptions (optionnel).",
+    )
 
 
 class VoiceSessionResponse(BaseModel):

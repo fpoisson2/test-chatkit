@@ -149,6 +149,7 @@ class _RealtimeSessionState:
         self._chatkit_item_created_at: dict[str, datetime] = {}
         self._voice_messages_marked = False
         self._history_primed = False
+        self._session_start_time = datetime.now(timezone.utc)
 
     async def ensure_session_started(self) -> None:
         if self._session is not None:
@@ -451,12 +452,22 @@ class _RealtimeSessionState:
 
     async def _handle_event_side_effects(self, event: Any) -> None:
         if isinstance(event, RealtimeHistoryAdded):
+            logger.debug(
+                "RealtimeHistoryAdded reçu (session=%s, item_id=%s)",
+                self.handle.session_id,
+                getattr(event.item, "item_id", None) or getattr(event.item, "id", None),
+            )
             await self._upsert_chatkit_messages(
                 [event.item],
                 allow_create=True,
             )
         elif isinstance(event, RealtimeHistoryUpdated):
-            await self._upsert_chatkit_messages(event.history, allow_create=False)
+            logger.debug(
+                "RealtimeHistoryUpdated reçu (session=%s, history_count=%d)",
+                self.handle.session_id,
+                len(event.history),
+            )
+            await self._upsert_chatkit_messages(event.history, allow_create=True)
 
     async def _upsert_chatkit_messages(
         self,
@@ -465,6 +476,12 @@ class _RealtimeSessionState:
         allow_create: bool,
     ) -> None:
         if not await self._ensure_chatkit_context():
+            logger.debug(
+                "Impossible de persister les transcriptions Realtime : contexte ChatKit indisponible (session=%s, thread_id=%s, user_id=%s)",
+                self.handle.session_id,
+                self.thread_id,
+                self.owner_user_id,
+            )
             return
 
         assert self._chatkit_server is not None
@@ -512,6 +529,13 @@ class _RealtimeSessionState:
                 if message is None:
                     continue
                 await store.add_thread_item(thread_id, message, self._chatkit_context)
+                logger.info(
+                    "Transcription vocale ajoutée au thread ChatKit (session=%s, thread=%s, role=%s, text_length=%d)",
+                    self.handle.session_id,
+                    thread_id,
+                    role,
+                    len(text),
+                )
                 await self._mark_voice_messages_created()
             else:
                 created_at = self._chatkit_item_created_at.get(realtime_id)
@@ -527,6 +551,13 @@ class _RealtimeSessionState:
                 if message is None:
                     continue
                 await store.save_item(thread_id, message, self._chatkit_context)
+                logger.debug(
+                    "Transcription vocale mise à jour dans le thread ChatKit (session=%s, thread=%s, role=%s, text_length=%d)",
+                    self.handle.session_id,
+                    thread_id,
+                    role,
+                    len(text),
+                )
 
     @staticmethod
     def _extract_text_from_realtime_item(
@@ -626,6 +657,20 @@ class _RealtimeSessionState:
             status_raw = str(item.get("status") or "").strip()
             if status_raw and status_raw not in {"completed", "in_progress"}:
                 continue
+
+            # Skip items created before this session started
+            item_id = item.get("item_id") or item.get("id")
+            if item_id:
+                created_at = self._chatkit_item_created_at.get(str(item_id))
+                if created_at and created_at < self._session_start_time:
+                    # This item existed before the current session started
+                    logger.debug(
+                        "Skipping pre-session item %s (created=%s, session_start=%s)",
+                        item_id,
+                        created_at.isoformat(),
+                        self._session_start_time.isoformat(),
+                    )
+                    continue
 
             contents = item.get("content") or []
             text_parts: list[str] = []

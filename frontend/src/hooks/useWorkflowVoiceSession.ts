@@ -226,6 +226,12 @@ export const useWorkflowVoiceSession = ({
       }
       const nextTranscripts = extractTranscriptsFromHistory(history);
       setTranscripts(nextTranscripts);
+      if (import.meta.env.DEV) {
+        console.log('[WorkflowVoice] Histoire mise à jour, rafraîchissement du thread...', {
+          sessionId,
+          transcriptCount: nextTranscripts.length,
+        });
+      }
       onTranscriptsUpdated?.();
     },
     onAgentStart: (sessionId) => {

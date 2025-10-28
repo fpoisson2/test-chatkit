@@ -957,6 +957,8 @@ export const DEFAULT_VOICE_AGENT_MODEL = "gpt-4o-realtime-preview";
 export const DEFAULT_VOICE_AGENT_VOICE = "alloy";
 export const DEFAULT_VOICE_AGENT_START_BEHAVIOR: VoiceAgentStartBehavior = "manual";
 export const DEFAULT_VOICE_AGENT_STOP_BEHAVIOR: VoiceAgentStopBehavior = "auto";
+export const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
+export const DEFAULT_TRANSCRIPTION_LANGUAGE = "fr-CA";
 
 const VOICE_AGENT_TOOL_DEFAULTS: Record<VoiceAgentTool, boolean> = {
   response: true,
@@ -1042,6 +1044,10 @@ export const createVoiceAgentParameters = (): AgentParameters => ({
       response: VOICE_AGENT_TOOL_DEFAULTS.response,
       transcription: VOICE_AGENT_TOOL_DEFAULTS.transcription,
       function_call: VOICE_AGENT_TOOL_DEFAULTS.function_call,
+    },
+    input_audio_transcription: {
+      model: DEFAULT_TRANSCRIPTION_MODEL,
+      language: DEFAULT_TRANSCRIPTION_LANGUAGE,
     },
   },
 });
@@ -1163,6 +1169,111 @@ export const setVoiceAgentToolEnabled = (
       : {};
     tools[tool] = Boolean(enabled);
     return { ...current, tools };
+  });
+
+export const getTranscriptionModel = (
+  parameters: AgentParameters | null | undefined,
+): string => {
+  if (!parameters) {
+    return DEFAULT_TRANSCRIPTION_MODEL;
+  }
+  const realtime = (parameters as Record<string, unknown>).realtime;
+  if (!isPlainRecord(realtime)) {
+    return DEFAULT_TRANSCRIPTION_MODEL;
+  }
+  const transcription = realtime.input_audio_transcription;
+  if (!isPlainRecord(transcription)) {
+    return DEFAULT_TRANSCRIPTION_MODEL;
+  }
+  const model = (transcription as Record<string, unknown>).model;
+  if (typeof model === "string" && model.trim()) {
+    return model.trim();
+  }
+  return DEFAULT_TRANSCRIPTION_MODEL;
+};
+
+export const setTranscriptionModel = (
+  parameters: AgentParameters,
+  model: string,
+): AgentParameters =>
+  updateVoiceRealtimeConfig(parameters, (current) => {
+    const transcription = isPlainRecord(current.input_audio_transcription)
+      ? { ...(current.input_audio_transcription as Record<string, unknown>) }
+      : {};
+    const normalized = model.trim() || DEFAULT_TRANSCRIPTION_MODEL;
+    transcription.model = normalized;
+    return { ...current, input_audio_transcription: transcription };
+  });
+
+export const getTranscriptionLanguage = (
+  parameters: AgentParameters | null | undefined,
+): string => {
+  if (!parameters) {
+    return DEFAULT_TRANSCRIPTION_LANGUAGE;
+  }
+  const realtime = (parameters as Record<string, unknown>).realtime;
+  if (!isPlainRecord(realtime)) {
+    return DEFAULT_TRANSCRIPTION_LANGUAGE;
+  }
+  const transcription = realtime.input_audio_transcription;
+  if (!isPlainRecord(transcription)) {
+    return DEFAULT_TRANSCRIPTION_LANGUAGE;
+  }
+  const language = (transcription as Record<string, unknown>).language;
+  if (typeof language === "string" && language.trim()) {
+    return language.trim();
+  }
+  return DEFAULT_TRANSCRIPTION_LANGUAGE;
+};
+
+export const setTranscriptionLanguage = (
+  parameters: AgentParameters,
+  language: string,
+): AgentParameters =>
+  updateVoiceRealtimeConfig(parameters, (current) => {
+    const transcription = isPlainRecord(current.input_audio_transcription)
+      ? { ...(current.input_audio_transcription as Record<string, unknown>) }
+      : {};
+    const normalized = language.trim() || DEFAULT_TRANSCRIPTION_LANGUAGE;
+    transcription.language = normalized;
+    return { ...current, input_audio_transcription: transcription };
+  });
+
+export const getTranscriptionPrompt = (
+  parameters: AgentParameters | null | undefined,
+): string => {
+  if (!parameters) {
+    return "";
+  }
+  const realtime = (parameters as Record<string, unknown>).realtime;
+  if (!isPlainRecord(realtime)) {
+    return "";
+  }
+  const transcription = realtime.input_audio_transcription;
+  if (!isPlainRecord(transcription)) {
+    return "";
+  }
+  const prompt = (transcription as Record<string, unknown>).prompt;
+  if (typeof prompt === "string") {
+    return prompt;
+  }
+  return "";
+};
+
+export const setTranscriptionPrompt = (
+  parameters: AgentParameters,
+  prompt: string,
+): AgentParameters =>
+  updateVoiceRealtimeConfig(parameters, (current) => {
+    const transcription = isPlainRecord(current.input_audio_transcription)
+      ? { ...(current.input_audio_transcription as Record<string, unknown>) }
+      : {};
+    if (prompt.trim()) {
+      transcription.prompt = prompt;
+    } else {
+      delete transcription.prompt;
+    }
+    return { ...current, input_audio_transcription: transcription };
   });
 
 export type StartTelephonyRealtimeOverrides = {
@@ -1308,6 +1419,10 @@ export const resolveVoiceAgentParameters = (
   for (const tool of VOICE_AGENT_TOOL_KEYS) {
     result = setVoiceAgentToolEnabled(result, tool, tools[tool]);
   }
+
+  result = setTranscriptionModel(result, getTranscriptionModel(rawParameters));
+  result = setTranscriptionLanguage(result, getTranscriptionLanguage(rawParameters));
+  result = setTranscriptionPrompt(result, getTranscriptionPrompt(rawParameters));
 
   const instructions = getAgentMessage(rawParameters);
   result = setAgentMessage(result, instructions);
