@@ -210,6 +210,7 @@ def test_open_voice_session_normalizes_mcp_tools(
             "type": "mcp",
             "url": "https://example.com/mcp",
             "transport": "http_sse",
+            "agent": {"type": "workflow", "workflow": {"slug": "sub-agent"}},
         }
     ]
 
@@ -240,6 +241,7 @@ def test_open_voice_session_normalizes_mcp_tools(
     assert tool_config.get("server_url") == "https://example.com/mcp"
     assert "url" not in tool_config
     assert tool_config.get("server_label") == "example-com-mcp"
+    assert "agent" not in tool_config
 
 
 def test_openai_slug_ignores_mismatched_provider_id(

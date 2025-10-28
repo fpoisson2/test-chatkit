@@ -40,9 +40,15 @@ def _normalize_realtime_tools_payload(
     normalized: list[Any] = []
     seen_labels: set[str] = set()
 
+    disallowed_tool_keys = {"agent"}
+
     for index, entry in enumerate(source_entries):
         if isinstance(entry, Mapping):
             tool_entry = dict(entry)
+
+            for key in disallowed_tool_keys:
+                if key in tool_entry:
+                    tool_entry.pop(key, None)
             tool_type = str(
                 tool_entry.get("type")
                 or tool_entry.get("tool")
