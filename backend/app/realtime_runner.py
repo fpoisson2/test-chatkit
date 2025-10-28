@@ -63,6 +63,29 @@ def _normalize_realtime_tools_payload(
     }
 
     for index, entry in enumerate(source_entries):
+        if isinstance(entry, FunctionTool):
+            tool_entry: dict[str, Any] = {
+                "type": "function",
+                "name": entry.name,
+            }
+            description = getattr(entry, "description", None)
+            if isinstance(description, str) and description.strip():
+                tool_entry["description"] = description.strip()
+            parameters = getattr(entry, "params_json_schema", None)
+            if isinstance(parameters, Mapping):
+                tool_entry["parameters"] = dict(parameters)
+            strict_schema = getattr(entry, "strict_json_schema", None)
+            if isinstance(strict_schema, bool):
+                tool_entry["strict"] = strict_schema
+            response = getattr(entry, "response", None)
+            if isinstance(response, Mapping):
+                tool_entry["response"] = dict(response)
+            cache_control = getattr(entry, "cache_control", None)
+            if isinstance(cache_control, Mapping):
+                tool_entry["cache_control"] = dict(cache_control)
+            normalized.append(tool_entry)
+            continue
+
         if isinstance(entry, Mapping):
             raw_entry = dict(entry)
 
@@ -756,7 +779,19 @@ class RealtimeVoiceSessionOrchestrator:
         if isinstance(realtime, Mapping):
             metadata_payload["realtime"] = dict(realtime)
         if normalized_tools is not None:
-            metadata_payload["tools"] = list(normalized_tools)
+            json_safe_tools: list[Any] = []
+            for entry in normalized_tools:
+                if isinstance(entry, Mapping):
+                    json_safe_tools.append(dict(entry))
+                elif isinstance(entry, Tool):
+                    # Ces objets ne sont pas sérialisables en JSON.
+                    continue
+                else:
+                    json_safe_tools.append(entry)
+            if json_safe_tools:
+                metadata_payload["tools"] = json_safe_tools
+        if agent_tools:
+            metadata_payload["sdk_tools"] = list(agent_tools)
         if isinstance(metadata, Mapping) and metadata:
             metadata_payload.update(dict(metadata))
         # Toujours propager l'identifiant utilisateur explicite.

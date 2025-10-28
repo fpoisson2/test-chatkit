@@ -3,13 +3,14 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from agents.realtime.agent import RealtimeAgent
+from agents.tool import FunctionTool
 
 os.environ.setdefault("OPENAI_API_KEY", "sk-test")
 os.environ.setdefault("DATABASE_URL", "sqlite:///./chatkit-tests.db")
@@ -362,6 +363,72 @@ def test_open_voice_session_filters_non_sdk_tools(
     clone_kwargs = clone_calls[0]
     assert clone_kwargs.get("tools") == []
     assert clone_kwargs.get("handoffs") == [child_agent]
+    metadata_tools = handle.metadata.get("tools")
+    assert isinstance(metadata_tools, list)
+    assert metadata_tools and isinstance(metadata_tools[0], Mapping)
+    assert handle.metadata.get("sdk_tools") in (None, [])
+
+
+def test_open_voice_session_stores_sdk_tools_separately(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+
+    _reset_orchestrator(monkeypatch)
+
+    captured_request: dict[str, object] = {}
+
+    async def _fake_request_client_secret(self, **kwargs: object) -> dict[str, object]:
+        captured_request.update(kwargs)
+        return {"client_secret": {"value": "secret"}}
+
+    monkeypatch.setattr(
+        realtime_runner.RealtimeVoiceSessionOrchestrator,
+        "_request_client_secret",
+        _fake_request_client_secret,
+    )
+
+    class _StubRunner:
+        def __init__(self, agent: RealtimeAgent) -> None:
+            self.agent = agent
+
+    monkeypatch.setattr(realtime_runner, "RealtimeRunner", _StubRunner)
+
+    async def _invoke_tool(context, arguments):  # type: ignore[no-untyped-def]
+        return "ok"
+
+    function_tool = FunctionTool(
+        name="calc",
+        description="Calculator",
+        params_json_schema={"type": "object", "properties": {}},
+        on_invoke_tool=_invoke_tool,
+    )
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-tools",
+            model="gpt-realtime",
+            instructions="Bonjour",
+            provider_slug="openai",
+            tools=[
+                function_tool,
+                {"type": "mcp", "url": "https://example.com/mcp"},
+            ],
+        )
+    )
+
+    assert handle.payload == {"client_secret": {"value": "secret"}}
+
+    sanitized_tools = captured_request.get("tools")
+    assert isinstance(sanitized_tools, list)
+    assert all(isinstance(entry, Mapping) for entry in sanitized_tools)
+
+    metadata_tools = handle.metadata.get("tools")
+    assert isinstance(metadata_tools, list)
+    assert all(isinstance(entry, Mapping) for entry in metadata_tools)
+
+    sdk_tools = handle.metadata.get("sdk_tools")
+    assert sdk_tools == [function_tool]
 
 
 def test_openai_slug_ignores_mismatched_provider_id(
