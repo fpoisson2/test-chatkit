@@ -6,6 +6,15 @@ const parsePort = (value: string | undefined, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const parseOptionalPort = (value: string | undefined) => {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+};
+
 const sanitizeHost = (value: string | undefined): string | undefined => {
   if (!value) {
     return undefined;
@@ -25,13 +34,13 @@ const sanitizeHost = (value: string | undefined): string | undefined => {
   return sanitized || undefined;
 };
 
-const withFallback = (value: string | undefined, fallback: string) =>
-  sanitizeHost(value) ?? fallback;
-
 const serverPort = parsePort(process.env.VITE_PORT, 5183);
-const hmrClientPort = parsePort(process.env.VITE_HMR_CLIENT_PORT, 443);
-const hmrHost = withFallback(process.env.VITE_HMR_HOST, "test.ve2fpd.com");
-const hmrProtocol = process.env.VITE_HMR_PROTOCOL ?? "wss";
+const hmrClientPort = parseOptionalPort(process.env.VITE_HMR_CLIENT_PORT);
+const hmrHost = sanitizeHost(process.env.VITE_HMR_HOST);
+const hmrProtocol = process.env.VITE_HMR_PROTOCOL?.trim();
+const hasCustomHmrConfig = [hmrHost, hmrClientPort, hmrProtocol].some(
+  (value) => value !== undefined,
+);
 const backendTarget =
   process.env.VITE_BACKEND_URL ?? "http://127.0.0.1:8000";
 const defaultAllowedHosts = ["chatkit.ve2fpd.com"];
@@ -50,11 +59,17 @@ export default defineConfig({
     host: true, // écoute sur 0.0.0.0
     port: serverPort, // fixe le port
     strictPort: true, // empêche vite de changer de port
-    hmr: useMockApi ? true : {
-      clientPort: hmrClientPort, // important derrière Cloudflare
-      host: hmrHost,
-      protocol: hmrProtocol,
-    },
+    hmr: useMockApi
+      ? true
+      : hasCustomHmrConfig
+        ? {
+            ...(hmrClientPort !== undefined
+              ? { clientPort: hmrClientPort }
+              : {}),
+            ...(hmrHost ? { host: hmrHost } : {}),
+            ...(hmrProtocol ? { protocol: hmrProtocol } : {}),
+          }
+        : undefined,
     ...(allowedHosts?.length ? { allowedHosts } : {}),
     // Désactiver le proxy en mode mock pour que fetch soit intercepté
     ...(!useMockApi ? {
