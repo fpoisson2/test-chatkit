@@ -142,13 +142,11 @@ async def start_oauth_flow(
     try:
         response = await http_client.get(discovery_url)
         response.raise_for_status()
+        discovery = response.json()
     except httpx.HTTPError as exc:  # pragma: no cover - garde-fou réseau
-        raise ValueError("Impossible de découvrir la configuration OAuth2.") from exc
-    finally:
         if close_client:
             await http_client.aclose()
-
-    discovery = response.json()
+        raise ValueError("Impossible de découvrir la configuration OAuth2.") from exc
 
     logger.debug(
         "OAuth discovery response keys=%s",
@@ -157,6 +155,7 @@ async def start_oauth_flow(
 
     authorization_endpoint = discovery.get("authorization_endpoint")
     token_endpoint = discovery.get("token_endpoint")
+    registration_endpoint = discovery.get("registration_endpoint")
     discovered_client_id = discovery.get("client_id")
 
     issuer = discovery.get("issuer")
@@ -165,8 +164,60 @@ async def start_oauth_flow(
     if not authorization_endpoint or not token_endpoint:
         raise ValueError("La découverte OAuth2 ne fournit pas les endpoints attendus.")
 
-    # Utiliser le client_id de la découverte en priorité
+    # Si pas de client_id fourni et qu'il y a un registration_endpoint, enregistrer dynamiquement
     effective_client_id = discovered_client_id if discovered_client_id else client_id
+
+    if not effective_client_id and registration_endpoint:
+        logger.info("No client_id provided, attempting dynamic client registration")
+
+        registration_url = _resolve_endpoint(
+            registration_endpoint,
+            base_url=base_url,
+            issuer=issuer_base,
+        )
+
+        try:
+            registration_payload = {
+                "client_name": "ChatKit MCP Client",
+                "redirect_uris": [redirect_uri],
+                "grant_types": ["authorization_code"],
+                "response_types": ["code"],
+                "token_endpoint_auth_method": "none",  # PKCE public client
+            }
+
+            logger.debug(
+                "Registering OAuth client registration_url=%s redirect_uri=%s",
+                registration_url,
+                redirect_uri,
+            )
+
+            reg_response = await http_client.post(
+                registration_url,
+                json=registration_payload,
+            )
+            reg_response.raise_for_status()
+            registration_data = reg_response.json()
+
+            effective_client_id = registration_data.get("client_id")
+            logger.info(
+                "Dynamic client registration successful client_id=%s",
+                effective_client_id,
+            )
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "Dynamic client registration failed: %s",
+                exc,
+                exc_info=True,
+            )
+            if close_client:
+                await http_client.aclose()
+            raise ValueError(
+                "Impossible d'enregistrer le client OAuth dynamiquement."
+            ) from exc
+
+    # Fermer le client HTTP si on l'a créé
+    if close_client:
+        await http_client.aclose()
 
     logger.debug(
         "OAuth configuration discovered_client_id=%s provided_client_id=%s effective_client_id=%s",
