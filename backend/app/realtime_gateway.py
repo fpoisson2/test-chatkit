@@ -316,7 +316,7 @@ class _RealtimeSessionState:
             self._input_audio_log_skip = 1
             return True
         self._input_audio_log_skip += 1
-        if self._input_audio_log_skip >= 25:
+        if self._input_audio_log_skip >= 10:
             self._input_audio_log_skip = 1
             return True
         return False

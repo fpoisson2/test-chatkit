@@ -34,8 +34,8 @@ type StopOptions = {
 const HISTORY_STORAGE_KEY = "chatkit:voice:history";
 const MAX_ERROR_LOG_ENTRIES = 8;
 const SAMPLE_RATE = 24_000;
-const SPEECH_THRESHOLD = 0.015;
-const SILENCE_FRAMES_BEFORE_COMMIT = 4;
+const ACTIVITY_THRESHOLD = 0.003;
+const COMMIT_DEBOUNCE_MS = 220;
 
 const formatErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
@@ -200,8 +200,8 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
   const historyRef = useRef<RealtimeItem[]>([]);
   const statusRef = useRef<VoiceSessionStatus>("idle");
   const resampler = useAudioResampler(SAMPLE_RATE);
-  const speakingRef = useRef(false);
-  const silenceFrameCountRef = useRef(0);
+  const commitTimerRef = useRef<number | null>(null);
+  const hasPendingAudioRef = useRef(false);
 
   useEffect(() => {
     statusRef.current = status;
@@ -232,6 +232,13 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       persistTranscripts([]);
       return [];
     });
+  }, []);
+
+  const clearCommitTimer = useCallback(() => {
+    if (commitTimerRef.current !== null && typeof window !== "undefined") {
+      window.clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
   }, []);
 
   const cleanupCapture = useCallback(() => {
@@ -278,9 +285,36 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       });
     }
     resampler.reset();
-    speakingRef.current = false;
-    silenceFrameCountRef.current = 0;
-  }, [resampler]);
+    clearCommitTimer();
+    hasPendingAudioRef.current = false;
+  }, [clearCommitTimer, resampler]);
+
+  const scheduleCommit = useCallback(
+    (
+      sessionId: string,
+      dispatcher: (
+        id: string,
+        chunk: Int16Array,
+        options?: SendAudioOptions,
+      ) => void,
+    ) => {
+      if (typeof window === "undefined") {
+        return;
+      }
+      clearCommitTimer();
+      commitTimerRef.current = window.setTimeout(() => {
+        commitTimerRef.current = null;
+        if (!hasPendingAudioRef.current) {
+          return;
+        }
+        const tail = resampler.flush();
+        const payload = tail.length > 0 ? tail : new Int16Array();
+        dispatcher(sessionId, payload, { commit: true });
+        hasPendingAudioRef.current = false;
+      }, COMMIT_DEBOUNCE_MS);
+    },
+    [clearCommitTimer, resampler],
+  );
 
   const startCapture = useCallback(
     async (
@@ -323,18 +357,16 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
 
       processor.onaudioprocess = (event) => {
         const input = event.inputBuffer.getChannelData(0);
-        let energy = 0;
-        for (let i = 0; i < input.length; i += 1) {
-          energy += input[i] * input[i];
+        let rms = 0;
+        if (input.length > 0) {
+          let energy = 0;
+          for (let i = 0; i < input.length; i += 1) {
+            energy += input[i] * input[i];
+          }
+          rms = Math.sqrt(energy / input.length);
         }
-        const rms = input.length ? Math.sqrt(energy / input.length) : 0;
-        const isSpeechFrame = rms >= SPEECH_THRESHOLD;
-
-        if (isSpeechFrame) {
-          speakingRef.current = true;
-          silenceFrameCountRef.current = 0;
-        } else if (speakingRef.current) {
-          silenceFrameCountRef.current += 1;
+        if (rms >= ACTIVITY_THRESHOLD) {
+          hasPendingAudioRef.current = true;
         }
 
         const chunk = resampler.process(input);
@@ -342,13 +374,8 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
           dispatcher(sessionId, chunk);
         }
 
-        if (
-          speakingRef.current &&
-          silenceFrameCountRef.current >= SILENCE_FRAMES_BEFORE_COMMIT
-        ) {
-          speakingRef.current = false;
-          silenceFrameCountRef.current = 0;
-          dispatcher(sessionId, new Int16Array(), { commit: true });
+        if (hasPendingAudioRef.current) {
+          scheduleCommit(sessionId, dispatcher);
         }
       };
 
@@ -358,10 +385,9 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       historyRef.current = [];
       currentSessionRef.current = sessionId;
       microphoneStreamRef.current = stream;
-      speakingRef.current = false;
-      silenceFrameCountRef.current = 0;
+      hasPendingAudioRef.current = false;
     },
-    [resampler],
+    [resampler, scheduleCommit],
   );
 
   const {
@@ -500,6 +526,7 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
     ({ clearHistory = false, nextStatus = "idle" }: StopOptions = {}) => {
       const sessionId = currentSessionRef.current;
       if (sessionId) {
+        clearCommitTimer();
         const tail = resampler.flush();
         if (tail.length > 0) {
           sendAudioChunk(sessionId, tail, { commit: true });
@@ -512,13 +539,14 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       currentSessionRef.current = null;
       historyRef.current = [];
       suppressEmptyHistoryRef.current = false;
+      hasPendingAudioRef.current = false;
       if (clearHistory) {
         resetTranscripts();
       }
       setIsListening(false);
       setStatus(nextStatus);
     },
-    [cleanupCapture, interruptSession, resetTranscripts, resampler, sendAudioChunk],
+    [clearCommitTimer, cleanupCapture, interruptSession, resetTranscripts, resampler, sendAudioChunk],
   );
 
   useEffect(() => () => {
