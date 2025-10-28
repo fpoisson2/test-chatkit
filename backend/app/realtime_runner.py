@@ -681,7 +681,7 @@ class RealtimeVoiceSessionOrchestrator:
                         if value:
                             normalized_modalities.append(value)
                     if normalized_modalities:
-                        session_payload["modalities"] = normalized_modalities
+                        session_payload["output_modalities"] = normalized_modalities
 
                 speed = realtime.get("speed")
                 if isinstance(speed, int | float):

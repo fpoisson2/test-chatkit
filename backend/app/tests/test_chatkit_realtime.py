@@ -871,6 +871,7 @@ def test_realtime_audio_configuration_embedded(
         "output_audio_format": {"type": "audio/pcm", "rate": 24_000},
         "turn_detection": {"type": "server_vad"},
         "speed": 1.0,
+        "modalities": ["audio"],
     }
 
     handle = asyncio.run(
@@ -893,6 +894,8 @@ def test_realtime_audio_configuration_embedded(
     assert "realtime" not in payload
     session_payload = payload.get("session")
     assert isinstance(session_payload, dict)
+    assert session_payload.get("output_modalities") == ["audio"]
+    assert "modalities" not in session_payload
     audio_payload = session_payload.get("audio")
     assert isinstance(audio_payload, dict)
     input_payload = audio_payload.get("input")
