@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   testMcpToolConnection,
@@ -43,7 +50,8 @@ import { ToggleRow } from "../components/ToggleRow";
 import styles from "../NodeInspector.module.css";
 import { ToolSettingsPanel } from "./ToolSettingsPanel";
 
-const normalizeHostedWorkflowKey = (value: string): string => value.trim().toLowerCase();
+const normalizeHostedWorkflowKey = (value: string): string =>
+  value.trim().toLowerCase();
 
 type AgentInspectorSectionProps = {
   nodeId: string;
@@ -104,9 +112,18 @@ type AgentInspectorSectionProps = {
     nodeId: string,
     source: "library" | "variable",
   ) => void;
-  onAgentResponseWidgetDefinitionChange: (nodeId: string, expression: string) => void;
-  onAgentWebSearchChange: (nodeId: string, config: WebSearchConfig | null) => void;
-  onAgentFileSearchChange: (nodeId: string, config: FileSearchConfig | null) => void;
+  onAgentResponseWidgetDefinitionChange: (
+    nodeId: string,
+    expression: string,
+  ) => void;
+  onAgentWebSearchChange: (
+    nodeId: string,
+    config: WebSearchConfig | null,
+  ) => void;
+  onAgentFileSearchChange: (
+    nodeId: string,
+    config: FileSearchConfig | null,
+  ) => void;
   onAgentImageGenerationChange: (
     nodeId: string,
     config: ImageGenerationToolConfig | null,
@@ -121,8 +138,15 @@ type AgentInspectorSectionProps = {
   ) => void;
   onAgentWeatherToolChange: (nodeId: string, enabled: boolean) => void;
   onAgentWidgetValidationToolChange: (nodeId: string, enabled: boolean) => void;
-  onAgentWorkflowValidationToolChange: (nodeId: string, enabled: boolean) => void;
-  onAgentWorkflowToolToggle: (nodeId: string, slug: string, enabled: boolean) => void;
+  onAgentWorkflowValidationToolChange: (
+    nodeId: string,
+    enabled: boolean,
+  ) => void;
+  onAgentWorkflowToolToggle: (
+    nodeId: string,
+    slug: string,
+    enabled: boolean,
+  ) => void;
 };
 
 export const AgentInspectorSection = ({
@@ -260,7 +284,9 @@ export const AgentInspectorSection = ({
         });
         return;
       }
-      const option = providerOptions.find((candidate) => candidate.value === value);
+      const option = providerOptions.find(
+        (candidate) => candidate.value === value,
+      );
       onAgentProviderChange(nodeId, {
         providerId: option?.id ?? null,
         providerSlug: option?.slug ?? null,
@@ -363,8 +389,12 @@ export const AgentInspectorSection = ({
       updates.display_height ?? computerUseDisplayHeightValue,
       base.display_height,
     );
-    const envCandidate = (updates.environment ?? computerUseEnvironmentValue).trim().toLowerCase();
-    const normalizedEnvironment = COMPUTER_USE_ENVIRONMENTS.includes(envCandidate as (typeof COMPUTER_USE_ENVIRONMENTS)[number])
+    const envCandidate = (updates.environment ?? computerUseEnvironmentValue)
+      .trim()
+      .toLowerCase();
+    const normalizedEnvironment = COMPUTER_USE_ENVIRONMENTS.includes(
+      envCandidate as (typeof COMPUTER_USE_ENVIRONMENTS)[number],
+    )
       ? (envCandidate as ComputerUseConfig["environment"])
       : base.environment;
     const startUrlCandidate = updates.start_url ?? computerUseStartUrlValue;
@@ -428,7 +458,10 @@ export const AgentInspectorSection = ({
 
   useEffect(() => {
     const previous = nestedWorkflowReference.current;
-    if (previous.id === nestedWorkflowId && previous.slug === nestedWorkflowSlug) {
+    if (
+      previous.id === nestedWorkflowId &&
+      previous.slug === nestedWorkflowSlug
+    ) {
       return;
     }
 
@@ -440,7 +473,9 @@ export const AgentInspectorSection = ({
     setWorkflowMode(nestedWorkflowMode);
 
     if (nestedWorkflowMode === "local") {
-      setLocalWorkflowIdValue(nestedWorkflowId != null ? String(nestedWorkflowId) : "");
+      setLocalWorkflowIdValue(
+        nestedWorkflowId != null ? String(nestedWorkflowId) : "",
+      );
       return;
     }
 
@@ -452,7 +487,9 @@ export const AgentInspectorSection = ({
     }
 
     const nextHostedIdValue =
-      nestedWorkflowId != null ? String(nestedWorkflowId) : nestedWorkflowSlug.trim();
+      nestedWorkflowId != null
+        ? String(nestedWorkflowId)
+        : nestedWorkflowSlug.trim();
     setHostedWorkflowIdInput(nextHostedIdValue);
     setHostedWorkflowSlugInput(nestedWorkflowSlug);
   }, [nestedWorkflowId, nestedWorkflowMode, nestedWorkflowSlug]);
@@ -532,11 +569,15 @@ export const AgentInspectorSection = ({
     const matchedHosted =
       matchCandidates
         .map((candidate) => (candidate ? findHostedWorkflow(candidate) : null))
-        .find((entry): entry is HostedWorkflowMetadata => Boolean(entry)) ?? null;
+        .find((entry): entry is HostedWorkflowMetadata => Boolean(entry)) ??
+      null;
 
     const nextIdValue = (matchedHosted?.id ?? trimmedHostedId) || "";
     const nextSlugValue =
-      (matchedHosted?.slug ?? trimmedHostedSlug ?? candidateSlugFromLocal ?? trimmedNestedSlug) ||
+      (matchedHosted?.slug ??
+        trimmedHostedSlug ??
+        candidateSlugFromLocal ??
+        trimmedNestedSlug) ||
       "";
 
     if (nextIdValue !== hostedWorkflowIdInput) {
@@ -606,7 +647,9 @@ export const AgentInspectorSection = ({
       return null;
     }
     return (
-      availableNestedWorkflows.find((workflow) => workflow.id === nestedWorkflowId) ?? null
+      availableNestedWorkflows.find(
+        (workflow) => workflow.id === nestedWorkflowId,
+      ) ?? null
     );
   }, [availableNestedWorkflows, nestedWorkflowId]);
 
@@ -617,7 +660,9 @@ export const AgentInspectorSection = ({
     return (
       findHostedWorkflow(hostedWorkflowIdInput) ??
       findHostedWorkflow(hostedWorkflowSlugInput) ??
-      findHostedWorkflow(nestedWorkflowId != null ? String(nestedWorkflowId) : "") ??
+      findHostedWorkflow(
+        nestedWorkflowId != null ? String(nestedWorkflowId) : "",
+      ) ??
       findHostedWorkflow(nestedWorkflowSlug)
     );
   }, [
@@ -630,18 +675,25 @@ export const AgentInspectorSection = ({
   ]);
 
   const nestedWorkflowMissing =
-    workflowMode === "local" && nestedWorkflowId != null && !selectedNestedWorkflow;
+    workflowMode === "local" &&
+    nestedWorkflowId != null &&
+    !selectedNestedWorkflow;
 
-  const hostedSlugInfoValue = hostedWorkflowSlugInput.trim() || nestedWorkflowSlug.trim();
+  const hostedSlugInfoValue =
+    hostedWorkflowSlugInput.trim() || nestedWorkflowSlug.trim();
   const showHostedSlugInfo =
-    workflowMode === "hosted" && nestedWorkflowId == null && hostedSlugInfoValue.length > 0;
+    workflowMode === "hosted" &&
+    nestedWorkflowId == null &&
+    hostedSlugInfoValue.length > 0;
 
   const localWorkflowSelected =
     workflowMode === "local" && localWorkflowIdValue.trim().length > 0;
   const hostedWorkflowSelected =
     workflowMode === "hosted" &&
-    (hostedWorkflowIdInput.trim().length > 0 || hostedWorkflowSlugInput.trim().length > 0);
-  const hasNestedWorkflowSelection = localWorkflowSelected || hostedWorkflowSelected;
+    (hostedWorkflowIdInput.trim().length > 0 ||
+      hostedWorkflowSlugInput.trim().length > 0);
+  const hasNestedWorkflowSelection =
+    localWorkflowSelected || hostedWorkflowSelected;
   const showNestedWorkflowDetails = workflowMode !== "custom";
 
   const nestedWorkflowSummaryLabel = useMemo(() => {
@@ -659,14 +711,18 @@ export const AgentInspectorSection = ({
         }
       }
       if (selectedNestedWorkflow) {
-        return selectedNestedWorkflow.display_name?.trim() || selectedNestedWorkflow.slug;
+        return (
+          selectedNestedWorkflow.display_name?.trim() ||
+          selectedNestedWorkflow.slug
+        );
       }
       return localWorkflowIdValue.trim();
     }
     if (selectedHostedWorkflow) {
       return selectedHostedWorkflow.label;
     }
-    const slugCandidate = hostedWorkflowSlugInput.trim() || nestedWorkflowSlug.trim();
+    const slugCandidate =
+      hostedWorkflowSlugInput.trim() || nestedWorkflowSlug.trim();
     if (slugCandidate) {
       return slugCandidate;
     }
@@ -698,14 +754,19 @@ export const AgentInspectorSection = ({
       >
         <span id={nestedWorkflowLabelId} className={styles.nodeInspectorLabel}>
           {t("workflowBuilder.agentInspector.nestedWorkflowLabel")}
-          <HelpTooltip label={t("workflowBuilder.agentInspector.nestedWorkflowHelp")} />
+          <HelpTooltip
+            label={t("workflowBuilder.agentInspector.nestedWorkflowHelp")}
+          />
         </span>
         <div
           className={`${styles.nodeInspectorRadioGroup} ${styles.agentNestedWorkflowModes}`}
           role="radiogroup"
           aria-labelledby={nestedWorkflowLabelId}
         >
-          <label className={styles.nodeInspectorRadioOption} htmlFor={customModeOptionId}>
+          <label
+            className={styles.nodeInspectorRadioOption}
+            htmlFor={customModeOptionId}
+          >
             <input
               type="radio"
               id={customModeOptionId}
@@ -714,9 +775,14 @@ export const AgentInspectorSection = ({
               checked={workflowMode === "custom"}
               onChange={() => handleWorkflowModeChange("custom")}
             />
-            <span>{t("workflowBuilder.agentInspector.nestedWorkflowCustomOption")}</span>
+            <span>
+              {t("workflowBuilder.agentInspector.nestedWorkflowCustomOption")}
+            </span>
           </label>
-          <label className={styles.nodeInspectorRadioOption} htmlFor={localModeOptionId}>
+          <label
+            className={styles.nodeInspectorRadioOption}
+            htmlFor={localModeOptionId}
+          >
             <input
               type="radio"
               id={localModeOptionId}
@@ -725,9 +791,14 @@ export const AgentInspectorSection = ({
               checked={workflowMode === "local"}
               onChange={() => handleWorkflowModeChange("local")}
             />
-            <span>{t("workflowBuilder.agentInspector.nestedWorkflowLocalOption")}</span>
+            <span>
+              {t("workflowBuilder.agentInspector.nestedWorkflowLocalOption")}
+            </span>
           </label>
-          <label className={styles.nodeInspectorRadioOption} htmlFor={hostedModeOptionId}>
+          <label
+            className={styles.nodeInspectorRadioOption}
+            htmlFor={hostedModeOptionId}
+          >
             <input
               type="radio"
               id={hostedModeOptionId}
@@ -736,7 +807,9 @@ export const AgentInspectorSection = ({
               checked={workflowMode === "hosted"}
               onChange={() => handleWorkflowModeChange("hosted")}
             />
-            <span>{t("workflowBuilder.agentInspector.nestedWorkflowHostedOption")}</span>
+            <span>
+              {t("workflowBuilder.agentInspector.nestedWorkflowHostedOption")}
+            </span>
           </label>
         </div>
         {workflowMode === "local" ? (
@@ -764,27 +837,37 @@ export const AgentInspectorSection = ({
               htmlFor={hostedWorkflowIdFieldId}
             >
               <span className={styles.nodeInspectorSubLabel}>
-                {t("workflowBuilder.agentInspector.nestedWorkflowHostedSelectLabel")}
+                {t(
+                  "workflowBuilder.agentInspector.nestedWorkflowHostedSelectLabel",
+                )}
               </span>
               <select
                 id={hostedWorkflowIdFieldId}
                 className={styles.agentNestedWorkflowHostedSelect}
                 value={hostedWorkflowIdInput}
                 aria-labelledby={nestedWorkflowLabelId}
-                onChange={(event) => handleHostedWorkflowSelectChange(event.target.value)}
-                disabled={hostedWorkflowsLoading && hostedWorkflows.length === 0}
+                onChange={(event) =>
+                  handleHostedWorkflowSelectChange(event.target.value)
+                }
+                disabled={
+                  hostedWorkflowsLoading && hostedWorkflows.length === 0
+                }
               >
                 <option value="">
                   {t("workflowBuilder.agentInspector.nestedWorkflowNoneOption")}
                 </option>
                 {hostedWorkflowsLoading ? (
                   <option value="__loading__" disabled>
-                    {t("workflowBuilder.agentInspector.nestedWorkflowHostedLoading")}
+                    {t(
+                      "workflowBuilder.agentInspector.nestedWorkflowHostedLoading",
+                    )}
                   </option>
                 ) : null}
                 {!hostedWorkflowsLoading && hostedWorkflows.length === 0 ? (
                   <option value="__empty__" disabled>
-                    {t("workflowBuilder.agentInspector.nestedWorkflowHostedSelectEmpty")}
+                    {t(
+                      "workflowBuilder.agentInspector.nestedWorkflowHostedSelectEmpty",
+                    )}
                   </option>
                 ) : null}
                 {hostedWorkflows.map((workflow) => (
@@ -799,7 +882,9 @@ export const AgentInspectorSection = ({
               htmlFor={hostedWorkflowSlugFieldId}
             >
               <span className={styles.nodeInspectorSubLabel}>
-                {t("workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel")}
+                {t(
+                  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel",
+                )}
               </span>
               <input
                 id={hostedWorkflowSlugFieldId}
@@ -808,7 +893,9 @@ export const AgentInspectorSection = ({
                 placeholder={t(
                   "workflowBuilder.agentInspector.nestedWorkflowHostedSlugPlaceholder",
                 )}
-                onChange={(event) => handleHostedWorkflowSlugChange(event.target.value)}
+                onChange={(event) =>
+                  handleHostedWorkflowSlugChange(event.target.value)
+                }
               />
             </label>
           </div>
@@ -825,23 +912,31 @@ export const AgentInspectorSection = ({
 
           {showHostedSlugInfo ? (
             <p className={styles.nodeInspectorMutedTextSpaced}>
-              {t("workflowBuilder.agentInspector.nestedWorkflowSlugInfo", { slug: hostedSlugInfoValue })}
+              {t("workflowBuilder.agentInspector.nestedWorkflowSlugInfo", {
+                slug: hostedSlugInfoValue,
+              })}
             </p>
           ) : null}
 
           {workflowMode === "hosted" && hostedWorkflowsError ? (
-            <p className={styles.nodeInspectorErrorTextSpaced}>{hostedWorkflowsError}</p>
+            <p className={styles.nodeInspectorErrorTextSpaced}>
+              {hostedWorkflowsError}
+            </p>
           ) : null}
 
           {hasNestedWorkflowSelection ? (
             <>
-              <p className={styles.nodeInspectorMutedTextSpaced}>{nestedWorkflowSummaryText}</p>
-              {workflowMode === "local" && selectedNestedWorkflow?.description ? (
+              <p className={styles.nodeInspectorMutedTextSpaced}>
+                {nestedWorkflowSummaryText}
+              </p>
+              {workflowMode === "local" &&
+              selectedNestedWorkflow?.description ? (
                 <p className={styles.nodeInspectorMutedTextSpaced}>
                   {selectedNestedWorkflow.description}
                 </p>
               ) : null}
-              {workflowMode === "hosted" && selectedHostedWorkflow?.description ? (
+              {workflowMode === "hosted" &&
+              selectedHostedWorkflow?.description ? (
                 <p className={styles.nodeInspectorMutedTextSpaced}>
                   {selectedHostedWorkflow.description}
                 </p>
@@ -853,736 +948,860 @@ export const AgentInspectorSection = ({
 
       {workflowMode === "custom" ? (
         <>
-
-      <label className={styles.nodeInspectorField}>
-        <span>Message système</span>
-        <textarea
-          value={agentMessage}
-          rows={5}
-          placeholder="Texte transmis à l'agent pour définir son rôle"
-          onChange={(event) => onAgentMessageChange(nodeId, event.target.value)}
-        />
-      </label>
-
-      <label className={styles.nodeInspectorInlineField}>
-        <span className={styles.nodeInspectorLabel}>
-          {t("workflowBuilder.agentInspector.providerLabel")}
-        </span>
-        <select
-          value={selectedProviderValue}
-          onChange={(event) => handleProviderChange(event.target.value)}
-          disabled={availableModelsLoading}
-        >
-          <option value="">
-            {t("workflowBuilder.agentInspector.providerPlaceholder")}
-          </option>
-          {providerOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className={styles.nodeInspectorInlineField}>
-        <span className={styles.nodeInspectorLabel}>
-          {t("workflowBuilder.agentInspector.modelLabel")}
-          <HelpTooltip label={t("workflowBuilder.agentInspector.modelHelp")} />
-        </span>
-        <select
-          value={selectedModelOption}
-          onChange={(event) => handleModelChange(event.target.value)}
-          disabled={availableModelsLoading}
-        >
-          <option value="">{t("workflowBuilder.agentInspector.modelPlaceholder")}</option>
-          {modelsForProvider.map((model) => {
-            const displayLabel = model.display_name?.trim()
-              ? `${model.display_name.trim()} (${model.name})`
-              : model.name;
-            const reasoningSuffix = model.supports_reasoning
-              ? t("workflowBuilder.agentInspector.reasoningSuffix")
-              : "";
-            const providerSlug = model.provider_slug?.trim();
-            const providerId = model.provider_id?.trim();
-            const providerSuffix = providerSlug || providerId
-              ? ` – ${providerSlug ?? ""}${providerId ? ` (${providerId})` : ""}`
-              : "";
-            return (
-              <option
-                key={`${model.id}:${model.name}`}
-                value={JSON.stringify({
-                  name: model.name,
-                  providerId: model.provider_id ?? null,
-                  providerSlug: model.provider_slug ?? null,
-                  store: model.store ?? null,
-                })}
-              >
-                {`${displayLabel}${reasoningSuffix}${providerSuffix}`}
-              </option>
-            );
-          })}
-        </select>
-      </label>
-
-      {agentModel.trim() && !matchedModel && !availableModelsLoading ? (
-        <p className={styles.nodeInspectorErrorTextSpaced}>
-          {t("workflowBuilder.agentInspector.unlistedModelWarning", {
-            model: agentModel.trim(),
-          })}
-        </p>
-      ) : null}
-
-      {availableModelsLoading ? (
-        <p className={styles.nodeInspectorMutedTextSpacedTop}>
-          {t("workflowBuilder.agentInspector.modelsLoading")}
-        </p>
-      ) : availableModelsError ? (
-        <p className={styles.nodeInspectorErrorTextSpaced}>{availableModelsError}</p>
-      ) : matchedModel?.description ? (
-        <p className={styles.nodeInspectorMutedTextSpacedTop}>{matchedModel.description}</p>
-      ) : null}
-
-      {supportsReasoning ? (
-        <>
-          <label className={styles.nodeInspectorInlineField}>
-            <span className={styles.nodeInspectorLabel}>
-              Niveau de raisonnement
-              <HelpTooltip label="Ajuste la profondeur d'analyse du modèle (laisser vide pour utiliser la valeur par défaut)." />
-            </span>
-            <select
-              value={reasoningEffort}
-              onChange={(event) => onAgentReasoningChange(nodeId, event.target.value)}
-            >
-              {reasoningEffortOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className={styles.nodeInspectorInlineField}>
-            <span className={styles.nodeInspectorLabel}>
-              Verbosité de la réponse
-              <HelpTooltip label="Contrôle la quantité de texte renvoyée par le modèle (laisser vide pour appliquer le paramétrage par défaut)." />
-            </span>
-            <select
-              value={textVerbosityValue}
-              onChange={(event) => onAgentTextVerbosityChange(nodeId, event.target.value)}
-            >
-              {textVerbosityOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className={styles.nodeInspectorInlineField}>
-            <span className={styles.nodeInspectorLabel}>
-              Résumé des étapes
-              <HelpTooltip label="Détermine si l'agent doit générer un résumé automatique de son raisonnement." />
-            </span>
-            <select
-              value={reasoningSummaryValue}
-              onChange={(event) => onAgentReasoningSummaryChange(nodeId, event.target.value)}
-            >
-              {reasoningSummaryOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </>
-      ) : (
-        <>
           <label className={styles.nodeInspectorField}>
-            <span className={styles.nodeInspectorLabel}>
-              Température
-              <HelpTooltip label="Ajuste la créativité des réponses pour les modèles sans raisonnement." />
-            </span>
-            <input
-              type="number"
-              min="0"
-              max="2"
-              step="0.01"
-              value={temperatureValue}
-              placeholder="Ex. 0.7"
-              onChange={(event) => onAgentTemperatureChange(nodeId, event.target.value)}
-            />
-          </label>
-          <label className={styles.nodeInspectorField}>
-            <span className={styles.nodeInspectorLabel}>
-              Top-p
-              <HelpTooltip label="Détermine la diversité lexicale en limitant la probabilité cumulée." />
-            </span>
-            <input
-              type="number"
-              min="0"
-              max="1"
-              step="0.01"
-              value={topPValue}
-              placeholder="Ex. 0.9"
-              onChange={(event) => onAgentTopPChange(nodeId, event.target.value)}
-            />
-          </label>
-        </>
-      ) : null}
-
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>
-          Nombre maximal de tokens générés
-          <HelpTooltip label="Limite la longueur maximale des réponses produites par cet agent." />
-        </span>
-        <input
-          type="number"
-          min="1"
-          step="1"
-          value={maxOutputTokensValue}
-          placeholder="Laisser vide pour la valeur par défaut"
-          onChange={(event) => onAgentMaxOutputTokensChange(nodeId, event.target.value)}
-        />
-      </label>
-
-      <div className={styles.nodeInspectorToggleGroup}>
-        <ToggleRow
-          label="Inclure l'historique du chat"
-          checked={includeChatHistory}
-          onChange={(next) => onAgentIncludeChatHistoryChange(nodeId, next)}
-        />
-        <ToggleRow
-          label="Afficher la réponse dans le chat"
-          checked={displayResponseInChat}
-          onChange={(next) => onAgentDisplayResponseInChatChange(nodeId, next)}
-        />
-        <ToggleRow
-          label="Afficher les sources de recherche"
-          checked={showSearchSources}
-          onChange={(next) => onAgentShowSearchSourcesChange(nodeId, next)}
-        />
-        <ToggleRow
-          label="Continuer l'exécution en cas d'erreur"
-          checked={continueOnError}
-          onChange={(next) => onAgentContinueOnErrorChange(nodeId, next)}
-        />
-        <ToggleRow
-          label="Enregistrer la réponse dans l'historique de conversation"
-          checked={resolvedStoreResponses}
-          onChange={(next) => onAgentStorePreferenceChange(nodeId, next)}
-          disabled={storePreferenceLocked}
-        />
-      </div>
-
-      <label className={styles.nodeInspectorInlineField}>
-        <span className={styles.nodeInspectorLabel}>
-          Type de sortie
-          <HelpTooltip label="Choisissez le format attendu pour la réponse de l'agent." />
-        </span>
-        <select
-          value={responseFormat.kind}
-          onChange={(event) => {
-            const nextKind = event.target.value as "text" | "json_schema" | "widget";
-            onAgentResponseFormatKindChange(nodeId, nextKind);
-          }}
-        >
-          <option value="text">Texte libre</option>
-          <option value="json_schema">Schéma JSON</option>
-          <option value="widget">Widget de la bibliothèque</option>
-        </select>
-      </label>
-
-      {responseFormat.kind === "json_schema" ? (
-        <>
-          <label className={styles.nodeInspectorField}>
-            <span>Nom du schéma JSON</span>
-            <input
-              type="text"
-              value={responseFormat.name}
-              onChange={(event) => onAgentResponseFormatNameChange(nodeId, event.target.value)}
-            />
-          </label>
-
-          <label className={styles.nodeInspectorField}>
-            <span className={styles.nodeInspectorLabel}>
-              Définition du schéma JSON
-              <HelpTooltip label="Fournissez un schéma JSON valide (Draft 2020-12) pour contraindre la sortie." />
-            </span>
+            <span>Message système</span>
             <textarea
-              value={schemaText}
-              rows={8}
-              onChange={(event) => {
-                const value = event.target.value;
-                setSchemaText(value);
-                try {
-                  const parsed = JSON.parse(value);
-                  setSchemaError(null);
-                  onAgentResponseFormatSchemaChange(nodeId, parsed);
-                } catch (error) {
-                  setSchemaError(error instanceof Error ? error.message : "Schéma JSON invalide");
-                }
-              }}
-              className={[
-                styles.nodeInspectorTextareaLarge,
-                schemaError ? styles.nodeInspectorInputError : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
+              value={agentMessage}
+              rows={5}
+              placeholder="Texte transmis à l'agent pour définir son rôle"
+              onChange={(event) =>
+                onAgentMessageChange(nodeId, event.target.value)
+              }
             />
-            {schemaError ? (
-              <span className={styles.nodeInspectorErrorTextSmall}>{schemaError}</span>
-            ) : null}
           </label>
-        </>
-      ) : null}
 
-      {responseFormat.kind === "widget" ? (
-        <>
-          <label className={styles.nodeInspectorField}>
+          <label className={styles.nodeInspectorInlineField}>
             <span className={styles.nodeInspectorLabel}>
-              Source du widget
-              <HelpTooltip label="Choisissez entre un widget enregistré ou un JSON fourni par une variable du workflow." />
+              {t("workflowBuilder.agentInspector.providerLabel")}
             </span>
             <select
-              value={responseWidgetSource}
-              onChange={(event) =>
-                onAgentResponseWidgetSourceChange(nodeId, event.target.value as "library" | "variable")
-              }
+              value={selectedProviderValue}
+              onChange={(event) => handleProviderChange(event.target.value)}
+              disabled={availableModelsLoading}
             >
-              <option value="library">Bibliothèque de widgets</option>
-              <option value="variable">Expression JSON (variable)</option>
+              <option value="">
+                {t("workflowBuilder.agentInspector.providerPlaceholder")}
+              </option>
+              {providerOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
 
-          {responseWidgetSource === "library" ? (
+          <label className={styles.nodeInspectorInlineField}>
+            <span className={styles.nodeInspectorLabel}>
+              {t("workflowBuilder.agentInspector.modelLabel")}
+              <HelpTooltip
+                label={t("workflowBuilder.agentInspector.modelHelp")}
+              />
+            </span>
+            <select
+              value={selectedModelOption}
+              onChange={(event) => handleModelChange(event.target.value)}
+              disabled={availableModelsLoading}
+            >
+              <option value="">
+                {t("workflowBuilder.agentInspector.modelPlaceholder")}
+              </option>
+              {modelsForProvider.map((model) => {
+                const displayLabel = model.display_name?.trim()
+                  ? `${model.display_name.trim()} (${model.name})`
+                  : model.name;
+                const reasoningSuffix = model.supports_reasoning
+                  ? t("workflowBuilder.agentInspector.reasoningSuffix")
+                  : "";
+                const providerSlug = model.provider_slug?.trim();
+                const providerId = model.provider_id?.trim();
+                const providerSuffix =
+                  providerSlug || providerId
+                    ? ` – ${providerSlug ?? ""}${providerId ? ` (${providerId})` : ""}`
+                    : "";
+                return (
+                  <option
+                    key={`${model.id}:${model.name}`}
+                    value={JSON.stringify({
+                      name: model.name,
+                      providerId: model.provider_id ?? null,
+                      providerSlug: model.provider_slug ?? null,
+                      store: model.store ?? null,
+                    })}
+                  >
+                    {`${displayLabel}${reasoningSuffix}${providerSuffix}`}
+                  </option>
+                );
+              })}
+            </select>
+          </label>
+
+          {agentModel.trim() && !matchedModel && !availableModelsLoading ? (
+            <p className={styles.nodeInspectorErrorTextSpaced}>
+              {t("workflowBuilder.agentInspector.unlistedModelWarning", {
+                model: agentModel.trim(),
+              })}
+            </p>
+          ) : null}
+
+          {availableModelsLoading ? (
+            <p className={styles.nodeInspectorMutedTextSpacedTop}>
+              {t("workflowBuilder.agentInspector.modelsLoading")}
+            </p>
+          ) : availableModelsError ? (
+            <p className={styles.nodeInspectorErrorTextSpaced}>
+              {availableModelsError}
+            </p>
+          ) : matchedModel?.description ? (
+            <p className={styles.nodeInspectorMutedTextSpacedTop}>
+              {matchedModel.description}
+            </p>
+          ) : null}
+
+          {supportsReasoning ? (
             <>
-              <label className={styles.nodeInspectorField}>
+              <label className={styles.nodeInspectorInlineField}>
                 <span className={styles.nodeInspectorLabel}>
-                  Widget de sortie
-                  <HelpTooltip label="Sélectionnez un widget de la bibliothèque pour diffuser la réponse." />
+                  Niveau de raisonnement
+                  <HelpTooltip label="Ajuste la profondeur d'analyse du modèle (laisser vide pour utiliser la valeur par défaut)." />
                 </span>
                 <select
-                  value={widgetSelectValue}
-                  onChange={(event) => onAgentResponseWidgetSlugChange(nodeId, event.target.value)}
-                  aria-describedby={widgetValidationMessage ? `${widgetSelectId}-message` : undefined}
+                  value={reasoningEffort}
+                  onChange={(event) =>
+                    onAgentReasoningChange(nodeId, event.target.value)
+                  }
                 >
-                  <option value="">Sélectionnez un widget</option>
-                  {widgets.map((widget) => (
-                    <option key={widget.slug} value={widget.slug}>
-                      {widget.title?.trim() ? `${widget.title} (${widget.slug})` : widget.slug}
+                  {reasoningEffortOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
                     </option>
                   ))}
                 </select>
               </label>
 
-              {widgetsLoading ? (
-                <p className={styles.nodeInspectorMutedText}>Chargement de la bibliothèque de widgets…</p>
-              ) : widgetsError ? (
-                <p className={styles.nodeInspectorErrorText}>
-                  {widgetsError}
-                  <br />
-                  Vous pouvez saisir le slug du widget manuellement ci-dessus.
-                </p>
-              ) : widgets.length === 0 ? (
-                <p className={styles.nodeInspectorMutedText}>
-                  Créez un widget dans la bibliothèque dédiée pour l'utiliser ici.
-                </p>
-              ) : null}
+              <label className={styles.nodeInspectorInlineField}>
+                <span className={styles.nodeInspectorLabel}>
+                  Verbosité de la réponse
+                  <HelpTooltip label="Contrôle la quantité de texte renvoyée par le modèle (laisser vide pour appliquer le paramétrage par défaut)." />
+                </span>
+                <select
+                  value={textVerbosityValue}
+                  onChange={(event) =>
+                    onAgentTextVerbosityChange(nodeId, event.target.value)
+                  }
+                >
+                  {textVerbosityOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-              {widgetValidationMessage ? (
-                <p id={`${widgetSelectId}-message`} className={styles.nodeInspectorErrorTextTightTop}>
-                  {widgetValidationMessage}
-                </p>
-              ) : null}
-
-              {responseWidgetSlug && !widgetsLoading && widgetsError ? (
-                <p className={styles.nodeInspectorMutedTextTightTop}>
-                  Le widget sélectionné ({responseWidgetSlug}) sera conservé tant que la bibliothèque n'est pas disponible.
-                </p>
-              ) : null}
-
-              {trimmedWidgetSlug && !widgetsLoading && !widgetsError ? (
-                <WidgetJsonFormatInfo
-                  definition={responseWidgetDefinition}
-                  loading={responseWidgetDefinitionLoading}
-                  error={responseWidgetDefinitionError}
-                />
-              ) : null}
+              <label className={styles.nodeInspectorInlineField}>
+                <span className={styles.nodeInspectorLabel}>
+                  Résumé des étapes
+                  <HelpTooltip label="Détermine si l'agent doit générer un résumé automatique de son raisonnement." />
+                </span>
+                <select
+                  value={reasoningSummaryValue}
+                  onChange={(event) =>
+                    onAgentReasoningSummaryChange(nodeId, event.target.value)
+                  }
+                >
+                  {reasoningSummaryOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             </>
           ) : (
             <>
               <label className={styles.nodeInspectorField}>
                 <span className={styles.nodeInspectorLabel}>
-                  Expression JSON du widget
-                  <HelpTooltip label="Saisissez une expression (ex. state.widget_json) qui renvoie la définition JSON complète du widget." />
+                  Température
+                  <HelpTooltip label="Ajuste la créativité des réponses pour les modèles sans raisonnement." />
                 </span>
                 <input
-                  type="text"
-                  value={responseWidgetDefinitionExpression}
+                  type="number"
+                  min="0"
+                  max="2"
+                  step="0.01"
+                  value={temperatureValue}
+                  placeholder="Ex. 0.7"
                   onChange={(event) =>
-                    onAgentResponseWidgetDefinitionChange(nodeId, event.target.value)
+                    onAgentTemperatureChange(nodeId, event.target.value)
                   }
-                  placeholder="Ex. state.widget_json"
                 />
               </label>
-              <p className={styles.nodeInspectorHintText}>
-                La valeur doit être un objet JSON valide conforme aux spécifications ChatKit Widget.
-              </p>
-              {widgetValidationMessage ? (
-                <p id={`${widgetSelectId}-message`} className={styles.nodeInspectorErrorTextTightTop}>
-                  {widgetValidationMessage}
-                </p>
-              ) : null}
+              <label className={styles.nodeInspectorField}>
+                <span className={styles.nodeInspectorLabel}>
+                  Top-p
+                  <HelpTooltip label="Détermine la diversité lexicale en limitant la probabilité cumulée." />
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={topPValue}
+                  placeholder="Ex. 0.9"
+                  onChange={(event) =>
+                    onAgentTopPChange(nodeId, event.target.value)
+                  }
+                />
+              </label>
             </>
           )}
-        </>
-      ) : null}
 
-      <div className={styles.nodeInspectorPanel}>
-        <strong className={styles.nodeInspectorSectionTitle}>Outils</strong>
-        <ToggleRow
-          label="Activer la recherche web"
-          checked={webSearchEnabled}
-          onChange={(next) =>
-            onAgentWebSearchChange(
-              nodeId,
-              next ? webSearchConfig ?? { ...DEFAULT_WEB_SEARCH_CONFIG } : null,
-            )
-          }
-        />
-        {webSearchEnabled ? (
-          <>
-            <label className={styles.nodeInspectorInlineField}>
-              <span className={styles.nodeInspectorLabel}>
-                Portée de la recherche
-                <HelpTooltip label="Définit la quantité de contexte web récupérée pour l'agent." />
-              </span>
-              <select
-                value={webSearchConfig?.search_context_size ?? ""}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  const nextConfig: WebSearchConfig = { ...(webSearchConfig ?? {}) };
-                  if (value) {
-                    nextConfig.search_context_size = value;
-                  } else {
-                    delete nextConfig.search_context_size;
-                  }
-                  onAgentWebSearchChange(nodeId, nextConfig);
-                }}
-              >
-                <option value="">(par défaut)</option>
-                <option value="low">Petit contexte</option>
-                <option value="medium">Contexte moyen</option>
-                <option value="high">Grand contexte</option>
-              </select>
-            </label>
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
+              Nombre maximal de tokens générés
+              <HelpTooltip label="Limite la longueur maximale des réponses produites par cet agent." />
+            </span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={maxOutputTokensValue}
+              placeholder="Laisser vide pour la valeur par défaut"
+              onChange={(event) =>
+                onAgentMaxOutputTokensChange(nodeId, event.target.value)
+              }
+            />
+          </label>
 
-            <div className={styles.nodeInspectorInputGroup}>
-              <span className={styles.nodeInspectorSectionLabel}>Localisation utilisateur</span>
-              {Object.entries(WEB_SEARCH_LOCATION_LABELS).map(([key, label]) => {
-                const typedKey = key as keyof typeof WEB_SEARCH_LOCATION_LABELS;
-                const currentValue = (webSearchConfig?.user_location?.[typedKey] as string | undefined) ?? "";
-                return (
-                  <label key={key} className={styles.nodeInspectorField}>
-                    <span>{label}</span>
-                    <input
-                      type="text"
-                      value={currentValue}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        const nextLocation = {
-                          ...(webSearchConfig?.user_location ?? {}),
-                        } as Record<string, string>;
-                        if (value.trim()) {
-                          nextLocation[typedKey] = value;
-                        } else {
-                          delete nextLocation[typedKey];
-                        }
-                        const nextConfig: WebSearchConfig = { ...(webSearchConfig ?? {}) };
-                        if (Object.keys(nextLocation).length > 0) {
-                          nextConfig.user_location = nextLocation;
-                        } else {
-                          delete nextConfig.user_location;
-                        }
-                        onAgentWebSearchChange(nodeId, nextConfig);
-                      }}
-                    />
-                  </label>
-                );
-              })}
-            </div>
-          </>
-        ) : null}
+          <div className={styles.nodeInspectorToggleGroup}>
+            <ToggleRow
+              label="Inclure l'historique du chat"
+              checked={includeChatHistory}
+              onChange={(next) => onAgentIncludeChatHistoryChange(nodeId, next)}
+            />
+            <ToggleRow
+              label="Afficher la réponse dans le chat"
+              checked={displayResponseInChat}
+              onChange={(next) =>
+                onAgentDisplayResponseInChatChange(nodeId, next)
+              }
+            />
+            <ToggleRow
+              label="Afficher les sources de recherche"
+              checked={showSearchSources}
+              onChange={(next) => onAgentShowSearchSourcesChange(nodeId, next)}
+            />
+            <ToggleRow
+              label="Continuer l'exécution en cas d'erreur"
+              checked={continueOnError}
+              onChange={(next) => onAgentContinueOnErrorChange(nodeId, next)}
+            />
+            <ToggleRow
+              label="Enregistrer la réponse dans l'historique de conversation"
+              checked={resolvedStoreResponses}
+              onChange={(next) => onAgentStorePreferenceChange(nodeId, next)}
+              disabled={storePreferenceLocked}
+            />
+          </div>
 
-        <ToggleRow
-          label="Activer la recherche documentaire"
-          checked={fileSearchEnabled}
-          onChange={(next) => {
-            if (next) {
-              const preferredSlug =
-                (fileSearchConfig?.vector_store_slug?.trim() ?? "") || vectorStores[0]?.slug || "";
-              onAgentFileSearchChange(nodeId, {
-                vector_store_slug: preferredSlug,
-              });
-            } else {
-              onAgentFileSearchChange(nodeId, null);
-            }
-          }}
-        />
+          <label className={styles.nodeInspectorInlineField}>
+            <span className={styles.nodeInspectorLabel}>
+              Type de sortie
+              <HelpTooltip label="Choisissez le format attendu pour la réponse de l'agent." />
+            </span>
+            <select
+              value={responseFormat.kind}
+              onChange={(event) => {
+                const nextKind = event.target.value as
+                  | "text"
+                  | "json_schema"
+                  | "widget";
+                onAgentResponseFormatKindChange(nodeId, nextKind);
+              }}
+            >
+              <option value="text">Texte libre</option>
+              <option value="json_schema">Schéma JSON</option>
+              <option value="widget">Widget de la bibliothèque</option>
+            </select>
+          </label>
 
-        {vectorStoresError ? (
-          <p className={styles.nodeInspectorErrorText}>{vectorStoresError}</p>
-        ) : null}
-
-        {fileSearchEnabled ? (
-          <>
-            {vectorStoresLoading ? (
-              <p className={styles.nodeInspectorMutedText}>Chargement des vector stores…</p>
-            ) : vectorStores.length === 0 ? (
-              <p className={styles.nodeInspectorMutedText}>
-                Aucun vector store disponible. Créez-en un depuis l'onglet « Vector stores JSON ».
-              </p>
-            ) : (
-              <label className={styles.nodeInspectorInlineField}>
-                <span className={styles.nodeInspectorLabel}>
-                  Vector store à interroger
-                  <HelpTooltip label="Le document complet du résultat sera transmis à l'agent." />
-                </span>
-                <select
-                  value={selectedVectorStoreSlug}
+          {responseFormat.kind === "json_schema" ? (
+            <>
+              <label className={styles.nodeInspectorField}>
+                <span>Nom du schéma JSON</span>
+                <input
+                  type="text"
+                  value={responseFormat.name}
                   onChange={(event) =>
-                    onAgentFileSearchChange(nodeId, {
-                      vector_store_slug: event.target.value,
-                    })
+                    onAgentResponseFormatNameChange(nodeId, event.target.value)
                   }
-                >
-                  <option value="">Sélectionnez un vector store…</option>
-                  {vectorStores.map((store) => (
-                    <option key={store.slug} value={store.slug}>
-                      {store.title?.trim() ? `${store.title} (${store.slug})` : store.slug}
-                    </option>
-                  ))}
-                </select>
-                {fileSearchValidationMessage ? (
-                  <p className={styles.nodeInspectorErrorText}>{fileSearchValidationMessage}</p>
+                />
+              </label>
+
+              <label className={styles.nodeInspectorField}>
+                <span className={styles.nodeInspectorLabel}>
+                  Définition du schéma JSON
+                  <HelpTooltip label="Fournissez un schéma JSON valide (Draft 2020-12) pour contraindre la sortie." />
+                </span>
+                <textarea
+                  value={schemaText}
+                  rows={8}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSchemaText(value);
+                    try {
+                      const parsed = JSON.parse(value);
+                      setSchemaError(null);
+                      onAgentResponseFormatSchemaChange(nodeId, parsed);
+                    } catch (error) {
+                      setSchemaError(
+                        error instanceof Error
+                          ? error.message
+                          : "Schéma JSON invalide",
+                      );
+                    }
+                  }}
+                  className={[
+                    styles.nodeInspectorTextareaLarge,
+                    schemaError ? styles.nodeInspectorInputError : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                />
+                {schemaError ? (
+                  <span className={styles.nodeInspectorErrorTextSmall}>
+                    {schemaError}
+                  </span>
                 ) : null}
               </label>
-            )}
-          </>
-        ) : null}
+            </>
+          ) : null}
 
-        <ToggleRow
-          label={t("workflowBuilder.agentInspector.computerUseToggle")}
-          checked={computerUseEnabled}
-          onChange={(next) =>
-            onAgentComputerUseChange(
-              nodeId,
-              next ? computerUseConfig ?? { ...DEFAULT_COMPUTER_USE_CONFIG } : null,
-            )
-          }
-          help={t("workflowBuilder.agentInspector.computerUseToggleHelp")}
-        />
+          {responseFormat.kind === "widget" ? (
+            <>
+              <label className={styles.nodeInspectorField}>
+                <span className={styles.nodeInspectorLabel}>
+                  Source du widget
+                  <HelpTooltip label="Choisissez entre un widget enregistré ou un JSON fourni par une variable du workflow." />
+                </span>
+                <select
+                  value={responseWidgetSource}
+                  onChange={(event) =>
+                    onAgentResponseWidgetSourceChange(
+                      nodeId,
+                      event.target.value as "library" | "variable",
+                    )
+                  }
+                >
+                  <option value="library">Bibliothèque de widgets</option>
+                  <option value="variable">Expression JSON (variable)</option>
+                </select>
+              </label>
 
-        {computerUseEnabled ? (
-          <div className={styles.nodeInspectorPanelInnerAccent}>
-            <label className={styles.nodeInspectorInlineField}>
-              <span className={styles.nodeInspectorLabel}>
-                {t("workflowBuilder.agentInspector.computerUseWidthLabel")}
-              </span>
-              <input
-                type="number"
-                min={1}
-                value={computerUseDisplayWidthValue}
-                onChange={(event) =>
-                  handleComputerUseFieldChange({ display_width: event.target.value })
+              {responseWidgetSource === "library" ? (
+                <>
+                  <label className={styles.nodeInspectorField}>
+                    <span className={styles.nodeInspectorLabel}>
+                      Widget de sortie
+                      <HelpTooltip label="Sélectionnez un widget de la bibliothèque pour diffuser la réponse." />
+                    </span>
+                    <select
+                      value={widgetSelectValue}
+                      onChange={(event) =>
+                        onAgentResponseWidgetSlugChange(
+                          nodeId,
+                          event.target.value,
+                        )
+                      }
+                      aria-describedby={
+                        widgetValidationMessage
+                          ? `${widgetSelectId}-message`
+                          : undefined
+                      }
+                    >
+                      <option value="">Sélectionnez un widget</option>
+                      {widgets.map((widget) => (
+                        <option key={widget.slug} value={widget.slug}>
+                          {widget.title?.trim()
+                            ? `${widget.title} (${widget.slug})`
+                            : widget.slug}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {widgetsLoading ? (
+                    <p className={styles.nodeInspectorMutedText}>
+                      Chargement de la bibliothèque de widgets…
+                    </p>
+                  ) : widgetsError ? (
+                    <p className={styles.nodeInspectorErrorText}>
+                      {widgetsError}
+                      <br />
+                      Vous pouvez saisir le slug du widget manuellement
+                      ci-dessus.
+                    </p>
+                  ) : widgets.length === 0 ? (
+                    <p className={styles.nodeInspectorMutedText}>
+                      Créez un widget dans la bibliothèque dédiée pour
+                      l'utiliser ici.
+                    </p>
+                  ) : null}
+
+                  {widgetValidationMessage ? (
+                    <p
+                      id={`${widgetSelectId}-message`}
+                      className={styles.nodeInspectorErrorTextTightTop}
+                    >
+                      {widgetValidationMessage}
+                    </p>
+                  ) : null}
+
+                  {responseWidgetSlug && !widgetsLoading && widgetsError ? (
+                    <p className={styles.nodeInspectorMutedTextTightTop}>
+                      Le widget sélectionné ({responseWidgetSlug}) sera conservé
+                      tant que la bibliothèque n'est pas disponible.
+                    </p>
+                  ) : null}
+
+                  {trimmedWidgetSlug && !widgetsLoading && !widgetsError ? (
+                    <WidgetJsonFormatInfo
+                      definition={responseWidgetDefinition}
+                      loading={responseWidgetDefinitionLoading}
+                      error={responseWidgetDefinitionError}
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <label className={styles.nodeInspectorField}>
+                    <span className={styles.nodeInspectorLabel}>
+                      Expression JSON du widget
+                      <HelpTooltip label="Saisissez une expression (ex. state.widget_json) qui renvoie la définition JSON complète du widget." />
+                    </span>
+                    <input
+                      type="text"
+                      value={responseWidgetDefinitionExpression}
+                      onChange={(event) =>
+                        onAgentResponseWidgetDefinitionChange(
+                          nodeId,
+                          event.target.value,
+                        )
+                      }
+                      placeholder="Ex. state.widget_json"
+                    />
+                  </label>
+                  <p className={styles.nodeInspectorHintText}>
+                    La valeur doit être un objet JSON valide conforme aux
+                    spécifications ChatKit Widget.
+                  </p>
+                  {widgetValidationMessage ? (
+                    <p
+                      id={`${widgetSelectId}-message`}
+                      className={styles.nodeInspectorErrorTextTightTop}
+                    >
+                      {widgetValidationMessage}
+                    </p>
+                  ) : null}
+                </>
+              )}
+            </>
+          ) : null}
+
+          <div className={styles.nodeInspectorPanel}>
+            <strong className={styles.nodeInspectorSectionTitle}>Outils</strong>
+            <ToggleRow
+              label="Activer la recherche web"
+              checked={webSearchEnabled}
+              onChange={(next) =>
+                onAgentWebSearchChange(
+                  nodeId,
+                  next
+                    ? (webSearchConfig ?? { ...DEFAULT_WEB_SEARCH_CONFIG })
+                    : null,
+                )
+              }
+            />
+            {webSearchEnabled ? (
+              <>
+                <label className={styles.nodeInspectorInlineField}>
+                  <span className={styles.nodeInspectorLabel}>
+                    Portée de la recherche
+                    <HelpTooltip label="Définit la quantité de contexte web récupérée pour l'agent." />
+                  </span>
+                  <select
+                    value={webSearchConfig?.search_context_size ?? ""}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      const nextConfig: WebSearchConfig = {
+                        ...(webSearchConfig ?? {}),
+                      };
+                      if (value) {
+                        nextConfig.search_context_size = value;
+                      } else {
+                        delete nextConfig.search_context_size;
+                      }
+                      onAgentWebSearchChange(nodeId, nextConfig);
+                    }}
+                  >
+                    <option value="">(par défaut)</option>
+                    <option value="low">Petit contexte</option>
+                    <option value="medium">Contexte moyen</option>
+                    <option value="high">Grand contexte</option>
+                  </select>
+                </label>
+
+                <div className={styles.nodeInspectorInputGroup}>
+                  <span className={styles.nodeInspectorSectionLabel}>
+                    Localisation utilisateur
+                  </span>
+                  {Object.entries(WEB_SEARCH_LOCATION_LABELS).map(
+                    ([key, label]) => {
+                      const typedKey =
+                        key as keyof typeof WEB_SEARCH_LOCATION_LABELS;
+                      const currentValue =
+                        (webSearchConfig?.user_location?.[typedKey] as
+                          | string
+                          | undefined) ?? "";
+                      return (
+                        <label key={key} className={styles.nodeInspectorField}>
+                          <span>{label}</span>
+                          <input
+                            type="text"
+                            value={currentValue}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              const nextLocation = {
+                                ...(webSearchConfig?.user_location ?? {}),
+                              } as Record<string, string>;
+                              if (value.trim()) {
+                                nextLocation[typedKey] = value;
+                              } else {
+                                delete nextLocation[typedKey];
+                              }
+                              const nextConfig: WebSearchConfig = {
+                                ...(webSearchConfig ?? {}),
+                              };
+                              if (Object.keys(nextLocation).length > 0) {
+                                nextConfig.user_location = nextLocation;
+                              } else {
+                                delete nextConfig.user_location;
+                              }
+                              onAgentWebSearchChange(nodeId, nextConfig);
+                            }}
+                          />
+                        </label>
+                      );
+                    },
+                  )}
+                </div>
+              </>
+            ) : null}
+
+            <ToggleRow
+              label="Activer la recherche documentaire"
+              checked={fileSearchEnabled}
+              onChange={(next) => {
+                if (next) {
+                  const preferredSlug =
+                    (fileSearchConfig?.vector_store_slug?.trim() ?? "") ||
+                    vectorStores[0]?.slug ||
+                    "";
+                  onAgentFileSearchChange(nodeId, {
+                    vector_store_slug: preferredSlug,
+                  });
+                } else {
+                  onAgentFileSearchChange(nodeId, null);
                 }
-              />
-            </label>
+              }}
+            />
 
-            <label className={styles.nodeInspectorInlineField}>
-              <span className={styles.nodeInspectorLabel}>
-                {t("workflowBuilder.agentInspector.computerUseHeightLabel")}
-              </span>
-              <input
-                type="number"
-                min={1}
-                value={computerUseDisplayHeightValue}
-                onChange={(event) =>
-                  handleComputerUseFieldChange({ display_height: event.target.value })
-                }
-              />
-            </label>
+            {vectorStoresError ? (
+              <p className={styles.nodeInspectorErrorText}>
+                {vectorStoresError}
+              </p>
+            ) : null}
 
-            <label className={styles.nodeInspectorInlineField}>
-              <span className={styles.nodeInspectorLabel}>
-                {t("workflowBuilder.agentInspector.computerUseEnvironmentLabel")}
-              </span>
-              <select
-                value={computerUseEnvironmentValue}
-                onChange={(event) =>
-                  handleComputerUseFieldChange({ environment: event.target.value })
-                }
-              >
-                {COMPUTER_USE_ENVIRONMENTS.map((environment) => (
-                  <option key={environment} value={environment}>
+            {fileSearchEnabled ? (
+              <>
+                {vectorStoresLoading ? (
+                  <p className={styles.nodeInspectorMutedText}>
+                    Chargement des vector stores…
+                  </p>
+                ) : vectorStores.length === 0 ? (
+                  <p className={styles.nodeInspectorMutedText}>
+                    Aucun vector store disponible. Créez-en un depuis l'onglet «
+                    Vector stores JSON ».
+                  </p>
+                ) : (
+                  <label className={styles.nodeInspectorInlineField}>
+                    <span className={styles.nodeInspectorLabel}>
+                      Vector store à interroger
+                      <HelpTooltip label="Le document complet du résultat sera transmis à l'agent." />
+                    </span>
+                    <select
+                      value={selectedVectorStoreSlug}
+                      onChange={(event) =>
+                        onAgentFileSearchChange(nodeId, {
+                          vector_store_slug: event.target.value,
+                        })
+                      }
+                    >
+                      <option value="">Sélectionnez un vector store…</option>
+                      {vectorStores.map((store) => (
+                        <option key={store.slug} value={store.slug}>
+                          {store.title?.trim()
+                            ? `${store.title} (${store.slug})`
+                            : store.slug}
+                        </option>
+                      ))}
+                    </select>
+                    {fileSearchValidationMessage ? (
+                      <p className={styles.nodeInspectorErrorText}>
+                        {fileSearchValidationMessage}
+                      </p>
+                    ) : null}
+                  </label>
+                )}
+              </>
+            ) : null}
+
+            <ToggleRow
+              label={t("workflowBuilder.agentInspector.computerUseToggle")}
+              checked={computerUseEnabled}
+              onChange={(next) =>
+                onAgentComputerUseChange(
+                  nodeId,
+                  next
+                    ? (computerUseConfig ?? { ...DEFAULT_COMPUTER_USE_CONFIG })
+                    : null,
+                )
+              }
+              help={t("workflowBuilder.agentInspector.computerUseToggleHelp")}
+            />
+
+            {computerUseEnabled ? (
+              <div className={styles.nodeInspectorPanelInnerAccent}>
+                <label className={styles.nodeInspectorInlineField}>
+                  <span className={styles.nodeInspectorLabel}>
+                    {t("workflowBuilder.agentInspector.computerUseWidthLabel")}
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={computerUseDisplayWidthValue}
+                    onChange={(event) =>
+                      handleComputerUseFieldChange({
+                        display_width: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+
+                <label className={styles.nodeInspectorInlineField}>
+                  <span className={styles.nodeInspectorLabel}>
+                    {t("workflowBuilder.agentInspector.computerUseHeightLabel")}
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={computerUseDisplayHeightValue}
+                    onChange={(event) =>
+                      handleComputerUseFieldChange({
+                        display_height: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+
+                <label className={styles.nodeInspectorInlineField}>
+                  <span className={styles.nodeInspectorLabel}>
                     {t(
-                      `workflowBuilder.agentInspector.computerUseEnvironment.${environment}`,
+                      "workflowBuilder.agentInspector.computerUseEnvironmentLabel",
                     )}
-                  </option>
-                ))}
-              </select>
-            </label>
+                  </span>
+                  <select
+                    value={computerUseEnvironmentValue}
+                    onChange={(event) =>
+                      handleComputerUseFieldChange({
+                        environment: event.target.value,
+                      })
+                    }
+                  >
+                    {COMPUTER_USE_ENVIRONMENTS.map((environment) => (
+                      <option key={environment} value={environment}>
+                        {t(
+                          `workflowBuilder.agentInspector.computerUseEnvironment.${environment}`,
+                        )}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-            <label className={styles.nodeInspectorField}>
-              <span className={styles.nodeInspectorLabel}>
-                {t("workflowBuilder.agentInspector.computerUseStartUrlLabel")}
-                <HelpTooltip label={t("workflowBuilder.agentInspector.computerUseStartUrlHelp")} />
-              </span>
-              <input
-                type="text"
-                value={computerUseStartUrlValue}
-                onChange={(event) =>
-                  handleComputerUseFieldChange({ start_url: event.target.value })
-                }
-                placeholder={t("workflowBuilder.agentInspector.computerUseStartUrlPlaceholder")}
-              />
-            </label>
+                <label className={styles.nodeInspectorField}>
+                  <span className={styles.nodeInspectorLabel}>
+                    {t(
+                      "workflowBuilder.agentInspector.computerUseStartUrlLabel",
+                    )}
+                    <HelpTooltip
+                      label={t(
+                        "workflowBuilder.agentInspector.computerUseStartUrlHelp",
+                      )}
+                    />
+                  </span>
+                  <input
+                    type="text"
+                    value={computerUseStartUrlValue}
+                    onChange={(event) =>
+                      handleComputerUseFieldChange({
+                        start_url: event.target.value,
+                      })
+                    }
+                    placeholder={t(
+                      "workflowBuilder.agentInspector.computerUseStartUrlPlaceholder",
+                    )}
+                  />
+                </label>
+              </div>
+            ) : null}
+
+            <ToggleRow
+              label="Activer la génération d'image"
+              checked={imageGenerationEnabled}
+              onChange={(next) =>
+                onAgentImageGenerationChange(
+                  nodeId,
+                  next ? { ...DEFAULT_IMAGE_TOOL_CONFIG } : null,
+                )
+              }
+              help={t("workflowBuilder.agentInspector.imageToolToggleHelp")}
+            />
+
+            {imageGenerationEnabled ? (
+              <div className={styles.nodeInspectorPanelInnerAccent}>
+                <label className={styles.nodeInspectorInlineField}>
+                  <span className={styles.nodeInspectorLabel}>
+                    Modèle de génération
+                    <HelpTooltip
+                      label={t("workflowBuilder.agentInspector.imageModelHelp")}
+                    />
+                  </span>
+                  <select
+                    value={imageModelValue}
+                    onChange={(event) =>
+                      updateImageTool({
+                        model:
+                          event.target.value || DEFAULT_IMAGE_TOOL_CONFIG.model,
+                      })
+                    }
+                  >
+                    {IMAGE_TOOL_MODELS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className={styles.nodeInspectorInlineField}>
+                  <span className={styles.nodeInspectorLabel}>
+                    Taille de sortie
+                    <HelpTooltip label="Définit la résolution retournée par l'API." />
+                  </span>
+                  <select
+                    value={imageSizeValue}
+                    onChange={(event) =>
+                      updateImageTool({ size: event.target.value || undefined })
+                    }
+                  >
+                    <option value="">(par défaut)</option>
+                    {IMAGE_TOOL_SIZES.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className={styles.nodeInspectorInlineField}>
+                  <span className={styles.nodeInspectorLabel}>
+                    Qualité de rendu
+                    <HelpTooltip label="Ajuste la fidélité des images générées." />
+                  </span>
+                  <select
+                    value={imageQualityValue}
+                    onChange={(event) =>
+                      updateImageTool({
+                        quality: event.target.value || undefined,
+                      })
+                    }
+                  >
+                    <option value="">(par défaut)</option>
+                    {IMAGE_TOOL_QUALITIES.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className={styles.nodeInspectorInlineField}>
+                  <span className={styles.nodeInspectorLabel}>
+                    Arrière-plan
+                    <HelpTooltip label="Choisissez la transparence de l'image finale." />
+                  </span>
+                  <select
+                    value={imageBackgroundValue}
+                    onChange={(event) =>
+                      updateImageTool({
+                        background: event.target.value || undefined,
+                      })
+                    }
+                  >
+                    <option value="">(par défaut)</option>
+                    {IMAGE_TOOL_BACKGROUNDS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className={styles.nodeInspectorInlineField}>
+                  <span className={styles.nodeInspectorLabel}>
+                    Format de sortie
+                    <HelpTooltip label="Détermine le format MIME restitué par l'outil." />
+                  </span>
+                  <select
+                    value={imageOutputFormatValue}
+                    onChange={(event) =>
+                      updateImageTool({
+                        output_format: event.target.value || undefined,
+                      })
+                    }
+                  >
+                    <option value="">(par défaut)</option>
+                    {IMAGE_TOOL_OUTPUT_FORMATS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            ) : null}
+
+            <ToolSettingsPanel
+              nodeId={nodeId}
+              parameters={parameters}
+              workflows={workflows}
+              currentWorkflowId={currentWorkflowId}
+              onAgentWeatherToolChange={onAgentWeatherToolChange}
+              onAgentWidgetValidationToolChange={
+                onAgentWidgetValidationToolChange
+              }
+              onAgentWorkflowValidationToolChange={
+                onAgentWorkflowValidationToolChange
+              }
+              onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
+              onAgentMcpSseConfigChange={onAgentMcpSseConfigChange}
+              onTestMcpSseConnection={handleTestMcpSseConnection}
+              onStartMcpOAuth={handleStartMcpOAuth}
+              onPollMcpOAuth={handlePollMcpOAuth}
+              onCancelMcpOAuth={handleCancelMcpOAuth}
+            />
           </div>
-        ) : null}
-
-        <ToggleRow
-          label="Activer la génération d'image"
-          checked={imageGenerationEnabled}
-          onChange={(next) =>
-            onAgentImageGenerationChange(
-              nodeId,
-              next ? { ...DEFAULT_IMAGE_TOOL_CONFIG } : null,
-            )
-          }
-          help={t("workflowBuilder.agentInspector.imageToolToggleHelp")}
-        />
-
-        {imageGenerationEnabled ? (
-          <div className={styles.nodeInspectorPanelInnerAccent}>
-            <label className={styles.nodeInspectorInlineField}>
-              <span className={styles.nodeInspectorLabel}>
-                Modèle de génération
-                <HelpTooltip label={t("workflowBuilder.agentInspector.imageModelHelp")} />
-              </span>
-              <select
-                value={imageModelValue}
-                onChange={(event) =>
-                  updateImageTool({ model: event.target.value || DEFAULT_IMAGE_TOOL_CONFIG.model })
-                }
-              >
-                {IMAGE_TOOL_MODELS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className={styles.nodeInspectorInlineField}>
-              <span className={styles.nodeInspectorLabel}>
-                Taille de sortie
-                <HelpTooltip label="Définit la résolution retournée par l'API." />
-              </span>
-              <select
-                value={imageSizeValue}
-                onChange={(event) =>
-                  updateImageTool({ size: event.target.value || undefined })
-                }
-              >
-                <option value="">(par défaut)</option>
-                {IMAGE_TOOL_SIZES.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className={styles.nodeInspectorInlineField}>
-              <span className={styles.nodeInspectorLabel}>
-                Qualité de rendu
-                <HelpTooltip label="Ajuste la fidélité des images générées." />
-              </span>
-              <select
-                value={imageQualityValue}
-                onChange={(event) =>
-                  updateImageTool({ quality: event.target.value || undefined })
-                }
-              >
-                <option value="">(par défaut)</option>
-                {IMAGE_TOOL_QUALITIES.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className={styles.nodeInspectorInlineField}>
-              <span className={styles.nodeInspectorLabel}>
-                Arrière-plan
-                <HelpTooltip label="Choisissez la transparence de l'image finale." />
-              </span>
-              <select
-                value={imageBackgroundValue}
-                onChange={(event) =>
-                  updateImageTool({ background: event.target.value || undefined })
-                }
-              >
-                <option value="">(par défaut)</option>
-                {IMAGE_TOOL_BACKGROUNDS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className={styles.nodeInspectorInlineField}>
-              <span className={styles.nodeInspectorLabel}>
-                Format de sortie
-                <HelpTooltip label="Détermine le format MIME restitué par l'outil." />
-              </span>
-              <select
-                value={imageOutputFormatValue}
-                onChange={(event) =>
-                  updateImageTool({ output_format: event.target.value || undefined })
-                }
-              >
-                <option value="">(par défaut)</option>
-                {IMAGE_TOOL_OUTPUT_FORMATS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-        ) : null}
-
-        <ToolSettingsPanel
-          nodeId={nodeId}
-          parameters={parameters}
-          workflows={workflows}
-          currentWorkflowId={currentWorkflowId}
-          onAgentWeatherToolChange={onAgentWeatherToolChange}
-          onAgentWidgetValidationToolChange={onAgentWidgetValidationToolChange}
-          onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
-          onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
-          onAgentMcpSseConfigChange={onAgentMcpSseConfigChange}
-          onTestMcpSseConnection={handleTestMcpSseConnection}
-          onStartMcpOAuth={handleStartMcpOAuth}
-          onPollMcpOAuth={handlePollMcpOAuth}
-          onCancelMcpOAuth={handleCancelMcpOAuth}
-        />
-      </div>
         </>
-      )}
+      ) : null}
     </>
   );
 };
@@ -1593,7 +1812,11 @@ type WidgetJsonFormatInfoProps = {
   error: string | null;
 };
 
-const WidgetJsonFormatInfo = ({ definition, loading, error }: WidgetJsonFormatInfoProps) => {
+const WidgetJsonFormatInfo = ({
+  definition,
+  loading,
+  error,
+}: WidgetJsonFormatInfoProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
   if (loading) {
@@ -1623,7 +1846,9 @@ const WidgetJsonFormatInfo = ({ definition, loading, error }: WidgetJsonFormatIn
 
   const jsonExample: Record<string, string> = {};
   bindingKeys.forEach((key) => {
-    const sanitizedKey = key.replace(/[^0-9a-zA-Z_]+/g, "_").replace(/^_+|_+$/g, "");
+    const sanitizedKey = key
+      .replace(/[^0-9a-zA-Z_]+/g, "_")
+      .replace(/^_+|_+$/g, "");
     if (sanitizedKey) {
       jsonExample[sanitizedKey] = `"valeur pour ${key}"`;
     }
@@ -1664,12 +1889,18 @@ const WidgetJsonFormatInfo = ({ definition, loading, error }: WidgetJsonFormatIn
           </div>
           <ul className={styles.nodeInspectorList}>
             {bindingKeys.sort().map((key) => {
-              const sanitizedKey = key.replace(/[^0-9a-zA-Z_]+/g, "_").replace(/^_+|_+$/g, "");
+              const sanitizedKey = key
+                .replace(/[^0-9a-zA-Z_]+/g, "_")
+                .replace(/^_+|_+$/g, "");
               return (
                 <li key={key} className={styles.nodeInspectorListItem}>
-                  <code className={styles.nodeInspectorCode}>{sanitizedKey}</code>
+                  <code className={styles.nodeInspectorCode}>
+                    {sanitizedKey}
+                  </code>
                   {sanitizedKey !== key ? (
-                    <span className={styles.nodeInspectorCodeNote}>(pour {key})</span>
+                    <span className={styles.nodeInspectorCodeNote}>
+                      (pour {key})
+                    </span>
                   ) : null}
                 </li>
               );
@@ -1680,7 +1911,8 @@ const WidgetJsonFormatInfo = ({ definition, loading, error }: WidgetJsonFormatIn
           </div>
           <pre className={styles.nodeInspectorPre}>{jsonString}</pre>
           <div className={styles.nodeInspectorDisclosureNote}>
-            Note : Les clés avec des caractères spéciaux sont normalisées (points remplacés par underscores).
+            Note : Les clés avec des caractères spéciaux sont normalisées
+            (points remplacés par underscores).
           </div>
         </div>
       ) : null}
