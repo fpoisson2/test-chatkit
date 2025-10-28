@@ -198,6 +198,26 @@ const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 const DESKTOP_MIN_VIEWPORT_ZOOM = 0.1;
 const MOBILE_MIN_VIEWPORT_ZOOM = 0.05;
 const DESKTOP_WORKSPACE_HORIZONTAL_PADDING = "1.5rem";
+const PERSISTED_WORKFLOW_ID_KEY = "workflow-builder:selected-workflow-id";
+
+const readPersistedWorkflowId = (): number | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const stored = window.sessionStorage.getItem(PERSISTED_WORKFLOW_ID_KEY);
+    if (!stored) {
+      return null;
+    }
+
+    const parsed = Number.parseInt(stored, 10);
+    return Number.isNaN(parsed) ? null : parsed;
+  } catch (error) {
+    console.warn("Unable to read persisted workflow id", error);
+    return null;
+  }
+};
 const HISTORY_LIMIT = 50;
 const REMOTE_VERSION_POLL_INTERVAL_MS = 10000;
 
@@ -479,7 +499,9 @@ const WorkflowBuilderPage = () => {
   const [hostedError, setHostedError] = useState<string | null>(null);
   const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
   const [selectedVersionDetail, setSelectedVersionDetail] = useState<WorkflowVersionResponse | null>(null);
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(null);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(() =>
+    readPersistedWorkflowId(),
+  );
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const updateHasPendingChanges = useCallback(
@@ -951,6 +973,25 @@ const WorkflowBuilderPage = () => {
 
   useEffect(() => {
     selectedWorkflowIdRef.current = selectedWorkflowId;
+  }, [selectedWorkflowId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      if (selectedWorkflowId == null) {
+        window.sessionStorage.removeItem(PERSISTED_WORKFLOW_ID_KEY);
+      } else {
+        window.sessionStorage.setItem(
+          PERSISTED_WORKFLOW_ID_KEY,
+          String(selectedWorkflowId),
+        );
+      }
+    } catch (error) {
+      console.warn("Unable to persist workflow id", error);
+    }
   }, [selectedWorkflowId]);
 
   useEffect(() => {
