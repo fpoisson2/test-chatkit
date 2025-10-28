@@ -266,6 +266,13 @@ export const useWorkflowVoiceSession = ({
 
       const context = new AudioContext();
       inputContextRef.current = context;
+      if (context.state === "suspended") {
+        try {
+          await context.resume();
+        } catch {
+          /* noop */
+        }
+      }
       resampler.setSampleRate(context.sampleRate);
 
       const source = context.createMediaStreamSource(stream);
