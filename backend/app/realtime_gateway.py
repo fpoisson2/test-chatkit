@@ -149,6 +149,7 @@ class _RealtimeSessionState:
         self._chatkit_item_created_at: dict[str, datetime] = {}
         self._voice_messages_marked = False
         self._history_primed = False
+        self._session_start_time = datetime.now(timezone.utc)
 
     async def ensure_session_started(self) -> None:
         if self._session is not None:
@@ -656,6 +657,20 @@ class _RealtimeSessionState:
             status_raw = str(item.get("status") or "").strip()
             if status_raw and status_raw not in {"completed", "in_progress"}:
                 continue
+
+            # Skip items created before this session started
+            item_id = item.get("item_id") or item.get("id")
+            if item_id:
+                created_at = self._chatkit_item_created_at.get(str(item_id))
+                if created_at and created_at < self._session_start_time:
+                    # This item existed before the current session started
+                    logger.debug(
+                        "Skipping pre-session item %s (created=%s, session_start=%s)",
+                        item_id,
+                        created_at.isoformat(),
+                        self._session_start_time.isoformat(),
+                    )
+                    continue
 
             contents = item.get("content") or []
             text_parts: list[str] = []
