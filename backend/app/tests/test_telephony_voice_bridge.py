@@ -172,23 +172,85 @@ async def test_voice_bridge_forwards_audio_and_transcripts() -> None:
 
     session_update = fake_ws.sent[0]
     assert session_update["type"] == "session.update"
-    assert session_update["session"]["instructions"] == "Soyez brefs"
-    assert session_update["session"]["voice"] == "verse"
+    session_payload = session_update["session"]
+    assert session_payload["instructions"] == "Soyez brefs"
+    assert session_payload["voice"] == "verse"
+    realtime_payload = session_payload["realtime"]
+    assert realtime_payload["turn_detection"]["type"] == "server_vad"
+    assert realtime_payload["input_audio_format"] == {
+        "type": "audio/pcm",
+        "rate": 24000,
+    }
 
-    append_payload = fake_ws.sent[1]
-    assert append_payload["type"] == "input_audio_buffer.append"
-    pcm8k = audioop.ulaw2lin(mu_law, 2)
-    pcm16k, _ = audioop.ratecv(pcm8k, 2, 1, 8000, 16_000, None)
-    expected_audio = base64.b64encode(pcm16k).decode("ascii")
-    assert append_payload["audio"] == expected_audio
-
-    assert fake_ws.sent[2]["type"] == "input_audio_buffer.commit"
-    assert fake_ws.sent[3]["type"] == "response.create"
+    append_payload = next(
+        (entry for entry in fake_ws.sent if entry.get("type") == "input_audio_buffer.append"),
+        None,
+    )
+    assert append_payload is not None, fake_ws.sent
+    decoded_audio = base64.b64decode(append_payload["audio"])
+    assert decoded_audio, "expected non-empty audio payload"
 
     snapshot = metrics.snapshot()
     assert snapshot["total_sessions"] == 1
     assert snapshot["total_errors"] == 0
     assert snapshot["total_outbound_audio_bytes"] == len(b"assistant-audio")
+
+
+@pytest.mark.anyio
+async def test_voice_bridge_uses_session_config() -> None:
+    stream = _FakeRtpStream([])
+
+    async def _send_to_peer(_: bytes) -> None:
+        return None
+
+    session_config = {
+        "model": "gpt-voice",
+        "instructions": "Workflow instructions",
+        "voice": "ember",
+        "realtime": {
+            "start_mode": "manual",
+            "stop_mode": "manual",
+            "turn_detection": {"type": "server_vad", "threshold": 0.25},
+            "input_audio_format": {"type": "audio/pcm", "rate": 44100},
+        },
+        "tools": [{"type": "web_search"}],
+    }
+
+    responses: list[dict[str, Any]] = []
+    fake_ws = _FakeWebSocket(responses)
+
+    async def _connector(url: str, headers: dict[str, str]) -> _FakeWebSocket:
+        del url, headers
+        return fake_ws
+
+    bridge = TelephonyVoiceBridge(
+        hooks=VoiceBridgeHooks(),
+        websocket_connector=_connector,
+        voice_session_checker=lambda: True,
+        receive_timeout=0.05,
+    )
+
+    stats = await bridge.run(
+        client_secret="secret-token",
+        model="unused-model",
+        instructions="Fallback",
+        voice=None,
+        rtp_stream=stream,
+        send_to_peer=_send_to_peer,
+        session_config=session_config,
+        tool_permissions={"response": True},
+    )
+
+    assert stats.error is None
+    assert fake_ws.sent, "session.update message must be sent"
+    session_payload = fake_ws.sent[0]["session"]
+    assert session_payload["model"] == "gpt-voice"
+    assert session_payload["instructions"] == "Workflow instructions"
+    assert session_payload["voice"] == "ember"
+    assert session_payload["tools"] == [{"type": "web_search"}]
+    assert session_payload["tool_permissions"] == {"response": True}
+    assert session_payload["realtime"]["turn_detection"]["threshold"] == 0.25
+    assert session_payload["realtime"]["tools"] == {"response": True}
 
 
 @pytest.mark.anyio

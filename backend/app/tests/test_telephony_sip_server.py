@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,6 +27,7 @@ from backend.app.telephony.sip_server import (  # noqa: E402
     TelephonyRouteSelectionError,
     resolve_workflow_for_phone_number,
 )
+from backend.app.telephony.voice_bridge import VoiceBridgeStats  # noqa: E402
 from backend.app.workflows import resolve_start_telephony_config  # noqa: E402
 
 
@@ -498,6 +500,111 @@ async def test_register_session_stores_voice_metadata(
     assert metadata["voice_model"] == "gpt-voice"
     assert metadata["voice_session_active"] is False
     assert callable(metadata.get("resume_workflow_callable"))
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("anyio_backend", ["asyncio"])
+async def test_start_rtp_uses_voice_event_configuration(
+    monkeypatch: pytest.MonkeyPatch, anyio_backend: str
+) -> None:
+    del anyio_backend
+
+    recorded: dict[str, Any] = {}
+
+    class _SecretHandle:
+        def as_text(self) -> str:
+            return "secret-token"
+
+        def expires_at_isoformat(self) -> str:
+            return "2099-01-01T00:00:00Z"
+
+    def _parse_secret(payload: Mapping[str, Any]) -> _SecretHandle:
+        recorded["parsed_payload"] = payload
+        return _SecretHandle()
+
+    class _FakeBridge:
+        def __init__(self, *, hooks: Any, **_: Any) -> None:
+            recorded["hooks"] = hooks
+
+        async def run(self, **kwargs: Any) -> VoiceBridgeStats:
+            recorded["run_kwargs"] = kwargs
+            return VoiceBridgeStats(
+                duration_seconds=0.0,
+                inbound_audio_bytes=0,
+                outbound_audio_bytes=0,
+            )
+
+    monkeypatch.setattr(startup_module, "TelephonyVoiceBridge", _FakeBridge)
+
+    class _SecretParserStub:
+        def parse(self, payload: Mapping[str, Any]) -> _SecretHandle:
+            return _parse_secret(payload)
+
+    monkeypatch.setattr(startup_module, "SessionSecretParser", lambda: _SecretParserStub())
+
+    manager = SimpleNamespace(active_config=None, contact_host=None)
+    on_invite = startup_module._build_invite_handler(manager)
+    closure = {
+        name: cell.cell_contents
+        for name, cell in zip(
+            on_invite.__code__.co_freevars,
+            on_invite.__closure__ or (),
+            strict=False,
+        )
+    }
+    sip_handler = closure["sip_handler"]
+    start_rtp = sip_handler._start_rtp_callback
+
+    async def _send_audio(_: bytes) -> None:
+        return None
+
+    def _rtp_factory() -> Any:
+        async def _generator() -> Any:
+            if False:  # pragma: no cover - génération vide
+                yield None
+            return
+
+        return _generator()
+
+    session_config = {
+        "model": "gpt-realtime-mini",
+        "voice": "alloy",
+        "instructions": "Parlez peu.",
+        "realtime": {
+            "start_mode": "auto",
+            "turn_detection": {"type": "server_vad", "threshold": 0.33},
+        },
+        "tools": [{"type": "mcp"}],
+        "handoffs": [{"type": "agent"}],
+    }
+    voice_event = {
+        "event": {
+            "type": "history",
+            "session_id": "sess-123",
+            "client_secret": {"value": "secret-token"},
+            "tool_permissions": {"response": True},
+            "session": session_config,
+        }
+    }
+
+    session = SipCallSession(call_id="call-voice", request=SimpleNamespace())
+    session.metadata["telephony"] = {
+        "rtp_stream_factory": _rtp_factory,
+        "send_audio": _send_audio,
+        "voice_event": voice_event,
+    }
+
+    await start_rtp(session)
+
+    run_kwargs = recorded["run_kwargs"]
+    assert run_kwargs["session_config"]["voice"] == "alloy"
+    assert run_kwargs["session_config"]["realtime"]["start_mode"] == "auto"
+    assert run_kwargs["session_config"]["tools"] == [{"type": "mcp"}]
+    assert run_kwargs["tool_permissions"] == {"response": True}
+
+    metadata = session.metadata["telephony"]
+    assert metadata["client_secret"] == "secret-token"
+    assert metadata["voice_session_config"]["instructions"] == "Parlez peu."
 
 
 def test_ack_without_session_is_ignored(caplog: pytest.LogCaptureFixture) -> None:

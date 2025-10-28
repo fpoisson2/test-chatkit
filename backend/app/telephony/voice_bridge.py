@@ -10,6 +10,7 @@ import logging
 import struct
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 from urllib.parse import quote
@@ -215,6 +216,8 @@ class TelephonyVoiceBridge:
         rtp_stream: AsyncIterator[RtpPacket],
         send_to_peer: Callable[[bytes], Awaitable[None]],
         api_base: str | None = None,
+        session_config: Mapping[str, Any] | None = None,
+        tool_permissions: Mapping[str, Any] | None = None,
     ) -> VoiceBridgeStats:
         """Démarre le pont voix jusqu'à la fin de session ou erreur."""
 
@@ -268,12 +271,14 @@ class TelephonyVoiceBridge:
                         continue
                     inbound_audio_bytes += len(pcm)
 
-                    # VAD local : détecter si l'utilisateur parle pendant que l'agent parle
+                    # VAD local : détecter si l'utilisateur parle pendant que
+                    # l'agent parle
                     energy = self._calculate_audio_energy(pcm)
                     if energy > self._vad_threshold and agent_is_speaking:
                         if not audio_interrupted.is_set():
                             logger.info(
-                                "VAD local : interruption détectée (énergie=%.1f, seuil=%.1f)",
+                                "VAD local : interruption détectée "
+                                "(énergie=%.1f, seuil=%.1f)",
                                 energy,
                                 self._vad_threshold
                             )
@@ -289,9 +294,11 @@ class TelephonyVoiceBridge:
                     if not should_continue():
                         break
             finally:
-                # Mode conversation : le VAD gère automatiquement le commit et la création de réponse
-                # Pas de commit manuel, l'API le fait quand speech_stopped est détecté
-                logger.debug("Fin du flux audio RTP, attente de la fermeture de session")
+                # Mode conversation : le VAD gère automatiquement les commits.
+                # Pas de commit manuel : l'API déclenche speech_stopped.
+                logger.debug(
+                    "Fin du flux audio RTP, attente de la fermeture de session"
+                )
                 await request_stop()
 
         transcript_buffers: dict[str, list[str]] = {}
@@ -332,7 +339,9 @@ class TelephonyVoiceBridge:
 
                 # Événements VAD et interruption
                 if message_type == "input_audio_buffer.speech_started":
-                    logger.info("Détection de parole utilisateur - interruption de l'agent")
+                    logger.info(
+                        "Détection de parole utilisateur - interruption de l'agent"
+                    )
                     audio_interrupted.set()
                     continue
                 if message_type == "input_audio_buffer.speech_stopped":
@@ -342,7 +351,7 @@ class TelephonyVoiceBridge:
                 if message_type == "response.cancelled":
                     logger.info("Réponse annulée par l'API")
                     continue
-                if message_type == "audio_interrupted" or message_type == "response.audio_interrupted":
+                if message_type in {"audio_interrupted", "response.audio_interrupted"}:
                     logger.info("Audio interrompu par l'utilisateur")
                     continue
 
@@ -350,17 +359,21 @@ class TelephonyVoiceBridge:
                     # Vérifier le response_id pour détecter une nouvelle réponse
                     response_id = self._extract_response_id(message)
 
-                    # Si c'est une nouvelle réponse (response_id différent), réinitialiser le flag
+                    # Si c'est une nouvelle réponse (response_id différent),
+                    # réinitialiser le flag
                     if response_id and response_id != last_response_id:
                         if audio_interrupted.is_set():
                             logger.info(
-                                "Nouvelle réponse %s détectée - réinitialisation du flag d'interruption",
+                                "Nouvelle réponse %s détectée - "
+                                "réinitialisation du flag d'interruption",
                                 response_id
                             )
                         audio_interrupted.clear()
                         last_response_id = response_id
                         agent_is_speaking = True
-                        logger.debug("Agent commence à parler (réponse %s)", response_id)
+                        logger.debug(
+                            "Agent commence à parler (réponse %s)", response_id
+                        )
 
                     # Marquer que l'agent parle
                     if not agent_is_speaking:
@@ -394,7 +407,7 @@ class TelephonyVoiceBridge:
                         break
                     continue
 
-                if message_type == "response.completed" or message_type == "response.done":
+                if message_type in {"response.completed", "response.done"}:
                     # L'agent a fini de parler
                     agent_is_speaking = False
                     logger.debug("Agent a fini de parler")
@@ -435,7 +448,13 @@ class TelephonyVoiceBridge:
             await send_json(
                 {
                     "type": "session.update",
-                    "session": self._build_session_update(model, instructions, voice),
+                    "session": self._build_session_update(
+                        model,
+                        instructions,
+                        voice,
+                        session_config=session_config,
+                        tool_permissions=tool_permissions,
+                    ),
                 }
             )
 
@@ -519,32 +538,83 @@ class TelephonyVoiceBridge:
             logger.exception("Hook de pont voix en erreur")
 
     def _build_session_update(
-        self, model: str, instructions: str, voice: str | None
+        self,
+        model: str,
+        instructions: str,
+        voice: str | None,
+        *,
+        session_config: Mapping[str, Any] | None = None,
+        tool_permissions: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        # Format API GA (non-beta)
+        def _sanitize_permissions(
+            permissions: Mapping[str, Any] | None,
+        ) -> dict[str, Any]:
+            if not isinstance(permissions, Mapping):
+                return {}
+            sanitized: dict[str, Any] = {}
+            for key, value in permissions.items():
+                if not isinstance(key, str):
+                    continue
+                sanitized[key] = value
+            return sanitized
+
+        sanitized_permissions = _sanitize_permissions(tool_permissions)
+
+        if isinstance(session_config, Mapping):
+            payload = deepcopy(dict(session_config))
+            payload.setdefault("type", "realtime")
+            payload.setdefault("model", model)
+            payload.setdefault("instructions", instructions)
+            if voice and not payload.get("voice"):
+                payload["voice"] = voice
+
+            realtime_section = payload.get("realtime")
+            if isinstance(realtime_section, Mapping):
+                payload["realtime"] = deepcopy(dict(realtime_section))
+
+            if sanitized_permissions and "tool_permissions" not in payload:
+                payload["tool_permissions"] = sanitized_permissions
+
+            realtime_payload = payload.get("realtime")
+            if sanitized_permissions:
+                if isinstance(realtime_payload, Mapping):
+                    realtime_dict = dict(realtime_payload)
+                else:
+                    realtime_dict = {}
+                realtime_dict.setdefault("tools", sanitized_permissions)
+                payload["realtime"] = realtime_dict
+
+            return payload
+
         payload: dict[str, Any] = {
             "type": "realtime",
             "model": model,
             "instructions": instructions,
-            "audio": {
-                "input": {
-                    "format": {"type": "audio/pcm", "rate": 24000},
-                    "turn_detection": {
-                        "type": "server_vad",
-                        "threshold": 0.5,
-                        "prefix_padding_ms": 300,
-                        "silence_duration_ms": 500,
-                        "create_response": True,
-                        "interrupt_response": True,
-                    },
-                },
-                "output": {
-                    "format": {"type": "audio/pcm", "rate": 24000},
-                },
-            },
         }
         if voice:
-            payload["audio"]["output"]["voice"] = voice
+            payload["voice"] = voice
+
+        realtime_defaults: dict[str, Any] = {
+            "start_mode": "auto",
+            "stop_mode": "manual",
+            "turn_detection": {
+                "type": "server_vad",
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 500,
+                "create_response": True,
+                "interrupt_response": True,
+            },
+            "input_audio_format": {"type": "audio/pcm", "rate": 24000},
+            "output_audio_format": {"type": "audio/pcm", "rate": 24000},
+            "input_audio_noise_reduction": {"type": "near_field"},
+        }
+
+        if sanitized_permissions:
+            realtime_defaults["tools"] = sanitized_permissions
+            payload["tool_permissions"] = sanitized_permissions
+
+        payload["realtime"] = realtime_defaults
         return payload
 
     def _decode_packet(self, packet: RtpPacket) -> bytes:

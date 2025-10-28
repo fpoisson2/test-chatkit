@@ -7,7 +7,7 @@ import logging
 import os
 import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from fastapi import FastAPI
@@ -430,6 +430,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         handoffs: Any = None
         tool_permissions: Mapping[str, Any] | None = None
         realtime_config: Mapping[str, Any] | None = None
+        session_update_config: Mapping[str, Any] | dict[str, Any] | None = None
         client_secret: str | None = metadata.get("client_secret")
 
         if session_config is not None:
@@ -473,6 +474,9 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             metadata["voice_voice"] = voice_name
             metadata["voice_provider_id"] = voice_provider_id
             metadata["voice_provider_slug"] = voice_provider_slug
+            if isinstance(session_config, Mapping):
+                session_update_config = session_config
+                metadata["voice_session_config"] = dict(session_config)
         else:
             defaults = metadata.get("voice_defaults") or {}
             voice_model = metadata.get("voice_model") or defaults.get("model")
@@ -499,6 +503,30 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 stored_realtime if isinstance(stored_realtime, Mapping) else None
             )
             tool_permissions = metadata.get("voice_tool_permissions")
+
+            fallback_session: dict[str, Any] = {
+                "model": voice_model,
+                "instructions": instructions,
+            }
+            if voice_name:
+                fallback_session["voice"] = voice_name
+            if prompt_variables:
+                fallback_session["prompt_variables"] = dict(prompt_variables)
+            if isinstance(realtime_config, Mapping):
+                fallback_session["realtime"] = dict(realtime_config)
+            if isinstance(tools, Sequence):
+                fallback_session["tools"] = list(tools)
+            elif tools is not None:
+                fallback_session["tools"] = tools
+            if isinstance(handoffs, Sequence):
+                fallback_session["handoffs"] = list(handoffs)
+            elif handoffs is not None:
+                fallback_session["handoffs"] = handoffs
+            if isinstance(tool_permissions, Mapping):
+                fallback_session["tool_permissions"] = dict(tool_permissions)
+
+            session_update_config = fallback_session
+            metadata["voice_session_config"] = dict(fallback_session)
 
             if not voice_model or not instructions:
                 logger.error(
@@ -652,6 +680,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 rtp_stream=rtp_stream_factory(),
                 send_to_peer=send_audio,
                 api_base=realtime_api_base,
+                session_config=session_update_config,
+                tool_permissions=tool_permissions,
             )
         except Exception as exc:  # pragma: no cover - dépend réseau
             logger.exception(
