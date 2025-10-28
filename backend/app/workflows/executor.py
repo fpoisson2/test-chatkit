@@ -28,13 +28,12 @@ from agents import (
     TResponseInputItem,
 )
 from agents.mcp import MCPServer
-from pydantic import BaseModel
-
 from chatkit.agents import (
     AgentContext,
     ThreadItemConverter,
     stream_agent_response,
 )
+from pydantic import BaseModel
 
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
     from chatkit.agents import stream_widget as _sdk_stream_widget
@@ -1087,13 +1086,39 @@ async def run_workflow(
         )
         await _emit_stream_event(ThreadItemDoneEvent(item=final_item))
 
-    _VOICE_DEFAULT_START_MODE = "manual"
-    _VOICE_DEFAULT_STOP_MODE = "auto"
+    _VOICE_DEFAULT_START_MODE = "auto"
+    _VOICE_DEFAULT_STOP_MODE = "manual"
     _VOICE_TOOL_DEFAULTS: dict[str, bool] = {
         "response": True,
         "transcription": True,
         "function_call": False,
     }
+    _VOICE_DEFAULT_TURN_DETECTION: dict[str, Any] = {
+        "type": "server_vad",
+        "threshold": 0.35,
+        "prefix_padding_ms": 150,
+        "silence_duration_ms": 220,
+        "idle_timeout_ms": 1200,
+        "create_response": True,
+        "interrupt_response": True,
+    }
+    _VOICE_DEFAULT_INPUT_AUDIO_FORMAT: dict[str, Any] = {
+        "type": "audio/pcm",
+        "rate": 24_000,
+    }
+    _VOICE_DEFAULT_OUTPUT_AUDIO_FORMAT: dict[str, Any] = {
+        "type": "audio/pcm",
+        "rate": 24_000,
+    }
+    _VOICE_DEFAULT_INPUT_AUDIO_TRANSCRIPTION: dict[str, Any] = {
+        "model": "gpt-4o-mini-transcribe",
+        "language": "fr-CA",
+    }
+    _VOICE_DEFAULT_INPUT_AUDIO_NOISE_REDUCTION: dict[str, Any] = {
+        "type": "near_field",
+    }
+    _VOICE_DEFAULT_MODALITIES = ["audio"]
+    _VOICE_DEFAULT_SPEED = 1.0
 
     def _resolve_voice_agent_configuration(
         step: WorkflowStep,
@@ -1127,6 +1152,20 @@ async def run_workflow(
             if step_candidate:
                 return step_candidate
             return fallback
+
+        def _merge_mapping(
+            default: Mapping[str, Any], override: Any
+        ) -> dict[str, Any]:
+            merged = copy.deepcopy(default)
+            if isinstance(override, Mapping):
+                for key, value in override.items():
+                    if isinstance(value, Mapping) and isinstance(
+                        merged.get(key), Mapping
+                    ):
+                        merged[key] = _merge_mapping(merged[key], value)
+                    else:
+                        merged[key] = value
+            return merged
 
         voice_model = _resolve_value(
             "model",
@@ -1208,6 +1247,85 @@ async def run_workflow(
             "stop_mode": stop_mode,
             "tools": tools_permissions,
         }
+
+        turn_detection_raw = realtime.get("turn_detection")
+        if turn_detection_raw is False:
+            pass
+        elif isinstance(turn_detection_raw, Mapping):
+            realtime_config["turn_detection"] = _merge_mapping(
+                _VOICE_DEFAULT_TURN_DETECTION, turn_detection_raw
+            )
+        else:
+            realtime_config["turn_detection"] = copy.deepcopy(
+                _VOICE_DEFAULT_TURN_DETECTION
+            )
+
+        input_format_raw = realtime.get("input_audio_format")
+        if isinstance(input_format_raw, Mapping):
+            realtime_config["input_audio_format"] = _merge_mapping(
+                _VOICE_DEFAULT_INPUT_AUDIO_FORMAT, input_format_raw
+            )
+        else:
+            realtime_config["input_audio_format"] = copy.deepcopy(
+                _VOICE_DEFAULT_INPUT_AUDIO_FORMAT
+            )
+
+        output_format_raw = realtime.get("output_audio_format")
+        if isinstance(output_format_raw, Mapping):
+            realtime_config["output_audio_format"] = _merge_mapping(
+                _VOICE_DEFAULT_OUTPUT_AUDIO_FORMAT, output_format_raw
+            )
+        else:
+            realtime_config["output_audio_format"] = copy.deepcopy(
+                _VOICE_DEFAULT_OUTPUT_AUDIO_FORMAT
+            )
+
+        noise_reduction_raw = realtime.get("input_audio_noise_reduction")
+        if isinstance(noise_reduction_raw, Mapping):
+            realtime_config["input_audio_noise_reduction"] = _merge_mapping(
+                _VOICE_DEFAULT_INPUT_AUDIO_NOISE_REDUCTION,
+                noise_reduction_raw,
+            )
+        else:
+            realtime_config["input_audio_noise_reduction"] = copy.deepcopy(
+                _VOICE_DEFAULT_INPUT_AUDIO_NOISE_REDUCTION
+            )
+
+        transcription_raw = realtime.get("input_audio_transcription")
+        if transcription_raw is False:
+            pass
+        else:
+            transcription_config = _merge_mapping(
+                _VOICE_DEFAULT_INPUT_AUDIO_TRANSCRIPTION,
+                transcription_raw if isinstance(transcription_raw, Mapping) else {},
+            )
+            if instructions and not transcription_config.get("prompt"):
+                transcription_config["prompt"] = instructions
+            realtime_config["input_audio_transcription"] = transcription_config
+
+        modalities_raw = realtime.get("modalities")
+        if isinstance(modalities_raw, Sequence) and not isinstance(
+            modalities_raw, (str, bytes, bytearray)
+        ):
+            sanitized_modalities: list[str] = []
+            for entry in modalities_raw:
+                if isinstance(entry, str):
+                    candidate = entry.strip().lower()
+                    if candidate and candidate not in sanitized_modalities:
+                        sanitized_modalities.append(candidate)
+            if "audio" not in sanitized_modalities:
+                sanitized_modalities.append("audio")
+            realtime_config["modalities"] = (
+                sanitized_modalities or list(_VOICE_DEFAULT_MODALITIES)
+            )
+        else:
+            realtime_config["modalities"] = list(_VOICE_DEFAULT_MODALITIES)
+
+        speed_raw = realtime.get("speed")
+        if isinstance(speed_raw, (int, float)):
+            realtime_config["speed"] = float(speed_raw)
+        else:
+            realtime_config["speed"] = _VOICE_DEFAULT_SPEED
 
         tool_definitions = params.get("tools")
         sanitized_candidate = _json_safe_copy(tool_definitions)

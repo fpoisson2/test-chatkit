@@ -625,6 +625,13 @@ export const useRealtimeSession = (handlers: RealtimeSessionHandlers) => {
       if (!sessionId) {
         return;
       }
+      const key = connectionKeyRef.current;
+      if (key) {
+        const record = connectionPool.get(key);
+        if (record) {
+          stopPlayback(record);
+        }
+      }
       sendMessage({ type: "interrupt", session_id: sessionId });
     },
     [sendMessage],

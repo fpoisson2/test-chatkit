@@ -34,7 +34,7 @@ type StopOptions = {
 const HISTORY_STORAGE_KEY = "chatkit:voice:history";
 const MAX_ERROR_LOG_ENTRIES = 8;
 const SAMPLE_RATE = 24_000;
-const COMMIT_DEBOUNCE_MS = 220;
+const COMMIT_DEBOUNCE_MS = 120;
 
 const formatErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
