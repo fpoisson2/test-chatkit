@@ -201,6 +201,7 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
   const resampler = useAudioResampler(SAMPLE_RATE);
   const commitTimerRef = useRef<number | null>(null);
   const hasPendingAudioRef = useRef(false);
+  const userSpeakingRef = useRef(false);
   const currentThreadIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -287,6 +288,7 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
     resampler.reset();
     clearCommitTimer();
     hasPendingAudioRef.current = false;
+    userSpeakingRef.current = false;
   }, [clearCommitTimer, resampler]);
 
   const scheduleCommit = useCallback(
@@ -311,6 +313,7 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
         const payload = tail.length > 0 ? tail : new Int16Array();
         dispatcher(sessionId, payload, { commit: true });
         hasPendingAudioRef.current = false;
+        userSpeakingRef.current = false;
       }, COMMIT_DEBOUNCE_MS);
     },
     [clearCommitTimer, resampler],
@@ -325,6 +328,7 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
         chunk: Int16Array,
         options?: SendAudioOptions,
       ) => void,
+      interrupter: (id: string) => void,
     ) => {
       if (!stream) {
         throw new Error("Flux audio introuvable pour la capture");
@@ -364,6 +368,10 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
             for (let i = 0; i < chunk.length; i += 1) {
               if (chunk[i] !== 0) {
                 hasPendingAudioRef.current = true;
+                if (!userSpeakingRef.current) {
+                  userSpeakingRef.current = true;
+                  interrupter(sessionId);
+                }
                 break;
               }
             }
@@ -382,6 +390,7 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       currentSessionRef.current = sessionId;
       microphoneStreamRef.current = stream;
       hasPendingAudioRef.current = false;
+      userSpeakingRef.current = false;
     },
     [resampler, scheduleCommit],
   );
@@ -430,7 +439,12 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       if (pending) {
         pendingStartRef.current = null;
         try {
-          await startCapture(event.sessionId, pending.stream, sendAudioChunk);
+          await startCapture(
+            event.sessionId,
+            pending.stream,
+            sendAudioChunk,
+            interruptSession,
+          );
           currentThreadIdRef.current = event.threadId ?? null;
           suppressEmptyHistoryRef.current = pending.preserveHistory;
           if (!pending.preserveHistory) {
@@ -454,6 +468,7 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       if (!currentSessionRef.current) {
         currentSessionRef.current = event.sessionId;
         currentThreadIdRef.current = event.threadId ?? null;
+        userSpeakingRef.current = false;
       }
     },
     onHistoryUpdated: (sessionId, history) => {
@@ -571,6 +586,7 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       historyRef.current = [];
       suppressEmptyHistoryRef.current = false;
       hasPendingAudioRef.current = false;
+      userSpeakingRef.current = false;
       if (clearHistory) {
         resetTranscripts();
       }
