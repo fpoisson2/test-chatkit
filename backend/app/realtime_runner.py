@@ -127,6 +127,14 @@ class RealtimeVoiceSessionOrchestrator:
 
     @staticmethod
     def _extract_client_secret(payload: Mapping[str, Any]) -> str | None:
+        # La réponse de l'API OpenAI Realtime a la structure:
+        # {"value": "ek_...", "expires_at": ..., "session": {...}}
+        value = payload.get("value")
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate:
+                return candidate
+        # Fallback: ancienne structure {"client_secret": {"value": "..."}}
         client_secret = payload.get("client_secret")
         if isinstance(client_secret, Mapping):
             value = client_secret.get("value")

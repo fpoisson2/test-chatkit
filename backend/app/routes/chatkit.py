@@ -803,6 +803,7 @@ async def realtime_voice_gateway_endpoint(websocket: WebSocket) -> None:
         token = token[7:].strip()
 
     if not token:
+        logger.error("WebSocket Realtime: token manquant")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
@@ -810,7 +811,8 @@ async def realtime_voice_gateway_endpoint(websocket: WebSocket) -> None:
         payload = decode_access_token(token)
         user_sub = payload.get("sub")
         user_id = int(user_sub)
-    except Exception:
+    except Exception as exc:
+        logger.error(f"WebSocket Realtime: erreur décodage token: {exc}")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
@@ -818,9 +820,11 @@ async def realtime_voice_gateway_endpoint(websocket: WebSocket) -> None:
         user = session.get(User, user_id)
 
     if user is None:
+        logger.error(f"WebSocket Realtime: utilisateur {user_id} introuvable")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
+    logger.info(f"WebSocket Realtime: connexion acceptée pour user {user_id}")
     await websocket.accept()
 
     connection = GatewayConnection(
