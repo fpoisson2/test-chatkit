@@ -299,6 +299,7 @@ const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.nestedWorkflowHelp":
     "Sélectionnez un workflow existant à exécuter à la place de cet agent.",
   "workflowBuilder.agentInspector.nestedWorkflowNoneOption": "Aucun (utiliser l'agent)",
+  "workflowBuilder.agentInspector.nestedWorkflowCustomOption": "Personnalisé",
   "workflowBuilder.agentInspector.nestedWorkflowLocalOption": "Workflow local",
   "workflowBuilder.agentInspector.nestedWorkflowHostedOption": "Workflow hébergé",
   "workflowBuilder.agentInspector.nestedWorkflowHostedSelectLabel": "Workflow hébergé",
@@ -330,6 +331,11 @@ const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.mcpSectionTitle": "Serveur MCP Home Assistant",
   "workflowBuilder.agentInspector.mcpSectionDescription":
     "Connectez un serveur MCP existant (ex. Home Assistant) pour exposer ses outils à l'agent.",
+  "workflowBuilder.agentInspector.mcpEnabledLabel": "Activer le serveur MCP",
+  "workflowBuilder.agentInspector.mcpEnabledHelp":
+    "Désactivez ce commutateur pour retirer temporairement l'intégration MCP de l'agent.",
+  "workflowBuilder.agentInspector.mcpDisabledInfo":
+    "Activez le serveur MCP pour configurer l'URL et tester la connexion.",
   "workflowBuilder.agentInspector.mcpUrlLabel": "URL du serveur MCP",
   "workflowBuilder.agentInspector.mcpAuthorizationLabel":
     "Clé d'autorisation (Bearer …)",
@@ -911,6 +917,7 @@ const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.nestedWorkflowHelp":
     "Choose another workflow to run instead of this agent.",
   "workflowBuilder.agentInspector.nestedWorkflowNoneOption": "None (use agent configuration)",
+  "workflowBuilder.agentInspector.nestedWorkflowCustomOption": "Custom",
   "workflowBuilder.agentInspector.nestedWorkflowLocalOption": "Local workflow",
   "workflowBuilder.agentInspector.nestedWorkflowHostedOption": "Hosted workflow",
   "workflowBuilder.agentInspector.nestedWorkflowHostedSelectLabel": "Hosted workflow",
@@ -942,6 +949,11 @@ const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.mcpSectionTitle": "Home Assistant MCP server",
   "workflowBuilder.agentInspector.mcpSectionDescription":
     "Connect an existing MCP server (e.g. Home Assistant) to expose its tools to the agent.",
+  "workflowBuilder.agentInspector.mcpEnabledLabel": "Enable MCP server",
+  "workflowBuilder.agentInspector.mcpEnabledHelp":
+    "Turn off to temporarily remove the MCP integration from this agent while keeping the details.",
+  "workflowBuilder.agentInspector.mcpDisabledInfo":
+    "Enable the MCP server to configure its URL and run connection tests.",
   "workflowBuilder.agentInspector.mcpUrlLabel": "MCP server URL",
   "workflowBuilder.agentInspector.mcpAuthorizationLabel":
     "Authorization header (Bearer …)",

@@ -335,6 +335,7 @@ export const AgentInspectorSection = ({
   const nestedWorkflowModeName = `${nestedWorkflowLabelId}-mode`;
   const localModeOptionId = `${nestedWorkflowLabelId}-local`;
   const hostedModeOptionId = `${nestedWorkflowLabelId}-hosted`;
+  const customModeOptionId = `${nestedWorkflowLabelId}-custom`;
   const localWorkflowSelectId = `${nestedWorkflowLabelId}-select`;
   const hostedWorkflowIdFieldId = `${nestedWorkflowLabelId}-hosted-id`;
   const hostedWorkflowSlugFieldId = `${nestedWorkflowLabelId}-hosted-slug`;
@@ -443,6 +444,13 @@ export const AgentInspectorSection = ({
       return;
     }
 
+    if (nestedWorkflowMode === "custom") {
+      setLocalWorkflowIdValue("");
+      setHostedWorkflowIdInput("");
+      setHostedWorkflowSlugInput("");
+      return;
+    }
+
     const nextHostedIdValue =
       nestedWorkflowId != null ? String(nestedWorkflowId) : nestedWorkflowSlug.trim();
     setHostedWorkflowIdInput(nextHostedIdValue);
@@ -462,10 +470,19 @@ export const AgentInspectorSection = ({
   };
 
   const emitNestedWorkflowChange = (
-    mode: "local" | "hosted",
+    mode: "local" | "hosted" | "custom",
     idValue: string,
     slugValue: string,
   ) => {
+    if (mode === "custom") {
+      onAgentNestedWorkflowChange(nodeId, {
+        mode: "custom",
+        workflowId: null,
+        workflowSlug: "",
+      });
+      return;
+    }
+
     const parsedId = parseWorkflowId(idValue);
     let slug = slugValue.trim();
     if (mode === "local") {
@@ -483,8 +500,12 @@ export const AgentInspectorSection = ({
     });
   };
 
-  const handleWorkflowModeChange = (mode: "local" | "hosted") => {
+  const handleWorkflowModeChange = (mode: "local" | "hosted" | "custom") => {
     setWorkflowMode(mode);
+    if (mode === "custom") {
+      emitNestedWorkflowChange("custom", "", "");
+      return;
+    }
     if (mode === "local") {
       emitNestedWorkflowChange("local", localWorkflowIdValue, "");
       return;
@@ -671,119 +692,126 @@ export const AgentInspectorSection = ({
     : "";
   return (
     <>
-      <div className={styles.agentNestedWorkflowRow}>
-        <span
-          id={nestedWorkflowLabelId}
-          className={`${styles.nodeInspectorLabel} ${styles.agentNestedWorkflowLabel}`}
-        >
+      <div
+        className={`${styles.nodeInspectorField} ${styles.agentNestedWorkflowField}`}
+      >
+        <span id={nestedWorkflowLabelId} className={styles.nodeInspectorLabel}>
           {t("workflowBuilder.agentInspector.nestedWorkflowLabel")}
           <HelpTooltip label={t("workflowBuilder.agentInspector.nestedWorkflowHelp")} />
         </span>
         <div
-          className={`${styles.nodeInspectorInputGroup} ${styles.agentNestedWorkflowControls}`}
+          className={`${styles.nodeInspectorRadioGroup} ${styles.agentNestedWorkflowModes}`}
+          role="radiogroup"
+          aria-labelledby={nestedWorkflowLabelId}
         >
-          <div
-            className={`${styles.nodeInspectorRadioGroup} ${styles.agentNestedWorkflowModes}`}
-            role="radiogroup"
+          <label className={styles.nodeInspectorRadioOption} htmlFor={customModeOptionId}>
+            <input
+              type="radio"
+              id={customModeOptionId}
+              name={nestedWorkflowModeName}
+              value="custom"
+              checked={workflowMode === "custom"}
+              onChange={() => handleWorkflowModeChange("custom")}
+            />
+            <span>{t("workflowBuilder.agentInspector.nestedWorkflowCustomOption")}</span>
+          </label>
+          <label className={styles.nodeInspectorRadioOption} htmlFor={localModeOptionId}>
+            <input
+              type="radio"
+              id={localModeOptionId}
+              name={nestedWorkflowModeName}
+              value="local"
+              checked={workflowMode === "local"}
+              onChange={() => handleWorkflowModeChange("local")}
+            />
+            <span>{t("workflowBuilder.agentInspector.nestedWorkflowLocalOption")}</span>
+          </label>
+          <label className={styles.nodeInspectorRadioOption} htmlFor={hostedModeOptionId}>
+            <input
+              type="radio"
+              id={hostedModeOptionId}
+              name={nestedWorkflowModeName}
+              value="hosted"
+              checked={workflowMode === "hosted"}
+              onChange={() => handleWorkflowModeChange("hosted")}
+            />
+            <span>{t("workflowBuilder.agentInspector.nestedWorkflowHostedOption")}</span>
+          </label>
+        </div>
+        {workflowMode === "local" ? (
+          <select
+            id={localWorkflowSelectId}
+            className={styles.agentNestedWorkflowSelect}
+            value={localWorkflowIdValue}
             aria-labelledby={nestedWorkflowLabelId}
+            onChange={(event) => handleLocalWorkflowChange(event.target.value)}
           >
-            <label className={styles.nodeInspectorRadioOption} htmlFor={localModeOptionId}>
-              <input
-                type="radio"
-                id={localModeOptionId}
-                name={nestedWorkflowModeName}
-                value="local"
-                checked={workflowMode === "local"}
-                onChange={() => handleWorkflowModeChange("local")}
-              />
-              <span>{t("workflowBuilder.agentInspector.nestedWorkflowLocalOption")}</span>
+            <option value="">
+              {t("workflowBuilder.agentInspector.nestedWorkflowNoneOption")}
+            </option>
+            {availableNestedWorkflows.map((workflow) => (
+              <option key={workflow.id} value={workflow.id}>
+                {workflow.display_name?.trim() || workflow.slug}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        {workflowMode === "hosted" ? (
+          <div className={styles.agentNestedWorkflowHostedFields}>
+            <label
+              className={`${styles.nodeInspectorSubField} ${styles.agentNestedWorkflowHostedSelectField}`}
+              htmlFor={hostedWorkflowIdFieldId}
+            >
+              <span className={styles.nodeInspectorSubLabel}>
+                {t("workflowBuilder.agentInspector.nestedWorkflowHostedSelectLabel")}
+              </span>
+              <select
+                id={hostedWorkflowIdFieldId}
+                className={styles.agentNestedWorkflowHostedSelect}
+                value={hostedWorkflowIdInput}
+                aria-labelledby={nestedWorkflowLabelId}
+                onChange={(event) => handleHostedWorkflowSelectChange(event.target.value)}
+                disabled={hostedWorkflowsLoading && hostedWorkflows.length === 0}
+              >
+                <option value="">
+                  {t("workflowBuilder.agentInspector.nestedWorkflowNoneOption")}
+                </option>
+                {hostedWorkflowsLoading ? (
+                  <option value="__loading__" disabled>
+                    {t("workflowBuilder.agentInspector.nestedWorkflowHostedLoading")}
+                  </option>
+                ) : null}
+                {!hostedWorkflowsLoading && hostedWorkflows.length === 0 ? (
+                  <option value="__empty__" disabled>
+                    {t("workflowBuilder.agentInspector.nestedWorkflowHostedSelectEmpty")}
+                  </option>
+                ) : null}
+                {hostedWorkflows.map((workflow) => (
+                  <option key={workflow.id} value={workflow.id}>
+                    {workflow.label}
+                  </option>
+                ))}
+              </select>
             </label>
-            <label className={styles.nodeInspectorRadioOption} htmlFor={hostedModeOptionId}>
+            <label
+              className={`${styles.nodeInspectorSubField} ${styles.agentNestedWorkflowSlugField}`}
+              htmlFor={hostedWorkflowSlugFieldId}
+            >
+              <span className={styles.nodeInspectorSubLabel}>
+                {t("workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel")}
+              </span>
               <input
-                type="radio"
-                id={hostedModeOptionId}
-                name={nestedWorkflowModeName}
-                value="hosted"
-                checked={workflowMode === "hosted"}
-                onChange={() => handleWorkflowModeChange("hosted")}
+                id={hostedWorkflowSlugFieldId}
+                type="text"
+                value={hostedWorkflowSlugInput}
+                placeholder={t(
+                  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugPlaceholder",
+                )}
+                onChange={(event) => handleHostedWorkflowSlugChange(event.target.value)}
               />
-              <span>{t("workflowBuilder.agentInspector.nestedWorkflowHostedOption")}</span>
             </label>
           </div>
-          {workflowMode === "local" ? (
-            <select
-              id={localWorkflowSelectId}
-              className={styles.agentNestedWorkflowSelect}
-              value={localWorkflowIdValue}
-              aria-labelledby={nestedWorkflowLabelId}
-              onChange={(event) => handleLocalWorkflowChange(event.target.value)}
-            >
-              <option value="">
-                {t("workflowBuilder.agentInspector.nestedWorkflowNoneOption")}
-              </option>
-              {availableNestedWorkflows.map((workflow) => (
-                <option key={workflow.id} value={workflow.id}>
-                  {workflow.display_name?.trim() || workflow.slug}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <div className={styles.agentNestedWorkflowHostedFields}>
-              <label
-                className={`${styles.nodeInspectorSubField} ${styles.agentNestedWorkflowHostedSelectField}`}
-                htmlFor={hostedWorkflowIdFieldId}
-              >
-                <span className={styles.nodeInspectorSubLabel}>
-                  {t("workflowBuilder.agentInspector.nestedWorkflowHostedSelectLabel")}
-                </span>
-                <select
-                  id={hostedWorkflowIdFieldId}
-                  className={styles.agentNestedWorkflowHostedSelect}
-                  value={hostedWorkflowIdInput}
-                  aria-labelledby={nestedWorkflowLabelId}
-                  onChange={(event) => handleHostedWorkflowSelectChange(event.target.value)}
-                  disabled={hostedWorkflowsLoading && hostedWorkflows.length === 0}
-                >
-                  <option value="">
-                    {t("workflowBuilder.agentInspector.nestedWorkflowNoneOption")}
-                  </option>
-                  {hostedWorkflowsLoading ? (
-                    <option value="__loading__" disabled>
-                      {t("workflowBuilder.agentInspector.nestedWorkflowHostedLoading")}
-                    </option>
-                  ) : null}
-                  {!hostedWorkflowsLoading && hostedWorkflows.length === 0 ? (
-                    <option value="__empty__" disabled>
-                      {t("workflowBuilder.agentInspector.nestedWorkflowHostedSelectEmpty")}
-                    </option>
-                  ) : null}
-                  {hostedWorkflows.map((workflow) => (
-                    <option key={workflow.id} value={workflow.id}>
-                      {workflow.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label
-                className={`${styles.nodeInspectorSubField} ${styles.agentNestedWorkflowSlugField}`}
-                htmlFor={hostedWorkflowSlugFieldId}
-              >
-                <span className={styles.nodeInspectorSubLabel}>
-                  {t("workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel")}
-                </span>
-                <input
-                  id={hostedWorkflowSlugFieldId}
-                  type="text"
-                  value={hostedWorkflowSlugInput}
-                  placeholder={t(
-                    "workflowBuilder.agentInspector.nestedWorkflowHostedSlugPlaceholder",
-                  )}
-                  onChange={(event) => handleHostedWorkflowSlugChange(event.target.value)}
-                />
-              </label>
-            </div>
-          )}
-        </div>
+        ) : null}
       </div>
 
       {nestedWorkflowMissing ? (

@@ -93,6 +93,10 @@ const renderSection = (overrides: Partial<Parameters<typeof AgentInspectorSectio
 describe("AgentInspectorSection", () => {
   it("calls onAgentNestedWorkflowChange when selecting a workflow", async () => {
     const { onAgentNestedWorkflowChange } = renderSection();
+    const localRadio = screen.getByRole("radio", {
+      name: /workflow local|local workflow/i,
+    });
+    await userEvent.click(localRadio);
     const select = screen.getByRole("combobox", { name: /workflow/i });
     await userEvent.selectOptions(select, "2");
     expect(onAgentNestedWorkflowChange).toHaveBeenLastCalledWith("agent-1", {
