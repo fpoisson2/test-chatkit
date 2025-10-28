@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
@@ -85,6 +85,23 @@ def _reset_orchestrator(monkeypatch: pytest.MonkeyPatch) -> None:
         realtime_runner,
         "_ORCHESTRATOR",
         realtime_runner.RealtimeVoiceSessionOrchestrator(),
+    )
+
+    async def _noop_connect(configs: Sequence[Mapping[str, object]]) -> list[object]:
+        return []
+
+    async def _noop_cleanup(servers: Sequence[object]) -> None:
+        return None
+
+    monkeypatch.setattr(
+        realtime_runner,
+        "_connect_mcp_servers",
+        _noop_connect,
+    )
+    monkeypatch.setattr(
+        realtime_runner,
+        "_cleanup_mcp_servers",
+        _noop_cleanup,
     )
 
 
@@ -246,6 +263,85 @@ def test_open_voice_session_normalizes_mcp_tools(
     assert tool_config.get("server_label") == "example-com-mcp"
     assert "agent" not in tool_config
     assert "metadata" not in tool_config
+
+
+def test_open_voice_session_connects_mcp_servers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+    captured: dict[str, object] = {}
+
+    _reset_orchestrator(monkeypatch)
+
+    class _StubRunner:
+        def __init__(self, agent: RealtimeAgent) -> None:
+            self.agent = agent
+
+    monkeypatch.setattr(realtime_runner, "RealtimeRunner", _StubRunner)
+
+    async def _fake_request_client_secret(self, **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"client_secret": {"value": "secret"}}
+
+    monkeypatch.setattr(
+        realtime_runner.RealtimeVoiceSessionOrchestrator,
+        "_request_client_secret",
+        _fake_request_client_secret,
+    )
+
+    gateway_module = import_module("backend.app.realtime_gateway")
+    monkeypatch.setattr(gateway_module, "get_realtime_gateway", lambda: None)
+
+    class _StubServer:
+        def __init__(self) -> None:
+            self.cleaned = False
+
+    stub_server = _StubServer()
+
+    recorded_configs: list[list[Mapping[str, object]]] = []
+
+    async def _fake_connect(configs: Sequence[Mapping[str, object]]):
+        recorded_configs.append(list(configs))
+        return [stub_server]
+
+    cleaned_servers: list[object] = []
+
+    async def _fake_cleanup(servers: Sequence[object]) -> None:
+        cleaned_servers.extend(servers)
+        for server in servers:
+            if hasattr(server, "cleaned"):
+                server.cleaned = True  # type: ignore[attr-defined]
+
+    monkeypatch.setattr(realtime_runner, "_connect_mcp_servers", _fake_connect)
+    monkeypatch.setattr(realtime_runner, "_cleanup_mcp_servers", _fake_cleanup)
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-mcp",
+            model="gpt-realtime",
+            instructions="Salut",
+            provider_slug="openai",
+            tools=[
+                {
+                    "type": "mcp",
+                    "url": "https://example.com/mcp",
+                    "authorization": "Bearer token",
+                    "transport": "http_sse",
+                }
+            ],
+        )
+    )
+
+    assert handle.mcp_servers == [stub_server]
+    assert recorded_configs, "_connect_mcp_servers should receive config"
+    config_entry = recorded_configs[0][0]
+    assert config_entry.get("server_url") == "https://example.com/mcp"
+    assert config_entry.get("authorization") == "Bearer token"
+    assert captured.get("tools")
+    metadata = handle.metadata.get("mcp_servers")
+    assert isinstance(metadata, list) and metadata
+    assert metadata[0]["server_url"] == "https://example.com/mcp"
+    assert not cleaned_servers, "cleanup should not run during open"
 
 
 def test_open_voice_session_normalizes_function_tools(
@@ -429,6 +525,73 @@ def test_open_voice_session_stores_sdk_tools_separately(
 
     sdk_tools = handle.metadata.get("sdk_tools")
     assert sdk_tools == [function_tool]
+
+
+def test_close_voice_session_cleans_up_mcp_servers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+
+    _reset_orchestrator(monkeypatch)
+
+    class _StubRunner:
+        def __init__(self, agent: RealtimeAgent) -> None:
+            self.agent = agent
+
+    monkeypatch.setattr(realtime_runner, "RealtimeRunner", _StubRunner)
+
+    async def _fake_request_client_secret(self, **kwargs: object) -> dict[str, object]:
+        return {"client_secret": {"value": "secret"}}
+
+    monkeypatch.setattr(
+        realtime_runner.RealtimeVoiceSessionOrchestrator,
+        "_request_client_secret",
+        _fake_request_client_secret,
+    )
+
+    gateway_module = import_module("backend.app.realtime_gateway")
+    monkeypatch.setattr(gateway_module, "get_realtime_gateway", lambda: None)
+
+    class _StubServer:
+        def __init__(self) -> None:
+            self.cleaned = False
+
+    stub_server = _StubServer()
+
+    async def _fake_connect(configs: Sequence[Mapping[str, object]]):
+        return [stub_server]
+
+    cleaned: list[object] = []
+
+    async def _fake_cleanup(servers: Sequence[object]) -> None:
+        cleaned.extend(servers)
+        for server in servers:
+            if hasattr(server, "cleaned"):
+                server.cleaned = True  # type: ignore[attr-defined]
+
+    monkeypatch.setattr(realtime_runner, "_connect_mcp_servers", _fake_connect)
+    monkeypatch.setattr(realtime_runner, "_cleanup_mcp_servers", _fake_cleanup)
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-mcp",
+            model="gpt-realtime",
+            instructions="Salut",
+            provider_slug="openai",
+            tools=[{"type": "mcp", "url": "https://example.com/mcp"}],
+        )
+    )
+
+    assert handle.mcp_servers == [stub_server]
+    assert not stub_server.cleaned
+
+    closed = asyncio.run(
+        realtime_runner.close_voice_session(session_id=handle.session_id)
+    )
+
+    assert closed is True
+    assert cleaned == [stub_server]
+    assert stub_server.cleaned is True
 
 
 def test_openai_slug_ignores_mismatched_provider_id(

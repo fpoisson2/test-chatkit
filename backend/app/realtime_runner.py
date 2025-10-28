@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 import httpx
 from agents.handoffs import Handoff
+from agents.mcp import MCPServer, MCPServerSse, MCPServerStreamableHttp
 from agents.realtime.agent import RealtimeAgent
 from agents.realtime.runner import RealtimeRunner
 from agents.tool import (
@@ -36,6 +37,8 @@ logger = logging.getLogger("chatkit.realtime.runner")
 
 def _normalize_realtime_tools_payload(
     tools: Sequence[Any] | Iterable[Any] | None,
+    *,
+    mcp_server_configs: list[dict[str, Any]] | None = None,
 ) -> list[Any] | None:
     """Normalise la configuration des outils pour l'API Realtime."""
 
@@ -155,6 +158,48 @@ def _normalize_realtime_tools_payload(
                 }
                 tool_entry["type"] = "mcp"
 
+                if (
+                    mcp_server_configs is not None
+                    and server_url
+                ):
+                    transport = raw_entry.get("transport") or raw_entry.get(
+                        "connector_transport"
+                    )
+                    transport_value: str | None = None
+                    if isinstance(transport, str):
+                        candidate = transport.strip()
+                        if candidate:
+                            transport_value = candidate.lower()
+
+                    headers: dict[str, str] | None = None
+                    raw_headers = raw_entry.get("headers")
+                    if isinstance(raw_headers, Mapping):
+                        candidate_headers: dict[str, str] = {}
+                        for header_key, header_value in raw_headers.items():
+                            if isinstance(header_key, str) and isinstance(
+                                header_value, str
+                            ):
+                                candidate_headers[header_key] = header_value
+                        if candidate_headers:
+                            headers = candidate_headers
+
+                    authorization = raw_entry.get("authorization")
+                    authorization_value: str | None = None
+                    if isinstance(authorization, str):
+                        candidate = authorization.strip()
+                        if candidate:
+                            authorization_value = candidate
+
+                    mcp_server_configs.append(
+                        {
+                            "server_label": label,
+                            "server_url": server_url,
+                            "authorization": authorization_value,
+                            "headers": headers,
+                            "transport": transport_value,
+                        }
+                    )
+
             normalized.append(tool_entry)
         else:
             normalized.append(entry)
@@ -202,6 +247,91 @@ def _filter_agent_handoffs_for_clone(
             valid_handoffs.append(entry)
 
     return valid_handoffs
+
+
+def _create_mcp_server_from_config(
+    config: Mapping[str, Any],
+) -> MCPServer | None:
+    """Instancie un serveur MCP SDK à partir d'une configuration normalisée."""
+
+    server_url = config.get("server_url")
+    if not isinstance(server_url, str) or not server_url.strip():
+        return None
+
+    headers: dict[str, str] = {}
+    raw_headers = config.get("headers")
+    if isinstance(raw_headers, Mapping):
+        for key, value in raw_headers.items():
+            if isinstance(key, str) and isinstance(value, str):
+                headers[key] = value
+
+    authorization = config.get("authorization")
+    if isinstance(authorization, str) and authorization.strip():
+        headers.setdefault("Authorization", authorization.strip())
+
+    transport = config.get("transport")
+    transport_value = (
+        transport.strip().lower()
+        if isinstance(transport, str) and transport.strip()
+        else None
+    )
+
+    server_label = config.get("server_label")
+    server_name = server_label if isinstance(server_label, str) else None
+
+    params: dict[str, Any] = {"url": server_url.strip()}
+    if headers:
+        params["headers"] = headers
+
+    if transport_value in (None, "", "http_sse", "sse"):
+        return MCPServerSse(params=params, name=server_name)
+    if transport_value in ("streamable_http", "streamable-http", "http_streamable"):
+        return MCPServerStreamableHttp(params=params, name=server_name)
+
+    logger.warning(
+        "Transport MCP %s non supporté pour %s",
+        transport_value,
+        server_url,
+    )
+    return None
+
+
+async def _connect_mcp_servers(
+    configs: Sequence[Mapping[str, Any]],
+) -> list[MCPServer]:
+    """Crée et connecte les serveurs MCP définis dans la configuration."""
+
+    servers: list[MCPServer] = []
+    for config in configs:
+        server = _create_mcp_server_from_config(config)
+        if server is None:
+            continue
+        try:
+            await server.connect()
+        except Exception:  # pragma: no cover - dépendances externes
+            logger.exception(
+                "Échec de connexion au serveur MCP %s",
+                config.get("server_url"),
+            )
+            await _cleanup_mcp_servers(servers)
+            raise
+        servers.append(server)
+
+    return servers
+
+
+async def _cleanup_mcp_servers(servers: Sequence[MCPServer]) -> None:
+    """Ferme proprement les serveurs MCP gérés par la session."""
+
+    for server in servers:
+        try:
+            await server.cleanup()
+        except Exception:  # pragma: no cover - nettoyage best effort
+            logger.debug(
+                "Échec du nettoyage du serveur MCP %s",
+                getattr(server, "name", "<inconnu>"),
+                exc_info=True,
+            )
 
 
 def _derive_mcp_server_label(entry: Mapping[str, Any]) -> str | None:
@@ -298,6 +428,7 @@ class VoiceSessionHandle:
     runner: RealtimeRunner
     client_secret: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    mcp_servers: list[MCPServer] = field(default_factory=list)
 
     def summary(self) -> dict[str, Any]:
         """Retourne une vue résumée de la session pour le debug."""
@@ -306,6 +437,7 @@ class VoiceSessionHandle:
             "session_id": self.session_id,
             "client_secret_present": bool(self.client_secret),
             "metadata": dict(self.metadata),
+            "mcp_server_count": len(self.mcp_servers),
         }
 
 
@@ -743,90 +875,117 @@ class RealtimeVoiceSessionOrchestrator:
         agent_tools = _filter_agent_tools_for_clone(tools)
         agent_handoffs = _filter_agent_handoffs_for_clone(handoffs)
 
-        normalized_tools = _normalize_realtime_tools_payload(tools)
-
-        agent = self._base_agent.clone(
-            instructions=instructions,
-            tools=agent_tools,
-            handoffs=agent_handoffs,
-        )
-        runner = RealtimeRunner(agent)
-
-        payload = await self._request_client_secret(
-            user_id=user_id,
-            model=model,
-            instructions=instructions,
-            voice=voice,
-            provider_id=provider_id,
-            provider_slug=provider_slug,
-            realtime=realtime,
-            tools=normalized_tools,
-            handoffs=handoffs,
+        mcp_server_configs: list[dict[str, Any]] = []
+        normalized_tools = _normalize_realtime_tools_payload(
+            tools, mcp_server_configs=mcp_server_configs
         )
 
-        session_id = uuid.uuid4().hex
-        client_secret = None
-        if isinstance(payload, Mapping):
-            client_secret = self._extract_client_secret(payload)
+        agent_mcp_servers: list[MCPServer] = []
+        handle: VoiceSessionHandle | None = None
 
-        metadata_payload: dict[str, Any] = {
-            "user_id": user_id,
-            "model": model,
-            "voice": voice,
-            "provider_id": provider_id,
-            "provider_slug": provider_slug,
-        }
-        if isinstance(realtime, Mapping):
-            metadata_payload["realtime"] = dict(realtime)
-        if normalized_tools is not None:
-            json_safe_tools: list[Any] = []
-            for entry in normalized_tools:
-                if isinstance(entry, Mapping):
-                    json_safe_tools.append(dict(entry))
-                elif isinstance(entry, Tool):
-                    # Ces objets ne sont pas sérialisables en JSON.
-                    continue
-                else:
-                    json_safe_tools.append(entry)
-            if json_safe_tools:
-                metadata_payload["tools"] = json_safe_tools
-        if agent_tools:
-            metadata_payload["sdk_tools"] = list(agent_tools)
-        if isinstance(metadata, Mapping) and metadata:
-            metadata_payload.update(dict(metadata))
-        # Toujours propager l'identifiant utilisateur explicite.
-        metadata_payload["user_id"] = user_id
+        try:
+            agent_mcp_servers = await _connect_mcp_servers(mcp_server_configs)
 
-        payload_dict: dict[str, Any]
-        if isinstance(payload, dict):
-            payload_dict = payload
-        elif isinstance(payload, Mapping):
-            payload_dict = dict(payload)
-        else:
-            payload_dict = {}
+            agent = self._base_agent.clone(
+                instructions=instructions,
+                tools=agent_tools,
+                handoffs=agent_handoffs,
+                mcp_servers=agent_mcp_servers,
+            )
+            runner = RealtimeRunner(agent)
 
-        handle = VoiceSessionHandle(
-            session_id=session_id,
-            payload=payload_dict,
-            agent=agent,
-            runner=runner,
-            client_secret=client_secret,
-            metadata=metadata_payload,
-        )
+            payload = await self._request_client_secret(
+                user_id=user_id,
+                model=model,
+                instructions=instructions,
+                voice=voice,
+                provider_id=provider_id,
+                provider_slug=provider_slug,
+                realtime=realtime,
+                tools=normalized_tools,
+                handoffs=handoffs,
+            )
 
-        await self._registry.register(handle)
-        logger.debug("Session Realtime enregistrée : %s", handle.summary())
-        try:  # pragma: no cover - le gateway peut ne pas être initialisé
-            from .realtime_gateway import get_realtime_gateway
+            session_id = uuid.uuid4().hex
+            client_secret = None
+            if isinstance(payload, Mapping):
+                client_secret = self._extract_client_secret(payload)
 
-            gateway = get_realtime_gateway()
+            metadata_payload: dict[str, Any] = {
+                "user_id": user_id,
+                "model": model,
+                "voice": voice,
+                "provider_id": provider_id,
+                "provider_slug": provider_slug,
+            }
+            if isinstance(realtime, Mapping):
+                metadata_payload["realtime"] = dict(realtime)
+            if normalized_tools is not None:
+                json_safe_tools: list[Any] = []
+                for entry in normalized_tools:
+                    if isinstance(entry, Mapping):
+                        json_safe_tools.append(dict(entry))
+                    elif isinstance(entry, Tool):
+                        # Ces objets ne sont pas sérialisables en JSON.
+                        continue
+                    else:
+                        json_safe_tools.append(entry)
+                if json_safe_tools:
+                    metadata_payload["tools"] = json_safe_tools
+            if agent_tools:
+                metadata_payload["sdk_tools"] = list(agent_tools)
+            if mcp_server_configs:
+                metadata_payload["mcp_servers"] = [
+                    {
+                        "server_label": config.get("server_label"),
+                        "server_url": config.get("server_url"),
+                        "transport": config.get("transport"),
+                    }
+                    for config in mcp_server_configs
+                ]
+            if isinstance(metadata, Mapping) and metadata:
+                metadata_payload.update(dict(metadata))
+            # Toujours propager l'identifiant utilisateur explicite.
+            metadata_payload["user_id"] = user_id
+
+            payload_dict: dict[str, Any]
+            if isinstance(payload, dict):
+                payload_dict = payload
+            elif isinstance(payload, Mapping):
+                payload_dict = dict(payload)
+            else:
+                payload_dict = {}
+
+            handle = VoiceSessionHandle(
+                session_id=session_id,
+                payload=payload_dict,
+                agent=agent,
+                runner=runner,
+                client_secret=client_secret,
+                metadata=metadata_payload,
+                mcp_servers=agent_mcp_servers,
+            )
+
+            await self._registry.register(handle)
+            logger.debug("Session Realtime enregistrée : %s", handle.summary())
+            try:  # pragma: no cover - le gateway peut ne pas être initialisé
+                from .realtime_gateway import get_realtime_gateway
+
+                gateway = get_realtime_gateway()
+            except Exception:
+                gateway = None
+
+            if gateway is not None:
+                await gateway.register_session(handle)
+
+            return handle
         except Exception:
-            gateway = None
-
-        if gateway is not None:
-            await gateway.register_session(handle)
-
-        return handle
+            if handle is not None:
+                await self._registry.remove(session_id=handle.session_id)
+                await _cleanup_mcp_servers(handle.mcp_servers)
+            else:
+                await _cleanup_mcp_servers(agent_mcp_servers)
+            raise
 
     async def close_voice_session(
         self,
@@ -855,6 +1014,8 @@ class RealtimeVoiceSessionOrchestrator:
 
         if gateway is not None:
             await gateway.unregister_session(handle=handle)
+
+        await _cleanup_mcp_servers(handle.mcp_servers)
 
         return True
 
