@@ -570,9 +570,13 @@ def _coerce_agent_tools(
                 continue
 
             if normalized_type == "file_search":
-                tool = build_file_search_tool(entry.get("file_search"))
-                if tool is not None:
-                    coerced.append(tool)
+                tools = build_file_search_tool(entry.get("file_search"))
+                if tools is None:
+                    continue
+                if isinstance(tools, Sequence) and not isinstance(tools, str | bytes):
+                    coerced.extend(tools)
+                else:
+                    coerced.append(tools)
                 continue
 
             if normalized_type == "image_generation":

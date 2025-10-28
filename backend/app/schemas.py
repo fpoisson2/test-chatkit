@@ -985,6 +985,15 @@ class VectorStoreSearchRequest(BaseModel):
     metadata_filters: dict[str, Any] | None = None
     dense_weight: float = Field(default=0.5, ge=0.0)
     sparse_weight: float = Field(default=0.5, ge=0.0)
+    chunks_per_document: int | None = Field(
+        default=None,
+        ge=1,
+        le=50,
+        description=(
+            "Nombre maximum de chunks renvoyés par document lors de la"
+            " recherche agrégée."
+        ),
+    )
 
 
 class VectorStoreSearchResult(BaseModel):
@@ -996,3 +1005,10 @@ class VectorStoreSearchResult(BaseModel):
     dense_score: float
     bm25_score: float
     score: float
+
+
+class VectorStoreDocumentSearchResult(BaseModel):
+    doc_id: str
+    score: float
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    matches: list[VectorStoreSearchResult] = Field(default_factory=list)

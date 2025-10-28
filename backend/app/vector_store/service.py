@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import re
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
@@ -18,6 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..model_providers._shared import normalize_api_base
 from ..models import EMBEDDING_DIMENSION, JsonChunk, JsonDocument, JsonVectorStore
 from ..schemas import VectorStoreWorkflowBlueprint
 from ..workflows import WorkflowService, WorkflowValidationError
@@ -45,23 +47,38 @@ MAX_EMBEDDING_TEXT_LENGTH = 20_000
 
 
 def _get_openai_client() -> OpenAI:
-    """Retourne le client OpenAI configuré."""
+    """Retourne un client OpenAI pointant vers l'API native."""
 
     settings = get_settings()
-    api_key = settings.model_api_key
-    if not api_key:
+
+    openai_api_key = settings.openai_api_key
+    openai_base_url: str | None = None
+
+    for provider_config in settings.model_providers:
+        if provider_config.provider.lower() != "openai":
+            continue
+        openai_base_url = normalize_api_base(provider_config.api_base)
+        if provider_config.api_key:
+            openai_api_key = provider_config.api_key
+        break
+
+    provider = (settings.model_provider or "").lower()
+    if openai_base_url is None:
+        if provider == "openai" and settings.model_api_base:
+            openai_base_url = normalize_api_base(settings.model_api_base)
+            if openai_api_key is None and settings.model_api_key:
+                openai_api_key = settings.model_api_key
+        else:
+            fallback_base = os.environ.get("CHATKIT_API_BASE") or "https://api.openai.com"
+            openai_base_url = normalize_api_base(fallback_base)
+
+    if not openai_api_key:
         raise RuntimeError(
-            "Une clé API modèle est requise pour générer des embeddings. "
-            f"Définissez {settings.model_api_key_env}."
+            "Une clé API OpenAI est requise pour générer des embeddings. "
+            "Définissez OPENAI_API_KEY."
         )
 
-    base_url = settings.model_api_base
-    if base_url.endswith("/v1"):
-        client_base_url = base_url
-    else:
-        client_base_url = f"{base_url}/v1"
-
-    return OpenAI(api_key=api_key, base_url=client_base_url)
+    return OpenAI(api_key=openai_api_key, base_url=openai_base_url)
 
 
 def _format_value(value: Any) -> str:
@@ -298,6 +315,16 @@ class SearchResult:
     dense_score: float
     bm25_score: float
     score: float
+
+
+@dataclass(slots=True)
+class DocumentSearchResult:
+    """Représente un document et les extraits associés."""
+
+    doc_id: str
+    score: float
+    metadata: dict[str, Any]
+    matches: list[SearchResult]
 
 
 class JsonVectorStoreService:
@@ -709,19 +736,29 @@ class JsonVectorStoreService:
 
     # Recherche hybride -----------------------------------------------------------
 
-    def search(
+    def _search_chunks(
         self,
         store_slug: str,
         query: str,
         *,
-        top_k: int = 5,
-        metadata_filters: dict[str, Any] | None = None,
-        dense_weight: float = 0.5,
-        sparse_weight: float = 0.5,
+        top_k: int,
+        metadata_filters: dict[str, Any] | None,
+        dense_weight: float,
+        sparse_weight: float,
+        doc_id: str | None = None,
     ) -> list[SearchResult]:
         store = self.get_store(store_slug)
         if store is None:
             raise LookupError("Magasin introuvable")
+
+        if doc_id is not None:
+            document_exists = self.session.scalar(
+                select(JsonDocument)
+                .where(JsonDocument.store_id == store.id)
+                .where(JsonDocument.doc_id == doc_id)
+            )
+            if document_exists is None:
+                raise LookupError("Document introuvable")
 
         stmt = (
             select(JsonChunk, JsonDocument)
@@ -729,6 +766,8 @@ class JsonVectorStoreService:
             .where(JsonChunk.store_id == store.id)
             .order_by(JsonChunk.chunk_index.asc())
         )
+        if doc_id is not None:
+            stmt = stmt.where(JsonChunk.doc_id == doc_id)
         rows = self.session.execute(stmt).all()
         chunks: list[tuple[JsonChunk, JsonDocument]] = [
             (row[0], row[1]) for row in rows
@@ -750,7 +789,6 @@ class JsonVectorStoreService:
         if not chunks:
             return []
 
-        # Générer l'embedding de la requête avec OpenAI
         client = _get_openai_client()
         response = client.embeddings.create(
             input=[query],
@@ -865,5 +903,109 @@ class JsonVectorStoreService:
 
         fused_results.sort(key=lambda item: item.score, reverse=True)
         if top_k > 0:
-            fused_results = fused_results[:top_k]
+            return fused_results[:top_k]
         return fused_results
+
+    def search(
+        self,
+        store_slug: str,
+        query: str,
+        *,
+        top_k: int = 5,
+        metadata_filters: dict[str, Any] | None = None,
+        dense_weight: float = 0.5,
+        sparse_weight: float = 0.5,
+    ) -> list[SearchResult]:
+        return self._search_chunks(
+            store_slug,
+            query,
+            top_k=top_k,
+            metadata_filters=metadata_filters,
+            dense_weight=dense_weight,
+            sparse_weight=sparse_weight,
+        )
+
+    def search_document_chunks(
+        self,
+        store_slug: str,
+        doc_id: str,
+        query: str,
+        *,
+        top_k: int = 5,
+        metadata_filters: dict[str, Any] | None = None,
+        dense_weight: float = 0.5,
+        sparse_weight: float = 0.5,
+    ) -> list[SearchResult]:
+        return self._search_chunks(
+            store_slug,
+            query,
+            top_k=top_k,
+            metadata_filters=metadata_filters,
+            dense_weight=dense_weight,
+            sparse_weight=sparse_weight,
+            doc_id=doc_id,
+        )
+
+    def search_documents(
+        self,
+        store_slug: str,
+        query: str,
+        *,
+        top_k: int = 5,
+        metadata_filters: dict[str, Any] | None = None,
+        dense_weight: float = 0.5,
+        sparse_weight: float = 0.5,
+        chunks_per_document: int | None = None,
+    ) -> list[DocumentSearchResult]:
+        chunk_limit = max(top_k, 1)
+        if chunks_per_document:
+            chunk_limit = max(chunk_limit, chunks_per_document)
+        # On récupère davantage de chunks que nécessaire afin d'améliorer
+        # l'agrégation documentaire et éviter l'effet de bord "un chunk par doc".
+        chunk_query_limit = max(chunk_limit * 5, chunk_limit)
+        chunk_results = self._search_chunks(
+            store_slug,
+            query,
+            top_k=chunk_query_limit,
+            metadata_filters=metadata_filters,
+            dense_weight=dense_weight,
+            sparse_weight=sparse_weight,
+        )
+
+        if not chunk_results:
+            return []
+
+        aggregated: dict[str, dict[str, Any]] = {}
+        for result in chunk_results:
+            bucket = aggregated.setdefault(
+                result.doc_id,
+                {
+                    "score": 0.0,
+                    "metadata": dict(result.document_metadata),
+                    "matches": [],
+                },
+            )
+            bucket["score"] += result.score
+            bucket["matches"].append(result)
+
+        aggregated_results: list[DocumentSearchResult] = []
+        for doc_id, payload in aggregated.items():
+            matches_sorted = sorted(
+                payload["matches"], key=lambda item: item.score, reverse=True
+            )
+            limited_matches = matches_sorted
+            if chunks_per_document and chunks_per_document > 0:
+                limited_matches = matches_sorted[:chunks_per_document]
+            aggregated_results.append(
+                DocumentSearchResult(
+                    doc_id=doc_id,
+                    score=payload["score"],
+                    metadata=dict(payload["metadata"]),
+                    matches=list(limited_matches),
+                )
+            )
+
+        aggregated_results.sort(key=lambda item: item.score, reverse=True)
+        if top_k > 0:
+            return aggregated_results[:top_k]
+        return aggregated_results

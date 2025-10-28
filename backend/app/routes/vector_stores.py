@@ -14,6 +14,7 @@ from ..schemas import (
     VectorStoreDocumentDetailResponse,
     VectorStoreDocumentIngestRequest,
     VectorStoreDocumentResponse,
+    VectorStoreDocumentSearchResult,
     VectorStoreResponse,
     VectorStoreSearchRequest,
     VectorStoreSearchResult,
@@ -253,6 +254,97 @@ async def search_vector_store(
     except LookupError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Magasin introuvable"
+        ) from exc
+
+    return [
+        VectorStoreSearchResult(
+            doc_id=result.doc_id,
+            chunk_index=result.chunk_index,
+            text=result.text,
+            metadata=result.metadata,
+            document_metadata=result.document_metadata,
+            dense_score=result.dense_score,
+            bm25_score=result.bm25_score,
+            score=result.score,
+        )
+        for result in results
+    ]
+
+
+@router.post(
+    "/api/vector-stores/{store_slug}/search_documents",
+    response_model=list[VectorStoreDocumentSearchResult],
+)
+async def search_vector_store_documents(
+    store_slug: str,
+    payload: VectorStoreSearchRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(get_current_user),
+) -> list[VectorStoreDocumentSearchResult]:
+    service = JsonVectorStoreService(session)
+    try:
+        results = service.search_documents(
+            store_slug,
+            payload.query,
+            top_k=payload.top_k,
+            metadata_filters=payload.metadata_filters,
+            dense_weight=payload.dense_weight,
+            sparse_weight=payload.sparse_weight,
+            chunks_per_document=payload.chunks_per_document,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Magasin introuvable"
+        ) from exc
+
+    return [
+        VectorStoreDocumentSearchResult(
+            doc_id=result.doc_id,
+            score=result.score,
+            metadata=result.metadata,
+            matches=[
+                VectorStoreSearchResult(
+                    doc_id=match.doc_id,
+                    chunk_index=match.chunk_index,
+                    text=match.text,
+                    metadata=match.metadata,
+                    document_metadata=match.document_metadata,
+                    dense_score=match.dense_score,
+                    bm25_score=match.bm25_score,
+                    score=match.score,
+                )
+                for match in result.matches
+            ],
+        )
+        for result in results
+    ]
+
+
+@router.post(
+    "/api/vector-stores/{store_slug}/documents/{doc_id}/search",
+    response_model=list[VectorStoreSearchResult],
+)
+async def search_document_chunks(
+    store_slug: str,
+    doc_id: str,
+    payload: VectorStoreSearchRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(get_current_user),
+) -> list[VectorStoreSearchResult]:
+    service = JsonVectorStoreService(session)
+    try:
+        results = service.search_document_chunks(
+            store_slug,
+            doc_id,
+            payload.query,
+            top_k=payload.top_k,
+            metadata_filters=payload.metadata_filters,
+            dense_weight=payload.dense_weight,
+            sparse_weight=payload.sparse_weight,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)
         ) from exc
 
     return [
