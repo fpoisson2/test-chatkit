@@ -15,10 +15,12 @@ ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
+from agents.tool import FunctionTool  # noqa: E402
 from backend.app.realtime_gateway import (  # noqa: E402
     GatewayConnection,
     GatewayUser,
     RealtimeSessionGateway,
+    _RealtimeSessionState,
 )
 from backend.app.realtime_runner import VoiceSessionHandle  # noqa: E402
 
@@ -61,6 +63,9 @@ class _StubState:
     async def shutdown(self) -> None:
         self.shutdown_called = True
 
+    def should_log_input_audio(self, *, commit: bool) -> bool:
+        return False
+
     def session_payload(self) -> dict[str, object]:
         return dict(self.session_payload_value)
 
@@ -91,6 +96,72 @@ def _make_handle(
         client_secret="secret",
         metadata={"user_id": user_id, "model": "gpt-realtime"},
     )
+
+
+def test_state_ensure_session_started_uses_sdk_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _run() -> None:
+        captured_configs: list[dict[str, object]] = []
+
+        class _StubSession:
+            async def __aenter__(self):  # type: ignore[no-untyped-def]
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):  # type: ignore[no-untyped-def]
+                return False
+
+            def __aiter__(self):  # type: ignore[no-untyped-def]
+                return self
+
+            async def __anext__(self):  # type: ignore[no-untyped-def]
+                raise StopAsyncIteration
+
+        class _StubRunner:
+            async def run(self, *, model_config: dict[str, object]):  # type: ignore[no-untyped-def]
+                captured_configs.append(model_config)
+                return _StubSession()
+
+        async def _invoke_tool(context, arguments):  # type: ignore[no-untyped-def]
+            return "ok"
+
+        function_tool = FunctionTool(
+            name="calc",
+            description="Calculator",
+            params_json_schema={"type": "object", "properties": {}},
+            on_invoke_tool=_invoke_tool,
+        )
+
+        handle = VoiceSessionHandle(
+            session_id="session-sdk",
+            payload={},
+            agent=SimpleNamespace(instructions=None),
+            runner=_StubRunner(),
+            client_secret="secret",
+            metadata={
+                "user_id": "user-1",
+                "model": "gpt-realtime",
+                "sdk_tools": [function_tool],
+                "tools": [{"type": "function", "name": "calc"}],
+            },
+        )
+
+        state = _RealtimeSessionState(handle, gateway=SimpleNamespace())
+
+        async def _noop(self):  # type: ignore[no-untyped-def]
+            return None
+
+        monkeypatch.setattr(_RealtimeSessionState, "_pump_events", _noop)
+
+        await state.ensure_session_started()
+
+        assert captured_configs, "runner.run should be called"
+        model_config = captured_configs[0]
+        settings = model_config.get("initial_model_settings")
+        assert isinstance(settings, dict)
+        assert settings.get("tools") == [function_tool]
+
+    asyncio.run(_run())
 
 
 def test_register_connection_pushes_existing_sessions() -> None:
