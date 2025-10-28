@@ -465,6 +465,12 @@ class _RealtimeSessionState:
         allow_create: bool,
     ) -> None:
         if not await self._ensure_chatkit_context():
+            logger.debug(
+                "Impossible de persister les transcriptions Realtime : contexte ChatKit indisponible (session=%s, thread_id=%s, user_id=%s)",
+                self.handle.session_id,
+                self.thread_id,
+                self.owner_user_id,
+            )
             return
 
         assert self._chatkit_server is not None
@@ -512,6 +518,13 @@ class _RealtimeSessionState:
                 if message is None:
                     continue
                 await store.add_thread_item(thread_id, message, self._chatkit_context)
+                logger.info(
+                    "Transcription vocale ajoutée au thread ChatKit (session=%s, thread=%s, role=%s, text_length=%d)",
+                    self.handle.session_id,
+                    thread_id,
+                    role,
+                    len(text),
+                )
                 await self._mark_voice_messages_created()
             else:
                 created_at = self._chatkit_item_created_at.get(realtime_id)
@@ -527,6 +540,13 @@ class _RealtimeSessionState:
                 if message is None:
                     continue
                 await store.save_item(thread_id, message, self._chatkit_context)
+                logger.debug(
+                    "Transcription vocale mise à jour dans le thread ChatKit (session=%s, thread=%s, role=%s, text_length=%d)",
+                    self.handle.session_id,
+                    thread_id,
+                    role,
+                    len(text),
+                )
 
     @staticmethod
     def _extract_text_from_realtime_item(

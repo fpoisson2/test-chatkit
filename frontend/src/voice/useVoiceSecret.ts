@@ -46,14 +46,18 @@ export type VoiceSessionSecret = {
   prompt_variables?: Record<string, string>;
 };
 
+type FetchSecretOptions = {
+  threadId?: string | null;
+};
+
 type UseVoiceSecretResult = {
-  fetchSecret: () => Promise<VoiceSessionSecret>;
+  fetchSecret: (options?: FetchSecretOptions) => Promise<VoiceSessionSecret>;
 };
 
 export const useVoiceSecret = (): UseVoiceSecretResult => {
   const { token, logout } = useAuth();
 
-  const fetchSecret = useCallback(async (): Promise<VoiceSessionSecret> => {
+  const fetchSecret = useCallback(async (options?: FetchSecretOptions): Promise<VoiceSessionSecret> => {
     if (!token) {
       throw new Error("Authentification requise pour démarrer une session vocale.");
     }
@@ -67,6 +71,9 @@ export const useVoiceSecret = (): UseVoiceSecretResult => {
     }
     if (VOICE_REQUEST_DEFAULTS.voice) {
       payload.voice = VOICE_REQUEST_DEFAULTS.voice;
+    }
+    if (options?.threadId) {
+      payload.thread_id = options.threadId;
     }
 
     const body = JSON.stringify(Object.keys(payload).length > 0 ? payload : {});

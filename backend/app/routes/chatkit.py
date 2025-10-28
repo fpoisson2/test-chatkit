@@ -555,6 +555,10 @@ async def create_voice_session(
         resolved_provider_id = None
     user_id = f"user:{current_user.id}"
 
+    metadata: dict[str, Any] = {"user_id": user_id}
+    if req.thread_id:
+        metadata["thread_id"] = req.thread_id
+
     voice_session_handle = await open_voice_session(
         user_id=user_id,
         model=resolved_model,
@@ -562,6 +566,7 @@ async def create_voice_session(
         voice=resolved_voice,
         provider_id=resolved_provider_id,
         provider_slug=resolved_provider_slug,
+        metadata=metadata,
     )
     secret_payload = voice_session_handle.payload
 
@@ -657,6 +662,10 @@ async def create_voice_webrtc_offer(
 
     user_id = f"user:{current_user.id}"
 
+    metadata: dict[str, Any] = {"user_id": user_id}
+    if req.thread_id:
+        metadata["thread_id"] = req.thread_id
+
     voice_session_handle = await open_voice_session(
         user_id=user_id,
         model=resolved_model,
@@ -664,6 +673,7 @@ async def create_voice_webrtc_offer(
         voice=resolved_voice,
         provider_id=resolved_provider_id,
         provider_slug=resolved_provider_slug,
+        metadata=metadata,
     )
     secret_payload = voice_session_handle.payload
 
