@@ -3,7 +3,6 @@ import sys
 from importlib import import_module
 from pathlib import Path
 
-
 ROOT_DIR = Path(__file__).resolve().parents[3]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
@@ -41,7 +40,36 @@ def test_normalize_conversation_history_for_groq_converts_text_blocks() -> None:
     assert normalized[1]["content"][0]["type"] == "text"
 
 
-def test_normalize_conversation_history_returns_same_sequence_for_other_providers() -> None:
+def test_normalize_conversation_history_for_groq_converts_nested_blocks() -> None:
+    items = [
+        {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "content": [
+                        {"type": "output_text", "text": "Résultat"},
+                    ],
+                }
+            ],
+        }
+    ]
+
+    normalized = executor_module._normalize_conversation_history_for_provider(
+        items,
+        "groq",
+    )
+
+    original_nested = items[0]["content"][0]["content"][0]
+    converted_nested = normalized[0]["content"][0]["content"][0]
+
+    assert normalized is not items
+    assert converted_nested is not original_nested
+    assert original_nested["type"] == "output_text"
+    assert converted_nested["type"] == "text"
+
+
+def test_normalize_history_returns_same_sequence_for_other_providers() -> None:
     items = [
         {
             "role": "user",

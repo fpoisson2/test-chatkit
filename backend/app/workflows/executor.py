@@ -17,9 +17,7 @@ from collections.abc import (
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import (
-    Any,
-)
+from typing import Any
 
 from agents import (
     Agent,
@@ -28,12 +26,13 @@ from agents import (
     TResponseInputItem,
 )
 from agents.mcp import MCPServer
+from pydantic import BaseModel
+
 from chatkit.agents import (
     AgentContext,
     ThreadItemConverter,
     stream_agent_response,
 )
-from pydantic import BaseModel
 
 try:  # pragma: no cover - dépend de la version du SDK Agents installée
     from chatkit.agents import stream_widget as _sdk_stream_widget
@@ -141,26 +140,57 @@ def _normalize_conversation_history_for_provider(
     if not provider_slug or provider_slug.lower() != "groq":
         return items
 
-    changed = False
+    def _coerce_text_blocks(value: Any) -> tuple[Any, bool]:
+        """Replace Groq-incompatible text block identifiers recursively."""
+
+        if isinstance(value, Mapping):
+            updated_mapping: dict[Any, Any] | None = None
+            mutated = False
+            for key, item in value.items():
+                coerced_item, item_changed = _coerce_text_blocks(item)
+                if (
+                    key == "type"
+                    and isinstance(item, str)
+                    and item in {"input_text", "output_text"}
+                ):
+                    coerced_item = "text"
+                    item_changed = True
+                if item_changed:
+                    if updated_mapping is None:
+                        updated_mapping = dict(value)
+                    updated_mapping[key] = coerced_item
+                    mutated = True
+                elif updated_mapping is not None:
+                    updated_mapping[key] = coerced_item
+            if updated_mapping is not None:
+                return updated_mapping, True
+            return value, mutated
+
+        if isinstance(value, list):
+            updated_list: list[Any] | None = None
+            mutated = False
+            for index, item in enumerate(value):
+                coerced_item, item_changed = _coerce_text_blocks(item)
+                if item_changed:
+                    if updated_list is None:
+                        updated_list = list(value)
+                    updated_list[index] = coerced_item
+                    mutated = True
+                elif updated_list is not None:
+                    updated_list[index] = coerced_item
+            if updated_list is not None:
+                return updated_list, True
+            return value, mutated
+
+        return value, False
+
     normalized: list[TResponseInputItem] = []
+    changed = False
     for item in items:
         if isinstance(item, Mapping):
-            copied_item = copy.deepcopy(item)
-            content = copied_item.get("content")
-            if isinstance(content, list):
-                for index, part in enumerate(content):
-                    if not isinstance(part, Mapping):
-                        continue
-                    part_type = part.get("type")
-                    if (
-                        isinstance(part_type, str)
-                        and part_type in {"input_text", "output_text"}
-                    ):
-                        coerced_part = dict(part)
-                        coerced_part["type"] = "text"
-                        content[index] = coerced_part
-                        changed = True
-            normalized.append(copied_item)
+            coerced_item, item_changed = _coerce_text_blocks(item)
+            normalized.append(coerced_item)
+            changed = changed or item_changed
         else:
             normalized.append(item)
 
@@ -1348,7 +1378,7 @@ async def run_workflow(
 
         modalities_raw = realtime.get("modalities")
         if isinstance(modalities_raw, Sequence) and not isinstance(
-            modalities_raw, (str, bytes, bytearray)
+            modalities_raw, str | bytes | bytearray
         ):
             sanitized_modalities: list[str] = []
             for entry in modalities_raw:
@@ -1365,7 +1395,7 @@ async def run_workflow(
             realtime_config["modalities"] = list(_VOICE_DEFAULT_MODALITIES)
 
         speed_raw = realtime.get("speed")
-        if isinstance(speed_raw, (int, float)):
+        if isinstance(speed_raw, int | float):
             realtime_config["speed"] = float(speed_raw)
         else:
             realtime_config["speed"] = _VOICE_DEFAULT_SPEED
