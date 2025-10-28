@@ -40,29 +40,48 @@ def _normalize_realtime_tools_payload(
     normalized: list[Any] = []
     seen_labels: set[str] = set()
 
-    disallowed_tool_keys = {"agent", "function"}
+    disallowed_tool_keys = {"agent", "function", "metadata"}
+    mcp_allowed_keys = {
+        "type",
+        "server_label",
+        "server_url",
+        "authorization",
+        "name",
+        "description",
+    }
 
     for index, entry in enumerate(source_entries):
         if isinstance(entry, Mapping):
-            tool_entry = dict(entry)
+            raw_entry = dict(entry)
 
             tool_type = str(
-                tool_entry.get("type")
-                or tool_entry.get("tool")
-                or tool_entry.get("name")
+                raw_entry.get("type")
+                or raw_entry.get("tool")
+                or raw_entry.get("name")
                 or ""
             ).strip().lower()
 
             if tool_type == "function":
-                normalized_function = _normalize_function_tool_payload(
-                    tool_entry.get("function")
-                )
-                if normalized_function:
-                    tool_entry.update(normalized_function)
+                function_source: Mapping[str, Any] | None = None
+                raw_function = raw_entry.get("function")
+                if isinstance(raw_function, Mapping):
+                    function_source = raw_function
+                elif isinstance(raw_entry, Mapping):
+                    function_source = raw_entry
 
-            for key in disallowed_tool_keys:
-                if key in tool_entry:
-                    tool_entry.pop(key, None)
+                normalized_function = (
+                    _normalize_function_tool_payload(function_source)
+                    if function_source is not None
+                    else {}
+                )
+                tool_entry: dict[str, Any] = {"type": "function"}
+                tool_entry.update(normalized_function)
+            else:
+                tool_entry = {
+                    key: value
+                    for key, value in raw_entry.items()
+                    if key not in disallowed_tool_keys
+                }
 
             if tool_type == "mcp":
                 label = _derive_mcp_server_label(tool_entry)
@@ -84,15 +103,22 @@ def _normalize_realtime_tools_payload(
                 else:
                     legacy_keys = ("url", "endpoint", "transport_url")
                     for key in legacy_keys:
-                        value = tool_entry.get(key)
+                        value = raw_entry.get(key)
                         if isinstance(value, str) and value.strip():
                             server_url = value.strip()
                             break
 
                 if server_url:
                     tool_entry["server_url"] = server_url
-                    for legacy_key in ("url", "endpoint", "transport_url"):
-                        tool_entry.pop(legacy_key, None)
+                for legacy_key in ("url", "endpoint", "transport_url"):
+                    tool_entry.pop(legacy_key, None)
+
+                tool_entry = {
+                    key: value
+                    for key, value in tool_entry.items()
+                    if key in mcp_allowed_keys
+                }
+                tool_entry["type"] = "mcp"
 
             normalized.append(tool_entry)
         else:

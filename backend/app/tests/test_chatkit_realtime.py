@@ -211,6 +211,7 @@ def test_open_voice_session_normalizes_mcp_tools(
             "url": "https://example.com/mcp",
             "transport": "http_sse",
             "agent": {"type": "workflow", "workflow": {"slug": "sub-agent"}},
+            "metadata": {"foo": "bar"},
         }
     ]
 
@@ -242,6 +243,7 @@ def test_open_voice_session_normalizes_mcp_tools(
     assert "url" not in tool_config
     assert tool_config.get("server_label") == "example-com-mcp"
     assert "agent" not in tool_config
+    assert "metadata" not in tool_config
 
 
 def test_open_voice_session_normalizes_function_tools(
@@ -273,6 +275,7 @@ def test_open_voice_session_normalizes_function_tools(
                 "strict": True,
                 "cache_control": {"ttl": 30},
             },
+            "metadata": {"scope": "test"},
         }
     ]
 
@@ -306,6 +309,7 @@ def test_open_voice_session_normalizes_function_tools(
     assert tool_config.get("strict") is True
     assert tool_config.get("cache_control") == {"ttl": 30}
     assert "function" not in tool_config
+    assert "metadata" not in tool_config
 
 
 def test_openai_slug_ignores_mismatched_provider_id(
