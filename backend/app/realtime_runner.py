@@ -225,28 +225,33 @@ class RealtimeVoiceSessionOrchestrator:
             )
             return error_details.get("param") == expected_param
 
-        if voice_value:
+        normalized_provider_id = self._clean_identifier(provider_id)
+        normalized_provider_slug = self._clean_slug(provider_slug)
+
+        # Optimisation : pour OpenAI, le paramètre voice n'est pas supporté dans
+        # l'API client_secrets, donc on évite les tentatives inutiles
+        is_openai = normalized_provider_slug == "openai"
+
+        if voice_value and not is_openai:
+            # Pour les providers non-OpenAI, essayer d'abord les modes moins verbeux
             voice_modes: list[Literal["top_level", "session", "none"]] = [
-                "top_level",
-                "session",
                 "none",
+                "session",
+                "top_level",
             ]
         else:
             voice_modes = ["none"]
 
         if isinstance(realtime, Mapping) and realtime:
             realtime_modes: list[Literal["top_level", "session", "none"]] = [
-                "top_level",
-                "session",
                 "none",
+                "session",
+                "top_level",
             ]
         elif isinstance(realtime, Mapping):
             realtime_modes = ["session", "none"]
         else:
             realtime_modes = ["none"]
-
-        normalized_provider_id = self._clean_identifier(provider_id)
-        normalized_provider_slug = self._clean_slug(provider_slug)
 
         api_base = settings.model_api_base
         api_key = settings.model_api_key
