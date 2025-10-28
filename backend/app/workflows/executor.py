@@ -3080,6 +3080,7 @@ async def run_workflow(
 
             realtime_secret = session_handle.payload
             voice_context["session_id"] = session_handle.session_id
+            voice_context["client_secret"] = realtime_secret
             event_context["session_id"] = session_handle.session_id
 
             realtime_event = {
