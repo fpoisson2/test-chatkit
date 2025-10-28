@@ -356,6 +356,11 @@ class RealtimeSessionGateway:
         self._lock = asyncio.Lock()
 
     async def register_session(self, handle: VoiceSessionHandle) -> None:
+        logger.info(
+            "Gateway: registering voice session %s for user %s",
+            handle.session_id,
+            handle.metadata.get("user_id"),
+        )
         state = await self._get_or_create_state(handle)
         await self._broadcast_session_created(state)
 
@@ -372,6 +377,11 @@ class RealtimeSessionGateway:
         if state is None:
             return
 
+        logger.info(
+            "Gateway: unregister session %s (user=%s)",
+            target_id,
+            state.owner_user_id,
+        )
         await state.shutdown()
         await self.broadcast_session_event(
             state,
@@ -391,12 +401,22 @@ class RealtimeSessionGateway:
         return state
 
     async def register_connection(self, connection: GatewayConnection) -> None:
+        logger.info(
+            "Gateway: registering connection %s for user %s",
+            connection.id,
+            connection.user_id,
+        )
         async with self._lock:
             self._user_connections[connection.user_id].add(connection)
 
         await self._send_existing_sessions(connection)
 
     async def unregister_connection(self, connection: GatewayConnection) -> None:
+        logger.info(
+            "Gateway: unregistering connection %s for user %s",
+            connection.id,
+            connection.user_id,
+        )
         async with self._lock:
             connections = self._user_connections.get(connection.user_id)
             if connections is not None:
@@ -467,12 +487,23 @@ class RealtimeSessionGateway:
             await connection.send_json(
                 {"type": "error", "error": "session_id manquant"}
             )
+            logger.warning(
+                "Gateway: payload sans session_id reçu sur %s: %s",
+                connection.id,
+                payload,
+            )
             return
 
         state = await self._get_state_for_user(session_id, connection.user_id)
         if state is None:
             await connection.send_json(
                 {"type": "error", "error": "Session vocale introuvable"}
+            )
+            logger.warning(
+                "Gateway: session %s introuvable pour user %s (message %s)",
+                session_id,
+                connection.user_id,
+                message_type,
             )
             return
 
@@ -491,10 +522,21 @@ class RealtimeSessionGateway:
                 )
                 return
             commit = bool(payload.get("commit"))
+            logger.debug(
+                "Gateway: input_audio reçu session=%s bytes=%d commit=%s",
+                session_id,
+                len(chunk),
+                commit,
+            )
             await state.send_audio(chunk, commit=commit)
             return
 
         if message_type == "interrupt":
+            logger.info(
+                "Gateway: interrupt session=%s via connection=%s",
+                session_id,
+                connection.id,
+            )
             await state.interrupt()
             return
 
@@ -506,6 +548,12 @@ class RealtimeSessionGateway:
                 )
                 return
 
+            logger.info(
+                "Gateway: finalize session=%s thread=%s via connection=%s",
+                session_id,
+                thread_id,
+                connection.id,
+            )
             transcripts = state.transcripts()
             settings = get_settings()
             context = build_chatkit_request_context(
@@ -565,8 +613,17 @@ class RealtimeSessionGateway:
         try:
             while True:
                 message = await connection.websocket.receive()
+                logger.debug(
+                    "Gateway: raw frame reçu connection=%s keys=%s",
+                    connection.id,
+                    list(message.keys()),
+                )
                 message_type = message.get("type")
                 if message_type == "websocket.disconnect":
+                    logger.info(
+                        "Gateway: connexion %s fermée par le client",
+                        connection.id,
+                    )
                     break
                 if "text" in message:
                     try:
