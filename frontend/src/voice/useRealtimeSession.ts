@@ -408,12 +408,32 @@ const releaseListener = (gatewayUrl: string, listenerId: string) => {
   record.listeners.delete(listenerId);
   if (record.listeners.size === 0) {
     const ws = record.websocket;
-    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-      logDebug("closing websocket due to last listener removal", gatewayUrl);
-      try {
-        ws.close();
-      } catch {
-        /* noop */
+    if (ws) {
+      if (ws.readyState === WebSocket.OPEN) {
+        logDebug("closing websocket (open) due to last listener removal", gatewayUrl);
+        try {
+          ws.close();
+        } catch {
+          /* noop */
+        }
+      } else if (ws.readyState === WebSocket.CONNECTING) {
+        logDebug("deferring websocket close until open (connecting)", gatewayUrl);
+        const finalize = () => {
+          ws.removeEventListener("open", handleOpen);
+          ws.removeEventListener("error", finalize);
+          ws.removeEventListener("close", finalize);
+        };
+        const handleOpen = () => {
+          finalize();
+          try {
+            ws.close();
+          } catch {
+            /* noop */
+          }
+        };
+        ws.addEventListener("open", handleOpen);
+        ws.addEventListener("error", finalize);
+        ws.addEventListener("close", finalize);
       }
     }
     teardownAudioContextForRecord(record);
