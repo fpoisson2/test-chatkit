@@ -183,12 +183,24 @@ export const useWorkflowVoiceSession = ({
       setStatus("error");
     },
     onSessionCreated: (event: SessionCreatedEvent) => {
+      if (import.meta.env.DEV) {
+        console.debug("[WorkflowVoice] session created", { event, threadId });
+      }
       const threadMatches =
         threadId == null || event.threadId == null || event.threadId === threadId;
       if (!threadMatches) {
+        if (import.meta.env.DEV) {
+          console.debug("[WorkflowVoice] ignoring session for mismatched thread", {
+            expected: threadId,
+            received: event.threadId,
+          });
+        }
         return;
       }
       if (processedSessionsRef.current.has(event.sessionId)) {
+        if (import.meta.env.DEV) {
+          console.debug("[WorkflowVoice] session already processed, skipping", event.sessionId);
+        }
         return;
       }
       processedSessionsRef.current.add(event.sessionId);
@@ -199,6 +211,9 @@ export const useWorkflowVoiceSession = ({
           setStatus("connected");
           setIsListening(true);
         } catch (error) {
+          if (import.meta.env.DEV) {
+            console.error("[WorkflowVoice] startCapture failed", error);
+          }
           setStatus("error");
           processedSessionsRef.current.delete(event.sessionId);
           if (error instanceof Error) {
@@ -262,6 +277,12 @@ export const useWorkflowVoiceSession = ({
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (import.meta.env.DEV) {
+        console.debug("[WorkflowVoice] microphone stream acquired", {
+          sessionId,
+          tracks: stream.getAudioTracks().map((track) => track.label),
+        });
+      }
       microphoneStreamRef.current = stream;
 
       const context = new AudioContext();
@@ -269,6 +290,9 @@ export const useWorkflowVoiceSession = ({
       if (context.state === "suspended") {
         try {
           await context.resume();
+          if (import.meta.env.DEV) {
+            console.debug("[WorkflowVoice] audio context resumed", { sessionId });
+          }
         } catch {
           /* noop */
         }

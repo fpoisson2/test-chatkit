@@ -86,6 +86,12 @@ const decodePcm16 = (payload: string): Int16Array => {
   return new Int16Array(bytes.buffer);
 };
 
+const logDebug = (...args: unknown[]) => {
+  if (import.meta.env?.DEV) {
+    console.debug("[VoiceRealtime]", ...args);
+  }
+};
+
 type ConnectionRecord = {
   gatewayUrl: string;
   websocket: WebSocket | null;
@@ -110,6 +116,7 @@ const notifyConnectionChange = (
   status: RealtimeConnectionStatus,
 ) => {
   record.status = status;
+  logDebug("connection status", status, "listeners", record.listeners.size);
   record.listeners.forEach((handlersRef) => {
     handlersRef.current.onConnectionChange?.(status);
   });
@@ -333,9 +340,11 @@ const handleMessageForRecord = async (
 
 const openWebSocketForRecord = (record: ConnectionRecord): Promise<void> => {
   if (record.websocket && record.websocket.readyState === WebSocket.OPEN) {
+    logDebug("reusing open websocket", record.gatewayUrl);
     return Promise.resolve();
   }
   if (record.connectPromise) {
+    logDebug("awaiting existing connect promise", record.gatewayUrl);
     return record.connectPromise;
   }
 
@@ -346,7 +355,10 @@ const openWebSocketForRecord = (record: ConnectionRecord): Promise<void> => {
     record.websocket = ws;
     let settled = false;
 
+    logDebug("websocket created", record.gatewayUrl);
+
     ws.onopen = () => {
+      logDebug("websocket open", record.gatewayUrl);
       settled = true;
       record.connectPromise = null;
       notifyConnectionChange(record, "connected");
@@ -354,6 +366,7 @@ const openWebSocketForRecord = (record: ConnectionRecord): Promise<void> => {
     };
 
     ws.onerror = (event) => {
+      logDebug("websocket error", record.gatewayUrl, event);
       broadcastTransportError(record, event);
       if (!settled) {
         settled = true;
@@ -363,6 +376,7 @@ const openWebSocketForRecord = (record: ConnectionRecord): Promise<void> => {
     };
 
     ws.onclose = () => {
+      logDebug("websocket closed", record.gatewayUrl);
       record.websocket = null;
       record.connectPromise = null;
       notifyConnectionChange(record, "disconnected");
@@ -390,10 +404,12 @@ const releaseListener = (gatewayUrl: string, listenerId: string) => {
   if (!record) {
     return;
   }
+  logDebug("release listener", listenerId, "for", gatewayUrl);
   record.listeners.delete(listenerId);
   if (record.listeners.size === 0) {
     const ws = record.websocket;
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      logDebug("closing websocket due to last listener removal", gatewayUrl);
       try {
         ws.close();
       } catch {
@@ -442,13 +458,16 @@ export const useRealtimeSession = (handlers: RealtimeSessionHandlers) => {
       }
 
       const gatewayUrl = buildGatewayUrl(token, baseUrl);
+      logDebug("connect requested", { gatewayUrl, token });
       const previousKey = connectionKeyRef.current;
       if (previousKey && previousKey !== gatewayUrl) {
+        logDebug("releasing previous connection", previousKey);
         releaseListener(previousKey, listenerIdRef.current);
       }
 
       let record = connectionPool.get(gatewayUrl);
       if (!record) {
+        logDebug("creating connection record", gatewayUrl);
         record = {
           gatewayUrl,
           websocket: null,
@@ -472,6 +491,7 @@ export const useRealtimeSession = (handlers: RealtimeSessionHandlers) => {
       handlersRef.current.onConnectionChange?.(record.status);
 
       if (record.status === "connected" && record.websocket?.readyState === WebSocket.OPEN) {
+        logDebug("connection already open, skipping websocket init", gatewayUrl);
         return;
       }
 
