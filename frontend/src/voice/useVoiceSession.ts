@@ -34,7 +34,6 @@ type StopOptions = {
 const HISTORY_STORAGE_KEY = "chatkit:voice:history";
 const MAX_ERROR_LOG_ENTRIES = 8;
 const SAMPLE_RATE = 24_000;
-const ACTIVITY_THRESHOLD = 0.003;
 const COMMIT_DEBOUNCE_MS = 220;
 
 const formatErrorMessage = (error: unknown): string => {
@@ -202,6 +201,7 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
   const resampler = useAudioResampler(SAMPLE_RATE);
   const commitTimerRef = useRef<number | null>(null);
   const hasPendingAudioRef = useRef(false);
+  const currentThreadIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     statusRef.current = status;
@@ -357,21 +357,17 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
 
       processor.onaudioprocess = (event) => {
         const input = event.inputBuffer.getChannelData(0);
-        let rms = 0;
-        if (input.length > 0) {
-          let energy = 0;
-          for (let i = 0; i < input.length; i += 1) {
-            energy += input[i] * input[i];
-          }
-          rms = Math.sqrt(energy / input.length);
-        }
-        if (rms >= ACTIVITY_THRESHOLD) {
-          hasPendingAudioRef.current = true;
-        }
-
         const chunk = resampler.process(input);
         if (chunk.length > 0) {
           dispatcher(sessionId, chunk);
+          if (!hasPendingAudioRef.current) {
+            for (let i = 0; i < chunk.length; i += 1) {
+              if (chunk[i] !== 0) {
+                hasPendingAudioRef.current = true;
+                break;
+              }
+            }
+          }
         }
 
         if (hasPendingAudioRef.current) {
@@ -401,6 +397,7 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       if (value === "disconnected") {
         cleanupCapture();
         currentSessionRef.current = null;
+        currentThreadIdRef.current = null;
         historyRef.current = [];
         pendingStartRef.current = null;
         setIsListening(false);
@@ -434,6 +431,7 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
         pendingStartRef.current = null;
         try {
           await startCapture(event.sessionId, pending.stream, sendAudioChunk);
+          currentThreadIdRef.current = event.threadId ?? null;
           suppressEmptyHistoryRef.current = pending.preserveHistory;
           if (!pending.preserveHistory) {
             resetTranscripts();
@@ -455,6 +453,7 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
 
       if (!currentSessionRef.current) {
         currentSessionRef.current = event.sessionId;
+        currentThreadIdRef.current = event.threadId ?? null;
       }
     },
     onHistoryUpdated: (sessionId, history) => {
@@ -498,11 +497,31 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       }
       cleanupCapture();
       currentSessionRef.current = null;
+      currentThreadIdRef.current = null;
       historyRef.current = [];
       setStatus("idle");
       setIsListening(false);
       if (Array.isArray(event.transcripts) && event.transcripts.length > 0) {
-        const typed = event.transcripts as unknown as RealtimeItem[];
+        const safeTranscripts = event.transcripts as Array<{
+          role?: string;
+          text?: string;
+          status?: string;
+        }>;
+        const typed = safeTranscripts.map((entry, index) => ({
+          type: "message" as const,
+          role: entry.role ?? "assistant",
+          status: entry.status,
+          itemId: `final-${index}`,
+          id: `final-${index}`,
+          content: [
+            {
+              type: (entry.role ?? "assistant") === "assistant"
+                ? "output_text"
+                : "input_text",
+              text: entry.text ?? "",
+            },
+          ],
+        })) as unknown as RealtimeItem[];
         updateTranscriptsFromHistory(typed);
       }
     },
@@ -524,6 +543,11 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
 
   const stopSession = useCallback(
     ({ clearHistory = false, nextStatus = "idle" }: StopOptions = {}) => {
+      const pending = pendingStartRef.current;
+      if (pending) {
+        pendingStartRef.current = null;
+        pending.reject(new Error("Session vocale interrompue"));
+      }
       const sessionId = currentSessionRef.current;
       if (sessionId) {
         clearCommitTimer();
@@ -534,9 +558,16 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
           sendAudioChunk(sessionId, new Int16Array(), { commit: true });
         }
         interruptSession(sessionId);
+        const threadId = currentThreadIdRef.current;
+        if (threadId) {
+          finalizeRealtimeSession(sessionId, threadId);
+        } else {
+          finalizeRealtimeSession(sessionId);
+        }
       }
       cleanupCapture();
       currentSessionRef.current = null;
+      currentThreadIdRef.current = null;
       historyRef.current = [];
       suppressEmptyHistoryRef.current = false;
       hasPendingAudioRef.current = false;
@@ -546,7 +577,15 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       setIsListening(false);
       setStatus(nextStatus);
     },
-    [clearCommitTimer, cleanupCapture, interruptSession, resetTranscripts, resampler, sendAudioChunk],
+    [
+      clearCommitTimer,
+      cleanupCapture,
+      finalizeRealtimeSession,
+      interruptSession,
+      resetTranscripts,
+      resampler,
+      sendAudioChunk,
+    ],
   );
 
   useEffect(() => () => {
