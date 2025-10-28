@@ -364,6 +364,14 @@ async def test_prepare_voice_workflow_returns_voice_event(
     assert result is not None
     assert result.voice_event == voice_event
 
+    assert calls, "run_workflow doit être invoqué"
+    bootstrap_input = calls[0][0]
+    assert isinstance(bootstrap_input, sip_module.WorkflowInput)
+    assert "Appel téléphonique entrant" in bootstrap_input.input_as_text
+    assert "call-voice" in bootstrap_input.input_as_text
+    assert "locale=fr" in bootstrap_input.input_as_text
+    assert bootstrap_input.source_item_id == "sip:call-voice"
+
     metadata = dict(result.metadata)
     assert metadata["thread_id"] == "thread-voice"
     assert metadata["voice_context"]["tools"] == [{"type": "web_search"}]

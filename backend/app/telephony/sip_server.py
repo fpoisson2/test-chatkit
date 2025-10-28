@@ -127,6 +127,40 @@ def _sanitize_prompt_variables(value: Any) -> dict[str, str]:
     return sanitized
 
 
+def _build_voice_bootstrap_message(
+    context: TelephonyCallContext, call_id: str
+) -> str:
+    """Construit le texte transmis au workflow pour amorcer l'appel."""
+
+    parts: list[str] = ["Appel téléphonique entrant via SIP."]
+
+    number = context.original_number or context.normalized_number
+    if number:
+        parts.append(f"Numéro entrant : {number}.")
+
+    route_label = getattr(getattr(context, "route", None), "label", None)
+    if isinstance(route_label, str) and route_label.strip():
+        parts.append(f"Route téléphonie : {route_label.strip()}.")
+
+    prompt_variables = {
+        key: value
+        for key, value in context.voice_prompt_variables.items()
+        if value
+    }
+    if prompt_variables:
+        summary = ", ".join(
+            f"{key}={value}" for key, value in sorted(prompt_variables.items())
+        )
+        parts.append(f"Variables de contexte : {summary}.")
+
+    parts.append("Prépare la session voix.")
+    parts.append("Attends les transcriptions de l'appelant avant de répondre.")
+
+    parts.append(f"Identifiant d'appel : {call_id}.")
+
+    return " ".join(parts)
+
+
 def _merge_voice_settings(
     *,
     session: Session | None,
@@ -515,7 +549,7 @@ async def prepare_voice_workflow(
         return None
 
     workflow_input = WorkflowInput(
-        input_as_text="",
+        input_as_text=_build_voice_bootstrap_message(call_context, call_id),
         auto_start_was_triggered=False,
         auto_start_assistant_message=None,
         source_item_id=f"sip:{call_id}",
