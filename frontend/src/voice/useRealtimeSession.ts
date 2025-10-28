@@ -115,6 +115,19 @@ const notifyConnectionChange = (
   status: RealtimeConnectionStatus,
 ) => {
   record.status = status;
+  if (status === "connected" && record.listeners.size === 0) {
+    const ws = record.websocket;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      logRealtime("closing idle websocket after connect", {
+        gatewayUrl: record.gatewayUrl,
+      });
+      try {
+        ws.close();
+      } catch {
+        /* noop */
+      }
+    }
+  }
   record.listeners.forEach((handlersRef) => {
     handlersRef.current.onConnectionChange?.(status);
   });
@@ -407,6 +420,14 @@ const releaseListener = (gatewayUrl: string, listenerId: string) => {
   if (record.listeners.size === 0) {
     const ws = record.websocket;
     if (ws) {
+      if (record.status !== "connected") {
+        logRealtime("idle connection awaiting connect, skip close", {
+          gatewayUrl,
+          status: record.status,
+        });
+        return;
+      }
+
       if (ws.readyState === WebSocket.OPEN) {
         logRealtime("closing websocket (open) after last listener", gatewayUrl);
         try {
@@ -414,24 +435,6 @@ const releaseListener = (gatewayUrl: string, listenerId: string) => {
         } catch {
           /* noop */
         }
-      } else if (ws.readyState === WebSocket.CONNECTING) {
-        logRealtime("deferring websocket close (connecting)", gatewayUrl);
-        const finalize = () => {
-          ws.removeEventListener("open", handleOpen);
-          ws.removeEventListener("error", finalize);
-          ws.removeEventListener("close", finalize);
-        };
-        const handleOpen = () => {
-          finalize();
-          try {
-            ws.close();
-          } catch {
-            /* noop */
-          }
-        };
-        ws.addEventListener("open", handleOpen);
-        ws.addEventListener("error", finalize);
-        ws.addEventListener("close", finalize);
       }
     }
     teardownAudioContextForRecord(record);
