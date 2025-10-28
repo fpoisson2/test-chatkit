@@ -544,9 +544,21 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       if (currentSessionRef.current && currentSessionRef.current !== sessionId) {
         return;
       }
-      const normalized = message || "Erreur lors de la session Realtime";
+      const normalizedRaw = formatErrorMessage(message);
+      const normalized =
+        normalizedRaw && normalizedRaw !== "{}"
+          ? normalizedRaw
+          : "Erreur lors de la session Realtime";
       addError(normalized);
       setTransportError(normalized);
+      cleanupCapture();
+      currentSessionRef.current = null;
+      currentThreadIdRef.current = null;
+      historyRef.current = [];
+      suppressEmptyHistoryRef.current = false;
+      hasPendingAudioRef.current = false;
+      userSpeakingRef.current = false;
+      setIsListening(false);
       setStatus("error");
       const pending = pendingStartRef.current;
       if (pending) {

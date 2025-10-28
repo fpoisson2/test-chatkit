@@ -42,12 +42,35 @@ export const useChatkitSession = ({
 
   const reportError = useCallback((message: string, detail?: unknown) => {
     setError(message);
-    if (message) {
-      if (detail !== undefined) {
-        console.error(`[ChatKit] ${message}`, detail);
-      } else {
-        console.error(`[ChatKit] ${message}`);
+    if (!message) {
+      return;
+    }
+    const normalizeDetail = (value: unknown): string | null => {
+      if (value instanceof Error) {
+        return value.message;
       }
+      if (typeof value === "string") {
+        return value;
+      }
+      if (value && typeof value === "object") {
+        try {
+          const json = JSON.stringify(value);
+          return json && json !== "{}" ? json : null;
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    };
+    const detailMessage = normalizeDetail(detail);
+    if (detail !== undefined) {
+      if (detailMessage) {
+        console.error(`[ChatKit] ${message}: ${detailMessage}`, detail);
+      } else {
+        console.error(`[ChatKit] ${message}`, detail);
+      }
+    } else {
+      console.error(`[ChatKit] ${message}`);
     }
   }, []);
 

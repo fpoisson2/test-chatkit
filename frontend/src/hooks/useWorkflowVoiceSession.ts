@@ -256,10 +256,28 @@ export const useWorkflowVoiceSession = ({
       if (currentSessionRef.current !== sessionId) {
         return;
       }
+      cleanupCapture();
+      currentSessionRef.current = null;
+      setIsListening(false);
       setStatus("error");
-      if (message) {
-        onError?.(message);
-      }
+      const serialized = (() => {
+        if (!message) {
+          return null;
+        }
+        if (typeof message === "string") {
+          return message;
+        }
+        if (message instanceof Error) {
+          return message.message;
+        }
+        try {
+          const json = JSON.stringify(message);
+          return json && json !== "{}" ? json : null;
+        } catch {
+          return null;
+        }
+      })();
+      onError?.(serialized ?? "Erreur lors de la session Realtime");
     },
   });
 
