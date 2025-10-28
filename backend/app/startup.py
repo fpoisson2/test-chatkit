@@ -20,7 +20,6 @@ from .admin_settings import (
     get_thread_title_prompt_override,
 )
 from .chatkit import get_chatkit_server
-from .chatkit_realtime import create_realtime_voice_session
 from .chatkit_server.context import (
     ChatKitRequestContext,
     _set_wait_state_metadata,
@@ -46,6 +45,7 @@ from .models import (
     VoiceSettings,
     Workflow,
 )
+from .realtime_runner import open_voice_session
 from .security import hash_password
 from .telephony.invite_handler import (
     InviteHandlingError,
@@ -470,7 +470,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
 
         client_secret = metadata.get("client_secret")
         if client_secret is None:
-            secret_payload = await create_realtime_voice_session(
+            session_handle = await open_voice_session(
                 user_id=f"sip:{session.call_id}",
                 model=voice_model,
                 instructions=instructions,
@@ -478,6 +478,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 provider_id=voice_provider_id,
                 provider_slug=voice_provider_slug,
             )
+            secret_payload = session_handle.payload
             parsed_secret = session_secret_parser.parse(secret_payload)
             client_secret = parsed_secret.as_text()
             if not client_secret:
@@ -490,6 +491,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             metadata["client_secret_expires_at"] = (
                 parsed_secret.expires_at_isoformat()
             )
+            metadata["realtime_session_id"] = session_handle.session_id
 
         # Créer un wait_state pour que le frontend puisse détecter la session vocale
         if store is not None and thread_id:

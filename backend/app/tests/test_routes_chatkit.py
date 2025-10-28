@@ -237,9 +237,12 @@ def test_voice_session_slug_override_clears_provider_id(
             prompt_version = None
             prompt_variables: dict[str, str] = {}
 
-        async def _fake_create_realtime_voice_session(**kwargs):
+        async def _fake_open_voice_session(**kwargs):
             captured.update(kwargs)
-            return {"client_secret": {"value": "secret"}}
+            return SimpleNamespace(
+                payload={"client_secret": {"value": "secret"}},
+                session_id="session-test",
+            )
 
         monkeypatch.setattr(routes_chatkit, "get_settings", lambda: _StubSettings())
         monkeypatch.setattr(
@@ -249,8 +252,8 @@ def test_voice_session_slug_override_clears_provider_id(
         )
         monkeypatch.setattr(
             routes_chatkit,
-            "create_realtime_voice_session",
-            _fake_create_realtime_voice_session,
+            "open_voice_session",
+            _fake_open_voice_session,
         )
 
         request = VoiceSessionRequest(model_provider_slug="openai")

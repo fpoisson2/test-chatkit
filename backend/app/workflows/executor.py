@@ -71,7 +71,6 @@ from ..chatkit.agent_registry import (
     _create_response_format_from_pydantic,
     get_agent_provider_binding,
 )
-from ..chatkit_realtime import create_realtime_voice_session
 from ..chatkit_server.actions import (
     _apply_widget_variable_values,
     _collect_widget_bindings,
@@ -103,6 +102,7 @@ from ..image_utils import (
 )
 from ..model_capabilities import ModelCapabilities, lookup_model_capabilities
 from ..models import WorkflowDefinition, WorkflowStep, WorkflowTransition
+from ..realtime_runner import open_voice_session
 from ..token_sanitizer import sanitize_model_like
 from ..vector_store.ingestion import (
     evaluate_state_expression,
@@ -2157,7 +2157,8 @@ async def run_workflow(
                 try:
                     agent.mcp_servers = connected_mcp_servers
                     logger.debug(
-                        "%d serveur(s) MCP connecté(s) sur %d configuré(s) pour l'agent %s",
+                        "%d serveur(s) MCP connecté(s) sur %d configuré(s) "
+                        "pour l'agent %s",
                         len(connected_mcp_servers),
                         len(mcp_servers),
                         getattr(agent, "name", "<inconnu>"),
@@ -2234,7 +2235,9 @@ async def run_workflow(
                 if thread_metadata is not None:
                     existing_metadata = getattr(thread_metadata, "metadata", None)
                     if isinstance(existing_metadata, Mapping):
-                        stored_response_id = existing_metadata.get("previous_response_id")
+                        stored_response_id = existing_metadata.get(
+                            "previous_response_id"
+                        )
                         if stored_response_id != last_response_id:
                             existing_metadata["previous_response_id"] = last_response_id
                             should_persist_thread = True
@@ -2257,14 +2260,24 @@ async def run_workflow(
                             thread_metadata,
                             context=request_context,
                         )
-                    except Exception as exc:  # pragma: no cover - persistance best effort
+                    # pragma: no cover - persistance best effort
+                    except Exception as exc:
                         logger.warning(
-                            "Impossible d'enregistrer previous_response_id pour le fil %s",
-                            getattr(thread_metadata, "id", "<inconnu>"),
+                            (
+                                "Impossible d'enregistrer previous_response_id "
+                                "pour le fil %s"
+                            ),
+                            getattr(
+                                thread_metadata,
+                                "id",
+                                "<inconnu>",
+                            ),
                             exc_info=exc,
                         )
 
-            conversation_history.extend([item.to_input_item() for item in result.new_items])
+            conversation_history.extend(
+                [item.to_input_item() for item in result.new_items]
+            )
             if result.new_items:
                 try:
                     logger.debug(
@@ -2991,7 +3004,7 @@ async def run_workflow(
                 user_id = str(fallback_id or "voice-user")
 
             try:
-                realtime_secret = await create_realtime_voice_session(
+                session_handle = await open_voice_session(
                     user_id=user_id,
                     model=event_context["model"],
                     voice=event_context.get("voice"),
@@ -3003,6 +3016,10 @@ async def run_workflow(
                 )
             except Exception as exc:
                 raise_step_error(current_node.slug, title or current_node.slug, exc)
+
+            realtime_secret = session_handle.payload
+            voice_context["session_id"] = session_handle.session_id
+            event_context["session_id"] = session_handle.session_id
 
             event_payload = {
                 "type": "voice_session.created",

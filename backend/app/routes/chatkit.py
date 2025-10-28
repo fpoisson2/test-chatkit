@@ -60,7 +60,6 @@ except (ModuleNotFoundError, ImportError):  # pragma: no cover - fallback sans S
         pass
 
 from ..attachment_store import AttachmentUploadError
-from ..chatkit_realtime import create_realtime_voice_session
 from ..chatkit_server.context import (
     _get_wait_state_metadata,
     _set_wait_state_metadata,
@@ -76,6 +75,7 @@ from ..database import get_session
 from ..dependencies import get_current_user, get_optional_user
 from ..image_utils import AGENT_IMAGE_STORAGE_DIR
 from ..models import User
+from ..realtime_runner import open_voice_session
 from ..schemas import (
     ChatKitWorkflowResponse,
     HostedWorkflowCreateRequest,
@@ -588,7 +588,7 @@ async def create_voice_session(
         resolved_provider_id = None
     user_id = f"user:{current_user.id}"
 
-    secret_payload = await create_realtime_voice_session(
+    voice_session_handle = await open_voice_session(
         user_id=user_id,
         model=resolved_model,
         instructions=resolved_instructions,
@@ -596,6 +596,7 @@ async def create_voice_session(
         provider_id=resolved_provider_id,
         provider_slug=resolved_provider_slug,
     )
+    secret_payload = voice_session_handle.payload
 
     parser = SessionSecretParser()
     parsed_secret = parser.parse(secret_payload)
@@ -689,7 +690,7 @@ async def create_voice_webrtc_offer(
 
     user_id = f"user:{current_user.id}"
 
-    secret_payload = await create_realtime_voice_session(
+    voice_session_handle = await open_voice_session(
         user_id=user_id,
         model=resolved_model,
         instructions=resolved_instructions,
@@ -697,6 +698,7 @@ async def create_voice_webrtc_offer(
         provider_id=resolved_provider_id,
         provider_slug=resolved_provider_slug,
     )
+    secret_payload = voice_session_handle.payload
 
     parser = SessionSecretParser()
     parsed_secret = parser.parse(secret_payload)

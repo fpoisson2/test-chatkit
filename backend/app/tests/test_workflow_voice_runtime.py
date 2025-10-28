@@ -169,9 +169,15 @@ def _build_agent_context() -> AgentContext[ChatKitRequestContext]:
 async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> None:
     captured_args: dict[str, Any] = {}
 
-    async def _fake_create_session(**kwargs: Any) -> dict[str, Any]:
+    async def _fake_open_session(**kwargs: Any) -> Any:
         captured_args.update(kwargs)
-        return {"client_secret": {"value": "secret-123"}, "expires_at": "2099-01-01"}
+        return SimpleNamespace(
+            payload={
+                "client_secret": {"value": "secret-123"},
+                "expires_at": "2099-01-01",
+            },
+            session_id="session-123",
+        )
 
     events: list[ThreadStreamEvent] = []
 
@@ -180,8 +186,8 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
 
     monkeypatch.setattr(
         executor_module,
-        "create_realtime_voice_session",
-        _fake_create_session,
+        "open_voice_session",
+        _fake_open_session,
     )
     monkeypatch.setattr(executor_module, "get_settings", lambda: _FakeSettings())
 
@@ -264,13 +270,16 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
 async def test_voice_agent_processes_transcripts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def _fake_create_session(**_: Any) -> dict[str, Any]:
-        return {"client_secret": {"value": "secret"}, "expires_at": "2099"}
+    async def _fake_open_session(**_: Any) -> Any:
+        return SimpleNamespace(
+            payload={"client_secret": {"value": "secret"}, "expires_at": "2099"},
+            session_id="session-voice",
+        )
 
     monkeypatch.setattr(
         executor_module,
-        "create_realtime_voice_session",
-        _fake_create_session,
+        "open_voice_session",
+        _fake_open_session,
     )
     monkeypatch.setattr(executor_module, "get_settings", lambda: _FakeSettings())
 
@@ -306,13 +315,13 @@ async def test_voice_agent_processes_transcripts(
         events.append(event)
 
     # Replace create session with sentinel to ensure it is not invoked again
-    async def _fail_create_session(**kwargs: Any) -> dict[str, Any]:  # pragma: no cover
-        raise AssertionError("create_realtime_voice_session should not be called")
+    async def _fail_open_session(**kwargs: Any) -> Any:  # pragma: no cover
+        raise AssertionError("open_voice_session should not be called")
 
     monkeypatch.setattr(
         executor_module,
-        "create_realtime_voice_session",
-        _fail_create_session,
+        "open_voice_session",
+        _fail_open_session,
     )
 
     resume_input = WorkflowInput(
