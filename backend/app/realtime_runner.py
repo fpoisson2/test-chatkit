@@ -645,8 +645,8 @@ class RealtimeVoiceSessionOrchestrator:
         realtime_tools_payload = _normalize_realtime_tools_payload(tools)
 
         def _build_payload(
-            voice_mode: Literal["top_level", "session", "none"],
-            realtime_mode: Literal["top_level", "session", "none"],
+            voice_mode: Literal["include", "none"],
+            realtime_mode: Literal["include", "none"],
         ) -> dict[str, Any]:
             session_payload: dict[str, Any] = {
                 "type": "realtime",
@@ -658,27 +658,70 @@ class RealtimeVoiceSessionOrchestrator:
             if handoffs:
                 session_payload["handoffs"] = list(handoffs)
 
-            payload: dict[str, Any] = {"session": session_payload}
+            audio_input: dict[str, Any] = {}
+            audio_output: dict[str, Any] = {}
 
-            if isinstance(realtime, Mapping):
-                if realtime_mode == "session":
-                    session_payload["realtime"] = dict(realtime)
-                elif realtime_mode == "top_level":
-                    payload["realtime"] = dict(realtime)
+            if voice_mode == "include" and voice_value:
+                audio_output["voice"] = voice_value
 
-            if voice_value:
-                if voice_mode == "session":
-                    session_payload["voice"] = voice_value
-                elif voice_mode == "top_level":
-                    payload["voice"] = voice_value
+            if isinstance(realtime, Mapping) and realtime_mode == "include":
+                modalities = realtime.get("modalities")
+                if isinstance(modalities, Sequence):
+                    normalized_modalities: list[str] = []
+                    for modality in modalities:
+                        if isinstance(modality, str):
+                            value = modality.strip()
+                        elif isinstance(modality, bytes):
+                            try:
+                                value = modality.decode().strip()
+                            except UnicodeDecodeError:
+                                continue
+                        else:
+                            continue
+                        if value:
+                            normalized_modalities.append(value)
+                    if normalized_modalities:
+                        session_payload["modalities"] = normalized_modalities
 
-            return payload
+                speed = realtime.get("speed")
+                if isinstance(speed, int | float):
+                    audio_output["speed"] = float(speed)
+
+                output_format = realtime.get("output_audio_format")
+                if isinstance(output_format, Mapping):
+                    audio_output["format"] = dict(output_format)
+
+                input_format = realtime.get("input_audio_format")
+                if isinstance(input_format, Mapping):
+                    audio_input["format"] = dict(input_format)
+
+                turn_detection = realtime.get("turn_detection")
+                if isinstance(turn_detection, Mapping):
+                    audio_input["turn_detection"] = dict(turn_detection)
+
+                noise_reduction = realtime.get("input_audio_noise_reduction")
+                if isinstance(noise_reduction, Mapping):
+                    audio_input["noise_reduction"] = dict(noise_reduction)
+
+                transcription = realtime.get("input_audio_transcription")
+                if isinstance(transcription, Mapping):
+                    audio_input["transcription"] = dict(transcription)
+
+            audio_payload: dict[str, Any] = {}
+            if audio_input:
+                audio_payload["input"] = audio_input
+            if audio_output:
+                audio_payload["output"] = audio_output
+            if audio_payload:
+                session_payload["audio"] = audio_payload
+
+            return {"session": session_payload}
 
         def _should_retry_voice_mode(
-            voice_mode: Literal["top_level", "session", "none"],
+            voice_mode: Literal["include", "none"],
             error_payload: Any,
         ) -> bool:
-            if not voice_value or voice_mode == "none":
+            if voice_mode == "none" or not voice_value:
                 return False
             if not isinstance(error_payload, dict):
                 return False
@@ -687,14 +730,21 @@ class RealtimeVoiceSessionOrchestrator:
                 return False
             if error_details.get("code") != "unknown_parameter":
                 return False
-            expected_param = "voice" if voice_mode == "top_level" else "session.voice"
-            return error_details.get("param") == expected_param
+            param_value = error_details.get("param")
+            if not isinstance(param_value, str):
+                return False
+            return param_value in {
+                "voice",
+                "session.voice",
+                "audio.output.voice",
+                "session.audio.output.voice",
+            }
 
         def _should_retry_realtime_mode(
-            realtime_mode: Literal["top_level", "session", "none"],
+            realtime_mode: Literal["include", "none"],
             error_payload: Any,
         ) -> bool:
-            if not isinstance(realtime, Mapping) or realtime_mode == "none":
+            if realtime_mode == "none" or not isinstance(realtime, Mapping):
                 return False
             if not isinstance(error_payload, dict):
                 return False
@@ -703,35 +753,43 @@ class RealtimeVoiceSessionOrchestrator:
                 return False
             if error_details.get("code") != "unknown_parameter":
                 return False
-            expected_param = (
-                "realtime" if realtime_mode == "top_level" else "session.realtime"
-            )
-            return error_details.get("param") == expected_param
+            param_value = error_details.get("param")
+            if not isinstance(param_value, str):
+                return False
+            realtime_params = {
+                "realtime",
+                "session.realtime",
+                "audio",
+                "session.audio",
+                "audio.input",
+                "session.audio.input",
+                "audio.output",
+                "session.audio.output",
+                "audio.input.format",
+                "session.audio.input.format",
+                "audio.input.turn_detection",
+                "session.audio.input.turn_detection",
+                "audio.input.noise_reduction",
+                "session.audio.input.noise_reduction",
+                "audio.input.transcription",
+                "session.audio.input.transcription",
+                "audio.output.format",
+                "session.audio.output.format",
+                "audio.output.speed",
+                "session.audio.output.speed",
+            }
+            return param_value in realtime_params
 
         normalized_provider_id = self._clean_identifier(provider_id)
         normalized_provider_slug = self._clean_slug(provider_slug)
 
-        # Optimisation : pour OpenAI, le paramètre voice n'est pas supporté dans
-        # l'API client_secrets, donc on évite les tentatives inutiles
-        is_openai = normalized_provider_slug == "openai"
-
         if voice_value:
-            if is_openai:
-                voice_modes = ["top_level", "session", "none"]
-            else:
-                # Pour les providers non-OpenAI, essayer d'abord les modes moins verbeux
-                voice_modes = ["none", "session", "top_level"]
+            voice_modes: list[Literal["include", "none"]] = ["include", "none"]
         else:
             voice_modes = ["none"]
 
         if isinstance(realtime, Mapping) and realtime:
-            realtime_modes: list[Literal["top_level", "session", "none"]] = [
-                "top_level",
-                "session",
-                "none",
-            ]
-        elif isinstance(realtime, Mapping):
-            realtime_modes = ["session", "none"]
+            realtime_modes: list[Literal["include", "none"]] = ["include", "none"]
         else:
             realtime_modes = ["none"]
 
