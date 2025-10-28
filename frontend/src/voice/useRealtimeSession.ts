@@ -99,6 +99,7 @@ type ConnectionRecord = {
   listeners: Map<string, MutableRefObject<RealtimeSessionHandlers>>;
   audioContext: AudioContext | null;
   playbackTime: number;
+  activeSources: Set<AudioBufferSourceNode>;
   token: string | null;
 };
 
@@ -169,11 +170,32 @@ const ensureAudioContextForRecord = async (
   return context;
 };
 
+const stopPlayback = (record: ConnectionRecord) => {
+  if (!record.activeSources.size) {
+    return;
+  }
+  const context = record.audioContext;
+  record.activeSources.forEach((source) => {
+    try {
+      source.stop();
+    } catch {
+      /* noop */
+    }
+  });
+  record.activeSources.clear();
+  if (context) {
+    record.playbackTime = context.currentTime;
+  } else {
+    record.playbackTime = 0;
+  }
+};
+
 const teardownAudioContextForRecord = (record: ConnectionRecord) => {
   const context = record.audioContext;
   if (!context) {
     return;
   }
+  stopPlayback(record);
   record.audioContext = null;
   record.playbackTime = 0;
   try {
@@ -202,6 +224,10 @@ const playAudioChunk = (
   const source = context.createBufferSource();
   source.buffer = buffer;
   source.connect(context.destination);
+  record.activeSources.add(source);
+  source.onended = () => {
+    record.activeSources.delete(source);
+  };
 
   const startTime = Math.max(context.currentTime, record.playbackTime);
   try {
@@ -211,6 +237,7 @@ const playAudioChunk = (
     if (import.meta.env.DEV) {
       console.warn("Failed to play realtime audio chunk", error);
     }
+    record.activeSources.delete(source);
   }
 };
 
@@ -291,6 +318,11 @@ const handleMessageForRecord = async (
       );
       break;
     }
+    case "audio_interrupted": {
+      stopPlayback(record);
+      record.playbackTime = record.audioContext?.currentTime ?? 0;
+      break;
+    }
     case "agent_start": {
       if (sessionId) {
         broadcast(record, (handlers) => {
@@ -311,6 +343,7 @@ const handleMessageForRecord = async (
       if (!sessionId) {
         break;
       }
+      stopPlayback(record);
       const threadId =
         typeof (typed as { thread_id?: unknown }).thread_id === "string"
           ? ((typed as { thread_id: string }).thread_id || null)
@@ -325,6 +358,7 @@ const handleMessageForRecord = async (
       break;
     }
     case "session_closed": {
+      stopPlayback(record);
       if (sessionId) {
         broadcast(record, (handlers) => {
           handlers.onAgentEnd?.(sessionId);
@@ -333,6 +367,7 @@ const handleMessageForRecord = async (
       break;
     }
     case "session_error": {
+      stopPlayback(record);
       if (sessionId) {
         const errorMessage = String((typed as { error?: unknown }).error ?? "");
         broadcast(record, (handlers) => {
@@ -499,11 +534,15 @@ export const useRealtimeSession = (handlers: RealtimeSessionHandlers) => {
           listeners: new Map(),
           audioContext: null,
           playbackTime: 0,
+          activeSources: new Set(),
           token,
         };
         connectionPool.set(gatewayUrl, record);
       } else {
         record.token = token;
+        if (!record.activeSources) {
+          record.activeSources = new Set();
+        }
       }
 
       record.listeners.set(listenerIdRef.current, handlersRef);
