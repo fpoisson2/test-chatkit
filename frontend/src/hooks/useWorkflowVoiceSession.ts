@@ -299,6 +299,7 @@ export const useWorkflowVoiceSession = ({
         const input = event.inputBuffer.getChannelData(0);
         const chunk = resampler.process(input);
         if (chunk.length > 0) {
+          logVoice("sending input_audio", { sessionId, samples: chunk.length });
           sendAudioChunk(sessionId, chunk);
         }
       };

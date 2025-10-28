@@ -524,14 +524,20 @@ export const useRealtimeSession = (handlers: RealtimeSessionHandlers) => {
   const sendMessage = useCallback((payload: Record<string, unknown>) => {
     const key = connectionKeyRef.current;
     if (!key) {
+      logRealtime("sendMessage skipped (no connection key)", {});
       return;
     }
     const record = connectionPool.get(key);
     if (!record) {
+      logRealtime("sendMessage skipped (no record)", { key });
       return;
     }
     const ws = record.websocket;
     if (!ws || ws.readyState !== WebSocket.OPEN) {
+      logRealtime("sendMessage skipped (socket not open)", {
+        readyState: ws?.readyState,
+        hasSocket: Boolean(ws),
+      });
       return;
     }
     try {
