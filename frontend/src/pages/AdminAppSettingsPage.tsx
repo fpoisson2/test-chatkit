@@ -38,6 +38,7 @@ export const AdminAppSettingsPage = () => {
   const [sipContactHost, setSipContactHost] = useState("");
   const [sipContactPort, setSipContactPort] = useState("");
   const [sipContactTransport, setSipContactTransport] = useState("");
+  const [showLegacyTelephonySettings, setShowLegacyTelephonySettings] = useState(false);
   const [isLoading, setLoading] = useState(true);
   const [isSaving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -168,6 +169,16 @@ export const AdminAppSettingsPage = () => {
     providerIdRef.current = storedProviders.length;
     setProviderRows(rows);
     setUseCustomModelConfig(rows.length > 0);
+
+    const hasLegacyTelephony = Boolean(
+      (data.sip_trunk_uri ?? "").trim() ||
+        (data.sip_trunk_username ?? "").trim() ||
+        (data.sip_trunk_password ?? "").trim() ||
+        (data.sip_contact_host ?? "").trim() ||
+        data.sip_contact_port != null ||
+        (data.sip_contact_transport ?? "").trim(),
+    );
+    setShowLegacyTelephonySettings(hasLegacyTelephony);
   }, []);
 
   const fetchSettings = useCallback(async () => {
@@ -186,6 +197,7 @@ export const AdminAppSettingsPage = () => {
       setProviderRows([]);
       providerIdRef.current = 0;
       setUseCustomModelConfig(false);
+      setShowLegacyTelephonySettings(false);
       setLoading(false);
       return;
     }
@@ -468,6 +480,14 @@ export const AdminAppSettingsPage = () => {
   const effectiveBase = settings?.model_api_base ?? "";
   const shouldShowCustomModelInput =
     selectedModelOption === CUSTOM_MODEL_OPTION || availableModels.length === 0;
+  const hasLegacyTelephonyFallback = Boolean(
+    sipTrunkUri.trim() ||
+      sipTrunkUsername.trim() ||
+      sipTrunkPassword.trim() ||
+      sipContactHost.trim() ||
+      sipContactPort.trim() ||
+      sipContactTransport.trim(),
+  );
 
   return (
     <>
@@ -803,102 +823,138 @@ export const AdminAppSettingsPage = () => {
                   {t("admin.appSettings.sipTrunk.cardDescription")}
                 </p>
               </div>
-              <label className="label" htmlFor="sip-trunk-uri">
-                {t("admin.appSettings.sipTrunk.uriLabel")}
-                <input
-                  id="sip-trunk-uri"
-                  className="input"
-                  type="text"
-                  value={sipTrunkUri}
-                  onChange={(event) => setSipTrunkUri(event.target.value)}
-                  placeholder={t("admin.appSettings.sipTrunk.uriPlaceholder")}
-                  disabled={isBusy}
-                />
-              </label>
-              <label className="label" htmlFor="sip-trunk-username">
-                {t("admin.appSettings.sipTrunk.usernameLabel")}
-                <input
-                  id="sip-trunk-username"
-                  className="input"
-                  type="text"
-                  value={sipTrunkUsername}
-                  onChange={(event) => setSipTrunkUsername(event.target.value)}
-                  placeholder={t("admin.appSettings.sipTrunk.usernamePlaceholder")}
-                  disabled={isBusy}
-                  autoComplete="username"
-                />
-              </label>
-              <label className="label" htmlFor="sip-trunk-password">
-                {t("admin.appSettings.sipTrunk.passwordLabel")}
-                <input
-                  id="sip-trunk-password"
-                  className="input"
-                  type="password"
-                  value={sipTrunkPassword}
-                  onChange={(event) => setSipTrunkPassword(event.target.value)}
-                  placeholder={t("admin.appSettings.sipTrunk.passwordPlaceholder")}
-                  disabled={isBusy}
-                  autoComplete="current-password"
-                />
-              </label>
-              <p className="admin-form__hint">
-                {t("admin.appSettings.sipTrunk.passwordHelp")}
-              </p>
-              <label className="label" htmlFor="sip-contact-host">
-                {t("admin.appSettings.sipTrunk.contactHostLabel")}
-                <input
-                  id="sip-contact-host"
-                  className="input"
-                  type="text"
-                  value={sipContactHost}
-                  onChange={(event) => setSipContactHost(event.target.value)}
-                  placeholder={t("admin.appSettings.sipTrunk.contactHostPlaceholder")}
-                  disabled={isBusy}
-                />
-              </label>
-              <p className="admin-form__hint">
-                {t("admin.appSettings.sipTrunk.contactHostHelp")}
-              </p>
-              <label className="label" htmlFor="sip-contact-port">
-                {t("admin.appSettings.sipTrunk.contactPortLabel")}
-                <input
-                  id="sip-contact-port"
-                  className="input"
-                  type="number"
-                  min={1}
-                  max={65535}
-                  value={sipContactPort}
-                  onChange={(event) => setSipContactPort(event.target.value)}
-                  placeholder={t("admin.appSettings.sipTrunk.contactPortPlaceholder")}
-                  disabled={isBusy}
-                />
-              </label>
-              <label className="label" htmlFor="sip-contact-transport">
-                {t("admin.appSettings.sipTrunk.contactTransportLabel")}
-                <select
-                  id="sip-contact-transport"
-                  className="input"
-                  value={sipContactTransport}
-                  onChange={(event) => setSipContactTransport(event.target.value)}
-                  disabled={isBusy}
-                >
-                  <option value="">
-                    {t("admin.appSettings.sipTrunk.contactTransportOptionDefault")}
-                  </option>
-                  <option value="udp">
-                    {t("admin.appSettings.sipTrunk.contactTransportOptionUdp")}
-                  </option>
-                  <option value="tcp">
-                    {t("admin.appSettings.sipTrunk.contactTransportOptionTcp")}
-                  </option>
-                  <option value="tls">
-                    {t("admin.appSettings.sipTrunk.contactTransportOptionTls")}
-                  </option>
-                </select>
-              </label>
-              <p className="admin-form__hint">
-                {t("admin.appSettings.sipTrunk.contactTransportHelp")}
-              </p>
+              <div className="alert alert--info" role="note">
+                {t("admin.appSettings.sipTrunk.deprecationNotice")}
+              </div>
+              <button
+                type="button"
+                className="button button--ghost"
+                onClick={() =>
+                  setShowLegacyTelephonySettings((current) => !current)
+                }
+              >
+                {showLegacyTelephonySettings
+                  ? t("admin.appSettings.sipTrunk.hideLegacy")
+                  : t("admin.appSettings.sipTrunk.showLegacy")}
+              </button>
+              {!showLegacyTelephonySettings && hasLegacyTelephonyFallback ? (
+                <p className="admin-form__hint">
+                  {t("admin.appSettings.sipTrunk.legacySummary")}
+                </p>
+              ) : null}
+              {showLegacyTelephonySettings ? (
+                <>
+                  <p className="admin-form__hint">
+                    {t("admin.appSettings.sipTrunk.legacyHelp")}
+                  </p>
+                  <label className="label" htmlFor="sip-trunk-uri">
+                    {t("admin.appSettings.sipTrunk.uriLabel")}
+                    <input
+                      id="sip-trunk-uri"
+                      className="input"
+                      type="text"
+                      value={sipTrunkUri}
+                      onChange={(event) => setSipTrunkUri(event.target.value)}
+                      placeholder={t("admin.appSettings.sipTrunk.uriPlaceholder")}
+                      disabled={isBusy}
+                    />
+                  </label>
+                  <label className="label" htmlFor="sip-trunk-username">
+                    {t("admin.appSettings.sipTrunk.usernameLabel")}
+                    <input
+                      id="sip-trunk-username"
+                      className="input"
+                      type="text"
+                      value={sipTrunkUsername}
+                      onChange={(event) => setSipTrunkUsername(event.target.value)}
+                      placeholder={t("admin.appSettings.sipTrunk.usernamePlaceholder")}
+                      disabled={isBusy}
+                      autoComplete="username"
+                    />
+                  </label>
+                  <label className="label" htmlFor="sip-trunk-password">
+                    {t("admin.appSettings.sipTrunk.passwordLabel")}
+                    <input
+                      id="sip-trunk-password"
+                      className="input"
+                      type="password"
+                      value={sipTrunkPassword}
+                      onChange={(event) => setSipTrunkPassword(event.target.value)}
+                      placeholder={t(
+                        "admin.appSettings.sipTrunk.passwordPlaceholder",
+                      )}
+                      disabled={isBusy}
+                      autoComplete="current-password"
+                    />
+                  </label>
+                  <p className="admin-form__hint">
+                    {t("admin.appSettings.sipTrunk.passwordHelp")}
+                  </p>
+                  <label className="label" htmlFor="sip-contact-host">
+                    {t("admin.appSettings.sipTrunk.contactHostLabel")}
+                    <input
+                      id="sip-contact-host"
+                      className="input"
+                      type="text"
+                      value={sipContactHost}
+                      onChange={(event) => setSipContactHost(event.target.value)}
+                      placeholder={t(
+                        "admin.appSettings.sipTrunk.contactHostPlaceholder",
+                      )}
+                      disabled={isBusy}
+                    />
+                  </label>
+                  <p className="admin-form__hint">
+                    {t("admin.appSettings.sipTrunk.contactHostHelp")}
+                  </p>
+                  <label className="label" htmlFor="sip-contact-port">
+                    {t("admin.appSettings.sipTrunk.contactPortLabel")}
+                    <input
+                      id="sip-contact-port"
+                      className="input"
+                      type="number"
+                      min={1}
+                      max={65535}
+                      value={sipContactPort}
+                      onChange={(event) => setSipContactPort(event.target.value)}
+                      placeholder={t(
+                        "admin.appSettings.sipTrunk.contactPortPlaceholder",
+                      )}
+                      disabled={isBusy}
+                    />
+                  </label>
+                  <label className="label" htmlFor="sip-contact-transport">
+                    {t("admin.appSettings.sipTrunk.contactTransportLabel")}
+                    <select
+                      id="sip-contact-transport"
+                      className="input"
+                      value={sipContactTransport}
+                      onChange={(event) =>
+                        setSipContactTransport(event.target.value)
+                      }
+                      disabled={isBusy}
+                    >
+                      <option value="">
+                        {t(
+                          "admin.appSettings.sipTrunk.contactTransportOptionDefault",
+                        )}
+                      </option>
+                      <option value="udp">
+                        {t("admin.appSettings.sipTrunk.contactTransportOptionUdp")}
+                      </option>
+                      <option value="tcp">
+                        {t("admin.appSettings.sipTrunk.contactTransportOptionTcp")}
+                      </option>
+                      <option value="tls">
+                        {t("admin.appSettings.sipTrunk.contactTransportOptionTls")}
+                      </option>
+                    </select>
+                  </label>
+                  <p className="admin-form__hint">
+                    {t("admin.appSettings.sipTrunk.contactTransportHelp")}
+                  </p>
+                </>
+              ) : null}
               <div className="admin-form__actions" style={{ gap: "12px" }}>
                 <button
                   type="button"

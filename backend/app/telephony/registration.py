@@ -133,7 +133,7 @@ else:
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models import AppSettings
+from ..models import AppSettings, SipServer
 from .invite_handler import send_sip_reply
 
 __all__ = ["SIPRegistrationConfig", "SIPRegistrationManager"]
@@ -324,6 +324,7 @@ class SIPRegistrationManager:
         self.contact_transport = self._normalize_transport(contact_transport)
         self.bind_host = bind_host
         self._invite_handler: InviteRouteHandler | None = invite_handler
+        self._preferred_sip_server_id: str | None = None
 
     @property
     def last_error(self) -> BaseException | None:
@@ -371,6 +372,13 @@ class SIPRegistrationManager:
         """Return the SIP configuration currently applied to the dialog."""
 
         return self._active_config
+
+    @property
+    def preferred_sip_server_id(self) -> str | None:
+        return self._preferred_sip_server_id
+
+    def set_preferred_sip_server_id(self, server_id: str | None) -> None:
+        self._preferred_sip_server_id = self._normalize_optional_string(server_id)
 
     def set_invite_handler(self, handler: InviteRouteHandler | None) -> None:
         """Register or remove the coroutine invoked for incoming ``INVITE``."""
@@ -860,7 +868,10 @@ class SIPRegistrationManager:
             LOGGER.info("Enregistrement SIP arrêté pour %s", previous_config.uri)
 
     async def apply_config_from_settings(
-        self, session: Session, settings: AppSettings | None
+        self,
+        session: Session,
+        settings: AppSettings | None,
+        sip_server_id: str | None = None,
     ) -> None:
         """Build and apply a SIP configuration from admin settings."""
 
@@ -870,8 +881,19 @@ class SIPRegistrationManager:
 
         runtime_settings = self.settings
 
+        if sip_server_id is not None:
+            self.set_preferred_sip_server_id(sip_server_id)
+
+        server = self._load_sip_server(session, self._preferred_sip_server_id)
+        if server is not None:
+            LOGGER.info(
+                "Utilisation du serveur SIP %s (%s)", server.id, server.label
+            )
+
         username = None
-        if stored_settings is not None:
+        if server is not None:
+            username = self._normalize_optional_string(server.username)
+        if not username and stored_settings is not None:
             username = self._normalize_optional_string(
                 getattr(stored_settings, "sip_trunk_username", None)
             )
@@ -881,7 +903,9 @@ class SIPRegistrationManager:
             )
 
         password = None
-        if stored_settings is not None:
+        if server is not None:
+            password = self._normalize_optional_string(server.password)
+        if not password and stored_settings is not None:
             password = self._normalize_optional_string(
                 getattr(stored_settings, "sip_trunk_password", None)
             )
@@ -898,7 +922,16 @@ class SIPRegistrationManager:
             self.apply_config(None)
             return
 
-        trunk_uri = self._resolve_trunk_uri(stored_settings, username)
+        trunk_uri = None
+        if server is not None:
+            trunk_uri = self._normalize_optional_string(server.trunk_uri)
+            if not trunk_uri:
+                LOGGER.warning(
+                    "Serveur SIP %s sans URI de trunk valide, repli sur la configuration globale",
+                    server.id,
+                )
+        if not trunk_uri:
+            trunk_uri = self._resolve_trunk_uri(stored_settings, username)
         if trunk_uri is None:
             LOGGER.info(
                 "Enregistrement SIP désactivé : aucun trunk SIP n'est configuré"
@@ -916,7 +949,7 @@ class SIPRegistrationManager:
             return
 
         contact_host, contact_port, contact_transport = self._resolve_contact_endpoint(
-            stored_settings, normalized_trunk_uri
+            stored_settings, normalized_trunk_uri, server
         )
         if not contact_host or contact_port is None:
             LOGGER.warning(
@@ -983,12 +1016,31 @@ class SIPRegistrationManager:
 
         return f"sip:{username}@{registrar}"
 
+    def _load_sip_server(
+        self, session: Session, server_id: str | None
+    ) -> SipServer | None:
+        normalized_id = self._normalize_optional_string(server_id)
+        if not normalized_id:
+            return None
+        server = session.get(SipServer, normalized_id)
+        if server is None:
+            LOGGER.warning(
+                "Serveur SIP demandé introuvable : %s", normalized_id
+            )
+            return None
+        return server
+
     def _resolve_contact_endpoint(
-        self, stored_settings: AppSettings | None, trunk_uri: str
+        self,
+        stored_settings: AppSettings | None,
+        trunk_uri: str,
+        server: SipServer | None = None,
     ) -> tuple[str | None, int | None, str | None]:
         """Determine the contact host/port used for registration."""
 
         contact_host = self._normalize_optional_string(self.contact_host)
+        if contact_host is None and server is not None:
+            contact_host = self._normalize_optional_string(server.contact_host)
         if contact_host is None and stored_settings is not None:
             contact_host = self._normalize_optional_string(
                 getattr(stored_settings, "sip_contact_host", None)
@@ -1001,6 +1053,8 @@ class SIPRegistrationManager:
         raw_port: int | str | None = None
         if self.contact_port is not None:
             raw_port = self.contact_port
+        elif server is not None and server.contact_port is not None:
+            raw_port = server.contact_port
         elif stored_settings is not None:
             stored_port = getattr(stored_settings, "sip_contact_port", None)
             if stored_port is not None:
@@ -1023,6 +1077,8 @@ class SIPRegistrationManager:
         contact_port = None if auto_detect_port else self._normalize_port(raw_port)
 
         transport = self._normalize_transport(self.contact_transport)
+        if transport is None and server is not None:
+            transport = self._normalize_transport(server.contact_transport)
         if transport is None and stored_settings is not None:
             transport = self._normalize_transport(
                 getattr(stored_settings, "sip_contact_transport", None)

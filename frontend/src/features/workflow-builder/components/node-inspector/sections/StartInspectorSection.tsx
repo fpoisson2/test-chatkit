@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { useI18n } from "../../../../../i18n";
+import type { TelephonySipServer } from "../../../../../utils/backend";
 import type {
   StartTelephonyRealtimeOverrides,
   StartTelephonyWorkflowReference,
@@ -20,6 +21,7 @@ type StartInspectorSectionProps = {
   startAutoRunAssistantMessage: string;
   startTelephonyRoutes: string[];
   startTelephonyWorkflow: StartTelephonyWorkflowReference;
+  startTelephonySipServerId: string;
   startTelephonyRealtime: StartTelephonyRealtimeOverrides;
   onStartAutoRunChange: (nodeId: string, value: boolean) => void;
   onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
@@ -29,10 +31,14 @@ type StartInspectorSectionProps = {
     nodeId: string,
     reference: { id?: number | null; slug?: string | null },
   ) => void;
+  onStartTelephonySipServerChange: (nodeId: string, serverId: string) => void;
   onStartTelephonyRealtimeChange: (
     nodeId: string,
     overrides: Partial<StartTelephonyRealtimeOverrides>,
   ) => void;
+  sipServers: TelephonySipServer[];
+  sipServersLoading: boolean;
+  sipServersError: string | null;
 };
 
 const TELEPHONY_INPUT_PATTERN = /^[0-9+#*\s().-]+$/;
@@ -80,13 +86,18 @@ export const StartInspectorSection = ({
   startAutoRunAssistantMessage,
   startTelephonyRoutes,
   startTelephonyWorkflow,
+  startTelephonySipServerId,
   startTelephonyRealtime,
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
   onStartAutoRunAssistantMessageChange,
   onStartTelephonyRoutesChange,
   onStartTelephonyWorkflowChange,
+  onStartTelephonySipServerChange,
   onStartTelephonyRealtimeChange,
+  sipServers,
+  sipServersLoading,
+  sipServersError,
 }: StartInspectorSectionProps) => {
   const { t } = useI18n();
 
@@ -95,6 +106,7 @@ export const StartInspectorSection = ({
   const [workflowIdInput, setWorkflowIdInput] = useState(
     startTelephonyWorkflow.id != null ? String(startTelephonyWorkflow.id) : "",
   );
+  const [sipServerInput, setSipServerInput] = useState(startTelephonySipServerId);
   const [realtimeModelInput, setRealtimeModelInput] = useState(startTelephonyRealtime.model);
   const [realtimeVoiceInput, setRealtimeVoiceInput] = useState(startTelephonyRealtime.voice);
   const [realtimeStartModeInput, setRealtimeStartModeInput] = useState<
@@ -103,6 +115,18 @@ export const StartInspectorSection = ({
   const [realtimeStopModeInput, setRealtimeStopModeInput] = useState<VoiceAgentStopBehavior | "">(
     startTelephonyRealtime.stop_mode ?? "",
   );
+  const [showTelephonyAdvanced, setShowTelephonyAdvanced] = useState(() => {
+    const hasWorkflowReference = Boolean(
+      startTelephonyWorkflow.slug.trim() || startTelephonyWorkflow.id != null,
+    );
+    return (
+      hasWorkflowReference ||
+      Boolean(startTelephonyRealtime.model.trim()) ||
+      Boolean(startTelephonyRealtime.voice.trim()) ||
+      Boolean(startTelephonyRealtime.start_mode) ||
+      Boolean(startTelephonyRealtime.stop_mode)
+    );
+  });
 
   useEffect(() => {
     setRoutesInput(startTelephonyRoutes.join("\n"));
@@ -114,6 +138,10 @@ export const StartInspectorSection = ({
   }, [startTelephonyWorkflow.id, startTelephonyWorkflow.slug]);
 
   useEffect(() => {
+    setSipServerInput(startTelephonySipServerId);
+  }, [startTelephonySipServerId]);
+
+  useEffect(() => {
     setRealtimeModelInput(startTelephonyRealtime.model);
     setRealtimeVoiceInput(startTelephonyRealtime.voice);
     setRealtimeStartModeInput(startTelephonyRealtime.start_mode ?? "");
@@ -123,6 +151,28 @@ export const StartInspectorSection = ({
     startTelephonyRealtime.voice,
     startTelephonyRealtime.start_mode,
     startTelephonyRealtime.stop_mode,
+  ]);
+
+  useEffect(() => {
+    const hasWorkflowReference = Boolean(
+      startTelephonyWorkflow.slug.trim() || startTelephonyWorkflow.id != null,
+    );
+    if (
+      hasWorkflowReference ||
+      Boolean(startTelephonyRealtime.model.trim()) ||
+      Boolean(startTelephonyRealtime.voice.trim()) ||
+      Boolean(startTelephonyRealtime.start_mode) ||
+      Boolean(startTelephonyRealtime.stop_mode)
+    ) {
+      setShowTelephonyAdvanced(true);
+    }
+  }, [
+    startTelephonyRealtime.model,
+    startTelephonyRealtime.voice,
+    startTelephonyRealtime.start_mode,
+    startTelephonyRealtime.stop_mode,
+    startTelephonyWorkflow.id,
+    startTelephonyWorkflow.slug,
   ]);
 
   const normalizedRoutes = useMemo(
@@ -139,24 +189,17 @@ export const StartInspectorSection = ({
     [normalizedRoutes],
   );
 
-  const hasRealtimeOverrides = useMemo(() => {
-    const trimmedModel = realtimeModelInput.trim();
-    const trimmedVoice = realtimeVoiceInput.trim();
-    return (
-      trimmedModel.length > 0 ||
-      trimmedVoice.length > 0 ||
-      Boolean(realtimeStartModeInput) ||
-      Boolean(realtimeStopModeInput)
-    );
-  }, [
-    realtimeModelInput,
-    realtimeVoiceInput,
-    realtimeStartModeInput,
-    realtimeStopModeInput,
-  ]);
+  const sipServerOptions = useMemo(
+    () =>
+      sipServers.map((server) => ({
+        id: server.id,
+        label: server.label?.trim() || server.id,
+        description: server.trunk_uri,
+      })),
+    [sipServers],
+  );
 
-  const requireWorkflowSlug = normalizedRoutes.length > 0 || hasRealtimeOverrides;
-  const slugError = requireWorkflowSlug && !workflowSlugInput.trim();
+  const sipServerDatalistId = useMemo(() => `sip-server-${nodeId}`, [nodeId]);
 
   const workflowIdParsed = useMemo(() => parseWorkflowId(workflowIdInput), [workflowIdInput]);
   const workflowIdHasError = Boolean(workflowIdInput.trim()) && workflowIdParsed === null;
@@ -264,147 +307,199 @@ export const StartInspectorSection = ({
 
       <label className={styles.nodeInspectorField}>
         <span className={styles.nodeInspectorLabel}>
-          {t("workflowBuilder.startInspector.telephonyWorkflowSlugLabel")}
+          {t("workflowBuilder.startInspector.telephonySipServerLabel")}
         </span>
         <input
           type="text"
-          value={workflowSlugInput}
+          value={sipServerInput}
+          list={sipServerDatalistId}
           onChange={(event) => {
             const value = event.target.value;
-            setWorkflowSlugInput(value);
-            emitWorkflowChange(value, workflowIdInput);
+            setSipServerInput(value);
+            onStartTelephonySipServerChange(nodeId, value);
           }}
+          placeholder={t("workflowBuilder.startInspector.telephonySipServerPlaceholder")}
         />
+        <datalist id={sipServerDatalistId}>
+          {sipServerOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.label}
+              {option.description ? ` (${option.description})` : ""}
+            </option>
+          ))}
+        </datalist>
         <p className={styles.nodeInspectorHintTextTight}>
-          {t("workflowBuilder.startInspector.telephonyWorkflowSlugHelp")}
+          {t("workflowBuilder.startInspector.telephonySipServerHint")}
         </p>
-        {slugError ? (
-          <p className={styles.nodeInspectorErrorTextSmall}>
-            {t("workflowBuilder.startInspector.telephonyWorkflowSlugError")}
+        {sipServersLoading ? (
+          <p className={styles.nodeInspectorHintTextTight}>
+            {t("workflowBuilder.startInspector.telephonySipServerLoading")}
           </p>
         ) : null}
-      </label>
-
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>
-          {t("workflowBuilder.startInspector.telephonyWorkflowIdLabel")}
-        </span>
-        <input
-          type="number"
-          inputMode="numeric"
-          min={1}
-          step={1}
-          value={workflowIdInput}
-          onChange={(event) => {
-            const value = event.target.value;
-            setWorkflowIdInput(value);
-            emitWorkflowChange(workflowSlugInput, value);
-          }}
-        />
-        <p className={styles.nodeInspectorHintTextTight}>
-          {t("workflowBuilder.startInspector.telephonyWorkflowIdHelp")}
-        </p>
-        {workflowIdHasError ? (
+        {sipServersError ? (
           <p className={styles.nodeInspectorErrorTextSmall}>
-            {t("workflowBuilder.startInspector.telephonyWorkflowIdError")}
+            {t("workflowBuilder.startInspector.telephonySipServerError")}
           </p>
         ) : null}
       </label>
 
       <div className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorSectionTitle}>
-          {t("workflowBuilder.startInspector.telephonyRealtimeTitle")}
-        </span>
-        <p className={styles.nodeInspectorSectionDescription}>
-          {t("workflowBuilder.startInspector.telephonyRealtimeDescription")}
+        <button
+          type="button"
+          className={styles.nodeInspectorSecondaryButton}
+          onClick={() => setShowTelephonyAdvanced((current) => !current)}
+        >
+          {showTelephonyAdvanced
+            ? t("workflowBuilder.startInspector.telephonyAdvancedHide")
+            : t("workflowBuilder.startInspector.telephonyAdvancedShow")}
+        </button>
+        <p className={styles.nodeInspectorHintTextTight}>
+          {t("workflowBuilder.startInspector.telephonyAdvancedDescription")}
         </p>
       </div>
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>
-          {t("workflowBuilder.startInspector.telephonyRealtimeModelLabel")}
-        </span>
-        <input
-          type="text"
-          value={realtimeModelInput}
-          onChange={(event) => {
-            const value = event.target.value;
-            setRealtimeModelInput(value);
-            onStartTelephonyRealtimeChange(nodeId, { model: value });
-          }}
-        />
-        <p className={styles.nodeInspectorHintTextTight}>
-          {t("workflowBuilder.startInspector.telephonyRealtimeModelHelp")}
-        </p>
-      </label>
+      {showTelephonyAdvanced ? (
+        <>
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
+              {t("workflowBuilder.startInspector.telephonyWorkflowSlugLabel")}
+            </span>
+            <input
+              type="text"
+              value={workflowSlugInput}
+              onChange={(event) => {
+                const value = event.target.value;
+                setWorkflowSlugInput(value);
+                emitWorkflowChange(value, workflowIdInput);
+              }}
+            />
+            <p className={styles.nodeInspectorHintTextTight}>
+              {t("workflowBuilder.startInspector.telephonyWorkflowSlugHelp")}
+            </p>
+          </label>
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>
-          {t("workflowBuilder.startInspector.telephonyRealtimeVoiceLabel")}
-        </span>
-        <input
-          type="text"
-          value={realtimeVoiceInput}
-          onChange={(event) => {
-            const value = event.target.value;
-            setRealtimeVoiceInput(value);
-            onStartTelephonyRealtimeChange(nodeId, { voice: value });
-          }}
-        />
-        <p className={styles.nodeInspectorHintTextTight}>
-          {t("workflowBuilder.startInspector.telephonyRealtimeVoiceHelp")}
-        </p>
-      </label>
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
+              {t("workflowBuilder.startInspector.telephonyWorkflowIdLabel")}
+            </span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              step={1}
+              value={workflowIdInput}
+              onChange={(event) => {
+                const value = event.target.value;
+                setWorkflowIdInput(value);
+                emitWorkflowChange(workflowSlugInput, value);
+              }}
+            />
+            <p className={styles.nodeInspectorHintTextTight}>
+              {t("workflowBuilder.startInspector.telephonyWorkflowIdHelp")}
+            </p>
+            {workflowIdHasError ? (
+              <p className={styles.nodeInspectorErrorTextSmall}>
+                {t("workflowBuilder.startInspector.telephonyWorkflowIdError")}
+              </p>
+            ) : null}
+          </label>
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>
-          {t("workflowBuilder.startInspector.telephonyRealtimeStartLabel")}
-        </span>
-        <select
-          value={realtimeStartModeInput}
-          onChange={(event) => {
-            const value = event.target.value as VoiceAgentStartBehavior | "";
-            setRealtimeStartModeInput(value);
-            onStartTelephonyRealtimeChange(nodeId, {
-              start_mode: value ? (value as VoiceAgentStartBehavior) : null,
-            });
-          }}
-        >
-          <option value="">
-            {t("workflowBuilder.startInspector.telephonyRealtimeStartDefault")}
-          </option>
-          {VOICE_AGENT_START_BEHAVIOR_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {t(option.labelKey)}
-            </option>
-          ))}
-        </select>
-      </label>
+          <div className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorSectionTitle}>
+              {t("workflowBuilder.startInspector.telephonyRealtimeTitle")}
+            </span>
+            <p className={styles.nodeInspectorSectionDescription}>
+              {t("workflowBuilder.startInspector.telephonyRealtimeDescription")}
+            </p>
+          </div>
 
-      <label className={styles.nodeInspectorField}>
-        <span className={styles.nodeInspectorLabel}>
-          {t("workflowBuilder.startInspector.telephonyRealtimeStopLabel")}
-        </span>
-        <select
-          value={realtimeStopModeInput}
-          onChange={(event) => {
-            const value = event.target.value as VoiceAgentStopBehavior | "";
-            setRealtimeStopModeInput(value);
-            onStartTelephonyRealtimeChange(nodeId, {
-              stop_mode: value ? (value as VoiceAgentStopBehavior) : null,
-            });
-          }}
-        >
-          <option value="">
-            {t("workflowBuilder.startInspector.telephonyRealtimeStopDefault")}
-          </option>
-          {VOICE_AGENT_STOP_BEHAVIOR_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {t(option.labelKey)}
-            </option>
-          ))}
-        </select>
-      </label>
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
+              {t("workflowBuilder.startInspector.telephonyRealtimeModelLabel")}
+            </span>
+            <input
+              type="text"
+              value={realtimeModelInput}
+              onChange={(event) => {
+                const value = event.target.value;
+                setRealtimeModelInput(value);
+                onStartTelephonyRealtimeChange(nodeId, { model: value });
+              }}
+            />
+            <p className={styles.nodeInspectorHintTextTight}>
+              {t("workflowBuilder.startInspector.telephonyRealtimeModelHelp")}
+            </p>
+          </label>
+
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
+              {t("workflowBuilder.startInspector.telephonyRealtimeVoiceLabel")}
+            </span>
+            <input
+              type="text"
+              value={realtimeVoiceInput}
+              onChange={(event) => {
+                const value = event.target.value;
+                setRealtimeVoiceInput(value);
+                onStartTelephonyRealtimeChange(nodeId, { voice: value });
+              }}
+            />
+            <p className={styles.nodeInspectorHintTextTight}>
+              {t("workflowBuilder.startInspector.telephonyRealtimeVoiceHelp")}
+            </p>
+          </label>
+
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
+              {t("workflowBuilder.startInspector.telephonyRealtimeStartLabel")}
+            </span>
+            <select
+              value={realtimeStartModeInput}
+              onChange={(event) => {
+                const value = event.target.value as VoiceAgentStartBehavior | "";
+                setRealtimeStartModeInput(value);
+                onStartTelephonyRealtimeChange(nodeId, {
+                  start_mode: value ? (value as VoiceAgentStartBehavior) : null,
+                });
+              }}
+            >
+              <option value="">
+                {t("workflowBuilder.startInspector.telephonyRealtimeStartDefault")}
+              </option>
+              {VOICE_AGENT_START_BEHAVIOR_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t(option.labelKey)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
+              {t("workflowBuilder.startInspector.telephonyRealtimeStopLabel")}
+            </span>
+            <select
+              value={realtimeStopModeInput}
+              onChange={(event) => {
+                const value = event.target.value as VoiceAgentStopBehavior | "";
+                setRealtimeStopModeInput(value);
+                onStartTelephonyRealtimeChange(nodeId, {
+                  stop_mode: value ? (value as VoiceAgentStopBehavior) : null,
+                });
+              }}
+            >
+              <option value="">
+                {t("workflowBuilder.startInspector.telephonyRealtimeStopDefault")}
+              </option>
+              {VOICE_AGENT_STOP_BEHAVIOR_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t(option.labelKey)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      ) : null}
     </>
   );
 };

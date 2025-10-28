@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import errno
 import logging
 import os
@@ -22,7 +23,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 
 from backend.app.config import DEFAULT_THREAD_TITLE_MODEL  # noqa: E402
-from backend.app.models import AppSettings  # noqa: E402
+from backend.app.models import AppSettings, SipServer  # noqa: E402
 from backend.app.telephony.registration import (  # noqa: E402
     _DEFAULT_SIP_PORT,
     _OPTIONS_ALLOW_HEADER,
@@ -73,6 +74,70 @@ def test_apply_config_from_settings_infers_contact_host(
     assert config.contact_port == _DEFAULT_SIP_PORT
     assert config.transport is None
     assert config.bind_host == "192.0.2.10"
+
+
+def test_apply_config_from_settings_prefers_sip_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    applied: list[SIPRegistrationConfig | None] = []
+    loop = asyncio.new_event_loop()
+    try:
+        manager = SIPRegistrationManager(
+            loop=loop,
+            settings=SimpleNamespace(
+                sip_bind_host=None,
+                sip_bind_port=None,
+                sip_username=None,
+                sip_password=None,
+            ),
+        )
+
+        def fake_apply_config(config: SIPRegistrationConfig | None) -> None:
+            applied.append(config)
+
+        monkeypatch.setattr(manager, "apply_config", fake_apply_config)
+
+        stored = AppSettings(
+            thread_title_prompt="Prompt",
+            thread_title_model=DEFAULT_THREAD_TITLE_MODEL,
+        )
+
+        server = SipServer(
+            id="pbx",
+            label="PBX",
+            trunk_uri="sip:alice@pbx.example.com",
+        )
+        server.username = "alice"
+        server.password = "secret"
+        server.contact_host = "198.51.100.5"
+        server.contact_port = 5070
+        server.contact_transport = "tcp"
+        server.created_at = datetime.datetime.now(datetime.UTC)
+        server.updated_at = server.created_at
+
+        session = MagicMock()
+        session.get.return_value = server
+        session.scalar.return_value = stored
+
+        loop.run_until_complete(
+            manager.apply_config_from_settings(
+                session,
+                None,
+                sip_server_id="pbx",
+            )
+        )
+    finally:
+        loop.close()
+
+    assert applied, "apply_config should be invoked when a SIP server is configured"
+    config = applied[0]
+    assert isinstance(config, SIPRegistrationConfig)
+    assert config.uri == "sip:alice@pbx.example.com"
+    assert config.username == "alice"
+    assert config.password == "secret"
+    assert config.contact_host == "198.51.100.5"
+    assert config.contact_port == 5070
+    assert config.transport == "tcp"
 
 
 def test_apply_config_from_settings_disables_without_contact(

@@ -79,6 +79,23 @@
   color: var(--color-text-strong);
 }
 
+.nodeInspectorSecondaryButton {
+  align-self: flex-start;
+  border: 1px solid var(--surface-border);
+  background-color: var(--surface-color);
+  color: var(--color-text-strong);
+  border-radius: 9999px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.nodeInspectorSecondaryButton:hover {
+  background-color: rgba(37, 99, 235, 0.08);
+  color: var(--color-text-strong);
+}
+
 .nodeInspectorToggleRow {
   display: flex;
   align-items: center;

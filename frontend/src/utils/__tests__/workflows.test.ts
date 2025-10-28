@@ -23,6 +23,8 @@ import {
   setStartTelephonyRoutes,
   getStartTelephonyWorkflow,
   setStartTelephonyWorkflow,
+  getStartTelephonySipServerId,
+  setStartTelephonySipServerId,
   getStartTelephonyRealtimeOverrides,
   setStartTelephonyRealtimeOverrides,
   resolveStartParameters,
@@ -158,6 +160,20 @@ describe("start telephony helpers", () => {
     });
 
     const cleared = setStartTelephonyWorkflow(configured, { id: null, slug: "   " });
+    expect(cleared).toEqual({});
+  });
+
+  it("met à jour l'identifiant de serveur SIP", () => {
+    const parameters: AgentParameters = {
+      telephony: { sip_server_id: "  serveur-primaire  " },
+    };
+
+    expect(getStartTelephonySipServerId(parameters)).toBe("serveur-primaire");
+
+    const withId = setStartTelephonySipServerId({}, "  pbx  ");
+    expect(withId).toEqual({ telephony: { sip_server_id: "pbx" } });
+
+    const cleared = setStartTelephonySipServerId(withId, " ");
     expect(cleared).toEqual({});
   });
 

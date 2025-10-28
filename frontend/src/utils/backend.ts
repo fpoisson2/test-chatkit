@@ -208,6 +208,19 @@ export type ModelProviderUpdatePayload = {
   is_default: boolean;
 };
 
+export type TelephonySipServer = {
+  id: string;
+  label: string;
+  trunk_uri: string;
+  username: string | null;
+  contact_host: string | null;
+  contact_port: number | null;
+  contact_transport: string | null;
+  has_password: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AppSettings = {
   thread_title_prompt: string;
   default_thread_title_prompt: string;
@@ -380,6 +393,21 @@ export const appSettingsApi = {
     });
     return response.json();
   },
+};
+
+export const fetchSipServers = async ({
+  token,
+  signal,
+}: {
+  token: string | null | undefined;
+  signal?: AbortSignal;
+}): Promise<TelephonySipServer[]> => {
+  const response = await requestWithFallback("/api/admin/telephony/sip-servers", {
+    method: "GET",
+    headers: withAuthHeaders(token ?? null),
+    signal,
+  });
+  return response.json();
 };
 
 export const chatkitApi = {

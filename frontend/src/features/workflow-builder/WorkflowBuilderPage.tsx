@@ -39,8 +39,10 @@ import {
   vectorStoreApi,
   type AvailableModel,
   type HostedWorkflowMetadata,
+  type TelephonySipServer,
   type WidgetTemplateSummary,
   type VectorStoreSummary,
+  fetchSipServers,
 } from "../../utils/backend";
 import { resolveAgentParameters, resolveStateParameters } from "../../utils/agentPresets";
 import {
@@ -87,6 +89,7 @@ import {
   setStartAutoRunAssistantMessage,
   setStartTelephonyRoutes,
   setStartTelephonyWorkflow,
+  setStartTelephonySipServerId,
   setStartTelephonyRealtimeOverrides,
   setConditionMode,
   setConditionPath,
@@ -492,6 +495,12 @@ const WorkflowBuilderPage = () => {
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [availableModelsLoading, setAvailableModelsLoading] = useState(false);
   const [availableModelsError, setAvailableModelsError] = useState<string | null>(null);
+  const [telephonySipServers, setTelephonySipServers] =
+    useState<TelephonySipServer[]>([]);
+  const [telephonySipServersLoading, setTelephonySipServersLoading] = useState(false);
+  const [telephonySipServersError, setTelephonySipServersError] = useState<string | null>(
+    null,
+  );
   const [widgets, setWidgets] = useState<WidgetTemplateSummary[]>([]);
   const [widgetsLoading, setWidgetsLoading] = useState(false);
   const [widgetsError, setWidgetsError] = useState<string | null>(null);
@@ -1588,6 +1597,53 @@ const WorkflowBuilderPage = () => {
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
+
+    if (!token) {
+      setTelephonySipServers([]);
+      setTelephonySipServersLoading(false);
+      setTelephonySipServersError(null);
+      return () => {
+        isMounted = false;
+        controller.abort();
+      };
+    }
+
+    setTelephonySipServersLoading(true);
+    setTelephonySipServersError(null);
+
+    fetchSipServers({ token, signal: controller.signal })
+      .then((servers) => {
+        if (!isMounted) {
+          return;
+        }
+        setTelephonySipServers(servers);
+      })
+      .catch((error) => {
+        if (!isMounted) {
+          return;
+        }
+        const message =
+          error instanceof Error
+            ? error.message
+            : t("workflowBuilder.startInspector.telephonySipServerError");
+        setTelephonySipServersError(message);
+        setTelephonySipServers([]);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setTelephonySipServersLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [t, token]);
+
+  useEffect(() => {
+    let isMounted = true;
     if (!token) {
       setAvailableModels([]);
       setAvailableModelsLoading(false);
@@ -2662,6 +2718,24 @@ const WorkflowBuilderPage = () => {
           return data;
         }
         const nextParameters = setStartTelephonyWorkflow(data.parameters, reference);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleStartTelephonySipServerChange = useCallback(
+    (nodeId: string, serverId: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "start") {
+          return data;
+        }
+        const nextParameters = setStartTelephonySipServerId(data.parameters, serverId);
         return {
           ...data,
           parameters: nextParameters,
@@ -7362,7 +7436,11 @@ const WorkflowBuilderPage = () => {
             }
             onStartTelephonyRoutesChange={handleStartTelephonyRoutesChange}
             onStartTelephonyWorkflowChange={handleStartTelephonyWorkflowChange}
+            onStartTelephonySipServerChange={handleStartTelephonySipServerChange}
             onStartTelephonyRealtimeChange={handleStartTelephonyRealtimeChange}
+            telephonySipServers={telephonySipServers}
+            telephonySipServersLoading={telephonySipServersLoading}
+            telephonySipServersError={telephonySipServersError}
             onConditionPathChange={handleConditionPathChange}
             onConditionModeChange={handleConditionModeChange}
             onConditionValueChange={handleConditionValueChange}

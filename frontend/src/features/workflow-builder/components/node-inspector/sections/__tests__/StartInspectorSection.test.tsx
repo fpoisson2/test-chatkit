@@ -20,6 +20,7 @@ const renderSection = (overrides: RenderOptions = {}) => {
   const onStartTelephonyRoutesChange = vi.fn();
   const onStartTelephonyWorkflowChange = vi.fn();
   const onStartTelephonyRealtimeChange = vi.fn();
+  const onStartTelephonySipServerChange = vi.fn();
 
   render(
     <I18nProvider>
@@ -30,13 +31,31 @@ const renderSection = (overrides: RenderOptions = {}) => {
         startAutoRunAssistantMessage=""
         startTelephonyRoutes={[]}
         startTelephonyWorkflow={defaultWorkflow}
+        startTelephonySipServerId=""
         startTelephonyRealtime={defaultRealtime}
         onStartAutoRunChange={vi.fn()}
         onStartAutoRunMessageChange={vi.fn()}
         onStartAutoRunAssistantMessageChange={vi.fn()}
         onStartTelephonyRoutesChange={onStartTelephonyRoutesChange}
         onStartTelephonyWorkflowChange={onStartTelephonyWorkflowChange}
+        onStartTelephonySipServerChange={onStartTelephonySipServerChange}
         onStartTelephonyRealtimeChange={onStartTelephonyRealtimeChange}
+        sipServers={[
+          {
+            id: "primary",
+            label: "Serveur primaire",
+            trunk_uri: "sip:alice@example.com",
+            username: "alice",
+            contact_host: "198.51.100.5",
+            contact_port: 5070,
+            contact_transport: "udp",
+            has_password: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        ]}
+        sipServersLoading={false}
+        sipServersError={null}
         {...overrides}
       />
     </I18nProvider>,
@@ -46,6 +65,7 @@ const renderSection = (overrides: RenderOptions = {}) => {
     onStartTelephonyRoutesChange,
     onStartTelephonyWorkflowChange,
     onStartTelephonyRealtimeChange,
+    onStartTelephonySipServerChange,
   };
 };
 
@@ -61,16 +81,22 @@ describe("StartInspectorSection", () => {
     expect(await screen.findByText(/Invalid phone numbers:|Numéros non conformes/i)).toBeInTheDocument();
   });
 
-  it("signale l'absence de slug lorsque des numéros sont configurés", () => {
-    renderSection({ startTelephonyRoutes: ["+33123456789"], startTelephonyWorkflow: defaultWorkflow });
+  it("masque les options avancées par défaut", () => {
+    renderSection();
 
     expect(
-      screen.getByText(/Provide a slug for the target workflow./i),
-    ).toBeInTheDocument();
+      screen.queryByLabelText(/Target workflow slug|Slug du workflow/i),
+    ).not.toBeInTheDocument();
+
+    const toggle = screen.getByRole("button", { name: /Advanced telephony|Options avancées/i });
+    expect(toggle).toBeInTheDocument();
   });
 
   it("propage les changements de configuration Realtime", async () => {
     const { onStartTelephonyRealtimeChange } = renderSection();
+
+    const toggle = screen.getByRole("button", { name: /Advanced telephony|Options avancées/i });
+    await userEvent.click(toggle);
 
     const select = screen.getByLabelText(/Start mode/i);
     await userEvent.selectOptions(select, "auto");
@@ -78,5 +104,18 @@ describe("StartInspectorSection", () => {
     expect(onStartTelephonyRealtimeChange).toHaveBeenCalledWith("start-node", {
       start_mode: "auto",
     });
+  });
+
+  it("propage le changement de serveur SIP", async () => {
+    const { onStartTelephonySipServerChange } = renderSection();
+
+    const input = screen.getByLabelText(/SIP server|Serveur SIP/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, "primary");
+
+    expect(onStartTelephonySipServerChange).toHaveBeenLastCalledWith(
+      "start-node",
+      "primary",
+    );
   });
 });

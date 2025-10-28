@@ -7,6 +7,7 @@ import {
 import { useAuth } from "../../../../auth";
 import {
   type AvailableModel,
+  type TelephonySipServer,
   type VectorStoreSummary,
   type WidgetTemplateSummary,
 } from "../../../../utils/backend";
@@ -24,6 +25,7 @@ import {
   getStartAutoRunMessage,
   getStartTelephonyRoutes,
   getStartTelephonyWorkflow,
+  getStartTelephonySipServerId,
   getStartTelephonyRealtimeOverrides,
   getStateAssignments,
   getUserMessage,
@@ -154,10 +156,14 @@ export type NodeInspectorProps = {
     nodeId: string,
     reference: { id?: number | null; slug?: string | null },
   ) => void;
+  onStartTelephonySipServerChange: (nodeId: string, serverId: string) => void;
   onStartTelephonyRealtimeChange: (
     nodeId: string,
     overrides: Partial<StartTelephonyRealtimeOverrides>,
   ) => void;
+  telephonySipServers: TelephonySipServer[];
+  telephonySipServersLoading: boolean;
+  telephonySipServersError: string | null;
   onConditionPathChange: (nodeId: string, value: string) => void;
   onConditionModeChange: (nodeId: string, value: string) => void;
   onConditionValueChange: (nodeId: string, value: string) => void;
@@ -237,7 +243,11 @@ const NodeInspector = ({
   onStartAutoRunAssistantMessageChange,
   onStartTelephonyRoutesChange,
   onStartTelephonyWorkflowChange,
+  onStartTelephonySipServerChange,
   onStartTelephonyRealtimeChange,
+  telephonySipServers,
+  telephonySipServersLoading,
+  telephonySipServersError,
   onConditionPathChange,
   onConditionModeChange,
   onConditionValueChange,
@@ -306,6 +316,8 @@ const NodeInspector = ({
     kind === "start"
       ? getStartTelephonyWorkflow(parameters)
       : { id: null, slug: "" };
+  const startTelephonySipServerId =
+    kind === "start" ? getStartTelephonySipServerId(parameters) : "";
   const startTelephonyRealtime: StartTelephonyRealtimeOverrides =
     kind === "start"
       ? getStartTelephonyRealtimeOverrides(parameters)
@@ -405,13 +417,18 @@ const NodeInspector = ({
           startAutoRunAssistantMessage={startAutoRunAssistantMessage}
           startTelephonyRoutes={startTelephonyRoutes}
           startTelephonyWorkflow={startTelephonyWorkflow}
+          startTelephonySipServerId={startTelephonySipServerId}
           startTelephonyRealtime={startTelephonyRealtime}
           onStartAutoRunChange={onStartAutoRunChange}
           onStartAutoRunMessageChange={onStartAutoRunMessageChange}
           onStartAutoRunAssistantMessageChange={onStartAutoRunAssistantMessageChange}
           onStartTelephonyRoutesChange={onStartTelephonyRoutesChange}
           onStartTelephonyWorkflowChange={onStartTelephonyWorkflowChange}
+          onStartTelephonySipServerChange={onStartTelephonySipServerChange}
           onStartTelephonyRealtimeChange={onStartTelephonyRealtimeChange}
+          sipServers={telephonySipServers}
+          sipServersLoading={telephonySipServersLoading}
+          sipServersError={telephonySipServersError}
         />
       ) : null}
 

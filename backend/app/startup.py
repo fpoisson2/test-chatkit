@@ -38,9 +38,10 @@ from .docs import DocumentationService
 from .model_providers import configure_model_provider
 from .models import (
     EMBEDDING_DIMENSION,
-    AppSettings,
     AvailableModel,
     Base,
+    AppSettings,
+    SipServer,
     TelephonyRoute,
     User,
     VoiceSettings,
@@ -68,7 +69,11 @@ from .vector_store import (
     WORKFLOW_VECTOR_STORE_TITLE,
     JsonVectorStoreService,
 )
-from .workflows.service import WorkflowService
+from .workflows.service import (
+    TelephonyStartConfiguration,
+    WorkflowService,
+    resolve_start_telephony_config,
+)
 
 logger = logging.getLogger("chatkit.server")
 
@@ -85,6 +90,29 @@ for noisy_logger in (
     logger_instance = logging.getLogger(noisy_logger)
     if logger_instance.level == logging.NOTSET:
         logger_instance.setLevel(logging.INFO)
+
+
+def _select_preferred_sip_server_id(
+    config: TelephonyStartConfiguration | None,
+) -> str | None:
+    if config is None:
+        return None
+    for route in getattr(config, "routes", ()):
+        server_id = getattr(route, "sip_server_id", None)
+        if isinstance(server_id, str):
+            trimmed = server_id.strip()
+            if trimmed:
+                return trimmed
+    default_route = getattr(config, "default_route", None)
+    if default_route is not None:
+        server_id = getattr(default_route, "sip_server_id", None)
+        if isinstance(server_id, str):
+            trimmed = server_id.strip()
+            if trimmed:
+                return trimmed
+    return None
+
+
 settings = settings_proxy
 
 
@@ -1035,6 +1063,11 @@ def _run_ad_hoc_migrations() -> None:
             TelephonyRoute.__table__.create(bind=connection)
             table_names.add("telephony_routes")
 
+        if "sip_servers" not in table_names:
+            logger.info("Création de la table sip_servers manquante")
+            SipServer.__table__.create(bind=connection)
+            table_names.add("sip_servers")
+
         # Migration de la dimension des vecteurs dans json_chunks
         if "json_chunks" in table_names:
             dialect = connection.dialect.name
@@ -1767,7 +1800,24 @@ def register_startup_events(app: FastAPI) -> None:
         manager: SIPRegistrationManager = app.state.sip_registration
         with SessionLocal() as session:
             stored_settings = session.scalar(select(AppSettings).limit(1))
-            await manager.apply_config_from_settings(session, stored_settings)
+            sip_server_id: str | None = None
+            try:
+                workflow_service = WorkflowService()
+                definition = workflow_service.get_current(session=session)
+            except Exception as exc:  # pragma: no cover - defensive logging
+                logger.warning(
+                    "Impossible de charger le workflow par défaut pour la téléphonie : %s",
+                    exc,
+                )
+                definition = None
+            if definition is not None:
+                telephony_config = resolve_start_telephony_config(definition)
+                sip_server_id = _select_preferred_sip_server_id(telephony_config)
+            await manager.apply_config_from_settings(
+                session,
+                stored_settings,
+                sip_server_id=sip_server_id,
+            )
         await manager.start()
 
     @app.on_event("shutdown")

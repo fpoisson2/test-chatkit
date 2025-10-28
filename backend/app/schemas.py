@@ -301,6 +301,39 @@ class AppSettingsUpdateRequest(BaseModel):
     )
 
 
+class SipServerBase(BaseModel):
+    id: constr(strip_whitespace=True, min_length=1, max_length=64)
+    label: constr(strip_whitespace=True, min_length=1, max_length=128)
+    trunk_uri: constr(strip_whitespace=True, min_length=1, max_length=512)
+    username: constr(strip_whitespace=True, min_length=1, max_length=128) | None = None
+    contact_host: constr(strip_whitespace=True, min_length=1, max_length=255) | None = None
+    contact_port: int | None = Field(default=None, ge=0, le=65535)
+    contact_transport: constr(strip_whitespace=True, min_length=1, max_length=16) | None = None
+
+
+class SipServerCreateRequest(SipServerBase):
+    password: constr(strip_whitespace=True, min_length=1, max_length=256) | None = None
+
+
+class SipServerUpdateRequest(BaseModel):
+    label: constr(strip_whitespace=True, min_length=1, max_length=128) | None = None
+    trunk_uri: constr(strip_whitespace=True, min_length=1, max_length=512) | None = None
+    username: constr(strip_whitespace=True, min_length=1, max_length=128) | None = None
+    password: constr(strip_whitespace=True, min_length=1, max_length=256) | None = None
+    contact_host: constr(strip_whitespace=True, min_length=1, max_length=255) | None = None
+    contact_port: int | None = Field(default=None, ge=0, le=65535)
+    contact_transport: constr(strip_whitespace=True, min_length=1, max_length=16) | None = None
+
+
+class SipServerResponse(SipServerBase):
+    has_password: bool = False
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str

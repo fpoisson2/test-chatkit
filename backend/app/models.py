@@ -190,6 +190,30 @@ class TelephonyRoute(Base):
     )
 
 
+class SipServer(Base):
+    __tablename__ = "sip_servers"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    label: Mapped[str] = mapped_column(String(128), nullable=False)
+    trunk_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    username: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    password: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    contact_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    contact_transport: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+        onupdate=lambda: datetime.datetime.now(datetime.UTC),
+    )
+
+
 class AppSettings(Base):
     __tablename__ = "app_settings"
 

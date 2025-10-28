@@ -195,6 +195,7 @@ class TelephonyRouteConfig:
     metadata: dict[str, Any]
     priority: int
     is_default: bool = False
+    sip_server_id: str | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -366,6 +367,13 @@ def _normalize_route_payload(
     overrides = _normalize_route_overrides(payload.get("overrides"))
     metadata_raw = payload.get("metadata")
     metadata = dict(metadata_raw) if isinstance(metadata_raw, Mapping) else {}
+    raw_server_id = payload.get("sip_server_id")
+    if not isinstance(raw_server_id, str):
+        alternative_server = payload.get("sip_server")
+        raw_server_id = alternative_server if isinstance(alternative_server, str) else None
+    sip_server_id = raw_server_id.strip() if isinstance(raw_server_id, str) else ""
+    if sip_server_id == "":
+        sip_server_id = None
 
     workflow_payload = payload.get("workflow")
     slug, workflow_id = _normalize_workflow_reference(workflow_payload)
@@ -401,6 +409,7 @@ def _normalize_route_payload(
         metadata=metadata,
         priority=priority,
         is_default=is_default,
+        sip_server_id=sip_server_id,
     )
 
 

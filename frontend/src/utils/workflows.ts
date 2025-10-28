@@ -574,6 +574,39 @@ export const setStartTelephonyWorkflow = (
     return { ...current, workflow: payload };
   });
 
+export const getStartTelephonySipServerId = (
+  parameters: AgentParameters | null | undefined,
+): string => {
+  if (!parameters) {
+    return "";
+  }
+
+  const telephony = cloneStartTelephonyConfig(
+    (parameters as Record<string, unknown>).telephony,
+  );
+  const serverId = telephony.sip_server_id;
+  if (typeof serverId === "string") {
+    const trimmed = serverId.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  return "";
+};
+
+export const setStartTelephonySipServerId = (
+  parameters: AgentParameters,
+  sipServerId: string | null | undefined,
+): AgentParameters =>
+  updateStartTelephonyConfig(parameters, (current) => {
+    const trimmed = typeof sipServerId === "string" ? sipServerId.trim() : "";
+    if (!trimmed) {
+      const { sip_server_id: _ignored, ...rest } = current;
+      return rest;
+    }
+    return { ...current, sip_server_id: trimmed };
+  });
+
 export const setConditionPath = (
   parameters: AgentParameters,
   path: string,
@@ -1269,6 +1302,10 @@ export const resolveStartParameters = (
 
   result = setStartTelephonyRoutes(result, getStartTelephonyRoutes(rawParameters));
   result = setStartTelephonyWorkflow(result, getStartTelephonyWorkflow(rawParameters));
+  result = setStartTelephonySipServerId(
+    result,
+    getStartTelephonySipServerId(rawParameters),
+  );
   result = setStartTelephonyRealtimeOverrides(
     result,
     getStartTelephonyRealtimeOverrides(rawParameters),

@@ -186,9 +186,17 @@ const fr: TranslationDictionary = {
     "L'URL de base du fournisseur doit être valide et utiliser http ou https.",
   "admin.appSettings.actions.save": "Enregistrer les paramètres",
   "admin.appSettings.actions.reset": "Revenir aux valeurs par défaut",
-  "admin.appSettings.sipTrunk.cardTitle": "Trunk SIP",
+  "admin.appSettings.sipTrunk.cardTitle": "Fallback téléphonie",
   "admin.appSettings.sipTrunk.cardDescription":
-    "Configurez l'accès SIP utilisé pour la téléphonie entrante.",
+    "Les workflows doivent désormais sélectionner un serveur SIP depuis le bloc Début.",
+  "admin.appSettings.sipTrunk.deprecationNotice":
+    "Ce fallback global n'est utilisé que lorsque le bloc Début d'un workflow ne précise aucun serveur SIP.",
+  "admin.appSettings.sipTrunk.showLegacy": "Afficher les options héritées",
+  "admin.appSettings.sipTrunk.hideLegacy": "Masquer les options héritées",
+  "admin.appSettings.sipTrunk.legacySummary":
+    "Un fallback téléphonie est toujours enregistré.",
+  "admin.appSettings.sipTrunk.legacyHelp":
+    "Mettez à jour ces valeurs uniquement pour les anciens workflows. Videz-les une fois la migration terminée.",
   "admin.appSettings.sipTrunk.uriLabel": "URI du trunk SIP",
   "admin.appSettings.sipTrunk.uriPlaceholder": "ex. sip:pbx.exemple.com",
   "admin.appSettings.sipTrunk.usernameLabel": "Identifiant SIP",
@@ -383,17 +391,27 @@ const fr: TranslationDictionary = {
     "Supprimer ce workflow hébergé",
   "workflowBuilder.startInspector.telephonySectionTitle": "Téléphonie",
   "workflowBuilder.startInspector.telephonySectionDescription":
-    "Configurez les numéros entrants et les overrides Realtime appliqués à ce bloc de démarrage.",
+    "Déclarez uniquement les numéros entrants et choisissez un serveur SIP si nécessaire. Les autres paramètres voix se règlent dans le bloc Agent vocal.",
   "workflowBuilder.startInspector.telephonyRoutesLabel": "Numéros entrants",
   "workflowBuilder.startInspector.telephonyRoutesPlaceholder": "Saisir un numéro par ligne…",
   "workflowBuilder.startInspector.telephonyRoutesHelp":
     "Utilisez un numéro E.164 (ex. +33123456789) ou une extension numérique (ex. 101). Laissez vide pour désactiver la redirection téléphonique.",
   "workflowBuilder.startInspector.telephonyRoutesError": "Numéros non conformes : {{list}}",
+  "workflowBuilder.startInspector.telephonySipServerLabel": "Serveur SIP",
+  "workflowBuilder.startInspector.telephonySipServerPlaceholder":
+    "Identifiant du serveur (ex. pbx-primaire)",
+  "workflowBuilder.startInspector.telephonySipServerHint":
+    "Sélectionnez un serveur déclaré dans l'administration téléphonie.",
+  "workflowBuilder.startInspector.telephonySipServerLoading": "Chargement des serveurs SIP…",
+  "workflowBuilder.startInspector.telephonySipServerError":
+    "Impossible de charger la liste des serveurs SIP.",
   "workflowBuilder.startInspector.telephonyWorkflowSlugLabel": "Slug du workflow cible",
+  "workflowBuilder.startInspector.telephonyAdvancedShow": "Afficher les options avancées",
+  "workflowBuilder.startInspector.telephonyAdvancedHide": "Masquer les options avancées",
+  "workflowBuilder.startInspector.telephonyAdvancedDescription":
+    "Utilisez ces options uniquement pour cibler un autre workflow ou personnaliser temporairement la voix.",
   "workflowBuilder.startInspector.telephonyWorkflowSlugHelp":
-    "Slug du workflow à exécuter lorsque l'appel est reçu sur l'un des numéros ci-dessus.",
-  "workflowBuilder.startInspector.telephonyWorkflowSlugError":
-    "Indiquez un slug pour le workflow cible.",
+    "Laissez vide pour réutiliser l'agent vocal de ce workflow. Renseignez un slug pour router vers un autre workflow.",
   "workflowBuilder.startInspector.telephonyWorkflowIdLabel": "Identifiant du workflow (optionnel)",
   "workflowBuilder.startInspector.telephonyWorkflowIdHelp":
     "Renseignez l'identifiant interne du workflow pour lever toute ambiguïté sur le slug.",
@@ -401,7 +419,7 @@ const fr: TranslationDictionary = {
     "L'identifiant doit être un entier positif.",
   "workflowBuilder.startInspector.telephonyRealtimeTitle": "Overrides Realtime",
   "workflowBuilder.startInspector.telephonyRealtimeDescription":
-    "Ces paramètres surchargent la configuration Realtime lorsque le workflow démarre depuis un numéro de téléphone.",
+    "Ces paramètres surchargent la configuration Realtime lors d'un appel téléphonique. Laissez vide pour conserver le comportement de l'agent vocal.",
   "workflowBuilder.startInspector.telephonyRealtimeModelLabel": "Modèle Realtime",
   "workflowBuilder.startInspector.telephonyRealtimeModelHelp":
     "Laissez vide pour utiliser le modèle défini sur le workflow.",
@@ -747,9 +765,16 @@ const en: TranslationDictionary = {
     "The provider base URL must be valid and use http or https.",
   "admin.appSettings.actions.save": "Save settings",
   "admin.appSettings.actions.reset": "Revert to defaults",
-  "admin.appSettings.sipTrunk.cardTitle": "SIP trunk",
+  "admin.appSettings.sipTrunk.cardTitle": "Telephony fallback",
   "admin.appSettings.sipTrunk.cardDescription":
-    "Configure the SIP access used for inbound telephony.",
+    "Workflows are now expected to select a SIP server from the Start block.",
+  "admin.appSettings.sipTrunk.deprecationNotice":
+    "This global fallback is only used when a Start block does not reference any SIP server.",
+  "admin.appSettings.sipTrunk.showLegacy": "Show legacy options",
+  "admin.appSettings.sipTrunk.hideLegacy": "Hide legacy options",
+  "admin.appSettings.sipTrunk.legacySummary": "A telephony fallback is still configured.",
+  "admin.appSettings.sipTrunk.legacyHelp":
+    "Update these values only for legacy workflows. Clear them once every workflow has migrated.",
   "admin.appSettings.sipTrunk.uriLabel": "SIP trunk URI",
   "admin.appSettings.sipTrunk.uriPlaceholder": "e.g. sip:pbx.example.com",
   "admin.appSettings.sipTrunk.usernameLabel": "SIP username",
@@ -936,24 +961,34 @@ const en: TranslationDictionary = {
   "workflowBuilder.startInspector.hostedRemoveButton": "Remove this hosted workflow",
   "workflowBuilder.startInspector.telephonySectionTitle": "Telephony",
   "workflowBuilder.startInspector.telephonySectionDescription":
-    "Configure inbound numbers and Realtime overrides applied to this start block.",
+    "Only declare inbound numbers and pick a SIP server when needed. Voice settings now live in the Voice agent block.",
   "workflowBuilder.startInspector.telephonyRoutesLabel": "Inbound numbers",
   "workflowBuilder.startInspector.telephonyRoutesPlaceholder": "Enter one phone number per line…",
   "workflowBuilder.startInspector.telephonyRoutesHelp":
     "Use an E.164 number (e.g. +33123456789) or a numeric extension (e.g. 101). Leave empty to disable telephony routing.",
   "workflowBuilder.startInspector.telephonyRoutesError": "Invalid phone numbers: {{list}}",
+  "workflowBuilder.startInspector.telephonySipServerLabel": "SIP server",
+  "workflowBuilder.startInspector.telephonySipServerPlaceholder":
+    "Server identifier (e.g. primary-pbx)",
+  "workflowBuilder.startInspector.telephonySipServerHint":
+    "Select a server defined in the telephony administration.",
+  "workflowBuilder.startInspector.telephonySipServerLoading": "Loading SIP servers…",
+  "workflowBuilder.startInspector.telephonySipServerError":
+    "Unable to load the SIP server list.",
   "workflowBuilder.startInspector.telephonyWorkflowSlugLabel": "Target workflow slug",
+  "workflowBuilder.startInspector.telephonyAdvancedShow": "Show advanced telephony options",
+  "workflowBuilder.startInspector.telephonyAdvancedHide": "Hide advanced telephony options",
+  "workflowBuilder.startInspector.telephonyAdvancedDescription":
+    "Use these advanced options only when routing to another workflow or overriding voice settings.",
   "workflowBuilder.startInspector.telephonyWorkflowSlugHelp":
-    "Slug of the workflow to run when any of the above numbers is called.",
-  "workflowBuilder.startInspector.telephonyWorkflowSlugError":
-    "Provide a slug for the target workflow.",
+    "Leave empty to reuse this workflow's voice agent. Provide a slug to route to another workflow.",
   "workflowBuilder.startInspector.telephonyWorkflowIdLabel": "Workflow ID (optional)",
   "workflowBuilder.startInspector.telephonyWorkflowIdHelp":
     "Set the internal workflow ID to disambiguate the slug if needed.",
   "workflowBuilder.startInspector.telephonyWorkflowIdError": "The ID must be a positive integer.",
   "workflowBuilder.startInspector.telephonyRealtimeTitle": "Realtime overrides",
   "workflowBuilder.startInspector.telephonyRealtimeDescription":
-    "These settings override the Realtime configuration when the workflow starts from a phone number.",
+    "Overrides applied during phone calls. Leave empty to keep the Voice agent defaults.",
   "workflowBuilder.startInspector.telephonyRealtimeModelLabel": "Realtime model",
   "workflowBuilder.startInspector.telephonyRealtimeModelHelp":
     "Leave blank to use the workflow's default model.",

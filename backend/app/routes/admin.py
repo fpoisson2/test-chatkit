@@ -19,10 +19,13 @@ from ..config import get_settings
 from ..database import get_session
 from ..dependencies import require_admin
 from ..model_providers import configure_model_provider
-from ..models import TelephonyRoute, User
+from ..models import SipServer, TelephonyRoute, User
 from ..schemas import (
     AppSettingsResponse,
     AppSettingsUpdateRequest,
+    SipServerCreateRequest,
+    SipServerResponse,
+    SipServerUpdateRequest,
     TelephonyRouteCreateRequest,
     TelephonyRouteResponse,
     TelephonyRouteUpdateRequest,
@@ -34,6 +37,37 @@ from ..security import hash_password
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _normalize_optional_string(value: str | None) -> str | None:
+    if value is None:
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def _normalize_transport(value: str | None) -> str | None:
+    normalized = _normalize_optional_string(value)
+    if not normalized:
+        return None
+    return normalized.lower()
+
+
+def _serialize_sip_server(server: SipServer) -> SipServerResponse:
+    return SipServerResponse.model_validate(
+        {
+            "id": server.id,
+            "label": server.label,
+            "trunk_uri": server.trunk_uri,
+            "username": server.username,
+            "contact_host": server.contact_host,
+            "contact_port": server.contact_port,
+            "contact_transport": server.contact_transport,
+            "has_password": bool(server.password),
+            "created_at": server.created_at,
+            "updated_at": server.updated_at,
+        }
+    )
 
 
 @router.get("/api/admin/app-settings", response_model=AppSettingsResponse)
@@ -104,7 +138,11 @@ async def patch_app_settings(
             )
         else:
             try:
-                await manager.apply_config_from_settings(session, result.settings)
+                await manager.apply_config_from_settings(
+                    session,
+                    result.settings,
+                    sip_server_id=manager.preferred_sip_server_id,
+                )
             except asyncio.CancelledError:
                 raise
             except Exception as exc:  # pragma: no cover - depends on SIP stack
@@ -203,6 +241,124 @@ async def delete_user(
         )
 
     session.delete(user)
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/api/admin/telephony/sip-servers",
+    response_model=list[SipServerResponse],
+)
+async def list_sip_servers(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    servers = session.scalars(select(SipServer).order_by(SipServer.label.asc())).all()
+    return [_serialize_sip_server(server) for server in servers]
+
+
+@router.post(
+    "/api/admin/telephony/sip-servers",
+    response_model=SipServerResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_sip_server(
+    payload: SipServerCreateRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    server_id = payload.id.strip()
+    existing = session.get(SipServer, server_id)
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Un serveur SIP utilise déjà cet identifiant",
+        )
+
+    server = SipServer(
+        id=server_id,
+        label=payload.label.strip(),
+        trunk_uri=payload.trunk_uri.strip(),
+        username=_normalize_optional_string(payload.username),
+        password=_normalize_optional_string(payload.password),
+        contact_host=_normalize_optional_string(payload.contact_host),
+        contact_port=payload.contact_port,
+        contact_transport=_normalize_transport(payload.contact_transport),
+    )
+    session.add(server)
+    session.commit()
+    session.refresh(server)
+    return _serialize_sip_server(server)
+
+
+@router.patch(
+    "/api/admin/telephony/sip-servers/{server_id}",
+    response_model=SipServerResponse,
+)
+async def update_sip_server(
+    server_id: str,
+    payload: SipServerUpdateRequest,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    normalized_id = server_id.strip()
+    server = session.get(SipServer, normalized_id)
+    if server is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Serveur SIP introuvable",
+        )
+
+    updated = False
+    if "label" in payload.model_fields_set and payload.label is not None:
+        server.label = payload.label.strip()
+        updated = True
+    if "trunk_uri" in payload.model_fields_set and payload.trunk_uri is not None:
+        server.trunk_uri = payload.trunk_uri.strip()
+        updated = True
+    if "username" in payload.model_fields_set:
+        server.username = _normalize_optional_string(payload.username)
+        updated = True
+    if "password" in payload.model_fields_set:
+        server.password = _normalize_optional_string(payload.password)
+        updated = True
+    if "contact_host" in payload.model_fields_set:
+        server.contact_host = _normalize_optional_string(payload.contact_host)
+        updated = True
+    if "contact_port" in payload.model_fields_set:
+        server.contact_port = payload.contact_port
+        updated = True
+    if "contact_transport" in payload.model_fields_set:
+        server.contact_transport = _normalize_transport(payload.contact_transport)
+        updated = True
+
+    if updated:
+        server.updated_at = datetime.datetime.now(datetime.UTC)
+        session.add(server)
+        session.commit()
+        session.refresh(server)
+
+    return _serialize_sip_server(server)
+
+
+@router.delete(
+    "/api/admin/telephony/sip-servers/{server_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_sip_server(
+    server_id: str,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    normalized_id = server_id.strip()
+    server = session.get(SipServer, normalized_id)
+    if server is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Serveur SIP introuvable",
+        )
+
+    session.delete(server)
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
