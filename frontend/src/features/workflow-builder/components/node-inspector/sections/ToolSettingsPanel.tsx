@@ -301,26 +301,10 @@ export const ToolSettingsPanel = ({
         scope: mcpScopeDraft.trim() || null,
       });
 
-      const popup =
-        typeof window !== "undefined"
-          ? window.open(result.authorization_url, "_blank", "noopener")
-          : null;
-
-      if (!popup) {
-        setOauthFeedback({
-          status: "error",
-          message: t(
-            "workflowBuilder.agentInspector.mcpOAuthStatus.windowBlocked",
-          ),
-          stateId: null,
-        });
-        if (onCancelMcpOAuth) {
-          void onCancelMcpOAuth(result.state).catch(() => {});
-        }
-        return;
+      if (typeof window !== "undefined") {
+        const popup = window.open(result.authorization_url, "_blank");
+        popup?.focus?.();
       }
-
-      popup.focus?.();
 
       setOauthFeedback({
         status: "pending",
