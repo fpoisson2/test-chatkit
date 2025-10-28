@@ -119,6 +119,7 @@ export const ToolSettingsPanel = ({
 
   const latestOauthStatusRef = useRef(oauthFeedback.status);
   const latestOauthStateRef = useRef<string | null>(oauthFeedback.stateId);
+  const onCancelMcpOAuthRef = useRef(onCancelMcpOAuth);
 
   useEffect(() => {
     setMcpUrlDraft(mcpUrlValue);
@@ -144,16 +145,20 @@ export const ToolSettingsPanel = ({
   }, [oauthFeedback.status, oauthFeedback.stateId]);
 
   useEffect(() => {
+    onCancelMcpOAuthRef.current = onCancelMcpOAuth;
+  }, [onCancelMcpOAuth]);
+
+  useEffect(() => {
     return () => {
       if (
         latestOauthStatusRef.current === "pending" &&
         latestOauthStateRef.current &&
-        onCancelMcpOAuth
+        onCancelMcpOAuthRef.current
       ) {
-        void onCancelMcpOAuth(latestOauthStateRef.current).catch(() => {});
+        void onCancelMcpOAuthRef.current(latestOauthStateRef.current).catch(() => {});
       }
     };
-  }, [onCancelMcpOAuth]);
+  }, []);
 
   const handleMcpUrlChange = useCallback(
     (value: string) => {
