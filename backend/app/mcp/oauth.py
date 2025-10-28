@@ -341,6 +341,11 @@ async def complete_oauth_callback(
         response = await http_client.post(session.token_endpoint, data=data)
         response.raise_for_status()
         token_payload = response.json()
+
+        logger.debug(
+            "Token exchange successful token_keys=%s",
+            sorted(token_payload.keys()) if isinstance(token_payload, dict) else type(token_payload),
+        )
     except httpx.HTTPStatusError as exc:
         error_detail: str | None = None
         try:
