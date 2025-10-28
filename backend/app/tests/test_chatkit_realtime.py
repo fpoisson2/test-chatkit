@@ -244,6 +244,70 @@ def test_open_voice_session_normalizes_mcp_tools(
     assert "agent" not in tool_config
 
 
+def test_open_voice_session_normalizes_function_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+    captured: dict[str, object] = {}
+
+    _reset_orchestrator(monkeypatch)
+    monkeypatch.setattr(realtime_runner, "get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr(
+        realtime_runner,
+        "resolve_model_provider_credentials",
+        lambda provider_id: None,
+    )
+    monkeypatch.setattr(
+        realtime_runner.httpx,
+        "AsyncClient",
+        lambda **kwargs: _DummyAsyncClient(captured=captured, **kwargs),
+    )
+
+    tools_payload = [
+        {
+            "type": "function",
+            "function": {
+                "name": "calculate",
+                "description": "Calcule une valeur",
+                "parameters": {"type": "object", "properties": {}},
+                "strict": True,
+                "cache_control": {"ttl": 30},
+            },
+        }
+    ]
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-function",
+            model="gpt-realtime",
+            instructions="Bonjour",
+            provider_slug="openai",
+            tools=tools_payload,
+        )
+    )
+
+    assert handle.payload == {"client_secret": {"value": "secret"}}
+    requests = captured.get("requests")
+    assert isinstance(requests, list)
+    assert len(requests) == 1
+
+    payload = requests[0]["json"]
+    assert isinstance(payload, dict)
+    session_payload = payload.get("session")
+    assert isinstance(session_payload, dict)
+
+    session_tools = session_payload.get("tools")
+    assert isinstance(session_tools, list) and session_tools
+    tool_config = session_tools[0]
+    assert tool_config.get("type") == "function"
+    assert tool_config.get("name") == "calculate"
+    assert tool_config.get("description") == "Calcule une valeur"
+    assert tool_config.get("parameters") == {"type": "object", "properties": {}}
+    assert tool_config.get("strict") is True
+    assert tool_config.get("cache_control") == {"ttl": 30}
+    assert "function" not in tool_config
+
+
 def test_openai_slug_ignores_mismatched_provider_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

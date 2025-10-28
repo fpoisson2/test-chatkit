@@ -40,21 +40,29 @@ def _normalize_realtime_tools_payload(
     normalized: list[Any] = []
     seen_labels: set[str] = set()
 
-    disallowed_tool_keys = {"agent"}
+    disallowed_tool_keys = {"agent", "function"}
 
     for index, entry in enumerate(source_entries):
         if isinstance(entry, Mapping):
             tool_entry = dict(entry)
 
-            for key in disallowed_tool_keys:
-                if key in tool_entry:
-                    tool_entry.pop(key, None)
             tool_type = str(
                 tool_entry.get("type")
                 or tool_entry.get("tool")
                 or tool_entry.get("name")
                 or ""
             ).strip().lower()
+
+            if tool_type == "function":
+                normalized_function = _normalize_function_tool_payload(
+                    tool_entry.get("function")
+                )
+                if normalized_function:
+                    tool_entry.update(normalized_function)
+
+            for key in disallowed_tool_keys:
+                if key in tool_entry:
+                    tool_entry.pop(key, None)
 
             if tool_type == "mcp":
                 label = _derive_mcp_server_label(tool_entry)
@@ -114,6 +122,41 @@ def _derive_mcp_server_label(entry: Mapping[str, Any]) -> str | None:
         return label
 
     return None
+
+
+def _normalize_function_tool_payload(value: Any) -> dict[str, Any]:
+    """Transforme la configuration des fonctions au format Realtime attendu."""
+
+    if not isinstance(value, Mapping):
+        return {}
+
+    normalized: dict[str, Any] = {}
+
+    name = value.get("name")
+    if isinstance(name, str) and name.strip():
+        normalized["name"] = name.strip()
+
+    description = value.get("description")
+    if isinstance(description, str) and description.strip():
+        normalized["description"] = description.strip()
+
+    parameters = value.get("parameters")
+    if isinstance(parameters, Mapping):
+        normalized["parameters"] = dict(parameters)
+
+    strict = value.get("strict")
+    if isinstance(strict, bool):
+        normalized["strict"] = strict
+
+    cache_control = value.get("cache_control")
+    if isinstance(cache_control, Mapping):
+        normalized["cache_control"] = dict(cache_control)
+
+    response = value.get("response")
+    if isinstance(response, Mapping):
+        normalized["response"] = dict(response)
+
+    return normalized
 
 
 def _normalize_label(value: Any) -> str | None:
