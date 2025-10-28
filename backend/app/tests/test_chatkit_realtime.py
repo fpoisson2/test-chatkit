@@ -8,6 +8,7 @@ from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
 import pytest
 from agents.realtime.agent import RealtimeAgent
 from agents.tool import FunctionTool
@@ -103,6 +104,85 @@ def _reset_orchestrator(monkeypatch: pytest.MonkeyPatch) -> None:
         "_cleanup_mcp_servers",
         _noop_cleanup,
     )
+
+
+def test_connect_mcp_servers_wraps_http_status_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = httpx.Request("GET", "https://mcp.example.com/sse")
+    response = httpx.Response(status_code=401, request=request)
+    http_error = httpx.HTTPStatusError(
+        "401 Unauthorized",
+        request=request,
+        response=response,
+    )
+
+    class _FailingServer:
+        async def connect(self) -> None:  # noqa: D401 - simple stub
+            raise http_error
+
+    cleanup_calls: list[list[object]] = []
+
+    monkeypatch.setattr(
+        realtime_runner,
+        "_create_mcp_server_from_config",
+        lambda config: _FailingServer(),
+    )
+
+    async def _record_cleanup(servers: Sequence[object]) -> None:
+        cleanup_calls.append(list(servers))
+
+    monkeypatch.setattr(
+        realtime_runner,
+        "_cleanup_mcp_servers",
+        _record_cleanup,
+    )
+
+    config = {"server_url": str(request.url), "server_label": "mcp"}
+
+    with pytest.raises(realtime_runner.HTTPException) as excinfo:
+        asyncio.run(realtime_runner._connect_mcp_servers([config]))
+
+    assert excinfo.value.status_code == 502
+    detail = excinfo.value.detail
+    assert isinstance(detail, dict)
+    assert detail.get("server_url") == str(request.url)
+    assert detail.get("status_code") == 401
+    assert cleanup_calls == [[]]
+
+
+def test_connect_mcp_servers_wraps_generic_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _BoomingServer:
+        async def connect(self) -> None:
+            raise RuntimeError("boom")
+
+    cleanup_calls: list[list[object]] = []
+
+    monkeypatch.setattr(
+        realtime_runner,
+        "_create_mcp_server_from_config",
+        lambda config: _BoomingServer(),
+    )
+
+    async def _record_cleanup(servers: Sequence[object]) -> None:
+        cleanup_calls.append(list(servers))
+
+    monkeypatch.setattr(
+        realtime_runner,
+        "_cleanup_mcp_servers",
+        _record_cleanup,
+    )
+
+    config = {"server_url": "https://mcp.example.com"}
+
+    with pytest.raises(realtime_runner.HTTPException) as excinfo:
+        asyncio.run(realtime_runner._connect_mcp_servers([config]))
+
+    assert excinfo.value.status_code == 502
+    assert excinfo.value.detail == {"error": "MCP server connection failed"}
+    assert cleanup_calls == [[]]
 
 
 def test_open_voice_session_passes_metadata_to_gateway(

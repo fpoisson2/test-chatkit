@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
 import logging
 import os
 import re
@@ -33,6 +34,10 @@ from .config import get_settings
 from .token_sanitizer import sanitize_value
 
 logger = logging.getLogger("chatkit.realtime.runner")
+
+BaseExceptionGroup = getattr(  # type: ignore[assignment]
+    builtins, "BaseExceptionGroup", BaseException
+)
 
 
 def _normalize_realtime_tools_payload(
@@ -296,6 +301,38 @@ def _create_mcp_server_from_config(
     return None
 
 
+def _extract_http_status_error(
+    exc: BaseException,
+) -> httpx.HTTPStatusError | None:
+    """Recherche récursivement une erreur HTTPStatusError dans une exception."""
+
+    visited: set[int] = set()
+    stack: list[BaseException] = [exc]
+
+    while stack:
+        current = stack.pop()
+        current_id = id(current)
+        if current_id in visited:
+            continue
+        visited.add(current_id)
+
+        if isinstance(current, httpx.HTTPStatusError):
+            return current
+
+        if isinstance(current, BaseExceptionGroup):
+            stack.extend(current.exceptions)
+
+        cause = current.__cause__
+        if cause is not None:
+            stack.append(cause)
+
+        context = current.__context__
+        if context is not None:
+            stack.append(context)
+
+    return None
+
+
 async def _connect_mcp_servers(
     configs: Sequence[Mapping[str, Any]],
 ) -> list[MCPServer]:
@@ -308,13 +345,37 @@ async def _connect_mcp_servers(
             continue
         try:
             await server.connect()
-        except Exception:  # pragma: no cover - dépendances externes
+        except Exception as exc:  # pragma: no cover - dépendances externes
+            await _cleanup_mcp_servers(servers)
+            http_error = _extract_http_status_error(exc)
+            if http_error is not None and http_error.response is not None:
+                response = http_error.response
+                error_detail = {
+                    "error": "MCP server connection failed",
+                    "server_url": config.get("server_url"),
+                    "status_code": response.status_code,
+                    "reason": response.reason_phrase,
+                }
+                sanitized_detail, _ = sanitize_value(error_detail)
+                logger.error(
+                    "Échec de connexion au serveur MCP %s : %s",
+                    config.get("server_url"),
+                    sanitized_detail,
+                    exc_info=exc,
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY,
+                    detail=sanitized_detail,
+                ) from http_error
+
             logger.exception(
                 "Échec de connexion au serveur MCP %s",
                 config.get("server_url"),
             )
-            await _cleanup_mcp_servers(servers)
-            raise
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={"error": "MCP server connection failed"},
+            ) from exc
         servers.append(server)
 
     return servers
