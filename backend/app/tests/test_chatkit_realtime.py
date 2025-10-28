@@ -7,6 +7,7 @@ from collections.abc import Callable, Mapping, Sequence
 from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import httpx
 import pytest
@@ -422,6 +423,52 @@ def test_open_voice_session_connects_mcp_servers(
     assert isinstance(metadata, list) and metadata
     assert metadata[0]["server_url"] == "https://example.com/mcp"
     assert not cleaned_servers, "cleanup should not run during open"
+
+
+def test_create_mcp_server_from_config_adds_bearer_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _StubServer:
+        def __init__(self, *, params: Mapping[str, Any], name: str | None = None):
+            captured["params"] = dict(params)
+            captured["name"] = name
+
+    monkeypatch.setattr(realtime_runner, "MCPServerSse", _StubServer)
+
+    config = {
+        "server_url": "https://example.com/mcp",
+        "transport": "http_sse",
+        "authorization": "token-value",
+        "server_label": "example",
+    }
+
+    server = realtime_runner._create_mcp_server_from_config(config)
+
+    assert isinstance(server, _StubServer)
+    params = captured.get("params")
+    assert isinstance(params, dict)
+    headers = params.get("headers")
+    assert isinstance(headers, dict)
+    assert headers.get("Authorization") == "Bearer token-value"
+
+
+def test_normalize_bearer_authorization_handles_existing_prefix() -> None:
+    assert (
+        realtime_runner._normalize_bearer_authorization("Bearer existing")
+        == "Bearer existing"
+    )
+    assert (
+        realtime_runner._normalize_bearer_authorization("bearer Existing")
+        == "Bearer Existing"
+    )
+    assert (
+        realtime_runner._normalize_bearer_authorization("  token  ")
+        == "Bearer token"
+    )
+    assert realtime_runner._normalize_bearer_authorization("  ") is None
+    assert realtime_runner._normalize_bearer_authorization("Bearer  ") is None
 
 
 def test_open_voice_session_normalizes_function_tools(

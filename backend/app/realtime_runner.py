@@ -271,8 +271,10 @@ def _create_mcp_server_from_config(
                 headers[key] = value
 
     authorization = config.get("authorization")
-    if isinstance(authorization, str) and authorization.strip():
-        headers.setdefault("Authorization", authorization.strip())
+    if isinstance(authorization, str):
+        normalized_authorization = _normalize_bearer_authorization(authorization)
+        if normalized_authorization:
+            headers["Authorization"] = normalized_authorization
 
     transport = config.get("transport")
     transport_value = (
@@ -299,6 +301,25 @@ def _create_mcp_server_from_config(
         server_url,
     )
     return None
+
+
+def _normalize_bearer_authorization(raw_value: str) -> str | None:
+    """Normalise un jeton d'autorisation en entête Bearer."""
+
+    token = raw_value.strip()
+    if not token:
+        return None
+
+    lower_token = token.lower()
+    if lower_token.startswith("bearer "):
+        token = token[7:].strip()
+    elif lower_token == "bearer":
+        return None
+
+    if not token:
+        return None
+
+    return f"Bearer {token}"
 
 
 def _extract_http_status_error(
