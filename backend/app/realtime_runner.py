@@ -457,6 +457,7 @@ class RealtimeVoiceSessionOrchestrator:
         realtime: Mapping[str, Any] | None = None,
         tools: Sequence[Any] | None = None,
         handoffs: Sequence[Any] | None = None,
+        metadata: Mapping[str, Any] | None = None,
     ) -> VoiceSessionHandle:
         agent = self._base_agent.clone(
             instructions=instructions,
@@ -482,7 +483,7 @@ class RealtimeVoiceSessionOrchestrator:
         if isinstance(payload, Mapping):
             client_secret = self._extract_client_secret(payload)
 
-        metadata = {
+        metadata_payload: dict[str, Any] = {
             "user_id": user_id,
             "model": model,
             "voice": voice,
@@ -490,9 +491,13 @@ class RealtimeVoiceSessionOrchestrator:
             "provider_slug": provider_slug,
         }
         if isinstance(realtime, Mapping):
-            metadata["realtime"] = dict(realtime)
+            metadata_payload["realtime"] = dict(realtime)
         if tools is not None:
-            metadata["tools"] = list(tools)
+            metadata_payload["tools"] = list(tools)
+        if isinstance(metadata, Mapping) and metadata:
+            metadata_payload.update(dict(metadata))
+        # Toujours propager l'identifiant utilisateur explicite.
+        metadata_payload["user_id"] = user_id
 
         payload_dict: dict[str, Any]
         if isinstance(payload, dict):
@@ -508,7 +513,7 @@ class RealtimeVoiceSessionOrchestrator:
             agent=agent,
             runner=runner,
             client_secret=client_secret,
-            metadata=metadata,
+            metadata=metadata_payload,
         )
 
         await self._registry.register(handle)
@@ -575,6 +580,7 @@ async def open_voice_session(
     realtime: Mapping[str, Any] | None = None,
     tools: Sequence[Any] | None = None,
     handoffs: Sequence[Any] | None = None,
+    metadata: Mapping[str, Any] | None = None,
 ) -> VoiceSessionHandle:
     """Ouvre une session vocale Realtime et la référence dans le registre."""
 
@@ -588,6 +594,7 @@ async def open_voice_session(
         realtime=realtime,
         tools=tools,
         handoffs=handoffs,
+        metadata=metadata,
     )
 
 

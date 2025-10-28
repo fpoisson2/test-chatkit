@@ -470,6 +470,10 @@ def _build_invite_handler(manager: SIPRegistrationManager):
 
         client_secret = metadata.get("client_secret")
         if client_secret is None:
+            metadata_extras: dict[str, Any] = {}
+            thread_identifier = metadata.get("thread_id")
+            if isinstance(thread_identifier, str) and thread_identifier.strip():
+                metadata_extras["thread_id"] = thread_identifier.strip()
             session_handle = await open_voice_session(
                 user_id=f"sip:{session.call_id}",
                 model=voice_model,
@@ -477,6 +481,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 voice=voice_name,
                 provider_id=voice_provider_id,
                 provider_slug=voice_provider_slug,
+                metadata=metadata_extras or None,
             )
             secret_payload = session_handle.payload
             parsed_secret = session_secret_parser.parse(secret_payload)

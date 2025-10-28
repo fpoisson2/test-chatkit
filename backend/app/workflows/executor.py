@@ -3048,6 +3048,20 @@ async def run_workflow(
                 fallback_id = getattr(thread_meta, "id", None)
                 user_id = str(fallback_id or "voice-user")
 
+            metadata_payload: dict[str, Any] = {
+                "step_slug": current_node.slug,
+            }
+            thread_meta = getattr(agent_context, "thread", None)
+            if thread_meta is not None and getattr(thread_meta, "id", None):
+                metadata_payload["thread_id"] = thread_meta.id
+            if title:
+                metadata_payload["step_title"] = title
+            realtime_config = event_context.get("realtime")
+            if isinstance(realtime_config, Mapping):
+                tool_permissions = realtime_config.get("tools")
+                if isinstance(tool_permissions, Mapping):
+                    metadata_payload["tool_permissions"] = dict(tool_permissions)
+
             try:
                 session_handle = await open_voice_session(
                     user_id=user_id,
@@ -3059,6 +3073,7 @@ async def run_workflow(
                     realtime=event_context.get("realtime"),
                     tools=event_context.get("tools"),
                     handoffs=event_context.get("handoffs"),
+                    metadata=metadata_payload,
                 )
             except Exception as exc:
                 raise_step_error(current_node.slug, title or current_node.slug, exc)
@@ -3066,15 +3081,6 @@ async def run_workflow(
             realtime_secret = session_handle.payload
             voice_context["session_id"] = session_handle.session_id
             event_context["session_id"] = session_handle.session_id
-
-            if getattr(agent_context, "thread", None) is not None:
-                session_handle.metadata["thread_id"] = agent_context.thread.id
-            session_handle.metadata["step_slug"] = current_node.slug
-            if title:
-                session_handle.metadata["step_title"] = title
-            tool_permissions = event_context.get("realtime", {}).get("tools")
-            if tool_permissions is not None:
-                session_handle.metadata["tool_permissions"] = tool_permissions
 
             realtime_event = {
                 "type": "realtime.event",

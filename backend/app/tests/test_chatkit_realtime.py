@@ -86,6 +86,59 @@ def _reset_orchestrator(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def test_open_voice_session_passes_metadata_to_gateway(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_orchestrator(monkeypatch)
+
+    async def _fake_request_client_secret(self, **kwargs: object) -> dict[str, object]:
+        return {"client_secret": {"value": "secret"}}
+
+    monkeypatch.setattr(
+        realtime_runner.RealtimeVoiceSessionOrchestrator,
+        "_request_client_secret",
+        _fake_request_client_secret,
+    )
+
+    gateway_module = import_module("backend.app.realtime_gateway")
+
+    class _StubGateway:
+        def __init__(self) -> None:
+            self.handles: list[realtime_runner.VoiceSessionHandle] = []
+
+        async def register_session(
+            self, handle: realtime_runner.VoiceSessionHandle
+        ) -> None:
+            self.handles.append(handle)
+
+    stub_gateway = _StubGateway()
+
+    monkeypatch.setattr(
+        gateway_module,
+        "get_realtime_gateway",
+        lambda: stub_gateway,
+    )
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-meta",
+            model="gpt-realtime",
+            instructions="Salut",
+            metadata={
+                "thread_id": "thr-test",
+                "step_slug": "voice",
+                "step_title": "Voice",
+            },
+        )
+    )
+
+    assert stub_gateway.handles, "register_session should be invoked"
+    registered = stub_gateway.handles[0]
+    assert registered.metadata.get("thread_id") == "thr-test"
+    assert registered.metadata.get("step_slug") == "voice"
+    assert handle.metadata.get("thread_id") == "thr-test"
+
+
 def test_open_voice_session_prefers_openai_slug(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

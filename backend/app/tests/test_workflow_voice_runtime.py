@@ -212,6 +212,17 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
     assert summary.end_state.slug == "voice"
     assert summary.end_state.status_type == "waiting"
 
+    expected_metadata = {
+        "step_slug": "voice",
+        "step_title": "Voice",
+        "thread_id": agent_context.thread.id,
+        "tool_permissions": {
+            "response": True,
+            "transcription": True,
+            "function_call": False,
+        },
+    }
+
     assert captured_args == {
         "user_id": "user-123",
         "model": "gpt-voice",
@@ -235,6 +246,7 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
             }
         ],
         "handoffs": None,
+        "metadata": expected_metadata,
     }
 
     added_events = [

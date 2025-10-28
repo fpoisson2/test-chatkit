@@ -17,18 +17,18 @@ from agents.realtime.events import (
     RealtimeAudioEnd,
     RealtimeAudioInterrupted,
     RealtimeError,
+    RealtimeHandoffEvent,
     RealtimeHistoryAdded,
     RealtimeHistoryUpdated,
-    RealtimeHandoffEvent,
     RealtimeToolEnd,
     RealtimeToolStart,
 )
 from fastapi import WebSocket, WebSocketDisconnect
 
 from .config import get_settings
+from .realtime_runner import VoiceSessionHandle, get_voice_session_handle
 from .request_context import build_chatkit_request_context
 from .voice_workflow import finalize_voice_wait_state
-from .realtime_runner import get_voice_session_handle, VoiceSessionHandle
 
 logger = logging.getLogger("chatkit.realtime.gateway")
 
@@ -47,7 +47,7 @@ class GatewayConnection:
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
-    def __hash__(self) -> int:  # pragma: no cover - nécessaire pour l'utiliser dans un set
+    def __hash__(self) -> int:  # pragma: no cover - requis pour les ensembles
         return hash(self.id)
 
     @property
@@ -63,13 +63,16 @@ class GatewayConnection:
 class _RealtimeSessionState:
     """État interne d'une session Realtime suivie par la passerelle."""
 
-    def __init__(self, handle: VoiceSessionHandle, gateway: RealtimeSessionGateway) -> None:
+    def __init__(
+        self,
+        handle: VoiceSessionHandle,
+        gateway: RealtimeSessionGateway,
+    ) -> None:
         self.handle = handle
         self.gateway = gateway
         self.history: list[dict[str, Any]] = []
         self.listeners: set[GatewayConnection] = set()
         self.owner_user_id = str(handle.metadata.get("user_id") or "")
-        self.thread_id = handle.metadata.get("thread_id")
         self._lock = asyncio.Lock()
         self._session = None
         self._session_task: asyncio.Task[None] | None = None
@@ -98,7 +101,13 @@ class _RealtimeSessionState:
 
             realtime_config = self.handle.metadata.get("realtime")
             if isinstance(realtime_config, Mapping):
-                for key in ("turn_detection", "modalities", "input_audio_format", "output_audio_format", "speed"):
+                for key in (
+                    "turn_detection",
+                    "modalities",
+                    "input_audio_format",
+                    "output_audio_format",
+                    "speed",
+                ):
                     value = realtime_config.get(key)
                     if value is not None:
                         model_settings[key] = value
@@ -161,7 +170,10 @@ class _RealtimeSessionState:
             try:
                 await session.close()
             except Exception:  # pragma: no cover - nettoyage best effort
-                logger.debug("Échec de la fermeture propre de la session Realtime", exc_info=True)
+                logger.debug(
+                    "Échec de la fermeture propre de la session Realtime",
+                    exc_info=True,
+                )
 
     async def add_listener(self, connection: GatewayConnection) -> None:
         async with self._lock:
@@ -179,6 +191,15 @@ class _RealtimeSessionState:
     async def remove_listener(self, connection: GatewayConnection) -> None:
         async with self._lock:
             self.listeners.discard(connection)
+
+    @property
+    def thread_id(self) -> str | None:
+        value = self.handle.metadata.get("thread_id")
+        if isinstance(value, str):
+            candidate = value.strip()
+            if candidate:
+                return candidate
+        return None
 
     def session_payload(self) -> dict[str, Any]:
         session_info: dict[str, Any] = {
@@ -228,7 +249,8 @@ class _RealtimeSessionState:
             if not text_parts:
                 continue
 
-            identifier = str(item.get("item_id") or item.get("id") or f"{role}-{len(ordered_ids)}")
+            fallback_id = item.get("item_id") or item.get("id")
+            identifier = str(fallback_id or f"{role}-{len(ordered_ids)}")
             payload = {
                 "id": identifier,
                 "role": role,
@@ -307,7 +329,10 @@ class _RealtimeSessionState:
             return {"type": "agent_end"}
 
         if isinstance(event, RealtimeHandoffEvent):
-            return {"type": "handoff", "to_agent": getattr(event.to_agent, "name", None)}
+            return {
+                "type": "handoff",
+                "to_agent": getattr(event.to_agent, "name", None),
+            }
 
         if isinstance(event, RealtimeToolStart):
             return {"type": "tool_start", "tool": getattr(event.tool, "name", None)}
@@ -355,7 +380,9 @@ class RealtimeSessionGateway:
             },
         )
 
-    async def _get_or_create_state(self, handle: VoiceSessionHandle) -> _RealtimeSessionState:
+    async def _get_or_create_state(
+        self, handle: VoiceSessionHandle
+    ) -> _RealtimeSessionState:
         async with self._lock:
             state = self._sessions.get(handle.session_id)
             if state is None:
@@ -406,7 +433,9 @@ class RealtimeSessionGateway:
         payload = self._session_created_payload(state)
         await self._broadcast_to_user(state.owner_user_id, payload)
 
-    async def _broadcast_to_user(self, user_id: str, payload: Mapping[str, Any]) -> None:
+    async def _broadcast_to_user(
+        self, user_id: str, payload: Mapping[str, Any]
+    ) -> None:
         if not user_id:
             return
         async with self._lock:
@@ -573,4 +602,9 @@ def get_realtime_gateway() -> RealtimeSessionGateway:
     return _GATEWAY
 
 
-__all__ = ["RealtimeSessionGateway", "get_realtime_gateway", "GatewayConnection", "GatewayUser"]
+__all__ = [
+    "RealtimeSessionGateway",
+    "get_realtime_gateway",
+    "GatewayConnection",
+    "GatewayUser",
+]
