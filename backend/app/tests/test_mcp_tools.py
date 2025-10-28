@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 import os
 import sys
 from pathlib import Path
@@ -395,23 +396,17 @@ def test_post_mcp_test_connection_handles_validation_error(
     assert response.json()["detail"] == "config invalid"
 
 
-class _MockResponse:
-    def __init__(self, payload: dict[str, Any], status_code: int = 200) -> None:
-        self._payload = payload
-        self.status_code = status_code
-
-    def json(self) -> dict[str, Any]:
-        return self._payload
-
-    def raise_for_status(self) -> None:
-        if self.status_code >= 400:
-            raise httpx.HTTPError("request failed")
-
-
 class _MockAsyncClient:
-    def __init__(self, *, discovery: dict[str, Any], token: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        *,
+        discovery: dict[str, Any],
+        token: dict[str, Any],
+        token_status: int = 200,
+    ) -> None:
         self._discovery = discovery
         self._token = token
+        self._token_status = token_status
         self._calls: list[tuple[str, dict[str, Any] | None]] = []
 
     async def __aenter__(self) -> _MockAsyncClient:
@@ -420,14 +415,24 @@ class _MockAsyncClient:
     async def __aexit__(self, exc_type, exc, tb) -> None:  # type: ignore[override]
         return None
 
-    async def get(self, url: str) -> _MockResponse:
+    async def get(self, url: str) -> httpx.Response:
         self._calls.append(("GET", {"url": url}))
-        return _MockResponse(self._discovery)
+        return httpx.Response(
+            status_code=200,
+            request=httpx.Request("GET", url),
+            headers={"Content-Type": "application/json"},
+            content=json.dumps(self._discovery).encode("utf-8"),
+        )
 
-    async def post(self, url: str, data: dict[str, Any]) -> _MockResponse:
+    async def post(self, url: str, data: dict[str, Any]) -> httpx.Response:
         payload = {"url": url, "data": data}
         self._calls.append(("POST", payload))
-        return _MockResponse(self._token)
+        return httpx.Response(
+            status_code=self._token_status,
+            request=httpx.Request("POST", url),
+            headers={"Content-Type": "application/json"},
+            content=json.dumps(self._token).encode("utf-8"),
+        )
 
 
 @pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="fastapi non disponible")
@@ -477,6 +482,54 @@ def test_mcp_oauth_flow_success(monkeypatch: pytest.MonkeyPatch) -> None:
     status_payload = status_response.json()
     assert status_payload["status"] == "ok"
     assert status_payload["token"] == token_payload
+
+
+@pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="fastapi non disponible")
+def test_mcp_oauth_flow_token_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert FastAPI is not None and TestClient is not None and tools_routes is not None
+
+    app = FastAPI()
+    app.include_router(tools_routes.router)
+
+    discovery = {
+        "authorization_endpoint": "https://auth.example/authorize",
+        "token_endpoint": "https://auth.example/token",
+    }
+    error_payload = {
+        "error": "invalid_client",
+        "error_description": "Client non reconnu",
+    }
+
+    client_stub = _MockAsyncClient(
+        discovery=discovery,
+        token=error_payload,
+        token_status=400,
+    )
+    monkeypatch.setattr(
+        tools_routes.httpx, "AsyncClient", lambda *args, **kwargs: client_stub
+    )
+
+    test_client = TestClient(app)
+    start_response = test_client.post(
+        "/api/tools/mcp/oauth/start",
+        json={"url": "https://auth.example"},
+    )
+
+    state = start_response.json()["state"]
+
+    callback_response = test_client.get(
+        "/api/tools/mcp/oauth/callback",
+        params={"state": state, "code": "auth-code"},
+    )
+
+    assert callback_response.status_code == 200
+    assert "Échec de l'authentification" in callback_response.text
+
+    status_response = test_client.get(f"/api/tools/mcp/oauth/session/{state}")
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["status"] == "error"
+    assert status_payload["error"] == "invalid_client: Client non reconnu"
 
 
 @pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="fastapi non disponible")

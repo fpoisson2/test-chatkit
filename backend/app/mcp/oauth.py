@@ -213,12 +213,39 @@ async def complete_oauth_callback(
         response = await http_client.post(session.token_endpoint, data=data)
         response.raise_for_status()
         token_payload = response.json()
-    except httpx.HTTPError:
+    except httpx.HTTPStatusError as exc:
+        error_detail: str | None = None
+        try:
+            payload = exc.response.json()
+        except ValueError:  # pragma: no cover - contenu non JSON
+            payload = None
+
+        if isinstance(payload, dict):
+            error_code = payload.get("error")
+            description = payload.get("error_description")
+            if isinstance(error_code, str) and isinstance(description, str):
+                merged = f"{error_code.strip()}: {description.strip()}".strip(": ")
+                error_detail = merged or None
+            elif isinstance(description, str):
+                error_detail = description.strip() or None
+            elif isinstance(error_code, str):
+                error_detail = error_code.strip() or None
+
+        if error_detail is None:
+            text = exc.response.text.strip()
+            if text:
+                error_detail = text
+
+        message = error_detail or "Échec de l'échange du code d'autorisation."
+        _update_session(state, status="error", error=message)
+        return {
+            "state": state,
+            "status": "error",
+            "error": message,
+        }
+    except httpx.HTTPError:  # pragma: no cover - garde-fou réseau
         message = "Échec de l'échange du code d'autorisation."
         _update_session(state, status="error", error=message)
-        if close_client:
-            await http_client.aclose()
-        # pragma: no cover - garde-fou réseau
         return {
             "state": state,
             "status": "error",
