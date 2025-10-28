@@ -891,6 +891,11 @@ def build_mcp_tool(payload: Any) -> MCPServerSse:
         "Initialisation d'une connexion MCP SSE vers un serveur externe : %s",
         normalized_url,
     )
+    logger.debug(
+        "MCP SSE params keys=%s has_headers=%s",
+        sorted(params.keys()),
+        "headers" in params,
+    )
 
     kwargs: dict[str, Any] = {
         "params": params,
