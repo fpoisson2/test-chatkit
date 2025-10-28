@@ -102,7 +102,7 @@ from ..image_utils import (
 )
 from ..model_capabilities import ModelCapabilities, lookup_model_capabilities
 from ..models import WorkflowDefinition, WorkflowStep, WorkflowTransition
-from ..realtime_runner import open_voice_session
+from ..realtime_runner import close_voice_session, open_voice_session
 from ..token_sanitizer import sanitize_model_like
 from ..vector_store.ingestion import (
     evaluate_state_expression,
@@ -1215,6 +1215,14 @@ async def run_workflow(
             sanitized_candidate if isinstance(sanitized_candidate, list) else []
         )
 
+        handoffs_definitions = params.get("handoffs")
+        sanitized_handoffs_candidate = _json_safe_copy(handoffs_definitions)
+        sanitized_handoffs = (
+            sanitized_handoffs_candidate
+            if isinstance(sanitized_handoffs_candidate, list)
+            else []
+        )
+
         def _summarize_tool(entry: Any) -> dict[str, Any] | None:
             if not isinstance(entry, Mapping):
                 return None
@@ -1259,6 +1267,8 @@ async def run_workflow(
             "realtime": realtime_config,
             "tools": sanitized_tools,
         }
+        if sanitized_handoffs:
+            voice_context["handoffs"] = sanitized_handoffs
         if provider_id:
             voice_context["model_provider_id"] = provider_id
         if provider_slug:
@@ -1279,6 +1289,8 @@ async def run_workflow(
             "tools": sanitized_tools,
             "tool_definitions": sanitized_tools,
         }
+        if sanitized_handoffs:
+            event_context["handoffs"] = sanitized_handoffs
         if provider_id:
             event_context["model_provider_id"] = provider_id
         if provider_slug:
@@ -2823,6 +2835,11 @@ async def run_workflow(
 
             transcripts_payload = None
             if voice_wait_state is not None:
+                stored_session_context = voice_wait_state.get("voice_session")
+                if isinstance(stored_session_context, Mapping):
+                    for key, value in stored_session_context.items():
+                        if key not in voice_context or not voice_context[key]:
+                            voice_context[key] = value
                 transcripts_payload = voice_wait_state.get("voice_transcripts")
                 if not transcripts_payload:
                     final_end_state = WorkflowEndState(
@@ -2832,6 +2849,10 @@ async def run_workflow(
                         message="En attente des transcriptions vocales.",
                     )
                     break
+
+                status_info = voice_wait_state.get("voice_session_status")
+                if isinstance(status_info, Mapping):
+                    voice_context["session_status"] = dict(status_info)
 
             if transcripts_payload is not None:
                 normalized_transcripts: list[dict[str, Any]] = []
@@ -2970,6 +2991,30 @@ async def run_workflow(
                 state["last_agent_output_structured"] = step_output
                 state.pop("voice_session_active", None)
 
+                session_identifier = voice_context.get("session_id")
+                if not session_identifier:
+                    stored_session = voice_wait_state.get("voice_session")
+                    if isinstance(stored_session, Mapping):
+                        session_identifier = stored_session.get("session_id")
+                if not session_identifier:
+                    stored_event = voice_wait_state.get("voice_event")
+                    if isinstance(stored_event, Mapping):
+                        event_payload = stored_event.get("event")
+                        if isinstance(event_payload, Mapping):
+                            session_identifier = event_payload.get("session_id")
+
+                if session_identifier:
+                    try:
+                        await close_voice_session(
+                            session_id=str(session_identifier)
+                        )
+                    except Exception as exc:  # pragma: no cover - nettoyage best effort
+                        logger.debug(
+                            "Impossible de fermer la session Realtime %s : %s",
+                            voice_context.get("session_id"),
+                            exc,
+                        )
+
                 await record_step(current_node.slug, title, step_output)
 
                 await ingest_workflow_step(
@@ -3013,6 +3058,7 @@ async def run_workflow(
                     provider_slug=event_context.get("model_provider_slug"),
                     realtime=event_context.get("realtime"),
                     tools=event_context.get("tools"),
+                    handoffs=event_context.get("handoffs"),
                 )
             except Exception as exc:
                 raise_step_error(current_node.slug, title or current_node.slug, exc)
@@ -3021,12 +3067,16 @@ async def run_workflow(
             voice_context["session_id"] = session_handle.session_id
             event_context["session_id"] = session_handle.session_id
 
-            event_payload = {
-                "type": "voice_session.created",
+            realtime_event = {
+                "type": "realtime.event",
                 "step": {"slug": current_node.slug, "title": title},
-                "client_secret": realtime_secret,
-                "session": event_context,
-                "tool_permissions": event_context["realtime"]["tools"],
+                "event": {
+                    "type": "history",
+                    "session_id": session_handle.session_id,
+                    "session": event_context,
+                    "client_secret": realtime_secret,
+                    "tool_permissions": event_context["realtime"]["tools"],
+                },
             }
 
             if on_stream_event is not None and agent_context.thread is not None:
@@ -3036,7 +3086,7 @@ async def run_workflow(
                     created_at=datetime.now(),
                     task=CustomTask(
                         title=title,
-                        content=json.dumps(event_payload, ensure_ascii=False),
+                        content=json.dumps(realtime_event, ensure_ascii=False),
                     ),
                 )
                 await _emit_stream_event(ThreadItemAddedEvent(item=task_item))
@@ -3057,7 +3107,7 @@ async def run_workflow(
                 "input_item_id": current_input_item_id,
                 "type": "voice",
                 # Stocker l'événement pour que le frontend puisse le récupérer.
-                "voice_event": event_payload,
+                "voice_event": realtime_event,
             }
             conversation_snapshot = _clone_conversation_history_snapshot(
                 conversation_history

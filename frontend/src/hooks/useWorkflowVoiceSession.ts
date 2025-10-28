@@ -6,26 +6,51 @@ import { useRealtimeSession } from "../voice/useRealtimeSession";
 
 type VoiceSessionStatus = "idle" | "connecting" | "connected" | "error";
 
-type VoiceSessionEventPayload = {
-  type: "voice_session.created";
-  step: {
-    slug: string;
-    title: string;
-  };
-  client_secret: string | { value: string; expires_at: number };
-  session: {
-    model: string;
-    voice: string;
-    instructions: string;
-    realtime: {
-      start_mode: string;
-      stop_mode: string;
-      tools: Record<string, boolean>;
+type VoiceSessionEventPayload =
+  | {
+      type: "realtime.event";
+      step: {
+        slug: string;
+        title: string;
+      };
+      event: {
+        type: "history";
+        session_id?: string;
+        client_secret: string | { value: string; expires_at: number };
+        session: {
+          model: string;
+          voice: string;
+          instructions: string;
+          realtime: {
+            start_mode: string;
+            stop_mode: string;
+            tools: Record<string, boolean>;
+          };
+          tools?: unknown[];
+        };
+        tool_permissions: Record<string, boolean>;
+      };
+    }
+  | {
+      type: "voice_session.created";
+      step: {
+        slug: string;
+        title: string;
+      };
+      client_secret: string | { value: string; expires_at: number };
+      session: {
+        model: string;
+        voice: string;
+        instructions: string;
+        realtime: {
+          start_mode: string;
+          stop_mode: string;
+          tools: Record<string, boolean>;
+        };
+        tools?: unknown[];
+      };
+      tool_permissions: Record<string, boolean>;
     };
-    tools?: unknown[];
-  };
-  tool_permissions: Record<string, boolean>;
-};
 
 type UseWorkflowVoiceSessionParams = {
   threadId: string | null;
@@ -369,7 +394,19 @@ export const useWorkflowVoiceSession = ({
 
   const startVoiceSession = useCallback(
     async (payload: VoiceSessionEventPayload) => {
-      const sessionId = `${payload.step.slug}-${Date.now()}`;
+      const eventPayload =
+        payload.type === "realtime.event"
+          ? payload.event
+          : {
+              type: "history" as const,
+              session_id: undefined,
+              client_secret: payload.client_secret,
+              session: payload.session,
+              tool_permissions: payload.tool_permissions,
+            };
+
+      const sessionId =
+        eventPayload.session_id ?? `${payload.step.slug}-${Date.now()}`;
 
       // Éviter de démarrer la même session plusieurs fois
       if (processedSessionsRef.current.has(sessionId)) {
@@ -408,8 +445,8 @@ export const useWorkflowVoiceSession = ({
 
         console.log("[WorkflowVoiceSession] Starting voice session:", {
           step: payload.step,
-          model: payload.session.model,
-          voice: payload.session.voice,
+          model: eventPayload.session.model,
+          voice: eventPayload.session.voice,
         });
 
         await connect({ token, localStream: stream });

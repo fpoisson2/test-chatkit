@@ -147,6 +147,7 @@ class RealtimeVoiceSessionOrchestrator:
         provider_slug: str | None,
         realtime: Mapping[str, Any] | None,
         tools: Sequence[Any] | None,
+        handoffs: Sequence[Any] | None,
     ) -> dict[str, Any]:
         settings = get_settings()
 
@@ -163,6 +164,8 @@ class RealtimeVoiceSessionOrchestrator:
             }
             if tools:
                 session_payload["tools"] = list(tools)
+            if handoffs:
+                session_payload["handoffs"] = list(handoffs)
 
             payload: dict[str, Any] = {"session": session_payload}
 
@@ -453,8 +456,13 @@ class RealtimeVoiceSessionOrchestrator:
         voice: str | None = None,
         realtime: Mapping[str, Any] | None = None,
         tools: Sequence[Any] | None = None,
+        handoffs: Sequence[Any] | None = None,
     ) -> VoiceSessionHandle:
-        agent = self._base_agent.clone(instructions=instructions)
+        agent = self._base_agent.clone(
+            instructions=instructions,
+            tools=list(tools or []),
+            handoffs=list(handoffs or []),
+        )
         runner = RealtimeRunner(agent)
 
         payload = await self._request_client_secret(
@@ -466,6 +474,7 @@ class RealtimeVoiceSessionOrchestrator:
             provider_slug=provider_slug,
             realtime=realtime,
             tools=tools,
+            handoffs=handoffs,
         )
 
         session_id = uuid.uuid4().hex
@@ -540,6 +549,7 @@ async def open_voice_session(
     voice: str | None = None,
     realtime: Mapping[str, Any] | None = None,
     tools: Sequence[Any] | None = None,
+    handoffs: Sequence[Any] | None = None,
 ) -> VoiceSessionHandle:
     """Ouvre une session vocale Realtime et la référence dans le registre."""
 
@@ -552,6 +562,7 @@ async def open_voice_session(
         voice=voice,
         realtime=realtime,
         tools=tools,
+        handoffs=handoffs,
     )
 
 

@@ -498,25 +498,29 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             try:
                 thread = await store.load_thread(thread_id, chatkit_context)
 
-                # Créer l'événement voice_session.created
+                # Créer l'événement realtime.event aligné avec les workflows
                 voice_event = {
-                    "type": "voice_session.created",
+                    "type": "realtime.event",
                     "step": {
                         "slug": "sip-voice-session",
-                        "title": "Appel SIP"
+                        "title": "Appel SIP",
                     },
-                    "client_secret": client_secret,
-                    "session": {
-                        "model": voice_model,
-                        "voice": voice_name or "alloy",
-                        "instructions": instructions,
-                        "realtime": {
-                            "start_mode": "auto",
-                            "stop_mode": "manual",
-                            "tools": {}
-                        }
+                    "event": {
+                        "type": "history",
+                        "session_id": metadata.get("realtime_session_id"),
+                        "client_secret": client_secret,
+                        "tool_permissions": {},
+                        "session": {
+                            "model": voice_model,
+                            "voice": voice_name or "alloy",
+                            "instructions": instructions,
+                            "realtime": {
+                                "start_mode": "auto",
+                                "stop_mode": "manual",
+                                "tools": {},
+                            },
+                        },
                     },
-                    "tool_permissions": {}
                 }
 
                 # Créer le wait_state
