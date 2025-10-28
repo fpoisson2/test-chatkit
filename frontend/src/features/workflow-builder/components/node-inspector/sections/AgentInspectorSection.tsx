@@ -364,7 +364,6 @@ export const AgentInspectorSection = ({
   const customModeOptionId = `${nestedWorkflowLabelId}-custom`;
   const localWorkflowSelectId = `${nestedWorkflowLabelId}-select`;
   const hostedWorkflowIdFieldId = `${nestedWorkflowLabelId}-hosted-id`;
-  const hostedWorkflowSlugFieldId = `${nestedWorkflowLabelId}-hosted-slug`;
 
   const parseDimension = (value: string, fallback: number): number => {
     const parsed = Number.parseInt(value, 10);
@@ -448,7 +447,7 @@ export const AgentInspectorSection = ({
         : nestedWorkflowSlug.trim()
       : "",
   );
-  const [hostedWorkflowSlugInput, setHostedWorkflowSlugInput] = useState(
+  const [hostedWorkflowSlugValue, setHostedWorkflowSlugValue] = useState(
     nestedWorkflowMode === "hosted" ? nestedWorkflowSlug : "",
   );
   const nestedWorkflowReference = useRef({
@@ -482,17 +481,32 @@ export const AgentInspectorSection = ({
     if (nestedWorkflowMode === "custom") {
       setLocalWorkflowIdValue("");
       setHostedWorkflowIdInput("");
-      setHostedWorkflowSlugInput("");
+      setHostedWorkflowSlugValue("");
       return;
     }
 
-    const nextHostedIdValue =
+    const matchedHosted =
       nestedWorkflowId != null
+        ? findHostedWorkflow(String(nestedWorkflowId))
+        : nestedWorkflowSlug
+          ? findHostedWorkflow(nestedWorkflowSlug)
+          : null;
+
+    const nextHostedIdValue = matchedHosted
+      ? String(matchedHosted.id)
+      : nestedWorkflowId != null
         ? String(nestedWorkflowId)
-        : nestedWorkflowSlug.trim();
+        : "";
     setHostedWorkflowIdInput(nextHostedIdValue);
-    setHostedWorkflowSlugInput(nestedWorkflowSlug);
-  }, [nestedWorkflowId, nestedWorkflowMode, nestedWorkflowSlug]);
+    setHostedWorkflowSlugValue(
+      matchedHosted?.slug ?? nestedWorkflowSlug.trim(),
+    );
+  }, [
+    findHostedWorkflow,
+    nestedWorkflowId,
+    nestedWorkflowMode,
+    nestedWorkflowSlug,
+  ]);
 
   const parseWorkflowId = (value: string): number | null => {
     const trimmed = value.trim();
@@ -558,7 +572,7 @@ export const AgentInspectorSection = ({
     })();
 
     const trimmedHostedId = hostedWorkflowIdInput.trim();
-    const trimmedHostedSlug = hostedWorkflowSlugInput.trim();
+    const trimmedHostedSlug = hostedWorkflowSlugValue.trim();
     const trimmedNestedSlug = nestedWorkflowSlug.trim();
     const matchCandidates = [
       trimmedHostedId,
@@ -583,8 +597,8 @@ export const AgentInspectorSection = ({
     if (nextIdValue !== hostedWorkflowIdInput) {
       setHostedWorkflowIdInput(nextIdValue);
     }
-    if (nextSlugValue !== hostedWorkflowSlugInput) {
-      setHostedWorkflowSlugInput(nextSlugValue);
+    if (nextSlugValue !== hostedWorkflowSlugValue) {
+      setHostedWorkflowSlugValue(nextSlugValue);
     }
 
     emitNestedWorkflowChange("hosted", nextIdValue, nextSlugValue);
@@ -601,45 +615,15 @@ export const AgentInspectorSection = ({
     if (value === "__loading__" || value === "__empty__") {
       return;
     }
-    if (!value.trim()) {
-      setHostedWorkflowIdInput("");
-      if (hostedWorkflowSlugInput) {
-        setHostedWorkflowSlugInput("");
-      }
-      if (workflowMode === "hosted") {
-        emitNestedWorkflowChange("hosted", "", "");
-      }
-      return;
-    }
-
     setHostedWorkflowIdInput(value);
     const matched = findHostedWorkflow(value);
-    const nextSlug = matched?.slug ?? hostedWorkflowSlugInput;
-    if (matched?.slug && matched.slug !== hostedWorkflowSlugInput) {
-      setHostedWorkflowSlugInput(matched.slug);
+    const nextSlug = matched?.slug ?? hostedWorkflowSlugValue;
+    if (matched?.slug && matched.slug !== hostedWorkflowSlugValue) {
+      setHostedWorkflowSlugValue(matched.slug);
     }
     if (workflowMode === "hosted") {
       emitNestedWorkflowChange("hosted", value, nextSlug);
     }
-  };
-
-  const handleHostedWorkflowSlugChange = (value: string) => {
-    setHostedWorkflowSlugInput(value);
-    if (workflowMode !== "hosted") {
-      return;
-    }
-    const trimmed = value.trim();
-    if (!trimmed) {
-      setHostedWorkflowIdInput("");
-      emitNestedWorkflowChange("hosted", "", "");
-      return;
-    }
-    const matched = findHostedWorkflow(value);
-    const nextIdValue = matched?.id ?? hostedWorkflowIdInput;
-    if (matched?.id && matched.id !== hostedWorkflowIdInput) {
-      setHostedWorkflowIdInput(matched.id);
-    }
-    emitNestedWorkflowChange("hosted", nextIdValue, value);
   };
 
   const selectedNestedWorkflow = useMemo(() => {
@@ -659,7 +643,7 @@ export const AgentInspectorSection = ({
     }
     return (
       findHostedWorkflow(hostedWorkflowIdInput) ??
-      findHostedWorkflow(hostedWorkflowSlugInput) ??
+      findHostedWorkflow(hostedWorkflowSlugValue) ??
       findHostedWorkflow(
         nestedWorkflowId != null ? String(nestedWorkflowId) : "",
       ) ??
@@ -668,7 +652,7 @@ export const AgentInspectorSection = ({
   }, [
     findHostedWorkflow,
     hostedWorkflowIdInput,
-    hostedWorkflowSlugInput,
+    hostedWorkflowSlugValue,
     nestedWorkflowId,
     nestedWorkflowSlug,
     workflowMode,
@@ -680,7 +664,7 @@ export const AgentInspectorSection = ({
     !selectedNestedWorkflow;
 
   const hostedSlugInfoValue =
-    hostedWorkflowSlugInput.trim() || nestedWorkflowSlug.trim();
+    hostedWorkflowSlugValue.trim() || nestedWorkflowSlug.trim();
   const showHostedSlugInfo =
     workflowMode === "hosted" &&
     nestedWorkflowId == null &&
@@ -691,7 +675,7 @@ export const AgentInspectorSection = ({
   const hostedWorkflowSelected =
     workflowMode === "hosted" &&
     (hostedWorkflowIdInput.trim().length > 0 ||
-      hostedWorkflowSlugInput.trim().length > 0);
+      hostedWorkflowSlugValue.trim().length > 0);
   const hasNestedWorkflowSelection =
     localWorkflowSelected || hostedWorkflowSelected;
   const showNestedWorkflowDetails = workflowMode !== "custom";
@@ -722,7 +706,7 @@ export const AgentInspectorSection = ({
       return selectedHostedWorkflow.label;
     }
     const slugCandidate =
-      hostedWorkflowSlugInput.trim() || nestedWorkflowSlug.trim();
+      hostedWorkflowSlugValue.trim() || nestedWorkflowSlug.trim();
     if (slugCandidate) {
       return slugCandidate;
     }
@@ -732,7 +716,7 @@ export const AgentInspectorSection = ({
     availableNestedWorkflows,
     hasNestedWorkflowSelection,
     hostedWorkflowIdInput,
-    hostedWorkflowSlugInput,
+    hostedWorkflowSlugValue,
     localWorkflowIdValue,
     nestedWorkflowSlug,
     selectedHostedWorkflow,
@@ -820,7 +804,7 @@ export const AgentInspectorSection = ({
             aria-labelledby={nestedWorkflowLabelId}
             onChange={(event) => handleLocalWorkflowChange(event.target.value)}
           >
-            <option value="">
+            <option value="" disabled hidden>
               {t("workflowBuilder.agentInspector.nestedWorkflowNoneOption")}
             </option>
             {availableNestedWorkflows.map((workflow) => (
@@ -853,7 +837,7 @@ export const AgentInspectorSection = ({
                   hostedWorkflowsLoading && hostedWorkflows.length === 0
                 }
               >
-                <option value="">
+                <option value="" disabled hidden>
                   {t("workflowBuilder.agentInspector.nestedWorkflowNoneOption")}
                 </option>
                 {hostedWorkflowsLoading ? (
@@ -876,27 +860,6 @@ export const AgentInspectorSection = ({
                   </option>
                 ))}
               </select>
-            </label>
-            <label
-              className={`${styles.nodeInspectorSubField} ${styles.agentNestedWorkflowSlugField}`}
-              htmlFor={hostedWorkflowSlugFieldId}
-            >
-              <span className={styles.nodeInspectorSubLabel}>
-                {t(
-                  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel",
-                )}
-              </span>
-              <input
-                id={hostedWorkflowSlugFieldId}
-                type="text"
-                value={hostedWorkflowSlugInput}
-                placeholder={t(
-                  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugPlaceholder",
-                )}
-                onChange={(event) =>
-                  handleHostedWorkflowSlugChange(event.target.value)
-                }
-              />
             </label>
           </div>
         ) : null}

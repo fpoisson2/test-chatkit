@@ -298,7 +298,7 @@ const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.nestedWorkflowLabel": "Workflow imbriqué",
   "workflowBuilder.agentInspector.nestedWorkflowHelp":
     "Sélectionnez un workflow existant à exécuter à la place de cet agent.",
-  "workflowBuilder.agentInspector.nestedWorkflowNoneOption": "Aucun (utiliser l'agent)",
+  "workflowBuilder.agentInspector.nestedWorkflowNoneOption": "Sélectionnez un workflow",
   "workflowBuilder.agentInspector.nestedWorkflowCustomOption": "Personnalisé",
   "workflowBuilder.agentInspector.nestedWorkflowLocalOption": "Workflow local",
   "workflowBuilder.agentInspector.nestedWorkflowHostedOption": "Workflow hébergé",
@@ -307,8 +307,6 @@ const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.nestedWorkflowHostedSelectEmpty": "Aucun workflow hébergé disponible",
   "workflowBuilder.agentInspector.nestedWorkflowHostedIdLabel": "Identifiant du workflow",
   "workflowBuilder.agentInspector.nestedWorkflowHostedIdPlaceholder": "Ex. 123",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel": "Slug du workflow",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugPlaceholder": "Optionnel",
   "workflowBuilder.agentInspector.nestedWorkflowMissing":
     "Le workflow sélectionné n'est plus disponible.",
   "workflowBuilder.agentInspector.nestedWorkflowSlugInfo":
@@ -916,7 +914,7 @@ const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.nestedWorkflowLabel": "Nested workflow",
   "workflowBuilder.agentInspector.nestedWorkflowHelp":
     "Choose another workflow to run instead of this agent.",
-  "workflowBuilder.agentInspector.nestedWorkflowNoneOption": "None (use agent configuration)",
+  "workflowBuilder.agentInspector.nestedWorkflowNoneOption": "Select a workflow",
   "workflowBuilder.agentInspector.nestedWorkflowCustomOption": "Custom",
   "workflowBuilder.agentInspector.nestedWorkflowLocalOption": "Local workflow",
   "workflowBuilder.agentInspector.nestedWorkflowHostedOption": "Hosted workflow",
@@ -925,8 +923,6 @@ const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.nestedWorkflowHostedSelectEmpty": "No hosted workflows available",
   "workflowBuilder.agentInspector.nestedWorkflowHostedIdLabel": "Workflow ID",
   "workflowBuilder.agentInspector.nestedWorkflowHostedIdPlaceholder": "e.g. 123",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel": "Workflow slug",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugPlaceholder": "Optional",
   "workflowBuilder.agentInspector.nestedWorkflowMissing":
     "The selected workflow is no longer available.",
   "workflowBuilder.agentInspector.nestedWorkflowSlugInfo":

@@ -251,10 +251,6 @@
   width: 100%;
 }
 
-.agentNestedWorkflowSlugField {
-  width: 100%;
-}
-
 .nodeInspectorSubField {
   display: flex;
   flex-direction: column;
