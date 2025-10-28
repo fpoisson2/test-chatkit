@@ -9,6 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from agents.realtime.agent import RealtimeAgent
 
 os.environ.setdefault("OPENAI_API_KEY", "sk-test")
 os.environ.setdefault("DATABASE_URL", "sqlite:///./chatkit-tests.db")
@@ -310,6 +311,57 @@ def test_open_voice_session_normalizes_function_tools(
     assert tool_config.get("cache_control") == {"ttl": 30}
     assert "function" not in tool_config
     assert "metadata" not in tool_config
+
+
+def test_open_voice_session_filters_non_sdk_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+
+    _reset_orchestrator(monkeypatch)
+
+    clone_calls: list[dict[str, object]] = []
+    original_clone = RealtimeAgent.clone
+
+    def _recording_clone(self, **kwargs: object) -> RealtimeAgent:
+        clone_calls.append(dict(kwargs))
+        return original_clone(self, **kwargs)
+
+    monkeypatch.setattr(RealtimeAgent, "clone", _recording_clone)
+
+    async def _fake_request_client_secret(self, **_: object) -> dict[str, object]:
+        return {"client_secret": {"value": "secret"}}
+
+    monkeypatch.setattr(
+        realtime_runner.RealtimeVoiceSessionOrchestrator,
+        "_request_client_secret",
+        _fake_request_client_secret,
+    )
+
+    class _StubRunner:
+        def __init__(self, agent: RealtimeAgent) -> None:
+            self.agent = agent
+
+    monkeypatch.setattr(realtime_runner, "RealtimeRunner", _StubRunner)
+
+    child_agent = RealtimeAgent(name="child", instructions="Bonjour")
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-tools",
+            model="gpt-realtime",
+            instructions="Bonjour",
+            provider_slug="openai",
+            tools=[{"type": "mcp", "url": "https://example.com"}],
+            handoffs=[child_agent, {"type": "workflow"}],
+        )
+    )
+
+    assert handle.payload == {"client_secret": {"value": "secret"}}
+    assert clone_calls, "clone should be invoked"
+    clone_kwargs = clone_calls[0]
+    assert clone_kwargs.get("tools") == []
+    assert clone_kwargs.get("handoffs") == [child_agent]
 
 
 def test_openai_slug_ignores_mismatched_provider_id(

@@ -11,8 +11,20 @@ from typing import Any, Literal
 from urllib.parse import urlparse
 
 import httpx
+from agents.handoffs import Handoff
 from agents.realtime.agent import RealtimeAgent
 from agents.realtime.runner import RealtimeRunner
+from agents.tool import (
+    CodeInterpreterTool,
+    ComputerTool,
+    FileSearchTool,
+    FunctionTool,
+    HostedMCPTool,
+    ImageGenerationTool,
+    LocalShellTool,
+    Tool,
+    WebSearchTool,
+)
 from fastapi import HTTPException, status
 
 from .admin_settings import resolve_model_provider_credentials
@@ -125,6 +137,48 @@ def _normalize_realtime_tools_payload(
             normalized.append(entry)
 
     return normalized
+
+
+_AGENT_TOOL_CLASSES: tuple[type, ...] = (
+    FunctionTool,
+    HostedMCPTool,
+    ComputerTool,
+    FileSearchTool,
+    WebSearchTool,
+    LocalShellTool,
+    CodeInterpreterTool,
+    ImageGenerationTool,
+)
+
+
+def _filter_agent_tools_for_clone(tools: Sequence[Any] | None) -> list[Tool]:
+    """Extrait les outils SDK valides pour l'agent Realtime local."""
+
+    if not tools:
+        return []
+
+    valid_tools: list[Tool] = []
+    for entry in tools:
+        if isinstance(entry, _AGENT_TOOL_CLASSES):
+            valid_tools.append(entry)
+
+    return valid_tools
+
+
+def _filter_agent_handoffs_for_clone(
+    handoffs: Sequence[Any] | None,
+) -> list[RealtimeAgent[Any] | Handoff[Any, Any]]:
+    """Conserve uniquement les handoffs compatibles avec le SDK Agents."""
+
+    if not handoffs:
+        return []
+
+    valid_handoffs: list[RealtimeAgent[Any] | Handoff[Any, Any]] = []
+    for entry in handoffs:
+        if isinstance(entry, RealtimeAgent | Handoff):
+            valid_handoffs.append(entry)
+
+    return valid_handoffs
 
 
 def _derive_mcp_server_label(entry: Mapping[str, Any]) -> str | None:
@@ -663,12 +717,15 @@ class RealtimeVoiceSessionOrchestrator:
         handoffs: Sequence[Any] | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> VoiceSessionHandle:
+        agent_tools = _filter_agent_tools_for_clone(tools)
+        agent_handoffs = _filter_agent_handoffs_for_clone(handoffs)
+
         normalized_tools = _normalize_realtime_tools_payload(tools)
 
         agent = self._base_agent.clone(
             instructions=instructions,
-            tools=list(normalized_tools or []),
-            handoffs=list(handoffs or []),
+            tools=agent_tools,
+            handoffs=agent_handoffs,
         )
         runner = RealtimeRunner(agent)
 
