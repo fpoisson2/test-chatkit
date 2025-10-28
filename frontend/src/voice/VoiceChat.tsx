@@ -12,7 +12,7 @@ const formatTimestamp = (timestamp: number) =>
   });
 
 export const VoiceChat = () => {
-  const { startSession, stopSession, status, isListening, transcripts, errors, webrtcError, clearErrors } =
+  const { startSession, stopSession, status, isListening, transcripts, errors, transportError, clearErrors } =
     useVoiceSession();
   const [microPermission, setMicroPermission] = useState<MicrophonePermissionState>("unknown");
   const [localError, setLocalError] = useState<string | null>(null);
@@ -105,9 +105,9 @@ export const VoiceChat = () => {
         )}
       </div>
 
-      {(webrtcError || localError) && (
+      {(transportError || localError) && (
         <div className="alert alert--danger" role="status">
-          {localError || webrtcError}
+          {localError || transportError}
         </div>
       )}
 

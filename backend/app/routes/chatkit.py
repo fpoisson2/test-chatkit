@@ -71,11 +71,11 @@ from ..chatkit_sessions import (
     summarize_payload_shape,
 )
 from ..config import Settings, get_settings
-from ..database import get_session
+from ..database import SessionLocal, get_session
 from ..dependencies import get_current_user, get_optional_user
 from ..image_utils import AGENT_IMAGE_STORAGE_DIR
 from ..models import User
-from ..realtime_runner import open_voice_session
+from ..realtime_runner import close_voice_session, open_voice_session
 from ..schemas import (
     ChatKitWorkflowResponse,
     HostedWorkflowCreateRequest,
@@ -89,10 +89,20 @@ from ..schemas import (
     VoiceWebRTCTeardownResponse,
     VoiceWebRTCTranscript,
 )
-from ..security import decode_agent_image_token
+from ..security import decode_access_token, decode_agent_image_token
 from ..telephony.voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
 from ..voice_settings import get_or_create_voice_settings
 from ..voice_webrtc_gateway import VoiceWebRTCGateway, VoiceWebRTCGatewayError
+from ..realtime_gateway import (
+    GatewayConnection,
+    GatewayUser,
+    get_realtime_gateway,
+)
+from ..request_context import (
+    build_chatkit_request_context,
+    resolve_public_base_url_from_request,
+)
+from ..voice_workflow import finalize_voice_wait_state
 from ..workflows import (
     HostedWorkflowConfig,
     HostedWorkflowNotFoundError,
@@ -126,50 +136,6 @@ def get_chatkit_server():
     from ..chatkit import get_chatkit_server as _get_chatkit_server
 
     return _get_chatkit_server()
-
-
-def _build_request_context(
-    current_user: User,
-    request: Request | None,
-    *,
-    public_base_url: str | None = None,
-) -> ChatKitRequestContext:
-    from ..chatkit import ChatKitRequestContext
-
-    base_url = (
-        public_base_url
-        if public_base_url is not None
-        else (_resolve_public_base_url_from_request(request) if request else None)
-    )
-    authorization = request.headers.get("Authorization") if request else None
-    return ChatKitRequestContext(
-        user_id=str(current_user.id),
-        email=current_user.email,
-        authorization=authorization,
-        public_base_url=base_url,
-    )
-
-
-def _resolve_public_base_url_from_request(request: Request) -> str | None:
-    """Détermine l'URL publique à partir des en-têtes de la requête."""
-
-    def _first_header(name: str) -> str | None:
-        raw_value = request.headers.get(name)
-        if not raw_value:
-            return None
-        return raw_value.split(",")[0].strip() or None
-
-    forwarded_host = _first_header("x-forwarded-host")
-    if forwarded_host:
-        scheme = _first_header("x-forwarded-proto") or request.url.scheme
-        forwarded_port = _first_header("x-forwarded-port")
-        host = forwarded_host
-        if forwarded_port and ":" not in host:
-            host = f"{host}:{forwarded_port}"
-        return f"{scheme}://{host}".rstrip("/")
-
-    base_url = str(request.base_url).rstrip("/")
-    return base_url or None
 
 
 @router.get("/api/chatkit/workflow", response_model=ChatKitWorkflowResponse)
@@ -462,7 +428,7 @@ async def upload_chatkit_attachment(
             detail="L'upload de pièces jointes n'est pas configuré sur ce serveur.",
         )
 
-    context = _build_request_context(current_user, request)
+    context = build_chatkit_request_context(current_user, request)
 
     try:
         await attachment_store.finalize_upload(attachment_id, file, context)
@@ -519,7 +485,7 @@ async def download_chatkit_attachment(
             detail="Pièce jointe introuvable",
         )
 
-    context = _build_request_context(current_user, request)
+    context = build_chatkit_request_context(current_user, request)
 
     try:
         file_path, mime_type, filename = await attachment_store.open_attachment(
@@ -821,6 +787,52 @@ async def teardown_voice_webrtc_session(
     )
 
 
+@router.websocket("/api/chatkit/voice/realtime")
+async def realtime_voice_gateway_endpoint(websocket: WebSocket) -> None:
+    token = websocket.query_params.get("token")
+    if isinstance(token, str):
+        token = token.strip()
+    else:
+        auth_header = websocket.headers.get("authorization")
+        if isinstance(auth_header, str) and auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+        else:
+            token = ""
+
+    if token.lower().startswith("bearer "):
+        token = token[7:].strip()
+
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    try:
+        payload = decode_access_token(token)
+        user_sub = payload.get("sub")
+        user_id = int(user_sub)
+    except Exception:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    with SessionLocal() as session:
+        user = session.get(User, user_id)
+
+    if user is None:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
+    await websocket.accept()
+
+    connection = GatewayConnection(
+        websocket=websocket,
+        user=GatewayUser(id=str(user.id), email=user.email),
+        authorization=f"Bearer {token}",
+    )
+
+    gateway = get_realtime_gateway()
+    await gateway.serve(connection)
+
+
 @router.get("/api/chatkit/voice/pending/{thread_id}")
 async def get_pending_voice_session(
     thread_id: str,
@@ -838,7 +850,7 @@ async def get_pending_voice_session(
         ) from exc
 
     # Créer le context pour le store
-    context = _build_request_context(current_user, request)
+    context = build_chatkit_request_context(current_user, request)
 
     try:
         # Charger le thread depuis le store
@@ -934,7 +946,7 @@ async def submit_voice_transcripts(
         ) from exc
 
     # Créer le context pour le store
-    context = _build_request_context(current_user, request)
+    context = build_chatkit_request_context(current_user, request)
 
     try:
         # Charger le thread depuis le store
@@ -1222,7 +1234,7 @@ async def finalize_voice_session(
 ):
     """Finalise la session vocale et relance le workflow si nécessaire."""
     try:
-        server = get_chatkit_server()
+        get_chatkit_server()
     except (ModuleNotFoundError, ImportError) as exc:
         logger.error("SDK ChatKit introuvable", exc_info=exc)
         raise HTTPException(
@@ -1230,8 +1242,6 @@ async def finalize_voice_session(
             detail={"error": "ChatKit SDK introuvable"},
         ) from exc
 
-    # Récupérer les transcriptions du body
-    # (peut être vide si déjà envoyées via /transcripts)
     try:
         body = await request.json()
         transcripts = body.get("transcripts", [])
@@ -1241,113 +1251,14 @@ async def finalize_voice_session(
             detail={"error": "Corps de requête invalide"},
         ) from exc
 
-    # Créer le context pour le store
-    context = _build_request_context(current_user, request)
+    context = build_chatkit_request_context(current_user, request)
 
-    try:
-        # Charger le thread depuis le store
-        thread = await server.store.load_thread(thread_id, context)
-    except NotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": "Thread introuvable"},
-        ) from None
-    except Exception as exc:
-        logger.exception("Erreur lors de la récupération du thread", exc_info=exc)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"error": "Erreur lors de la récupération du thread"},
-        ) from exc
-
-    # Récupérer le wait_state metadata
-    wait_state = _get_wait_state_metadata(thread)
-
-    if not wait_state or wait_state.get("type") != "voice":
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": "Aucune session vocale en attente"},
-        )
-
-    # Marquer que les messages vocaux ont déjà été créés (via /transcripts)
-    # Le workflow ne devra donc pas les créer à nouveau
-    updated_wait_state = dict(wait_state)
-    updated_wait_state["voice_messages_created"] = True
-    if transcripts:
-        # Si des transcriptions sont envoyées (pour retrocompatibilité),
-        # les stocker
-        updated_wait_state["voice_transcripts"] = transcripts
-    _set_wait_state_metadata(thread, updated_wait_state)
-
-    # Sauvegarder le thread avec les transcriptions
-    try:
-        await server.store.save_thread(thread, context)
-    except Exception as exc:
-        logger.exception(
-            "Erreur lors de la sauvegarde des transcriptions",
-            exc_info=exc,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"error": "Erreur lors de la sauvegarde des transcriptions"},
-        ) from exc
-
-    logger.info(
-        "Finalisation de la session vocale (user=%s, thread=%s)",
-        current_user.id,
-        thread_id,
+    await finalize_voice_wait_state(
+        thread_id=thread_id,
+        transcripts=transcripts,
+        context=context,
+        current_user=current_user,
     )
-
-    # Déclencher la continuation du workflow avec un message vide
-    # Cela forcera le workflow à réévaluer le wait_state et continuer
-    post_callable = getattr(server, "post", None)
-    if callable(post_callable):
-        try:
-            await post_callable(
-                {
-                    "type": "user_message",
-                    "thread_id": thread_id,
-                    "message": {"content": []},
-                },
-                context,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Échec du déclenchement de la continuation du workflow",
-                exc_info=exc,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={"error": "Erreur lors de la continuation du workflow"},
-            ) from exc
-    else:
-        resume_request = {
-            "type": "threads.add_user_message",
-            "params": {
-                "thread_id": thread_id,
-                "input": {
-                    "content": [],
-                    "attachments": [],
-                    "quoted_text": None,
-                    "inference_options": {},
-                },
-            },
-        }
-        try:
-            result = await server.process(json.dumps(resume_request), context)
-            if isinstance(result, StreamingResult):
-                async for _ in result:
-                    pass
-        except Exception as exc:
-            logger.warning(
-                "Impossible de reprendre le workflow via ChatKitServer.process pour "
-                "le thread %s",
-                thread_id,
-                exc_info=exc,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={"error": "Erreur lors de la continuation du workflow"},
-            ) from exc
 
     return {"status": "ok"}
 
@@ -1408,7 +1319,7 @@ async def chatkit_endpoint(
     content_type = request.headers.get("content-type") or "<inconnu>"
 
     settings = get_settings()
-    resolved_from_request = _resolve_public_base_url_from_request(request)
+    resolved_from_request = resolve_public_base_url_from_request(request)
     if resolved_from_request and not settings.backend_public_base_url_from_env:
         base_url = resolved_from_request
     else:
@@ -1422,7 +1333,7 @@ async def chatkit_endpoint(
         payload_length,
     )
 
-    context = _build_request_context(
+    context = build_chatkit_request_context(
         current_user,
         request,
         public_base_url=base_url,

@@ -513,6 +513,16 @@ class RealtimeVoiceSessionOrchestrator:
 
         await self._registry.register(handle)
         logger.debug("Session Realtime enregistrée : %s", handle.summary())
+        try:  # pragma: no cover - le gateway peut ne pas être initialisé
+            from .realtime_gateway import get_realtime_gateway
+
+            gateway = get_realtime_gateway()
+        except Exception:
+            gateway = None
+
+        if gateway is not None:
+            await gateway.register_session(handle)
+
         return handle
 
     async def close_voice_session(
@@ -533,7 +543,22 @@ class RealtimeVoiceSessionOrchestrator:
             return False
 
         logger.debug("Session Realtime supprimée : %s", handle.summary())
+        try:  # pragma: no cover - le gateway peut ne pas être initialisé
+            from .realtime_gateway import get_realtime_gateway
+
+            gateway = get_realtime_gateway()
+        except Exception:
+            gateway = None
+
+        if gateway is not None:
+            await gateway.unregister_session(handle=handle)
+
         return True
+
+    async def get_voice_session(
+        self, session_id: str
+    ) -> VoiceSessionHandle | None:
+        return await self._registry.get(session_id)
 
 
 _ORCHESTRATOR = RealtimeVoiceSessionOrchestrator()
@@ -579,6 +604,12 @@ async def close_voice_session(
     )
 
 
+async def get_voice_session_handle(session_id: str) -> VoiceSessionHandle | None:
+    """Retourne le handle d'une session vocale active si elle existe."""
+
+    return await _ORCHESTRATOR.get_voice_session(session_id)
+
+
 def get_realtime_session_orchestrator() -> RealtimeVoiceSessionOrchestrator:
     """Expose l'orchestrateur pour des usages avancés/tests."""
 
@@ -590,5 +621,6 @@ __all__ = [
     "RealtimeVoiceSessionOrchestrator",
     "open_voice_session",
     "close_voice_session",
+    "get_voice_session_handle",
     "get_realtime_session_orchestrator",
 ]

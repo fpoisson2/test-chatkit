@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "../auth";
+import { useAudioResampler } from "./resampler";
 import { useRealtimeSession } from "./useRealtimeSession";
+import { useVoiceSecret } from "./useVoiceSecret";
 
 type VoiceSessionStatus = "idle" | "connecting" | "connected" | "error";
 
@@ -31,6 +33,7 @@ type StopOptions = {
 
 const HISTORY_STORAGE_KEY = "chatkit:voice:history";
 const MAX_ERROR_LOG_ENTRIES = 8;
+const SAMPLE_RATE = 24_000;
 
 const formatErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
@@ -48,15 +51,17 @@ const formatErrorMessage = (error: unknown): string => {
 
 type RealtimeContent = {
   type: string;
-  text: string;
+  text?: string;
+  transcript?: string;
 };
 
 type RealtimeMessageItem = {
   type: "message";
-  itemId: string;
-  role: "user" | "assistant";
-  status: string;
-  content: RealtimeContent[];
+  itemId?: string;
+  id?: string;
+  role: "user" | "assistant" | string;
+  status?: string;
+  content?: RealtimeContent[];
 };
 
 type RealtimeItem = RealtimeMessageItem | { type: string };
@@ -64,13 +69,17 @@ type RealtimeItem = RealtimeMessageItem | { type: string };
 const isMessageItem = (item: RealtimeItem): item is RealtimeMessageItem => item.type === "message";
 
 const collectTextFromMessage = (item: RealtimeMessageItem): string => {
+  if (!Array.isArray(item.content)) {
+    return "";
+  }
+
   return item.content
     .map((part) => {
-      if (part.type === "input_text" || part.type === "output_text") {
-        return part.text;
+      if (part.type === "input_text" || part.type === "output_text" || part.type === "text") {
+        return part.text ?? "";
       }
-      if ("transcript" in part && part.transcript) {
-        return part.transcript;
+      if (part.type === "input_audio" || part.type === "output_audio" || part.type === "audio") {
+        return part.transcript ?? "";
       }
       return "";
     })
@@ -97,12 +106,18 @@ const buildTranscriptsFromHistory = (
     if (!text) {
       return;
     }
-    const existing = previousMap.get(item.itemId);
+    const identifier = (item.itemId || item.id || `${item.role}-${index}`).trim();
+    const statusRaw = (item.status || "").trim();
+    const status: VoiceTranscript["status"] =
+      statusRaw === "in_progress" || statusRaw === "completed"
+        ? (statusRaw as VoiceTranscript["status"])
+        : "completed";
+    const existing = previousMap.get(identifier);
     result.push({
-      id: item.itemId,
+      id: identifier,
       role: item.role,
       text,
-      status: item.status,
+      status,
       timestamp: existing?.timestamp ?? Date.now() + index,
     });
   });
@@ -142,8 +157,15 @@ const persistTranscripts = (transcripts: VoiceTranscript[]) => {
   try {
     window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(transcripts));
   } catch {
-    // Ignorer les erreurs de stockage : l'historique restera simplement en mémoire.
+    /* Ignorer les erreurs de persistance */
   }
+};
+
+type PendingStartState = {
+  stream: MediaStream;
+  preserveHistory: boolean;
+  resolve: () => void;
+  reject: (error: Error) => void;
 };
 
 export type UseVoiceSessionResult = {
@@ -151,21 +173,35 @@ export type UseVoiceSessionResult = {
   isListening: boolean;
   transcripts: VoiceTranscript[];
   errors: VoiceSessionError[];
-  webrtcError: string | null;
-  startSession: (options?: StartOptions) => Promise<void>;
+  transportError: string | null;
+  startSession: (options: StartOptions) => Promise<void>;
   stopSession: (options?: StopOptions) => void;
   clearErrors: () => void;
 };
 
 export const useVoiceSession = (): UseVoiceSessionResult => {
   const { token } = useAuth();
+  const { fetchSecret } = useVoiceSecret();
   const [status, setStatus] = useState<VoiceSessionStatus>("idle");
   const [isListening, setIsListening] = useState(false);
   const [transcripts, setTranscripts] = useState<VoiceTranscript[]>(() => parseStoredTranscripts());
   const [errors, setErrors] = useState<VoiceSessionError[]>([]);
-  const [webrtcError, setWebrtcError] = useState<string | null>(null);
+  const [transportError, setTransportError] = useState<string | null>(null);
 
   const suppressEmptyHistoryRef = useRef(false);
+  const currentSessionRef = useRef<string | null>(null);
+  const pendingStartRef = useRef<PendingStartState | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const microphoneStreamRef = useRef<MediaStream | null>(null);
+  const historyRef = useRef<RealtimeItem[]>([]);
+  const statusRef = useRef<VoiceSessionStatus>("idle");
+  const resampler = useAudioResampler(SAMPLE_RATE);
+
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
 
   const addError = useCallback((message: string) => {
     setErrors((prev) => {
@@ -176,7 +212,7 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
 
   const clearErrors = useCallback(() => {
     setErrors([]);
-    setWebrtcError(null);
+    setTransportError(null);
   }, []);
 
   const updateTranscriptsFromHistory = useCallback((history: RealtimeItem[]) => {
@@ -194,90 +230,298 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
     });
   }, []);
 
-  const handleHistoryUpdated = useCallback(
-    (history: RealtimeItem[]) => {
-      if (history.length === 0 && suppressEmptyHistoryRef.current) {
+  const cleanupCapture = useCallback(() => {
+    const processor = processorRef.current;
+    processorRef.current = null;
+    if (processor) {
+      try {
+        processor.disconnect();
+      } catch {
+        /* noop */
+      }
+      processor.onaudioprocess = null;
+    }
+
+    const source = sourceRef.current;
+    sourceRef.current = null;
+    if (source) {
+      try {
+        source.disconnect();
+      } catch {
+        /* noop */
+      }
+    }
+
+    const context = audioContextRef.current;
+    audioContextRef.current = null;
+    if (context) {
+      try {
+        context.close().catch(() => undefined);
+      } catch {
+        /* noop */
+      }
+    }
+
+    const stream = microphoneStreamRef.current;
+    microphoneStreamRef.current = null;
+    if (stream) {
+      stream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {
+          /* noop */
+        }
+      });
+    }
+    resampler.reset();
+  }, [resampler]);
+
+  const startCapture = useCallback(
+    async (sessionId: string, stream: MediaStream) => {
+      if (!stream) {
+        throw new Error("Flux audio introuvable pour la capture");
+      }
+
+      let context: AudioContext;
+      try {
+        context = new AudioContext();
+      } catch (error) {
+        throw error instanceof Error
+          ? error
+          : new Error("Impossible d'initialiser l'audio");
+      }
+
+      audioContextRef.current = context;
+      try {
+        if (context.state === "suspended") {
+          await context.resume();
+        }
+      } catch {
+        /* noop */
+      }
+
+      resampler.setSampleRate(context.sampleRate);
+
+      const source = context.createMediaStreamSource(stream);
+      sourceRef.current = source;
+      const processor = context.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
+
+      processor.onaudioprocess = (event) => {
+        const input = event.inputBuffer.getChannelData(0);
+        const chunk = resampler.process(input);
+        if (chunk.length > 0) {
+          sendAudioChunk(sessionId, chunk);
+        }
+      };
+
+      source.connect(processor);
+      processor.connect(context.destination);
+
+      historyRef.current = [];
+      currentSessionRef.current = sessionId;
+      microphoneStreamRef.current = stream;
+    },
+    [resampler],
+  );
+
+  const {
+    connect: connectRealtime,
+    disconnect: disconnectRealtime,
+    sendAudioChunk,
+    finalizeSession: finalizeRealtimeSession,
+    interruptSession,
+  } = useRealtimeSession({
+    onConnectionChange: (value) => {
+      if (value === "disconnected") {
+        cleanupCapture();
+        currentSessionRef.current = null;
+        historyRef.current = [];
+        pendingStartRef.current = null;
+        setIsListening(false);
+        setStatus("idle");
+      } else if (value === "connected") {
+        if (currentSessionRef.current) {
+          setStatus("connected");
+        } else if (statusRef.current !== "connecting") {
+          setStatus("idle");
+        }
+      } else if (value === "connecting") {
+        if (!currentSessionRef.current && statusRef.current === "idle") {
+          setStatus("connecting");
+        }
+      }
+    },
+    onTransportError: (error) => {
+      const message = formatErrorMessage(error);
+      addError(message);
+      setTransportError(message);
+      setStatus("error");
+      const pending = pendingStartRef.current;
+      if (pending) {
+        pendingStartRef.current = null;
+        pending.reject(error instanceof Error ? error : new Error(message));
+      }
+    },
+    onSessionCreated: async (event) => {
+      const pending = pendingStartRef.current;
+      if (pending) {
+        pendingStartRef.current = null;
+        try {
+          await startCapture(event.sessionId, pending.stream);
+          suppressEmptyHistoryRef.current = pending.preserveHistory;
+          if (!pending.preserveHistory) {
+            resetTranscripts();
+          }
+          setStatus("connected");
+          setIsListening(true);
+          pending.resolve();
+        } catch (error) {
+          cleanupCapture();
+          currentSessionRef.current = null;
+          const message = formatErrorMessage(error);
+          addError(message);
+          setTransportError(message);
+          setStatus("error");
+          pending.reject(error instanceof Error ? error : new Error(message));
+        }
+        return;
+      }
+
+      if (!currentSessionRef.current) {
+        currentSessionRef.current = event.sessionId;
+      }
+    },
+    onHistoryUpdated: (sessionId, history) => {
+      if (currentSessionRef.current !== sessionId) {
+        return;
+      }
+      if (!Array.isArray(history)) {
+        return;
+      }
+      const typed = history as RealtimeItem[];
+      historyRef.current = typed;
+      if (typed.length === 0 && suppressEmptyHistoryRef.current) {
         return;
       }
       suppressEmptyHistoryRef.current = false;
-      updateTranscriptsFromHistory(history);
+      updateTranscriptsFromHistory(typed);
     },
-    [updateTranscriptsFromHistory],
-  );
-
-  const handleConnectionChange = useCallback((value: "connected" | "connecting" | "disconnected") => {
-    if (value === "connected") {
-      setStatus("connected");
-      setIsListening(true);
-    } else if (value === "connecting") {
-      setStatus("connecting");
-    } else {
-      setIsListening(false);
+    onHistoryDelta: (sessionId, item) => {
+      if (currentSessionRef.current !== sessionId) {
+        return;
+      }
+      if (!item || typeof item !== "object") {
+        return;
+      }
+      historyRef.current = [...historyRef.current, item as RealtimeItem];
+      updateTranscriptsFromHistory(historyRef.current);
+    },
+    onAgentStart: (sessionId) => {
+      if (currentSessionRef.current === sessionId) {
+        setIsListening(true);
+      }
+    },
+    onAgentEnd: (sessionId) => {
+      if (currentSessionRef.current === sessionId) {
+        setIsListening(false);
+      }
+    },
+    onSessionFinalized: (event) => {
+      if (currentSessionRef.current !== event.sessionId) {
+        return;
+      }
+      cleanupCapture();
+      currentSessionRef.current = null;
+      historyRef.current = [];
       setStatus("idle");
-    }
-  }, []);
-
-  const handleAgentStart = useCallback(() => {
-    setIsListening(true);
-  }, []);
-
-  const handleAgentEnd = useCallback(() => {
-    setIsListening(false);
-  }, []);
-
-  const handleTransportError = useCallback(
-    (error: unknown) => {
-      const message = formatErrorMessage(error);
-      addError(message);
-      setWebrtcError(message);
+      setIsListening(false);
+      if (Array.isArray(event.transcripts) && event.transcripts.length > 0) {
+        const typed = event.transcripts as unknown as RealtimeItem[];
+        updateTranscriptsFromHistory(typed);
+      }
     },
-    [addError],
-  );
-
-  const handleSessionError = useCallback(
-    (error: unknown) => {
-      const message = formatErrorMessage(error);
-      addError(message);
+    onSessionError: (sessionId, message) => {
+      if (currentSessionRef.current && currentSessionRef.current !== sessionId) {
+        return;
+      }
+      const normalized = message || "Erreur lors de la session Realtime";
+      addError(normalized);
+      setTransportError(normalized);
+      setStatus("error");
+      const pending = pendingStartRef.current;
+      if (pending) {
+        pendingStartRef.current = null;
+        pending.reject(new Error(normalized));
+      }
     },
-    [addError],
-  );
-
-  const { connect, disconnect } = useRealtimeSession({
-    onHistoryUpdated: handleHistoryUpdated,
-    onConnectionChange: handleConnectionChange,
-    onAgentStart: handleAgentStart,
-    onAgentEnd: handleAgentEnd,
-    onTransportError: handleTransportError,
-    onError: handleSessionError,
   });
 
   const stopSession = useCallback(
     ({ clearHistory = false, nextStatus = "idle" }: StopOptions = {}) => {
-      disconnect();
-      setIsListening(false);
-      setStatus(nextStatus);
+      const sessionId = currentSessionRef.current;
+      if (sessionId) {
+        const tail = resampler.flush();
+        if (tail.length > 0) {
+          sendAudioChunk(sessionId, tail, { commit: true });
+        } else {
+          sendAudioChunk(sessionId, new Int16Array(), { commit: true });
+        }
+        interruptSession(sessionId);
+      }
+      cleanupCapture();
+      currentSessionRef.current = null;
+      historyRef.current = [];
       suppressEmptyHistoryRef.current = false;
       if (clearHistory) {
         resetTranscripts();
       }
+      setIsListening(false);
+      setStatus(nextStatus);
     },
-    [disconnect, resetTranscripts],
+    [cleanupCapture, interruptSession, resetTranscripts, resampler, sendAudioChunk],
   );
 
   useEffect(() => () => {
     stopSession();
-  }, [stopSession]);
+    disconnectRealtime();
+  }, [disconnectRealtime, stopSession]);
+
+  useEffect(() => {
+    if (!token) {
+      stopSession();
+      disconnectRealtime();
+      clearErrors();
+      return;
+    }
+
+    let cancelled = false;
+    connectRealtime({ token }).catch((error) => {
+      if (cancelled) {
+        return;
+      }
+      const message = formatErrorMessage(error);
+      addError(message);
+      setTransportError(message);
+      setStatus("error");
+    });
+
+    return () => {
+      cancelled = true;
+      disconnectRealtime();
+    };
+  }, [addError, clearErrors, connectRealtime, disconnectRealtime, stopSession, token]);
 
   const startSession = useCallback(
     async ({ preserveHistory = false, stream }: StartOptions) => {
-      if (status === "connecting") {
+      if (statusRef.current === "connecting") {
         return;
       }
 
       if (!token) {
         const message = "Authentification requise pour démarrer la session vocale.";
         addError(message);
-        setWebrtcError(message);
+        setTransportError(message);
         setStatus("error");
         throw new Error(message);
       }
@@ -287,17 +531,19 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
         resetTranscripts();
       }
 
-      disconnect();
-      setIsListening(false);
       clearErrors();
-      setWebrtcError(null);
+      setTransportError(null);
       setStatus("connecting");
 
+      const pendingPromise = new Promise<void>((resolve, reject) => {
+        pendingStartRef.current = { stream, preserveHistory, resolve, reject };
+      });
+
       try {
-        await connect({ token, localStream: stream });
-        setStatus("connected");
-        setIsListening(true);
+        await fetchSecret();
       } catch (error) {
+        pendingStartRef.current = null;
+        cleanupCapture();
         stream.getTracks().forEach((track) => {
           try {
             track.stop();
@@ -305,22 +551,21 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
             /* noop */
           }
         });
-        disconnect();
-        setIsListening(false);
-        setStatus("error");
         const message = formatErrorMessage(error);
         addError(message);
-        setWebrtcError(message);
+        setTransportError(message);
+        setStatus("error");
         throw error instanceof Error ? error : new Error(message);
       }
+
+      await pendingPromise;
     },
     [
-      status,
-      resetTranscripts,
-      disconnect,
-      clearErrors,
-      connect,
       addError,
+      cleanupCapture,
+      clearErrors,
+      fetchSecret,
+      resetTranscripts,
       token,
     ],
   );
@@ -331,14 +576,15 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       isListening,
       transcripts,
       errors,
-      webrtcError,
+      transportError,
       startSession,
       stopSession,
       clearErrors,
     }),
-    [clearErrors, errors, isListening, startSession, status, stopSession, transcripts, webrtcError],
+    [clearErrors, errors, isListening, startSession, status, stopSession, transcripts, transportError],
   );
 
   return value;
 };
 
+export type { VoiceSessionError, VoiceSessionStatus, VoiceTranscript };

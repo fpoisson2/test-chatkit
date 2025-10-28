@@ -3067,6 +3067,15 @@ async def run_workflow(
             voice_context["session_id"] = session_handle.session_id
             event_context["session_id"] = session_handle.session_id
 
+            if getattr(agent_context, "thread", None) is not None:
+                session_handle.metadata["thread_id"] = agent_context.thread.id
+            session_handle.metadata["step_slug"] = current_node.slug
+            if title:
+                session_handle.metadata["step_title"] = title
+            tool_permissions = event_context.get("realtime", {}).get("tools")
+            if tool_permissions is not None:
+                session_handle.metadata["tool_permissions"] = tool_permissions
+
             realtime_event = {
                 "type": "realtime.event",
                 "step": {"slug": current_node.slug, "title": title},
