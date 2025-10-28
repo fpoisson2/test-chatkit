@@ -91,6 +91,29 @@ const logRealtime = (message: string, payload?: Record<string, unknown>) => {
   console.info("[VoiceRealtime]", message, safePayload ?? "");
 };
 
+const stringifyError = (value: unknown): string => {
+  if (value instanceof Error) {
+    return value.message;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (value && typeof value === "object") {
+    try {
+      const json = JSON.stringify(value);
+      if (json && json !== "{}") {
+        return json;
+      }
+    } catch {
+      /* noop */
+    }
+  }
+  if (value === undefined || value === null) {
+    return "";
+  }
+  return String(value);
+};
+
 type ConnectionRecord = {
   gatewayUrl: string;
   websocket: WebSocket | null;
@@ -369,7 +392,9 @@ const handleMessageForRecord = async (
     case "session_error": {
       stopPlayback(record);
       if (sessionId) {
-        const errorMessage = String((typed as { error?: unknown }).error ?? "");
+        const rawError = (typed as { error?: unknown }).error;
+        const errorMessage =
+          stringifyError(rawError) || "Erreur lors de la session Realtime";
         broadcast(record, (handlers) => {
           handlers.onSessionError?.(sessionId, errorMessage);
         });
