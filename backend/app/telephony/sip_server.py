@@ -3,17 +3,31 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
 import time
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 
+from chatkit.types import ThreadMetadata
+
+from ..chatkit import get_chatkit_server
+from ..chatkit_server.context import (
+    ChatKitRequestContext,
+    _get_wait_state_metadata,
+    _set_wait_state_metadata,
+)
 from ..config import Settings, get_settings
 from ..database import SessionLocal
 from ..voice_settings import get_or_create_voice_settings
+from ..workflows.executor import (
+    AgentContext,
+    WorkflowInput,
+    run_workflow,
+)
 from ..workflows.service import (
     TelephonyRouteConfig,
     TelephonyRouteOverrides,
@@ -72,6 +86,15 @@ class TelephonyCallContext(TelephonyRouteResolution):
     voice_prompt_variables: dict[str, str]
     voice_provider_id: str | None = None
     voice_provider_slug: str | None = None
+
+
+@dataclass(frozen=True)
+class TelephonyVoiceWorkflowResult:
+    """Informations retournées après l'exécution initiale du workflow voix."""
+
+    voice_event: Mapping[str, Any]
+    metadata: Mapping[str, Any]
+    resume_callback: Callable[[Sequence[Mapping[str, Any]]], Awaitable[None]]
 
 
 class TelephonyRouteSelectionError(RuntimeError):
@@ -146,16 +169,16 @@ def _merge_voice_settings(
             for step in steps:
                 step_kind = getattr(step, "kind", "")
                 step_slug = getattr(step, "slug", "<inconnu>")
-                logger.info(
-                    "Bloc trouvé : slug=%s, kind=%s", step_slug, step_kind
-                )
+                logger.info("Bloc trouvé : slug=%s, kind=%s", step_slug, step_kind)
                 # Chercher les blocs de type agent ou voice-agent
                 if step_kind in ("agent", "voice-agent", "voice_agent"):
                     params = getattr(step, "parameters", {})
                     logger.info(
                         "Paramètres complets du bloc %s : %s",
                         step_slug,
-                        list(params.keys()) if isinstance(params, dict) else type(params),
+                        list(params.keys())
+                        if isinstance(params, dict)
+                        else type(params),
                     )
                     if isinstance(params, dict):
                         # Utiliser les paramètres du bloc agent si disponibles
@@ -165,7 +188,8 @@ def _merge_voice_settings(
                             instructions = params["instructions"]
                         if params.get("voice"):
                             voice = params["voice"]
-                        # Les clés pour le provider sont model_provider et model_provider_slug
+                        # Les clés pour le provider sont model_provider
+                        # et model_provider_slug
                         if params.get("model_provider"):
                             provider_id = params["model_provider"]
                         if params.get("model_provider_slug"):
@@ -418,6 +442,217 @@ def resolve_workflow_for_phone_number(
     )
 
 
+async def prepare_voice_workflow(
+    call_context: TelephonyCallContext,
+    *,
+    call_id: str,
+    settings: Settings | None = None,
+) -> TelephonyVoiceWorkflowResult | None:
+    """Exécute le workflow téléphonie jusqu'au premier bloc voix."""
+
+    effective_settings = settings or get_settings()
+
+    try:
+        server = get_chatkit_server()
+    except Exception as exc:  # pragma: no cover - dépend de l'initialisation du serveur
+        logger.exception(
+            "Impossible de récupérer le serveur ChatKit pour l'appel %s",
+            call_id,
+            exc_info=exc,
+        )
+        return None
+
+    store = getattr(server, "store", None)
+    if store is None or not hasattr(store, "generate_thread_id"):
+        logger.warning(
+            "Store ChatKit indisponible pour préparer le workflow voix (Call-ID=%s)",
+            call_id,
+        )
+        return None
+
+    request_context = ChatKitRequestContext(
+        user_id=f"sip:{call_id}",
+        email=None,
+        authorization=None,
+        public_base_url=effective_settings.backend_public_base_url,
+        voice_model=call_context.voice_model,
+        voice_instructions=call_context.voice_instructions,
+        voice_voice=call_context.voice_voice,
+        voice_prompt_variables=call_context.voice_prompt_variables,
+        voice_model_provider_id=call_context.voice_provider_id,
+        voice_model_provider_slug=call_context.voice_provider_slug,
+    )
+
+    try:
+        thread_id = store.generate_thread_id(request_context)
+    except Exception as exc:  # pragma: no cover - dépend du store
+        logger.exception(
+            "Impossible de générer un thread pour l'appel %s", call_id, exc_info=exc
+        )
+        return None
+
+    thread = ThreadMetadata(
+        id=thread_id,
+        created_at=datetime.datetime.now(datetime.UTC),
+        metadata={},
+    )
+
+    agent_context = AgentContext(
+        thread=thread,
+        store=store,
+        request_context=request_context,
+    )
+
+    workflow_input = WorkflowInput(
+        input_as_text="",
+        auto_start_was_triggered=False,
+        auto_start_assistant_message=None,
+        source_item_id=f"sip:{call_id}",
+    )
+
+    try:
+        await run_workflow(
+            workflow_input,
+            agent_context=agent_context,
+            workflow_definition=call_context.workflow_definition,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Erreur lors de l'exécution initiale du workflow voix (Call-ID=%s)",
+            call_id,
+            exc_info=exc,
+        )
+        return None
+
+    wait_state = _get_wait_state_metadata(thread)
+    if not isinstance(wait_state, Mapping) or wait_state.get("type") != "voice":
+        logger.info("Aucun wait state vocal détecté pour l'appel %s", call_id)
+        try:
+            await store.save_thread(thread, request_context)
+        except Exception:  # pragma: no cover - persistance best effort
+            logger.debug(
+                "Impossible d'enregistrer le thread %s sans wait state voix",
+                thread_id,
+                exc_info=True,
+            )
+        return None
+
+    voice_event = wait_state.get("voice_event")
+    if not isinstance(voice_event, Mapping):
+        logger.warning(
+            "Wait state vocal sans événement realtime pour l'appel %s", call_id
+        )
+        return None
+
+    event_payload = voice_event.get("event")
+    if not isinstance(event_payload, Mapping):
+        logger.warning("Événement vocal invalide pour l'appel %s", call_id)
+        return None
+
+    session_context = event_payload.get("session")
+    if not isinstance(session_context, Mapping):
+        logger.warning(
+            "Contexte session absent dans l'événement vocal (Call-ID=%s)", call_id
+        )
+        return None
+
+    state_payload = wait_state.get("state")
+    voice_context: Mapping[str, Any]
+    if isinstance(state_payload, Mapping):
+        stored_session = state_payload.get("last_voice_session")
+        voice_context = stored_session if isinstance(stored_session, Mapping) else {}
+    else:
+        voice_context = {}
+    if not voice_context:
+        voice_context = session_context
+
+    tool_permissions = event_payload.get("tool_permissions")
+    if not isinstance(tool_permissions, Mapping):
+        tool_permissions = {}
+
+    async def _resume_workflow(transcripts: Sequence[Mapping[str, Any]]) -> None:
+        current_wait_state = _get_wait_state_metadata(thread)
+        if not isinstance(current_wait_state, Mapping):
+            logger.info("Aucun état de reprise vocal pour l'appel %s", call_id)
+            return
+
+        updated_wait_state = dict(current_wait_state)
+        normalized: list[dict[str, Any]] = []
+        for entry in transcripts:
+            if isinstance(entry, Mapping):
+                normalized.append(dict(entry))
+        updated_wait_state["voice_transcripts"] = normalized
+        _set_wait_state_metadata(thread, updated_wait_state)
+
+        try:
+            await store.save_thread(thread, request_context)
+        except Exception:
+            logger.exception(
+                "Impossible d'enregistrer les transcriptions vocales (Call-ID=%s)",
+                call_id,
+            )
+            return
+
+        resume_input = WorkflowInput(
+            input_as_text="",
+            auto_start_was_triggered=False,
+            auto_start_assistant_message=None,
+            source_item_id=current_wait_state.get("input_item_id"),
+        )
+
+        try:
+            await run_workflow(
+                resume_input,
+                agent_context=agent_context,
+                workflow_definition=call_context.workflow_definition,
+            )
+        except Exception:
+            logger.exception(
+                "Erreur lors de la reprise du workflow voix (Call-ID=%s)", call_id
+            )
+            raise
+        finally:
+            try:
+                await store.save_thread(thread, request_context)
+            except Exception:  # pragma: no cover - persistance best effort
+                logger.debug(
+                    "Impossible d'enregistrer le thread %s après reprise",
+                    thread_id,
+                    exc_info=True,
+                )
+
+    metadata_payload: dict[str, Any] = {
+        "thread_id": thread.id,
+        "tool_permissions": dict(tool_permissions),
+        "voice_context": dict(voice_context),
+        "wait_state": dict(wait_state),
+        "resume_input_item_id": wait_state.get("input_item_id"),
+        "voice_step_slug": wait_state.get("slug"),
+        "realtime_session_id": event_payload.get("session_id"),
+    }
+
+    try:
+        await store.save_thread(thread, request_context)
+    except Exception:  # pragma: no cover - persistance best effort
+        logger.debug(
+            "Impossible d'enregistrer le thread %s après préparation",
+            thread_id,
+            exc_info=True,
+        )
+
+    logger.info(
+        "Wait state vocal initialisé pour l'appel %s (thread=%s)",
+        call_id,
+        thread_id,
+    )
+
+    return TelephonyVoiceWorkflowResult(
+        voice_event=dict(voice_event),
+        metadata=metadata_payload,
+        resume_callback=_resume_workflow,
+    )
+
+
 class SipCallRequestHandler:
     """Gestionnaire générique des requêtes SIP INVITE/ACK/BYE."""
 
@@ -583,5 +818,6 @@ __all__ = [
     "TelephonyCallContext",
     "TelephonyRouteResolution",
     "TelephonyRouteSelectionError",
+    "prepare_voice_workflow",
     "resolve_workflow_for_phone_number",
 ]

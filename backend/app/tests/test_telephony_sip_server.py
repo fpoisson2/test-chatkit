@@ -18,6 +18,8 @@ os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 
+import backend.app.startup as startup_module  # noqa: E402
+import backend.app.telephony.sip_server as sip_module  # noqa: E402
 from backend.app.telephony.sip_server import (  # noqa: E402
     SipCallRequestHandler,
     SipCallSession,
@@ -254,6 +256,248 @@ def test_ack_starts_rtp_session_once() -> None:
         assert started == ["abc123"], "ACK should not restart RTP"
 
     asyncio.run(_run())
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("anyio_backend", ["asyncio"])
+async def test_prepare_voice_workflow_returns_voice_event(
+    monkeypatch: pytest.MonkeyPatch, anyio_backend: str
+) -> None:
+    del anyio_backend
+    voice_event = {
+        "type": "realtime.event",
+        "step": {"slug": "voice", "title": "Voice"},
+        "event": {
+            "type": "history",
+            "session_id": "session-123",
+            "client_secret": {"value": "secret-abc"},
+            "tool_permissions": {"response": True},
+            "session": {
+                "model": "gpt-voice",
+                "voice": "ember",
+                "instructions": "Répondez brièvement.",
+                "realtime": {"start_mode": "manual", "stop_mode": "manual"},
+                "tools": [{"type": "web_search"}],
+                "handoffs": [{"type": "superviseur"}],
+                "prompt_variables": {"locale": "fr"},
+                "model_provider_id": "prov-1",
+                "model_provider_slug": "openai",
+            },
+        },
+    }
+
+    voice_context = {
+        "model": "gpt-voice",
+        "voice": "ember",
+        "instructions": "Répondez brièvement.",
+        "realtime": {"start_mode": "manual", "stop_mode": "manual"},
+        "tools": [{"type": "web_search"}],
+        "handoffs": [{"type": "superviseur"}],
+        "prompt_variables": {"locale": "fr"},
+        "model_provider_id": "prov-1",
+        "model_provider_slug": "openai",
+    }
+
+    wait_state = {
+        "slug": "voice",
+        "input_item_id": "input-1",
+        "type": "voice",
+        "voice_event": voice_event,
+        "state": {"last_voice_session": voice_context},
+    }
+
+    calls: list[Any] = []
+
+    async def _fake_run_workflow(*args: Any, agent_context: Any, **_: Any) -> Any:
+        calls.append(args)
+        if len(calls) == 1:
+            sip_module._set_wait_state_metadata(agent_context.thread, wait_state)
+        else:
+            stored = sip_module._get_wait_state_metadata(agent_context.thread)
+            assert stored is not None
+            assert stored.get("voice_transcripts") == [
+                {"role": "user", "text": "Salut"}
+            ]
+        return SimpleNamespace()
+
+    class _StubStore:
+        def __init__(self) -> None:
+            self.saved: list[Any] = []
+
+        def generate_thread_id(self, _: Any) -> str:
+            return "thread-voice"
+
+        async def save_thread(self, thread: Any, context: Any) -> None:
+            self.saved.append((thread, context))
+
+    stub_store = _StubStore()
+
+    class _StubServer:
+        def __init__(self) -> None:
+            self.store = stub_store
+
+    monkeypatch.setattr(sip_module, "get_chatkit_server", lambda: _StubServer())
+    monkeypatch.setattr(sip_module, "run_workflow", _fake_run_workflow)
+
+    call_context = sip_module.TelephonyCallContext(
+        workflow_definition=SimpleNamespace(workflow=SimpleNamespace(slug="demo")),
+        normalized_number="+331234",
+        original_number="+331234",
+        route=None,
+        voice_model="gpt-voice",
+        voice_instructions="Répondez brièvement.",
+        voice_voice="ember",
+        voice_prompt_variables={"locale": "fr"},
+        voice_provider_id="prov-1",
+        voice_provider_slug="openai",
+    )
+
+    result = await sip_module.prepare_voice_workflow(
+        call_context,
+        call_id="call-voice",
+        settings=SimpleNamespace(backend_public_base_url="https://backend.invalid"),
+    )
+
+    assert result is not None
+    assert result.voice_event == voice_event
+
+    metadata = dict(result.metadata)
+    assert metadata["thread_id"] == "thread-voice"
+    assert metadata["voice_context"]["tools"] == [{"type": "web_search"}]
+    assert metadata["voice_context"]["handoffs"] == [{"type": "superviseur"}]
+    assert metadata["tool_permissions"] == {"response": True}
+
+    await result.resume_callback([{"role": "user", "text": "Salut"}])
+    assert len(calls) == 2
+    assert stub_store.saved, "Le thread doit être enregistré"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("anyio_backend", ["asyncio"])
+async def test_register_session_stores_voice_metadata(
+    monkeypatch: pytest.MonkeyPatch, anyio_backend: str
+) -> None:
+    del anyio_backend
+
+    async def _fake_prepare_voice_workflow(
+        *_: Any, **__: Any
+    ) -> sip_module.TelephonyVoiceWorkflowResult:
+        async def _resume(_: Any) -> None:
+            return None
+
+        voice_event = {
+            "type": "realtime.event",
+            "event": {
+                "type": "history",
+                "session_id": "session-xyz",
+                "client_secret": {"value": "secret"},
+                "tool_permissions": {"response": True},
+                "session": {
+                    "model": "gpt-voice",
+                    "voice": "alloy",
+                    "instructions": "Soyez bref.",
+                    "realtime": {"start_mode": "auto", "stop_mode": "manual"},
+                    "tools": [{"type": "web_search"}],
+                    "handoffs": [{"type": "agent"}],
+                    "prompt_variables": {"locale": "fr"},
+                    "model_provider_id": "prov",
+                    "model_provider_slug": "openai",
+                },
+            },
+        }
+
+        metadata = {
+            "thread_id": "thread-xyz",
+            "voice_context": {
+                "model": "gpt-voice",
+                "voice": "alloy",
+                "instructions": "Soyez bref.",
+                "realtime": {"start_mode": "auto", "stop_mode": "manual"},
+                "tools": [{"type": "web_search"}],
+                "handoffs": [{"type": "agent"}],
+                "prompt_variables": {"locale": "fr"},
+                "model_provider_id": "prov",
+                "model_provider_slug": "openai",
+            },
+            "tool_permissions": {"response": True},
+            "wait_state": {"slug": "voice"},
+            "realtime_session_id": "session-xyz",
+            "voice_step_slug": "voice",
+        }
+
+        return sip_module.TelephonyVoiceWorkflowResult(
+            voice_event=voice_event,
+            metadata=metadata,
+            resume_callback=_resume,
+        )
+
+    def _fake_resolve_workflow(*_: Any, **__: Any) -> sip_module.TelephonyCallContext:
+        return sip_module.TelephonyCallContext(
+            workflow_definition=SimpleNamespace(workflow=SimpleNamespace(slug="demo")),
+            normalized_number="+331234",
+            original_number="+331234",
+            route=None,
+            voice_model="gpt-fallback",
+            voice_instructions="Fallback",
+            voice_voice="verse",
+            voice_prompt_variables={"fallback": "1"},
+            voice_provider_id="prov",
+            voice_provider_slug="openai",
+        )
+
+    class _DummySession:
+        def __enter__(self) -> Any:
+            return SimpleNamespace()
+
+        def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+            return False
+
+    monkeypatch.setattr(
+        startup_module, "prepare_voice_workflow", _fake_prepare_voice_workflow
+    )
+    monkeypatch.setattr(
+        startup_module, "resolve_workflow_for_phone_number", _fake_resolve_workflow
+    )
+    monkeypatch.setattr(startup_module, "SessionLocal", lambda: _DummySession())
+    monkeypatch.setattr(startup_module, "WorkflowService", lambda: SimpleNamespace())
+    monkeypatch.setattr(
+        startup_module,
+        "settings",
+        SimpleNamespace(backend_public_base_url="https://backend.invalid"),
+    )
+
+    manager = SimpleNamespace(active_config=None, contact_host=None)
+    on_invite = startup_module._build_invite_handler(manager)
+    closure = {
+        name: cell.cell_contents
+        for name, cell in zip(
+            on_invite.__code__.co_freevars,
+            on_invite.__closure__ or (),
+            strict=False,
+        )
+    }
+    sip_handler = closure["sip_handler"]
+    register_callback = sip_handler._invite_callback
+
+    class _Request:
+        def __init__(self) -> None:
+            self.headers = {"To": "sip:+331234@example.com"}
+
+    session = SipCallSession(call_id="call-xyz", request=_Request())
+    await register_callback(session, session.request)
+
+    metadata = session.metadata.get("telephony") or {}
+    assert metadata["voice_event"]["event"]["session"]["tools"] == [
+        {"type": "web_search"}
+    ]
+    assert metadata["voice_event"]["event"]["tool_permissions"] == {"response": True}
+    assert metadata["voice_realtime"] == {"start_mode": "auto", "stop_mode": "manual"}
+    assert metadata["voice_tools"] == [{"type": "web_search"}]
+    assert metadata["voice_handoffs"] == [{"type": "agent"}]
+    assert metadata["voice_prompt_variables"] == {"locale": "fr"}
+    assert metadata["voice_model"] == "gpt-voice"
+    assert metadata["voice_session_active"] is False
+    assert callable(metadata.get("resume_workflow_callable"))
 
 
 def test_ack_without_session_is_ignored(caplog: pytest.LogCaptureFixture) -> None:
