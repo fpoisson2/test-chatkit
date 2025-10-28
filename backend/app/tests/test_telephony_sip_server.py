@@ -540,7 +540,11 @@ async def test_start_rtp_uses_voice_event_configuration(
         def parse(self, payload: Mapping[str, Any]) -> _SecretHandle:
             return _parse_secret(payload)
 
-    monkeypatch.setattr(startup_module, "SessionSecretParser", lambda: _SecretParserStub())
+    monkeypatch.setattr(
+        startup_module,
+        "SessionSecretParser",
+        lambda: _SecretParserStub(),
+    )
 
     manager = SimpleNamespace(active_config=None, contact_host=None)
     on_invite = startup_module._build_invite_handler(manager)
@@ -597,9 +601,14 @@ async def test_start_rtp_uses_voice_event_configuration(
     await start_rtp(session)
 
     run_kwargs = recorded["run_kwargs"]
-    assert run_kwargs["session_config"]["voice"] == "alloy"
-    assert run_kwargs["session_config"]["realtime"]["start_mode"] == "auto"
-    assert run_kwargs["session_config"]["tools"] == [{"type": "mcp"}]
+    session_payload = run_kwargs["session_config"]
+    assert session_payload["voice"] == "alloy"
+    assert session_payload["realtime"]["start_mode"] == "auto"
+    assert session_payload["realtime"]["turn_detection"] == {
+        "type": "server_vad",
+        "threshold": 0.33,
+    }
+    assert session_payload["tools"] == [{"type": "mcp"}]
     assert run_kwargs["tool_permissions"] == {"response": True}
 
     metadata = session.metadata["telephony"]

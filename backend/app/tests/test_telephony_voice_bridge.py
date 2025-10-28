@@ -183,7 +183,11 @@ async def test_voice_bridge_forwards_audio_and_transcripts() -> None:
     }
 
     append_payload = next(
-        (entry for entry in fake_ws.sent if entry.get("type") == "input_audio_buffer.append"),
+        (
+            entry
+            for entry in fake_ws.sent
+            if entry.get("type") == "input_audio_buffer.append"
+        ),
         None,
     )
     assert append_payload is not None, fake_ws.sent
@@ -249,8 +253,13 @@ async def test_voice_bridge_uses_session_config() -> None:
     assert session_payload["voice"] == "ember"
     assert session_payload["tools"] == [{"type": "web_search"}]
     assert session_payload["tool_permissions"] == {"response": True}
-    assert session_payload["realtime"]["turn_detection"]["threshold"] == 0.25
-    assert session_payload["realtime"]["tools"] == {"response": True}
+    audio_section = session_payload.get("audio")
+    assert isinstance(audio_section, dict)
+    input_audio = audio_section.get("input")
+    assert isinstance(input_audio, dict)
+    assert input_audio["format"] == {"type": "audio/pcm", "rate": 44100}
+    assert input_audio["turn_detection"] == {"type": "server_vad", "threshold": 0.25}
+    assert "realtime" not in session_payload
 
 
 @pytest.mark.anyio

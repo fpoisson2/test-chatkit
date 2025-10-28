@@ -9,7 +9,7 @@ import json
 import logging
 import struct
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -561,28 +561,15 @@ class TelephonyVoiceBridge:
         sanitized_permissions = _sanitize_permissions(tool_permissions)
 
         if isinstance(session_config, Mapping):
-            payload = deepcopy(dict(session_config))
-            payload.setdefault("type", "realtime")
-            payload.setdefault("model", model)
-            payload.setdefault("instructions", instructions)
-            if voice and not payload.get("voice"):
-                payload["voice"] = voice
-
-            realtime_section = payload.get("realtime")
-            if isinstance(realtime_section, Mapping):
-                payload["realtime"] = deepcopy(dict(realtime_section))
+            payload = self._normalize_session_config(
+                session_config,
+                model=model,
+                instructions=instructions,
+                voice=voice,
+            )
 
             if sanitized_permissions and "tool_permissions" not in payload:
                 payload["tool_permissions"] = sanitized_permissions
-
-            realtime_payload = payload.get("realtime")
-            if sanitized_permissions:
-                if isinstance(realtime_payload, Mapping):
-                    realtime_dict = dict(realtime_payload)
-                else:
-                    realtime_dict = {}
-                realtime_dict.setdefault("tools", sanitized_permissions)
-                payload["realtime"] = realtime_dict
 
             return payload
 
@@ -615,6 +602,118 @@ class TelephonyVoiceBridge:
             payload["tool_permissions"] = sanitized_permissions
 
         payload["realtime"] = realtime_defaults
+        return payload
+
+    def _normalize_session_config(
+        self,
+        session_config: Mapping[str, Any],
+        *,
+        model: str,
+        instructions: str,
+        voice: str | None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "type": "realtime",
+            "model": str(session_config.get("model") or model),
+            "instructions": str(session_config.get("instructions") or instructions),
+        }
+
+        voice_value = session_config.get("voice") or voice
+        if isinstance(voice_value, str):
+            stripped = voice_value.strip()
+            if stripped:
+                payload["voice"] = stripped
+
+        def _copy_mapping(key: str) -> None:
+            value = session_config.get(key)
+            if isinstance(value, Mapping):
+                payload[key] = deepcopy(dict(value))
+
+        def _copy_sequence(key: str) -> None:
+            value = session_config.get(key)
+            if isinstance(value, Sequence) and not isinstance(
+                value, (str | bytes | bytearray)
+            ):
+                payload[key] = [deepcopy(item) for item in value]
+
+        _copy_mapping("prompt_variables")
+        _copy_mapping("metadata")
+        _copy_sequence("tools")
+        _copy_sequence("handoffs")
+
+        output_modalities: list[str] = []
+        modalities = session_config.get("output_modalities")
+        if isinstance(modalities, Sequence) and not isinstance(
+            modalities, (str | bytes | bytearray)
+        ):
+            for modality in modalities:
+                if isinstance(modality, str) and modality.strip():
+                    output_modalities.append(modality.strip())
+        elif isinstance(session_config.get("modalities"), Sequence):
+            for modality in session_config["modalities"]:  # type: ignore[index]
+                if isinstance(modality, str) and modality.strip():
+                    output_modalities.append(modality.strip())
+        if output_modalities:
+            payload["output_modalities"] = output_modalities
+
+        audio_section: Mapping[str, Any] | None = None
+        existing_audio = session_config.get("audio")
+        if isinstance(existing_audio, Mapping):
+            audio_section = deepcopy(dict(existing_audio))
+
+        realtime_config = session_config.get("realtime")
+        if isinstance(realtime_config, Mapping):
+            audio_section = dict(audio_section or {})
+            input_section: dict[str, Any] = dict(
+                audio_section.get("input")
+                if isinstance(audio_section.get("input"), Mapping)
+                else {}
+            )
+            output_section: dict[str, Any] = dict(
+                audio_section.get("output")
+                if isinstance(audio_section.get("output"), Mapping)
+                else {}
+            )
+
+            input_format = realtime_config.get("input_audio_format")
+            if isinstance(input_format, Mapping):
+                input_section.setdefault("format", dict(input_format))
+
+            turn_detection = realtime_config.get("turn_detection")
+            if isinstance(turn_detection, Mapping):
+                input_section.setdefault("turn_detection", dict(turn_detection))
+
+            noise_reduction = realtime_config.get("input_audio_noise_reduction")
+            if isinstance(noise_reduction, Mapping):
+                input_section.setdefault("noise_reduction", dict(noise_reduction))
+
+            transcription = realtime_config.get("input_audio_transcription")
+            if isinstance(transcription, Mapping):
+                input_section.setdefault("transcription", dict(transcription))
+
+            output_format = realtime_config.get("output_audio_format")
+            if isinstance(output_format, Mapping):
+                output_section.setdefault("format", dict(output_format))
+
+            speed = realtime_config.get("speed")
+            if isinstance(speed, int | float):
+                output_section.setdefault("speed", float(speed))
+
+            voice_mode = realtime_config.get("voice")
+            if isinstance(voice_mode, str) and voice_mode.strip():
+                output_section.setdefault("voice", voice_mode.strip())
+
+            if output_modalities and "output_modalities" not in payload:
+                payload["output_modalities"] = output_modalities
+
+            if input_section:
+                audio_section["input"] = input_section
+            if output_section:
+                audio_section["output"] = output_section
+
+        if audio_section:
+            payload["audio"] = audio_section
+
         return payload
 
     def _decode_packet(self, packet: RtpPacket) -> bytes:
