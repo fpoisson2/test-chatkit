@@ -3,10 +3,12 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 import httpx
 from agents.realtime.agent import RealtimeAgent
@@ -18,6 +20,102 @@ from .config import get_settings
 from .token_sanitizer import sanitize_value
 
 logger = logging.getLogger("chatkit.realtime.runner")
+
+
+def _normalize_realtime_tools_payload(
+    tools: Sequence[Any] | Iterable[Any] | None,
+) -> list[Any] | None:
+    """Normalise la configuration des outils pour l'API Realtime."""
+
+    if tools is None:
+        return None
+
+    if isinstance(tools, (str, bytes, bytearray)):
+        source_entries: list[Any] = [tools]
+    elif isinstance(tools, Sequence):
+        source_entries = list(tools)
+    else:
+        source_entries = list(tools)
+
+    normalized: list[Any] = []
+    seen_labels: set[str] = set()
+
+    for index, entry in enumerate(source_entries):
+        if isinstance(entry, Mapping):
+            tool_entry = dict(entry)
+            tool_type = str(
+                tool_entry.get("type")
+                or tool_entry.get("tool")
+                or tool_entry.get("name")
+                or ""
+            ).strip().lower()
+
+            if tool_type == "mcp":
+                label = _derive_mcp_server_label(tool_entry)
+                if not label:
+                    label = f"mcp-server-{index + 1}"
+                base_label = label
+                suffix = 2
+                while label in seen_labels:
+                    label = f"{base_label}-{suffix}"
+                    suffix += 1
+                tool_entry["server_label"] = label
+                seen_labels.add(label)
+
+            normalized.append(tool_entry)
+        else:
+            normalized.append(entry)
+
+    return normalized
+
+
+def _derive_mcp_server_label(entry: Mapping[str, Any]) -> str | None:
+    """Calcule un identifiant stable pour un serveur MCP."""
+
+    for key in ("server_label", "label", "name", "identifier", "id"):
+        label = _normalize_label(entry.get(key))
+        if label:
+            return label
+
+    for key in ("url", "server_url", "endpoint", "transport_url"):
+        raw = entry.get(key)
+        if isinstance(raw, str):
+            label = _normalize_label_from_url(raw)
+            if label:
+                return label
+
+    authorization = entry.get("authorization")
+    label = _normalize_label(authorization)
+    if label:
+        return label
+
+    return None
+
+
+def _normalize_label(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip()
+    if not candidate:
+        return None
+    normalized = re.sub(r"[^0-9a-zA-Z_-]+", "-", candidate)
+    normalized = re.sub(r"-{2,}", "-", normalized).strip("-_").lower()
+    if not normalized:
+        return None
+    return normalized[:64]
+
+
+def _normalize_label_from_url(value: str) -> str | None:
+    candidate = value.strip()
+    if not candidate:
+        return None
+    parsed = urlparse(candidate if "://" in candidate else f"https://{candidate}")
+    parts = parsed.netloc or parsed.path
+    if parsed.netloc and parsed.path and parsed.path != "/":
+        parts = f"{parsed.netloc}{parsed.path}"
+    if not parts:
+        parts = candidate
+    return _normalize_label(parts)
 
 
 @dataclass(slots=True)
@@ -160,6 +258,7 @@ class RealtimeVoiceSessionOrchestrator:
         settings = get_settings()
 
         voice_value = self._clean_voice(voice)
+        realtime_tools_payload = _normalize_realtime_tools_payload(tools)
 
         def _build_payload(
             voice_mode: Literal["top_level", "session", "none"],
@@ -170,8 +269,8 @@ class RealtimeVoiceSessionOrchestrator:
                 "instructions": instructions,
                 "model": model,
             }
-            if tools:
-                session_payload["tools"] = list(tools)
+            if realtime_tools_payload is not None:
+                session_payload["tools"] = list(realtime_tools_payload)
             if handoffs:
                 session_payload["handoffs"] = list(handoffs)
 
@@ -472,9 +571,11 @@ class RealtimeVoiceSessionOrchestrator:
         handoffs: Sequence[Any] | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> VoiceSessionHandle:
+        normalized_tools = _normalize_realtime_tools_payload(tools)
+
         agent = self._base_agent.clone(
             instructions=instructions,
-            tools=list(tools or []),
+            tools=list(normalized_tools or []),
             handoffs=list(handoffs or []),
         )
         runner = RealtimeRunner(agent)
@@ -487,7 +588,7 @@ class RealtimeVoiceSessionOrchestrator:
             provider_id=provider_id,
             provider_slug=provider_slug,
             realtime=realtime,
-            tools=tools,
+            tools=normalized_tools,
             handoffs=handoffs,
         )
 
@@ -505,8 +606,8 @@ class RealtimeVoiceSessionOrchestrator:
         }
         if isinstance(realtime, Mapping):
             metadata_payload["realtime"] = dict(realtime)
-        if tools is not None:
-            metadata_payload["tools"] = list(tools)
+        if normalized_tools is not None:
+            metadata_payload["tools"] = list(normalized_tools)
         if isinstance(metadata, Mapping) and metadata:
             metadata_payload.update(dict(metadata))
         # Toujours propager l'identifiant utilisateur explicite.
