@@ -298,17 +298,23 @@ const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.nestedWorkflowLabel": "Workflow imbriqué",
   "workflowBuilder.agentInspector.nestedWorkflowHelp":
     "Sélectionnez un workflow existant à exécuter à la place de cet agent.",
-  "workflowBuilder.agentInspector.nestedWorkflowNoneOption": "Aucun (utiliser l'agent)",
+  "workflowBuilder.agentInspector.nestedWorkflowNoneOption": "Sélectionnez un workflow",
+  "workflowBuilder.agentInspector.nestedWorkflowCustomOption": "Personnalisé",
   "workflowBuilder.agentInspector.nestedWorkflowLocalOption": "Workflow local",
   "workflowBuilder.agentInspector.nestedWorkflowHostedOption": "Workflow hébergé",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedSelectLabel": "Workflow hébergé",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedLoading": "Chargement des workflows…",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedSelectEmpty": "Aucun workflow hébergé disponible",
   "workflowBuilder.agentInspector.nestedWorkflowHostedIdLabel": "Identifiant du workflow",
   "workflowBuilder.agentInspector.nestedWorkflowHostedIdPlaceholder": "Ex. 123",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel": "Slug du workflow",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugPlaceholder": "Optionnel",
   "workflowBuilder.agentInspector.nestedWorkflowMissing":
     "Le workflow sélectionné n'est plus disponible.",
   "workflowBuilder.agentInspector.nestedWorkflowSlugInfo":
     "Workflow sélectionné via le slug « {{slug}} ».",
+  "workflowBuilder.agentInspector.nestedWorkflowSelectedInfo":
+    "Les autres paramètres sont masqués car ce bloc délègue au workflow imbriqué «{{label}}».",
+  "workflowBuilder.agentInspector.nestedWorkflowSelectedInfoUnknown":
+    "Les autres paramètres sont masqués car ce bloc délègue à un workflow imbriqué.",
   "workflowBuilder.agentInspector.unlistedModelWarning":
     "Ce bloc utilise actuellement un modèle non listé ({{model}}). Sélectionnez un modèle dans la liste ci-dessus.",
   "workflowBuilder.agentInspector.workflowToolsTitle": "Workflows ChatKit",
@@ -320,9 +326,14 @@ const fr: TranslationDictionary = {
     "Aucun autre workflow disponible pour être ajouté comme outil.",
   "workflowBuilder.agentInspector.workflowToolsMissing":
     "Le workflow « {{slug}} » n'est plus disponible. Retirez-le de la configuration.",
-  "workflowBuilder.agentInspector.mcpSectionTitle": "Serveur MCP Home Assistant",
+  "workflowBuilder.agentInspector.mcpSectionTitle": "Serveur MCP",
   "workflowBuilder.agentInspector.mcpSectionDescription":
-    "Connectez un serveur MCP existant (ex. Home Assistant) pour exposer ses outils à l'agent.",
+    "Connectez un serveur MCP existant pour exposer ses outils à l'agent.",
+  "workflowBuilder.agentInspector.mcpEnabledLabel": "Activer le serveur MCP",
+  "workflowBuilder.agentInspector.mcpEnabledHelp":
+    "Désactivez ce commutateur pour retirer temporairement l'intégration MCP de l'agent.",
+  "workflowBuilder.agentInspector.mcpDisabledInfo":
+    "Activez le serveur MCP pour configurer l'URL et tester la connexion.",
   "workflowBuilder.agentInspector.mcpUrlLabel": "URL du serveur MCP",
   "workflowBuilder.agentInspector.mcpAuthorizationLabel":
     "Clé d'autorisation (Bearer …)",
@@ -903,17 +914,23 @@ const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.nestedWorkflowLabel": "Nested workflow",
   "workflowBuilder.agentInspector.nestedWorkflowHelp":
     "Choose another workflow to run instead of this agent.",
-  "workflowBuilder.agentInspector.nestedWorkflowNoneOption": "None (use agent configuration)",
+  "workflowBuilder.agentInspector.nestedWorkflowNoneOption": "Select a workflow",
+  "workflowBuilder.agentInspector.nestedWorkflowCustomOption": "Custom",
   "workflowBuilder.agentInspector.nestedWorkflowLocalOption": "Local workflow",
   "workflowBuilder.agentInspector.nestedWorkflowHostedOption": "Hosted workflow",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedSelectLabel": "Hosted workflow",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedLoading": "Loading workflows…",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedSelectEmpty": "No hosted workflows available",
   "workflowBuilder.agentInspector.nestedWorkflowHostedIdLabel": "Workflow ID",
   "workflowBuilder.agentInspector.nestedWorkflowHostedIdPlaceholder": "e.g. 123",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel": "Workflow slug",
-  "workflowBuilder.agentInspector.nestedWorkflowHostedSlugPlaceholder": "Optional",
   "workflowBuilder.agentInspector.nestedWorkflowMissing":
     "The selected workflow is no longer available.",
   "workflowBuilder.agentInspector.nestedWorkflowSlugInfo":
     "Workflow selected via slug \"{{slug}}\".",
+  "workflowBuilder.agentInspector.nestedWorkflowSelectedInfo":
+    "The remaining settings are hidden because this block delegates to the nested workflow “{{label}}”.",
+  "workflowBuilder.agentInspector.nestedWorkflowSelectedInfoUnknown":
+    "The remaining settings are hidden because this block delegates to a nested workflow.",
   "workflowBuilder.agentInspector.unlistedModelWarning":
     "This block currently uses an unlisted model ({{model}}). Pick a model from the list above.",
   "workflowBuilder.agentInspector.workflowToolsTitle": "ChatKit workflows",
@@ -925,9 +942,14 @@ const en: TranslationDictionary = {
     "No other workflows are available to expose as tools.",
   "workflowBuilder.agentInspector.workflowToolsMissing":
     "The \"{{slug}}\" workflow is no longer available. Remove it from the configuration.",
-  "workflowBuilder.agentInspector.mcpSectionTitle": "Home Assistant MCP server",
+  "workflowBuilder.agentInspector.mcpSectionTitle": "MCP server",
   "workflowBuilder.agentInspector.mcpSectionDescription":
-    "Connect an existing MCP server (e.g. Home Assistant) to expose its tools to the agent.",
+    "Connect an existing MCP server to expose its tools to the agent.",
+  "workflowBuilder.agentInspector.mcpEnabledLabel": "Enable MCP server",
+  "workflowBuilder.agentInspector.mcpEnabledHelp":
+    "Turn off to temporarily remove the MCP integration from this agent while keeping the details.",
+  "workflowBuilder.agentInspector.mcpDisabledInfo":
+    "Enable the MCP server to configure its URL and run connection tests.",
   "workflowBuilder.agentInspector.mcpUrlLabel": "MCP server URL",
   "workflowBuilder.agentInspector.mcpAuthorizationLabel":
     "Authorization header (Bearer …)",

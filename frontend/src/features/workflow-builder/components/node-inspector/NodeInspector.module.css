@@ -223,6 +223,34 @@
   accent-color: #2563eb;
 }
 
+.agentNestedWorkflowField {
+  gap: 0.75rem;
+}
+
+.agentNestedWorkflowModes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.agentNestedWorkflowSelect {
+  width: 100%;
+  min-width: 0;
+}
+
+.agentNestedWorkflowHostedFields {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.agentNestedWorkflowHostedSelectField {
+  width: 100%;
+}
+
+.agentNestedWorkflowHostedSelect {
+  width: 100%;
+}
+
 .nodeInspectorSubField {
   display: flex;
   flex-direction: column;

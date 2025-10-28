@@ -59,11 +59,19 @@ const renderPanel = (
   return defaultProps;
 };
 
+const ensureMcpEnabled = async () => {
+  const toggle = screen.getByRole("switch", { name: /serveur mcp|mcp server/i });
+  if (toggle.getAttribute("aria-checked") === "false") {
+    await userEvent.click(toggle);
+  }
+};
+
 describe("ToolSettingsPanel", () => {
   it("propagates MCP configuration changes", async () => {
     const onAgentMcpSseConfigChange = vi.fn();
     renderPanel({ onAgentMcpSseConfigChange });
 
+    await ensureMcpEnabled();
     const urlInput = screen.getByLabelText(/MCP server URL/i);
     await userEvent.type(urlInput, "https://ha.local/mcp");
 
@@ -112,6 +120,7 @@ describe("ToolSettingsPanel", () => {
   it("shows validation feedback when the MCP URL is missing", async () => {
     renderPanel();
 
+    await ensureMcpEnabled();
     const button = screen.getByRole("button", { name: /Test connection/i });
     await userEvent.click(button);
 
@@ -176,6 +185,7 @@ describe("ToolSettingsPanel", () => {
         onCancelMcpOAuth,
       });
 
+      await ensureMcpEnabled();
       const urlInput = screen.getByLabelText(/MCP server URL/i);
       await userEvent.type(urlInput, "https://ha.local/mcp");
 

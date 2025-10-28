@@ -97,7 +97,7 @@ export type FlowEdge = Edge<FlowEdgeData>;
 export type SaveState = "idle" | "saving" | "saved" | "error";
 
 export type AgentNestedWorkflowSelection = {
-  mode: "local" | "hosted";
+  mode: "local" | "hosted" | "custom";
   workflowId: number | null;
   workflowSlug: string;
 };

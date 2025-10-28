@@ -2780,6 +2780,19 @@ const WorkflowBuilderPage = () => {
         }
 
         const currentReference = getAgentNestedWorkflow(data.parameters);
+        if (selection.mode === "custom") {
+          const nextParameters = setAgentNestedWorkflow(data.parameters, {
+            id: null,
+            slug: null,
+          });
+          return {
+            ...data,
+            parameters: nextParameters,
+            parametersText: stringifyAgentParameters(nextParameters),
+            parametersError: null,
+          } satisfies FlowNodeData;
+        }
+
         const trimmedSlug = selection.workflowSlug.trim();
         const persistedSlug = trimmedSlug || currentReference.slug;
 
@@ -7370,6 +7383,9 @@ const WorkflowBuilderPage = () => {
             onAgentMcpSseConfigChange={handleAgentMcpSseConfigChange}
             workflows={workflows}
             currentWorkflowId={selectedWorkflowId}
+            hostedWorkflows={hostedWorkflows}
+            hostedWorkflowsLoading={hostedLoading}
+            hostedWorkflowsError={hostedError}
             onVoiceAgentVoiceChange={handleVoiceAgentVoiceChange}
             onVoiceAgentStartBehaviorChange={handleVoiceAgentStartBehaviorChange}
             onVoiceAgentStopBehaviorChange={handleVoiceAgentStopBehaviorChange}

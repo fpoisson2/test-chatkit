@@ -97,6 +97,8 @@ export const ToolSettingsPanel = ({
   const mcpClientIdValue = mcpConfig?.oauth_client_id ?? "";
   const mcpScopeValue = mcpConfig?.oauth_scope ?? "";
 
+  const [mcpEnabled, setMcpEnabled] = useState(() => Boolean(mcpConfig));
+  const hasManualMcpToggleRef = useRef(false);
   const [mcpUrlDraft, setMcpUrlDraft] = useState(mcpUrlValue);
   const [mcpAuthorizationDraft, setMcpAuthorizationDraft] = useState(
     mcpAuthorizationValue,
@@ -122,22 +124,39 @@ export const ToolSettingsPanel = ({
   const onCancelMcpOAuthRef = useRef(onCancelMcpOAuth);
 
   useEffect(() => {
+    if (mcpConfig) {
+      setMcpEnabled(true);
+      hasManualMcpToggleRef.current = false;
+      return;
+    }
+    if (!hasManualMcpToggleRef.current) {
+      setMcpEnabled(false);
+    }
+  }, [mcpConfig]);
+
+  useEffect(() => {
+    if (!mcpConfig) {
+      return;
+    }
     setMcpUrlDraft(mcpUrlValue);
-  }, [mcpUrlValue]);
+  }, [mcpConfig, mcpUrlValue]);
 
   useEffect(() => {
+    if (!mcpConfig) {
+      return;
+    }
     setMcpAuthorizationDraft(mcpAuthorizationValue);
-  }, [mcpAuthorizationValue]);
+  }, [mcpAuthorizationValue, mcpConfig]);
 
   useEffect(() => {
-    if (!mcpUrlDraft.trim()) {
+    if (!mcpEnabled || !mcpUrlDraft.trim()) {
       setMcpTestState((state) =>
         state.status === "idle"
           ? state
           : { status: "idle", message: "", statusLabel: null, toolNames: [] },
       );
     }
-  }, [mcpUrlDraft]);
+  }, [mcpEnabled, mcpUrlDraft]);
 
   useEffect(() => {
     latestOauthStatusRef.current = oauthFeedback.status;
@@ -163,23 +182,29 @@ export const ToolSettingsPanel = ({
   const handleMcpUrlChange = useCallback(
     (value: string) => {
       setMcpUrlDraft(value);
+      if (!mcpEnabled) {
+        return;
+      }
       onAgentMcpSseConfigChange(nodeId, {
         url: value,
         authorization: mcpAuthorizationDraft,
       });
     },
-    [nodeId, onAgentMcpSseConfigChange, mcpAuthorizationDraft],
+    [mcpEnabled, nodeId, onAgentMcpSseConfigChange, mcpAuthorizationDraft],
   );
 
   const applyAuthorizationValue = useCallback(
     (value: string) => {
       setMcpAuthorizationDraft(value);
+      if (!mcpEnabled) {
+        return;
+      }
       onAgentMcpSseConfigChange(nodeId, {
         url: mcpUrlDraft,
         authorization: value,
       });
     },
-    [mcpUrlDraft, nodeId, onAgentMcpSseConfigChange],
+    [mcpEnabled, mcpUrlDraft, nodeId, onAgentMcpSseConfigChange],
   );
 
   const handleMcpAuthorizationChange = useCallback(
@@ -189,7 +214,49 @@ export const ToolSettingsPanel = ({
     [applyAuthorizationValue],
   );
 
+  const oauthStatus = oauthFeedback.status;
+  const oauthStateId = oauthFeedback.stateId;
+
+  const handleMcpEnabledChange = useCallback(
+    (enabled: boolean) => {
+      hasManualMcpToggleRef.current = true;
+      setMcpEnabled(enabled);
+      if (!enabled) {
+        if (oauthStatus === "pending" && oauthStateId && onCancelMcpOAuth) {
+          void onCancelMcpOAuth(oauthStateId).catch(() => {});
+        }
+        setMcpTestState({
+          status: "idle",
+          message: "",
+          statusLabel: null,
+          toolNames: [],
+        });
+        setOauthFeedback({ status: "idle", message: null, stateId: null });
+        onAgentMcpSseConfigChange(nodeId, null);
+        return;
+      }
+      if (mcpUrlDraft.trim()) {
+        onAgentMcpSseConfigChange(nodeId, {
+          url: mcpUrlDraft,
+          authorization: mcpAuthorizationDraft,
+        });
+      }
+    },
+    [
+      mcpAuthorizationDraft,
+      mcpUrlDraft,
+      nodeId,
+      oauthStateId,
+      oauthStatus,
+      onAgentMcpSseConfigChange,
+      onCancelMcpOAuth,
+    ],
+  );
+
   const handleTestConnection = useCallback(async () => {
+    if (!mcpEnabled) {
+      return;
+    }
     const url = mcpUrlDraft.trim();
     if (!url) {
       setMcpTestState({
@@ -249,7 +316,7 @@ export const ToolSettingsPanel = ({
         toolNames: [],
       });
     }
-  }, [mcpAuthorizationDraft, mcpUrlDraft, onTestMcpSseConnection, t]);
+  }, [mcpAuthorizationDraft, mcpEnabled, mcpUrlDraft, onTestMcpSseConnection, t]);
 
   const buildAuthorizationFromToken = useCallback(
     (token: Record<string, unknown> | null | undefined): string | null => {
@@ -274,6 +341,9 @@ export const ToolSettingsPanel = ({
   );
 
   const handleStartOAuth = useCallback(async () => {
+    if (!mcpEnabled) {
+      return;
+    }
     const url = mcpUrlDraft.trim();
     if (!url) {
       setOauthFeedback({
@@ -325,6 +395,7 @@ export const ToolSettingsPanel = ({
       setOauthFeedback({ status: "error", message, stateId: null });
     }
   }, [
+    mcpEnabled,
     mcpUrlDraft,
     mcpClientIdDraft,
     mcpScopeDraft,
@@ -492,118 +563,132 @@ export const ToolSettingsPanel = ({
         <strong className={styles.nodeInspectorSectionTitleSmall}>
           {t("workflowBuilder.agentInspector.mcpSectionTitle")}
         </strong>
-        <p className={styles.nodeInspectorHintTextTight}>
-          {t("workflowBuilder.agentInspector.mcpSectionDescription")}
-        </p>
-        <label className={styles.nodeInspectorField}>
-          <span className={styles.nodeInspectorLabel}>
-            {t("workflowBuilder.agentInspector.mcpUrlLabel")}
-          </span>
-          <input
-            type="url"
-            value={mcpUrlDraft}
-            onChange={(event) => handleMcpUrlChange(event.target.value)}
-            placeholder="https://"
-            autoComplete="off"
-          />
-        </label>
-        <label className={styles.nodeInspectorField}>
-          <span className={styles.nodeInspectorLabel}>
-            {t("workflowBuilder.agentInspector.mcpClientIdLabel")}
-          </span>
-          <input
-            type="text"
-            value={mcpClientIdDraft}
-            onChange={(event) => setMcpClientIdDraft(event.target.value)}
-            placeholder={t(
-              "workflowBuilder.agentInspector.mcpClientIdPlaceholder",
-            )}
-            autoComplete="off"
-          />
-        </label>
-        <label className={styles.nodeInspectorField}>
-          <span className={styles.nodeInspectorLabel}>
-            {t("workflowBuilder.agentInspector.mcpScopeLabel")}
-          </span>
-          <input
-            type="text"
-            value={mcpScopeDraft}
-            onChange={(event) => setMcpScopeDraft(event.target.value)}
-            placeholder={t(
-              "workflowBuilder.agentInspector.mcpScopePlaceholder",
-            )}
-            autoComplete="off"
-          />
+        <ToggleRow
+          label={t("workflowBuilder.agentInspector.mcpEnabledLabel")}
+          checked={mcpEnabled}
+          onChange={handleMcpEnabledChange}
+          help={t("workflowBuilder.agentInspector.mcpEnabledHelp")}
+        />
+        {mcpEnabled ? (
+          <>
+            <label className={styles.nodeInspectorField}>
+              <span className={styles.nodeInspectorLabel}>
+                {t("workflowBuilder.agentInspector.mcpUrlLabel")}
+              </span>
+              <input
+                type="url"
+                value={mcpUrlDraft}
+                onChange={(event) => handleMcpUrlChange(event.target.value)}
+                placeholder="https://"
+                autoComplete="off"
+              />
+            </label>
+            <label className={styles.nodeInspectorField}>
+              <span className={styles.nodeInspectorLabel}>
+                {t("workflowBuilder.agentInspector.mcpClientIdLabel")}
+              </span>
+              <input
+                type="text"
+                value={mcpClientIdDraft}
+                onChange={(event) => setMcpClientIdDraft(event.target.value)}
+                placeholder={t(
+                  "workflowBuilder.agentInspector.mcpClientIdPlaceholder",
+                )}
+                autoComplete="off"
+              />
+            </label>
+            <label className={styles.nodeInspectorField}>
+              <span className={styles.nodeInspectorLabel}>
+                {t("workflowBuilder.agentInspector.mcpScopeLabel")}
+              </span>
+              <input
+                type="text"
+                value={mcpScopeDraft}
+                onChange={(event) => setMcpScopeDraft(event.target.value)}
+                placeholder={t(
+                  "workflowBuilder.agentInspector.mcpScopePlaceholder",
+                )}
+                autoComplete="off"
+              />
+              <p className={styles.nodeInspectorHintTextTight}>
+                {t("workflowBuilder.agentInspector.mcpScopeHelp")}
+              </p>
+            </label>
+            <label className={styles.nodeInspectorField}>
+              <span className={styles.nodeInspectorLabel}>
+                {t("workflowBuilder.agentInspector.mcpAuthorizationLabel")}
+              </span>
+              <input
+                type="password"
+                value={mcpAuthorizationDraft}
+                onChange={(event) => handleMcpAuthorizationChange(event.target.value)}
+                placeholder={t(
+                  "workflowBuilder.agentInspector.mcpAuthorizationPlaceholder",
+                )}
+                autoComplete="off"
+              />
+              <p className={styles.nodeInspectorHintTextTight}>
+                {t("workflowBuilder.agentInspector.mcpAuthorizationHelp")}
+              </p>
+            </label>
+            <div className={styles.nodeInspectorField}>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleStartOAuth}
+                disabled={
+                  !mcpEnabled ||
+                  !mcpUrlDraft.trim() ||
+                  oauthFeedback.status === "starting" ||
+                  oauthFeedback.status === "pending"
+                }
+              >
+                {t("workflowBuilder.agentInspector.mcpOAuthButton")}
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={handleTestConnection}
+                disabled={!mcpEnabled || mcpTestState.status === "loading"}
+              >
+                {t("workflowBuilder.agentInspector.mcpTestButton")}
+              </button>
+            </div>
+            {oauthFeedback.status !== "idle" && oauthFeedback.message ? (
+              <div
+                role="status"
+                className={
+                  oauthFeedback.status === "error"
+                    ? styles.nodeInspectorErrorTextSmall
+                    : styles.nodeInspectorInfoMessage
+                }
+              >
+                {oauthFeedback.message}
+              </div>
+            ) : null}
+            {mcpTestState.status !== "idle" ? (
+              <div
+                role="status"
+                className={
+                  mcpTestState.status === "error"
+                    ? styles.nodeInspectorErrorTextSmall
+                    : styles.nodeInspectorInfoMessage
+                }
+              >
+                {mcpTestState.message}
+              </div>
+            ) : null}
+            {mcpTestState.status === "success" && mcpTestState.toolNames.length > 0 ? (
+              <div className={styles.nodeInspectorInfoMessage}>
+                {t("workflowBuilder.agentInspector.mcpTestStatus.toolListLabel")}: {mcpTestState.toolNames.join(", ")}
+              </div>
+            ) : null}
+          </>
+        ) : (
           <p className={styles.nodeInspectorHintTextTight}>
-            {t("workflowBuilder.agentInspector.mcpScopeHelp")}
+            {t("workflowBuilder.agentInspector.mcpDisabledInfo")}
           </p>
-        </label>
-        <label className={styles.nodeInspectorField}>
-          <span className={styles.nodeInspectorLabel}>
-            {t("workflowBuilder.agentInspector.mcpAuthorizationLabel")}
-          </span>
-          <input
-            type="password"
-            value={mcpAuthorizationDraft}
-            onChange={(event) => handleMcpAuthorizationChange(event.target.value)}
-            placeholder={t("workflowBuilder.agentInspector.mcpAuthorizationPlaceholder")}
-            autoComplete="off"
-          />
-          <p className={styles.nodeInspectorHintTextTight}>
-            {t("workflowBuilder.agentInspector.mcpAuthorizationHelp")}
-          </p>
-        </label>
-        <div className={styles.nodeInspectorField}>
-          <button
-            type="button"
-            className="btn"
-            onClick={handleStartOAuth}
-            disabled={
-              !mcpUrlDraft.trim() ||
-              oauthFeedback.status === "starting" ||
-              oauthFeedback.status === "pending"
-            }
-          >
-            {t("workflowBuilder.agentInspector.mcpOAuthButton")}
-          </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={handleTestConnection}
-            disabled={mcpTestState.status === "loading"}
-          >
-            {t("workflowBuilder.agentInspector.mcpTestButton")}
-          </button>
-        </div>
-        {oauthFeedback.status !== "idle" && oauthFeedback.message ? (
-          <div
-            role="status"
-            className={
-              oauthFeedback.status === "error"
-                ? styles.nodeInspectorErrorTextSmall
-                : styles.nodeInspectorInfoMessage
-            }
-          >
-            {oauthFeedback.message}
-          </div>
-        ) : null}
-        {mcpTestState.status !== "idle" ? (
-          <div
-            role="status"
-            className={
-              mcpTestState.status === "error"
-                ? styles.nodeInspectorErrorTextSmall
-                : styles.nodeInspectorInfoMessage
-            }
-          >
-            {mcpTestState.message}
-          </div>
-        ) : null}
-        {mcpTestState.status === "success" && mcpTestState.toolNames.length > 0 ? (
-          <div className={styles.nodeInspectorInfoMessage}>
-            {t("workflowBuilder.agentInspector.mcpTestStatus.toolListLabel")}: {mcpTestState.toolNames.join(", ")}
-          </div>
-        ) : null}
+        )}
       </div>
       <div>
         <strong className={styles.nodeInspectorSectionTitleSmall}>

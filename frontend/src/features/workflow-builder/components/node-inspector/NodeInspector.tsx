@@ -7,6 +7,7 @@ import {
 import { useAuth } from "../../../../auth";
 import {
   type AvailableModel,
+  type HostedWorkflowMetadata,
   type VectorStoreSummary,
   type WidgetTemplateSummary,
 } from "../../../../utils/backend";
@@ -126,6 +127,9 @@ export type NodeInspectorProps = {
   onAgentMcpSseConfigChange: (nodeId: string, config: McpSseToolConfig | null) => void;
   workflows: WorkflowSummary[];
   currentWorkflowId: number | null;
+  hostedWorkflows: HostedWorkflowMetadata[];
+  hostedWorkflowsLoading: boolean;
+  hostedWorkflowsError: string | null;
   onVoiceAgentVoiceChange: (nodeId: string, value: string) => void;
   onVoiceAgentStartBehaviorChange: (
     nodeId: string,
@@ -230,6 +234,9 @@ const NodeInspector = ({
   onAgentMcpSseConfigChange,
   workflows,
   currentWorkflowId,
+  hostedWorkflows,
+  hostedWorkflowsLoading,
+  hostedWorkflowsError,
   onVoiceAgentVoiceChange,
   onVoiceAgentStartBehaviorChange,
   onVoiceAgentStopBehaviorChange,
@@ -497,26 +504,29 @@ const NodeInspector = ({
       ) : null}
 
       {kind === "agent" ? (
-          <AgentInspectorSection
-            nodeId={node.id}
-            parameters={parameters}
-            token={token}
-            workflows={workflows}
-            currentWorkflowId={currentWorkflowId}
-            availableModels={availableModels}
-            availableModelsLoading={availableModelsLoading}
-            availableModelsError={availableModelsError}
-            isReasoningModel={isReasoningModel}
-            widgets={widgets}
+        <AgentInspectorSection
+          nodeId={node.id}
+          parameters={parameters}
+          token={token}
+          workflows={workflows}
+          currentWorkflowId={currentWorkflowId}
+          hostedWorkflows={hostedWorkflows}
+          hostedWorkflowsLoading={hostedWorkflowsLoading}
+          hostedWorkflowsError={hostedWorkflowsError}
+          availableModels={availableModels}
+          availableModelsLoading={availableModelsLoading}
+          availableModelsError={availableModelsError}
+          isReasoningModel={isReasoningModel}
+          widgets={widgets}
           widgetsLoading={widgetsLoading}
           widgetsError={widgetsError}
           vectorStores={vectorStores}
           vectorStoresLoading={vectorStoresLoading}
           vectorStoresError={vectorStoresError}
-            onAgentMessageChange={onAgentMessageChange}
-            onAgentModelChange={onAgentModelChange}
-            onAgentProviderChange={onAgentProviderChange}
-            onAgentNestedWorkflowChange={onAgentNestedWorkflowChange}
+          onAgentMessageChange={onAgentMessageChange}
+          onAgentModelChange={onAgentModelChange}
+          onAgentProviderChange={onAgentProviderChange}
+          onAgentNestedWorkflowChange={onAgentNestedWorkflowChange}
           onAgentReasoningChange={onAgentReasoningChange}
           onAgentReasoningSummaryChange={onAgentReasoningSummaryChange}
           onAgentTextVerbosityChange={onAgentTextVerbosityChange}

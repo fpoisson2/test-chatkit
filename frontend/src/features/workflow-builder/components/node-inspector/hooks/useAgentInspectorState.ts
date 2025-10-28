@@ -80,7 +80,7 @@ type AgentInspectorState = {
   agentProviderSlug: string;
   nestedWorkflowId: number | null;
   nestedWorkflowSlug: string;
-  nestedWorkflowMode: "local" | "hosted";
+  nestedWorkflowMode: "local" | "hosted" | "custom";
   reasoningEffort: string;
   reasoningSummaryValue: string;
   textVerbosityValue: string;
@@ -168,7 +168,7 @@ export const useAgentInspectorState = ({
     () => workflows.filter((workflow) => workflow.id !== currentWorkflowId),
     [workflows, currentWorkflowId],
   );
-  const nestedWorkflowMode: "local" | "hosted" = useMemo(() => {
+  const nestedWorkflowMode: "local" | "hosted" | "custom" = useMemo(() => {
     if (nestedWorkflow.id != null) {
       const matchesLocal = availableNestedWorkflows.some(
         (workflow) => workflow.id === nestedWorkflow.id,
@@ -178,7 +178,7 @@ export const useAgentInspectorState = ({
     if (nestedWorkflow.slug.trim().length > 0) {
       return "hosted";
     }
-    return "local";
+    return "custom";
   }, [availableNestedWorkflows, nestedWorkflow.id, nestedWorkflow.slug]);
   const reasoningEffort = getAgentReasoningEffort(parameters);
   const textVerbosity = getAgentTextVerbosity(parameters).trim();

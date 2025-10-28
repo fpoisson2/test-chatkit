@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { I18nProvider } from "../../../../../../i18n";
+import type { HostedWorkflowMetadata } from "../../../../../../utils/backend";
 import type { WorkflowSummary } from "../../../types";
 import { AgentInspectorSection } from "../AgentInspectorSection";
 
@@ -33,6 +34,25 @@ const baseWorkflows: WorkflowSummary[] = [
   },
 ];
 
+const baseHostedWorkflows: HostedWorkflowMetadata[] = [
+  {
+    id: "2",
+    slug: "secondary",
+    label: "Hosted Secondary",
+    description: "Workflow secondaire hébergé",
+    available: true,
+    managed: false,
+  },
+  {
+    id: "5",
+    slug: "remote-workflow",
+    label: "Remote Workflow",
+    description: "Workflow distant",
+    available: true,
+    managed: false,
+  },
+];
+
 const renderSection = (overrides: Partial<Parameters<typeof AgentInspectorSection>[0]> = {}) => {
   const onAgentNestedWorkflowChange = vi.fn();
   render(
@@ -43,6 +63,9 @@ const renderSection = (overrides: Partial<Parameters<typeof AgentInspectorSectio
         token={null}
         workflows={baseWorkflows}
         currentWorkflowId={1}
+        hostedWorkflows={baseHostedWorkflows}
+        hostedWorkflowsLoading={false}
+        hostedWorkflowsError={null}
         availableModels={[]}
         availableModelsLoading={false}
         availableModelsError={null}
@@ -93,6 +116,10 @@ const renderSection = (overrides: Partial<Parameters<typeof AgentInspectorSectio
 describe("AgentInspectorSection", () => {
   it("calls onAgentNestedWorkflowChange when selecting a workflow", async () => {
     const { onAgentNestedWorkflowChange } = renderSection();
+    const localRadio = screen.getByRole("radio", {
+      name: /workflow local|local workflow/i,
+    });
+    await userEvent.click(localRadio);
     const select = screen.getByRole("combobox", { name: /workflow/i });
     await userEvent.selectOptions(select, "2");
     expect(onAgentNestedWorkflowChange).toHaveBeenLastCalledWith("agent-1", {
@@ -116,42 +143,20 @@ describe("AgentInspectorSection", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("persists slug information when switching to a hosted workflow", async () => {
+  it("updates the hosted workflow using metadata from the dropdown", async () => {
     const { onAgentNestedWorkflowChange } = renderSection({
-      parameters: { workflow: { id: 2, slug: "secondary" } },
+      parameters: { workflow: { slug: "remote-workflow" } },
     });
 
-    const radios = screen.getAllByRole("radio");
-    expect(radios.length).toBeGreaterThanOrEqual(2);
-    const hostedRadio =
-      radios.find((radio) => /hosted|hébergé/i.test(radio.parentElement?.textContent ?? "")) ??
-      radios[1];
-    await userEvent.click(hostedRadio);
+    const hostedSelect = screen.getByRole("combobox", {
+      name: /workflow imbriqué|nested workflow/i,
+    });
+    await userEvent.selectOptions(hostedSelect, "2");
 
     expect(onAgentNestedWorkflowChange).toHaveBeenLastCalledWith("agent-1", {
       mode: "hosted",
       workflowId: 2,
       workflowSlug: "secondary",
-    });
-
-    const hostedIdInput = screen.getByLabelText(/identifiant du workflow|workflow id/i);
-    await userEvent.clear(hostedIdInput);
-    await userEvent.type(hostedIdInput, "123");
-
-    expect(onAgentNestedWorkflowChange).toHaveBeenLastCalledWith("agent-1", {
-      mode: "hosted",
-      workflowId: 123,
-      workflowSlug: "secondary",
-    });
-
-    const hostedSlugInput = screen.getByLabelText(/slug du workflow|workflow slug/i);
-    await userEvent.clear(hostedSlugInput);
-    await userEvent.type(hostedSlugInput, "remote-workflow");
-
-    expect(onAgentNestedWorkflowChange).toHaveBeenLastCalledWith("agent-1", {
-      mode: "hosted",
-      workflowId: 123,
-      workflowSlug: "remote-workflow",
     });
   });
 
