@@ -614,9 +614,14 @@ class RealtimeSessionGateway:
             while True:
                 message = await connection.websocket.receive()
                 logger.debug(
-                    "Gateway: raw frame reçu connection=%s keys=%s",
+                    "Gateway: raw frame reçu connection=%s keys=%s payload=%s",
                     connection.id,
                     list(message.keys()),
+                    {
+                        key: message.get(key)
+                        for key in ("type", "code", "reason")
+                        if key in message
+                    },
                 )
                 message_type = message.get("type")
                 if message_type == "websocket.disconnect":

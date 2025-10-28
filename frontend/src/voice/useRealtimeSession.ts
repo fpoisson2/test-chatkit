@@ -435,7 +435,6 @@ const releaseListener = (gatewayUrl: string, listenerId: string) => {
       }
     }
     teardownAudioContextForRecord(record);
-    connectionPool.delete(gatewayUrl);
   }
 };
 
