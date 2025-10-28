@@ -30,7 +30,7 @@ def _normalize_realtime_tools_payload(
     if tools is None:
         return None
 
-    if isinstance(tools, (str, bytes, bytearray)):
+    if isinstance(tools, str | bytes | bytearray):
         source_entries: list[Any] = [tools]
     elif isinstance(tools, Sequence):
         source_entries = list(tools)
@@ -61,6 +61,24 @@ def _normalize_realtime_tools_payload(
                     suffix += 1
                 tool_entry["server_label"] = label
                 seen_labels.add(label)
+
+                # L'API Realtime attend le champ `server_url` au lieu de `url`.
+                server_url: str | None = None
+                raw_server_url = tool_entry.get("server_url")
+                if isinstance(raw_server_url, str) and raw_server_url.strip():
+                    server_url = raw_server_url.strip()
+                else:
+                    legacy_keys = ("url", "endpoint", "transport_url")
+                    for key in legacy_keys:
+                        value = tool_entry.get(key)
+                        if isinstance(value, str) and value.strip():
+                            server_url = value.strip()
+                            break
+
+                if server_url:
+                    tool_entry["server_url"] = server_url
+                    for legacy_key in ("url", "endpoint", "transport_url"):
+                        tool_entry.pop(legacy_key, None)
 
             normalized.append(tool_entry)
         else:
@@ -331,21 +349,20 @@ class RealtimeVoiceSessionOrchestrator:
         # l'API client_secrets, donc on évite les tentatives inutiles
         is_openai = normalized_provider_slug == "openai"
 
-        if voice_value and not is_openai:
-            # Pour les providers non-OpenAI, essayer d'abord les modes moins verbeux
-            voice_modes: list[Literal["top_level", "session", "none"]] = [
-                "none",
-                "session",
-                "top_level",
-            ]
+        if voice_value:
+            if is_openai:
+                voice_modes = ["top_level", "session", "none"]
+            else:
+                # Pour les providers non-OpenAI, essayer d'abord les modes moins verbeux
+                voice_modes = ["none", "session", "top_level"]
         else:
             voice_modes = ["none"]
 
         if isinstance(realtime, Mapping) and realtime:
             realtime_modes: list[Literal["top_level", "session", "none"]] = [
-                "none",
-                "session",
                 "top_level",
+                "session",
+                "none",
             ]
         elif isinstance(realtime, Mapping):
             realtime_modes = ["session", "none"]

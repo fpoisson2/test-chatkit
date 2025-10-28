@@ -186,6 +186,62 @@ def test_open_voice_session_prefers_openai_slug(
     assert headers.get("Authorization") == "Bearer openai-key"
 
 
+def test_open_voice_session_normalizes_mcp_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+    captured: dict[str, object] = {}
+
+    _reset_orchestrator(monkeypatch)
+    monkeypatch.setattr(realtime_runner, "get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr(
+        realtime_runner,
+        "resolve_model_provider_credentials",
+        lambda provider_id: None,
+    )
+    monkeypatch.setattr(
+        realtime_runner.httpx,
+        "AsyncClient",
+        lambda **kwargs: _DummyAsyncClient(captured=captured, **kwargs),
+    )
+
+    tools_payload = [
+        {
+            "type": "mcp",
+            "url": "https://example.com/mcp",
+            "transport": "http_sse",
+        }
+    ]
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-tools",
+            model="gpt-realtime",
+            instructions="Bonjour",
+            provider_slug="openai",
+            tools=tools_payload,
+        )
+    )
+
+    assert handle.payload == {"client_secret": {"value": "secret"}}
+    requests = captured.get("requests")
+    assert isinstance(requests, list)
+    assert len(requests) == 1
+
+    payload = requests[0]["json"]
+    assert isinstance(payload, dict)
+    session_payload = payload.get("session")
+    assert isinstance(session_payload, dict)
+
+    session_tools = session_payload.get("tools")
+    assert isinstance(session_tools, list) and session_tools
+    tool_config = session_tools[0]
+    assert tool_config.get("type") == "mcp"
+    assert tool_config.get("server_url") == "https://example.com/mcp"
+    assert "url" not in tool_config
+    assert tool_config.get("server_label") == "example-com-mcp"
+
+
 def test_openai_slug_ignores_mismatched_provider_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
