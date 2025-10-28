@@ -563,9 +563,6 @@ export const ToolSettingsPanel = ({
         <strong className={styles.nodeInspectorSectionTitleSmall}>
           {t("workflowBuilder.agentInspector.mcpSectionTitle")}
         </strong>
-        <p className={styles.nodeInspectorHintTextTight}>
-          {t("workflowBuilder.agentInspector.mcpSectionDescription")}
-        </p>
         <ToggleRow
           label={t("workflowBuilder.agentInspector.mcpEnabledLabel")}
           checked={mcpEnabled}

@@ -328,9 +328,9 @@ const fr: TranslationDictionary = {
     "Aucun autre workflow disponible pour être ajouté comme outil.",
   "workflowBuilder.agentInspector.workflowToolsMissing":
     "Le workflow « {{slug}} » n'est plus disponible. Retirez-le de la configuration.",
-  "workflowBuilder.agentInspector.mcpSectionTitle": "Serveur MCP Home Assistant",
+  "workflowBuilder.agentInspector.mcpSectionTitle": "Serveur MCP",
   "workflowBuilder.agentInspector.mcpSectionDescription":
-    "Connectez un serveur MCP existant (ex. Home Assistant) pour exposer ses outils à l'agent.",
+    "Connectez un serveur MCP existant pour exposer ses outils à l'agent.",
   "workflowBuilder.agentInspector.mcpEnabledLabel": "Activer le serveur MCP",
   "workflowBuilder.agentInspector.mcpEnabledHelp":
     "Désactivez ce commutateur pour retirer temporairement l'intégration MCP de l'agent.",
@@ -946,9 +946,9 @@ const en: TranslationDictionary = {
     "No other workflows are available to expose as tools.",
   "workflowBuilder.agentInspector.workflowToolsMissing":
     "The \"{{slug}}\" workflow is no longer available. Remove it from the configuration.",
-  "workflowBuilder.agentInspector.mcpSectionTitle": "Home Assistant MCP server",
+  "workflowBuilder.agentInspector.mcpSectionTitle": "MCP server",
   "workflowBuilder.agentInspector.mcpSectionDescription":
-    "Connect an existing MCP server (e.g. Home Assistant) to expose its tools to the agent.",
+    "Connect an existing MCP server to expose its tools to the agent.",
   "workflowBuilder.agentInspector.mcpEnabledLabel": "Enable MCP server",
   "workflowBuilder.agentInspector.mcpEnabledHelp":
     "Turn off to temporarily remove the MCP integration from this agent while keeping the details.",
