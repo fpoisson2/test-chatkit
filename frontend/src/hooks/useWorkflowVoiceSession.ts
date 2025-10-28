@@ -183,7 +183,9 @@ export const useWorkflowVoiceSession = ({
       setStatus("error");
     },
     onSessionCreated: (event: SessionCreatedEvent) => {
-      if (!threadId || event.threadId !== threadId) {
+      const threadMatches =
+        threadId == null || event.threadId == null || event.threadId === threadId;
+      if (!threadMatches) {
         return;
       }
       if (processedSessionsRef.current.has(event.sessionId)) {
