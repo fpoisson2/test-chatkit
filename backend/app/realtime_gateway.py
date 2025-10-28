@@ -456,7 +456,7 @@ class _RealtimeSessionState:
                 allow_create=True,
             )
         elif isinstance(event, RealtimeHistoryUpdated):
-            await self._upsert_chatkit_messages(event.history, allow_create=False)
+            await self._upsert_chatkit_messages(event.history, allow_create=True)
 
     async def _upsert_chatkit_messages(
         self,
