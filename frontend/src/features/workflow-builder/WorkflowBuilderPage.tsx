@@ -82,6 +82,9 @@ import {
   setVoiceAgentStartBehavior,
   setVoiceAgentStopBehavior,
   setVoiceAgentToolEnabled,
+  setTranscriptionModel,
+  setTranscriptionLanguage,
+  setTranscriptionPrompt,
   setStateAssignments,
   setStartAutoRun,
   setStartAutoRunMessage,
@@ -3632,6 +3635,60 @@ const WorkflowBuilderPage = () => {
           tool,
           enabled,
         );
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleTranscriptionModelChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "voice_agent") {
+          return data;
+        }
+        const nextParameters = setTranscriptionModel(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleTranscriptionLanguageChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "voice_agent") {
+          return data;
+        }
+        const nextParameters = setTranscriptionLanguage(data.parameters, value);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleTranscriptionPromptChange = useCallback(
+    (nodeId: string, value: string) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "voice_agent") {
+          return data;
+        }
+        const nextParameters = setTranscriptionPrompt(data.parameters, value);
         return {
           ...data,
           parameters: nextParameters,
@@ -7390,6 +7447,9 @@ const WorkflowBuilderPage = () => {
             onVoiceAgentStartBehaviorChange={handleVoiceAgentStartBehaviorChange}
             onVoiceAgentStopBehaviorChange={handleVoiceAgentStopBehaviorChange}
             onVoiceAgentToolChange={handleVoiceAgentToolChange}
+            onTranscriptionModelChange={handleTranscriptionModelChange}
+            onTranscriptionLanguageChange={handleTranscriptionLanguageChange}
+            onTranscriptionPromptChange={handleTranscriptionPromptChange}
             onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
             onTransformExpressionsChange={handleTransformExpressionsChange}
             onStartAutoRunChange={handleStartAutoRunChange}

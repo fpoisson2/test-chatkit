@@ -54,6 +54,9 @@ type VoiceAgentInspectorSectionProps = {
     behavior: VoiceAgentStopBehavior,
   ) => void;
   onVoiceAgentToolChange: (nodeId: string, tool: VoiceAgentTool, enabled: boolean) => void;
+  onTranscriptionModelChange: (nodeId: string, value: string) => void;
+  onTranscriptionLanguageChange: (nodeId: string, value: string) => void;
+  onTranscriptionPromptChange: (nodeId: string, value: string) => void;
   workflows: WorkflowSummary[];
   currentWorkflowId: number | null;
   availableModels: AvailableModel[];
@@ -79,6 +82,9 @@ export const VoiceAgentInspectorSection = ({
   onVoiceAgentStartBehaviorChange,
   onVoiceAgentStopBehaviorChange,
   onVoiceAgentToolChange,
+  onTranscriptionModelChange,
+  onTranscriptionLanguageChange,
+  onTranscriptionPromptChange,
   workflows,
   currentWorkflowId,
   availableModels,
@@ -121,6 +127,9 @@ export const VoiceAgentInspectorSection = ({
     startBehavior,
     stopBehavior,
     tools,
+    transcriptionModel,
+    transcriptionLanguage,
+    transcriptionPrompt,
   } = useVoiceAgentInspectorState({ parameters });
 
   const providerOptions = useMemo(() => {
@@ -239,6 +248,42 @@ export const VoiceAgentInspectorSection = ({
           type="text"
           value={voiceId}
           onChange={(event) => onVoiceAgentVoiceChange(nodeId, event.target.value)}
+        />
+      </label>
+
+      <label className={styles.nodeInspectorInlineField}>
+        <span className={styles.nodeInspectorLabel}>
+          Modèle de transcription
+        </span>
+        <input
+          type="text"
+          value={transcriptionModel}
+          placeholder="gpt-4o-mini-transcribe"
+          onChange={(event) => onTranscriptionModelChange(nodeId, event.target.value)}
+        />
+      </label>
+
+      <label className={styles.nodeInspectorInlineField}>
+        <span className={styles.nodeInspectorLabel}>
+          Langue de transcription
+        </span>
+        <input
+          type="text"
+          value={transcriptionLanguage}
+          placeholder="fr-CA"
+          onChange={(event) => onTranscriptionLanguageChange(nodeId, event.target.value)}
+        />
+      </label>
+
+      <label className={styles.nodeInspectorField}>
+        <span className={styles.nodeInspectorLabel}>
+          Prompt de transcription (optionnel)
+        </span>
+        <textarea
+          rows={2}
+          value={transcriptionPrompt}
+          placeholder="Contexte additionnel pour améliorer la transcription..."
+          onChange={(event) => onTranscriptionPromptChange(nodeId, event.target.value)}
         />
       </label>
 

@@ -3,6 +3,8 @@ import { useMemo } from "react";
 import {
   DEFAULT_VOICE_AGENT_MODEL,
   DEFAULT_VOICE_AGENT_VOICE,
+  DEFAULT_TRANSCRIPTION_MODEL,
+  DEFAULT_TRANSCRIPTION_LANGUAGE,
   getAgentMessage,
   getAgentModel,
   getAgentModelProviderId,
@@ -11,6 +13,9 @@ import {
   getVoiceAgentStopBehavior,
   getVoiceAgentTools,
   getVoiceAgentVoice,
+  getTranscriptionModel,
+  getTranscriptionLanguage,
+  getTranscriptionPrompt,
 } from "../../../../../utils/workflows";
 import type {
   FlowNode,
@@ -28,6 +33,9 @@ export type VoiceAgentInspectorState = {
   startBehavior: VoiceAgentStartBehavior;
   stopBehavior: VoiceAgentStopBehavior;
   tools: Record<VoiceAgentTool, boolean>;
+  transcriptionModel: string;
+  transcriptionLanguage: string;
+  transcriptionPrompt: string;
 };
 
 type UseVoiceAgentInspectorStateParams = {
@@ -45,6 +53,9 @@ export const buildVoiceAgentInspectorState = (
   const startBehavior = getVoiceAgentStartBehavior(parameters);
   const stopBehavior = getVoiceAgentStopBehavior(parameters);
   const tools = getVoiceAgentTools(parameters);
+  const transcriptionModel = getTranscriptionModel(parameters) || DEFAULT_TRANSCRIPTION_MODEL;
+  const transcriptionLanguage = getTranscriptionLanguage(parameters) || DEFAULT_TRANSCRIPTION_LANGUAGE;
+  const transcriptionPrompt = getTranscriptionPrompt(parameters);
 
   return {
     voiceModel: model,
@@ -55,6 +66,9 @@ export const buildVoiceAgentInspectorState = (
     startBehavior,
     stopBehavior,
     tools,
+    transcriptionModel,
+    transcriptionLanguage,
+    transcriptionPrompt,
   };
 };
 

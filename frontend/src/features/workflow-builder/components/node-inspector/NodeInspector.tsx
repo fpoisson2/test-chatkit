@@ -144,6 +144,9 @@ export type NodeInspectorProps = {
     tool: VoiceAgentTool,
     enabled: boolean,
   ) => void;
+  onTranscriptionModelChange: (nodeId: string, value: string) => void;
+  onTranscriptionLanguageChange: (nodeId: string, value: string) => void;
+  onTranscriptionPromptChange: (nodeId: string, value: string) => void;
   onVectorStoreNodeConfigChange: (
     nodeId: string,
     updates: Partial<VectorStoreNodeConfig>,
@@ -241,6 +244,9 @@ const NodeInspector = ({
   onVoiceAgentStartBehaviorChange,
   onVoiceAgentStopBehaviorChange,
   onVoiceAgentToolChange,
+  onTranscriptionModelChange,
+  onTranscriptionLanguageChange,
+  onTranscriptionPromptChange,
   onVectorStoreNodeConfigChange,
   onTransformExpressionsChange,
   onStartAutoRunChange,
@@ -568,6 +574,9 @@ const NodeInspector = ({
           onVoiceAgentStartBehaviorChange={onVoiceAgentStartBehaviorChange}
           onVoiceAgentStopBehaviorChange={onVoiceAgentStopBehaviorChange}
           onVoiceAgentToolChange={onVoiceAgentToolChange}
+          onTranscriptionModelChange={onTranscriptionModelChange}
+          onTranscriptionLanguageChange={onTranscriptionLanguageChange}
+          onTranscriptionPromptChange={onTranscriptionPromptChange}
           workflows={workflows}
           currentWorkflowId={currentWorkflowId}
           availableModels={availableModels}

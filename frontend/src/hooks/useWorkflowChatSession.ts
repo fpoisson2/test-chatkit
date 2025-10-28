@@ -31,11 +31,21 @@ export const useWorkflowChatSession = ({
 
   const hostedRequestRefresh = useCallback(
     (context?: string) => {
-      return fetchUpdates().catch((err) => {
-        if (import.meta.env.DEV && context) {
-          console.warn(context, err);
-        }
-      });
+      if (import.meta.env.DEV) {
+        console.log('[WorkflowChat] requestRefresh appelé', { context });
+      }
+      return fetchUpdates()
+        .then((result) => {
+          if (import.meta.env.DEV) {
+            console.log('[WorkflowChat] fetchUpdates terminé avec succès', { context, result });
+          }
+          return result;
+        })
+        .catch((err) => {
+          if (import.meta.env.DEV) {
+            console.error('[WorkflowChat] fetchUpdates a échoué', { context, err });
+          }
+        });
     },
     [fetchUpdates],
   );
