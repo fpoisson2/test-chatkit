@@ -35,6 +35,18 @@ const renderPanel = (
     onAgentWorkflowToolToggle: vi.fn(),
     onAgentMcpSseConfigChange: vi.fn(),
     onTestMcpSseConnection: vi.fn().mockResolvedValue({ status: "ok" }),
+    onStartMcpOAuth: vi.fn().mockResolvedValue({
+      authorization_url: "https://auth.example/authorize",
+      state: "state",
+      expires_in: 300,
+      redirect_uri: "https://example.com/callback",
+    }),
+    onPollMcpOAuth: vi.fn().mockResolvedValue({
+      state: "state",
+      status: "pending",
+      expires_in: 300,
+    }),
+    onCancelMcpOAuth: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 
@@ -128,5 +140,85 @@ describe("ToolSettingsPanel", () => {
     expect(
       await screen.findByText(/Authentication rejected by the MCP server\./i),
     ).toBeInTheDocument();
+  });
+
+  it("connects via OAuth and updates the authorization field", async () => {
+    const onAgentMcpSseConfigChange = vi.fn();
+    const onStartMcpOAuth = vi.fn().mockResolvedValue({
+      authorization_url: "https://oauth.example/authorize",
+      state: "state123",
+      expires_in: 300,
+      redirect_uri: "https://example.com/callback",
+    });
+    const onPollMcpOAuth = vi
+      .fn()
+      .mockResolvedValueOnce({
+        state: "state123",
+        status: "pending",
+        expires_in: 200,
+      })
+      .mockResolvedValueOnce({
+        state: "state123",
+        status: "ok",
+        expires_in: 180,
+        token: { access_token: "abc123", token_type: "Bearer" },
+      });
+    const onCancelMcpOAuth = vi.fn().mockResolvedValue(undefined);
+
+    const popup = { focus: vi.fn() } as unknown as Window;
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(popup);
+
+    try {
+      renderPanel({
+        onAgentMcpSseConfigChange,
+        onStartMcpOAuth,
+        onPollMcpOAuth,
+        onCancelMcpOAuth,
+      });
+
+      const urlInput = screen.getByLabelText(/MCP server URL/i);
+      await userEvent.type(urlInput, "https://ha.local/mcp");
+
+      const oauthButton = screen.getByRole("button", { name: /Connect via OAuth/i });
+      await userEvent.click(oauthButton);
+
+      expect(onStartMcpOAuth).toHaveBeenCalledWith({
+        url: "https://ha.local/mcp",
+        clientId: null,
+        scope: null,
+      });
+      expect(openSpy).toHaveBeenCalledWith(
+        "https://oauth.example/authorize",
+        "_blank",
+        "noopener",
+      );
+
+      await waitFor(() => {
+        expect(onPollMcpOAuth).toHaveBeenCalledWith("state123");
+      });
+
+      await waitFor(
+        () => {
+          expect(onPollMcpOAuth).toHaveBeenCalledTimes(2);
+        },
+        { timeout: 2000 },
+      );
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Authorization/i)).toHaveValue(
+          "Bearer abc123",
+        );
+      });
+
+      expect(onAgentMcpSseConfigChange).toHaveBeenLastCalledWith("agent-1", {
+        url: "https://ha.local/mcp",
+        authorization: "Bearer abc123",
+      });
+
+      expect(onCancelMcpOAuth).toHaveBeenCalledWith("state123");
+
+    } finally {
+      openSpy.mockRestore();
+    }
   });
 });

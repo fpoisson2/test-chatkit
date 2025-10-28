@@ -359,6 +359,118 @@ export const testMcpToolConnection = async (
   return response.json();
 };
 
+export type McpOAuthStartResponse = {
+  authorization_url: string;
+  state: string;
+  expires_in: number;
+  redirect_uri: string;
+};
+
+export type McpOAuthSessionStatusPending = {
+  state: string;
+  status: "pending";
+  expires_in: number;
+};
+
+export type McpOAuthSessionStatusSuccess = McpOAuthSessionStatusPending & {
+  status: "ok";
+  token: Record<string, unknown>;
+};
+
+export type McpOAuthSessionStatusError = McpOAuthSessionStatusPending & {
+  status: "error";
+  error?: string;
+};
+
+export type McpOAuthSessionStatus =
+  | McpOAuthSessionStatusPending
+  | McpOAuthSessionStatusSuccess
+  | McpOAuthSessionStatusError;
+
+export const startMcpOAuthNegotiation = async ({
+  token,
+  url,
+  clientId,
+  scope,
+  signal,
+}: {
+  token: string | null | undefined;
+  url: string;
+  clientId?: string | null;
+  scope?: string | null;
+  signal?: AbortSignal;
+}): Promise<McpOAuthStartResponse> => {
+  const trimmedUrl = url.trim();
+  if (!trimmedUrl) {
+    throw new Error("Missing OAuth provider URL");
+  }
+
+  const payload: Record<string, string> = { url: trimmedUrl };
+
+  const normalizedClientId = clientId?.trim();
+  if (normalizedClientId) {
+    payload.client_id = normalizedClientId;
+  }
+
+  const normalizedScope = scope?.trim();
+  if (normalizedScope) {
+    payload.scope = normalizedScope;
+  }
+
+  const response = await requestWithFallback("/api/tools/mcp/oauth/start", {
+    method: "POST",
+    headers: withAuthHeaders(token ?? null),
+    body: JSON.stringify(payload),
+    signal,
+  });
+
+  return response.json();
+};
+
+export const pollMcpOAuthSession = async ({
+  token,
+  state,
+  signal,
+}: {
+  token: string | null | undefined;
+  state: string;
+  signal?: AbortSignal;
+}): Promise<McpOAuthSessionStatus> => {
+  if (!state.trim()) {
+    throw new Error("Missing OAuth session state");
+  }
+
+  const response = await requestWithFallback(
+    `/api/tools/mcp/oauth/session/${encodeURIComponent(state)}`,
+    {
+      headers: withAuthHeaders(token ?? null),
+      signal,
+    },
+  );
+
+  return response.json();
+};
+
+export const cancelMcpOAuthSession = async ({
+  token,
+  state,
+  signal,
+}: {
+  token: string | null | undefined;
+  state: string;
+  signal?: AbortSignal;
+}): Promise<void> => {
+  if (!state.trim()) {
+    return;
+  }
+
+  await requestWithFallback(`/api/tools/mcp/oauth/session/${encodeURIComponent(state)}`, {
+    method: "DELETE",
+    headers: withAuthHeaders(token ?? null),
+    signal,
+  });
+};
+
 let hostedWorkflowCache: HostedWorkflowMetadata[] | null | undefined;
 let hostedWorkflowPromise: Promise<HostedWorkflowMetadata[] | null> | null = null;
 

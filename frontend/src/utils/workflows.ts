@@ -23,6 +23,8 @@ export type ComputerUseConfig = {
 export type McpSseToolConfig = {
   url: string;
   authorization: string;
+  oauth_client_id?: string;
+  oauth_scope?: string;
 };
 
 export type WorkflowToolConfig = {
