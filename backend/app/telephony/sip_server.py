@@ -503,6 +503,17 @@ async def prepare_voice_workflow(
         request_context=request_context,
     )
 
+    try:
+        await store.save_thread(thread, request_context)
+    except Exception as exc:  # pragma: no cover - dépend du store
+        logger.exception(
+            "Impossible d'enregistrer le thread %s avant exécution (Call-ID=%s)",
+            thread_id,
+            call_id,
+            exc_info=exc,
+        )
+        return None
+
     workflow_input = WorkflowInput(
         input_as_text="",
         auto_start_was_triggered=False,

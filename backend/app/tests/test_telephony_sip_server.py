@@ -313,6 +313,7 @@ async def test_prepare_voice_workflow_returns_voice_event(
     async def _fake_run_workflow(*args: Any, agent_context: Any, **_: Any) -> Any:
         calls.append(args)
         if len(calls) == 1:
+            assert stub_store.saved, "Le thread doit être enregistré avant l'exécution"
             sip_module._set_wait_state_metadata(agent_context.thread, wait_state)
         else:
             stored = sip_module._get_wait_state_metadata(agent_context.thread)
@@ -372,6 +373,9 @@ async def test_prepare_voice_workflow_returns_voice_event(
     await result.resume_callback([{"role": "user", "text": "Salut"}])
     assert len(calls) == 2
     assert stub_store.saved, "Le thread doit être enregistré"
+    first_thread, first_context = stub_store.saved[0]
+    assert first_thread.id == "thread-voice"
+    assert first_context.user_id == "sip:call-voice"
 
 
 @pytest.mark.anyio
