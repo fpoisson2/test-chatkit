@@ -125,6 +125,49 @@ logger = logging.getLogger("chatkit.server")
 AGENT_NODE_KINDS = frozenset({"agent", "voice_agent"})
 AGENT_IMAGE_VECTOR_STORE_SLUG = "chatkit-agent-images"
 
+
+def _normalize_conversation_history_for_provider(
+    items: Sequence[TResponseInputItem],
+    provider_slug: str | None,
+) -> Sequence[TResponseInputItem]:
+    """Adapt conversation history to the provider capabilities when needed.
+
+    Groq's compatibility layer for the OpenAI Responses API currently rejects
+    `input_text` and `output_text` content blocks. When we know that the
+    provider is Groq we therefore coerce these types to the more widely
+    supported `text` variant.
+    """
+
+    if not provider_slug or provider_slug.lower() != "groq":
+        return items
+
+    changed = False
+    normalized: list[TResponseInputItem] = []
+    for item in items:
+        if isinstance(item, Mapping):
+            copied_item = copy.deepcopy(item)
+            content = copied_item.get("content")
+            if isinstance(content, list):
+                for index, part in enumerate(content):
+                    if not isinstance(part, Mapping):
+                        continue
+                    part_type = part.get("type")
+                    if (
+                        isinstance(part_type, str)
+                        and part_type in {"input_text", "output_text"}
+                    ):
+                        coerced_part = dict(part)
+                        coerced_part["type"] = "text"
+                        content[index] = coerced_part
+                        changed = True
+            normalized.append(copied_item)
+        else:
+            normalized.append(item)
+
+    if not changed:
+        return items
+    return normalized
+
 # ---------------------------------------------------------------------------
 # Définition du workflow local exécuté par DemoChatKitServer
 # ---------------------------------------------------------------------------
@@ -2237,9 +2280,10 @@ async def run_workflow(
         model_capabilities = agent_model_capabilities.get(current_slug)
 
         should_strip_reasoning_summary = False
+        provider_slug: str | None = None
         if provider_binding is not None:
-            slug = (provider_binding.provider_slug or "").lower()
-            if slug == "groq":
+            provider_slug = (provider_binding.provider_slug or "").lower()
+            if provider_slug == "groq":
                 should_strip_reasoning_summary = True
 
         if (
@@ -2312,10 +2356,15 @@ async def run_workflow(
                         exc,
                     )
 
+        conversation_history_input = _normalize_conversation_history_for_provider(
+            conversation_history,
+            provider_slug,
+        )
+
         try:
             result = Runner.run_streamed(
                 agent,
-                input=[*conversation_history],
+                input=[*conversation_history_input],
                 run_config=_workflow_run_config(
                     response_format_override, provider_binding=provider_binding
                 ),
