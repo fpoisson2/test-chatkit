@@ -485,6 +485,52 @@ def test_mcp_oauth_flow_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="fastapi non disponible")
+def test_mcp_oauth_flow_relative_endpoints(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert FastAPI is not None and TestClient is not None and tools_routes is not None
+
+    app = FastAPI()
+    app.include_router(tools_routes.router)
+
+    discovery = {
+        "issuer": "https://auth.example/base",
+        "authorization_endpoint": "/oauth/authorize",
+        "token_endpoint": "/oauth/token",
+    }
+    token_payload = {"access_token": "token", "token_type": "Bearer"}
+
+    client_stub = _MockAsyncClient(discovery=discovery, token=token_payload)
+    monkeypatch.setattr(
+        tools_routes.httpx, "AsyncClient", lambda *args, **kwargs: client_stub
+    )
+
+    test_client = TestClient(app)
+    start_response = test_client.post(
+        "/api/tools/mcp/oauth/start",
+        json={"url": "https://auth.example/base"},
+    )
+
+    assert start_response.status_code == 200
+    start_payload = start_response.json()
+    assert start_payload["authorization_url"].startswith(
+        "https://auth.example/oauth/authorize"
+    )
+
+    state = start_payload["state"]
+
+    callback_response = test_client.get(
+        "/api/tools/mcp/oauth/callback",
+        params={"state": state, "code": "auth-code"},
+    )
+
+    assert callback_response.status_code == 200
+    assert "Authentification terminée" in callback_response.text
+
+    post_calls = [payload for method, payload in client_stub._calls if method == "POST"]
+    assert post_calls
+    assert post_calls[0]["url"] == "https://auth.example/oauth/token"
+
+
+@pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="fastapi non disponible")
 def test_mcp_oauth_flow_token_error(monkeypatch: pytest.MonkeyPatch) -> None:
     assert FastAPI is not None and TestClient is not None and tools_routes is not None
 

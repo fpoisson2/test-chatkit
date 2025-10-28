@@ -92,6 +92,20 @@ def _update_session(state: str, **updates: Any) -> None:
             setattr(session, key, value)
 
 
+def _resolve_endpoint(
+    endpoint: str,
+    *,
+    base_url: str,
+    issuer: str | None = None,
+) -> str:
+    parsed = urlparse(endpoint)
+    if parsed.scheme and parsed.netloc:
+        return endpoint
+
+    base_candidate = issuer if issuer else base_url
+    return urljoin(base_candidate, endpoint)
+
+
 async def start_oauth_flow(
     base_url: str,
     *,
@@ -128,8 +142,22 @@ async def start_oauth_flow(
     authorization_endpoint = discovery.get("authorization_endpoint")
     token_endpoint = discovery.get("token_endpoint")
 
+    issuer = discovery.get("issuer")
+    issuer_base = issuer if isinstance(issuer, str) and issuer else base_url
+
     if not authorization_endpoint or not token_endpoint:
         raise ValueError("La découverte OAuth2 ne fournit pas les endpoints attendus.")
+
+    authorization_endpoint = _resolve_endpoint(
+        authorization_endpoint,
+        base_url=base_url,
+        issuer=issuer_base,
+    )
+    token_endpoint = _resolve_endpoint(
+        token_endpoint,
+        base_url=base_url,
+        issuer=issuer_base,
+    )
 
     # Construit l'URL d'autorisation avec les paramètres requis.
     params = [
