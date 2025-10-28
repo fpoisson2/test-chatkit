@@ -33,6 +33,28 @@ from .voice_workflow import finalize_voice_wait_state
 logger = logging.getLogger("chatkit.realtime.gateway")
 
 
+def _json_safe(value: Any) -> Any:
+    """Convertir récursivement en structure JSON sérialisable."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(val) for key, val in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item) for item in value]
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        try:
+            return model_dump(mode="json")
+        except TypeError:
+            return model_dump()
+    if isinstance(value, BaseException):
+        return {
+            "type": value.__class__.__name__,
+            "message": str(value),
+        }
+    return str(value)
+
+
 @dataclass(eq=False)
 class GatewayUser:
     id: str
@@ -320,7 +342,7 @@ class _RealtimeSessionState:
             }
 
         if isinstance(event, RealtimeError):
-            return {"type": "session_error", "error": event.error}
+            return {"type": "session_error", "error": _json_safe(event.error)}
 
         if isinstance(event, RealtimeAgentStartEvent):
             return {"type": "agent_start"}
@@ -341,7 +363,7 @@ class _RealtimeSessionState:
             return {
                 "type": "tool_end",
                 "tool": getattr(event.tool, "name", None),
-                "output": event.output,
+                "output": _json_safe(event.output),
             }
 
         return None
