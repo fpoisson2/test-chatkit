@@ -7370,6 +7370,9 @@ const WorkflowBuilderPage = () => {
             onAgentMcpSseConfigChange={handleAgentMcpSseConfigChange}
             workflows={workflows}
             currentWorkflowId={selectedWorkflowId}
+            hostedWorkflows={hostedWorkflows}
+            hostedWorkflowsLoading={hostedLoading}
+            hostedWorkflowsError={hostedError}
             onVoiceAgentVoiceChange={handleVoiceAgentVoiceChange}
             onVoiceAgentStartBehaviorChange={handleVoiceAgentStartBehaviorChange}
             onVoiceAgentStopBehaviorChange={handleVoiceAgentStopBehaviorChange}

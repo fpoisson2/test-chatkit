@@ -223,6 +223,60 @@
   accent-color: #2563eb;
 }
 
+.agentNestedWorkflowRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.agentNestedWorkflowLabel {
+  flex: 0 0 auto;
+}
+
+.agentNestedWorkflowControls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.agentNestedWorkflowModes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.agentNestedWorkflowSelect {
+  flex: 1 1 14rem;
+  min-width: 12rem;
+}
+
+.agentNestedWorkflowHostedFields {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.agentNestedWorkflowHostedSelectField {
+  flex: 1 1 14rem;
+  min-width: 12rem;
+}
+
+.agentNestedWorkflowHostedSelect {
+  width: 100%;
+}
+
+.agentNestedWorkflowSlugField {
+  flex: 1 1 12rem;
+  min-width: 12rem;
+}
+
 .nodeInspectorSubField {
   display: flex;
   flex-direction: column;

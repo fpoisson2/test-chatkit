@@ -301,6 +301,9 @@ const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.nestedWorkflowNoneOption": "Aucun (utiliser l'agent)",
   "workflowBuilder.agentInspector.nestedWorkflowLocalOption": "Workflow local",
   "workflowBuilder.agentInspector.nestedWorkflowHostedOption": "Workflow hébergé",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedSelectLabel": "Workflow hébergé",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedLoading": "Chargement des workflows…",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedSelectEmpty": "Aucun workflow hébergé disponible",
   "workflowBuilder.agentInspector.nestedWorkflowHostedIdLabel": "Identifiant du workflow",
   "workflowBuilder.agentInspector.nestedWorkflowHostedIdPlaceholder": "Ex. 123",
   "workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel": "Slug du workflow",
@@ -309,6 +312,10 @@ const fr: TranslationDictionary = {
     "Le workflow sélectionné n'est plus disponible.",
   "workflowBuilder.agentInspector.nestedWorkflowSlugInfo":
     "Workflow sélectionné via le slug « {{slug}} ».",
+  "workflowBuilder.agentInspector.nestedWorkflowSelectedInfo":
+    "Les autres paramètres sont masqués car ce bloc délègue au workflow imbriqué «{{label}}».",
+  "workflowBuilder.agentInspector.nestedWorkflowSelectedInfoUnknown":
+    "Les autres paramètres sont masqués car ce bloc délègue à un workflow imbriqué.",
   "workflowBuilder.agentInspector.unlistedModelWarning":
     "Ce bloc utilise actuellement un modèle non listé ({{model}}). Sélectionnez un modèle dans la liste ci-dessus.",
   "workflowBuilder.agentInspector.workflowToolsTitle": "Workflows ChatKit",
@@ -906,6 +913,9 @@ const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.nestedWorkflowNoneOption": "None (use agent configuration)",
   "workflowBuilder.agentInspector.nestedWorkflowLocalOption": "Local workflow",
   "workflowBuilder.agentInspector.nestedWorkflowHostedOption": "Hosted workflow",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedSelectLabel": "Hosted workflow",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedLoading": "Loading workflows…",
+  "workflowBuilder.agentInspector.nestedWorkflowHostedSelectEmpty": "No hosted workflows available",
   "workflowBuilder.agentInspector.nestedWorkflowHostedIdLabel": "Workflow ID",
   "workflowBuilder.agentInspector.nestedWorkflowHostedIdPlaceholder": "e.g. 123",
   "workflowBuilder.agentInspector.nestedWorkflowHostedSlugLabel": "Workflow slug",
@@ -914,6 +924,10 @@ const en: TranslationDictionary = {
     "The selected workflow is no longer available.",
   "workflowBuilder.agentInspector.nestedWorkflowSlugInfo":
     "Workflow selected via slug \"{{slug}}\".",
+  "workflowBuilder.agentInspector.nestedWorkflowSelectedInfo":
+    "The remaining settings are hidden because this block delegates to the nested workflow “{{label}}”.",
+  "workflowBuilder.agentInspector.nestedWorkflowSelectedInfoUnknown":
+    "The remaining settings are hidden because this block delegates to a nested workflow.",
   "workflowBuilder.agentInspector.unlistedModelWarning":
     "This block currently uses an unlisted model ({{model}}). Pick a model from the list above.",
   "workflowBuilder.agentInspector.workflowToolsTitle": "ChatKit workflows",
