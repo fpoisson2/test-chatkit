@@ -96,8 +96,14 @@ async def get_weather(
 async def post_mcp_test_connection(
     payload: MCPTestConnectionPayload,
 ) -> dict[str, object]:
+    logger.info(
+        "MCP test connection url=%s has_authorization=%s",
+        payload.url,
+        bool(payload.authorization),
+    )
     try:
         config = payload.model_dump(exclude_none=True, mode="json")
+        logger.debug("MCP test connection config keys=%s", sorted(config.keys()))
         result = await probe_mcp_connection(config)
     except ValueError as exc:
         raise HTTPException(

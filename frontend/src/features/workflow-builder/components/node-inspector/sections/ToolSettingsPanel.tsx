@@ -209,6 +209,7 @@ export const ToolSettingsPanel = ({
     });
 
     try {
+      console.log("Testing MCP connection with authorization:", mcpAuthorizationDraft ? "present" : "absent");
       const result = await onTestMcpSseConnection({
         url,
         authorization: mcpAuthorizationDraft,
@@ -384,6 +385,7 @@ export const ToolSettingsPanel = ({
 
       if (result.status === "ok") {
         const authorization = buildAuthorizationFromToken(result.token);
+        console.log("OAuth complete, authorization token:", authorization ? "generated" : "null");
         if (authorization) {
           applyAuthorizationValue(authorization);
           setOauthFeedback({
