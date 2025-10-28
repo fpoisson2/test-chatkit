@@ -149,14 +149,31 @@ async def start_oauth_flow(
             await http_client.aclose()
 
     discovery = response.json()
+
+    logger.debug(
+        "OAuth discovery response keys=%s",
+        sorted(discovery.keys()) if isinstance(discovery, dict) else type(discovery),
+    )
+
     authorization_endpoint = discovery.get("authorization_endpoint")
     token_endpoint = discovery.get("token_endpoint")
+    discovered_client_id = discovery.get("client_id")
 
     issuer = discovery.get("issuer")
     issuer_base = issuer if isinstance(issuer, str) and issuer else base_url
 
     if not authorization_endpoint or not token_endpoint:
         raise ValueError("La découverte OAuth2 ne fournit pas les endpoints attendus.")
+
+    # Utiliser le client_id de la découverte en priorité
+    effective_client_id = discovered_client_id if discovered_client_id else client_id
+
+    logger.debug(
+        "OAuth configuration discovered_client_id=%s provided_client_id=%s effective_client_id=%s",
+        discovered_client_id,
+        client_id,
+        effective_client_id,
+    )
 
     authorization_endpoint = _resolve_endpoint(
         authorization_endpoint,
@@ -177,8 +194,8 @@ async def start_oauth_flow(
         ("code_challenge", code_challenge),
         ("code_challenge_method", "S256"),
     ]
-    if client_id:
-        params.append(("client_id", client_id))
+    if effective_client_id:
+        params.append(("client_id", effective_client_id))
     if scope:
         params.append(("scope", scope))
 
@@ -191,7 +208,7 @@ async def start_oauth_flow(
         state=state,
         code_verifier=code_verifier,
         token_endpoint=token_endpoint,
-        client_id=client_id,
+        client_id=effective_client_id,
         scope=scope,
         redirect_uri=redirect_uri,
         expires_at=time.time() + SESSION_TTL_SECONDS,
@@ -202,7 +219,7 @@ async def start_oauth_flow(
         "Stored OAuth session state=%s token_endpoint=%s client_id=%s scope=%s",
         state,
         token_endpoint,
-        client_id,
+        effective_client_id,
         scope,
     )
 

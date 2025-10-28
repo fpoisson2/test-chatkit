@@ -94,13 +94,15 @@ export const ToolSettingsPanel = ({
   const mcpConfig = getAgentMcpSseConfig(parameters);
   const mcpUrlValue = mcpConfig?.url ?? "";
   const mcpAuthorizationValue = mcpConfig?.authorization ?? "";
+  const mcpClientIdValue = mcpConfig?.oauth_client_id ?? "";
+  const mcpScopeValue = mcpConfig?.oauth_scope ?? "";
 
   const [mcpUrlDraft, setMcpUrlDraft] = useState(mcpUrlValue);
   const [mcpAuthorizationDraft, setMcpAuthorizationDraft] = useState(
     mcpAuthorizationValue,
   );
-  const [mcpClientIdDraft, setMcpClientIdDraft] = useState("");
-  const [mcpScopeDraft, setMcpScopeDraft] = useState("");
+  const [mcpClientIdDraft, setMcpClientIdDraft] = useState(mcpClientIdValue);
+  const [mcpScopeDraft, setMcpScopeDraft] = useState(mcpScopeValue);
 
   const [mcpTestState, setMcpTestState] = useState<{
     status: "idle" | "loading" | "success" | "error";
