@@ -100,6 +100,7 @@ class _RealtimeSessionState:
         self._session_task: asyncio.Task[None] | None = None
         self._closed = False
         self._send_lock = asyncio.Lock()
+        self._input_audio_log_skip = 0
 
     async def ensure_session_started(self) -> None:
         if self._session is not None:
@@ -305,6 +306,20 @@ class _RealtimeSessionState:
             if self._session is None:
                 return
             await self._session.interrupt()
+
+    def should_log_input_audio(self, *, commit: bool) -> bool:
+        """Réduit le bruit de logs en ne journalisant que les évènements pertinents."""
+        if commit:
+            self._input_audio_log_skip = 0
+            return True
+        if self._input_audio_log_skip == 0:
+            self._input_audio_log_skip = 1
+            return True
+        self._input_audio_log_skip += 1
+        if self._input_audio_log_skip >= 25:
+            self._input_audio_log_skip = 1
+            return True
+        return False
 
     def _serialize_event(self, event: Any) -> dict[str, Any] | None:
         if isinstance(event, RealtimeHistoryUpdated):
@@ -544,12 +559,13 @@ class RealtimeSessionGateway:
                 )
                 return
             commit = bool(payload.get("commit"))
-            logger.debug(
-                "Gateway: input_audio reçu session=%s bytes=%d commit=%s",
-                session_id,
-                len(chunk),
-                commit,
-            )
+            if state.should_log_input_audio(commit=commit):
+                logger.debug(
+                    "Gateway: input_audio reçu session=%s bytes=%d commit=%s",
+                    session_id,
+                    len(chunk),
+                    commit,
+                )
             await state.send_audio(chunk, commit=commit)
             return
 

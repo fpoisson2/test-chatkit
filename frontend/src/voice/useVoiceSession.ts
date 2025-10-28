@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "../auth";
 import { useAudioResampler } from "./resampler";
-import { useRealtimeSession } from "./useRealtimeSession";
+import { useRealtimeSession, type SendAudioOptions } from "./useRealtimeSession";
 import { useVoiceSecret } from "./useVoiceSecret";
 
 type VoiceSessionStatus = "idle" | "connecting" | "connected" | "error";
@@ -34,6 +34,8 @@ type StopOptions = {
 const HISTORY_STORAGE_KEY = "chatkit:voice:history";
 const MAX_ERROR_LOG_ENTRIES = 8;
 const SAMPLE_RATE = 24_000;
+const SPEECH_THRESHOLD = 0.015;
+const SILENCE_FRAMES_BEFORE_COMMIT = 4;
 
 const formatErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {
@@ -198,6 +200,8 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
   const historyRef = useRef<RealtimeItem[]>([]);
   const statusRef = useRef<VoiceSessionStatus>("idle");
   const resampler = useAudioResampler(SAMPLE_RATE);
+  const speakingRef = useRef(false);
+  const silenceFrameCountRef = useRef(0);
 
   useEffect(() => {
     statusRef.current = status;
@@ -274,10 +278,20 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       });
     }
     resampler.reset();
+    speakingRef.current = false;
+    silenceFrameCountRef.current = 0;
   }, [resampler]);
 
   const startCapture = useCallback(
-    async (sessionId: string, stream: MediaStream) => {
+    async (
+      sessionId: string,
+      stream: MediaStream,
+      dispatcher: (
+        id: string,
+        chunk: Int16Array,
+        options?: SendAudioOptions,
+      ) => void,
+    ) => {
       if (!stream) {
         throw new Error("Flux audio introuvable pour la capture");
       }
@@ -309,9 +323,32 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
 
       processor.onaudioprocess = (event) => {
         const input = event.inputBuffer.getChannelData(0);
+        let energy = 0;
+        for (let i = 0; i < input.length; i += 1) {
+          energy += input[i] * input[i];
+        }
+        const rms = input.length ? Math.sqrt(energy / input.length) : 0;
+        const isSpeechFrame = rms >= SPEECH_THRESHOLD;
+
+        if (isSpeechFrame) {
+          speakingRef.current = true;
+          silenceFrameCountRef.current = 0;
+        } else if (speakingRef.current) {
+          silenceFrameCountRef.current += 1;
+        }
+
         const chunk = resampler.process(input);
         if (chunk.length > 0) {
-          sendAudioChunk(sessionId, chunk);
+          dispatcher(sessionId, chunk);
+        }
+
+        if (
+          speakingRef.current &&
+          silenceFrameCountRef.current >= SILENCE_FRAMES_BEFORE_COMMIT
+        ) {
+          speakingRef.current = false;
+          silenceFrameCountRef.current = 0;
+          dispatcher(sessionId, new Int16Array(), { commit: true });
         }
       };
 
@@ -321,6 +358,8 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       historyRef.current = [];
       currentSessionRef.current = sessionId;
       microphoneStreamRef.current = stream;
+      speakingRef.current = false;
+      silenceFrameCountRef.current = 0;
     },
     [resampler],
   );
@@ -368,7 +407,7 @@ export const useVoiceSession = (): UseVoiceSessionResult => {
       if (pending) {
         pendingStartRef.current = null;
         try {
-          await startCapture(event.sessionId, pending.stream);
+          await startCapture(event.sessionId, pending.stream, sendAudioChunk);
           suppressEmptyHistoryRef.current = pending.preserveHistory;
           if (!pending.preserveHistory) {
             resetTranscripts();
