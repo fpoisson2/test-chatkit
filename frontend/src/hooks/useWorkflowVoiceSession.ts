@@ -1,30 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "../auth";
-import { makeApiEndpointCandidates } from "../utils/backend";
+import type { SessionCreatedEvent } from "../voice/useRealtimeSession";
 import { useRealtimeSession } from "../voice/useRealtimeSession";
+import { useAudioResampler } from "../voice/resampler";
 
-type VoiceSessionStatus = "idle" | "connecting" | "connected" | "error";
+export type VoiceSessionStatus = "idle" | "connecting" | "connected" | "error";
 
-type VoiceSessionEventPayload = {
-  type: "voice_session.created";
-  step: {
-    slug: string;
-    title: string;
-  };
-  client_secret: string | { value: string; expires_at: number };
-  session: {
-    model: string;
-    voice: string;
-    instructions: string;
-    realtime: {
-      start_mode: string;
-      stop_mode: string;
-      tools: Record<string, boolean>;
-    };
-    tools?: unknown[];
-  };
-  tool_permissions: Record<string, boolean>;
+export type TranscriptEntry = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  status?: string;
 };
 
 type UseWorkflowVoiceSessionParams = {
@@ -33,32 +20,91 @@ type UseWorkflowVoiceSessionParams = {
   onTranscriptsUpdated?: () => void;
 };
 
-type TranscriptEntry = {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  status?: string;
-};
+const SAMPLE_RATE = 24_000;
 
-type TranscriptPayload = {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  status?: string;
-};
+const extractTranscriptsFromHistory = (history: unknown[]): TranscriptEntry[] => {
+  const result: TranscriptEntry[] = [];
+  const byId = new Map<string, TranscriptEntry>();
+  const order: string[] = [];
 
-type TranscriptSnapshot = {
-  payload: TranscriptPayload[];
-};
+  for (const item of history) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const typed = item as { type?: unknown; role?: unknown };
+    if (typed.type !== "message") {
+      continue;
+    }
+    const role = typed.role === "assistant" ? "assistant" : typed.role === "user" ? "user" : null;
+    if (!role) {
+      continue;
+    }
 
-const POLL_INTERVAL_MS = 2000; // Poll every 2 seconds
+    const statusRaw = typeof (typed as { status?: unknown }).status === "string"
+      ? ((typed as { status: string }).status || "").trim()
+      : "";
+    if (statusRaw && statusRaw !== "completed" && statusRaw !== "in_progress") {
+      continue;
+    }
 
-type RealtimeItem = {
-  type: string;
-  itemId?: string;
-  role?: string;
-  status?: string;
-  content?: { type: string; text?: string; transcript?: string }[];
+    const contents = Array.isArray((typed as { content?: unknown[] }).content)
+      ? ((typed as { content: unknown[] }).content ?? [])
+      : [];
+
+    const textParts: string[] = [];
+    for (const contentItem of contents) {
+      if (!contentItem || typeof contentItem !== "object") {
+        continue;
+      }
+      const entry = contentItem as { type?: unknown; text?: unknown; transcript?: unknown };
+      if (
+        (entry.type === "input_text" || entry.type === "output_text" || entry.type === "text") &&
+        typeof entry.text === "string" &&
+        entry.text.trim()
+      ) {
+        textParts.push(entry.text.trim());
+      } else if (
+        (entry.type === "input_audio" || entry.type === "output_audio" || entry.type === "audio") &&
+        typeof entry.transcript === "string" &&
+        entry.transcript.trim()
+      ) {
+        textParts.push(entry.transcript.trim());
+      }
+    }
+
+    if (!textParts.length) {
+      continue;
+    }
+
+    const identifier =
+      typeof (typed as { item_id?: unknown }).item_id === "string" &&
+      (typed as { item_id: string }).item_id.trim()
+        ? (typed as { item_id: string }).item_id.trim()
+        : `${role}-${order.length}`;
+
+    const entry: TranscriptEntry = {
+      id: identifier,
+      role,
+      text: textParts.join("\n"),
+    };
+    if (statusRaw) {
+      entry.status = statusRaw;
+    }
+
+    byId.set(identifier, entry);
+    if (!order.includes(identifier)) {
+      order.push(identifier);
+    }
+  }
+
+  for (const identifier of order) {
+    const entry = byId.get(identifier);
+    if (entry) {
+      result.push(entry);
+    }
+  }
+
+  return result;
 };
 
 export const useWorkflowVoiceSession = ({
@@ -70,510 +116,287 @@ export const useWorkflowVoiceSession = ({
   const [status, setStatus] = useState<VoiceSessionStatus>("idle");
   const [isListening, setIsListening] = useState(false);
   const [transcripts, setTranscripts] = useState<TranscriptEntry[]>([]);
-  const processedSessionsRef = useRef<Set<string>>(new Set());
+
   const currentSessionRef = useRef<string | null>(null);
-  const pollingIntervalRef = useRef<number | null>(null);
-  const conversationHistoryRef = useRef<TranscriptEntry[]>([]);
-  const submittedTranscriptSignaturesRef = useRef<Map<string, string>>(new Map());
-  const hasSubmittedUserRef = useRef(false);
-  const queuedSendRef = useRef(false);
-  const uploadInFlightRef = useRef(false);
+  const microphoneStreamRef = useRef<MediaStream | null>(null);
+  const inputContextRef = useRef<AudioContext | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const processedSessionsRef = useRef<Set<string>>(new Set());
+  const resampler = useAudioResampler(SAMPLE_RATE);
+  const logVoice = useCallback((...args: unknown[]) => {
+    console.info("[WorkflowVoice]", ...args);
+  }, []);
 
-  const createSnapshot = useCallback(
-    (entries: TranscriptEntry[]): TranscriptSnapshot | null => {
-      if (entries.length === 0) {
-        return null;
+  const cleanupCapture = useCallback(() => {
+    const processor = processorRef.current;
+    processorRef.current = null;
+    if (processor) {
+      try {
+        processor.disconnect();
+      } catch {
+        /* noop */
       }
+      processor.onaudioprocess = null;
+    }
 
-      const payload: TranscriptPayload[] = entries.map(({ id, role, text, status }) => {
-        const normalizedStatus = typeof status === "string" ? status.trim() : "";
-        const base: TranscriptPayload = {
-          id,
-          role,
-          text,
-        };
-        if (normalizedStatus.length > 0) {
-          base.status = normalizedStatus;
+    const inputContext = inputContextRef.current;
+    inputContextRef.current = null;
+    if (inputContext) {
+      try {
+        inputContext.close().catch(() => undefined);
+      } catch {
+        /* noop */
+      }
+    }
+
+    const stream = microphoneStreamRef.current;
+    microphoneStreamRef.current = null;
+    if (stream) {
+      stream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {
+          /* noop */
         }
-        return base;
       });
+    }
+    resampler.reset();
+  }, [resampler]);
 
-      return { payload };
-    },
-    [],
-  );
-
-  const handleConnectionChange = useCallback(
-    (value: "connected" | "connecting" | "disconnected") => {
-      if (value === "connected") {
-        setStatus("connected");
-        setIsListening(true);
-      } else if (value === "connecting") {
-        setStatus("connecting");
-      } else {
-        setIsListening(false);
+  const {
+    connect: connectRealtime,
+    disconnect: disconnectRealtime,
+    sendAudioChunk,
+    finalizeSession,
+    interruptSession,
+  } = useRealtimeSession({
+    onConnectionChange: (value) => {
+      if (value === "disconnected") {
         setStatus("idle");
+        setIsListening(false);
+        cleanupCapture();
         currentSessionRef.current = null;
       }
     },
-    [],
-  );
-
-  const handleAgentStart = useCallback(() => {
-    setIsListening(true);
-  }, []);
-
-  const handleAgentEnd = useCallback(() => {
-    setIsListening(false);
-  }, []);
-
-  const handleTransportError = useCallback(
-    (error: unknown) => {
-      const message = error instanceof Error ? error.message : "Erreur de connexion WebRTC";
-      onError?.(message);
+    onTransportError: (error) => {
+      onError?.("Erreur de connexion au gateway voix");
+      if (import.meta.env.DEV) {
+        console.error("[Voice] transport error", error);
+      }
       setStatus("error");
     },
-    [onError],
-  );
-
-  const handleSessionError = useCallback(
-    (error: unknown) => {
-      const message = error instanceof Error ? error.message : "Erreur de session vocale";
-      onError?.(message);
-    },
-    [onError],
-  );
-
-  const sendTranscripts = useCallback(
-    async (options?: { force?: boolean }) => {
-      if (!threadId || !token) {
+    onSessionCreated: (event: SessionCreatedEvent) => {
+      logVoice("sessionCreated", { sessionId: event.sessionId, threadId: event.threadId });
+      const threadMatches =
+        threadId == null || event.threadId == null || event.threadId === threadId;
+      if (!threadMatches) {
+        logVoice("skip session (thread mismatch)", {
+          expectedThread: threadId,
+          receivedThread: event.threadId,
+        });
         return;
       }
-
-      const transcripts = conversationHistoryRef.current;
-      if (transcripts.length === 0) {
-        console.log("[WorkflowVoiceSession] No transcripts to send");
-        submittedTranscriptSignaturesRef.current.clear();
-        hasSubmittedUserRef.current = false;
-        queuedSendRef.current = false;
+      if (processedSessionsRef.current.has(event.sessionId)) {
+        logVoice("skip session (already processed)", event.sessionId);
         return;
       }
-
-      const snapshot = createSnapshot(transcripts);
-      if (!snapshot) {
-        return;
-      }
-
-      const force = options?.force ?? false;
-      const submittedMap = submittedTranscriptSignaturesRef.current;
-
-      const entriesToSend = snapshot.payload.filter((entry) => {
-        const signature = `${entry.role}:${entry.text}:${entry.status ?? ""}`;
-        if (force) {
-          return true;
-        }
-        const previous = submittedMap.get(entry.id);
-        return previous !== signature;
-      });
-
-      if (!force && entriesToSend.length === 0) {
-        return;
-      }
-
-      if (!force && !hasSubmittedUserRef.current) {
-        const hasUserInPayload = entriesToSend.some((entry) => entry.role === "user");
-        if (!hasUserInPayload) {
-          return;
-        }
-      }
-
-      if (entriesToSend.length === 0) {
-        return;
-      }
-
-      if (uploadInFlightRef.current) {
-        queuedSendRef.current = true;
-        return;
-      }
-
-      uploadInFlightRef.current = true;
-      queuedSendRef.current = false;
-
-      try {
-        console.log(
-          "[WorkflowVoiceSession] Sending transcripts:",
-          entriesToSend.length,
-          "items",
-        );
-
-        const path = `/api/chatkit/voice/transcripts/${threadId}`;
-        const backendUrl = import.meta.env.VITE_BACKEND_URL ?? "";
-        const endpoints = makeApiEndpointCandidates(backendUrl, path);
-
-        let lastError: Error | null = null;
-        for (const endpoint of endpoints) {
-          const isRelative = endpoint.startsWith("/");
-          try {
-            const response = await fetch(endpoint, {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ transcripts: entriesToSend }),
-            });
-
-            if (response.ok) {
-              const result = await response.json();
-              for (const entry of entriesToSend) {
-                const signature = `${entry.role}:${entry.text}:${entry.status ?? ""}`;
-                submittedMap.set(entry.id, signature);
-                if (entry.role === "user") {
-                  hasSubmittedUserRef.current = true;
-                }
-              }
-              console.log(
-                "[WorkflowVoiceSession] Transcripts sent successfully:",
-                result,
-              );
-
-              onTranscriptsUpdated?.();
-
-              lastError = null;
-              break;
-            }
-
-            if (response.status === 404 && isRelative && endpoints.length > 1) {
-              lastError = new Error(`Failed to send transcripts: ${response.status}`);
-              continue;
-            }
-
-            if (response.status === 404) {
-              console.info(
-                "[WorkflowVoiceSession] Transcript upload skipped (no pending voice session)",
-              );
-              lastError = null;
-              break;
-            }
-
-            throw new Error(`Failed to send transcripts: ${response.status}`);
-          } catch (error) {
-            lastError = error instanceof Error ? error : new Error("Erreur réseau");
-            if (!isRelative || endpoints.length === 1) {
-              break;
-            }
+      processedSessionsRef.current.add(event.sessionId);
+      void (async () => {
+        try {
+          setStatus("connecting");
+          await startCapture(event.sessionId);
+          setStatus("connected");
+          setIsListening(true);
+          logVoice("capture started", event.sessionId);
+        } catch (error) {
+          setStatus("error");
+          processedSessionsRef.current.delete(event.sessionId);
+          if (error instanceof Error) {
+            onError?.(error.message);
+          } else {
+            onError?.("Impossible de démarrer la session vocale");
           }
+          logVoice("capture failed", { sessionId: event.sessionId, error });
         }
-
-        if (lastError) {
-          throw lastError;
-        }
-      } catch (error) {
-        console.error("[WorkflowVoiceSession] Failed to send transcripts:", error);
-        queuedSendRef.current = true;
-        onError?.("Impossible d'envoyer les transcriptions");
-      } finally {
-        uploadInFlightRef.current = false;
-        if (queuedSendRef.current) {
-          queuedSendRef.current = false;
-          void sendTranscripts();
-        }
+      })();
+    },
+    onHistoryUpdated: (sessionId, history) => {
+      if (currentSessionRef.current !== sessionId) {
+        return;
+      }
+      const nextTranscripts = extractTranscriptsFromHistory(history);
+      setTranscripts(nextTranscripts);
+      onTranscriptsUpdated?.();
+    },
+    onAgentStart: (sessionId) => {
+      if (currentSessionRef.current === sessionId) {
+        setIsListening(true);
       }
     },
-    [threadId, token, onError, onTranscriptsUpdated, createSnapshot],
-  );
-
-  const handleHistoryUpdated = useCallback(
-    (history: RealtimeItem[]) => {
-      // Collecter les transcriptions de la conversation vocale
-      const transcriptsById = new Map<string, TranscriptEntry>();
-      const order: string[] = [];
-
-      for (const item of history) {
-        if (item.type !== "message") {
-          continue;
-        }
-
-        const role = item.role;
-        if (role !== "user" && role !== "assistant") {
-          continue;
-        }
-
-        // Ignorer les éléments non terminés pour éviter les doublons ou brouillons
-        const statusRaw =
-          typeof (item as { status?: unknown }).status === "string"
-            ? ((item as { status: string }).status || "").trim()
-            : undefined;
-        if (statusRaw && statusRaw !== "completed") {
-          continue;
-        }
-
-        const textParts: string[] = [];
-        for (const part of item.content ?? []) {
-          if (
-            (part.type === "input_text" || part.type === "output_text") &&
-            typeof part.text === "string" &&
-            part.text.trim().length > 0
-          ) {
-            textParts.push(part.text.trim());
-          } else if (
-            (part.type === "input_audio" || part.type === "output_audio") &&
-            typeof part.transcript === "string" &&
-            part.transcript.trim().length > 0
-          ) {
-            textParts.push(part.transcript.trim());
-          }
-        }
-
-        if (textParts.length > 0) {
-          const text = textParts.join("\n");
-          const identifier =
-            typeof (item as { id?: unknown }).id === "string" &&
-            (item as { id: string }).id.trim().length > 0
-              ? (item as { id: string }).id
-              : `${role}-${order.length}`;
-
-          if (!transcriptsById.has(identifier)) {
-            order.push(identifier);
-          }
-
-          transcriptsById.set(identifier, {
-            id: identifier,
-            role,
-            text,
-            status: statusRaw,
-          });
-        }
+    onAgentEnd: (sessionId) => {
+      if (currentSessionRef.current === sessionId) {
+        setIsListening(false);
       }
-
-      const transcripts = order
-        .map((identifier) => transcriptsById.get(identifier))
-        .filter((entry): entry is TranscriptEntry => Boolean(entry));
-
-      conversationHistoryRef.current = transcripts;
-      setTranscripts(transcripts);
-      console.log("[WorkflowVoiceSession] History updated:", transcripts.length, "items");
-      void sendTranscripts();
     },
-    [sendTranscripts],
-  );
-
-  const { connect, disconnect } = useRealtimeSession({
-    onHistoryUpdated: handleHistoryUpdated,
-    onConnectionChange: handleConnectionChange,
-    onAgentStart: handleAgentStart,
-    onAgentEnd: handleAgentEnd,
-    onTransportError: handleTransportError,
-    onError: handleSessionError,
+    onSessionFinalized: (event) => {
+      if (currentSessionRef.current !== event.sessionId) {
+        return;
+      }
+      cleanupCapture();
+      currentSessionRef.current = null;
+      setStatus("idle");
+      setIsListening(false);
+      if (Array.isArray(event.transcripts) && event.transcripts.length > 0) {
+        const mapped = extractTranscriptsFromHistory(event.transcripts as unknown[]);
+        setTranscripts(mapped);
+        onTranscriptsUpdated?.();
+      }
+    },
+    onSessionError: (sessionId, message) => {
+      if (currentSessionRef.current !== sessionId) {
+        return;
+      }
+      cleanupCapture();
+      currentSessionRef.current = null;
+      setIsListening(false);
+      setStatus("error");
+      const serialized = (() => {
+        if (!message) {
+          return null;
+        }
+        if (typeof message === "string") {
+          return message;
+        }
+        if (message instanceof Error) {
+          return message.message;
+        }
+        try {
+          const json = JSON.stringify(message);
+          return json && json !== "{}" ? json : null;
+        } catch {
+          return null;
+        }
+      })();
+      onError?.(serialized ?? "Erreur lors de la session Realtime");
+    },
   });
 
-  const startVoiceSession = useCallback(
-    async (payload: VoiceSessionEventPayload) => {
-      const sessionId = `${payload.step.slug}-${Date.now()}`;
-
-      // Éviter de démarrer la même session plusieurs fois
-      if (processedSessionsRef.current.has(sessionId)) {
-        console.debug("[WorkflowVoiceSession] Session already processed:", sessionId);
-        return;
+  const startCapture = useCallback(
+    async (sessionId: string) => {
+      if (!threadId) {
+        throw new Error("Thread manquant pour la session vocale");
+      }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("API microphone non disponible");
       }
 
-      // Arrêter la session en cours si elle existe
-      if (currentSessionRef.current) {
-        console.debug("[WorkflowVoiceSession] Stopping current session before starting new one");
-        disconnect();
-      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      microphoneStreamRef.current = stream;
+      logVoice("microphone stream ready", {
+        sessionId,
+        tracks: stream.getAudioTracks().map((track) => track.label || "(track)"),
+      });
 
-      processedSessionsRef.current.add(sessionId);
+      const context = new AudioContext();
+      inputContextRef.current = context;
+      if (context.state === "suspended") {
+        try {
+          await context.resume();
+          logVoice("audio context resumed", { sessionId });
+        } catch {
+          /* noop */
+        }
+      }
+      resampler.setSampleRate(context.sampleRate);
+
+      const source = context.createMediaStreamSource(stream);
+      const processor = context.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
+
+      processor.onaudioprocess = (event) => {
+        const input = event.inputBuffer.getChannelData(0);
+        const chunk = resampler.process(input);
+        if (chunk.length > 0) {
+          logVoice("sending input_audio", { sessionId, samples: chunk.length });
+          sendAudioChunk(sessionId, chunk);
+        }
+      };
+
+      source.connect(processor);
+      processor.connect(context.destination);
       currentSessionRef.current = sessionId;
-      conversationHistoryRef.current = [];
-      setTranscripts([]);
-      submittedTranscriptSignaturesRef.current = new Map();
-      hasSubmittedUserRef.current = false;
-      queuedSendRef.current = false;
-      uploadInFlightRef.current = false;
-
-      setStatus("connecting");
-
-      let stream: MediaStream | null = null;
-      try {
-        if (!token) {
-          throw new Error("Authentification requise pour la session vocale.");
-        }
-
-        if (!navigator.mediaDevices?.getUserMedia) {
-          throw new Error("API microphone non disponible.");
-        }
-
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-        console.log("[WorkflowVoiceSession] Starting voice session:", {
-          step: payload.step,
-          model: payload.session.model,
-          voice: payload.session.voice,
-        });
-
-        await connect({ token, localStream: stream });
-        setStatus("connected");
-        setIsListening(true);
-      } catch (error) {
-        if (stream) {
-          stream.getTracks().forEach((track) => {
-            try {
-              track.stop();
-            } catch {
-              /* noop */
-            }
-          });
-        }
-        disconnect();
-        setIsListening(false);
-        setStatus("error");
-        if (error instanceof Error && error.message) {
-          onError?.(error.message);
-        }
-        console.error("[WorkflowVoiceSession] Failed to start voice session:", error);
-      }
     },
-    [connect, disconnect, onError, token],
+    [logVoice, resampler, sendAudioChunk, threadId],
   );
 
   const stopVoiceSession = useCallback(async () => {
-    // Finaliser la session vocale (déclencher la continuation du workflow)
-    if (threadId && token) {
-      try {
-        const path = `/api/chatkit/voice/finalize/${threadId}`;
-        const backendUrl = import.meta.env.VITE_BACKEND_URL ?? "";
-        const endpoints = makeApiEndpointCandidates(backendUrl, path);
-
-        let finalized = false;
-        for (const endpoint of endpoints) {
-          const isRelative = endpoint.startsWith("/");
-          try {
-            const response = await fetch(endpoint, {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ transcripts: [] }), // Les transcriptions ont déjà été envoyées
-            });
-
-            if (response.ok) {
-              console.log("[WorkflowVoiceSession] Voice session finalized successfully");
-              finalized = true;
-              break;
-            }
-
-            if (response.status === 404 && isRelative && endpoints.length > 1) {
-              continue;
-            }
-
-            if (response.status === 404) {
-              console.info("[WorkflowVoiceSession] No pending voice session to finalize");
-              finalized = true;
-              break;
-            }
-
-            console.warn(`[WorkflowVoiceSession] Failed to finalize voice session: ${response.status}`);
-            break;
-          } catch (error) {
-            console.error("[WorkflowVoiceSession] Error finalizing voice session:", error);
-            if (!isRelative || endpoints.length === 1) {
-              break;
-            }
-          }
-        }
-
-        if (!finalized) {
-          console.warn("[WorkflowVoiceSession] Voice session could not be finalized");
-        }
-      } catch (error) {
-        console.error("[WorkflowVoiceSession] Failed to finalize voice session:", error);
-        if (error instanceof Error && error.message) {
-          onError?.(error.message);
-        }
-      }
-    }
-
-    disconnect();
-    setIsListening(false);
-    setStatus("idle");
-    currentSessionRef.current = null;
-    conversationHistoryRef.current = [];
-    setTranscripts([]);
-    submittedTranscriptSignaturesRef.current.clear();
-    hasSubmittedUserRef.current = false;
-    queuedSendRef.current = false;
-    uploadInFlightRef.current = false;
-  }, [disconnect, threadId, token, onError]);
-
-  // Poll for pending voice sessions
-  useEffect(() => {
-    if (!threadId || !token) {
+    const sessionId = currentSessionRef.current;
+    if (!sessionId) {
       return;
     }
 
-    const pollForVoiceSession = async () => {
-      try {
-        const response = await fetch(`/api/chatkit/voice/pending/${threadId}`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+    const tail = resampler.flush();
+    if (tail.length > 0) {
+      sendAudioChunk(sessionId, tail, { commit: true });
+    } else {
+      sendAudioChunk(sessionId, new Int16Array(), { commit: true });
+    }
 
-        if (response.ok) {
-          const event = (await response.json()) as VoiceSessionEventPayload;
+    if (threadId) {
+      finalizeSession(sessionId, threadId);
+    } else {
+      finalizeSession(sessionId);
+    }
 
-          // Stop polling BEFORE starting session to prevent race condition
-          if (pollingIntervalRef.current !== null) {
-            clearInterval(pollingIntervalRef.current);
-            pollingIntervalRef.current = null;
+    cleanupCapture();
+    setIsListening(false);
+    setStatus("idle");
+    currentSessionRef.current = null;
+  }, [cleanupCapture, finalizeSession, resampler, sendAudioChunk, threadId]);
+
+  useEffect(() => {
+    if (!token) {
+      disconnectRealtime();
+      cleanupCapture();
+      setStatus("idle");
+      setIsListening(false);
+      currentSessionRef.current = null;
+      processedSessionsRef.current.clear();
+      return;
+    }
+
+    let cancelled = false;
+    connectRealtime({ token })
+      .catch((error) => {
+        if (!cancelled) {
+          setStatus("error");
+          if (error instanceof Error) {
+            onError?.(error.message);
+          } else {
+            onError?.("Connexion au service vocal impossible");
           }
-
-          console.log("[WorkflowVoiceSession] Pending voice session detected:", event);
-          await startVoiceSession(event);
-        } else if (response.status !== 404) {
-          // Log errors other than "not found"
-          console.warn(
-            "[WorkflowVoiceSession] Error polling for voice session:",
-            response.status,
-          );
         }
-      } catch (error) {
-        console.error("[WorkflowVoiceSession] Error polling for voice session:", error);
-      }
-    };
-
-    // Poll immediately
-    void pollForVoiceSession();
-
-    // Then poll periodically
-    pollingIntervalRef.current = window.setInterval(() => {
-      void pollForVoiceSession();
-    }, POLL_INTERVAL_MS);
+      });
 
     return () => {
-      if (pollingIntervalRef.current !== null) {
-        clearInterval(pollingIntervalRef.current);
-        pollingIntervalRef.current = null;
-      }
+      cancelled = true;
+      disconnectRealtime();
+      cleanupCapture();
     };
-  }, [threadId, token, startVoiceSession]);
+  }, [cleanupCapture, connectRealtime, disconnectRealtime, onError, token]);
 
-  // Nettoyer à la fin
-  useEffect(
-    () => () => {
-      disconnect();
-    },
-    [disconnect],
-  );
+  useEffect(() => () => {
+    cleanupCapture();
+    disconnectRealtime();
+  }, [cleanupCapture, disconnectRealtime]);
 
   return {
     stopVoiceSession,
     status,
     isListening,
     transcripts,
+    interruptSession,
   };
 };
 
-export type { UseWorkflowVoiceSessionParams, VoiceSessionStatus, TranscriptEntry };
+export type { UseWorkflowVoiceSessionParams };

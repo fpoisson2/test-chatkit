@@ -169,9 +169,15 @@ def _build_agent_context() -> AgentContext[ChatKitRequestContext]:
 async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> None:
     captured_args: dict[str, Any] = {}
 
-    async def _fake_create_session(**kwargs: Any) -> dict[str, Any]:
+    async def _fake_open_session(**kwargs: Any) -> Any:
         captured_args.update(kwargs)
-        return {"client_secret": {"value": "secret-123"}, "expires_at": "2099-01-01"}
+        return SimpleNamespace(
+            payload={
+                "client_secret": {"value": "secret-123"},
+                "expires_at": "2099-01-01",
+            },
+            session_id="session-123",
+        )
 
     events: list[ThreadStreamEvent] = []
 
@@ -180,8 +186,8 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
 
     monkeypatch.setattr(
         executor_module,
-        "create_realtime_voice_session",
-        _fake_create_session,
+        "open_voice_session",
+        _fake_open_session,
     )
     monkeypatch.setattr(executor_module, "get_settings", lambda: _FakeSettings())
 
@@ -206,6 +212,17 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
     assert summary.end_state.slug == "voice"
     assert summary.end_state.status_type == "waiting"
 
+    expected_metadata = {
+        "step_slug": "voice",
+        "step_title": "Voice",
+        "thread_id": agent_context.thread.id,
+        "tool_permissions": {
+            "response": True,
+            "transcription": True,
+            "function_call": False,
+        },
+    }
+
     assert captured_args == {
         "user_id": "user-123",
         "model": "gpt-voice",
@@ -228,6 +245,8 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
                 "web_search": {"search_context_size": "small"},
             }
         ],
+        "handoffs": None,
+        "metadata": expected_metadata,
     }
 
     added_events = [
@@ -237,40 +256,51 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
     task_event = added_events[0]
     assert isinstance(task_event.item, TaskItem)
     payload = json.loads(task_event.item.task.content or "{}")
-    assert payload["type"] == "voice_session.created"
-    client_secret = payload["client_secret"]
+    assert payload["type"] == "realtime.event"
+    event_payload = payload["event"]
+    assert event_payload["type"] == "history"
+    client_secret = event_payload["client_secret"]
     assert "secret-123" in json.dumps(client_secret)
-    assert payload["session"]["voice"] == "ember"
-    assert payload["tool_permissions"] == {
+    assert event_payload["session"]["voice"] == "ember"
+    assert event_payload["tool_permissions"] == {
         "response": True,
         "transcription": True,
         "function_call": False,
     }
-    assert payload["session"].get("tools") == [
+    assert event_payload["session"].get("tools") == [
         {"type": "web_search", "web_search": {"search_context_size": "small"}}
     ]
-    assert payload["session"].get("tool_definitions") == payload["session"].get(
-        "tools"
-    )
-    assert payload["session"].get("tool_metadata") == [{"type": "web_search"}]
+    assert event_payload["session"].get(
+        "tool_definitions"
+    ) == event_payload["session"].get("tools")
+    assert event_payload["session"].get("tool_metadata") == [{"type": "web_search"}]
+    assert "session_id" in event_payload
+
+    assert payload["step"] == {"slug": "voice", "title": "Voice"}
 
     wait_state = agent_context.thread.metadata.get(_WAIT_STATE_METADATA_KEY)
     assert isinstance(wait_state, dict)
     assert wait_state.get("slug") == "voice"
     assert wait_state.get("type") == "voice"
 
+    wait_event = wait_state.get("voice_event")
+    assert wait_event == payload
+
 
 @pytest.mark.anyio
 async def test_voice_agent_processes_transcripts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def _fake_create_session(**_: Any) -> dict[str, Any]:
-        return {"client_secret": {"value": "secret"}, "expires_at": "2099"}
+    async def _fake_open_session(**_: Any) -> Any:
+        return SimpleNamespace(
+            payload={"client_secret": {"value": "secret"}, "expires_at": "2099"},
+            session_id="session-voice",
+        )
 
     monkeypatch.setattr(
         executor_module,
-        "create_realtime_voice_session",
-        _fake_create_session,
+        "open_voice_session",
+        _fake_open_session,
     )
     monkeypatch.setattr(executor_module, "get_settings", lambda: _FakeSettings())
 
@@ -306,14 +336,19 @@ async def test_voice_agent_processes_transcripts(
         events.append(event)
 
     # Replace create session with sentinel to ensure it is not invoked again
-    async def _fail_create_session(**kwargs: Any) -> dict[str, Any]:  # pragma: no cover
-        raise AssertionError("create_realtime_voice_session should not be called")
+    async def _fail_open_session(**kwargs: Any) -> Any:  # pragma: no cover
+        raise AssertionError("open_voice_session should not be called")
 
-    monkeypatch.setattr(
-        executor_module,
-        "create_realtime_voice_session",
-        _fail_create_session,
-    )
+    monkeypatch.setattr(executor_module, "open_voice_session", _fail_open_session)
+
+    closed: list[dict[str, Any]] = []
+
+    async def _close_session(**kwargs: Any) -> bool:
+        closed.append(kwargs)
+        return True
+
+    monkeypatch.setattr(executor_module, "close_voice_session", _close_session)
+    assert executor_module.close_voice_session is _close_session
 
     resume_input = WorkflowInput(
         input_as_text="",
@@ -331,6 +366,8 @@ async def test_voice_agent_processes_transcripts(
 
     assert summary.final_node_slug == "end"
     assert agent_context.thread.metadata.get(_WAIT_STATE_METADATA_KEY) is None
+
+    assert closed and closed[0] == {"session_id": "session-voice"}
 
     user_events = [
         event

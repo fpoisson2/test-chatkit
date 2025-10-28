@@ -13,7 +13,7 @@ vi.mock("../useVoiceSession", () => ({
     isListening: false,
     transcripts: [],
     errors: [],
-    webrtcError: null,
+    transportError: null,
     startSession: startSessionMock,
     stopSession: stopSessionMock,
     clearErrors: clearErrorsMock,

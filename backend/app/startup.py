@@ -20,7 +20,6 @@ from .admin_settings import (
     get_thread_title_prompt_override,
 )
 from .chatkit import get_chatkit_server
-from .chatkit_realtime import create_realtime_voice_session
 from .chatkit_server.context import (
     ChatKitRequestContext,
     _set_wait_state_metadata,
@@ -46,6 +45,7 @@ from .models import (
     VoiceSettings,
     Workflow,
 )
+from .realtime_runner import open_voice_session
 from .security import hash_password
 from .telephony.invite_handler import (
     InviteHandlingError,
@@ -470,14 +470,20 @@ def _build_invite_handler(manager: SIPRegistrationManager):
 
         client_secret = metadata.get("client_secret")
         if client_secret is None:
-            secret_payload = await create_realtime_voice_session(
+            metadata_extras: dict[str, Any] = {}
+            thread_identifier = metadata.get("thread_id")
+            if isinstance(thread_identifier, str) and thread_identifier.strip():
+                metadata_extras["thread_id"] = thread_identifier.strip()
+            session_handle = await open_voice_session(
                 user_id=f"sip:{session.call_id}",
                 model=voice_model,
                 instructions=instructions,
                 voice=voice_name,
                 provider_id=voice_provider_id,
                 provider_slug=voice_provider_slug,
+                metadata=metadata_extras or None,
             )
+            secret_payload = session_handle.payload
             parsed_secret = session_secret_parser.parse(secret_payload)
             client_secret = parsed_secret.as_text()
             if not client_secret:
@@ -490,31 +496,36 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             metadata["client_secret_expires_at"] = (
                 parsed_secret.expires_at_isoformat()
             )
+            metadata["realtime_session_id"] = session_handle.session_id
 
         # Créer un wait_state pour que le frontend puisse détecter la session vocale
         if store is not None and thread_id:
             try:
                 thread = await store.load_thread(thread_id, chatkit_context)
 
-                # Créer l'événement voice_session.created
+                # Créer l'événement realtime.event aligné avec les workflows
                 voice_event = {
-                    "type": "voice_session.created",
+                    "type": "realtime.event",
                     "step": {
                         "slug": "sip-voice-session",
-                        "title": "Appel SIP"
+                        "title": "Appel SIP",
                     },
-                    "client_secret": client_secret,
-                    "session": {
-                        "model": voice_model,
-                        "voice": voice_name or "alloy",
-                        "instructions": instructions,
-                        "realtime": {
-                            "start_mode": "auto",
-                            "stop_mode": "manual",
-                            "tools": {}
-                        }
+                    "event": {
+                        "type": "history",
+                        "session_id": metadata.get("realtime_session_id"),
+                        "client_secret": client_secret,
+                        "tool_permissions": {},
+                        "session": {
+                            "model": voice_model,
+                            "voice": voice_name or "alloy",
+                            "instructions": instructions,
+                            "realtime": {
+                                "start_mode": "auto",
+                                "stop_mode": "manual",
+                                "tools": {},
+                            },
+                        },
                     },
-                    "tool_permissions": {}
                 }
 
                 # Créer le wait_state

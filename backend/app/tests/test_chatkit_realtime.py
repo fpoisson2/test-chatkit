@@ -18,7 +18,7 @@ ROOT_DIR = Path(__file__).resolve().parents[3]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-chatkit_realtime = import_module("backend.app.chatkit_realtime")
+realtime_runner = import_module("backend.app.realtime_runner")
 config_module = import_module("backend.app.config")
 ModelProviderConfig = config_module.ModelProviderConfig
 
@@ -78,26 +78,88 @@ class _FakeSettings:
     openai_api_key = "openai-key"
 
 
-def test_create_realtime_voice_session_prefers_openai_slug(
+def _reset_orchestrator(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        realtime_runner,
+        "_ORCHESTRATOR",
+        realtime_runner.RealtimeVoiceSessionOrchestrator(),
+    )
+
+
+def test_open_voice_session_passes_metadata_to_gateway(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_orchestrator(monkeypatch)
+
+    async def _fake_request_client_secret(self, **kwargs: object) -> dict[str, object]:
+        return {"client_secret": {"value": "secret"}}
+
+    monkeypatch.setattr(
+        realtime_runner.RealtimeVoiceSessionOrchestrator,
+        "_request_client_secret",
+        _fake_request_client_secret,
+    )
+
+    gateway_module = import_module("backend.app.realtime_gateway")
+
+    class _StubGateway:
+        def __init__(self) -> None:
+            self.handles: list[realtime_runner.VoiceSessionHandle] = []
+
+        async def register_session(
+            self, handle: realtime_runner.VoiceSessionHandle
+        ) -> None:
+            self.handles.append(handle)
+
+    stub_gateway = _StubGateway()
+
+    monkeypatch.setattr(
+        gateway_module,
+        "get_realtime_gateway",
+        lambda: stub_gateway,
+    )
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-meta",
+            model="gpt-realtime",
+            instructions="Salut",
+            metadata={
+                "thread_id": "thr-test",
+                "step_slug": "voice",
+                "step_title": "Voice",
+            },
+        )
+    )
+
+    assert stub_gateway.handles, "register_session should be invoked"
+    registered = stub_gateway.handles[0]
+    assert registered.metadata.get("thread_id") == "thr-test"
+    assert registered.metadata.get("step_slug") == "voice"
+    assert handle.metadata.get("thread_id") == "thr-test"
+
+
+def test_open_voice_session_prefers_openai_slug(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(chatkit_realtime, "get_settings", lambda: _FakeSettings())
+    _reset_orchestrator(monkeypatch)
+    monkeypatch.setattr(realtime_runner, "get_settings", lambda: _FakeSettings())
     monkeypatch.setattr(
-        chatkit_realtime,
+        realtime_runner,
         "resolve_model_provider_credentials",
         lambda provider_id: None,
     )
     monkeypatch.setattr(
-        chatkit_realtime.httpx,
+        realtime_runner.httpx,
         "AsyncClient",
         lambda **kwargs: _DummyAsyncClient(captured=captured, **kwargs),
     )
 
-    response = asyncio.run(
-        chatkit_realtime.create_realtime_voice_session(
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
             user_id="user-1",
             model="gpt-realtime",
             instructions="Bonjour",
@@ -106,7 +168,8 @@ def test_create_realtime_voice_session_prefers_openai_slug(
         )
     )
 
-    assert response == {"client_secret": {"value": "secret"}}
+    assert handle.payload == {"client_secret": {"value": "secret"}}
+    assert isinstance(handle.session_id, str) and handle.session_id
     requests = captured.get("requests")
     assert isinstance(requests, list)
     assert len(requests) == 1
@@ -129,9 +192,10 @@ def test_openai_slug_ignores_mismatched_provider_id(
     monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(chatkit_realtime, "get_settings", lambda: _FakeSettings())
+    _reset_orchestrator(monkeypatch)
+    monkeypatch.setattr(realtime_runner, "get_settings", lambda: _FakeSettings())
     monkeypatch.setattr(
-        chatkit_realtime,
+        realtime_runner,
         "resolve_model_provider_credentials",
         lambda provider_id: SimpleNamespace(
             id=provider_id,
@@ -141,13 +205,13 @@ def test_openai_slug_ignores_mismatched_provider_id(
         ),
     )
     monkeypatch.setattr(
-        chatkit_realtime.httpx,
+        realtime_runner.httpx,
         "AsyncClient",
         lambda **kwargs: _DummyAsyncClient(captured=captured, **kwargs),
     )
 
-    response = asyncio.run(
-        chatkit_realtime.create_realtime_voice_session(
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
             user_id="user-1",
             model="gpt-realtime",
             instructions="Bonjour",
@@ -156,7 +220,7 @@ def test_openai_slug_ignores_mismatched_provider_id(
         )
     )
 
-    assert response == {"client_secret": {"value": "secret"}}
+    assert handle.payload == {"client_secret": {"value": "secret"}}
     requests = captured.get("requests")
     assert isinstance(requests, list)
     assert len(requests) == 1
@@ -171,9 +235,10 @@ def test_voice_parameter_fallback_to_session(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(chatkit_realtime, "get_settings", lambda: _FakeSettings())
+    _reset_orchestrator(monkeypatch)
+    monkeypatch.setattr(realtime_runner, "get_settings", lambda: _FakeSettings())
     monkeypatch.setattr(
-        chatkit_realtime,
+        realtime_runner,
         "resolve_model_provider_credentials",
         lambda provider_id: None,
     )
@@ -196,15 +261,15 @@ def test_voice_parameter_fallback_to_session(monkeypatch: pytest.MonkeyPatch) ->
         return _DummyResponse({"client_secret": {"value": "secret"}})
 
     monkeypatch.setattr(
-        chatkit_realtime.httpx,
+        realtime_runner.httpx,
         "AsyncClient",
         lambda **kwargs: _DummyAsyncClient(
             captured=captured, response_factory=_response_factory, **kwargs
         ),
     )
 
-    response = asyncio.run(
-        chatkit_realtime.create_realtime_voice_session(
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
             user_id="user-voice",
             model="gpt-realtime",
             instructions="Bonjour",
@@ -213,7 +278,7 @@ def test_voice_parameter_fallback_to_session(monkeypatch: pytest.MonkeyPatch) ->
         )
     )
 
-    assert response == {"client_secret": {"value": "secret"}}
+    assert handle.payload == {"client_secret": {"value": "secret"}}
     requests = captured.get("requests")
     assert isinstance(requests, list)
     assert len(requests) == 2
@@ -243,20 +308,21 @@ def test_realtime_parameter_top_level_default(
     monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(chatkit_realtime, "get_settings", lambda: _FakeSettings())
+    _reset_orchestrator(monkeypatch)
+    monkeypatch.setattr(realtime_runner, "get_settings", lambda: _FakeSettings())
     monkeypatch.setattr(
-        chatkit_realtime,
+        realtime_runner,
         "resolve_model_provider_credentials",
         lambda provider_id: None,
     )
     monkeypatch.setattr(
-        chatkit_realtime.httpx,
+        realtime_runner.httpx,
         "AsyncClient",
         lambda **kwargs: _DummyAsyncClient(captured=captured, **kwargs),
     )
 
-    response = asyncio.run(
-        chatkit_realtime.create_realtime_voice_session(
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
             user_id="user-realtime",
             model="gpt-realtime",
             instructions="Bonjour",
@@ -265,7 +331,7 @@ def test_realtime_parameter_top_level_default(
         )
     )
 
-    assert response == {"client_secret": {"value": "secret"}}
+    assert handle.payload == {"client_secret": {"value": "secret"}}
     requests = captured.get("requests")
     assert isinstance(requests, list)
     assert len(requests) == 1
@@ -284,9 +350,10 @@ def test_realtime_parameter_fallback_to_session(
     monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(chatkit_realtime, "get_settings", lambda: _FakeSettings())
+    _reset_orchestrator(monkeypatch)
+    monkeypatch.setattr(realtime_runner, "get_settings", lambda: _FakeSettings())
     monkeypatch.setattr(
-        chatkit_realtime,
+        realtime_runner,
         "resolve_model_provider_credentials",
         lambda provider_id: None,
     )
@@ -309,15 +376,15 @@ def test_realtime_parameter_fallback_to_session(
         return _DummyResponse({"client_secret": {"value": "secret"}})
 
     monkeypatch.setattr(
-        chatkit_realtime.httpx,
+        realtime_runner.httpx,
         "AsyncClient",
         lambda **kwargs: _DummyAsyncClient(
             captured=captured, response_factory=_response_factory, **kwargs
         ),
     )
 
-    response = asyncio.run(
-        chatkit_realtime.create_realtime_voice_session(
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
             user_id="user-realtime",
             model="gpt-realtime",
             instructions="Bonjour",
@@ -326,7 +393,7 @@ def test_realtime_parameter_fallback_to_session(
         )
     )
 
-    assert response == {"client_secret": {"value": "secret"}}
+    assert handle.payload == {"client_secret": {"value": "secret"}}
     requests = captured.get("requests")
     assert isinstance(requests, list)
     assert len(requests) == 2
@@ -352,9 +419,10 @@ def test_realtime_parameter_fallback_to_none(
     monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(chatkit_realtime, "get_settings", lambda: _FakeSettings())
+    _reset_orchestrator(monkeypatch)
+    monkeypatch.setattr(realtime_runner, "get_settings", lambda: _FakeSettings())
     monkeypatch.setattr(
-        chatkit_realtime,
+        realtime_runner,
         "resolve_model_provider_credentials",
         lambda provider_id: None,
     )
@@ -389,15 +457,15 @@ def test_realtime_parameter_fallback_to_none(
         return _DummyResponse({"client_secret": {"value": "secret"}})
 
     monkeypatch.setattr(
-        chatkit_realtime.httpx,
+        realtime_runner.httpx,
         "AsyncClient",
         lambda **kwargs: _DummyAsyncClient(
             captured=captured, response_factory=_response_factory, **kwargs
         ),
     )
 
-    response = asyncio.run(
-        chatkit_realtime.create_realtime_voice_session(
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
             user_id="user-realtime",
             model="gpt-realtime",
             instructions="Bonjour",
@@ -406,7 +474,7 @@ def test_realtime_parameter_fallback_to_none(
         )
     )
 
-    assert response == {"client_secret": {"value": "secret"}}
+    assert handle.payload == {"client_secret": {"value": "secret"}}
     requests = captured.get("requests")
     assert isinstance(requests, list)
     assert len(requests) == 3
