@@ -22,6 +22,7 @@ os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 from app import tool_factory as tool_factory_module  # noqa: E402
 from app.chatkit import agent_registry  # noqa: E402
 from app.mcp import connection as mcp_connection  # noqa: E402
+from app.mcp import oauth as oauth_module  # noqa: E402
 
 FASTAPI_AVAILABLE = importlib.util.find_spec("fastapi") is not None
 if FASTAPI_AVAILABLE:  # pragma: no branch - dépendances optionnelles
@@ -183,6 +184,13 @@ def test_coerce_agent_tools_propagates_errors(monkeypatch: pytest.MonkeyPatch) -
                 }
             ]
         )
+
+
+@pytest.fixture(autouse=True)
+def _reset_oauth_sessions() -> None:
+    oauth_module._sessions.clear()
+    yield
+    oauth_module._sessions.clear()
 
 
 class _StubMcpServer(agent_registry.MCPServer):
@@ -385,3 +393,145 @@ def test_post_mcp_test_connection_handles_validation_error(
 
     assert response.status_code == 400
     assert response.json()["detail"] == "config invalid"
+
+
+class _MockResponse:
+    def __init__(self, payload: dict[str, Any], status_code: int = 200) -> None:
+        self._payload = payload
+        self.status_code = status_code
+
+    def json(self) -> dict[str, Any]:
+        return self._payload
+
+    def raise_for_status(self) -> None:
+        if self.status_code >= 400:
+            raise httpx.HTTPError("request failed")
+
+
+class _MockAsyncClient:
+    def __init__(self, *, discovery: dict[str, Any], token: dict[str, Any]) -> None:
+        self._discovery = discovery
+        self._token = token
+        self._calls: list[tuple[str, dict[str, Any] | None]] = []
+
+    async def __aenter__(self) -> _MockAsyncClient:
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:  # type: ignore[override]
+        return None
+
+    async def get(self, url: str) -> _MockResponse:
+        self._calls.append(("GET", {"url": url}))
+        return _MockResponse(self._discovery)
+
+    async def post(self, url: str, data: dict[str, Any]) -> _MockResponse:
+        payload = {"url": url, "data": data}
+        self._calls.append(("POST", payload))
+        return _MockResponse(self._token)
+
+
+@pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="fastapi non disponible")
+def test_mcp_oauth_flow_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert FastAPI is not None and TestClient is not None and tools_routes is not None
+
+    app = FastAPI()
+    app.include_router(tools_routes.router)
+
+    discovery = {
+        "authorization_endpoint": "https://auth.example/authorize",
+        "token_endpoint": "https://auth.example/token",
+    }
+    token_payload = {"access_token": "abc", "token_type": "Bearer"}
+
+    client_stub = _MockAsyncClient(discovery=discovery, token=token_payload)
+    monkeypatch.setattr(
+        tools_routes.httpx, "AsyncClient", lambda *args, **kwargs: client_stub
+    )
+
+    test_client = TestClient(app)
+    start_response = test_client.post(
+        "/api/tools/mcp/oauth/start",
+        json={
+            "url": "https://auth.example",
+            "client_id": "client-1",
+            "scope": "profile",
+        },
+    )
+
+    assert start_response.status_code == 200
+    start_payload = start_response.json()
+    state = start_payload["state"]
+    assert start_payload["authorization_url"].startswith("https://auth.example/authorize")
+    assert start_payload["redirect_uri"] == "http://testserver/api/tools/mcp/oauth/callback"
+
+    callback_response = test_client.get(
+        "/api/tools/mcp/oauth/callback",
+        params={"state": state, "code": "auth-code"},
+    )
+
+    assert callback_response.status_code == 200
+    assert "Authentification terminée" in callback_response.text
+
+    status_response = test_client.get(f"/api/tools/mcp/oauth/session/{state}")
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["status"] == "ok"
+    assert status_payload["token"] == token_payload
+
+
+@pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="fastapi non disponible")
+def test_mcp_oauth_flow_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert FastAPI is not None and TestClient is not None and tools_routes is not None
+
+    app = FastAPI()
+    app.include_router(tools_routes.router)
+
+    discovery = {
+        "authorization_endpoint": "https://auth.example/authorize",
+        "token_endpoint": "https://auth.example/token",
+    }
+    token_payload = {"access_token": "abc", "token_type": "Bearer"}
+
+    client_stub = _MockAsyncClient(discovery=discovery, token=token_payload)
+    monkeypatch.setattr(
+        tools_routes.httpx, "AsyncClient", lambda *args, **kwargs: client_stub
+    )
+
+    test_client = TestClient(app)
+    start_response = test_client.post(
+        "/api/tools/mcp/oauth/start",
+        json={"url": "https://auth.example"},
+    )
+
+    state = start_response.json()["state"]
+
+    callback_response = test_client.get(
+        "/api/tools/mcp/oauth/callback",
+        params={
+            "state": state,
+            "error": "access_denied",
+            "error_description": "Utilisateur refusé",
+        },
+    )
+
+    assert callback_response.status_code == 200
+    assert "Échec de l'authentification" in callback_response.text
+
+    status_response = test_client.get(f"/api/tools/mcp/oauth/session/{state}")
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["status"] == "error"
+    assert status_payload["error"] == "Utilisateur refusé"
+
+
+@pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="fastapi non disponible")
+def test_mcp_oauth_unknown_session() -> None:
+    assert FastAPI is not None and TestClient is not None and tools_routes is not None
+
+    app = FastAPI()
+    app.include_router(tools_routes.router)
+
+    test_client = TestClient(app)
+
+    response = test_client.get("/api/tools/mcp/oauth/session/does-not-exist")
+    assert response.status_code == 404
