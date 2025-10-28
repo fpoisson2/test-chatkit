@@ -86,8 +86,9 @@ const decodePcm16 = (payload: string): Int16Array => {
   return new Int16Array(bytes.buffer);
 };
 
-const logRealtime = (...args: unknown[]) => {
-  console.info("[VoiceRealtime]", ...args);
+const logRealtime = (message: string, payload?: Record<string, unknown>) => {
+  const safePayload = payload ? maskSensitiveFields(payload) : undefined;
+  console.info("[VoiceRealtime]", message, safePayload ?? "");
 };
 
 type ConnectionRecord = {
@@ -603,4 +604,35 @@ export type {
   SendAudioOptions,
   SessionCreatedEvent,
   SessionFinalizedEvent,
+};
+const maskToken = (value: string): string => {
+  if (value.length <= 12) {
+    return value;
+  }
+  return `${value.slice(0, 6)}…${value.slice(-6)}`;
+};
+
+const maskUrlToken = (url: string) => {
+  try {
+    const parsed = new URL(url);
+    if (parsed.searchParams.has("token")) {
+      parsed.searchParams.set("token", maskToken(parsed.searchParams.get("token") ?? ""));
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+};
+
+const maskSensitiveFields = (payload: Record<string, unknown>) => {
+  const entries = Object.entries(payload).map(([key, value]) => {
+    if (typeof value === "string" && key.toLowerCase().includes("token")) {
+      return [key, maskToken(value)];
+    }
+    if (typeof value === "string" && value.startsWith("ws")) {
+      return [key, maskUrlToken(value)];
+    }
+    return [key, value];
+  });
+  return Object.fromEntries(entries);
 };
