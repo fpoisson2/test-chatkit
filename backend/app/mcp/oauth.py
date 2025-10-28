@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import secrets
 import time
 from dataclasses import dataclass
@@ -38,6 +39,8 @@ class OAuthSession:
 
 _sessions: dict[str, OAuthSession] = {}
 _sessions_lock = Lock()
+
+logger = logging.getLogger("chatkit.mcp.oauth")
 
 
 def _generate_state() -> str:
@@ -124,6 +127,13 @@ async def start_oauth_flow(
 
     discovery_url = urljoin(str(base_url), "/.well-known/oauth-authorization-server")
 
+    logger.info(
+        "Starting OAuth flow base_url=%s client_id_present=%s scope_present=%s",
+        base_url,
+        bool(client_id),
+        bool(scope),
+    )
+
     close_client = False
     if http_client is None:
         http_client = httpx.AsyncClient()
@@ -188,6 +198,14 @@ async def start_oauth_flow(
     )
     _store_session(session)
 
+    logger.debug(
+        "Stored OAuth session state=%s token_endpoint=%s client_id=%s scope=%s",
+        state,
+        token_endpoint,
+        client_id,
+        scope,
+    )
+
     return {
         "authorization_url": authorization_url,
         "state": state,
@@ -210,6 +228,14 @@ async def complete_oauth_callback(
     session = _get_session(state)
     if session is None:
         raise ValueError("Session OAuth inconnue ou expirée.")
+
+    logger.info(
+        "Completing OAuth callback state=%s has_code=%s has_error=%s client_id=%s",
+        state,
+        bool(code),
+        bool(error),
+        session.client_id,
+    )
 
     if error:
         message = error_description or error
@@ -238,6 +264,12 @@ async def complete_oauth_callback(
         close_client = True
 
     try:
+        logger.debug(
+            "Exchanging authorization code state=%s token_endpoint=%s payload_keys=%s",
+            state,
+            session.token_endpoint,
+            sorted(data.keys()),
+        )
         response = await http_client.post(session.token_endpoint, data=data)
         response.raise_for_status()
         token_payload = response.json()

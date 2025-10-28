@@ -114,6 +114,13 @@ async def post_mcp_oauth_start(
     request: Request,
 ) -> dict[str, object]:
     redirect_uri = str(request.url_for("get_mcp_oauth_callback"))
+    logger.info(
+        "Received MCP OAuth start url=%s client_id=%s scope=%s redirect_uri=%s",
+        payload.url,
+        payload.client_id,
+        payload.scope,
+        redirect_uri,
+    )
     try:
         async with httpx.AsyncClient() as client:
             return await start_oauth_flow(
@@ -175,6 +182,12 @@ async def get_mcp_oauth_callback(
         description="Description optionnelle de l'erreur OAuth",
     ),
 ) -> HTMLResponse:
+    logger.info(
+        "Handling MCP OAuth callback state=%s has_code=%s has_error=%s",
+        state,
+        bool(code),
+        bool(error),
+    )
     try:
         async with httpx.AsyncClient() as client:
             result = await complete_oauth_callback(
@@ -191,8 +204,14 @@ async def get_mcp_oauth_callback(
         ) from exc
 
     if result["status"] == "ok":
+        logger.info("MCP OAuth session state=%s completed successfully", state)
         message = "Authentification terminée. Vous pouvez fermer cette fenêtre."
     else:
+        logger.warning(
+            "MCP OAuth session state=%s failed error=%s",
+            state,
+            result.get("error"),
+        )
         message = "Échec de l'authentification. Vous pouvez fermer cette fenêtre."
 
     html = f"""
