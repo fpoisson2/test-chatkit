@@ -34,6 +34,15 @@ export const useWorkflowChatSession = ({
       if (import.meta.env.DEV) {
         console.log('[WorkflowChat] requestRefresh appelé', { context });
       }
+      // Force a full thread reload by re-setting the thread ID
+      // This ensures new items added directly to the store are visible
+      const currentThread = control.threadId;
+      if (currentThread && context?.includes('[Voice]')) {
+        if (import.meta.env.DEV) {
+          console.log('[WorkflowChat] Forçant rechargement du thread pour transcriptions vocales', { threadId: currentThread });
+        }
+        control.setThreadId(currentThread);
+      }
       return fetchUpdates()
         .then((result) => {
           if (import.meta.env.DEV) {
@@ -47,7 +56,7 @@ export const useWorkflowChatSession = ({
           }
         });
     },
-    [fetchUpdates],
+    [control, fetchUpdates],
   );
 
   const workflowSync = useChatkitWorkflowSync({
@@ -58,6 +67,7 @@ export const useWorkflowChatSession = ({
     initialThreadId,
     reportError,
     enabled: mode !== "hosted",
+    control,
   });
 
   const requestRefresh = mode === "hosted" ? hostedRequestRefresh : workflowSync.requestRefresh;
