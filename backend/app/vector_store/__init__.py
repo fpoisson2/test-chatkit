@@ -9,11 +9,17 @@ from .constants import (
     WORKFLOW_VECTOR_STORE_SLUG,
     WORKFLOW_VECTOR_STORE_TITLE,
 )
-from .service import JsonVectorStoreService, SearchResult, linearize_json
+from .service import (
+    DocumentSearchResult,
+    JsonVectorStoreService,
+    SearchResult,
+    linearize_json,
+)
 
 __all__ = [
     "JsonVectorStoreService",
     "SearchResult",
+    "DocumentSearchResult",
     "linearize_json",
     "WORKFLOW_VECTOR_STORE_SLUG",
     "WORKFLOW_VECTOR_STORE_TITLE",
