@@ -422,39 +422,6 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             <div className="chatkit-sidebar__topline">
               <div className="chatkit-sidebar__brand">
                 <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
-                {availableApplications.length > 0 ? (
-                  <div className="chatkit-sidebar__brand-switcher">
-                    <span id={appSwitcherLabelId} className="visually-hidden">
-                      {t("app.sidebar.switcherLabel")}
-                    </span>
-                    <nav
-                      className="chatkit-sidebar__app-switcher"
-                      aria-labelledby={appSwitcherLabelId}
-                    >
-                      {availableApplications.map((application) => {
-                        const isActive = activeApplication === application.key;
-
-                        return (
-                          <button
-                            key={application.key}
-                            type="button"
-                            className={`chatkit-sidebar__app-switcher-button${
-                              isActive ? " chatkit-sidebar__app-switcher-button--active" : ""
-                            }`}
-                            onClick={() => handleApplicationNavigate(application)}
-                            tabIndex={sidebarTabIndex}
-                            aria-current={isActive ? "page" : undefined}
-                          >
-                            <span className="chatkit-sidebar__app-switcher-icon" aria-hidden="true">
-                              <SidebarIcon name={APPLICATION_ICONS[application.key]} />
-                            </span>
-                            <span className="chatkit-sidebar__app-switcher-label">{application.label}</span>
-                          </button>
-                        );
-                      })}
-                    </nav>
-                  </div>
-                ) : null}
               </div>
               <div className="chatkit-sidebar__actions">
                 {isSidebarOpen ? (
@@ -472,6 +439,42 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                 ) : null}
               </div>
             </div>
+            {availableApplications.length > 0 ? (
+              <div className="chatkit-sidebar__switcher">
+                <span id={appSwitcherLabelId} className="visually-hidden">
+                  {t("app.sidebar.switcherLabel")}
+                </span>
+                <nav
+                  className={`chatkit-sidebar__app-switcher${
+                    isSidebarCollapsed ? " chatkit-sidebar__app-switcher--compact" : ""
+                  }`}
+                  aria-labelledby={appSwitcherLabelId}
+                >
+                  {availableApplications.map((application) => {
+                    const isActive = activeApplication === application.key;
+
+                    return (
+                      <button
+                        key={application.key}
+                        type="button"
+                        className={`chatkit-sidebar__app-switcher-button${
+                          isActive ? " chatkit-sidebar__app-switcher-button--active" : ""
+                        }`}
+                        onClick={() => handleApplicationNavigate(application)}
+                        tabIndex={sidebarTabIndex}
+                        aria-current={isActive ? "page" : undefined}
+                        aria-label={application.label}
+                      >
+                        <span className="chatkit-sidebar__app-switcher-icon" aria-hidden="true">
+                          <SidebarIcon name={APPLICATION_ICONS[application.key]} />
+                        </span>
+                        <span className="chatkit-sidebar__app-switcher-label">{application.label}</span>
+                      </button>
+                    );
+                  })}
+                </nav>
+              </div>
+            ) : null}
           </header>
           {(sidebarContent || navigationItems.length > 0) && (
             <div className="chatkit-sidebar__main">
