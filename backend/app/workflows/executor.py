@@ -1098,7 +1098,7 @@ async def run_workflow(
         "threshold": 0.35,
         "prefix_padding_ms": 150,
         "silence_duration_ms": 220,
-        "idle_timeout_ms": 1200,
+        "idle_timeout_ms": 5000,
         "create_response": True,
         "interrupt_response": True,
     }
