@@ -451,11 +451,21 @@ class _RealtimeSessionState:
 
     async def _handle_event_side_effects(self, event: Any) -> None:
         if isinstance(event, RealtimeHistoryAdded):
+            logger.debug(
+                "RealtimeHistoryAdded reçu (session=%s, item_id=%s)",
+                self.handle.session_id,
+                getattr(event.item, "item_id", None) or getattr(event.item, "id", None),
+            )
             await self._upsert_chatkit_messages(
                 [event.item],
                 allow_create=True,
             )
         elif isinstance(event, RealtimeHistoryUpdated):
+            logger.debug(
+                "RealtimeHistoryUpdated reçu (session=%s, history_count=%d)",
+                self.handle.session_id,
+                len(event.history),
+            )
             await self._upsert_chatkit_messages(event.history, allow_create=True)
 
     async def _upsert_chatkit_messages(
