@@ -6,8 +6,9 @@ import json
 import logging
 import uuid
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from agents.realtime.events import (
@@ -23,8 +24,48 @@ from agents.realtime.events import (
     RealtimeToolEnd,
     RealtimeToolStart,
 )
+from agents.realtime.items import (
+    AssistantMessageItem as RealtimeAssistantMessageItem,
+)
+from agents.realtime.items import (
+    UserMessageItem as RealtimeUserMessageItem,
+)
+from agents.realtime.model_inputs import RealtimeModelSendRawMessage
+from chatkit.types import (
+    AssistantMessageContent,
+    InferenceOptions,
+    ThreadMetadata,
+    UserMessageTextContent,
+)
+from chatkit.types import (
+    AssistantMessageItem as ChatKitAssistantMessageItem,
+)
+from chatkit.types import (
+    ThreadItem as ChatKitThreadItem,
+)
+from chatkit.types import (
+    UserMessageItem as ChatKitUserMessageItem,
+)
 from fastapi import WebSocket, WebSocketDisconnect
+from openai.types.realtime.realtime_conversation_item_assistant_message import (
+    Content as AssistantContent,
+)
+from openai.types.realtime.realtime_conversation_item_assistant_message import (
+    RealtimeConversationItemAssistantMessage,
+)
+from openai.types.realtime.realtime_conversation_item_user_message import (
+    Content as UserContent,
+)
+from openai.types.realtime.realtime_conversation_item_user_message import (
+    RealtimeConversationItemUserMessage,
+)
 
+from .chatkit import get_chatkit_server
+from .chatkit_server.context import (
+    ChatKitRequestContext,
+    _get_wait_state_metadata,
+    _set_wait_state_metadata,
+)
 from .config import get_settings
 from .realtime_runner import VoiceSessionHandle, get_voice_session_handle
 from .request_context import build_chatkit_request_context
@@ -101,10 +142,19 @@ class _RealtimeSessionState:
         self._closed = False
         self._send_lock = asyncio.Lock()
         self._input_audio_log_skip = 0
+        self._chatkit_context: ChatKitRequestContext | None = None
+        self._chatkit_server = None
+        self._thread_metadata: ThreadMetadata | None = None
+        self._chatkit_item_by_realtime: dict[str, str] = {}
+        self._chatkit_item_created_at: dict[str, datetime] = {}
+        self._voice_messages_marked = False
+        self._history_primed = False
 
     async def ensure_session_started(self) -> None:
         if self._session is not None:
             return
+
+        primed = False
 
         async with self._lock:
             if self._session is not None:
@@ -148,12 +198,29 @@ class _RealtimeSessionState:
             await session.__aenter__()
             self._session = session
             self._session_task = asyncio.create_task(self._pump_events())
+            primed = True
+
+        if primed:
+            try:
+                await self._prime_session_history()
+            except Exception:  # pragma: no cover - priming should not fail session
+                logger.exception(
+                    "Échec de l'initialisation de l'historique ChatKit (session=%s)",
+                    self.handle.session_id,
+                )
 
     async def _pump_events(self) -> None:
         assert self._session is not None
         session = self._session
         try:
             async for event in session:
+                try:
+                    await self._handle_event_side_effects(event)
+                except Exception:  # pragma: no cover - robustesse best effort
+                    logger.exception(
+                        "Erreur lors de la persistance de l'évènement Realtime",
+                        exc_info=True,
+                    )
                 payload = self._serialize_event(event)
                 if payload is None:
                     continue
@@ -237,6 +304,312 @@ class _RealtimeSessionState:
         if tools is not None:
             session_info["tools"] = tools
         return session_info
+
+    async def _ensure_chatkit_context(self) -> bool:
+        if (
+            self._chatkit_context is not None
+            and self._chatkit_server is not None
+            and self._thread_metadata is not None
+        ):
+            return True
+
+        thread_id = self.thread_id
+        owner_id = self.owner_user_id.strip()
+        if not thread_id or not owner_id:
+            return False
+
+        try:
+            server = get_chatkit_server()
+        except Exception:
+            logger.exception(
+                "Impossible de récupérer le serveur ChatKit (session=%s)",
+                self.handle.session_id,
+            )
+            return False
+
+        context = ChatKitRequestContext(user_id=owner_id, email=None)
+        try:
+            thread = await server.store.load_thread(thread_id, context)
+        except Exception:
+            logger.exception(
+                "Impossible de charger le thread %s pour la session %s",
+                thread_id,
+                self.handle.session_id,
+            )
+            return False
+
+        self._chatkit_server = server
+        self._chatkit_context = context
+        self._thread_metadata = thread
+        return True
+
+    async def _prime_session_history(self) -> None:
+        if self._history_primed or self._session is None:
+            return
+
+        if not await self._ensure_chatkit_context():
+            self._history_primed = True
+            return
+
+        assert self._chatkit_server is not None
+        assert self._chatkit_context is not None
+        assert self._thread_metadata is not None
+
+        thread_id = self._thread_metadata.id
+        try:
+            page = await self._chatkit_server.store.load_thread_items(
+                thread_id,
+                after=None,
+                limit=1000,
+                order="asc",
+                context=self._chatkit_context,
+            )
+        except Exception:
+            logger.exception(
+                "Impossible de charger l'historique ChatKit (thread=%s)",
+                thread_id,
+            )
+            self._history_primed = True
+            return
+
+        session = self._session
+        for item in getattr(page, "data", []):
+            conversation_item = self._convert_chatkit_item_to_conversation_item(item)
+            if conversation_item is None:
+                continue
+
+            if conversation_item.id:
+                chatkit_id = conversation_item.id
+                self._chatkit_item_by_realtime[chatkit_id] = chatkit_id
+                created_at = getattr(item, "created_at", None)
+                if isinstance(created_at, datetime):
+                    if created_at.tzinfo is None:
+                        created_at = created_at.replace(tzinfo=timezone.utc)
+                    self._chatkit_item_created_at[chatkit_id] = created_at
+                else:
+                    self._chatkit_item_created_at[chatkit_id] = datetime.now(
+                        timezone.utc
+                    )
+
+            message = RealtimeModelSendRawMessage(
+                message={
+                    "type": "conversation.item.create",
+                    "other_data": {
+                        "item": conversation_item.model_dump(exclude_none=True)
+                    },
+                }
+            )
+            await session.model.send_event(message)
+
+        self._history_primed = True
+
+    def _convert_chatkit_item_to_conversation_item(
+        self, item: ChatKitThreadItem
+    ) -> (
+        RealtimeConversationItemUserMessage
+        | RealtimeConversationItemAssistantMessage
+        | None
+    ):
+        if isinstance(item, ChatKitUserMessageItem):
+            contents: list[UserContent] = []
+            for content in item.content:
+                if isinstance(content, UserMessageTextContent):
+                    text = content.text.strip()
+                    if text:
+                        contents.append(UserContent(type="input_text", text=text))
+            if not contents:
+                return None
+            return RealtimeConversationItemUserMessage(
+                id=item.id,
+                type="message",
+                role="user",
+                status="completed",
+                content=contents,
+            )
+
+        if isinstance(item, ChatKitAssistantMessageItem):
+            contents: list[AssistantContent] = []
+            for content in item.content:
+                text = getattr(content, "text", "")
+                if isinstance(text, str):
+                    text_value = text.strip()
+                    if text_value:
+                        contents.append(
+                            AssistantContent(type="output_text", text=text_value)
+                        )
+            if not contents:
+                return None
+            return RealtimeConversationItemAssistantMessage(
+                id=item.id,
+                type="message",
+                role="assistant",
+                status="completed",
+                content=contents,
+            )
+
+        return None
+
+    async def _handle_event_side_effects(self, event: Any) -> None:
+        if isinstance(event, RealtimeHistoryAdded):
+            await self._upsert_chatkit_messages(
+                [event.item],
+                allow_create=True,
+            )
+        elif isinstance(event, RealtimeHistoryUpdated):
+            await self._upsert_chatkit_messages(event.history, allow_create=False)
+
+    async def _upsert_chatkit_messages(
+        self,
+        items: Iterable[RealtimeUserMessageItem | RealtimeAssistantMessageItem],
+        *,
+        allow_create: bool,
+    ) -> None:
+        if not await self._ensure_chatkit_context():
+            return
+
+        assert self._chatkit_server is not None
+        assert self._chatkit_context is not None
+        assert self._thread_metadata is not None
+
+        store = self._chatkit_server.store
+        thread_id = self._thread_metadata.id
+
+        for item in items:
+            role: str | None
+            if isinstance(item, RealtimeUserMessageItem):
+                role = "user"
+            elif isinstance(item, RealtimeAssistantMessageItem):
+                role = "assistant"
+            else:
+                continue
+
+            realtime_id = getattr(item, "item_id", None) or getattr(item, "id", None)
+            if not isinstance(realtime_id, str) or not realtime_id:
+                continue
+
+            text = self._extract_text_from_realtime_item(item)
+            if not text:
+                continue
+
+            chatkit_id = self._chatkit_item_by_realtime.get(realtime_id)
+            if chatkit_id is None:
+                if not allow_create:
+                    continue
+                chatkit_id = store.generate_item_id(
+                    "message",
+                    self._thread_metadata,
+                    self._chatkit_context,
+                )
+                created_at = datetime.now(timezone.utc)
+                self._chatkit_item_by_realtime[realtime_id] = chatkit_id
+                self._chatkit_item_created_at[realtime_id] = created_at
+                message = self._build_chatkit_message(
+                    role=role,
+                    message_id=chatkit_id,
+                    created_at=created_at,
+                    text=text,
+                )
+                if message is None:
+                    continue
+                await store.add_thread_item(thread_id, message, self._chatkit_context)
+                await self._mark_voice_messages_created()
+            else:
+                created_at = self._chatkit_item_created_at.get(realtime_id)
+                if created_at is None:
+                    created_at = datetime.now(timezone.utc)
+                    self._chatkit_item_created_at[realtime_id] = created_at
+                message = self._build_chatkit_message(
+                    role=role,
+                    message_id=chatkit_id,
+                    created_at=created_at,
+                    text=text,
+                )
+                if message is None:
+                    continue
+                await store.save_item(thread_id, message, self._chatkit_context)
+
+    @staticmethod
+    def _extract_text_from_realtime_item(
+        item: RealtimeUserMessageItem | RealtimeAssistantMessageItem,
+    ) -> str:
+        text_parts: list[str] = []
+        for entry in getattr(item, "content", []) or []:
+            text_value = getattr(entry, "text", None)
+            if isinstance(text_value, str) and text_value.strip():
+                text_parts.append(text_value.strip())
+                continue
+            transcript_value = getattr(entry, "transcript", None)
+            if isinstance(transcript_value, str) and transcript_value.strip():
+                text_parts.append(transcript_value.strip())
+        return "\n".join(text_parts).strip()
+
+    def _build_chatkit_message(
+        self,
+        *,
+        role: str,
+        message_id: str,
+        created_at: datetime,
+        text: str,
+    ) -> ChatKitUserMessageItem | ChatKitAssistantMessageItem | None:
+        if self._thread_metadata is None:
+            return None
+
+        if role == "user":
+            return ChatKitUserMessageItem(
+                id=message_id,
+                thread_id=self._thread_metadata.id,
+                created_at=created_at,
+                content=[UserMessageTextContent(text=text)],
+                attachments=[],
+                quoted_text=None,
+                inference_options=InferenceOptions(),
+            )
+
+        if role == "assistant":
+            return ChatKitAssistantMessageItem(
+                id=message_id,
+                thread_id=self._thread_metadata.id,
+                created_at=created_at,
+                content=[AssistantMessageContent(text=text)],
+            )
+
+        return None
+
+    async def _mark_voice_messages_created(self) -> None:
+        if self._voice_messages_marked:
+            return
+        if (
+            self._chatkit_server is None
+            or self._chatkit_context is None
+            or self._thread_metadata is None
+        ):
+            return
+
+        wait_state = _get_wait_state_metadata(self._thread_metadata)
+        if not wait_state or wait_state.get("type") != "voice":
+            self._voice_messages_marked = True
+            return
+
+        if wait_state.get("voice_messages_created"):
+            self._voice_messages_marked = True
+            return
+
+        updated_wait_state = dict(wait_state)
+        updated_wait_state["voice_messages_created"] = True
+        _set_wait_state_metadata(self._thread_metadata, updated_wait_state)
+
+        try:
+            await self._chatkit_server.store.save_thread(
+                self._thread_metadata,
+                self._chatkit_context,
+            )
+        except Exception:
+            logger.exception(
+                "Impossible de marquer le thread %s comme ayant des messages vocaux",
+                self._thread_metadata.id,
+            )
+        else:
+            self._voice_messages_marked = True
 
     def transcripts(self) -> list[dict[str, Any]]:
         history = self.history
