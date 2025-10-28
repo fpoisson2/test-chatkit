@@ -123,6 +123,9 @@ export const useWorkflowVoiceSession = ({
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const processedSessionsRef = useRef<Set<string>>(new Set());
   const resampler = useAudioResampler(SAMPLE_RATE);
+  const logVoice = useCallback((...args: unknown[]) => {
+    console.info("[WorkflowVoice]", ...args);
+  }, []);
 
   const cleanupCapture = useCallback(() => {
     const processor = processorRef.current;
@@ -183,24 +186,18 @@ export const useWorkflowVoiceSession = ({
       setStatus("error");
     },
     onSessionCreated: (event: SessionCreatedEvent) => {
-      if (import.meta.env.DEV) {
-        console.debug("[WorkflowVoice] session created", { event, threadId });
-      }
+      logVoice("sessionCreated", { sessionId: event.sessionId, threadId: event.threadId });
       const threadMatches =
         threadId == null || event.threadId == null || event.threadId === threadId;
       if (!threadMatches) {
-        if (import.meta.env.DEV) {
-          console.debug("[WorkflowVoice] ignoring session for mismatched thread", {
-            expected: threadId,
-            received: event.threadId,
-          });
-        }
+        logVoice("skip session (thread mismatch)", {
+          expectedThread: threadId,
+          receivedThread: event.threadId,
+        });
         return;
       }
       if (processedSessionsRef.current.has(event.sessionId)) {
-        if (import.meta.env.DEV) {
-          console.debug("[WorkflowVoice] session already processed, skipping", event.sessionId);
-        }
+        logVoice("skip session (already processed)", event.sessionId);
         return;
       }
       processedSessionsRef.current.add(event.sessionId);
@@ -210,10 +207,8 @@ export const useWorkflowVoiceSession = ({
           await startCapture(event.sessionId);
           setStatus("connected");
           setIsListening(true);
+          logVoice("capture started", event.sessionId);
         } catch (error) {
-          if (import.meta.env.DEV) {
-            console.error("[WorkflowVoice] startCapture failed", error);
-          }
           setStatus("error");
           processedSessionsRef.current.delete(event.sessionId);
           if (error instanceof Error) {
@@ -221,6 +216,7 @@ export const useWorkflowVoiceSession = ({
           } else {
             onError?.("Impossible de démarrer la session vocale");
           }
+          logVoice("capture failed", { sessionId: event.sessionId, error });
         }
       })();
     },
@@ -277,22 +273,18 @@ export const useWorkflowVoiceSession = ({
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (import.meta.env.DEV) {
-        console.debug("[WorkflowVoice] microphone stream acquired", {
-          sessionId,
-          tracks: stream.getAudioTracks().map((track) => track.label),
-        });
-      }
       microphoneStreamRef.current = stream;
+      logVoice("microphone stream ready", {
+        sessionId,
+        tracks: stream.getAudioTracks().map((track) => track.label || "(track)"),
+      });
 
       const context = new AudioContext();
       inputContextRef.current = context;
       if (context.state === "suspended") {
         try {
           await context.resume();
-          if (import.meta.env.DEV) {
-            console.debug("[WorkflowVoice] audio context resumed", { sessionId });
-          }
+          logVoice("audio context resumed", { sessionId });
         } catch {
           /* noop */
         }
@@ -315,7 +307,7 @@ export const useWorkflowVoiceSession = ({
       processor.connect(context.destination);
       currentSessionRef.current = sessionId;
     },
-    [resampler, sendAudioChunk, threadId],
+    [logVoice, resampler, sendAudioChunk, threadId],
   );
 
   const stopVoiceSession = useCallback(async () => {

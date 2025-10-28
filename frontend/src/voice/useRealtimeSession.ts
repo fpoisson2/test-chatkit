@@ -86,10 +86,8 @@ const decodePcm16 = (payload: string): Int16Array => {
   return new Int16Array(bytes.buffer);
 };
 
-const logDebug = (...args: unknown[]) => {
-  if (import.meta.env?.DEV) {
-    console.debug("[VoiceRealtime]", ...args);
-  }
+const logRealtime = (...args: unknown[]) => {
+  console.info("[VoiceRealtime]", ...args);
 };
 
 type ConnectionRecord = {
@@ -116,7 +114,6 @@ const notifyConnectionChange = (
   status: RealtimeConnectionStatus,
 ) => {
   record.status = status;
-  logDebug("connection status", status, "listeners", record.listeners.size);
   record.listeners.forEach((handlersRef) => {
     handlersRef.current.onConnectionChange?.(status);
   });
@@ -340,11 +337,11 @@ const handleMessageForRecord = async (
 
 const openWebSocketForRecord = (record: ConnectionRecord): Promise<void> => {
   if (record.websocket && record.websocket.readyState === WebSocket.OPEN) {
-    logDebug("reusing open websocket", record.gatewayUrl);
+    logRealtime("websocket reuse", record.gatewayUrl);
     return Promise.resolve();
   }
   if (record.connectPromise) {
-    logDebug("awaiting existing connect promise", record.gatewayUrl);
+    logRealtime("websocket awaiting connect promise", record.gatewayUrl);
     return record.connectPromise;
   }
 
@@ -355,10 +352,10 @@ const openWebSocketForRecord = (record: ConnectionRecord): Promise<void> => {
     record.websocket = ws;
     let settled = false;
 
-    logDebug("websocket created", record.gatewayUrl);
+    logRealtime("websocket created", record.gatewayUrl);
 
     ws.onopen = () => {
-      logDebug("websocket open", record.gatewayUrl);
+      logRealtime("websocket open", record.gatewayUrl);
       settled = true;
       record.connectPromise = null;
       notifyConnectionChange(record, "connected");
@@ -366,7 +363,7 @@ const openWebSocketForRecord = (record: ConnectionRecord): Promise<void> => {
     };
 
     ws.onerror = (event) => {
-      logDebug("websocket error", record.gatewayUrl, event);
+      logRealtime("websocket error", record.gatewayUrl, event);
       broadcastTransportError(record, event);
       if (!settled) {
         settled = true;
@@ -376,7 +373,7 @@ const openWebSocketForRecord = (record: ConnectionRecord): Promise<void> => {
     };
 
     ws.onclose = () => {
-      logDebug("websocket closed", record.gatewayUrl);
+      logRealtime("websocket closed", record.gatewayUrl);
       record.websocket = null;
       record.connectPromise = null;
       notifyConnectionChange(record, "disconnected");
@@ -404,20 +401,20 @@ const releaseListener = (gatewayUrl: string, listenerId: string) => {
   if (!record) {
     return;
   }
-  logDebug("release listener", listenerId, "for", gatewayUrl);
+  logRealtime("release listener", listenerId, gatewayUrl);
   record.listeners.delete(listenerId);
   if (record.listeners.size === 0) {
     const ws = record.websocket;
     if (ws) {
       if (ws.readyState === WebSocket.OPEN) {
-        logDebug("closing websocket (open) due to last listener removal", gatewayUrl);
+        logRealtime("closing websocket (open) after last listener", gatewayUrl);
         try {
           ws.close();
         } catch {
           /* noop */
         }
       } else if (ws.readyState === WebSocket.CONNECTING) {
-        logDebug("deferring websocket close until open (connecting)", gatewayUrl);
+        logRealtime("deferring websocket close (connecting)", gatewayUrl);
         const finalize = () => {
           ws.removeEventListener("open", handleOpen);
           ws.removeEventListener("error", finalize);
@@ -478,16 +475,19 @@ export const useRealtimeSession = (handlers: RealtimeSessionHandlers) => {
       }
 
       const gatewayUrl = buildGatewayUrl(token, baseUrl);
-      logDebug("connect requested", { gatewayUrl, token });
+      logRealtime("connect requested", {
+        gatewayUrl,
+        tokenSuffix: token.slice(-6),
+      });
       const previousKey = connectionKeyRef.current;
       if (previousKey && previousKey !== gatewayUrl) {
-        logDebug("releasing previous connection", previousKey);
+        logRealtime("releasing previous connection", previousKey);
         releaseListener(previousKey, listenerIdRef.current);
       }
 
       let record = connectionPool.get(gatewayUrl);
       if (!record) {
-        logDebug("creating connection record", gatewayUrl);
+        logRealtime("creating connection record", gatewayUrl);
         record = {
           gatewayUrl,
           websocket: null,
@@ -511,7 +511,7 @@ export const useRealtimeSession = (handlers: RealtimeSessionHandlers) => {
       handlersRef.current.onConnectionChange?.(record.status);
 
       if (record.status === "connected" && record.websocket?.readyState === WebSocket.OPEN) {
-        logDebug("connection already open, skipping websocket init", gatewayUrl);
+        logRealtime("connection already open", gatewayUrl);
         return;
       }
 
