@@ -2,6 +2,9 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 
 import {
   testMcpToolConnection,
+  startMcpOAuthNegotiation,
+  pollMcpOAuthSession,
+  cancelMcpOAuthSession,
   type AvailableModel,
   type VectorStoreSummary,
   type WidgetTemplateSummary,
@@ -296,6 +299,24 @@ export const AgentInspectorSection = ({
   const { t } = useI18n();
   const handleTestMcpSseConnection = useCallback(
     (config: McpSseToolConfig) => testMcpToolConnection(token ?? null, config),
+    [token],
+  );
+  const handleStartMcpOAuth = useCallback(
+    (payload: { url: string; clientId: string | null; scope: string | null }) =>
+      startMcpOAuthNegotiation({
+        token: token ?? null,
+        url: payload.url,
+        clientId: payload.clientId,
+        scope: payload.scope,
+      }),
+    [token],
+  );
+  const handlePollMcpOAuth = useCallback(
+    (state: string) => pollMcpOAuthSession({ token: token ?? null, state }),
+    [token],
+  );
+  const handleCancelMcpOAuth = useCallback(
+    (state: string) => cancelMcpOAuthSession({ token: token ?? null, state }),
     [token],
   );
   const storePreferenceLocked = matchedModel?.store === false;
@@ -1318,6 +1339,9 @@ export const AgentInspectorSection = ({
           onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
           onAgentMcpSseConfigChange={onAgentMcpSseConfigChange}
           onTestMcpSseConnection={handleTestMcpSseConnection}
+          onStartMcpOAuth={handleStartMcpOAuth}
+          onPollMcpOAuth={handlePollMcpOAuth}
+          onCancelMcpOAuth={handleCancelMcpOAuth}
         />
       </div>
     </>

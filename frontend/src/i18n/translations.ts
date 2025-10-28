@@ -329,6 +329,30 @@ const fr: TranslationDictionary = {
   "workflowBuilder.agentInspector.mcpAuthorizationPlaceholder": "Bearer …",
   "workflowBuilder.agentInspector.mcpAuthorizationHelp":
     "Laissez vide si le serveur n'exige pas d'authentification.",
+  "workflowBuilder.agentInspector.mcpClientIdLabel": "Identifiant client (optionnel)",
+  "workflowBuilder.agentInspector.mcpClientIdPlaceholder": "Client ID OAuth2",
+  "workflowBuilder.agentInspector.mcpScopeLabel": "Scopes OAuth (optionnel)",
+  "workflowBuilder.agentInspector.mcpScopePlaceholder": "ex. profile email",
+  "workflowBuilder.agentInspector.mcpScopeHelp":
+    "Séparez les scopes par des espaces. Laissez vide pour utiliser la configuration par défaut du fournisseur.",
+  "workflowBuilder.agentInspector.mcpOAuthButton": "Se connecter via OAuth",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.starting":
+    "Initialisation du flux OAuth…",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.pending":
+    "Autorisez la connexion dans la fenêtre ouverte, puis revenez ici.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.success":
+    "Jeton OAuth enregistré avec succès.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.error":
+    "Échec de l'authentification OAuth.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.errorWithDetail":
+    "Échec de l'authentification OAuth : {{detail}}",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.windowBlocked":
+    "Impossible d'ouvrir la fenêtre d'autorisation. Autorisez les fenêtres pop-up et réessayez.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.sessionExpired":
+    "La session OAuth a expiré. Relancez l'authentification.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.noAccessToken":
+    "Le fournisseur OAuth n'a pas renvoyé de jeton d'accès.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.unknownError": "erreur inconnue",
   "workflowBuilder.agentInspector.mcpTestButton": "Tester la connexion",
   "workflowBuilder.agentInspector.mcpTestStatus.ok":
     "Connexion établie. {{count}} outil(s) disponible(s).",
@@ -910,6 +934,30 @@ const en: TranslationDictionary = {
   "workflowBuilder.agentInspector.mcpAuthorizationPlaceholder": "Bearer …",
   "workflowBuilder.agentInspector.mcpAuthorizationHelp":
     "Leave empty if the server does not require authentication.",
+  "workflowBuilder.agentInspector.mcpClientIdLabel": "Client ID (optional)",
+  "workflowBuilder.agentInspector.mcpClientIdPlaceholder": "OAuth2 client ID",
+  "workflowBuilder.agentInspector.mcpScopeLabel": "OAuth scopes (optional)",
+  "workflowBuilder.agentInspector.mcpScopePlaceholder": "e.g. profile email",
+  "workflowBuilder.agentInspector.mcpScopeHelp":
+    "Separate scopes with spaces. Leave empty to rely on the provider defaults.",
+  "workflowBuilder.agentInspector.mcpOAuthButton": "Connect via OAuth",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.starting":
+    "Starting OAuth flow…",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.pending":
+    "Authorize the connection in the popup window, then return here.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.success":
+    "OAuth token saved successfully.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.error":
+    "OAuth authentication failed.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.errorWithDetail":
+    "OAuth authentication failed: {{detail}}",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.windowBlocked":
+    "The authorization window could not be opened. Allow pop-ups and try again.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.sessionExpired":
+    "The OAuth session expired. Restart the authentication.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.noAccessToken":
+    "The OAuth provider did not return an access token.",
+  "workflowBuilder.agentInspector.mcpOAuthStatus.unknownError": "unknown error",
   "workflowBuilder.agentInspector.mcpTestButton": "Test connection",
   "workflowBuilder.agentInspector.mcpTestStatus.ok":
     "Connection established. {{count}} tool(s) available.",

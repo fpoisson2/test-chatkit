@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "../../../../../i18n";
 import {
@@ -11,6 +11,11 @@ import {
 import type { FlowNode, WorkflowSummary, McpSseToolConfig } from "../../../types";
 import { ToggleRow } from "../components/ToggleRow";
 import styles from "../NodeInspector.module.css";
+import { ApiError } from "../../../../../utils/backend";
+import type {
+  McpOAuthSessionStatus,
+  McpOAuthStartResponse,
+} from "../../../../../utils/backend";
 
 type McpTestResult = {
   status: string;
@@ -33,6 +38,11 @@ type ToolSettingsPanelProps = {
     config: McpSseToolConfig | null,
   ) => void;
   onTestMcpSseConnection: (config: McpSseToolConfig) => Promise<McpTestResult>;
+  onStartMcpOAuth: (
+    payload: { url: string; clientId: string | null; scope: string | null },
+  ) => Promise<McpOAuthStartResponse>;
+  onPollMcpOAuth: (state: string) => Promise<McpOAuthSessionStatus>;
+  onCancelMcpOAuth?: (state: string) => Promise<unknown>;
 };
 
 export const ToolSettingsPanel = ({
@@ -46,6 +56,9 @@ export const ToolSettingsPanel = ({
   onAgentWorkflowToolToggle,
   onAgentMcpSseConfigChange,
   onTestMcpSseConnection,
+  onStartMcpOAuth,
+  onPollMcpOAuth,
+  onCancelMcpOAuth,
 }: ToolSettingsPanelProps) => {
   const { t } = useI18n();
 
@@ -86,6 +99,8 @@ export const ToolSettingsPanel = ({
   const [mcpAuthorizationDraft, setMcpAuthorizationDraft] = useState(
     mcpAuthorizationValue,
   );
+  const [mcpClientIdDraft, setMcpClientIdDraft] = useState("");
+  const [mcpScopeDraft, setMcpScopeDraft] = useState("");
 
   const [mcpTestState, setMcpTestState] = useState<{
     status: "idle" | "loading" | "success" | "error";
@@ -93,6 +108,15 @@ export const ToolSettingsPanel = ({
     statusLabel: string | null;
     toolNames: string[];
   }>({ status: "idle", message: "", statusLabel: null, toolNames: [] });
+
+  const [oauthFeedback, setOauthFeedback] = useState<{
+    status: "idle" | "starting" | "pending" | "success" | "error";
+    message: string | null;
+    stateId: string | null;
+  }>({ status: "idle", message: null, stateId: null });
+
+  const latestOauthStatusRef = useRef(oauthFeedback.status);
+  const latestOauthStateRef = useRef<string | null>(oauthFeedback.stateId);
 
   useEffect(() => {
     setMcpUrlDraft(mcpUrlValue);
@@ -112,6 +136,23 @@ export const ToolSettingsPanel = ({
     }
   }, [mcpUrlDraft]);
 
+  useEffect(() => {
+    latestOauthStatusRef.current = oauthFeedback.status;
+    latestOauthStateRef.current = oauthFeedback.stateId;
+  }, [oauthFeedback.status, oauthFeedback.stateId]);
+
+  useEffect(() => {
+    return () => {
+      if (
+        latestOauthStatusRef.current === "pending" &&
+        latestOauthStateRef.current &&
+        onCancelMcpOAuth
+      ) {
+        void onCancelMcpOAuth(latestOauthStateRef.current).catch(() => {});
+      }
+    };
+  }, [onCancelMcpOAuth]);
+
   const handleMcpUrlChange = useCallback(
     (value: string) => {
       setMcpUrlDraft(value);
@@ -123,7 +164,7 @@ export const ToolSettingsPanel = ({
     [nodeId, onAgentMcpSseConfigChange, mcpAuthorizationDraft],
   );
 
-  const handleMcpAuthorizationChange = useCallback(
+  const applyAuthorizationValue = useCallback(
     (value: string) => {
       setMcpAuthorizationDraft(value);
       onAgentMcpSseConfigChange(nodeId, {
@@ -131,7 +172,14 @@ export const ToolSettingsPanel = ({
         authorization: value,
       });
     },
-    [nodeId, onAgentMcpSseConfigChange, mcpUrlDraft],
+    [mcpUrlDraft, nodeId, onAgentMcpSseConfigChange],
+  );
+
+  const handleMcpAuthorizationChange = useCallback(
+    (value: string) => {
+      applyAuthorizationValue(value);
+    },
+    [applyAuthorizationValue],
   );
 
   const handleTestConnection = useCallback(async () => {
@@ -195,6 +243,237 @@ export const ToolSettingsPanel = ({
     }
   }, [mcpAuthorizationDraft, mcpUrlDraft, onTestMcpSseConnection, t]);
 
+  const buildAuthorizationFromToken = useCallback(
+    (token: Record<string, unknown> | null | undefined): string | null => {
+      if (!token || typeof token !== "object") {
+        return null;
+      }
+      const accessTokenRaw = token.access_token;
+      const tokenTypeRaw = token.token_type;
+      const accessToken =
+        typeof accessTokenRaw === "string" ? accessTokenRaw.trim() : "";
+      if (!accessToken) {
+        return null;
+      }
+      const tokenType =
+        typeof tokenTypeRaw === "string" ? tokenTypeRaw.trim() : "";
+      if (tokenType) {
+        return `${tokenType} ${accessToken}`.trim();
+      }
+      return `Bearer ${accessToken}`;
+    },
+    [],
+  );
+
+  const handleStartOAuth = useCallback(async () => {
+    const url = mcpUrlDraft.trim();
+    if (!url) {
+      setOauthFeedback({
+        status: "error",
+        message: t("workflowBuilder.agentInspector.mcpTestStatus.invalidConfig"),
+        stateId: null,
+      });
+      return;
+    }
+
+    const previousState = latestOauthStateRef.current;
+    if (previousState && onCancelMcpOAuth) {
+      void onCancelMcpOAuth(previousState).catch(() => {});
+    }
+
+    setOauthFeedback({
+      status: "starting",
+      message: t("workflowBuilder.agentInspector.mcpOAuthStatus.starting"),
+      stateId: null,
+    });
+
+    try {
+      const result = await onStartMcpOAuth({
+        url,
+        clientId: mcpClientIdDraft.trim() || null,
+        scope: mcpScopeDraft.trim() || null,
+      });
+
+      const popup =
+        typeof window !== "undefined"
+          ? window.open(result.authorization_url, "_blank", "noopener")
+          : null;
+
+      if (!popup) {
+        setOauthFeedback({
+          status: "error",
+          message: t(
+            "workflowBuilder.agentInspector.mcpOAuthStatus.windowBlocked",
+          ),
+          stateId: null,
+        });
+        if (onCancelMcpOAuth) {
+          void onCancelMcpOAuth(result.state).catch(() => {});
+        }
+        return;
+      }
+
+      popup.focus?.();
+
+      setOauthFeedback({
+        status: "pending",
+        message: t("workflowBuilder.agentInspector.mcpOAuthStatus.pending"),
+        stateId: result.state,
+      });
+    } catch (error) {
+      const detail =
+        error instanceof Error
+          ? error.message
+          : t("workflowBuilder.agentInspector.mcpOAuthStatus.unknownError");
+      const message = detail
+        ? t("workflowBuilder.agentInspector.mcpOAuthStatus.errorWithDetail", {
+            detail,
+          })
+        : t("workflowBuilder.agentInspector.mcpOAuthStatus.error");
+      setOauthFeedback({ status: "error", message, stateId: null });
+    }
+  }, [
+    mcpUrlDraft,
+    mcpClientIdDraft,
+    mcpScopeDraft,
+    onStartMcpOAuth,
+    onCancelMcpOAuth,
+    t,
+  ]);
+
+  useEffect(() => {
+    const sessionState = oauthFeedback.stateId;
+    if (oauthFeedback.status !== "pending" || !sessionState) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+    const handleResult = (result: McpOAuthSessionStatus) => {
+      if (cancelled) {
+        return;
+      }
+
+      if (result.status === "pending") {
+        timeoutHandle = setTimeout(async () => {
+          timeoutHandle = null;
+          try {
+            const next = await onPollMcpOAuth(sessionState);
+            handleResult(next);
+          } catch (error) {
+            if (cancelled) {
+              return;
+            }
+            let message: string;
+            if (error instanceof ApiError && error.status === 404) {
+              message = t(
+                "workflowBuilder.agentInspector.mcpOAuthStatus.sessionExpired",
+              );
+            } else {
+              const detail =
+                error instanceof Error
+                  ? error.message
+                  : t(
+                      "workflowBuilder.agentInspector.mcpOAuthStatus.unknownError",
+                    );
+              message = t(
+                "workflowBuilder.agentInspector.mcpOAuthStatus.errorWithDetail",
+                { detail },
+              );
+            }
+            setOauthFeedback({ status: "error", message, stateId: null });
+            if (onCancelMcpOAuth) {
+              void onCancelMcpOAuth(sessionState).catch(() => {});
+            }
+          }
+        }, 1500);
+        return;
+      }
+
+      if (result.status === "ok") {
+        const authorization = buildAuthorizationFromToken(result.token);
+        if (authorization) {
+          applyAuthorizationValue(authorization);
+          setOauthFeedback({
+            status: "success",
+            message: t(
+              "workflowBuilder.agentInspector.mcpOAuthStatus.success",
+            ),
+            stateId: null,
+          });
+        } else {
+          setOauthFeedback({
+            status: "error",
+            message: t(
+              "workflowBuilder.agentInspector.mcpOAuthStatus.noAccessToken",
+            ),
+            stateId: null,
+          });
+        }
+      } else {
+        const detail =
+          typeof result.error === "string" ? result.error : undefined;
+        const message = detail
+          ? t("workflowBuilder.agentInspector.mcpOAuthStatus.errorWithDetail", {
+              detail,
+            })
+          : t("workflowBuilder.agentInspector.mcpOAuthStatus.error");
+        setOauthFeedback({ status: "error", message, stateId: null });
+      }
+
+      if (onCancelMcpOAuth) {
+        void onCancelMcpOAuth(result.state).catch(() => {});
+      }
+      timeoutHandle = null;
+    };
+
+    (async () => {
+      try {
+        const initial = await onPollMcpOAuth(sessionState);
+        handleResult(initial);
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        let message: string;
+        if (error instanceof ApiError && error.status === 404) {
+          message = t(
+            "workflowBuilder.agentInspector.mcpOAuthStatus.sessionExpired",
+          );
+        } else {
+          const detail =
+            error instanceof Error
+              ? error.message
+              : t("workflowBuilder.agentInspector.mcpOAuthStatus.unknownError");
+          message = t(
+            "workflowBuilder.agentInspector.mcpOAuthStatus.errorWithDetail",
+            { detail },
+          );
+        }
+        setOauthFeedback({ status: "error", message, stateId: null });
+        if (onCancelMcpOAuth) {
+          void onCancelMcpOAuth(sessionState).catch(() => {});
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+    };
+  }, [
+    oauthFeedback.status,
+    oauthFeedback.stateId,
+    onPollMcpOAuth,
+    onCancelMcpOAuth,
+    buildAuthorizationFromToken,
+    applyAuthorizationValue,
+    t,
+  ]);
+
   return (
     <div className={styles.nodeInspectorPanelInnerAccentTight}>
       <strong className={styles.nodeInspectorSectionTitleSmall}>Function tool</strong>
@@ -237,6 +516,37 @@ export const ToolSettingsPanel = ({
         </label>
         <label className={styles.nodeInspectorField}>
           <span className={styles.nodeInspectorLabel}>
+            {t("workflowBuilder.agentInspector.mcpClientIdLabel")}
+          </span>
+          <input
+            type="text"
+            value={mcpClientIdDraft}
+            onChange={(event) => setMcpClientIdDraft(event.target.value)}
+            placeholder={t(
+              "workflowBuilder.agentInspector.mcpClientIdPlaceholder",
+            )}
+            autoComplete="off"
+          />
+        </label>
+        <label className={styles.nodeInspectorField}>
+          <span className={styles.nodeInspectorLabel}>
+            {t("workflowBuilder.agentInspector.mcpScopeLabel")}
+          </span>
+          <input
+            type="text"
+            value={mcpScopeDraft}
+            onChange={(event) => setMcpScopeDraft(event.target.value)}
+            placeholder={t(
+              "workflowBuilder.agentInspector.mcpScopePlaceholder",
+            )}
+            autoComplete="off"
+          />
+          <p className={styles.nodeInspectorHintTextTight}>
+            {t("workflowBuilder.agentInspector.mcpScopeHelp")}
+          </p>
+        </label>
+        <label className={styles.nodeInspectorField}>
+          <span className={styles.nodeInspectorLabel}>
             {t("workflowBuilder.agentInspector.mcpAuthorizationLabel")}
           </span>
           <input
@@ -250,14 +560,40 @@ export const ToolSettingsPanel = ({
             {t("workflowBuilder.agentInspector.mcpAuthorizationHelp")}
           </p>
         </label>
-        <button
-          type="button"
-          className="btn"
-          onClick={handleTestConnection}
-          disabled={mcpTestState.status === "loading"}
-        >
-          {t("workflowBuilder.agentInspector.mcpTestButton")}
-        </button>
+        <div className={styles.nodeInspectorField}>
+          <button
+            type="button"
+            className="btn"
+            onClick={handleStartOAuth}
+            disabled={
+              !mcpUrlDraft.trim() ||
+              oauthFeedback.status === "starting" ||
+              oauthFeedback.status === "pending"
+            }
+          >
+            {t("workflowBuilder.agentInspector.mcpOAuthButton")}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={handleTestConnection}
+            disabled={mcpTestState.status === "loading"}
+          >
+            {t("workflowBuilder.agentInspector.mcpTestButton")}
+          </button>
+        </div>
+        {oauthFeedback.status !== "idle" && oauthFeedback.message ? (
+          <div
+            role="status"
+            className={
+              oauthFeedback.status === "error"
+                ? styles.nodeInspectorErrorTextSmall
+                : styles.nodeInspectorInfoMessage
+            }
+          >
+            {oauthFeedback.message}
+          </div>
+        ) : null}
         {mcpTestState.status !== "idle" ? (
           <div
             role="status"

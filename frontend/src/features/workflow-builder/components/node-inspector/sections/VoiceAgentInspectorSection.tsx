@@ -3,6 +3,9 @@ import { useCallback, useMemo } from "react";
 import { useI18n } from "../../../../../i18n";
 import {
   testMcpToolConnection,
+  startMcpOAuthNegotiation,
+  pollMcpOAuthSession,
+  cancelMcpOAuthSession,
   type AvailableModel,
 } from "../../../../../utils/backend";
 import type {
@@ -89,6 +92,24 @@ export const VoiceAgentInspectorSection = ({
   const { t } = useI18n();
   const handleTestMcpSseConnection = useCallback(
     (config: McpSseToolConfig) => testMcpToolConnection(token ?? null, config),
+    [token],
+  );
+  const handleStartMcpOAuth = useCallback(
+    (payload: { url: string; clientId: string | null; scope: string | null }) =>
+      startMcpOAuthNegotiation({
+        token: token ?? null,
+        url: payload.url,
+        clientId: payload.clientId,
+        scope: payload.scope,
+      }),
+    [token],
+  );
+  const handlePollMcpOAuth = useCallback(
+    (state: string) => pollMcpOAuthSession({ token: token ?? null, state }),
+    [token],
+  );
+  const handleCancelMcpOAuth = useCallback(
+    (state: string) => cancelMcpOAuthSession({ token: token ?? null, state }),
     [token],
   );
   const {
@@ -299,6 +320,9 @@ export const VoiceAgentInspectorSection = ({
           onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
           onAgentMcpSseConfigChange={onAgentMcpSseConfigChange}
           onTestMcpSseConnection={handleTestMcpSseConnection}
+          onStartMcpOAuth={handleStartMcpOAuth}
+          onPollMcpOAuth={handlePollMcpOAuth}
+          onCancelMcpOAuth={handleCancelMcpOAuth}
         />
       </div>
     </>
