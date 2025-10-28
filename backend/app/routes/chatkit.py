@@ -15,6 +15,7 @@ from fastapi import (
     Request,
     Response,
     UploadFile,
+    WebSocket,
     status,
 )
 from fastapi.responses import FileResponse, StreamingResponse
