@@ -3,12 +3,16 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
+import httpx
 import pytest
+from agents.realtime.agent import RealtimeAgent
+from agents.tool import FunctionTool
 
 os.environ.setdefault("OPENAI_API_KEY", "sk-test")
 os.environ.setdefault("DATABASE_URL", "sqlite:///./chatkit-tests.db")
@@ -84,6 +88,102 @@ def _reset_orchestrator(monkeypatch: pytest.MonkeyPatch) -> None:
         "_ORCHESTRATOR",
         realtime_runner.RealtimeVoiceSessionOrchestrator(),
     )
+
+    async def _noop_connect(configs: Sequence[Mapping[str, object]]) -> list[object]:
+        return []
+
+    async def _noop_cleanup(servers: Sequence[object]) -> None:
+        return None
+
+    monkeypatch.setattr(
+        realtime_runner,
+        "_connect_mcp_servers",
+        _noop_connect,
+    )
+    monkeypatch.setattr(
+        realtime_runner,
+        "_cleanup_mcp_servers",
+        _noop_cleanup,
+    )
+
+
+def test_connect_mcp_servers_wraps_http_status_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = httpx.Request("GET", "https://mcp.example.com/sse")
+    response = httpx.Response(status_code=401, request=request)
+    http_error = httpx.HTTPStatusError(
+        "401 Unauthorized",
+        request=request,
+        response=response,
+    )
+
+    class _FailingServer:
+        async def connect(self) -> None:  # noqa: D401 - simple stub
+            raise http_error
+
+    cleanup_calls: list[list[object]] = []
+
+    monkeypatch.setattr(
+        realtime_runner,
+        "_create_mcp_server_from_config",
+        lambda config: _FailingServer(),
+    )
+
+    async def _record_cleanup(servers: Sequence[object]) -> None:
+        cleanup_calls.append(list(servers))
+
+    monkeypatch.setattr(
+        realtime_runner,
+        "_cleanup_mcp_servers",
+        _record_cleanup,
+    )
+
+    config = {"server_url": str(request.url), "server_label": "mcp"}
+
+    with pytest.raises(realtime_runner.HTTPException) as excinfo:
+        asyncio.run(realtime_runner._connect_mcp_servers([config]))
+
+    assert excinfo.value.status_code == 502
+    detail = excinfo.value.detail
+    assert isinstance(detail, dict)
+    assert detail.get("server_url") == str(request.url)
+    assert detail.get("status_code") == 401
+    assert cleanup_calls == [[]]
+
+
+def test_connect_mcp_servers_wraps_generic_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _BoomingServer:
+        async def connect(self) -> None:
+            raise RuntimeError("boom")
+
+    cleanup_calls: list[list[object]] = []
+
+    monkeypatch.setattr(
+        realtime_runner,
+        "_create_mcp_server_from_config",
+        lambda config: _BoomingServer(),
+    )
+
+    async def _record_cleanup(servers: Sequence[object]) -> None:
+        cleanup_calls.append(list(servers))
+
+    monkeypatch.setattr(
+        realtime_runner,
+        "_cleanup_mcp_servers",
+        _record_cleanup,
+    )
+
+    config = {"server_url": "https://mcp.example.com"}
+
+    with pytest.raises(realtime_runner.HTTPException) as excinfo:
+        asyncio.run(realtime_runner._connect_mcp_servers([config]))
+
+    assert excinfo.value.status_code == 502
+    assert excinfo.value.detail == {"error": "MCP server connection failed"}
+    assert cleanup_calls == [[]]
 
 
 def test_open_voice_session_passes_metadata_to_gateway(
@@ -184,6 +284,441 @@ def test_open_voice_session_prefers_openai_slug(
     headers = request["headers"]
     assert isinstance(headers, dict)
     assert headers.get("Authorization") == "Bearer openai-key"
+
+
+def test_open_voice_session_normalizes_mcp_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+    captured: dict[str, object] = {}
+
+    _reset_orchestrator(monkeypatch)
+    monkeypatch.setattr(realtime_runner, "get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr(
+        realtime_runner,
+        "resolve_model_provider_credentials",
+        lambda provider_id: None,
+    )
+    monkeypatch.setattr(
+        realtime_runner.httpx,
+        "AsyncClient",
+        lambda **kwargs: _DummyAsyncClient(captured=captured, **kwargs),
+    )
+
+    tools_payload = [
+        {
+            "type": "mcp",
+            "url": "https://example.com/mcp",
+            "transport": "http_sse",
+            "agent": {"type": "workflow", "workflow": {"slug": "sub-agent"}},
+            "metadata": {"foo": "bar"},
+        }
+    ]
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-tools",
+            model="gpt-realtime",
+            instructions="Bonjour",
+            provider_slug="openai",
+            tools=tools_payload,
+        )
+    )
+
+    assert handle.payload == {"client_secret": {"value": "secret"}}
+    requests = captured.get("requests")
+    assert isinstance(requests, list)
+    assert len(requests) == 1
+
+    payload = requests[0]["json"]
+    assert isinstance(payload, dict)
+    session_payload = payload.get("session")
+    assert isinstance(session_payload, dict)
+
+    session_tools = session_payload.get("tools")
+    assert isinstance(session_tools, list) and session_tools
+    tool_config = session_tools[0]
+    assert tool_config.get("type") == "mcp"
+    assert tool_config.get("server_url") == "https://example.com/mcp"
+    assert "url" not in tool_config
+    assert tool_config.get("server_label") == "example-com-mcp"
+    assert "agent" not in tool_config
+    assert "metadata" not in tool_config
+
+
+def test_open_voice_session_connects_mcp_servers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+    captured: dict[str, object] = {}
+
+    _reset_orchestrator(monkeypatch)
+
+    class _StubRunner:
+        def __init__(self, agent: RealtimeAgent) -> None:
+            self.agent = agent
+
+    monkeypatch.setattr(realtime_runner, "RealtimeRunner", _StubRunner)
+
+    async def _fake_request_client_secret(self, **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"client_secret": {"value": "secret"}}
+
+    monkeypatch.setattr(
+        realtime_runner.RealtimeVoiceSessionOrchestrator,
+        "_request_client_secret",
+        _fake_request_client_secret,
+    )
+
+    gateway_module = import_module("backend.app.realtime_gateway")
+    monkeypatch.setattr(gateway_module, "get_realtime_gateway", lambda: None)
+
+    class _StubServer:
+        def __init__(self) -> None:
+            self.cleaned = False
+
+    stub_server = _StubServer()
+
+    recorded_configs: list[list[Mapping[str, object]]] = []
+
+    async def _fake_connect(configs: Sequence[Mapping[str, object]]):
+        recorded_configs.append(list(configs))
+        return [stub_server]
+
+    cleaned_servers: list[object] = []
+
+    async def _fake_cleanup(servers: Sequence[object]) -> None:
+        cleaned_servers.extend(servers)
+        for server in servers:
+            if hasattr(server, "cleaned"):
+                server.cleaned = True  # type: ignore[attr-defined]
+
+    monkeypatch.setattr(realtime_runner, "_connect_mcp_servers", _fake_connect)
+    monkeypatch.setattr(realtime_runner, "_cleanup_mcp_servers", _fake_cleanup)
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-mcp",
+            model="gpt-realtime",
+            instructions="Salut",
+            provider_slug="openai",
+            tools=[
+                {
+                    "type": "mcp",
+                    "url": "https://example.com/mcp",
+                    "authorization": "Bearer token",
+                    "transport": "http_sse",
+                }
+            ],
+        )
+    )
+
+    assert handle.mcp_servers == [stub_server]
+    assert recorded_configs, "_connect_mcp_servers should receive config"
+    config_entry = recorded_configs[0][0]
+    assert config_entry.get("server_url") == "https://example.com/mcp"
+    assert config_entry.get("authorization") == "Bearer token"
+    assert captured.get("tools")
+    metadata = handle.metadata.get("mcp_servers")
+    assert isinstance(metadata, list) and metadata
+    assert metadata[0]["server_url"] == "https://example.com/mcp"
+    assert not cleaned_servers, "cleanup should not run during open"
+
+
+def test_create_mcp_server_from_config_adds_bearer_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    class _StubServer:
+        def __init__(self, *, params: Mapping[str, Any], name: str | None = None):
+            captured["params"] = dict(params)
+            captured["name"] = name
+
+    monkeypatch.setattr(realtime_runner, "MCPServerSse", _StubServer)
+
+    config = {
+        "server_url": "https://example.com/mcp",
+        "transport": "http_sse",
+        "authorization": "token-value",
+        "server_label": "example",
+    }
+
+    server = realtime_runner._create_mcp_server_from_config(config)
+
+    assert isinstance(server, _StubServer)
+    params = captured.get("params")
+    assert isinstance(params, dict)
+    headers = params.get("headers")
+    assert isinstance(headers, dict)
+    assert headers.get("Authorization") == "Bearer token-value"
+
+
+def test_normalize_bearer_authorization_handles_existing_prefix() -> None:
+    assert (
+        realtime_runner._normalize_bearer_authorization("Bearer existing")
+        == "Bearer existing"
+    )
+    assert (
+        realtime_runner._normalize_bearer_authorization("bearer Existing")
+        == "Bearer Existing"
+    )
+    assert (
+        realtime_runner._normalize_bearer_authorization("  token  ")
+        == "Bearer token"
+    )
+    assert realtime_runner._normalize_bearer_authorization("  ") is None
+    assert realtime_runner._normalize_bearer_authorization("Bearer  ") is None
+
+
+def test_open_voice_session_normalizes_function_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+    captured: dict[str, object] = {}
+
+    _reset_orchestrator(monkeypatch)
+    monkeypatch.setattr(realtime_runner, "get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr(
+        realtime_runner,
+        "resolve_model_provider_credentials",
+        lambda provider_id: None,
+    )
+    monkeypatch.setattr(
+        realtime_runner.httpx,
+        "AsyncClient",
+        lambda **kwargs: _DummyAsyncClient(captured=captured, **kwargs),
+    )
+
+    tools_payload = [
+        {
+            "type": "function",
+            "function": {
+                "name": "calculate",
+                "description": "Calcule une valeur",
+                "parameters": {"type": "object", "properties": {}},
+                "strict": True,
+                "cache_control": {"ttl": 30},
+            },
+            "metadata": {"scope": "test"},
+        }
+    ]
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-function",
+            model="gpt-realtime",
+            instructions="Bonjour",
+            provider_slug="openai",
+            tools=tools_payload,
+        )
+    )
+
+    assert handle.payload == {"client_secret": {"value": "secret"}}
+    requests = captured.get("requests")
+    assert isinstance(requests, list)
+    assert len(requests) == 1
+
+    payload = requests[0]["json"]
+    assert isinstance(payload, dict)
+    session_payload = payload.get("session")
+    assert isinstance(session_payload, dict)
+
+    session_tools = session_payload.get("tools")
+    assert isinstance(session_tools, list) and session_tools
+    tool_config = session_tools[0]
+    assert tool_config.get("type") == "function"
+    assert tool_config.get("name") == "calculate"
+    assert tool_config.get("description") == "Calcule une valeur"
+    assert tool_config.get("parameters") == {"type": "object", "properties": {}}
+    assert tool_config.get("strict") is True
+    assert tool_config.get("cache_control") == {"ttl": 30}
+    assert "function" not in tool_config
+    assert "metadata" not in tool_config
+
+
+def test_open_voice_session_filters_non_sdk_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+
+    _reset_orchestrator(monkeypatch)
+
+    clone_calls: list[dict[str, object]] = []
+    original_clone = RealtimeAgent.clone
+
+    def _recording_clone(self, **kwargs: object) -> RealtimeAgent:
+        clone_calls.append(dict(kwargs))
+        return original_clone(self, **kwargs)
+
+    monkeypatch.setattr(RealtimeAgent, "clone", _recording_clone)
+
+    async def _fake_request_client_secret(self, **_: object) -> dict[str, object]:
+        return {"client_secret": {"value": "secret"}}
+
+    monkeypatch.setattr(
+        realtime_runner.RealtimeVoiceSessionOrchestrator,
+        "_request_client_secret",
+        _fake_request_client_secret,
+    )
+
+    class _StubRunner:
+        def __init__(self, agent: RealtimeAgent) -> None:
+            self.agent = agent
+
+    monkeypatch.setattr(realtime_runner, "RealtimeRunner", _StubRunner)
+
+    child_agent = RealtimeAgent(name="child", instructions="Bonjour")
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-tools",
+            model="gpt-realtime",
+            instructions="Bonjour",
+            provider_slug="openai",
+            tools=[{"type": "mcp", "url": "https://example.com"}],
+            handoffs=[child_agent, {"type": "workflow"}],
+        )
+    )
+
+    assert handle.payload == {"client_secret": {"value": "secret"}}
+    assert clone_calls, "clone should be invoked"
+    clone_kwargs = clone_calls[0]
+    assert clone_kwargs.get("tools") == []
+    assert clone_kwargs.get("handoffs") == [child_agent]
+    metadata_tools = handle.metadata.get("tools")
+    assert isinstance(metadata_tools, list)
+    assert metadata_tools and isinstance(metadata_tools[0], Mapping)
+    assert handle.metadata.get("sdk_tools") in (None, [])
+
+
+def test_open_voice_session_stores_sdk_tools_separately(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+
+    _reset_orchestrator(monkeypatch)
+
+    captured_request: dict[str, object] = {}
+
+    async def _fake_request_client_secret(self, **kwargs: object) -> dict[str, object]:
+        captured_request.update(kwargs)
+        return {"client_secret": {"value": "secret"}}
+
+    monkeypatch.setattr(
+        realtime_runner.RealtimeVoiceSessionOrchestrator,
+        "_request_client_secret",
+        _fake_request_client_secret,
+    )
+
+    class _StubRunner:
+        def __init__(self, agent: RealtimeAgent) -> None:
+            self.agent = agent
+
+    monkeypatch.setattr(realtime_runner, "RealtimeRunner", _StubRunner)
+
+    async def _invoke_tool(context, arguments):  # type: ignore[no-untyped-def]
+        return "ok"
+
+    function_tool = FunctionTool(
+        name="calc",
+        description="Calculator",
+        params_json_schema={"type": "object", "properties": {}},
+        on_invoke_tool=_invoke_tool,
+    )
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-tools",
+            model="gpt-realtime",
+            instructions="Bonjour",
+            provider_slug="openai",
+            tools=[
+                function_tool,
+                {"type": "mcp", "url": "https://example.com/mcp"},
+            ],
+        )
+    )
+
+    assert handle.payload == {"client_secret": {"value": "secret"}}
+
+    sanitized_tools = captured_request.get("tools")
+    assert isinstance(sanitized_tools, list)
+    assert all(isinstance(entry, Mapping) for entry in sanitized_tools)
+
+    metadata_tools = handle.metadata.get("tools")
+    assert isinstance(metadata_tools, list)
+    assert all(isinstance(entry, Mapping) for entry in metadata_tools)
+
+    sdk_tools = handle.metadata.get("sdk_tools")
+    assert sdk_tools == [function_tool]
+
+
+def test_close_voice_session_cleans_up_mcp_servers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+
+    _reset_orchestrator(monkeypatch)
+
+    class _StubRunner:
+        def __init__(self, agent: RealtimeAgent) -> None:
+            self.agent = agent
+
+    monkeypatch.setattr(realtime_runner, "RealtimeRunner", _StubRunner)
+
+    async def _fake_request_client_secret(self, **kwargs: object) -> dict[str, object]:
+        return {"client_secret": {"value": "secret"}}
+
+    monkeypatch.setattr(
+        realtime_runner.RealtimeVoiceSessionOrchestrator,
+        "_request_client_secret",
+        _fake_request_client_secret,
+    )
+
+    gateway_module = import_module("backend.app.realtime_gateway")
+    monkeypatch.setattr(gateway_module, "get_realtime_gateway", lambda: None)
+
+    class _StubServer:
+        def __init__(self) -> None:
+            self.cleaned = False
+
+    stub_server = _StubServer()
+
+    async def _fake_connect(configs: Sequence[Mapping[str, object]]):
+        return [stub_server]
+
+    cleaned: list[object] = []
+
+    async def _fake_cleanup(servers: Sequence[object]) -> None:
+        cleaned.extend(servers)
+        for server in servers:
+            if hasattr(server, "cleaned"):
+                server.cleaned = True  # type: ignore[attr-defined]
+
+    monkeypatch.setattr(realtime_runner, "_connect_mcp_servers", _fake_connect)
+    monkeypatch.setattr(realtime_runner, "_cleanup_mcp_servers", _fake_cleanup)
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-mcp",
+            model="gpt-realtime",
+            instructions="Salut",
+            provider_slug="openai",
+            tools=[{"type": "mcp", "url": "https://example.com/mcp"}],
+        )
+    )
+
+    assert handle.mcp_servers == [stub_server]
+    assert not stub_server.cleaned
+
+    closed = asyncio.run(
+        realtime_runner.close_voice_session(session_id=handle.session_id)
+    )
+
+    assert closed is True
+    assert cleaned == [stub_server]
+    assert stub_server.cleaned is True
 
 
 def test_openai_slug_ignores_mismatched_provider_id(

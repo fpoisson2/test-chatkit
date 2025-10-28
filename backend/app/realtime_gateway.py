@@ -31,6 +31,21 @@ from agents.realtime.items import (
     UserMessageItem as RealtimeUserMessageItem,
 )
 from agents.realtime.model_inputs import RealtimeModelSendRawMessage
+from agents.tool import Tool
+from fastapi import WebSocket, WebSocketDisconnect
+from openai.types.realtime.realtime_conversation_item_assistant_message import (
+    Content as AssistantContent,
+)
+from openai.types.realtime.realtime_conversation_item_assistant_message import (
+    RealtimeConversationItemAssistantMessage,
+)
+from openai.types.realtime.realtime_conversation_item_user_message import (
+    Content as UserContent,
+)
+from openai.types.realtime.realtime_conversation_item_user_message import (
+    RealtimeConversationItemUserMessage,
+)
+
 from chatkit.types import (
     AssistantMessageContent,
     InferenceOptions,
@@ -45,19 +60,6 @@ from chatkit.types import (
 )
 from chatkit.types import (
     UserMessageItem as ChatKitUserMessageItem,
-)
-from fastapi import WebSocket, WebSocketDisconnect
-from openai.types.realtime.realtime_conversation_item_assistant_message import (
-    Content as AssistantContent,
-)
-from openai.types.realtime.realtime_conversation_item_assistant_message import (
-    RealtimeConversationItemAssistantMessage,
-)
-from openai.types.realtime.realtime_conversation_item_user_message import (
-    Content as UserContent,
-)
-from openai.types.realtime.realtime_conversation_item_user_message import (
-    RealtimeConversationItemUserMessage,
 )
 
 from .chatkit import get_chatkit_server
@@ -76,11 +78,11 @@ logger = logging.getLogger("chatkit.realtime.gateway")
 
 def _json_safe(value: Any) -> Any:
     """Convertir récursivement en structure JSON sérialisable."""
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if value is None or isinstance(value, str | int | float | bool):
         return value
     if isinstance(value, Mapping):
         return {str(key): _json_safe(val) for key, val in value.items()}
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, list | tuple | set):
         return [_json_safe(item) for item in value]
     model_dump = getattr(value, "model_dump", None)
     if callable(model_dump):
@@ -185,9 +187,20 @@ class _RealtimeSessionState:
                     if value is not None:
                         model_settings[key] = value
 
-            tools_config = self.handle.metadata.get("tools")
+            tools_config = self.handle.metadata.get("sdk_tools")
+            filtered_tools: list[Tool] = []
             if isinstance(tools_config, list):
-                model_settings["tools"] = tools_config
+                filtered_tools = [
+                    tool for tool in tools_config if isinstance(tool, Tool)
+                ]
+            if not filtered_tools:
+                legacy_tools = self.handle.metadata.get("tools")
+                if isinstance(legacy_tools, list):
+                    filtered_tools = [
+                        tool for tool in legacy_tools if isinstance(tool, Tool)
+                    ]
+            if filtered_tools:
+                model_settings["tools"] = filtered_tools
 
             model_config: dict[str, Any] = {
                 "api_key": self.handle.client_secret,
