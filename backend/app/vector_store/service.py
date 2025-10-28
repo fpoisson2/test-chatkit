@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 import re
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
@@ -18,6 +19,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
+from ..model_providers._shared import normalize_api_base
 from ..models import EMBEDDING_DIMENSION, JsonChunk, JsonDocument, JsonVectorStore
 from ..schemas import VectorStoreWorkflowBlueprint
 from ..workflows import WorkflowService, WorkflowValidationError
@@ -45,23 +47,38 @@ MAX_EMBEDDING_TEXT_LENGTH = 20_000
 
 
 def _get_openai_client() -> OpenAI:
-    """Retourne le client OpenAI configuré."""
+    """Retourne un client OpenAI pointant vers l'API native."""
 
     settings = get_settings()
-    api_key = settings.model_api_key
-    if not api_key:
+
+    openai_api_key = settings.openai_api_key
+    openai_base_url: str | None = None
+
+    for provider_config in settings.model_providers:
+        if provider_config.provider.lower() != "openai":
+            continue
+        openai_base_url = normalize_api_base(provider_config.api_base)
+        if provider_config.api_key:
+            openai_api_key = provider_config.api_key
+        break
+
+    provider = (settings.model_provider or "").lower()
+    if openai_base_url is None:
+        if provider == "openai" and settings.model_api_base:
+            openai_base_url = normalize_api_base(settings.model_api_base)
+            if openai_api_key is None and settings.model_api_key:
+                openai_api_key = settings.model_api_key
+        else:
+            fallback_base = os.environ.get("CHATKIT_API_BASE") or "https://api.openai.com"
+            openai_base_url = normalize_api_base(fallback_base)
+
+    if not openai_api_key:
         raise RuntimeError(
-            "Une clé API modèle est requise pour générer des embeddings. "
-            f"Définissez {settings.model_api_key_env}."
+            "Une clé API OpenAI est requise pour générer des embeddings. "
+            "Définissez OPENAI_API_KEY."
         )
 
-    base_url = settings.model_api_base
-    if base_url.endswith("/v1"):
-        client_base_url = base_url
-    else:
-        client_base_url = f"{base_url}/v1"
-
-    return OpenAI(api_key=api_key, base_url=client_base_url)
+    return OpenAI(api_key=openai_api_key, base_url=openai_base_url)
 
 
 def _format_value(value: Any) -> str:
