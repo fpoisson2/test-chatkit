@@ -26,8 +26,38 @@
   --header-height: clamp(64px, 8vh, 80px);
 }
 
+:root[data-theme="light" i] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark" i] {
+  color-scheme: dark;
+  --app-gradient: linear-gradient(160deg, #030712 0%, #111827 45%, #1f2937 100%);
+  --color-text: #e4e4e7;
+  --color-text-strong: #fafafa;
+  --color-text-muted: #a1a1aa;
+  --color-surface: #18181b;
+  --color-surface-subtle: #111114;
+  --color-border-subtle: rgba(228, 228, 231, 0.16);
+  --surface-color: color-mix(in srgb, var(--color-surface) 82%, transparent);
+  --surface-strong: var(--color-surface);
+  --surface-border: var(--color-border-subtle);
+  --text-color: var(--color-text);
+  --text-muted: var(--color-text-muted);
+  --sidebar-background: #09090b;
+  --sidebar-border: rgba(228, 228, 231, 0.08);
+  --main-background: #09090b;
+  --primary-color: #38bdf8;
+  --primary-hover: #0ea5e9;
+  --form-field-background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  --danger-color: #ef4444;
+  --danger-hover: #dc2626;
+  --shadow-soft: 0 20px 45px rgba(3, 7, 18, 0.6);
+  --shadow-card: 0 30px 60px rgba(3, 7, 18, 0.5);
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     color-scheme: dark;
     --app-gradient: linear-gradient(160deg, #030712 0%, #111827 45%, #1f2937 100%);
     --color-text: #e4e4e7;

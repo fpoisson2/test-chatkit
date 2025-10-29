@@ -7746,7 +7746,10 @@ const WorkflowBuilderPage = () => {
                       panOnDrag={isMobileLayout ? true : [1, 2]}
                       multiSelectionKeyCode={['Meta', 'Control']}
                       onSelectionChange={handleSelectionChange}
-                      style={{ background: isMobileLayout ? "transparent" : "#f8fafc", height: "100%" }}
+                      style={{
+                        background: isMobileLayout ? "transparent" : "var(--color-surface-subtle)",
+                        height: "100%",
+                      }}
                       minZoom={minViewportZoom}
                       defaultViewport={initialViewport}
                       fitView={false}
