@@ -339,17 +339,22 @@ class TelephonyVoiceBridge:
                         logger.info("Outil MCP terminé: %s, résultat: %s", tool_name, output)
                         continue
 
-                    # Log other events for debugging
+                    # Log ALL events for debugging interruption issues
                     event_type = type(event).__name__
                     if event_type == "RealtimeRawModelEvent":
-                        # Log the raw event to see what we're missing
+                        # Log ALL raw events to understand what's happening
                         raw_data = getattr(event, 'raw_event', None) or getattr(event, 'event', None)
                         if raw_data and isinstance(raw_data, dict):
                             event_subtype = raw_data.get('type', 'unknown')
-                            if 'speech' in event_subtype or 'audio' in event_subtype or 'response' in event_subtype:
-                                logger.info("Événement brut reçu: %s", event_subtype)
+                            # Log ALL raw events (not just audio/speech/response)
+                            logger.info("🔵 Événement brut: %s", event_subtype)
+                            # For interruption events, log full details
+                            if 'interrupt' in event_subtype or 'speech' in event_subtype or 'input_audio_buffer' in event_subtype:
+                                logger.info("📋 Détails événement interruption: %s", raw_data)
+                        else:
+                            logger.warning("⚠️ Événement brut sans données: %s", event)
                     else:
-                        logger.debug("Événement SDK reçu: %s", event_type)
+                        logger.info("🟢 Événement SDK typé: %s", event_type)
 
             except Exception as exc:
                 logger.exception("Erreur dans le flux d'événements SDK")
