@@ -244,8 +244,10 @@ class TelephonyVoiceBridge:
 
         async def forward_audio() -> None:
             nonlocal inbound_audio_bytes, agent_is_speaking
+            packet_count = 0
             try:
                 async for packet in rtp_stream:
+                    packet_count += 1
                     pcm = self._decode_packet(packet)
                     if not pcm:
                         continue
@@ -259,7 +261,9 @@ class TelephonyVoiceBridge:
                         }
                     )
                     if not should_continue():
+                        logger.info("forward_audio: arrêt demandé par should_continue()")
                         break
+                logger.info("forward_audio: fin de la boucle RTP stream (paquets reçus: %d)", packet_count)
             finally:
                 # Mode conversation : le VAD gère automatiquement le commit et la création de réponse
                 # Pas de commit manuel, l'API le fait quand speech_stopped est détecté
@@ -291,6 +295,7 @@ class TelephonyVoiceBridge:
                         break
                     continue
                 except (StopAsyncIteration, EOFError):
+                    logger.info("Connexion WebSocket fermée normalement")
                     break
                 except Exception as exc:
                     error = VoiceBridgeError("Erreur de transport WebSocket")
@@ -304,9 +309,11 @@ class TelephonyVoiceBridge:
                     continue
                 message_type = str(message.get("type") or "").strip()
                 if message_type == "session.ended":
+                    logger.info("Session Realtime terminée par l'API")
                     break
                 if message_type == "error":
                     description = self._extract_error_message(message)
+                    logger.error("Erreur Realtime API: %s, message complet: %s", description, message)
                     error = VoiceBridgeError(description)
                     break
 
@@ -404,8 +411,9 @@ class TelephonyVoiceBridge:
                     elif combined_entry:
                         transcripts.append(combined_entry)
 
-                    if message_type == "response.completed":
-                        break
+                    # Pour les appels téléphoniques, on continue la conversation
+                    # au lieu de fermer après la première réponse
+                    logger.info("Réponse %s terminée, conversation continue", message_type)
                     continue
             await request_stop()
 
