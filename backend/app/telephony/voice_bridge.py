@@ -297,10 +297,14 @@ class TelephonyVoiceBridge:
                         logger.debug("Agent commence une nouvelle réponse")
                         continue
 
-                    # Handle audio interruption - stop sending audio to phone!
+                    # Handle audio interruption - stop the agent from speaking!
                     if isinstance(event, RealtimeAudioInterrupted):
                         audio_interrupted = True
-                        logger.info("🛑 Interruption détectée - arrêt envoi audio au téléphone")
+                        logger.info("🛑 Interruption détectée - appel stop_speaking()")
+                        try:
+                            await session.stop_speaking()
+                        except Exception as e:
+                            logger.warning("Erreur lors de stop_speaking(): %s", e)
                         continue
 
                     # Handle audio events (agent speaking) - only send if NOT interrupted
