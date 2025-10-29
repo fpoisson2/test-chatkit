@@ -83,6 +83,9 @@ class _FakeWorkflowService:
     ) -> _Definition:
         return self._definitions_by_id[workflow_id]
 
+    def list_workflows(self, session: Any | None = None) -> list[Any]:
+        return [definition.workflow for definition in self._definitions.values()]
+
 
 class _DummyVoiceSettings:
     def __init__(self) -> None:
@@ -284,6 +287,45 @@ def test_resolve_workflow_for_phone_number_uses_workflow_id_when_slug_missing(
     )
 
     assert context.workflow_definition is target_definition
+
+
+def test_resolve_workflow_for_phone_number_scans_additional_workflows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fallback_definition = _Definition(slug="base", telephony_config={})
+    voice_definition = _Definition(
+        slug="voix",
+        telephony_config={
+            "routes": [
+                {
+                    "label": "Voix",
+                    "phone_numbers": ["100"],
+                    "workflow": {"slug": "voix"},
+                }
+            ],
+            "default": {"workflow": {"slug": "voix"}},
+        },
+    )
+
+    service = _FakeWorkflowService(
+        definitions={"base": fallback_definition, "voix": voice_definition},
+        current="base",
+    )
+
+    monkeypatch.setattr(
+        "backend.app.telephony.sip_server.get_or_create_voice_settings",
+        lambda session: _DummyVoiceSettings(),
+    )
+
+    context = resolve_workflow_for_phone_number(
+        service,
+        phone_number="100",
+        session=object(),
+    )
+
+    assert context.workflow_definition is voice_definition
+    assert context.route is not None
+    assert context.route.phone_numbers == ("100",)
 
 
 def test_ack_starts_rtp_session_once() -> None:

@@ -310,6 +310,76 @@ def _match_route(
     return config.default_route
 
 
+def _find_alternate_workflow_route(
+    workflow_service: WorkflowService,
+    *,
+    normalized_number: str,
+    session: Session | None,
+    exclude_workflow_id: int | None,
+) -> (
+    tuple[
+        WorkflowDefinition,
+        TelephonyStartConfiguration,
+        TelephonyRouteConfig,
+    ]
+    | None
+):
+    """Cherche une route téléphonie dans les autres workflows actifs."""
+
+    if session is None or not normalized_number:
+        return None
+
+    try:
+        workflows = workflow_service.list_workflows(session=session)
+    except Exception as exc:  # pragma: no cover - dépend BDD
+        logger.warning(
+            "Impossible de lister les workflows lors de la recherche d'une "
+            "route téléphonie",
+            exc_info=exc,
+        )
+        return None
+
+    for workflow in workflows:
+        workflow_id = getattr(workflow, "id", None)
+        if exclude_workflow_id is not None and workflow_id == exclude_workflow_id:
+            continue
+
+        slug = getattr(workflow, "slug", None)
+        if not slug:
+            continue
+
+        try:
+            definition = workflow_service.get_definition_by_slug(slug, session=session)
+        except Exception as exc:  # pragma: no cover - dépend BDD
+            logger.debug(
+                "Impossible de charger le workflow %s lors de la recherche d'une "
+                "route téléphonie",
+                slug,
+                exc_info=exc,
+            )
+            continue
+
+        telephony_config = resolve_start_telephony_config(definition)
+        if telephony_config is None:
+            continue
+
+        route = _match_route(telephony_config, normalized_number)
+        if route is None:
+            continue
+
+        if (
+            route.is_default
+            and not route.phone_numbers
+            and not route.prefixes
+            and telephony_config.routes
+        ):
+            continue
+
+        return definition, telephony_config, route
+
+    return None
+
+
 def resolve_workflow_for_phone_number(
     workflow_service: WorkflowService,
     *,
@@ -346,55 +416,112 @@ def resolve_workflow_for_phone_number(
     else:
         logger.info("Numéro entrant %s déjà normalisé", normalized_number)
 
+    base_workflow = getattr(definition, "workflow", None)
+    base_workflow_id = getattr(base_workflow, "id", None)
+
     telephony_config = resolve_start_telephony_config(definition)
-    if telephony_config is None:
+    selected_definition = definition
+    selected_config = telephony_config
+    route: TelephonyRouteConfig | None = None
+
+    if selected_config is None:
         logger.info(
-            "Workflow %s sans configuration téléphonie : utilisation de la définition "
-            "courante.",
-            getattr(definition.workflow, "slug", "<inconnu>"),
+            "Workflow %s sans configuration téléphonie : "
+            "recherche d'une route alternative.",
+            getattr(base_workflow, "slug", "<inconnu>"),
         )
-        model, instructions, voice, prompt_variables, provider_id, provider_slug = (
-            _merge_voice_settings(
-                session=session,
-                overrides=None,
-                settings=effective_settings,
-                workflow_definition=definition,
-            )
-        )
-        return TelephonyCallContext(
-            workflow_definition=definition,
+        alternate = _find_alternate_workflow_route(
+            workflow_service,
             normalized_number=normalized_number,
-            original_number=phone_number,
-            route=None,
-            voice_model=model,
-            voice_instructions=instructions,
-            voice_voice=voice,
-            voice_prompt_variables=prompt_variables,
-            voice_provider_id=provider_id,
-            voice_provider_slug=provider_slug,
+            session=session,
+            exclude_workflow_id=base_workflow_id,
         )
+        if alternate is not None:
+            selected_definition, selected_config, route = alternate
+            selected_workflow = getattr(selected_definition, "workflow", None)
+            logger.info(
+                "Configuration téléphonie résolue via le workflow %s pour le numéro %s",
+                getattr(selected_workflow, "slug", "<inconnu>"),
+                normalized_number or "<vide>",
+            )
+        else:
+            model, instructions, voice, prompt_variables, provider_id, provider_slug = (
+                _merge_voice_settings(
+                    session=session,
+                    overrides=None,
+                    settings=effective_settings,
+                    workflow_definition=definition,
+                )
+            )
+            return TelephonyCallContext(
+                workflow_definition=definition,
+                normalized_number=normalized_number,
+                original_number=phone_number,
+                route=None,
+                voice_model=model,
+                voice_instructions=instructions,
+                voice_voice=voice,
+                voice_prompt_variables=prompt_variables,
+                voice_provider_id=provider_id,
+                voice_provider_slug=provider_slug,
+            )
     else:
         logger.info(
             "Configuration téléphonie chargée pour %s : %d route(s), "
             "route par défaut=%s",
-            getattr(definition.workflow, "slug", "<inconnu>"),
-            len(telephony_config.routes),
-            "oui" if telephony_config.default_route else "non",
+            getattr(base_workflow, "slug", "<inconnu>"),
+            len(selected_config.routes),
+            "oui" if selected_config.default_route else "non",
         )
+        route = _match_route(selected_config, normalized_number)
+        if route is None:
+            alternate = _find_alternate_workflow_route(
+                workflow_service,
+                normalized_number=normalized_number,
+                session=session,
+                exclude_workflow_id=base_workflow_id,
+            )
+            if alternate is not None:
+                selected_definition, selected_config, route = alternate
+                selected_workflow = getattr(selected_definition, "workflow", None)
+                logger.info(
+                    "Route téléphonie résolue via le workflow %s pour le numéro %s",
+                    getattr(selected_workflow, "slug", "<inconnu>"),
+                    normalized_number or "<vide>",
+                )
+            else:
+                logger.warning(
+                    "Aucune route téléphonie ne correspond au numéro %s "
+                    "pour le workflow %s",
+                    phone_number,
+                    getattr(base_workflow, "slug", "<inconnu>"),
+                )
+                raise TelephonyRouteSelectionError(
+                    f"Aucune route téléphonie pour le numéro {phone_number!r}"
+                )
+        elif (
+            route.is_default
+            and not route.phone_numbers
+            and not route.prefixes
+            and selected_config.routes
+        ):
+            alternate = _find_alternate_workflow_route(
+                workflow_service,
+                normalized_number=normalized_number,
+                session=session,
+                exclude_workflow_id=base_workflow_id,
+            )
+            if alternate is not None:
+                selected_definition, selected_config, route = alternate
+                selected_workflow = getattr(selected_definition, "workflow", None)
+                logger.info(
+                    "Route téléphonie résolue via un workflow alternatif %s "
+                    "pour le numéro %s",
+                    getattr(selected_workflow, "slug", "<inconnu>"),
+                    normalized_number or "<vide>",
+                )
 
-    route = _match_route(telephony_config, normalized_number)
-
-    if route is None:
-        logger.warning(
-            "Aucune route téléphonie ne correspond au numéro %s pour le workflow %s",
-            phone_number,
-            getattr(definition.workflow, "slug", "<inconnu>"),
-        )
-        raise TelephonyRouteSelectionError(
-            f"Aucune route téléphonie pour le numéro {phone_number!r}"
-        )
-
-    if route is telephony_config.default_route:
+    if route is selected_config.default_route:
         match_reason = "route par défaut"
     elif normalized_number and normalized_number in route.phone_numbers:
         match_reason = "correspondance exacte"
@@ -415,13 +542,13 @@ def resolve_workflow_for_phone_number(
         "Route téléphonie sélectionnée (%s) : label=%s, workflow=%s, priorité=%s",
         match_reason,
         route.label or "<sans-label>",
-        route.workflow_slug or getattr(definition.workflow, "slug", "<inconnu>"),
+        route.workflow_slug
+        or getattr(selected_definition.workflow, "slug", "<inconnu>"),
         route.priority,
     )
 
-    selected_definition = definition
-    current_slug = getattr(getattr(definition, "workflow", None), "slug", None)
-    current_id = getattr(getattr(definition, "workflow", None), "id", None)
+    current_slug = getattr(getattr(selected_definition, "workflow", None), "slug", None)
+    current_id = getattr(getattr(selected_definition, "workflow", None), "id", None)
 
     if route.workflow_slug and current_slug != route.workflow_slug:
         try:
