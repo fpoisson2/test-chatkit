@@ -782,6 +782,10 @@ class RealtimeVoiceSessionOrchestrator:
 
         normalized_provider_id = self._clean_identifier(provider_id)
         normalized_provider_slug = self._clean_slug(provider_slug)
+        if not normalized_provider_slug and normalized_provider_id:
+            candidate_slug = self._clean_slug(normalized_provider_id)
+            if candidate_slug:
+                normalized_provider_slug = candidate_slug
 
         if voice_value:
             voice_modes: list[Literal["include", "none"]] = ["include", "none"]

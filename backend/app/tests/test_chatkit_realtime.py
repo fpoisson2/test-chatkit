@@ -290,6 +290,46 @@ def test_open_voice_session_prefers_openai_slug(
     assert headers.get("Authorization") == "Bearer openai-key"
 
 
+def test_open_voice_session_uses_provider_id_when_slug_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+    captured: dict[str, object] = {}
+
+    _reset_orchestrator(monkeypatch)
+    monkeypatch.setattr(realtime_runner, "get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr(
+        realtime_runner,
+        "resolve_model_provider_credentials",
+        lambda provider_id: None,
+    )
+    monkeypatch.setattr(
+        realtime_runner.httpx,
+        "AsyncClient",
+        lambda **kwargs: _DummyAsyncClient(captured=captured, **kwargs),
+    )
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-provider-id",
+            model="gpt-realtime",
+            instructions="Bonjour",
+            provider_id="OpenAI",
+            voice="verse",
+        )
+    )
+
+    assert handle.payload == {"client_secret": {"value": "secret"}}
+    requests = captured.get("requests")
+    assert isinstance(requests, list)
+    assert len(requests) == 1
+    request = requests[0]
+    assert request["url"] == "https://api.openai.com/v1/realtime/client_secrets"
+    headers = request["headers"]
+    assert isinstance(headers, dict)
+    assert headers.get("Authorization") == "Bearer openai-key"
+
+
 def test_open_voice_session_normalizes_mcp_tools(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
