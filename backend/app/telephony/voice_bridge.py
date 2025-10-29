@@ -264,6 +264,14 @@ class TelephonyVoiceBridge:
                 # Mode conversation : le VAD gère automatiquement le commit et la création de réponse
                 # Pas de commit manuel, l'API le fait quand speech_stopped est détecté
                 logger.debug("Fin du flux audio RTP, attente de la fermeture de session")
+                try:
+                    await send_json({"type": "input_audio_buffer.commit"})
+                    await send_json({"type": "response.create"})
+                except Exception:
+                    logger.debug(
+                        "Impossible d'envoyer commit/response.create",
+                        exc_info=True,
+                    )
                 await request_stop()
 
         transcript_buffers: dict[str, list[str]] = {}
