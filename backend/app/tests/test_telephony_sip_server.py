@@ -4,6 +4,7 @@ import asyncio
 import itertools
 import os
 import sys
+import types
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -108,6 +109,33 @@ def test_resolve_start_telephony_config_detects_flag() -> None:
 def test_resolve_start_telephony_config_returns_none_without_flag() -> None:
     definition = _Definition(slug="base", telephony_config={})
     assert resolve_start_telephony_config(definition) is None
+
+
+def test_extract_remote_media_target_prefers_audio_section() -> None:
+    payload = (
+        "v=0\r\n"
+        "o=- 123 1 IN IP4 198.51.100.5\r\n"
+        "s=-\r\n"
+        "c=IN IP4 198.51.100.9\r\n"
+        "t=0 0\r\n"
+        "m=audio 49170 RTP/AVP 0 8\r\n"
+        "c=IN IP4 198.51.100.5\r\n"
+        "a=rtpmap:0 PCMU/8000\r\n"
+    )
+
+    host, port = startup_module._extract_remote_media_target(payload)
+
+    assert host == "198.51.100.5"
+    assert port == 49170
+
+
+def test_extract_remote_media_target_handles_missing_values() -> None:
+    payload = "v=0\r\n" "s=-\r\n" "m=video 0 RTP/AVP 31\r\n"
+
+    host, port = startup_module._extract_remote_media_target(payload)
+
+    assert host is None
+    assert port is None
 
 
 def _make_settings(**overrides: Any) -> Any:
@@ -634,6 +662,85 @@ async def test_start_rtp_uses_voice_event_configuration(
     metadata = session.metadata["telephony"]
     assert metadata["client_secret"] == "secret-token"
     assert metadata["voice_session_config"]["instructions"] == "Parlez peu."
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("anyio_backend", ["asyncio"])
+async def test_invite_configures_rtp_remote_target(
+    monkeypatch: pytest.MonkeyPatch, anyio_backend: str
+) -> None:
+    del anyio_backend
+
+    recorded: dict[str, Any] = {}
+
+    class _FakeRtpServer:
+        def __init__(self, config: Any) -> None:
+            recorded["config"] = config
+
+        async def start(self) -> int:
+            return 40000
+
+        async def stop(self) -> None:
+            recorded["stopped"] = True
+
+    async def _noop_reply(*_: Any, **__: Any) -> None:
+        return None
+
+    monkeypatch.setattr(startup_module, "RtpServer", _FakeRtpServer)
+    monkeypatch.setattr(startup_module, "send_sip_reply", _noop_reply)
+
+    manager = SimpleNamespace(active_config=None, contact_host="192.0.2.10")
+    on_invite = startup_module._build_invite_handler(manager)
+    closure = {
+        name: cell.cell_contents
+        for name, cell in zip(
+            on_invite.__code__.co_freevars,
+            on_invite.__closure__ or (),
+            strict=False,
+        )
+    }
+    sip_handler = closure["sip_handler"]
+
+    async def _fake_handle_invite(
+        self: Any, request: Any, dialog: Any | None = None
+    ) -> None:
+        raise RuntimeError("stop")
+
+    monkeypatch.setattr(
+        sip_handler,
+        "handle_invite",
+        types.MethodType(_fake_handle_invite, sip_handler),
+        raising=False,
+    )
+
+    payload = (
+        b"v=0\r\n"
+        b"o=- 123 1 IN IP4 198.51.100.5\r\n"
+        b"s=-\r\n"
+        b"c=IN IP4 198.51.100.9\r\n"
+        b"t=0 0\r\n"
+        b"m=audio 49170 RTP/AVP 0 8\r\n"
+        b"a=rtpmap:0 PCMU/8000\r\n"
+    )
+
+    request = SimpleNamespace(
+        method="INVITE",
+        payload=payload,
+        headers={
+            "Call-ID": "call-remote",
+            "From": "\"Caller\" <sip:100@example.com>",
+            "To": "sip:102@example.com",
+        },
+    )
+
+    dialog = SimpleNamespace()
+
+    with pytest.raises(RuntimeError):
+        await on_invite(dialog, request)
+
+    config = recorded["config"]
+    assert config.remote_host == "198.51.100.9"
+    assert config.remote_port == 49170
 
 
 def test_ack_without_session_is_ignored(caplog: pytest.LogCaptureFixture) -> None:

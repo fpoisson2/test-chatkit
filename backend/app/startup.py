@@ -76,6 +76,66 @@ logger = logging.getLogger("chatkit.server")
 
 TELEPHONY_SAMPLE_RATE = 8_000
 
+
+def _extract_remote_media_target(payload: Any) -> tuple[str | None, int | None]:
+    """Retourne l'adresse et le port RTP annoncés dans un SDP d'INVITE."""
+
+    text: str | None = None
+    if isinstance(payload, bytes):
+        try:
+            text = payload.decode("utf-8")
+        except UnicodeDecodeError:
+            text = payload.decode("utf-8", errors="ignore")
+    elif isinstance(payload, str):
+        text = payload
+
+    if not text:
+        return None, None
+
+    normalized_lines = [
+        line.strip()
+        for line in text.replace("\r\n", "\n").split("\n")
+        if line.strip()
+    ]
+
+    session_address: str | None = None
+    audio_address: str | None = None
+    audio_port: int | None = None
+    in_audio_section = False
+
+    for line in normalized_lines:
+        lowered = line.lower()
+
+        if lowered.startswith("m="):
+            if in_audio_section:
+                break
+
+            if lowered.startswith("m=audio"):
+                in_audio_section = True
+                parts = line.split()
+                if len(parts) >= 2:
+                    try:
+                        candidate = int(parts[1])
+                    except ValueError:
+                        candidate = None
+                    audio_port = candidate if candidate and candidate > 0 else None
+                continue
+
+            in_audio_section = False
+            continue
+
+        if lowered.startswith("c="):
+            parts = line.split()
+            if len(parts) >= 3:
+                address = parts[-1]
+                if in_audio_section:
+                    audio_address = address
+                elif session_address is None:
+                    session_address = address
+
+    remote_address = audio_address or session_address
+    return remote_address, audio_port
+
 for noisy_logger in (
     "aiosip",
     "aiosip.protocol",
@@ -844,6 +904,16 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 )
             return
 
+        remote_host, remote_port = _extract_remote_media_target(
+            getattr(request, "payload", None)
+        )
+        if remote_host or remote_port:
+            logger.info(
+                "Cible RTP distante annoncée : %s:%s",
+                remote_host or "<inconnue>",
+                remote_port if remote_port is not None else "<auto>",
+            )
+
         # Créer et démarrer le serveur RTP
         rtp_config = RtpServerConfig(
             local_host=media_host,
@@ -851,6 +921,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             payload_type=0,  # PCMU
             output_codec="pcmu",
             input_sample_rate=TELEPHONY_SAMPLE_RATE,
+            remote_host=remote_host,
+            remote_port=remote_port,
         )
         rtp_server = RtpServer(rtp_config)
 
