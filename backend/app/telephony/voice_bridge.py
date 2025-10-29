@@ -341,7 +341,15 @@ class TelephonyVoiceBridge:
 
                     # Log other events for debugging
                     event_type = type(event).__name__
-                    logger.debug("Événement SDK reçu: %s", event_type)
+                    if event_type == "RealtimeRawModelEvent":
+                        # Log the raw event to see what we're missing
+                        raw_data = getattr(event, 'raw_event', None) or getattr(event, 'event', None)
+                        if raw_data and isinstance(raw_data, dict):
+                            event_subtype = raw_data.get('type', 'unknown')
+                            if 'speech' in event_subtype or 'audio' in event_subtype or 'response' in event_subtype:
+                                logger.info("Événement brut reçu: %s", event_subtype)
+                    else:
+                        logger.debug("Événement SDK reçu: %s", event_type)
 
             except Exception as exc:
                 logger.exception("Erreur dans le flux d'événements SDK")
