@@ -581,6 +581,32 @@ export const setStartTelephonyWorkflow = (
     return { ...current, workflow: payload };
   });
 
+export const getStartTelephonyIsSipWorkflow = (
+  parameters: AgentParameters | null | undefined,
+): boolean => {
+  if (!parameters) {
+    return false;
+  }
+
+  const telephony = cloneStartTelephonyConfig(
+    (parameters as Record<string, unknown>).telephony,
+  );
+
+  return telephony.is_sip_workflow === true;
+};
+
+export const setStartTelephonyIsSipWorkflow = (
+  parameters: AgentParameters,
+  isSipWorkflow: boolean,
+): AgentParameters =>
+  updateStartTelephonyConfig(parameters, (current) => {
+    if (!isSipWorkflow) {
+      const { is_sip_workflow: _ignored, ...rest } = current;
+      return rest;
+    }
+    return { ...current, is_sip_workflow: true };
+  });
+
 export const setConditionPath = (
   parameters: AgentParameters,
   path: string,

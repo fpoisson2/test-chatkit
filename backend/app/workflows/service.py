@@ -944,6 +944,42 @@ class WorkflowService:
             if owns_session:
                 db.close()
 
+    def get_sip_workflow(
+        self, session: Session | None = None
+    ) -> WorkflowDefinition | None:
+        """Cherche le workflow marqué comme workflow SIP (is_sip_workflow=true)."""
+        db, owns_session = self._get_session(session)
+        try:
+            # Chercher tous les workflows actifs
+            workflows = db.scalars(select(Workflow)).all()
+
+            for workflow in workflows:
+                definition = self._load_active_definition(workflow, db)
+                if definition is None:
+                    continue
+
+                # Vérifier si ce workflow a is_sip_workflow=true
+                for step in definition.steps:
+                    if step.kind == "start" and step.parameters:
+                        telephony = step.parameters.get("telephony", {})
+                        if isinstance(telephony, dict) and telephony.get("is_sip_workflow") is True:
+                            definition = self._fully_load_definition(definition)
+                            if self._needs_graph_backfill(definition):
+                                logger.info(
+                                    "Legacy SIP workflow detected, backfilling default graph for slug %s",
+                                    workflow.slug,
+                                )
+                                definition = self._backfill_legacy_definition(definition, db)
+                                self._set_active_definition(workflow, definition, db)
+                                db.commit()
+                            return definition
+
+            # Aucun workflow SIP trouvé
+            return None
+        finally:
+            if owns_session:
+                db.close()
+
     def update_current(
         self,
         graph_payload: dict[str, Any],

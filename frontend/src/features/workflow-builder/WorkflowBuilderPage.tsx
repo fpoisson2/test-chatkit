@@ -89,9 +89,7 @@ import {
   setStartAutoRun,
   setStartAutoRunMessage,
   setStartAutoRunAssistantMessage,
-  setStartTelephonyRoutes,
-  setStartTelephonyWorkflow,
-  setStartTelephonyRealtimeOverrides,
+  setStartTelephonyIsSipWorkflow,
   setConditionMode,
   setConditionPath,
   setConditionValue,
@@ -124,7 +122,6 @@ import {
   getParallelSplitJoinSlug,
   getParallelSplitBranches,
   type WorkflowToolConfig,
-  type StartTelephonyRealtimeOverrides,
   type McpSseToolConfig,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
@@ -2683,52 +2680,13 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
-  const handleStartTelephonyRoutesChange = useCallback(
-    (nodeId: string, routes: string[]) => {
+  const handleStartTelephonyIsSipWorkflowChange = useCallback(
+    (nodeId: string, isSipWorkflow: boolean) => {
       updateNodeData(nodeId, (data) => {
         if (data.kind !== "start") {
           return data;
         }
-        const nextParameters = setStartTelephonyRoutes(data.parameters, routes);
-        return {
-          ...data,
-          parameters: nextParameters,
-          parametersText: stringifyAgentParameters(nextParameters),
-          parametersError: null,
-        } satisfies FlowNodeData;
-      });
-    },
-    [updateNodeData],
-  );
-
-  const handleStartTelephonyWorkflowChange = useCallback(
-    (nodeId: string, reference: { id?: number | null; slug?: string | null }) => {
-      updateNodeData(nodeId, (data) => {
-        if (data.kind !== "start") {
-          return data;
-        }
-        const nextParameters = setStartTelephonyWorkflow(data.parameters, reference);
-        return {
-          ...data,
-          parameters: nextParameters,
-          parametersText: stringifyAgentParameters(nextParameters),
-          parametersError: null,
-        } satisfies FlowNodeData;
-      });
-    },
-    [updateNodeData],
-  );
-
-  const handleStartTelephonyRealtimeChange = useCallback(
-    (nodeId: string, overrides: Partial<StartTelephonyRealtimeOverrides>) => {
-      updateNodeData(nodeId, (data) => {
-        if (data.kind !== "start") {
-          return data;
-        }
-        const nextParameters = setStartTelephonyRealtimeOverrides(
-          data.parameters,
-          overrides,
-        );
+        const nextParameters = setStartTelephonyIsSipWorkflow(data.parameters, isSipWorkflow);
         return {
           ...data,
           parameters: nextParameters,
@@ -7498,9 +7456,7 @@ const WorkflowBuilderPage = () => {
             onStartAutoRunAssistantMessageChange={
               handleStartAutoRunAssistantMessageChange
             }
-            onStartTelephonyRoutesChange={handleStartTelephonyRoutesChange}
-            onStartTelephonyWorkflowChange={handleStartTelephonyWorkflowChange}
-            onStartTelephonyRealtimeChange={handleStartTelephonyRealtimeChange}
+            onStartTelephonyIsSipWorkflowChange={handleStartTelephonyIsSipWorkflowChange}
             onConditionPathChange={handleConditionPathChange}
             onConditionModeChange={handleConditionModeChange}
             onConditionValueChange={handleConditionValueChange}
