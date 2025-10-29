@@ -80,14 +80,47 @@ TELEPHONY_SAMPLE_RATE = 8_000
 def _extract_remote_media_target(payload: Any) -> tuple[str | None, int | None]:
     """Retourne l'adresse et le port RTP annoncés dans un SDP d'INVITE."""
 
+    def _coerce_payload(raw: Any) -> bytes | str | None:
+        if raw is None:
+            return None
+        if isinstance(raw, bytes | str):
+            return raw
+
+        # Certains objets ``aiosip`` exposent l'SDP via un attribut ``body``.
+        for attr in ("body", "payload", "data"):
+            candidate = getattr(raw, attr, None)
+            if isinstance(candidate, bytes | str):
+                return candidate
+
+        if isinstance(raw, Mapping):
+            for key in ("body", "payload", "sdp", "data"):
+                candidate = raw.get(key)
+                if isinstance(candidate, bytes | str):
+                    return candidate
+
+        decode = getattr(raw, "decode", None)
+        if callable(decode):
+            try:
+                candidate = decode()
+            except TypeError:
+                try:
+                    candidate = decode("utf-8")
+                except Exception:  # pragma: no cover - garde-fou
+                    candidate = None
+            if isinstance(candidate, bytes | str):
+                return candidate
+
+        return None
+
     text: str | None = None
-    if isinstance(payload, bytes):
+    normalized_payload = _coerce_payload(payload)
+    if isinstance(normalized_payload, bytes):
         try:
-            text = payload.decode("utf-8")
+            text = normalized_payload.decode("utf-8")
         except UnicodeDecodeError:
-            text = payload.decode("utf-8", errors="ignore")
-    elif isinstance(payload, str):
-        text = payload
+            text = normalized_payload.decode("utf-8", errors="ignore")
+    elif isinstance(normalized_payload, str):
+        text = normalized_payload
 
     if not text:
         return None, None

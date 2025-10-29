@@ -138,6 +138,49 @@ def test_extract_remote_media_target_handles_missing_values() -> None:
     assert port is None
 
 
+def test_extract_remote_media_target_handles_mapping_payload() -> None:
+    payload = {
+        "body": (
+            b"v=0\r\n"
+            b"o=- 321 1 IN IP4 203.0.113.10\r\n"
+            b"s=-\r\n"
+            b"c=IN IP4 203.0.113.77\r\n"
+            b"t=0 0\r\n"
+            b"m=audio 60000 RTP/AVP 0\r\n"
+        )
+    }
+
+    host, port = startup_module._extract_remote_media_target(payload)
+
+    assert host == "203.0.113.77"
+    assert port == 60000
+
+
+def test_extract_remote_media_target_handles_object_payload() -> None:
+    body = (
+        b"v=0\r\n"
+        b"o=- 999 1 IN IP4 198.51.100.20\r\n"
+        b"s=-\r\n"
+        b"c=IN IP4 198.51.100.30\r\n"
+        b"t=0 0\r\n"
+        b"m=audio 49152 RTP/AVP 0\r\n"
+    )
+
+    class _Payload:
+        def __init__(self, data: bytes) -> None:
+            self.body = data
+
+        def decode(self, encoding: str = "utf-8") -> str:
+            return self.body.decode(encoding)
+
+    payload = _Payload(body)
+
+    host, port = startup_module._extract_remote_media_target(payload)
+
+    assert host == "198.51.100.30"
+    assert port == 49152
+
+
 def _make_settings(**overrides: Any) -> Any:
     defaults = {
         "chatkit_realtime_model": "fallback-model",
