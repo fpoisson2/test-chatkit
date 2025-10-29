@@ -8,7 +8,6 @@ from .sip_server import (
     SipCallRequestHandler,
     SipCallSession,
     TelephonyCallContext,
-    TelephonyRouteResolution,
     TelephonyRouteSelectionError,
     resolve_workflow_for_phone_number,
 )
@@ -25,7 +24,6 @@ from .voice_bridge import (
 
 __all__ = [
     "TelephonyCallContext",
-    "TelephonyRouteResolution",
     "TelephonyRouteSelectionError",
     "resolve_workflow_for_phone_number",
     "SipCallSession",

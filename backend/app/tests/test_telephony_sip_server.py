@@ -25,7 +25,6 @@ import backend.app.telephony.sip_server as sip_module  # noqa: E402
 from backend.app.telephony.sip_server import (  # noqa: E402
     SipCallRequestHandler,
     SipCallSession,
-    TelephonyRouteSelectionError,
     resolve_workflow_for_phone_number,
 )
 from backend.app.telephony.voice_bridge import VoiceBridgeStats  # noqa: E402
@@ -95,110 +94,48 @@ class _DummyVoiceSettings:
         self.prompt_variables = {"existing": "1"}
 
 
-def test_resolve_start_telephony_config_parses_routes() -> None:
+def test_resolve_start_telephony_config_detects_flag() -> None:
     definition = _Definition(
         slug="base",
-        telephony_config={
-            "routes": [
-                {
-                    "label": "Support",
-                    "phone_numbers": [" +33 1 23 45 67 89 ", "001122"],
-                    "workflow": {"slug": "support"},
-                    "overrides": {
-                        "model": "gpt-voice",
-                        "voice": "alloy",
-                        "instructions": "Soyez aimable",
-                        "prompt_variables": {"locale": "fr", "trim": " value "},
-                    },
-                },
-                {
-                    "prefixes": ["+331"],
-                    "workflow_slug": "sales",
-                },
-            ],
-            "default": {
-                "workflow": {"slug": "base"},
-                "overrides": {"voice": "verse"},
-            },
-        },
+        telephony_config={"sip_entrypoint": True},
     )
 
     config = resolve_start_telephony_config(definition)
     assert config is not None
-    assert len(config.routes) == 2
-    assert config.default_route is not None
-
-    first_route = config.routes[0]
-    assert first_route.workflow_slug == "support"
-    assert first_route.phone_numbers == ("+33123456789", "001122")
-    assert first_route.overrides.model == "gpt-voice"
-    assert first_route.overrides.voice == "alloy"
-    assert first_route.overrides.instructions == "Soyez aimable"
-    assert first_route.overrides.prompt_variables == {"locale": "fr", "trim": " value "}
-
-    second_route = config.routes[1]
-    assert second_route.prefixes == ("+331",)
+    assert config.sip_entrypoint is True
 
 
-def test_resolve_workflow_for_phone_number_applies_overrides(
+def test_resolve_start_telephony_config_returns_none_without_flag() -> None:
+    definition = _Definition(slug="base", telephony_config={})
+    assert resolve_start_telephony_config(definition) is None
+
+
+def _make_settings(**overrides: Any) -> Any:
+    defaults = {
+        "chatkit_realtime_model": "fallback-model",
+        "chatkit_realtime_instructions": "Fallback instructions",
+        "chatkit_realtime_voice": "fallback-voice",
+        "telephony_default_workflow_slug": None,
+        "telephony_default_workflow_id": None,
+    }
+    defaults.update(overrides)
+    return SimpleNamespace(**defaults)
+
+
+def test_resolve_workflow_for_phone_number_uses_current_entrypoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     service = _FakeWorkflowService(
         definitions={
             "base": _Definition(
                 slug="base",
-                telephony_config={
-                    "routes": [
-                        {
-                            "phone_numbers": ["+331234"],
-                            "workflow": {"slug": "base"},
-                            "overrides": {
-                                "model": "gpt-special",
-                                "voice": "ember",
-                                "instructions": "Répondez rapidement",
-                                "prompt_variables": {"channel": "sip"},
-                            },
-                        }
-                    ],
-                    "default": {
-                        "workflow": {"slug": "base"},
-                    },
-                },
-            )
+                telephony_config={"sip_entrypoint": True},
+            ),
+            "alt": _Definition(slug="alt", telephony_config={}),
         },
         current="base",
     )
 
-    dummy_session = object()
-    monkeypatch.setattr(
-        "backend.app.telephony.sip_server.get_or_create_voice_settings",
-        lambda session: _DummyVoiceSettings(),
-    )
-
-    context = resolve_workflow_for_phone_number(
-        service,
-        phone_number="+33 1234",
-        session=dummy_session,
-    )
-
-    assert context.route is not None
-    assert context.voice_model == "gpt-special"
-    assert context.voice_instructions == "Répondez rapidement"
-    assert context.voice_voice == "ember"
-    assert context.voice_prompt_variables == {"existing": "1", "channel": "sip"}
-
-
-def test_resolve_workflow_for_phone_number_logs_and_falls_back_to_default(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = _FakeWorkflowService(
-        definitions={
-            "base": _Definition(slug="base", telephony_config={}),
-        },
-        current="base",
-    )
-
-    dummy_session = object()
     monkeypatch.setattr(
         "backend.app.telephony.sip_server.get_or_create_voice_settings",
         lambda session: _DummyVoiceSettings(),
@@ -207,108 +144,26 @@ def test_resolve_workflow_for_phone_number_logs_and_falls_back_to_default(
     context = resolve_workflow_for_phone_number(
         service,
         phone_number="+331234",
-        session=dummy_session,
-    )
-
-    assert context.route is None
-    assert context.voice_model == "base-model"
-    assert context.voice_voice == "base-voice"
-
-
-def test_resolve_workflow_for_phone_number_raises_when_no_route(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    service = _FakeWorkflowService(
-        definitions={
-            "base": _Definition(
-                slug="base",
-                telephony_config={
-                    "routes": [
-                        {
-                            "phone_numbers": ["+999"],
-                            "workflow": {"slug": "base"},
-                        }
-                    ]
-                },
-            )
-        },
-        current="base",
-    )
-
-    monkeypatch.setattr(
-        "backend.app.telephony.sip_server.get_or_create_voice_settings",
-        lambda session: _DummyVoiceSettings(),
-    )
-
-    with pytest.raises(TelephonyRouteSelectionError):
-        resolve_workflow_for_phone_number(
-            service,
-            phone_number="+331234",
-            session=object(),
-        )
-
-
-def test_resolve_workflow_for_phone_number_uses_workflow_id_when_slug_missing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    target_definition = _Definition(
-        slug="sales",
-        telephony_config={},
-        workflow_id=99,
-    )
-    service = _FakeWorkflowService(
-        definitions={
-            "base": _Definition(
-                slug="base",
-                telephony_config={
-                    "routes": [
-                        {
-                            "phone_numbers": ["1234"],
-                            "workflow": {"id": 99},
-                        }
-                    ],
-                    "default": {"workflow": {"slug": "base"}},
-                },
-            ),
-            "sales": target_definition,
-        },
-        current="base",
-    )
-
-    monkeypatch.setattr(
-        "backend.app.telephony.sip_server.get_or_create_voice_settings",
-        lambda session: _DummyVoiceSettings(),
-    )
-
-    context = resolve_workflow_for_phone_number(
-        service,
-        phone_number="1234",
         session=object(),
+        settings=_make_settings(),
     )
 
-    assert context.workflow_definition is target_definition
+    assert context.workflow_definition is service.get_definition_by_slug("base")
+    assert context.is_sip_entrypoint is True
+    assert context.voice_model == "base-model"
 
 
-def test_resolve_workflow_for_phone_number_scans_additional_workflows(
+def test_resolve_workflow_for_phone_number_prefers_flagged_workflow(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fallback_definition = _Definition(slug="base", telephony_config={})
-    voice_definition = _Definition(
-        slug="voix",
-        telephony_config={
-            "routes": [
-                {
-                    "label": "Voix",
-                    "phone_numbers": ["100"],
-                    "workflow": {"slug": "voix"},
-                }
-            ],
-            "default": {"workflow": {"slug": "voix"}},
-        },
-    )
-
     service = _FakeWorkflowService(
-        definitions={"base": fallback_definition, "voix": voice_definition},
+        definitions={
+            "base": _Definition(slug="base", telephony_config={}),
+            "voice": _Definition(
+                slug="voice",
+                telephony_config={"sip_entrypoint": True},
+            ),
+        },
         current="base",
     )
 
@@ -321,13 +176,70 @@ def test_resolve_workflow_for_phone_number_scans_additional_workflows(
         service,
         phone_number="100",
         session=object(),
+        settings=_make_settings(),
     )
 
-    assert context.workflow_definition is voice_definition
-    assert context.route is not None
-    assert context.route.phone_numbers == ("100",)
+    assert context.workflow_definition is service.get_definition_by_slug("voice")
+    assert context.is_sip_entrypoint is True
 
 
+def test_resolve_workflow_for_phone_number_uses_settings_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _FakeWorkflowService(
+        definitions={
+            "base": _Definition(slug="base", telephony_config={}),
+            "voice": _Definition(
+                slug="voice",
+                telephony_config={"sip_entrypoint": True},
+            ),
+        },
+        current="base",
+    )
+
+    monkeypatch.setattr(
+        "backend.app.telephony.sip_server.get_or_create_voice_settings",
+        lambda session: _DummyVoiceSettings(),
+    )
+
+    settings = _make_settings(telephony_default_workflow_slug="voice")
+    context = resolve_workflow_for_phone_number(
+        service,
+        phone_number="999",
+        session=object(),
+        settings=settings,
+    )
+
+    assert context.workflow_definition is service.get_definition_by_slug("voice")
+    assert context.is_sip_entrypoint is True
+
+
+def test_resolve_workflow_for_phone_number_returns_defaults_when_missing_flag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _FakeWorkflowService(
+        definitions={
+            "base": _Definition(slug="base", telephony_config={}),
+        },
+        current="base",
+    )
+
+    monkeypatch.setattr(
+        "backend.app.telephony.sip_server.get_or_create_voice_settings",
+        lambda session: _DummyVoiceSettings(),
+    )
+
+    context = resolve_workflow_for_phone_number(
+        service,
+        phone_number="+331234",
+        session=object(),
+        settings=_make_settings(),
+    )
+
+    assert context.workflow_definition is service.get_definition_by_slug("base")
+    assert context.is_sip_entrypoint is False
+    assert context.voice_model == "base-model"
+    assert context.voice_voice == "base-voice"
 def test_ack_starts_rtp_session_once() -> None:
     started: list[str] = []
 
@@ -442,7 +354,7 @@ async def test_prepare_voice_workflow_returns_voice_event(
         workflow_definition=SimpleNamespace(workflow=SimpleNamespace(slug="demo")),
         normalized_number="+331234",
         original_number="+331234",
-        route=None,
+        is_sip_entrypoint=False,
         voice_model="gpt-voice",
         voice_instructions="Répondez brièvement.",
         voice_voice="ember",
@@ -546,7 +458,7 @@ async def test_register_session_stores_voice_metadata(
             workflow_definition=SimpleNamespace(workflow=SimpleNamespace(slug="demo")),
             normalized_number="+331234",
             original_number="+331234",
-            route=None,
+            is_sip_entrypoint=False,
             voice_model="gpt-fallback",
             voice_instructions="Fallback",
             voice_voice="verse",

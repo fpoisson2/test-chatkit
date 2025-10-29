@@ -298,27 +298,20 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             "provider_slug": context.voice_provider_slug,
         }
 
-        if context.route is None:
+        telephony_metadata["sip_entrypoint"] = context.is_sip_entrypoint
+        if context.is_sip_entrypoint:
             logger.info(
-                "Route téléphonie par défaut retenue (Call-ID=%s, workflow=%s)",
+                "Workflow téléphonie retenu comme point d'entrée SIP "
+                "(Call-ID=%s, workflow=%s)",
                 session.call_id,
                 workflow_slug or "<inconnu>",
             )
         else:
-            telephony_metadata.update(
-                {
-                    "route_label": context.route.label,
-                    "route_workflow_slug": context.route.workflow_slug,
-                    "route_priority": context.route.priority,
-                }
-            )
             logger.info(
-                "Route téléphonie sélectionnée (Call-ID=%s) : label=%s, "
-                "workflow=%s, priorité=%s",
+                "Aucun point d'entrée SIP déclaré : utilisation des réglages "
+                "vocaux globaux (Call-ID=%s, workflow=%s)",
                 session.call_id,
-                context.route.label or "<sans-label>",
-                context.route.workflow_slug or workflow_slug or "<inconnu>",
-                context.route.priority,
+                workflow_slug or "<inconnu>",
             )
 
         try:
