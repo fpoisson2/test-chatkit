@@ -31,11 +31,14 @@ os.environ.setdefault("AUTH_SECRET_KEY", "secret")
 import_module("backend.app.chatkit")
 executor_module = import_module("backend.app.workflows.executor")
 context_module = import_module("backend.app.chatkit_server.context")
+sip_module = import_module("backend.app.telephony.sip_server")
 
 ChatKitRequestContext = context_module.ChatKitRequestContext
 _WAIT_STATE_METADATA_KEY = context_module._WAIT_STATE_METADATA_KEY
 WorkflowInput = executor_module.WorkflowInput
 run_workflow = executor_module.run_workflow
+TelephonyCallContext = sip_module.TelephonyCallContext
+prepare_voice_workflow_execution = sip_module.prepare_voice_workflow_execution
 
 
 @pytest.fixture
@@ -223,30 +226,25 @@ async def test_voice_agent_starts_session(monkeypatch: pytest.MonkeyPatch) -> No
         },
     }
 
-    assert captured_args == {
-        "user_id": "user-123",
-        "model": "gpt-voice",
-        "voice": "ember",
-        "instructions": "Répondez brièvement.",
-        "provider_id": None,
-        "provider_slug": None,
-        "realtime": {
-            "start_mode": "auto",
-            "stop_mode": "manual",
-            "tools": {
-                "response": True,
-                "transcription": True,
-                "function_call": False,
-            },
-        },
-        "tools": [
-            {
-                "type": "web_search",
-                "web_search": {"search_context_size": "small"},
-            }
-        ],
-        "handoffs": None,
-        "metadata": expected_metadata,
+    assert captured_args["user_id"] == "user-123"
+    assert captured_args["model"] == "gpt-voice"
+    assert captured_args["voice"] == "ember"
+    assert captured_args["instructions"] == "Répondez brièvement."
+    assert captured_args.get("provider_id") is None
+    assert captured_args.get("provider_slug") is None
+    assert captured_args["tools"] == [
+        {"type": "web_search", "web_search": {"search_context_size": "small"}}
+    ]
+    assert captured_args.get("handoffs") is None
+    assert captured_args["metadata"] == expected_metadata
+
+    realtime_config = captured_args["realtime"]
+    assert realtime_config["start_mode"] == "auto"
+    assert realtime_config["stop_mode"] == "manual"
+    assert realtime_config["tools"] == {
+        "response": True,
+        "transcription": True,
+        "function_call": False,
     }
 
     added_events = [
@@ -387,3 +385,70 @@ async def test_voice_agent_processes_transcripts(
 
     step_outputs = [step.output for step in summary.steps]
     assert any("transcripts" in output for output in step_outputs)
+
+
+@pytest.mark.anyio
+async def test_prepare_voice_workflow_execution_uses_workflow_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_sessions: list[dict[str, Any]] = []
+
+    async def _fake_open_session(**kwargs: Any) -> Any:
+        captured_sessions.append(kwargs)
+        return SimpleNamespace(
+            payload={"client_secret": {"value": "voice-secret"}, "expires_at": "2099"},
+            session_id="session-prepared",
+        )
+
+    async def _fake_close_session(**kwargs: Any) -> bool:
+        return True
+
+    monkeypatch.setattr(executor_module, "open_voice_session", _fake_open_session)
+    monkeypatch.setattr(executor_module, "close_voice_session", _fake_close_session)
+    monkeypatch.setattr(executor_module, "get_settings", lambda: _FakeSettings())
+
+    store = _DummyStore()
+    definition = _build_definition()
+    service = _FakeWorkflowService(definition)
+
+    call_context = TelephonyCallContext(
+        workflow_definition=definition,
+        normalized_number="+331234",
+        original_number="+331234",
+        route=None,
+        voice_model="gpt-voice",
+        voice_instructions="Soyez utile.",
+        voice_voice="ember",
+        voice_prompt_variables={"channel": "sip"},
+        voice_provider_id=None,
+        voice_provider_slug=None,
+    )
+
+    preparation = await prepare_voice_workflow_execution(
+        call_context,
+        call_id="call-prep",
+        workflow_service=service,
+        store=store,
+        settings=_FakeSettings(),
+    )
+
+    assert preparation is not None, "La préparation du workflow vocal doit réussir"
+    event_payload = preparation.voice_event["event"]
+    assert event_payload["tool_permissions"] == {
+        "response": True,
+        "transcription": True,
+        "function_call": False,
+    }
+    session_payload = event_payload["session"]
+    assert session_payload["tools"] == [
+        {"type": "web_search", "web_search": {"search_context_size": "small"}}
+    ]
+    realtime_config = session_payload["realtime"]
+    assert realtime_config["start_mode"] == "auto"
+    assert realtime_config["stop_mode"] == "manual"
+
+    transcripts = [{"role": "user", "text": "Bonjour"}]
+    await preparation.resume_callable(transcripts)
+
+    assert preparation.thread.metadata.get(_WAIT_STATE_METADATA_KEY) is None
+    assert captured_sessions and captured_sessions[0]["model"] == "gpt-voice"

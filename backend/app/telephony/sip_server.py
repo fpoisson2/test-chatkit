@@ -3,14 +3,23 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
 import time
+import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from sqlalchemy.orm import Session
 
+from chatkit.agents import AgentContext
+from chatkit.types import ActiveStatus, ThreadMetadata
+
+from ..chatkit_server.context import (
+    _WAIT_STATE_METADATA_KEY,
+    ChatKitRequestContext,
+)
 from ..config import Settings, get_settings
 from ..database import SessionLocal
 from ..voice_settings import get_or_create_voice_settings
@@ -76,6 +85,149 @@ class TelephonyCallContext(TelephonyRouteResolution):
 
 class TelephonyRouteSelectionError(RuntimeError):
     """Signale qu'aucune route téléphonie ne correspond au numéro entrant."""
+
+
+@dataclass(slots=True)
+class TelephonyVoiceWorkflowPreparation:
+    """Prépare l'état workflow nécessaire pour lancer une session vocale."""
+
+    agent_context: AgentContext[ChatKitRequestContext]
+    thread: ThreadMetadata
+    request_context: ChatKitRequestContext
+    source_item_id: str
+    voice_event: Mapping[str, Any]
+    wait_state: Mapping[str, Any]
+    resume_callable: Callable[[list[dict[str, Any]]], Awaitable[None]]
+
+
+async def prepare_voice_workflow_execution(
+    call_context: TelephonyCallContext,
+    *,
+    call_id: str,
+    workflow_service: WorkflowService,
+    store: Any | None,
+    settings: Settings,
+) -> TelephonyVoiceWorkflowPreparation | None:
+    """Exécute le workflow jusqu'au premier wait state vocal.
+
+    Retourne l'événement Realtime généré par le workflow, les métadonnées de
+    wait state ainsi qu'un callback permettant de reprendre l'exécution avec
+    les transcriptions reçues côté voix.
+    """
+
+    from ..workflows.executor import WorkflowInput, run_workflow
+
+    if store is None:
+        logger.info(
+            "Aucun store ChatKit disponible pour préparer la session voix (Call-ID=%s)",
+            call_id,
+        )
+        return None
+
+    request_context = ChatKitRequestContext(
+        user_id=f"sip:{call_id}",
+        email=None,
+        authorization=None,
+        public_base_url=settings.backend_public_base_url,
+        voice_model=call_context.voice_model,
+        voice_instructions=call_context.voice_instructions,
+        voice_voice=call_context.voice_voice,
+        voice_prompt_variables=dict(call_context.voice_prompt_variables),
+    )
+
+    try:
+        thread_id = store.generate_thread_id(request_context)  # type: ignore[attr-defined]
+    except AttributeError:
+        thread_id = f"sip-thread-{uuid.uuid4()}"
+
+    thread = ThreadMetadata(
+        id=thread_id,
+        created_at=datetime.datetime.now(datetime.UTC),
+        status=ActiveStatus(),
+        metadata={},
+    )
+
+    agent_context = AgentContext(
+        thread=thread,
+        store=store,
+        request_context=request_context,
+    )
+
+    source_item_id = f"sip:{call_id}"
+    workflow_input = WorkflowInput(
+        input_as_text="",
+        auto_start_was_triggered=False,
+        auto_start_assistant_message=None,
+        source_item_id=source_item_id,
+    )
+
+    try:
+        await run_workflow(
+            workflow_input,
+            agent_context=agent_context,
+            workflow_service=workflow_service,
+            workflow_definition=call_context.workflow_definition,
+        )
+    except Exception:
+        logger.exception(
+            "Échec lors de la préparation du workflow vocal (Call-ID=%s)", call_id
+        )
+        return None
+
+    wait_state = thread.metadata.get(_WAIT_STATE_METADATA_KEY)
+    if not isinstance(wait_state, Mapping) or wait_state.get("type") != "voice":
+        logger.info(
+            "Aucun wait state vocal détecté pour Call-ID=%s (workflow=%s)",
+            call_id,
+            getattr(
+                getattr(call_context.workflow_definition, "workflow", None),
+                "slug",
+                "<inconnu>",
+            ),
+        )
+        return None
+
+    voice_event = wait_state.get("voice_event")
+    if not isinstance(voice_event, Mapping):
+        logger.info(
+            "Wait state vocal sans événement Realtime pour Call-ID=%s", call_id
+        )
+        return None
+
+    workflow_definition = call_context.workflow_definition
+
+    async def _resume(transcripts: list[dict[str, Any]]) -> None:
+        current_wait_state = thread.metadata.get(_WAIT_STATE_METADATA_KEY)
+        if isinstance(current_wait_state, Mapping):
+            updated_state = dict(current_wait_state)
+        else:
+            updated_state = {}
+        updated_state["voice_transcripts"] = list(transcripts)
+        thread.metadata[_WAIT_STATE_METADATA_KEY] = updated_state
+
+        resume_input = WorkflowInput(
+            input_as_text="",
+            auto_start_was_triggered=False,
+            auto_start_assistant_message=None,
+            source_item_id=source_item_id,
+        )
+
+        await run_workflow(
+            resume_input,
+            agent_context=agent_context,
+            workflow_service=workflow_service,
+            workflow_definition=workflow_definition,
+        )
+
+    return TelephonyVoiceWorkflowPreparation(
+        agent_context=agent_context,
+        thread=thread,
+        request_context=request_context,
+        source_item_id=source_item_id,
+        voice_event=voice_event,
+        wait_state=dict(wait_state),
+        resume_callable=_resume,
+    )
 
 
 def _normalize_incoming_number(number: str) -> str:
@@ -155,7 +307,11 @@ def _merge_voice_settings(
                     logger.info(
                         "Paramètres complets du bloc %s : %s",
                         step_slug,
-                        list(params.keys()) if isinstance(params, dict) else type(params),
+                        (
+                            list(params.keys())
+                            if isinstance(params, dict)
+                            else type(params)
+                        ),
                     )
                     if isinstance(params, dict):
                         # Utiliser les paramètres du bloc agent si disponibles
@@ -165,7 +321,8 @@ def _merge_voice_settings(
                             instructions = params["instructions"]
                         if params.get("voice"):
                             voice = params["voice"]
-                        # Les clés pour le provider sont model_provider et model_provider_slug
+                        # Les clés pour le provider sont model_provider
+                        # et model_provider_slug
                         if params.get("model_provider"):
                             provider_id = params["model_provider"]
                         if params.get("model_provider_slug"):
@@ -583,5 +740,7 @@ __all__ = [
     "TelephonyCallContext",
     "TelephonyRouteResolution",
     "TelephonyRouteSelectionError",
+    "TelephonyVoiceWorkflowPreparation",
+    "prepare_voice_workflow_execution",
     "resolve_workflow_for_phone_number",
 ]
