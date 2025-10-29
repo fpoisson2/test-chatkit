@@ -181,6 +181,27 @@ def test_extract_remote_media_target_handles_object_payload() -> None:
     assert port == 49152
 
 
+def test_extract_remote_media_target_handles_stringified_payload() -> None:
+    sdp = (
+        "v=0\r\n"
+        "o=- 777 1 IN IP4 203.0.113.1\r\n"
+        "s=-\r\n"
+        "c=IN IP4 203.0.113.15\r\n"
+        "t=0 0\r\n"
+        "m=audio 40000 RTP/AVP 0\r\n"
+        "a=rtpmap:0 PCMU/8000\r\n"
+    )
+
+    class _Payload:
+        def __str__(self) -> str:
+            return sdp
+
+    host, port = startup_module._extract_remote_media_target(_Payload())
+
+    assert host == "203.0.113.15"
+    assert port == 40000
+
+
 def _make_settings(**overrides: Any) -> Any:
     defaults = {
         "chatkit_realtime_model": "fallback-model",
@@ -726,6 +747,9 @@ async def test_invite_configures_rtp_remote_target(
         async def stop(self) -> None:
             recorded["stopped"] = True
 
+        def set_remote_target(self, host: str | None, port: int | None) -> None:
+            recorded["remote_set"] = (host, port)
+
     async def _noop_reply(*_: Any, **__: Any) -> None:
         return None
 
@@ -747,13 +771,24 @@ async def test_invite_configures_rtp_remote_target(
     async def _fake_handle_invite(
         self: Any, request: Any, dialog: Any | None = None
     ) -> None:
-        raise RuntimeError("stop")
+        recorded["invite_called"] = True
+        return None
 
     monkeypatch.setattr(
         sip_handler,
         "handle_invite",
         types.MethodType(_fake_handle_invite, sip_handler),
         raising=False,
+    )
+
+    async def _fake_handle_incoming_invite(*_: Any, **__: Any) -> None:
+        recorded["invite_handler_called"] = True
+        return None
+
+    monkeypatch.setattr(
+        startup_module,
+        "handle_incoming_invite",
+        _fake_handle_incoming_invite,
     )
 
     payload = (
@@ -778,12 +813,104 @@ async def test_invite_configures_rtp_remote_target(
 
     dialog = SimpleNamespace()
 
-    with pytest.raises(RuntimeError):
-        await on_invite(dialog, request)
+    await on_invite(dialog, request)
 
     config = recorded["config"]
     assert config.remote_host == "198.51.100.9"
     assert config.remote_port == 49170
+    assert recorded["remote_set"] == ("198.51.100.9", 49170)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("anyio_backend", ["asyncio"])
+async def test_invite_remote_host_fallback_from_headers(
+    monkeypatch: pytest.MonkeyPatch, anyio_backend: str
+) -> None:
+    del anyio_backend
+
+    recorded: dict[str, Any] = {}
+
+    class _FakeRtpServer:
+        def __init__(self, config: Any) -> None:
+            recorded["config"] = config
+
+        async def start(self) -> int:
+            return 40000
+
+        async def stop(self) -> None:
+            recorded["stopped"] = True
+
+        def set_remote_target(self, host: str | None, port: int | None) -> None:
+            recorded["remote_set"] = (host, port)
+
+    async def _noop_reply(*_: Any, **__: Any) -> None:
+        return None
+
+    monkeypatch.setattr(startup_module, "RtpServer", _FakeRtpServer)
+    monkeypatch.setattr(startup_module, "send_sip_reply", _noop_reply)
+
+    manager = SimpleNamespace(active_config=None, contact_host="192.0.2.10")
+    on_invite = startup_module._build_invite_handler(manager)
+    closure = {
+        name: cell.cell_contents
+        for name, cell in zip(
+            on_invite.__code__.co_freevars,
+            on_invite.__closure__ or (),
+            strict=False,
+        )
+    }
+    sip_handler = closure["sip_handler"]
+
+    async def _fake_handle_invite(
+        self: Any, request: Any, dialog: Any | None = None
+    ) -> None:
+        recorded["invite_called"] = True
+        return None
+
+    monkeypatch.setattr(
+        sip_handler,
+        "handle_invite",
+        types.MethodType(_fake_handle_invite, sip_handler),
+        raising=False,
+    )
+
+    async def _fake_handle_incoming_invite(*_: Any, **__: Any) -> None:
+        recorded["invite_handler_called"] = True
+        return None
+
+    monkeypatch.setattr(
+        startup_module,
+        "handle_incoming_invite",
+        _fake_handle_incoming_invite,
+    )
+
+    payload = (
+        b"v=0\r\n"
+        b"o=- 321 1 IN IP4 0.0.0.0\r\n"
+        b"s=-\r\n"
+        b"c=IN IP4 0.0.0.0\r\n"
+        b"t=0 0\r\n"
+        b"m=audio 50000 RTP/AVP 0\r\n"
+        b"a=rtpmap:0 PCMU/8000\r\n"
+    )
+
+    request = SimpleNamespace(
+        method="INVITE",
+        payload=payload,
+        headers={
+            "Call-ID": "call-fallback",
+            "Contact": "\"Caller\" <sip:100@203.0.113.45:5060>",
+        },
+    )
+
+    dialog = SimpleNamespace()
+
+    await on_invite(dialog, request)
+
+    config = recorded["config"]
+    assert config.remote_host == "203.0.113.45"
+    assert config.remote_port == 50000
+    assert recorded["remote_set"] == ("203.0.113.45", 50000)
 
 
 def test_ack_without_session_is_ignored(caplog: pytest.LogCaptureFixture) -> None:

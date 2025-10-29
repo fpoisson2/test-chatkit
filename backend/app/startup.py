@@ -80,23 +80,48 @@ TELEPHONY_SAMPLE_RATE = 8_000
 def _extract_remote_media_target(payload: Any) -> tuple[str | None, int | None]:
     """Retourne l'adresse et le port RTP annoncés dans un SDP d'INVITE."""
 
-    def _coerce_payload(raw: Any) -> bytes | str | None:
+    def _coerce_payload(raw: Any, seen: set[int] | None = None) -> bytes | str | None:
         if raw is None:
             return None
+        if seen is None:
+            seen = set()
+        identity = id(raw)
+        if identity in seen:
+            return None
+        seen.add(identity)
         if isinstance(raw, bytes | str):
             return raw
 
         # Certains objets ``aiosip`` exposent l'SDP via un attribut ``body``.
-        for attr in ("body", "payload", "data"):
+        for attr in ("body", "payload", "data", "text", "content"):
             candidate = getattr(raw, attr, None)
+            if candidate is None:
+                continue
             if isinstance(candidate, bytes | str):
                 return candidate
+            nested = _coerce_payload(candidate, seen)
+            if nested is not None:
+                return nested
 
         if isinstance(raw, Mapping):
-            for key in ("body", "payload", "sdp", "data"):
+            for key in ("body", "payload", "sdp", "data", "text", "content"):
                 candidate = raw.get(key)
                 if isinstance(candidate, bytes | str):
                     return candidate
+                nested = _coerce_payload(candidate, seen)
+                if nested is not None:
+                    return nested
+
+            for value in raw.values():
+                nested = _coerce_payload(value, seen)
+                if nested is not None:
+                    return nested
+
+        if isinstance(raw, list | tuple | set):
+            for item in raw:
+                nested = _coerce_payload(item, seen)
+                if nested is not None:
+                    return nested
 
         decode = getattr(raw, "decode", None)
         if callable(decode):
@@ -109,6 +134,15 @@ def _extract_remote_media_target(payload: Any) -> tuple[str | None, int | None]:
                     candidate = None
             if isinstance(candidate, bytes | str):
                 return candidate
+
+        try:
+            stringified = str(raw)
+        except Exception:  # pragma: no cover - garde-fou
+            stringified = None
+        if isinstance(stringified, str):
+            lowered = stringified.lower()
+            if any(token in lowered for token in ("m=", "v=", "c=", "a=")):
+                return stringified
 
         return None
 
@@ -168,6 +202,67 @@ def _extract_remote_media_target(payload: Any) -> tuple[str | None, int | None]:
 
     remote_address = audio_address or session_address
     return remote_address, audio_port
+
+
+_SIP_URI_RE = re.compile(r"sip:(?:[^@;>]+@)?(?P<host>[^:;>]+)(?::(?P<port>\d+))?")
+
+
+def _extract_remote_host_hint(request: Any) -> str | None:
+    """Tente de déduire l'hôte RTP depuis les en-têtes SIP."""
+
+    headers = getattr(request, "headers", None)
+    if isinstance(headers, Mapping):
+        header_items = list(headers.items())
+    elif isinstance(headers, dict):
+        header_items = list(headers.items())
+    else:
+        header_items = []
+
+    normalized: dict[str, Any] = {}
+    for key, value in header_items:
+        if isinstance(key, str):
+            normalized[key.lower()] = value
+
+    def _parse_header(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, list | tuple):
+            for entry in value:
+                host = _parse_header(entry)
+                if host:
+                    return host
+            return None
+        text = str(value)
+        uri_match = _SIP_URI_RE.search(text)
+        if uri_match:
+            return uri_match.group("host")
+        via_match = re.search(
+            r"SIP/2\.0/[A-Z]+\s+(?P<endpoint>[^;\s]+)", text, re.IGNORECASE
+        )
+        if via_match:
+            endpoint = via_match.group("endpoint")
+            endpoint = endpoint.split(";", 1)[0]
+            if endpoint.startswith("[") and "]" in endpoint:
+                return endpoint.split("]", 1)[0].lstrip("[")
+            if ":" in endpoint:
+                return endpoint.split(":", 1)[0]
+            return endpoint
+        return None
+
+    for header_name in ("contact", "via", "record-route", "route"):
+        host = _parse_header(normalized.get(header_name))
+        if host:
+            return host
+
+    remote_addr = getattr(request, "remote_addr", None)
+    if isinstance(remote_addr, tuple) and remote_addr:
+        return str(remote_addr[0])
+
+    peer = getattr(request, "peer", None)
+    if isinstance(peer, tuple) and peer:
+        return str(peer[0])
+
+    return None
 
 for noisy_logger in (
     "aiosip",
@@ -942,6 +1037,13 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         remote_host, remote_port = _extract_remote_media_target(
             getattr(request, "payload", None)
         )
+        if not remote_host or remote_host in {"0.0.0.0", "::", "[::]"}:
+            hint_host = _extract_remote_host_hint(request)
+            if hint_host:
+                logger.info(
+                    "Cible RTP distante déduite via les en-têtes : %s", hint_host
+                )
+                remote_host = hint_host
         if remote_host or remote_port:
             logger.info(
                 "Cible RTP distante annoncée : %s:%s",
@@ -988,6 +1090,9 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             logger.exception("Erreur lors de la gestion applicative de l'INVITE")
             await rtp_server.stop()
             raise
+
+        if remote_host or remote_port:
+            rtp_server.set_remote_target(remote_host, remote_port)
 
         # Récupérer la session créée et y stocker les callbacks RTP
         call_id_raw = getattr(request, "headers", {}).get("Call-ID")

@@ -140,6 +140,26 @@ class RtpServer:
 
         logger.info("Serveur RTP arrêté")
 
+    def set_remote_target(self, host: str | None, port: int | None) -> None:
+        """Fixe explicitement la cible RTP distante.
+
+        Args:
+            host: Adresse IP ou nom d'hôte du pair RTP.
+            port: Port UDP du pair RTP.
+        """
+
+        if not host or not port:
+            return
+
+        try:
+            port_int = int(port)
+        except (TypeError, ValueError):  # pragma: no cover - garde-fou
+            logger.warning("Port RTP distant invalide : %r", port)
+            return
+
+        self._remote_addr = (host, port_int)
+        logger.info("Cible RTP distante définie : %s:%d", host, port_int)
+
     def _on_remote_discovered(self, addr: tuple[str, int]) -> None:
         """Callback appelé quand l'adresse distante est découverte."""
         if self._remote_addr is None:
