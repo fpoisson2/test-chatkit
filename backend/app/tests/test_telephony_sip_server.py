@@ -168,6 +168,56 @@ def test_resolve_workflow_for_phone_number_applies_overrides(
     assert context.voice_prompt_variables == {"existing": "1", "channel": "sip"}
 
 
+def test_resolve_workflow_for_phone_number_includes_voice_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    definition = _Definition(
+        slug="base",
+        telephony_config={},
+    )
+    definition.steps.append(
+        _Step(
+            slug="voice-agent",
+            kind="voice_agent",
+            position=1,
+            is_enabled=True,
+            parameters={
+                "model": "gpt-voice-special",
+                "tools": [
+                    {"type": "workflow", "workflow": {"slug": "support", "id": 42}}
+                ],
+                "handoffs": [
+                    {"type": "workflow", "workflow": {"slug": "handoff-target"}}
+                ],
+            },
+        )
+    )
+
+    service = _FakeWorkflowService(
+        definitions={"base": definition},
+        current="base",
+    )
+
+    monkeypatch.setattr(
+        "backend.app.telephony.sip_server.get_or_create_voice_settings",
+        lambda session: _DummyVoiceSettings(),
+    )
+
+    context = resolve_workflow_for_phone_number(
+        service,
+        phone_number="+331234",
+        session=object(),
+    )
+
+    assert context.voice_model == "gpt-voice-special"
+    assert context.voice_tools == [
+        {"type": "workflow", "workflow": {"slug": "support", "id": 42}}
+    ]
+    assert context.voice_handoffs == [
+        {"type": "workflow", "workflow": {"slug": "handoff-target"}}
+    ]
+
+
 def test_resolve_workflow_for_phone_number_logs_and_falls_back_to_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
