@@ -19,6 +19,8 @@ from ..config import Settings, get_settings
 
 logger = logging.getLogger("chatkit.telephony.voice_bridge")
 
+SIP_SAMPLE_RATE = 8_000
+
 
 class VoiceBridgeError(RuntimeError):
     """Erreur levée lorsque la session Realtime échoue."""
@@ -592,8 +594,14 @@ class TelephonyVoiceBridge:
                 "create_response": True,
                 "interrupt_response": True,
             },
-            "input_audio_format": {"type": "audio/pcm", "rate": 24000},
-            "output_audio_format": {"type": "audio/pcm", "rate": 24000},
+            "input_audio_format": {
+                "type": "audio/pcm",
+                "rate": SIP_SAMPLE_RATE,
+            },
+            "output_audio_format": {
+                "type": "audio/pcm",
+                "rate": SIP_SAMPLE_RATE,
+            },
             "input_audio_noise_reduction": {"type": "near_field"},
         }
 
@@ -656,28 +664,29 @@ class TelephonyVoiceBridge:
         if output_modalities:
             payload["output_modalities"] = output_modalities
 
-        audio_section: Mapping[str, Any] | None = None
         existing_audio = session_config.get("audio")
-        if isinstance(existing_audio, Mapping):
-            audio_section = deepcopy(dict(existing_audio))
+        audio_section: dict[str, Any] = (
+            deepcopy(dict(existing_audio))
+            if isinstance(existing_audio, Mapping)
+            else {}
+        )
+
+        input_section: dict[str, Any] = (
+            dict(audio_section.get("input"))
+            if isinstance(audio_section.get("input"), Mapping)
+            else {}
+        )
+        output_section: dict[str, Any] = (
+            dict(audio_section.get("output"))
+            if isinstance(audio_section.get("output"), Mapping)
+            else {}
+        )
 
         realtime_config = session_config.get("realtime")
         if isinstance(realtime_config, Mapping):
-            audio_section = dict(audio_section or {})
-            input_section: dict[str, Any] = dict(
-                audio_section.get("input")
-                if isinstance(audio_section.get("input"), Mapping)
-                else {}
-            )
-            output_section: dict[str, Any] = dict(
-                audio_section.get("output")
-                if isinstance(audio_section.get("output"), Mapping)
-                else {}
-            )
-
             input_format = realtime_config.get("input_audio_format")
             if isinstance(input_format, Mapping):
-                input_section.setdefault("format", dict(input_format))
+                input_section.update({"format": dict(input_format)})
 
             turn_detection = realtime_config.get("turn_detection")
             if isinstance(turn_detection, Mapping):
@@ -693,7 +702,7 @@ class TelephonyVoiceBridge:
 
             output_format = realtime_config.get("output_audio_format")
             if isinstance(output_format, Mapping):
-                output_section.setdefault("format", dict(output_format))
+                output_section.update({"format": dict(output_format)})
 
             speed = realtime_config.get("speed")
             if isinstance(speed, int | float):
@@ -706,10 +715,20 @@ class TelephonyVoiceBridge:
             if output_modalities and "output_modalities" not in payload:
                 payload["output_modalities"] = output_modalities
 
-            if input_section:
-                audio_section["input"] = input_section
-            if output_section:
-                audio_section["output"] = output_section
+        def _force_audio_format(section: dict[str, Any]) -> None:
+            format_payload = section.get("format")
+            normalized_format = (
+                dict(format_payload) if isinstance(format_payload, Mapping) else {}
+            )
+            normalized_format["type"] = "audio/pcm"
+            normalized_format["rate"] = SIP_SAMPLE_RATE
+            section["format"] = normalized_format
+
+        _force_audio_format(input_section)
+        _force_audio_format(output_section)
+
+        audio_section["input"] = input_section
+        audio_section["output"] = output_section
 
         if audio_section:
             payload["audio"] = audio_section

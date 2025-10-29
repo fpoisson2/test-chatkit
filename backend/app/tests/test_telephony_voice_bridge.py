@@ -151,6 +151,7 @@ async def test_voice_bridge_forwards_audio_and_transcripts() -> None:
         websocket_connector=_connector,
         voice_session_checker=lambda: True,
         receive_timeout=0.05,
+        target_sample_rate=8_000,
     )
 
     stats = await bridge.run(
@@ -179,7 +180,7 @@ async def test_voice_bridge_forwards_audio_and_transcripts() -> None:
     assert realtime_payload["turn_detection"]["type"] == "server_vad"
     assert realtime_payload["input_audio_format"] == {
         "type": "audio/pcm",
-        "rate": 24000,
+        "rate": 8_000,
     }
 
     append_payload = next(
@@ -232,6 +233,7 @@ async def test_voice_bridge_uses_session_config() -> None:
         websocket_connector=_connector,
         voice_session_checker=lambda: True,
         receive_timeout=0.05,
+        target_sample_rate=8_000,
     )
 
     stats = await bridge.run(
@@ -257,7 +259,7 @@ async def test_voice_bridge_uses_session_config() -> None:
     assert isinstance(audio_section, dict)
     input_audio = audio_section.get("input")
     assert isinstance(input_audio, dict)
-    assert input_audio["format"] == {"type": "audio/pcm", "rate": 44100}
+    assert input_audio["format"] == {"type": "audio/pcm", "rate": 8_000}
     assert input_audio["turn_detection"] == {"type": "server_vad", "threshold": 0.25}
     assert "realtime" not in session_payload
 
@@ -305,6 +307,7 @@ async def test_voice_bridge_handles_realtime_error() -> None:
         websocket_connector=_connector,
         voice_session_checker=lambda: True,
         receive_timeout=0.05,
+        target_sample_rate=8_000,
     )
 
     stats = await bridge.run(

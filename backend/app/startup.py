@@ -74,6 +74,8 @@ from .workflows.service import WorkflowService
 
 logger = logging.getLogger("chatkit.server")
 
+TELEPHONY_SAMPLE_RATE = 8_000
+
 for noisy_logger in (
     "aiosip",
     "aiosip.protocol",
@@ -405,6 +407,24 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             )
             return
 
+        def _normalize_realtime_config(
+            config: Mapping[str, Any] | None,
+        ) -> dict[str, Any] | None:
+            if not isinstance(config, Mapping):
+                return None
+            sanitized = dict(config)
+
+            def _force_format(field: str) -> None:
+                value = sanitized.get(field)
+                format_payload = dict(value) if isinstance(value, Mapping) else {}
+                format_payload["type"] = "audio/pcm"
+                format_payload["rate"] = TELEPHONY_SAMPLE_RATE
+                sanitized[field] = format_payload
+
+            _force_format("input_audio_format")
+            _force_format("output_audio_format")
+            return sanitized
+
         voice_event = metadata.get("voice_event")
         event_payload = (
             voice_event.get("event") if isinstance(voice_event, Mapping) else None
@@ -426,6 +446,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         session_update_config: Mapping[str, Any] | dict[str, Any] | None = None
         client_secret: str | None = metadata.get("client_secret")
 
+        sanitized_session_config: dict[str, Any] | None = None
+
         if session_config is not None:
             voice_model = session_config.get("model")
             instructions = session_config.get("instructions")
@@ -435,7 +457,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             prompt_variables = dict(session_config.get("prompt_variables") or {})
             tools = session_config.get("tools")
             handoffs = session_config.get("handoffs")
-            realtime_config = (
+            realtime_config = _normalize_realtime_config(
                 session_config.get("realtime")
                 if isinstance(session_config.get("realtime"), Mapping)
                 else None
@@ -461,6 +483,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             metadata["voice_handoffs"] = handoffs
             if realtime_config is not None:
                 metadata["voice_realtime"] = realtime_config
+                sanitized_session_config = dict(session_config)
+                sanitized_session_config["realtime"] = realtime_config
             metadata["voice_prompt_variables"] = prompt_variables
             metadata["voice_model"] = voice_model
             metadata["voice_instructions"] = instructions
@@ -468,8 +492,10 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             metadata["voice_provider_id"] = voice_provider_id
             metadata["voice_provider_slug"] = voice_provider_slug
             if isinstance(session_config, Mapping):
-                session_update_config = session_config
-                metadata["voice_session_config"] = dict(session_config)
+                if sanitized_session_config is None:
+                    sanitized_session_config = dict(session_config)
+                session_update_config = sanitized_session_config
+                metadata["voice_session_config"] = dict(sanitized_session_config)
         else:
             defaults = metadata.get("voice_defaults") or {}
             voice_model = metadata.get("voice_model") or defaults.get("model")
@@ -492,7 +518,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             tools = metadata.get("voice_tools")
             handoffs = metadata.get("voice_handoffs")
             stored_realtime = metadata.get("voice_realtime")
-            realtime_config = (
+            realtime_config = _normalize_realtime_config(
                 stored_realtime if isinstance(stored_realtime, Mapping) else None
             )
             tool_permissions = metadata.get("voice_tool_permissions")
@@ -577,6 +603,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 voice=voice_name,
                 provider_id=voice_provider_id,
                 provider_slug=voice_provider_slug,
+                realtime=realtime_config,
                 metadata=metadata_extras or None,
             )
             parsed_secret = session_secret_parser.parse(session_handle.payload)
@@ -610,6 +637,14 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                                     "start_mode": "auto",
                                     "stop_mode": "manual",
                                     "tools": dict(tool_permissions or {}),
+                                    "input_audio_format": {
+                                        "type": "audio/pcm",
+                                        "rate": TELEPHONY_SAMPLE_RATE,
+                                    },
+                                    "output_audio_format": {
+                                        "type": "audio/pcm",
+                                        "rate": TELEPHONY_SAMPLE_RATE,
+                                    },
                                 },
                             },
                         },
@@ -656,7 +691,10 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             clear_voice_state=lambda: _clear_voice_state(session),
             resume_workflow=lambda transcripts: _resume_workflow(session, transcripts),
         )
-        voice_bridge = TelephonyVoiceBridge(hooks=hooks)
+        voice_bridge = TelephonyVoiceBridge(
+            hooks=hooks,
+            target_sample_rate=TELEPHONY_SAMPLE_RATE,
+        )
 
         realtime_api_base: str | None = None
         if voice_provider_slug == "openai":
@@ -724,20 +762,18 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             or settings.sip_bind_host
         )
         contact_uri = config.contact_uri() if config is not None else None
-        media_port = getattr(settings, "sip_media_port", None)
-
-        if media_port is None:
-            logger.warning(
-                "INVITE reçu mais aucun port RTP n'est configuré; réponse 486 Busy"
-            )
-            with contextlib.suppress(Exception):
-                await send_sip_reply(
-                    dialog,
-                    486,
-                    reason="Busy Here",
-                    contact_uri=contact_uri,
+        configured_media_port = getattr(settings, "sip_media_port", None)
+        requested_media_port = 0
+        if isinstance(configured_media_port, int):
+            requested_media_port = int(configured_media_port)
+        elif isinstance(configured_media_port, str) and configured_media_port.strip():
+            try:
+                requested_media_port = int(configured_media_port.strip())
+            except ValueError:
+                logger.warning(
+                    "Port RTP configuré invalide (%s); utilisation d'un port dynamique",
+                    configured_media_port,
                 )
-            return
 
         if not media_host:
             logger.warning(
@@ -755,14 +791,16 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         # Créer et démarrer le serveur RTP
         rtp_config = RtpServerConfig(
             local_host=media_host,
-            local_port=int(media_port) if media_port else 0,
+            local_port=requested_media_port,
             payload_type=0,  # PCMU
             output_codec="pcmu",
+            input_sample_rate=TELEPHONY_SAMPLE_RATE,
         )
         rtp_server = RtpServer(rtp_config)
 
+        actual_media_port: int
         try:
-            await rtp_server.start()
+            actual_media_port = await rtp_server.start()
         except Exception as exc:
             logger.exception(
                 "Impossible de démarrer le serveur RTP",
@@ -778,7 +816,6 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             return
 
         # Utiliser le port réel du serveur RTP pour la négociation SDP
-        actual_media_port = rtp_server.local_port
 
         # Enregistrer la session et attacher les callbacks AVANT d'envoyer le 200 OK
         # pour que l'ACK soit capturé correctement
