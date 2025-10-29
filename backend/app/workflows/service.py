@@ -944,6 +944,36 @@ class WorkflowService:
             if owns_session:
                 db.close()
 
+    def get_definition_by_workflow_id(
+        self, workflow_id: int, session: Session | None = None
+    ) -> WorkflowDefinition:
+        db, owns_session = self._get_session(session)
+        try:
+            workflow = db.get(Workflow, workflow_id)
+            if workflow is None:
+                raise WorkflowNotFoundError(workflow_id)
+
+            definition = self._load_active_definition(workflow, db)
+            if definition is None:
+                raise WorkflowValidationError(
+                    "Aucune version active n'est disponible pour ce workflow."
+                )
+
+            definition = self._fully_load_definition(definition)
+            if self._needs_graph_backfill(definition):
+                logger.info(
+                    "Legacy workflow detected, backfilling graph for workflow %s",
+                    workflow_id,
+                )
+                definition = self._backfill_legacy_definition(definition, db)
+                self._set_active_definition(workflow, definition, db)
+                db.commit()
+
+            return definition
+        finally:
+            if owns_session:
+                db.close()
+
     def update_current(
         self,
         graph_payload: dict[str, Any],

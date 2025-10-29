@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import os
 import sys
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -40,10 +41,14 @@ class _Step:
     parameters: dict[str, Any]
 
 
+_definition_id_counter = itertools.count(1)
+
+
 @dataclass
 class _Definition:
     slug: str
     telephony_config: dict[str, Any]
+    workflow_id: int = field(default_factory=lambda: next(_definition_id_counter))
 
     def __post_init__(self) -> None:
         start_step = _Step(
@@ -54,12 +59,15 @@ class _Definition:
             parameters={"telephony": self.telephony_config},
         )
         self.steps = [start_step]
-        self.workflow = SimpleNamespace(slug=self.slug)
+        self.workflow = SimpleNamespace(slug=self.slug, id=self.workflow_id)
 
 
 class _FakeWorkflowService:
     def __init__(self, definitions: dict[str, _Definition], current: str) -> None:
         self._definitions = definitions
+        self._definitions_by_id = {
+            definition.workflow_id: definition for definition in definitions.values()
+        }
         self._current = current
 
     def get_current(self, session: Any | None = None) -> _Definition:
@@ -69,6 +77,11 @@ class _FakeWorkflowService:
         self, slug: str, session: Any | None = None
     ) -> _Definition:
         return self._definitions[slug]
+
+    def get_definition_by_workflow_id(
+        self, workflow_id: int, session: Any | None = None
+    ) -> _Definition:
+        return self._definitions_by_id[workflow_id]
 
 
 class _DummyVoiceSettings:
@@ -230,6 +243,47 @@ def test_resolve_workflow_for_phone_number_raises_when_no_route(
             phone_number="+331234",
             session=object(),
         )
+
+
+def test_resolve_workflow_for_phone_number_uses_workflow_id_when_slug_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_definition = _Definition(
+        slug="sales",
+        telephony_config={},
+        workflow_id=99,
+    )
+    service = _FakeWorkflowService(
+        definitions={
+            "base": _Definition(
+                slug="base",
+                telephony_config={
+                    "routes": [
+                        {
+                            "phone_numbers": ["1234"],
+                            "workflow": {"id": 99},
+                        }
+                    ],
+                    "default": {"workflow": {"slug": "base"}},
+                },
+            ),
+            "sales": target_definition,
+        },
+        current="base",
+    )
+
+    monkeypatch.setattr(
+        "backend.app.telephony.sip_server.get_or_create_voice_settings",
+        lambda session: _DummyVoiceSettings(),
+    )
+
+    context = resolve_workflow_for_phone_number(
+        service,
+        phone_number="1234",
+        session=object(),
+    )
+
+    assert context.workflow_definition is target_definition
 
 
 def test_ack_starts_rtp_session_once() -> None:

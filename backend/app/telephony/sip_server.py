@@ -420,10 +420,10 @@ def resolve_workflow_for_phone_number(
     )
 
     selected_definition = definition
-    if route.workflow_slug and (
-        not hasattr(definition, "workflow")
-        or getattr(definition.workflow, "slug", None) != route.workflow_slug
-    ):
+    current_slug = getattr(getattr(definition, "workflow", None), "slug", None)
+    current_id = getattr(getattr(definition, "workflow", None), "id", None)
+
+    if route.workflow_slug and current_slug != route.workflow_slug:
         try:
             selected_definition = workflow_service.get_definition_by_slug(
                 route.workflow_slug,
@@ -443,6 +443,27 @@ def resolve_workflow_for_phone_number(
             logger.info(
                 "Workflow surchargé chargé depuis la route : %s",
                 route.workflow_slug,
+            )
+    elif route.workflow_id and current_id != route.workflow_id:
+        try:
+            selected_definition = workflow_service.get_definition_by_workflow_id(
+                route.workflow_id,
+                session=session,
+            )
+        except Exception as exc:
+            logger.error(
+                "Impossible de charger le workflow %s référencé dans la route %s",
+                route.workflow_id,
+                route.label or route.workflow_slug or "<sans-label>",
+                exc_info=exc,
+            )
+            raise TelephonyRouteSelectionError(
+                f"Workflow {route.workflow_id!r} introuvable pour la route téléphonie"
+            ) from exc
+        else:
+            logger.info(
+                "Workflow surchargé chargé depuis la route (id=%s)",
+                route.workflow_id,
             )
 
     model, instructions, voice, prompt_variables, provider_id, provider_slug = (
