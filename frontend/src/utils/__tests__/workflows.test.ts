@@ -137,6 +137,56 @@ describe("start telephony helpers", () => {
     expect(cleared).toEqual({});
   });
 
+  it("préserve les autres paramètres téléphonie lors de la mise à jour", () => {
+    const initial: AgentParameters = {
+      telephony: {
+        routes: [{
+          phone_numbers: ["+331"],
+          workflow: { slug: "legacy" },
+        }],
+        realtime: { model: "gpt-voice" },
+        default: {
+          overrides: { voice: "verse" },
+        },
+      },
+    };
+
+    const configured = setStartTelephonyWorkflow(initial, { slug: "voice-start" });
+
+    expect(configured).toEqual({
+      telephony: {
+        routes: [
+          {
+            phone_numbers: ["+331"],
+            workflow: { slug: "legacy" },
+          },
+        ],
+        realtime: { model: "gpt-voice" },
+        default: {
+          overrides: { voice: "verse" },
+          workflow: { slug: "voice-start" },
+        },
+      },
+    });
+
+    const cleared = setStartTelephonyWorkflow(configured, { id: null, slug: null });
+
+    expect(cleared).toEqual({
+      telephony: {
+        routes: [
+          {
+            phone_numbers: ["+331"],
+            workflow: { slug: "legacy" },
+          },
+        ],
+        realtime: { model: "gpt-voice" },
+        default: {
+          overrides: { voice: "verse" },
+        },
+      },
+    });
+  });
+
   it("normalise l'ensemble des paramètres start", () => {
     const raw: AgentParameters = {
       auto_start: "true",

@@ -570,14 +570,28 @@ export const setStartTelephonyWorkflow = (
 ): AgentParameters =>
   updateStartTelephonyConfig(parameters, (current) => {
     if (!shouldKeepTelephonyWorkflow(reference)) {
-      const { default: _ignoredDefault, workflow: _ignoredWorkflow, ...rest } = current;
-      delete rest.routes;
-      delete rest.realtime;
-      delete rest.fallback;
-      if (Object.keys(rest).length === 0) {
+      const next = { ...current } as Record<string, unknown>;
+
+      if (isPlainRecord(next.default)) {
+        const cleanedDefault = { ...(next.default as Record<string, unknown>) };
+        delete cleanedDefault.workflow;
+        delete cleanedDefault.workflow_slug;
+        delete cleanedDefault.workflow_id;
+        if (Object.keys(cleanedDefault).length > 0) {
+          next.default = cleanedDefault;
+        } else {
+          delete next.default;
+        }
+      }
+
+      delete next.workflow;
+      delete next.workflow_slug;
+      delete next.workflow_id;
+
+      if (Object.keys(next).length === 0) {
         return {};
       }
-      return rest;
+      return next;
     }
 
     const payload = buildTelephonyWorkflowPayload(reference);
@@ -595,9 +609,6 @@ export const setStartTelephonyWorkflow = (
     delete next.workflow;
     delete next.workflow_slug;
     delete next.workflow_id;
-    delete next.routes;
-    delete next.realtime;
-    delete next.fallback;
 
     return next;
   });
