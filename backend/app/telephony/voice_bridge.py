@@ -339,22 +339,28 @@ class TelephonyVoiceBridge:
                         logger.info("Outil MCP terminé: %s, résultat: %s", tool_name, output)
                         continue
 
-                    # Log ALL events for debugging interruption issues
+                    # Log only critical events for interruption debugging
                     event_type = type(event).__name__
                     if event_type == "RealtimeRawModelEvent":
-                        # Log ALL raw events to understand what's happening
                         raw_data = getattr(event, 'raw_event', None) or getattr(event, 'event', None)
                         if raw_data and isinstance(raw_data, dict):
                             event_subtype = raw_data.get('type', 'unknown')
-                            # Log ALL raw events (not just audio/speech/response)
-                            logger.info("🔵 Événement brut: %s", event_subtype)
-                            # For interruption events, log full details
-                            if 'interrupt' in event_subtype or 'speech' in event_subtype or 'input_audio_buffer' in event_subtype:
-                                logger.info("📋 Détails événement interruption: %s", raw_data)
-                        else:
-                            logger.warning("⚠️ Événement brut sans données: %s", event)
-                    else:
-                        logger.info("🟢 Événement SDK typé: %s", event_type)
+
+                            # Only log critical interruption-related events
+                            critical_events = [
+                                'input_audio_buffer.speech_started',
+                                'input_audio_buffer.speech_stopped',
+                                'input_audio_buffer.committed',
+                                'response.created',
+                                'response.cancelled',  # This is the key interruption event!
+                                'response.done',
+                                'conversation.item.input_audio_transcription.completed',
+                            ]
+
+                            if event_subtype in critical_events:
+                                logger.info("🔴 ÉVÉNEMENT CRITIQUE: %s", event_subtype)
+                                # Log full details for these critical events
+                                logger.info("   Détails: %s", raw_data)
 
             except Exception as exc:
                 logger.exception("Erreur dans le flux d'événements SDK")
