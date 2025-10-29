@@ -259,9 +259,9 @@ class TelephonyVoiceBridge:
                         continue
                     inbound_audio_bytes += len(pcm)
 
-                    # Use SDK's send_audio method instead of raw JSON
-                    # commit=True tells the SDK to process this audio chunk
-                    await session.send_audio(pcm, commit=True)
+                    # Use SDK's send_audio method with commit=False for continuous streaming
+                    # The VAD (semantic_vad) will automatically detect speech boundaries and commit
+                    await session.send_audio(pcm, commit=False)
 
                     if not should_continue():
                         logger.info("forward_audio: arrêt demandé par should_continue()")
