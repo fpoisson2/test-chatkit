@@ -26,11 +26,11 @@
   --header-height: clamp(64px, 8vh, 80px);
 }
 
-:root[data-theme="light"] {
+:root[data-theme="light" i] {
   color-scheme: light;
 }
 
-:root[data-theme="dark"] {
+:root[data-theme="dark" i] {
   color-scheme: dark;
   --app-gradient: linear-gradient(160deg, #030712 0%, #111827 45%, #1f2937 100%);
   --color-text: #e4e4e7;

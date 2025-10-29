@@ -20,7 +20,7 @@ const readThemeAttribute = (): ColorScheme | null => {
   if (!isColorScheme(value)) {
     return null;
   }
-  return value;
+  return value.toLowerCase() as ColorScheme;
 };
 
 const getInitialScheme = (): ColorScheme => {
