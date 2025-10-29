@@ -457,6 +457,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         metadata = session.metadata.get("telephony") or {}
         rtp_stream_factory = metadata.get("rtp_stream_factory")
         send_audio = metadata.get("send_audio")
+        rtp_server_ref = metadata.get("rtp_server")
 
         logger.info(
             "Initialisation du pont voix pour Call-ID=%s (metadata=%s)",
@@ -829,6 +830,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 api_base=realtime_api_base,
                 session_config=session_update_config,
                 tool_permissions=tool_permissions,
+                rtp_server=rtp_server_ref,
             )
         except Exception as exc:  # pragma: no cover - dépend réseau
             logger.exception(

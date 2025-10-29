@@ -195,6 +195,7 @@ class TelephonyVoiceBridge:
         self._settings = settings or get_settings()
         self._keepalive_interval = max(0.01, keepalive_interval)
         self.running = False
+        self._active_rtp_server: Any | None = None
 
     @staticmethod
     def _calculate_audio_energy(pcm_data: bytes) -> float:
@@ -224,6 +225,7 @@ class TelephonyVoiceBridge:
         api_base: str | None = None,
         session_config: Mapping[str, Any] | None = None,
         tool_permissions: Mapping[str, Any] | None = None,
+        rtp_server: Any | None = None,
     ) -> VoiceBridgeStats:
         """Démarre le pont voix jusqu'à la fin de session ou erreur."""
 
@@ -506,38 +508,143 @@ class TelephonyVoiceBridge:
             await request_stop()
 
         async def rtp_send_loop() -> None:
-            nonlocal last_outbound_audio
+            nonlocal last_outbound_audio, outbound_audio_bytes
             interval = self._keepalive_interval
-            logger.debug(
-                "Boucle keepalive RTP initialisée%s (intervalle=%.3fs, taille=%d)",
+            base_frame = self._ensure_sip_sample_rate(silence_frame)
+            ulaw_payload = audioop.lin2ulaw(base_frame, 2) if base_frame else b""
+            samples_per_frame = max(1, len(base_frame) // 2) if base_frame else 160
+            sequence = 0
+            timestamp = 0
+            sent_packets = 0
+            logger.info(
+                "🔄 [Keepalive] Boucle keepalive RTP initialisée%s "
+                "(intervalle=%.3fs, taille=%d)",
                 call_context,
                 interval,
                 len(silence_frame),
             )
+            rtp_server_obj = self._active_rtp_server
+            if rtp_server_obj is not None:
+                logger.info(
+                    "🔍 [Keepalive] Vérification des attributs%s...",
+                    call_context,
+                )
+                logger.info("  - self.rtp_server: %r", rtp_server_obj)
+                logger.info(
+                    "  - self.rtp_server.socket: %r",
+                    getattr(rtp_server_obj, "socket", None),
+                )
+                logger.info(
+                    "  - self.rtp_server.remote_ip: %r",
+                    getattr(rtp_server_obj, "remote_ip", None),
+                )
+                logger.info(
+                    "  - self.rtp_server.remote_port: %r",
+                    getattr(rtp_server_obj, "remote_port", None),
+                )
+            else:
+                logger.info("🔍 [Keepalive] Aucun serveur RTP attaché%s", call_context)
+
+            logger.info("🔄 [Keepalive] Démarrage de la boucle d'envoi%s", call_context)
             while not stop_event.is_set():
                 try:
                     await asyncio.wait_for(stop_event.wait(), timeout=interval)
+                    logger.debug(
+                        "Arrêt de la boucle keepalive sur signal stop%s", call_context
+                    )
                     break
                 except asyncio.TimeoutError:
-                    if not should_continue():
+                    if not should_continue() or not self.running:
+                        logger.info(
+                            "⏹️ [Keepalive] Arrêt de la boucle (running=%s)%s",
+                            self.running,
+                            call_context,
+                        )
                         break
                     now = time.monotonic()
                     if now - last_outbound_audio < interval:
                         continue
+
+                    first_packet = sent_packets == 0
                     try:
-                        await send_to_peer(silence_frame)
+                        use_direct_socket = False
+                        remote_ip = None
+                        remote_port = None
+                        socket_obj = None
+                        payload_type = 0
+                        ssrc = 0x12345678
+                        if rtp_server_obj is not None:
+                            remote_ip = getattr(rtp_server_obj, "remote_ip", None)
+                            remote_port = getattr(rtp_server_obj, "remote_port", None)
+                            socket_obj = getattr(rtp_server_obj, "socket", None)
+                            payload_type = int(
+                                getattr(rtp_server_obj, "payload_type", payload_type)
+                            )
+                            ssrc = int(getattr(rtp_server_obj, "ssrc", ssrc))
+                            use_direct_socket = (
+                                socket_obj is not None
+                                and remote_ip is not None
+                                and remote_port is not None
+                            )
+
+                        if use_direct_socket:
+                            if first_packet:
+                                logger.info(
+                                    "🔄 [Keepalive] Envoi du premier paquet...%s",
+                                    call_context,
+                                )
+                            packet = self._build_rtp_datagram(
+                                payload_type=payload_type,
+                                sequence=sequence,
+                                timestamp=timestamp,
+                                ssrc=ssrc,
+                                payload=ulaw_payload,
+                            )
+                            socket_obj.sendto(packet, (remote_ip, remote_port))
+                            if first_packet:
+                                logger.info(
+                                    "✅ [Keepalive] Premier paquet envoyé vers %s:%s%s",
+                                    remote_ip,
+                                    remote_port,
+                                    call_context,
+                                )
+                        else:
+                            if first_packet:
+                                logger.info(
+                                    "🔄 [Keepalive] Envoi du premier paquet "
+                                    "(send_audio)%s",
+                                    call_context,
+                                )
+                            await send_to_peer(silence_frame)
+                            if first_packet:
+                                logger.info(
+                                    "✅ [Keepalive] Premier paquet envoyé via "
+                                    "send_audio%s",
+                                    call_context,
+                                )
+
                         last_outbound_audio = time.monotonic()
-                        logger.debug(
-                            "Paquet RTP keepalive (silence) envoyé%s", call_context
+                        outbound_audio_bytes += len(silence_frame)
+                        sent_packets += 1
+                        sequence = (sequence + 1) % 65536
+                        timestamp = (timestamp + samples_per_frame) % (1 << 32)
+                        if sent_packets % 50 == 0:
+                            logger.info(
+                                "🔄 [Keepalive] %d paquets envoyés%s",
+                                sent_packets,
+                                call_context,
+                            )
+                    except Exception as exc:  # pragma: no cover - instrumentation
+                        logger.error(
+                            "❌ [Keepalive] Erreur dans la boucle%s: %s",
+                            call_context,
+                            exc,
                         )
-                    except Exception:  # pragma: no cover - tentative best effort
-                        logger.debug(
-                            "Échec de l'envoi du keepalive RTP%s", call_context,
-                            exc_info=True,
-                        )
-                        continue
+                        logger.exception("Traceback keepalive")
+                        break
 
         stats: VoiceBridgeStats | None = None
+        self._active_rtp_server = rtp_server
         try:
             websocket = await self._websocket_connector(url, headers)
             logger.info(
@@ -653,6 +760,7 @@ class TelephonyVoiceBridge:
             )
         finally:
             self.running = False
+            self._active_rtp_server = None
             logger.info("🛑 Fin du pont voix")
             if websocket is not None:
                 try:
@@ -920,6 +1028,52 @@ class TelephonyVoiceBridge:
 
         samples = max(1, int(self._target_sample_rate * 0.02))
         return b"\x00\x00" * samples
+
+    def _ensure_sip_sample_rate(self, pcm: bytes) -> bytes:
+        """Convertit un segment PCM16 vers le taux d'échantillonnage SIP."""
+
+        if not pcm:
+            return pcm
+        if self._target_sample_rate == SIP_SAMPLE_RATE:
+            return pcm
+        converted, _ = audioop.ratecv(
+            pcm,
+            2,
+            1,
+            self._target_sample_rate,
+            SIP_SAMPLE_RATE,
+            None,
+        )
+        return converted
+
+    def _build_rtp_datagram(
+        self,
+        *,
+        payload_type: int,
+        sequence: int,
+        timestamp: int,
+        ssrc: int,
+        payload: bytes,
+        marker: bool = False,
+    ) -> bytes:
+        """Construit un paquet RTP brut avec payload déjà encodé."""
+
+        version = 2 << 6
+        padding = 0
+        extension = 0
+        csrc_count = 0
+        first_byte = version | padding | extension | csrc_count
+        marker_bit = 0x80 if marker else 0x00
+        second_byte = marker_bit | (payload_type & 0x7F)
+        header = struct.pack(
+            "!BBHII",
+            first_byte,
+            second_byte,
+            sequence,
+            timestamp,
+            ssrc,
+        )
+        return header + payload
 
     def _decode_packet(self, packet: RtpPacket) -> bytes:
         payload = packet.payload

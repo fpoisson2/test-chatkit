@@ -47,6 +47,30 @@ class RtpServer:
         if config.remote_host and config.remote_port:
             self._remote_addr = (config.remote_host, config.remote_port)
 
+    @property
+    def socket(self) -> Any | None:
+        """Retourne le socket sous-jacent si disponible."""
+
+        if self._transport is None:
+            return None
+        return self._transport.get_extra_info("socket")
+
+    @property
+    def remote_ip(self) -> str | None:
+        return self._remote_addr[0] if self._remote_addr else None
+
+    @property
+    def remote_port(self) -> int | None:
+        return self._remote_addr[1] if self._remote_addr else None
+
+    @property
+    def payload_type(self) -> int:
+        return int(self._config.payload_type)
+
+    @property
+    def ssrc(self) -> int:
+        return int(self._ssrc)
+
     async def start(self) -> int:
         """Démarre le serveur UDP RTP et retourne le port local."""
         if self._running:
