@@ -488,6 +488,16 @@ class TelephonyVoiceBridge:
                     if message_type == "response.done":
                         logger.debug("Response.done reçu, poursuite de la session")
                     continue
+                if message_type:
+                    logger.debug(
+                        "Événement Realtime ignoré%s : %s",
+                        call_context,
+                        message_type,
+                    )
+                else:
+                    logger.debug("Événement Realtime sans type%s ignoré", call_context)
+                if not should_continue():
+                    break
             await request_stop()
 
         async def rtp_send_loop() -> None:
