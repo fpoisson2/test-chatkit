@@ -611,6 +611,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
 
         try:
             stats = await voice_bridge.run(
+                runner=session_handle.runner,
                 client_secret=client_secret,
                 model=voice_model,
                 instructions=instructions,
