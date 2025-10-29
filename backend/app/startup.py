@@ -110,11 +110,11 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             )
 
         # Enregistrer un handler pour BYE pour éviter le KeyError
-        async def _on_bye(message: Any) -> None:
+        async def _on_bye(dialog_arg: Any, message: Any) -> None:
             call_id_header = getattr(message, 'headers', {}).get('Call-ID', ['unknown'])
             call_id = call_id_header[0] if isinstance(call_id_header, list) and call_id_header else str(call_id_header)
             logger.info("BYE reçu pour Call-ID=%s", call_id)
-            await handler.handle_request(message, dialog=dialog)
+            await handler.handle_request(message, dialog=dialog_arg)
 
         try:
             # Enregistrer le callback BYE dans dialog.callbacks
