@@ -481,8 +481,12 @@ class TelephonyVoiceBridge:
                     elif combined_entry:
                         transcripts.append(combined_entry)
 
-                    if message_type == "response.completed":
-                        break
+                    # Un événement response.completed marque la fin d'une réponse
+                    # individuelle mais ne signifie pas que la session doit être
+                    # interrompue. On continue donc à écouter les prochains
+                    # événements (nouvelles réponses, reprise utilisateur, etc.).
+                    if message_type == "response.done":
+                        logger.debug("Response.done reçu, poursuite de la session")
                     continue
             await request_stop()
 

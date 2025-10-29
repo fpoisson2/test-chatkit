@@ -1,6 +1,7 @@
 import asyncio
 import audioop
 import base64
+import contextlib
 import json
 import os
 import struct
@@ -70,6 +71,28 @@ class _FakeRtpStream(AsyncIterator[RtpPacket]):
             raise StopAsyncIteration
         await asyncio.sleep(0)
         return self._packets.pop(0)
+
+
+class _ControlledRtpStream(AsyncIterator[RtpPacket]):
+    """Flux RTP testable qui reste ouvert jusqu'à ce qu'on le stoppe."""
+
+    def __init__(self, packets: list[RtpPacket]) -> None:
+        self._packets = list(packets)
+        self._stop_event = asyncio.Event()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+
+    def __aiter__(self) -> "_ControlledRtpStream":
+        return self
+
+    async def __anext__(self) -> RtpPacket:
+        if self._packets:
+            await asyncio.sleep(0)
+            return self._packets.pop(0)
+
+        await self._stop_event.wait()
+        raise StopAsyncIteration
 
 
 @pytest.mark.anyio
@@ -199,6 +222,115 @@ async def test_voice_bridge_forwards_audio_and_transcripts() -> None:
     assert snapshot["total_sessions"] == 1
     assert snapshot["total_errors"] == 0
     assert snapshot["total_outbound_audio_bytes"] == len(b"assistant-audio")
+
+
+@pytest.mark.anyio
+async def test_voice_bridge_continues_after_response_completed() -> None:
+    pcm_samples = struct.pack("<8h", *([0, 500, -500, 1000] * 2))
+    mu_law = audioop.lin2ulaw(pcm_samples, 2)
+    stream = _ControlledRtpStream(
+        [
+            RtpPacket(payload=mu_law, timestamp=0, sequence_number=1),
+        ]
+    )
+
+    outbound_audio: list[bytes] = []
+
+    async def _send_to_peer(chunk: bytes) -> None:
+        outbound_audio.append(chunk)
+
+    resume_calls: list[list[dict[str, str]]] = []
+
+    async def _resume(transcripts: list[dict[str, str]]) -> None:
+        resume_calls.append(transcripts)
+
+    first_chunk = base64.b64encode(b"premier").decode("ascii")
+    second_chunk = base64.b64encode(b"deuxieme").decode("ascii")
+
+    responses = [
+        {
+            "type": "response.output_audio.delta",
+            "response_id": "resp-1",
+            "delta": {"audio": first_chunk},
+        },
+        {
+            "type": "response.completed",
+            "response": {
+                "id": "resp-1",
+                "output": [
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "output_text", "text": "Bonjour"},
+                        ],
+                    }
+                ],
+            },
+        },
+        {
+            "type": "response.output_audio.delta",
+            "response_id": "resp-2",
+            "delta": {"audio": second_chunk},
+        },
+        {
+            "type": "response.completed",
+            "response": {
+                "id": "resp-2",
+                "output": [
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "output_text", "text": "Encore"},
+                        ],
+                    }
+                ],
+            },
+        },
+        {"type": "session.ended"},
+    ]
+
+    fake_ws = _FakeWebSocket(responses)
+
+    async def _connector(url: str, headers: dict[str, str]) -> _FakeWebSocket:
+        del url, headers
+        return fake_ws
+
+    bridge = TelephonyVoiceBridge(
+        hooks=VoiceBridgeHooks(resume_workflow=_resume),
+        websocket_connector=_connector,
+        voice_session_checker=lambda: True,
+        receive_timeout=0.05,
+        target_sample_rate=8_000,
+    )
+
+    async def _stop_stream() -> None:
+        await asyncio.sleep(0.05)
+        stream.stop()
+
+    stopper = asyncio.create_task(_stop_stream())
+    try:
+        stats = await bridge.run(
+            client_secret="secret-token",
+            model="gpt-voice",
+            instructions="Parlez",
+            voice="verse",
+            rtp_stream=stream,
+            send_to_peer=_send_to_peer,
+        )
+    finally:
+        stopper.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await stopper
+
+    assert stats.error is None
+    assert outbound_audio == [b"premier", b"deuxieme"]
+    # Les deux réponses doivent être transmises au workflow de reprise
+    assert resume_calls == [
+        [
+            {"role": "assistant", "text": "Bonjour"},
+            {"role": "assistant", "text": "Encore"},
+        ]
+    ]
 
 
 @pytest.mark.anyio
