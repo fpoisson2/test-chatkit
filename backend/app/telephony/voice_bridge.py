@@ -274,14 +274,11 @@ class TelephonyVoiceBridge:
                 await request_stop()
 
         transcript_buffers: dict[str, list[str]] = {}
-        audio_interrupted = asyncio.Event()
         last_response_id: str | None = None
-        agent_is_speaking = False
-        speech_detected = False
 
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, speech_detected
+            nonlocal outbound_audio_bytes, error, last_response_id
             try:
                 async for event in session:
                     if not should_continue():
@@ -293,35 +290,22 @@ class TelephonyVoiceBridge:
                         logger.error("Erreur Realtime API: %s", event.error)
                         break
 
-                    # Handle audio events (agent speaking)
+                    # Handle audio events (agent speaking) - just send to peer
                     if isinstance(event, RealtimeAudio):
                         audio_event = event.audio
                         pcm_data = audio_event.data
                         if pcm_data:
-                            # Mark that agent started speaking (for interrupt detection)
-                            if not agent_is_speaking:
-                                agent_is_speaking = True
-                                speech_detected = False  # Reset for next potential interrupt
-                                logger.debug("Agent commence à parler")
-                            # Don't send audio if user is speaking (interrupted)
-                            if not audio_interrupted.is_set():
-                                outbound_audio_bytes += len(pcm_data)
-                                await send_to_peer(pcm_data)
-                            else:
-                                logger.debug("Audio ignoré - utilisateur parle")
+                            outbound_audio_bytes += len(pcm_data)
+                            await send_to_peer(pcm_data)
                         continue
 
-                    # Handle audio interruption
+                    # Handle audio interruption (just log for now, SDK handles it)
                     if isinstance(event, RealtimeAudioInterrupted):
-                        logger.info("Audio interrompu par l'utilisateur")
-                        audio_interrupted.set()
-                        agent_is_speaking = False
+                        logger.info("Audio interrompu par l'utilisateur (géré par SDK)")
                         continue
 
                     # Handle audio end
                     if isinstance(event, RealtimeAudioEnd):
-                        agent_is_speaking = False
-                        audio_interrupted.clear()
                         logger.debug("Agent a fini de parler")
                         continue
 
