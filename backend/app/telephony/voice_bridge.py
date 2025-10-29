@@ -192,6 +192,7 @@ class TelephonyVoiceBridge:
         self._receive_timeout = max(0.1, receive_timeout)
         self._vad_threshold = vad_threshold
         self._settings = settings or get_settings()
+        self.running = False
 
     @staticmethod
     def _calculate_audio_energy(pcm_data: bytes) -> float:
@@ -257,6 +258,7 @@ class TelephonyVoiceBridge:
         error: Exception | None = None
         websocket: WebSocketLike | None = None
         stop_event = asyncio.Event()
+        initial_messages: list[str | bytes] = []
         user_audio_logged = False
         agent_audio_logged = False
 
@@ -342,9 +344,12 @@ class TelephonyVoiceBridge:
             nonlocal agent_is_speaking, agent_audio_logged
             while True:
                 try:
-                    raw = await asyncio.wait_for(
-                        websocket.recv(), timeout=self._receive_timeout
-                    )
+                    if initial_messages:
+                        raw = initial_messages.pop(0)
+                    else:
+                        raw = await asyncio.wait_for(
+                            websocket.recv(), timeout=self._receive_timeout
+                        )
                 except asyncio.TimeoutError:
                     if not should_continue():
                         break
@@ -481,6 +486,9 @@ class TelephonyVoiceBridge:
                     continue
             await request_stop()
 
+        async def rtp_send_loop() -> None:
+            await stop_event.wait()
+
         stats: VoiceBridgeStats | None = None
         try:
             websocket = await self._websocket_connector(url, headers)
@@ -489,38 +497,115 @@ class TelephonyVoiceBridge:
                 call_context,
                 url,
             )
-            await send_json(
-                {
-                    "type": "session.update",
-                    "session": self._build_session_update(
-                        model,
-                        instructions,
-                        voice,
-                        session_config=session_config,
-                        tool_permissions=tool_permissions,
-                    ),
-                }
-            )
+            logger.info("✅ Connexion WebSocket établie")
+            logger.info("🔍 CHECKPOINT 1: Après connexion WS")
 
-            audio_task = asyncio.create_task(forward_audio())
-            realtime_task = asyncio.create_task(handle_realtime())
+            handshake_error: Exception | None = None
             try:
-                await asyncio.gather(audio_task, realtime_task)
-            except Exception as exc:
-                await request_stop()
-                for task in (audio_task, realtime_task):
-                    if not task.done():
-                        task.cancel()
-                await asyncio.gather(
-                    audio_task, realtime_task, return_exceptions=True
+                logger.info("⏳ Attente de session.created...")
+                session_created = False
+                while True:
+                    try:
+                        first_message = await asyncio.wait_for(
+                            websocket.recv(), timeout=5.0
+                        )
+                    except StopAsyncIteration:
+                        logger.warning(
+                            "⚠️ Flux WebSocket terminé avant session.created"
+                        )
+                        break
+                    if isinstance(first_message, bytes):
+                        preview_message = first_message.decode(
+                            "utf-8", "ignore"
+                        )
+                    else:
+                        preview_message = first_message
+                    logger.info("📩 Message reçu: %s...", preview_message[:200])
+                    logger.info("🔍 CHECKPOINT 2: Message reçu")
+
+                    try:
+                        data = json.loads(preview_message)
+                    except json.JSONDecodeError:
+                        data = {}
+                        logger.warning("⚠️ Type inattendu: payload non JSON")
+                        initial_messages.append(first_message)
+                        continue
+
+                    if data.get("type") == "session.created":
+                        logger.info("✅ session.created confirmé")
+                        session_created = True
+                        break
+
+                    logger.warning("⚠️ Type inattendu: %s", data.get("type"))
+                    initial_messages.append(first_message)
+
+                if not session_created:
+                    logger.warning("⚠️ Aucun événement session.created reçu")
+
+                logger.info("🔍 CHECKPOINT 3: Avant démarrage boucles")
+                await send_json(
+                    {
+                        "type": "session.update",
+                        "session": self._build_session_update(
+                            model,
+                            instructions,
+                            voice,
+                            session_config=session_config,
+                            tool_permissions=tool_permissions,
+                        ),
+                    }
                 )
-                error = exc
+
+                logger.info("🎙️ Démarrage des boucles audio...")
+                self.running = True
+                logger.info("🔍 CHECKPOINT 4: self.running = True")
+
+                tasks: list[asyncio.Task[Any]] = []
+                logger.info("📥 Création tâche rtp_receive_loop...")
+                tasks.append(asyncio.create_task(forward_audio()))
+                logger.info("📡 Création tâche websocket_receive_loop...")
+                tasks.append(asyncio.create_task(handle_realtime()))
+                logger.info("📤 Création tâche rtp_send_loop...")
+                tasks.append(asyncio.create_task(rtp_send_loop()))
+                logger.info("✅ %d tâches créées", len(tasks))
+                logger.info("🔍 CHECKPOINT 5: Avant gather")
+
+                results = await asyncio.gather(
+                    *tasks, return_exceptions=True
+                )
+                logger.info(
+                    "🔍 CHECKPOINT 6: Après gather (ne devrait pas arriver)"
+                )
+
+                for result in results:
+                    if isinstance(result, Exception):
+                        if error is None:
+                            error = result
+                        logger.error(
+                            "Boucle voix terminée avec exception", exc_info=result
+                        )
+            except asyncio.TimeoutError:
+                logger.error("❌ TIMEOUT: Pas de session.created reçu après 5s")
+                handshake_error = VoiceBridgeError(
+                    "Aucun événement session.created reçu dans le délai imparti"
+                )
+            except Exception as exc:  # pragma: no cover - instrumentation debug
+                logger.error("❌ EXCEPTION: %s: %s", type(exc).__name__, exc)
+                import traceback
+
+                logger.error("Traceback: %s", traceback.format_exc())
+                handshake_error = exc
+
+            if handshake_error is not None:
+                error = handshake_error
         except Exception as exc:
             error = exc
             logger.error(
                 "Session voix Realtime interrompue%s : %s", call_context, exc
             )
         finally:
+            self.running = False
+            logger.info("🛑 Fin du pont voix")
             if websocket is not None:
                 try:
                     await websocket.close()
