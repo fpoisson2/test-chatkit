@@ -362,7 +362,7 @@ class TelephonyVoiceBridge:
                     "create_response": True,
                     "interrupt_response": True,
                 },
-                "modalities": ["text", "audio"],
+                "modalities": ["audio"],  # For telephony, audio only (not ['text', 'audio'])
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
             }
