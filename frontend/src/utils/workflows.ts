@@ -526,39 +526,43 @@ export const getStartTelephonyWorkflow = (
   return { id: null, slug: "" };
 };
 
+type TelephonyWorkflowReference = { id: number | null; slug: string };
+
+const normalizeTelephonyWorkflowReference = (
+  reference: { id?: number | null; slug?: string | null },
+): TelephonyWorkflowReference => {
+  const idCandidate = reference.id;
+  const slugCandidate = reference.slug;
+
+  const hasValidId =
+    typeof idCandidate === "number" && Number.isInteger(idCandidate) && idCandidate > 0;
+  const normalizedId = hasValidId ? idCandidate : null;
+  const normalizedSlug = typeof slugCandidate === "string" ? slugCandidate.trim() : "";
+
+  return {
+    id: normalizedId,
+    slug: normalizedSlug,
+  } satisfies TelephonyWorkflowReference;
+};
+
 const shouldKeepTelephonyWorkflow = (
   reference: { id?: number | null; slug?: string | null },
 ): boolean => {
-  const idCandidate = reference.id;
-  const slugCandidate = reference.slug;
-
-  const hasId =
-    typeof idCandidate === "number" && Number.isInteger(idCandidate) && idCandidate > 0;
-  const slug = typeof slugCandidate === "string" ? slugCandidate.trim() : "";
-
-  return hasId || Boolean(slug);
+  const normalized = normalizeTelephonyWorkflowReference(reference);
+  return Boolean(normalized.slug || normalized.id);
 };
 
 const buildTelephonyWorkflowPayload = (
-  reference: { id?: number | null; slug?: string | null },
+  reference: TelephonyWorkflowReference,
 ): Record<string, unknown> => {
   const payload: Record<string, unknown> = {};
-  const idCandidate = reference.id;
-  const slugCandidate = reference.slug;
 
-  if (
-    typeof idCandidate === "number" &&
-    Number.isInteger(idCandidate) &&
-    idCandidate > 0
-  ) {
-    payload.id = idCandidate;
+  if (reference.id != null) {
+    payload.id = reference.id;
   }
 
-  if (typeof slugCandidate === "string") {
-    const slug = slugCandidate.trim();
-    if (slug) {
-      payload.slug = slug;
-    }
+  if (reference.slug) {
+    payload.slug = reference.slug;
   }
 
   return payload;
@@ -594,12 +598,25 @@ export const setStartTelephonyWorkflow = (
       return next;
     }
 
-    const payload = buildTelephonyWorkflowPayload(reference);
+    const normalizedReference = normalizeTelephonyWorkflowReference(reference);
+    const payload = buildTelephonyWorkflowPayload(normalizedReference);
     const defaultRoute = isPlainRecord(current.default)
       ? { ...(current.default as Record<string, unknown>) }
       : {};
 
     defaultRoute.workflow = payload;
+
+    if (normalizedReference.slug) {
+      defaultRoute.workflow_slug = normalizedReference.slug;
+    } else {
+      delete defaultRoute.workflow_slug;
+    }
+
+    if (normalizedReference.id != null) {
+      defaultRoute.workflow_id = normalizedReference.id;
+    } else {
+      delete defaultRoute.workflow_id;
+    }
 
     const next = {
       ...current,

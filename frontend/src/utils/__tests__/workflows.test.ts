@@ -129,6 +129,8 @@ describe("start telephony helpers", () => {
       telephony: {
         default: {
           workflow: { id: 12, slug: "voice-start" },
+          workflow_slug: "voice-start",
+          workflow_id: 12,
         },
       },
     });
@@ -165,6 +167,7 @@ describe("start telephony helpers", () => {
         default: {
           overrides: { voice: "verse" },
           workflow: { slug: "voice-start" },
+          workflow_slug: "voice-start",
         },
       },
     });
@@ -204,6 +207,7 @@ describe("start telephony helpers", () => {
       telephony: {
         default: {
           workflow: { slug: "voice-start" },
+          workflow_slug: "voice-start",
         },
       },
     });
@@ -272,6 +276,10 @@ describe("voice agent helpers", () => {
           transcription: true,
           function_call: false,
         },
+        input_audio_transcription: {
+          model: "gpt-4o-mini-transcribe",
+          language: "fr-CA",
+        },
       },
     });
   });
@@ -303,6 +311,10 @@ describe("voice agent helpers", () => {
           response: true,
           transcription: false,
           function_call: false,
+        },
+        input_audio_transcription: {
+          model: "gpt-4o-mini-transcribe",
+          language: "fr-CA",
         },
       },
     });
