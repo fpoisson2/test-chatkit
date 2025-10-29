@@ -198,6 +198,8 @@ class TelephonyVoiceBridge:
         rtp_stream: AsyncIterator[RtpPacket],
         send_to_peer: Callable[[bytes], Awaitable[None]],
         api_base: str | None = None,
+        tools: list[Any] | None = None,
+        handoffs: list[Any] | None = None,
     ) -> VoiceBridgeStats:
         """Démarre le pont voix jusqu'à la fin de session ou erreur."""
 
@@ -423,7 +425,7 @@ class TelephonyVoiceBridge:
             await send_json(
                 {
                     "type": "session.update",
-                    "session": self._build_session_update(model, instructions, voice),
+                    "session": self._build_session_update(model, instructions, voice, tools, handoffs),
                 }
             )
 
@@ -507,7 +509,12 @@ class TelephonyVoiceBridge:
             logger.exception("Hook de pont voix en erreur")
 
     def _build_session_update(
-        self, model: str, instructions: str, voice: str | None
+        self,
+        model: str,
+        instructions: str,
+        voice: str | None,
+        tools: list[Any] | None = None,
+        handoffs: list[Any] | None = None,
     ) -> dict[str, Any]:
         # Format API GA (non-beta)
         payload: dict[str, Any] = {
@@ -530,6 +537,11 @@ class TelephonyVoiceBridge:
         }
         if voice:
             payload["audio"]["output"]["voice"] = voice
+        # Ajouter les tools et handoffs s'ils sont fournis
+        if tools:
+            payload["tools"] = tools
+        if handoffs:
+            payload["handoffs"] = handoffs
         return payload
 
     def _decode_packet(self, packet: RtpPacket) -> bytes:

@@ -121,7 +121,11 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             if hasattr(dialog, 'callbacks'):
                 if 'BYE' not in dialog.callbacks:
                     dialog.callbacks['BYE'] = []
-                dialog.callbacks['BYE'].append((_on_bye, {}))
+                # Format attendu par aiosip: dict avec 'callable' et autres paramètres
+                dialog.callbacks['BYE'].append({
+                    'callable': _on_bye,
+                    'wait': True
+                })
                 logger.debug("Callback BYE enregistré pour le dialogue")
         except Exception:  # pragma: no cover - dépend des implémentations aiosip
             logger.debug(
@@ -614,6 +618,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 rtp_stream=rtp_stream_factory(),
                 send_to_peer=send_audio,
                 api_base=realtime_api_base,
+                tools=voice_tools,
+                handoffs=voice_handoffs,
             )
         except Exception as exc:  # pragma: no cover - dépend réseau
             logger.exception(
