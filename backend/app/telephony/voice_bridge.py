@@ -182,6 +182,7 @@ class TelephonyVoiceBridge:
         receive_timeout: float = 0.5,
         vad_threshold: float = 500.0,
         settings: Settings | None = None,
+        keepalive_interval: float = 0.5,
     ) -> None:
         self._hooks = hooks
         self._metrics = metrics or VoiceBridgeMetricsRecorder()
@@ -192,6 +193,7 @@ class TelephonyVoiceBridge:
         self._receive_timeout = max(0.1, receive_timeout)
         self._vad_threshold = vad_threshold
         self._settings = settings or get_settings()
+        self._keepalive_interval = max(0.01, keepalive_interval)
         self.running = False
 
     @staticmethod
@@ -261,6 +263,8 @@ class TelephonyVoiceBridge:
         initial_messages: list[str | bytes] = []
         user_audio_logged = False
         agent_audio_logged = False
+        last_outbound_audio = time.monotonic()
+        silence_frame = self._build_silence_frame()
 
         def should_continue() -> bool:
             if stop_event.is_set():
@@ -341,7 +345,7 @@ class TelephonyVoiceBridge:
 
         async def handle_realtime() -> None:
             nonlocal outbound_audio_bytes, error, last_response_id
-            nonlocal agent_is_speaking, agent_audio_logged
+            nonlocal agent_is_speaking, agent_audio_logged, last_outbound_audio
             while True:
                 try:
                     if initial_messages:
@@ -438,6 +442,7 @@ class TelephonyVoiceBridge:
                                 )
                                 agent_audio_logged = True
                             await send_to_peer(pcm)
+                            last_outbound_audio = time.monotonic()
                     if not should_continue():
                         break
                     continue
@@ -501,7 +506,36 @@ class TelephonyVoiceBridge:
             await request_stop()
 
         async def rtp_send_loop() -> None:
-            await stop_event.wait()
+            nonlocal last_outbound_audio
+            interval = self._keepalive_interval
+            logger.debug(
+                "Boucle keepalive RTP initialisée%s (intervalle=%.3fs, taille=%d)",
+                call_context,
+                interval,
+                len(silence_frame),
+            )
+            while not stop_event.is_set():
+                try:
+                    await asyncio.wait_for(stop_event.wait(), timeout=interval)
+                    break
+                except asyncio.TimeoutError:
+                    if not should_continue():
+                        break
+                    now = time.monotonic()
+                    if now - last_outbound_audio < interval:
+                        continue
+                    try:
+                        await send_to_peer(silence_frame)
+                        last_outbound_audio = time.monotonic()
+                        logger.debug(
+                            "Paquet RTP keepalive (silence) envoyé%s", call_context
+                        )
+                    except Exception:  # pragma: no cover - tentative best effort
+                        logger.debug(
+                            "Échec de l'envoi du keepalive RTP%s", call_context,
+                            exc_info=True,
+                        )
+                        continue
 
         stats: VoiceBridgeStats | None = None
         try:
@@ -880,6 +914,12 @@ class TelephonyVoiceBridge:
             payload["audio"] = audio_section
 
         return payload
+
+    def _build_silence_frame(self) -> bytes:
+        """Construit un segment PCM16 silencieux pour les keepalive RTP."""
+
+        samples = max(1, int(self._target_sample_rate * 0.02))
+        return b"\x00\x00" * samples
 
     def _decode_packet(self, packet: RtpPacket) -> bytes:
         payload = packet.payload

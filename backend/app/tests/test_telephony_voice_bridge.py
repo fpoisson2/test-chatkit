@@ -95,6 +95,58 @@ class _ControlledRtpStream(AsyncIterator[RtpPacket]):
         raise StopAsyncIteration
 
 
+def _is_silence(chunk: bytes) -> bool:
+    return not chunk or all(value == 0 for value in chunk)
+
+
+class _IdleWebSocket:
+    """WebSocket factice qui reste actif jusqu'à ce qu'on le débloque."""
+
+    def __init__(self) -> None:
+        self.sent: list[dict[str, Any]] = []
+        self._session_sent = False
+        self._ended = asyncio.Event()
+        self._end_sent = False
+        self.closed = False
+
+    async def send(self, payload: str | bytes) -> None:
+        data = payload.decode("utf-8") if isinstance(payload, bytes) else payload
+        self.sent.append(json.loads(data))
+
+    async def recv(self) -> str:
+        if not self._session_sent:
+            self._session_sent = True
+            return json.dumps(
+                {
+                    "type": "session.created",
+                    "event_id": "evt_1",
+                    "session": {
+                        "type": "realtime",
+                        "object": "realtime.session",
+                        "id": "sess_idle",
+                        "model": "gpt-realtime-mini",
+                        "output_modalities": ["audio"],
+                    },
+                }
+            )
+
+        if self._ended.is_set():
+            if self._end_sent:
+                raise StopAsyncIteration
+            self._end_sent = True
+            return json.dumps({"type": "session.ended"})
+
+        await asyncio.sleep(0.01)
+        return json.dumps({"type": "mcp_list_tools.in_progress"})
+
+    async def close(self, code: int = 1000) -> None:
+        del code
+        self.closed = True
+
+    def finish(self) -> None:
+        self._ended.set()
+
+
 @pytest.mark.anyio
 async def test_voice_bridge_forwards_audio_and_transcripts() -> None:
     pcm_samples = struct.pack("<8h", 0, 500, -500, 1000, -1000, 500, 0, -500)
@@ -188,7 +240,12 @@ async def test_voice_bridge_forwards_audio_and_transcripts() -> None:
 
     assert stats.error is None
     assert stats.inbound_audio_bytes > 0
-    assert outbound_audio == [b"assistant-audio"]
+    non_silence = [chunk for chunk in outbound_audio if not _is_silence(chunk)]
+    assert non_silence == [b"assistant-audio"]
+    assert all(
+        _is_silence(chunk) or chunk == b"assistant-audio"
+        for chunk in outbound_audio
+    )
 
     assert close_calls == 1
     assert clear_calls == 1
@@ -221,7 +278,7 @@ async def test_voice_bridge_forwards_audio_and_transcripts() -> None:
     snapshot = metrics.snapshot()
     assert snapshot["total_sessions"] == 1
     assert snapshot["total_errors"] == 0
-    assert snapshot["total_outbound_audio_bytes"] == len(b"assistant-audio")
+    assert snapshot["total_outbound_audio_bytes"] >= len(b"assistant-audio")
 
 
 @pytest.mark.anyio
@@ -323,7 +380,8 @@ async def test_voice_bridge_continues_after_response_completed() -> None:
             await stopper
 
     assert stats.error is None
-    assert outbound_audio == [b"premier", b"deuxieme"]
+    non_silence = [chunk for chunk in outbound_audio if not _is_silence(chunk)]
+    assert non_silence == [b"premier", b"deuxieme"]
     # Les deux réponses doivent être transmises au workflow de reprise
     assert resume_calls == [
         [
@@ -331,6 +389,55 @@ async def test_voice_bridge_continues_after_response_completed() -> None:
             {"role": "assistant", "text": "Encore"},
         ]
     ]
+
+
+@pytest.mark.anyio
+async def test_voice_bridge_sends_keepalive_when_idle() -> None:
+    stream = _ControlledRtpStream([])
+
+    outbound_audio: list[bytes] = []
+
+    async def _send_to_peer(chunk: bytes) -> None:
+        outbound_audio.append(chunk)
+
+    idle_ws = _IdleWebSocket()
+
+    async def _connector(url: str, headers: dict[str, str]) -> _IdleWebSocket:
+        del url, headers
+        return idle_ws
+
+    bridge = TelephonyVoiceBridge(
+        hooks=VoiceBridgeHooks(),
+        websocket_connector=_connector,
+        voice_session_checker=lambda: True,
+        receive_timeout=1.0,
+        target_sample_rate=8_000,
+        keepalive_interval=0.05,
+    )
+
+    async def _supervisor() -> None:
+        await asyncio.sleep(0.25)
+        idle_ws.finish()
+        stream.stop()
+
+    supervisor = asyncio.create_task(_supervisor())
+    try:
+        stats = await bridge.run(
+            client_secret="secret-token",
+            model="gpt-voice",
+            instructions="Restez en ligne",
+            voice="verse",
+            rtp_stream=stream,
+            send_to_peer=_send_to_peer,
+        )
+    finally:
+        supervisor.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await supervisor
+
+    assert stats.error is None
+    assert outbound_audio, "le pont doit envoyer du silence en keepalive"
+    assert all(_is_silence(chunk) for chunk in outbound_audio)
 
 
 @pytest.mark.anyio
