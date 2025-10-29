@@ -177,7 +177,6 @@ class TelephonyVoiceBridge:
         input_codec: str = "pcmu",
         target_sample_rate: int = 24_000,
         receive_timeout: float = 0.5,
-        vad_threshold: float = 500.0,
         settings: Settings | None = None,
     ) -> None:
         self._hooks = hooks
@@ -187,23 +186,7 @@ class TelephonyVoiceBridge:
         self._input_codec = input_codec.lower()
         self._target_sample_rate = target_sample_rate
         self._receive_timeout = max(0.1, receive_timeout)
-        self._vad_threshold = vad_threshold
         self._settings = settings or get_settings()
-
-    @staticmethod
-    def _calculate_audio_energy(pcm_data: bytes) -> float:
-        """Calcule l'énergie RMS de l'audio PCM16."""
-        if not pcm_data or len(pcm_data) < 2:
-            return 0.0
-
-        # Convertir bytes en samples int16
-        num_samples = len(pcm_data) // 2
-        samples = struct.unpack(f"{num_samples}h", pcm_data)
-
-        # Calculer RMS (Root Mean Square)
-        sum_squares = sum(s * s for s in samples)
-        rms = (sum_squares / num_samples) ** 0.5
-        return rms
 
     async def run(
         self,
@@ -267,17 +250,6 @@ class TelephonyVoiceBridge:
                     if not pcm:
                         continue
                     inbound_audio_bytes += len(pcm)
-
-                    # VAD local : détecter si l'utilisateur parle pendant que l'agent parle
-                    energy = self._calculate_audio_energy(pcm)
-                    if energy > self._vad_threshold and agent_is_speaking:
-                        if not audio_interrupted.is_set():
-                            logger.info(
-                                "VAD local : interruption détectée (énergie=%.1f, seuil=%.1f)",
-                                energy,
-                                self._vad_threshold
-                            )
-                            audio_interrupted.set()
 
                     encoded = base64.b64encode(pcm).decode("ascii")
                     await send_json(
@@ -530,10 +502,7 @@ class TelephonyVoiceBridge:
                 "input": {
                     "format": {"type": "audio/pcm", "rate": 24000},
                     "turn_detection": {
-                        "type": "server_vad",
-                        "threshold": 0.5,
-                        "prefix_padding_ms": 300,
-                        "silence_duration_ms": 500,
+                        "type": "semantic",
                         "create_response": True,
                         "interrupt_response": True,
                     },
