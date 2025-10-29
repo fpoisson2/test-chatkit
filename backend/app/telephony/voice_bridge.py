@@ -422,10 +422,12 @@ class TelephonyVoiceBridge:
         stats: VoiceBridgeStats | None = None
         try:
             websocket = await self._websocket_connector(url, headers)
+            # Note: tools et handoffs sont déjà configurés via client_secret,
+            # pas besoin de les renvoyer dans session.update
             await send_json(
                 {
                     "type": "session.update",
-                    "session": self._build_session_update(model, instructions, voice, tools, handoffs),
+                    "session": self._build_session_update(model, instructions, voice),
                 }
             )
 
@@ -513,10 +515,9 @@ class TelephonyVoiceBridge:
         model: str,
         instructions: str,
         voice: str | None,
-        tools: list[Any] | None = None,
-        handoffs: list[Any] | None = None,
     ) -> dict[str, Any]:
         # Format API GA (non-beta)
+        # Note: tools et handoffs sont déjà configurés via client_secret
         payload: dict[str, Any] = {
             "type": "realtime",
             "model": model,
@@ -537,11 +538,6 @@ class TelephonyVoiceBridge:
         }
         if voice:
             payload["audio"]["output"]["voice"] = voice
-        # Ajouter les tools et handoffs s'ils sont fournis
-        if tools:
-            payload["tools"] = tools
-        if handoffs:
-            payload["handoffs"] = handoffs
         return payload
 
     def _decode_packet(self, packet: RtpPacket) -> bytes:
