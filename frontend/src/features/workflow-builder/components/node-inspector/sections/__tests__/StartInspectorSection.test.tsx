@@ -3,23 +3,16 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { I18nProvider } from "../../../../../../i18n";
-import type { StartTelephonyRealtimeOverrides, StartTelephonyWorkflowReference } from "../../../../../../utils/workflows";
+import type { StartTelephonyWorkflowReference } from "../../../../../../utils/workflows";
 import { StartInspectorSection } from "../StartInspectorSection";
 
 type RenderOptions = Partial<Parameters<typeof StartInspectorSection>[0]>;
 
 const defaultWorkflow: StartTelephonyWorkflowReference = { id: null, slug: "" };
-const defaultRealtime: StartTelephonyRealtimeOverrides = {
-  model: "",
-  voice: "",
-  start_mode: null,
-  stop_mode: null,
-};
 
 const renderSection = (overrides: RenderOptions = {}) => {
-  const onStartTelephonyRoutesChange = vi.fn();
   const onStartTelephonyWorkflowChange = vi.fn();
-  const onStartTelephonyRealtimeChange = vi.fn();
+  const onStartTelephonyWorkflowToggle = vi.fn();
 
   render(
     <I18nProvider>
@@ -28,55 +21,72 @@ const renderSection = (overrides: RenderOptions = {}) => {
         startAutoRun={false}
         startAutoRunMessage=""
         startAutoRunAssistantMessage=""
-        startTelephonyRoutes={[]}
         startTelephonyWorkflow={defaultWorkflow}
-        startTelephonyRealtime={defaultRealtime}
+        startTelephonyEnabled={false}
+        currentWorkflowSlug="support"
+        currentWorkflowId={42}
         onStartAutoRunChange={vi.fn()}
         onStartAutoRunMessageChange={vi.fn()}
         onStartAutoRunAssistantMessageChange={vi.fn()}
-        onStartTelephonyRoutesChange={onStartTelephonyRoutesChange}
         onStartTelephonyWorkflowChange={onStartTelephonyWorkflowChange}
-        onStartTelephonyRealtimeChange={onStartTelephonyRealtimeChange}
+        onStartTelephonyWorkflowToggle={onStartTelephonyWorkflowToggle}
         {...overrides}
       />
     </I18nProvider>,
   );
 
   return {
-    onStartTelephonyRoutesChange,
     onStartTelephonyWorkflowChange,
-    onStartTelephonyRealtimeChange,
+    onStartTelephonyWorkflowToggle,
   };
 };
 
 describe("StartInspectorSection", () => {
-  it("affiche une erreur pour les numéros non conformes", async () => {
-    const { onStartTelephonyRoutesChange } = renderSection();
+  it("active la téléphonie SIP et enregistre le workflow courant", async () => {
+    const { onStartTelephonyWorkflowChange, onStartTelephonyWorkflowToggle } =
+      renderSection();
 
-    const textarea = screen.getByLabelText(/Inbound numbers/i);
-    await userEvent.clear(textarea);
-    await userEvent.type(textarea, "abc");
+    const toggle = screen.getByRole("switch", { name: /sip/i });
+    await userEvent.click(toggle);
 
-    expect(onStartTelephonyRoutesChange).toHaveBeenCalledWith("start-node", ["abc"]);
-    expect(await screen.findByText(/Invalid phone numbers:|Numéros non conformes/i)).toBeInTheDocument();
-  });
-
-  it("signale l'absence de slug lorsque des numéros sont configurés", () => {
-    renderSection({ startTelephonyRoutes: ["+33123456789"], startTelephonyWorkflow: defaultWorkflow });
-
-    expect(
-      screen.getByText(/Provide a slug for the target workflow./i),
-    ).toBeInTheDocument();
-  });
-
-  it("propage les changements de configuration Realtime", async () => {
-    const { onStartTelephonyRealtimeChange } = renderSection();
-
-    const select = screen.getByLabelText(/Start mode/i);
-    await userEvent.selectOptions(select, "auto");
-
-    expect(onStartTelephonyRealtimeChange).toHaveBeenCalledWith("start-node", {
-      start_mode: "auto",
+    expect(onStartTelephonyWorkflowToggle).toHaveBeenCalledWith("start-node", true);
+    expect(onStartTelephonyWorkflowChange).toHaveBeenCalledWith("start-node", {
+      slug: "support",
+      id: 42,
     });
+  });
+
+  it("désactive la téléphonie SIP sans réécrire la configuration", async () => {
+    const { onStartTelephonyWorkflowChange, onStartTelephonyWorkflowToggle } = renderSection({
+      startTelephonyEnabled: true,
+      startTelephonyWorkflow: { id: 42, slug: "support" },
+    });
+
+    const toggle = screen.getByRole("switch", { name: /sip/i });
+    await userEvent.click(toggle);
+
+    expect(onStartTelephonyWorkflowToggle).toHaveBeenCalledWith("start-node", false);
+    expect(onStartTelephonyWorkflowChange).not.toHaveBeenCalled();
+  });
+
+  it("synchronise le slug lorsque le workflow change", () => {
+    const { onStartTelephonyWorkflowChange } = renderSection({
+      startTelephonyEnabled: true,
+      startTelephonyWorkflow: { id: 42, slug: "legacy" },
+      currentWorkflowSlug: "support",
+    });
+
+    expect(onStartTelephonyWorkflowChange).toHaveBeenCalledWith("start-node", {
+      slug: "support",
+      id: 42,
+    });
+  });
+
+  it("désactive l'option SIP tant qu'aucun slug n'est défini", () => {
+    renderSection({ currentWorkflowSlug: "" });
+
+    const toggle = screen.getByRole("switch", { name: /sip/i });
+    expect(toggle).toBeDisabled();
+    expect(screen.getByText(/Set a workflow slug to enable SIP calls./i)).toBeInTheDocument();
   });
 });

@@ -89,9 +89,7 @@ import {
   setStartAutoRun,
   setStartAutoRunMessage,
   setStartAutoRunAssistantMessage,
-  setStartTelephonyRoutes,
   setStartTelephonyWorkflow,
-  setStartTelephonyRealtimeOverrides,
   setConditionMode,
   setConditionPath,
   setConditionValue,
@@ -124,7 +122,6 @@ import {
   getParallelSplitJoinSlug,
   getParallelSplitBranches,
   type WorkflowToolConfig,
-  type StartTelephonyRealtimeOverrides,
   type McpSseToolConfig,
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
@@ -2683,24 +2680,6 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
-  const handleStartTelephonyRoutesChange = useCallback(
-    (nodeId: string, routes: string[]) => {
-      updateNodeData(nodeId, (data) => {
-        if (data.kind !== "start") {
-          return data;
-        }
-        const nextParameters = setStartTelephonyRoutes(data.parameters, routes);
-        return {
-          ...data,
-          parameters: nextParameters,
-          parametersText: stringifyAgentParameters(nextParameters),
-          parametersError: null,
-        } satisfies FlowNodeData;
-      });
-    },
-    [updateNodeData],
-  );
-
   const handleStartTelephonyWorkflowChange = useCallback(
     (nodeId: string, reference: { id?: number | null; slug?: string | null }) => {
       updateNodeData(nodeId, (data) => {
@@ -2719,16 +2698,22 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
-  const handleStartTelephonyRealtimeChange = useCallback(
-    (nodeId: string, overrides: Partial<StartTelephonyRealtimeOverrides>) => {
+  const handleStartTelephonyWorkflowToggle = useCallback(
+    (nodeId: string, enabled: boolean) => {
       updateNodeData(nodeId, (data) => {
         if (data.kind !== "start") {
           return data;
         }
-        const nextParameters = setStartTelephonyRealtimeOverrides(
-          data.parameters,
-          overrides,
-        );
+
+        const normalizedSlug = (selectedWorkflow?.slug ?? "").trim();
+        const reference = enabled
+          ? {
+              slug: normalizedSlug || undefined,
+              id: selectedWorkflowId ?? undefined,
+            }
+          : { slug: null, id: null };
+
+        const nextParameters = setStartTelephonyWorkflow(data.parameters, reference);
         return {
           ...data,
           parameters: nextParameters,
@@ -2737,7 +2722,7 @@ const WorkflowBuilderPage = () => {
         } satisfies FlowNodeData;
       });
     },
-    [updateNodeData],
+    [selectedWorkflow?.slug, selectedWorkflowId, updateNodeData],
   );
 
   const handleAgentMessageChange = useCallback(
@@ -7481,6 +7466,7 @@ const WorkflowBuilderPage = () => {
             onAgentMcpSseConfigChange={handleAgentMcpSseConfigChange}
             workflows={workflows}
             currentWorkflowId={selectedWorkflowId}
+            currentWorkflowSlug={selectedWorkflow?.slug ?? null}
             hostedWorkflows={hostedWorkflows}
             hostedWorkflowsLoading={hostedLoading}
             hostedWorkflowsError={hostedError}
@@ -7498,9 +7484,8 @@ const WorkflowBuilderPage = () => {
             onStartAutoRunAssistantMessageChange={
               handleStartAutoRunAssistantMessageChange
             }
-            onStartTelephonyRoutesChange={handleStartTelephonyRoutesChange}
             onStartTelephonyWorkflowChange={handleStartTelephonyWorkflowChange}
-            onStartTelephonyRealtimeChange={handleStartTelephonyRealtimeChange}
+            onStartTelephonyWorkflowToggle={handleStartTelephonyWorkflowToggle}
             onConditionPathChange={handleConditionPathChange}
             onConditionModeChange={handleConditionModeChange}
             onConditionValueChange={handleConditionValueChange}

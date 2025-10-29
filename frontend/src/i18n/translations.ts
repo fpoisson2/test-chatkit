@@ -445,35 +445,13 @@ const fr: TranslationDictionary = {
     "Supprimer ce workflow hébergé",
   "workflowBuilder.startInspector.telephonySectionTitle": "Téléphonie",
   "workflowBuilder.startInspector.telephonySectionDescription":
-    "Configurez les numéros entrants et les overrides Realtime appliqués à ce bloc de démarrage.",
-  "workflowBuilder.startInspector.telephonyRoutesLabel": "Numéros entrants",
-  "workflowBuilder.startInspector.telephonyRoutesPlaceholder": "Saisir un numéro par ligne…",
-  "workflowBuilder.startInspector.telephonyRoutesHelp":
-    "Utilisez un numéro E.164 (ex. +33123456789) ou une extension numérique (ex. 101). Laissez vide pour désactiver la redirection téléphonique.",
-  "workflowBuilder.startInspector.telephonyRoutesError": "Numéros non conformes : {{list}}",
-  "workflowBuilder.startInspector.telephonyWorkflowSlugLabel": "Slug du workflow cible",
-  "workflowBuilder.startInspector.telephonyWorkflowSlugHelp":
-    "Slug du workflow à exécuter lorsque l'appel est reçu sur l'un des numéros ci-dessus.",
-  "workflowBuilder.startInspector.telephonyWorkflowSlugError":
-    "Indiquez un slug pour le workflow cible.",
-  "workflowBuilder.startInspector.telephonyWorkflowIdLabel": "Identifiant du workflow (optionnel)",
-  "workflowBuilder.startInspector.telephonyWorkflowIdHelp":
-    "Renseignez l'identifiant interne du workflow pour lever toute ambiguïté sur le slug.",
-  "workflowBuilder.startInspector.telephonyWorkflowIdError":
-    "L'identifiant doit être un entier positif.",
-  "workflowBuilder.startInspector.telephonyRealtimeTitle": "Overrides Realtime",
-  "workflowBuilder.startInspector.telephonyRealtimeDescription":
-    "Ces paramètres surchargent la configuration Realtime lorsque le workflow démarre depuis un numéro de téléphone.",
-  "workflowBuilder.startInspector.telephonyRealtimeModelLabel": "Modèle Realtime",
-  "workflowBuilder.startInspector.telephonyRealtimeModelHelp":
-    "Laissez vide pour utiliser le modèle défini sur le workflow.",
-  "workflowBuilder.startInspector.telephonyRealtimeVoiceLabel": "Voix Realtime",
-  "workflowBuilder.startInspector.telephonyRealtimeVoiceHelp":
-    "Laissez vide pour conserver la voix configurée sur le workflow.",
-  "workflowBuilder.startInspector.telephonyRealtimeStartLabel": "Mode de démarrage",
-  "workflowBuilder.startInspector.telephonyRealtimeStartDefault": "Comportement par défaut",
-  "workflowBuilder.startInspector.telephonyRealtimeStopLabel": "Mode d'arrêt",
-  "workflowBuilder.startInspector.telephonyRealtimeStopDefault": "Comportement par défaut",
+    "Activez ce workflow pour répondre aux appels SIP entrants.",
+  "workflowBuilder.startInspector.telephonySipToggleLabel":
+    "Utiliser ce workflow pour les appels SIP",
+  "workflowBuilder.startInspector.telephonySipToggleHelp":
+    "Un seul workflow peut prendre en charge les appels SIP entrants.",
+  "workflowBuilder.startInspector.telephonySipToggleDisabledHint":
+    "Définissez un identifiant de workflow pour activer les appels SIP.",
   "workflowBuilder.createWorkflow.chooseHosted":
     "Créer un workflow hébergé ? Cliquez sur OK pour ajouter un workflow hébergé ou sur Annuler pour créer un workflow local.",
   "workflowBuilder.createWorkflow.promptSlug": "Slug du workflow hébergé ?",
@@ -1060,34 +1038,13 @@ const en: TranslationDictionary = {
   "workflowBuilder.startInspector.hostedRemoveButton": "Remove this hosted workflow",
   "workflowBuilder.startInspector.telephonySectionTitle": "Telephony",
   "workflowBuilder.startInspector.telephonySectionDescription":
-    "Configure inbound numbers and Realtime overrides applied to this start block.",
-  "workflowBuilder.startInspector.telephonyRoutesLabel": "Inbound numbers",
-  "workflowBuilder.startInspector.telephonyRoutesPlaceholder": "Enter one phone number per line…",
-  "workflowBuilder.startInspector.telephonyRoutesHelp":
-    "Use an E.164 number (e.g. +33123456789) or a numeric extension (e.g. 101). Leave empty to disable telephony routing.",
-  "workflowBuilder.startInspector.telephonyRoutesError": "Invalid phone numbers: {{list}}",
-  "workflowBuilder.startInspector.telephonyWorkflowSlugLabel": "Target workflow slug",
-  "workflowBuilder.startInspector.telephonyWorkflowSlugHelp":
-    "Slug of the workflow to run when any of the above numbers is called.",
-  "workflowBuilder.startInspector.telephonyWorkflowSlugError":
-    "Provide a slug for the target workflow.",
-  "workflowBuilder.startInspector.telephonyWorkflowIdLabel": "Workflow ID (optional)",
-  "workflowBuilder.startInspector.telephonyWorkflowIdHelp":
-    "Set the internal workflow ID to disambiguate the slug if needed.",
-  "workflowBuilder.startInspector.telephonyWorkflowIdError": "The ID must be a positive integer.",
-  "workflowBuilder.startInspector.telephonyRealtimeTitle": "Realtime overrides",
-  "workflowBuilder.startInspector.telephonyRealtimeDescription":
-    "These settings override the Realtime configuration when the workflow starts from a phone number.",
-  "workflowBuilder.startInspector.telephonyRealtimeModelLabel": "Realtime model",
-  "workflowBuilder.startInspector.telephonyRealtimeModelHelp":
-    "Leave blank to use the workflow's default model.",
-  "workflowBuilder.startInspector.telephonyRealtimeVoiceLabel": "Realtime voice",
-  "workflowBuilder.startInspector.telephonyRealtimeVoiceHelp":
-    "Leave blank to keep the workflow's default voice.",
-  "workflowBuilder.startInspector.telephonyRealtimeStartLabel": "Start mode",
-  "workflowBuilder.startInspector.telephonyRealtimeStartDefault": "Default behaviour",
-  "workflowBuilder.startInspector.telephonyRealtimeStopLabel": "Stop mode",
-  "workflowBuilder.startInspector.telephonyRealtimeStopDefault": "Default behaviour",
+    "Mark this workflow to handle incoming SIP calls.",
+  "workflowBuilder.startInspector.telephonySipToggleLabel":
+    "Use this workflow for SIP calls",
+  "workflowBuilder.startInspector.telephonySipToggleHelp":
+    "Only one workflow can handle inbound SIP calls.",
+  "workflowBuilder.startInspector.telephonySipToggleDisabledHint":
+    "Set a workflow slug to enable SIP calls.",
   "workflowBuilder.createWorkflow.chooseHosted":
     "Create a hosted workflow? Click OK to add a hosted workflow or Cancel to create a local workflow.",
   "workflowBuilder.createWorkflow.promptSlug": "Hosted workflow slug?",

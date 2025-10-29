@@ -479,58 +479,6 @@ const updateStartTelephonyConfig = (
   return stripEmpty(base);
 };
 
-export const getStartTelephonyRoutes = (
-  parameters: AgentParameters | null | undefined,
-): string[] => {
-  if (!parameters) {
-    return [];
-  }
-
-  const telephony = cloneStartTelephonyConfig(
-    (parameters as Record<string, unknown>).telephony,
-  );
-
-  const routes = telephony.routes;
-  if (!Array.isArray(routes)) {
-    return [];
-  }
-
-  const normalized: string[] = [];
-  for (const entry of routes) {
-    if (typeof entry !== "string") {
-      continue;
-    }
-    const trimmed = entry.trim();
-    if (!trimmed) {
-      continue;
-    }
-    normalized.push(trimmed);
-  }
-
-  return normalized;
-};
-
-export const setStartTelephonyRoutes = (
-  parameters: AgentParameters,
-  routes: string[],
-): AgentParameters => {
-  const normalized = Array.from(
-    new Set(
-      routes
-        .map((route) => route.trim())
-        .filter((route) => route.length > 0),
-    ),
-  );
-
-  return updateStartTelephonyConfig(parameters, (current) => {
-    if (normalized.length === 0) {
-      const { routes: _ignored, ...rest } = current;
-      return rest;
-    }
-    return { ...current, routes: normalized };
-  });
-};
-
 export type StartTelephonyWorkflowReference = { id: number | null; slug: string };
 
 export const getStartTelephonyWorkflow = (
@@ -543,12 +491,77 @@ export const getStartTelephonyWorkflow = (
   const telephony = cloneStartTelephonyConfig(
     (parameters as Record<string, unknown>).telephony,
   );
+  const defaultRoute = telephony.default;
+  if (isPlainRecord(defaultRoute)) {
+    const workflow = (defaultRoute as Record<string, unknown>).workflow;
+    if (isPlainRecord(workflow)) {
+      return sanitizeWorkflowReference(workflow as Record<string, unknown>);
+    }
+
+    const fallbackSlug = (defaultRoute as Record<string, unknown>).workflow_slug;
+    const fallbackId = (defaultRoute as Record<string, unknown>).workflow_id;
+    if (typeof fallbackSlug === "string" || typeof fallbackId === "number") {
+      return sanitizeWorkflowReference({
+        slug: fallbackSlug,
+        id: fallbackId,
+      });
+    }
+  }
+
   const workflow = telephony.workflow;
   if (isPlainRecord(workflow)) {
     return sanitizeWorkflowReference(workflow as Record<string, unknown>);
   }
 
+  const fallbackSlug = telephony.workflow_slug;
+  if (typeof fallbackSlug === "string" && fallbackSlug.trim()) {
+    return { id: null, slug: fallbackSlug.trim() };
+  }
+
+  const fallbackId = telephony.workflow_id;
+  if (typeof fallbackId === "number" && Number.isInteger(fallbackId) && fallbackId > 0) {
+    return { id: fallbackId, slug: "" };
+  }
+
   return { id: null, slug: "" };
+};
+
+const shouldKeepTelephonyWorkflow = (
+  reference: { id?: number | null; slug?: string | null },
+): boolean => {
+  const idCandidate = reference.id;
+  const slugCandidate = reference.slug;
+
+  const hasId =
+    typeof idCandidate === "number" && Number.isInteger(idCandidate) && idCandidate > 0;
+  const slug = typeof slugCandidate === "string" ? slugCandidate.trim() : "";
+
+  return hasId || Boolean(slug);
+};
+
+const buildTelephonyWorkflowPayload = (
+  reference: { id?: number | null; slug?: string | null },
+): Record<string, unknown> => {
+  const payload: Record<string, unknown> = {};
+  const idCandidate = reference.id;
+  const slugCandidate = reference.slug;
+
+  if (
+    typeof idCandidate === "number" &&
+    Number.isInteger(idCandidate) &&
+    idCandidate > 0
+  ) {
+    payload.id = idCandidate;
+  }
+
+  if (typeof slugCandidate === "string") {
+    const slug = slugCandidate.trim();
+    if (slug) {
+      payload.slug = slug;
+    }
+  }
+
+  return payload;
 };
 
 export const setStartTelephonyWorkflow = (
@@ -556,30 +569,45 @@ export const setStartTelephonyWorkflow = (
   reference: { id?: number | null; slug?: string | null },
 ): AgentParameters =>
   updateStartTelephonyConfig(parameters, (current) => {
-    const idCandidate = reference.id;
-    const slugCandidate = reference.slug;
-
-    const hasId =
-      typeof idCandidate === "number" &&
-      Number.isInteger(idCandidate) &&
-      idCandidate > 0;
-    const slug = typeof slugCandidate === "string" ? slugCandidate.trim() : "";
-
-    if (!hasId && !slug) {
-      const { workflow: _ignored, ...rest } = current;
+    if (!shouldKeepTelephonyWorkflow(reference)) {
+      const { default: _ignoredDefault, workflow: _ignoredWorkflow, ...rest } = current;
+      delete rest.routes;
+      delete rest.realtime;
+      delete rest.fallback;
+      if (Object.keys(rest).length === 0) {
+        return {};
+      }
       return rest;
     }
 
-    const payload: Record<string, unknown> = {};
-    if (hasId && typeof idCandidate === "number") {
-      payload.id = idCandidate;
-    }
-    if (slug) {
-      payload.slug = slug;
-    }
+    const payload = buildTelephonyWorkflowPayload(reference);
+    const defaultRoute = isPlainRecord(current.default)
+      ? { ...(current.default as Record<string, unknown>) }
+      : {};
 
-    return { ...current, workflow: payload };
+    defaultRoute.workflow = payload;
+
+    const next = {
+      ...current,
+      default: defaultRoute,
+    } as Record<string, unknown>;
+
+    delete next.workflow;
+    delete next.workflow_slug;
+    delete next.workflow_id;
+    delete next.routes;
+    delete next.realtime;
+    delete next.fallback;
+
+    return next;
   });
+
+export const getStartTelephonyEnabled = (
+  parameters: AgentParameters | null | undefined,
+): boolean => {
+  const reference = getStartTelephonyWorkflow(parameters);
+  return Boolean(reference.slug || reference.id);
+};
 
 export const setConditionPath = (
   parameters: AgentParameters,
@@ -1276,99 +1304,6 @@ export const setTranscriptionPrompt = (
     return { ...current, input_audio_transcription: transcription };
   });
 
-export type StartTelephonyRealtimeOverrides = {
-  model: string;
-  voice: string;
-  start_mode: VoiceAgentStartBehavior | null;
-  stop_mode: VoiceAgentStopBehavior | null;
-};
-
-const normalizeTelephonyRealtime = (
-  value: unknown,
-): Record<string, unknown> => {
-  if (!isPlainRecord(value)) {
-    return {};
-  }
-  return { ...(value as Record<string, unknown>) };
-};
-
-export const getStartTelephonyRealtimeOverrides = (
-  parameters: AgentParameters | null | undefined,
-): StartTelephonyRealtimeOverrides => {
-  if (!parameters) {
-    return { model: "", voice: "", start_mode: null, stop_mode: null };
-  }
-
-  const telephony = cloneStartTelephonyConfig(
-    (parameters as Record<string, unknown>).telephony,
-  );
-  const realtime = normalizeTelephonyRealtime(telephony.realtime);
-
-  const model = typeof realtime.model === "string" ? realtime.model.trim() : "";
-  const voice = typeof realtime.voice === "string" ? realtime.voice.trim() : "";
-  const startMode = isVoiceAgentStartBehavior(realtime.start_mode)
-    ? (realtime.start_mode as VoiceAgentStartBehavior)
-    : null;
-  const stopMode = isVoiceAgentStopBehavior(realtime.stop_mode)
-    ? (realtime.stop_mode as VoiceAgentStopBehavior)
-    : null;
-
-  return { model, voice, start_mode: startMode, stop_mode: stopMode };
-};
-
-export const setStartTelephonyRealtimeOverrides = (
-  parameters: AgentParameters,
-  overrides: Partial<StartTelephonyRealtimeOverrides>,
-): AgentParameters =>
-  updateStartTelephonyConfig(parameters, (current) => {
-    const realtime = normalizeTelephonyRealtime(current.realtime);
-
-    if (Object.prototype.hasOwnProperty.call(overrides, "model")) {
-      const modelValue = overrides.model;
-      const trimmed = typeof modelValue === "string" ? modelValue.trim() : "";
-      if (trimmed) {
-        realtime.model = trimmed;
-      } else {
-        delete realtime.model;
-      }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(overrides, "voice")) {
-      const voiceValue = overrides.voice;
-      const trimmed = typeof voiceValue === "string" ? voiceValue.trim() : "";
-      if (trimmed) {
-        realtime.voice = trimmed;
-      } else {
-        delete realtime.voice;
-      }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(overrides, "start_mode")) {
-      const startModeValue = overrides.start_mode;
-      if (isVoiceAgentStartBehavior(startModeValue)) {
-        realtime.start_mode = startModeValue;
-      } else {
-        delete realtime.start_mode;
-      }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(overrides, "stop_mode")) {
-      const stopModeValue = overrides.stop_mode;
-      if (isVoiceAgentStopBehavior(stopModeValue)) {
-        realtime.stop_mode = stopModeValue;
-      } else {
-        delete realtime.stop_mode;
-      }
-    }
-
-    if (Object.keys(realtime).length === 0) {
-      const { realtime: _ignored, ...rest } = current;
-      return rest;
-    }
-
-    return { ...current, realtime };
-  });
-
 export const resolveStartParameters = (
   rawParameters: AgentParameters | null | undefined,
 ): AgentParameters => {
@@ -1385,12 +1320,7 @@ export const resolveStartParameters = (
     getStartAutoRunAssistantMessage(rawParameters),
   );
 
-  result = setStartTelephonyRoutes(result, getStartTelephonyRoutes(rawParameters));
   result = setStartTelephonyWorkflow(result, getStartTelephonyWorkflow(rawParameters));
-  result = setStartTelephonyRealtimeOverrides(
-    result,
-    getStartTelephonyRealtimeOverrides(rawParameters),
-  );
 
   return result;
 };

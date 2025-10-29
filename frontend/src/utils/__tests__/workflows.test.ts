@@ -21,12 +21,8 @@ import {
   setWidgetNodeSource,
   getAgentWorkflowValidationToolEnabled,
   setAgentWorkflowValidationToolEnabled,
-  getStartTelephonyRoutes,
-  setStartTelephonyRoutes,
   getStartTelephonyWorkflow,
   setStartTelephonyWorkflow,
-  getStartTelephonyRealtimeOverrides,
-  setStartTelephonyRealtimeOverrides,
   resolveStartParameters,
   type WorkflowToolConfig,
   type McpSseToolConfig,
@@ -104,39 +100,14 @@ describe("nested workflow helpers", () => {
   });
 });
 
+
 describe("start telephony helpers", () => {
-  it("normalise les numéros extraits des paramètres", () => {
+  it("normalise la référence workflow depuis la route par défaut", () => {
     const parameters: AgentParameters = {
       telephony: {
-        routes: ["  +33123456789  ", "+14155551234", ""],
-      },
-    };
-
-    expect(getStartTelephonyRoutes(parameters)).toEqual([
-      "+33123456789",
-      "+14155551234",
-    ]);
-  });
-
-  it("met à jour les numéros de téléphonie en supprimant les doublons", () => {
-    const initial: AgentParameters = {};
-
-    const updated = setStartTelephonyRoutes(initial, [
-      "  +33123456789  ",
-      "+33123456789",
-      "",
-    ]);
-
-    expect(updated).toEqual({ telephony: { routes: ["+33123456789"] } });
-
-    const cleared = setStartTelephonyRoutes(updated, []);
-    expect(cleared).toEqual({});
-  });
-
-  it("normalise la cible workflow de la configuration téléphonie", () => {
-    const parameters: AgentParameters = {
-      telephony: {
-        workflow: { id: 7, slug: "  voice-start  " },
+        default: {
+          workflow: { id: 7, slug: "  voice-start  " },
+        },
       },
     };
 
@@ -146,7 +117,7 @@ describe("start telephony helpers", () => {
     });
   });
 
-  it("enregistre et efface la cible workflow de la configuration téléphonie", () => {
+  it("enregistre et supprime la route par défaut selon le workflow fourni", () => {
     const initial: AgentParameters = {};
 
     const configured = setStartTelephonyWorkflow(initial, {
@@ -156,60 +127,13 @@ describe("start telephony helpers", () => {
 
     expect(configured).toEqual({
       telephony: {
-        workflow: { id: 12, slug: "voice-start" },
+        default: {
+          workflow: { id: 12, slug: "voice-start" },
+        },
       },
     });
 
     const cleared = setStartTelephonyWorkflow(configured, { id: null, slug: "   " });
-    expect(cleared).toEqual({});
-  });
-
-  it("normalise les overrides realtime", () => {
-    const parameters: AgentParameters = {
-      telephony: {
-        realtime: {
-          model: "  gpt-4o-realtime-preview  ",
-          voice: "  alloy  ",
-          start_mode: "invalid",
-          stop_mode: "auto",
-        },
-      },
-    };
-
-    expect(getStartTelephonyRealtimeOverrides(parameters)).toEqual({
-      model: "gpt-4o-realtime-preview",
-      voice: "alloy",
-      start_mode: null,
-      stop_mode: "auto",
-    });
-  });
-
-  it("met à jour et efface les overrides realtime", () => {
-    const initial: AgentParameters = {};
-
-    const configured = setStartTelephonyRealtimeOverrides(initial, {
-      model: "  gpt-4o  ",
-      voice: "alloy",
-      start_mode: "auto",
-    });
-
-    expect(configured).toEqual({
-      telephony: {
-        realtime: {
-          model: "gpt-4o",
-          voice: "alloy",
-          start_mode: "auto",
-        },
-      },
-    });
-
-    const cleared = setStartTelephonyRealtimeOverrides(configured, {
-      model: "",
-      voice: "",
-      start_mode: null,
-      stop_mode: null,
-    });
-
     expect(cleared).toEqual({});
   });
 
@@ -218,12 +142,7 @@ describe("start telephony helpers", () => {
       auto_start: "true",
       auto_start_user_message: "  Bonjour  ",
       telephony: {
-        routes: ["  +33123456789  ", ""],
         workflow: { slug: "  voice-start  " },
-        realtime: {
-          model: "  gpt-4o  ",
-          stop_mode: "invalid",
-        },
       },
     };
 
@@ -233,16 +152,13 @@ describe("start telephony helpers", () => {
       auto_start: true,
       auto_start_user_message: "Bonjour",
       telephony: {
-        routes: ["+33123456789"],
-        workflow: { slug: "voice-start" },
-        realtime: {
-          model: "gpt-4o",
+        default: {
+          workflow: { slug: "voice-start" },
         },
       },
     });
   });
 });
-
 describe("mcp sse tool helpers", () => {
   it("extrait une configuration normalisée depuis les paramètres", () => {
     const parameters: AgentParameters = {
