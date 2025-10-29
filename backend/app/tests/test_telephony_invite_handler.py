@@ -86,7 +86,7 @@ async def test_handle_invite_accepts_supported_codec() -> None:
         )
     )
 
-    await handle_incoming_invite(
+    result = await handle_incoming_invite(
         dialog,
         invite,
         media_host="203.0.113.5",
@@ -112,6 +112,9 @@ async def test_handle_invite_accepts_supported_codec() -> None:
     assert "m=audio 5004 RTP/AVP 0" in payload
     assert "a=rtpmap:0 PCMU/8000" in payload
 
+    assert result.remote_port == 49170
+    assert result.remote_host == "198.51.100.10"
+
 
 @pytest.mark.anyio
 async def test_handle_invite_accepts_codec_with_channel_information() -> None:
@@ -131,7 +134,7 @@ async def test_handle_invite_accepts_codec_with_channel_information() -> None:
         )
     )
 
-    await handle_incoming_invite(
+    result = await handle_incoming_invite(
         dialog,
         invite,
         media_host="203.0.113.5",
@@ -148,6 +151,9 @@ async def test_handle_invite_accepts_codec_with_channel_information() -> None:
     assert isinstance(payload, str)
     assert "m=audio 5006 RTP/AVP 107" in payload
     assert "a=rtpmap:107 OPUS/48000" in payload
+
+    assert result.remote_port == 49170
+    assert result.remote_host == "198.51.100.10"
 
 
 @pytest.mark.anyio
@@ -170,7 +176,7 @@ async def test_handle_invite_reuses_via_header_from_request() -> None:
         headers={"Via": via_header, "CSeq": cseq_header},
     )
 
-    await handle_incoming_invite(
+    result = await handle_incoming_invite(
         dialog,
         invite,
         media_host="203.0.113.7",
@@ -189,6 +195,9 @@ async def test_handle_invite_reuses_via_header_from_request() -> None:
     final_headers = dialog.replies[-1][1]["headers"]
     assert final_headers["Content-Type"] == "application/sdp"
     assert final_headers["CSeq"] == cseq_header
+
+    assert result.remote_port == 49170
+    assert result.remote_host == "198.51.100.10"
 
 
 @pytest.mark.anyio
@@ -209,7 +218,7 @@ async def test_handle_invite_accepts_payload_already_decoded() -> None:
         as_text=True,
     )
 
-    await handle_incoming_invite(
+    result = await handle_incoming_invite(
         dialog,
         invite,
         media_host="203.0.113.6",
@@ -223,6 +232,9 @@ async def test_handle_invite_accepts_payload_already_decoded() -> None:
 
     for _, kwargs in dialog.replies:
         assert kwargs["headers"]["Contact"] == "<sip:bot@203.0.113.6:5060>"
+
+    assert result.remote_port == 49170
+    assert result.remote_host == "198.51.100.10"
 
 
 @pytest.mark.anyio
@@ -243,7 +255,7 @@ async def test_handle_invite_accepts_payload_with_carriage_returns_only() -> Non
         as_text=True,
     )
 
-    await handle_incoming_invite(
+    result = await handle_incoming_invite(
         dialog,
         invite,
         media_host="203.0.113.6",
@@ -257,6 +269,9 @@ async def test_handle_invite_accepts_payload_with_carriage_returns_only() -> Non
 
     for _, kwargs in dialog.replies:
         assert kwargs["headers"]["Contact"] == "<sip:bot@203.0.113.6:5060>"
+
+    assert result.remote_port == 49170
+    assert result.remote_host == "198.51.100.10"
 
 
 @pytest.mark.anyio
@@ -281,7 +296,7 @@ async def test_handle_invite_accepts_payload_without_line_separators() -> None:
         as_text=True,
     )
 
-    await handle_incoming_invite(
+    result = await handle_incoming_invite(
         dialog,
         invite,
         media_host="203.0.113.9",
@@ -295,6 +310,9 @@ async def test_handle_invite_accepts_payload_without_line_separators() -> None:
 
     for _, kwargs in dialog.replies:
         assert kwargs["headers"]["Contact"] == "<sip:bot@203.0.113.9:5060>"
+
+    assert result.remote_port == 49170
+    assert result.remote_host == "198.51.100.10"
 
 
 @pytest.mark.anyio

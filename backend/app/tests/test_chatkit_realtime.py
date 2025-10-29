@@ -277,10 +277,54 @@ def test_open_voice_session_prefers_openai_slug(
     assert request["url"] == "https://api.openai.com/v1/realtime/client_secrets"
     payload = request["json"]
     assert isinstance(payload, dict)
-    assert payload.get("voice") == "verse"
+    assert "voice" not in payload
     session_payload = payload.get("session")
     assert isinstance(session_payload, dict)
-    assert "voice" not in session_payload
+    audio_payload = session_payload.get("audio")
+    assert isinstance(audio_payload, dict)
+    output_payload = audio_payload.get("output")
+    assert isinstance(output_payload, dict)
+    assert output_payload.get("voice") == "verse"
+    headers = request["headers"]
+    assert isinstance(headers, dict)
+    assert headers.get("Authorization") == "Bearer openai-key"
+
+
+def test_open_voice_session_uses_provider_id_when_slug_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
+    captured: dict[str, object] = {}
+
+    _reset_orchestrator(monkeypatch)
+    monkeypatch.setattr(realtime_runner, "get_settings", lambda: _FakeSettings())
+    monkeypatch.setattr(
+        realtime_runner,
+        "resolve_model_provider_credentials",
+        lambda provider_id: None,
+    )
+    monkeypatch.setattr(
+        realtime_runner.httpx,
+        "AsyncClient",
+        lambda **kwargs: _DummyAsyncClient(captured=captured, **kwargs),
+    )
+
+    handle = asyncio.run(
+        realtime_runner.open_voice_session(
+            user_id="user-provider-id",
+            model="gpt-realtime",
+            instructions="Bonjour",
+            provider_id="OpenAI",
+            voice="verse",
+        )
+    )
+
+    assert handle.payload == {"client_secret": {"value": "secret"}}
+    requests = captured.get("requests")
+    assert isinstance(requests, list)
+    assert len(requests) == 1
+    request = requests[0]
+    assert request["url"] == "https://api.openai.com/v1/realtime/client_secrets"
     headers = request["headers"]
     assert isinstance(headers, dict)
     assert headers.get("Authorization") == "Bearer openai-key"
@@ -766,7 +810,7 @@ def test_openai_slug_ignores_mismatched_provider_id(
     assert headers.get("Authorization") == "Bearer openai-key"
 
 
-def test_voice_parameter_fallback_to_session(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_voice_parameter_retries_without_voice(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
     captured: dict[str, object] = {}
 
@@ -785,9 +829,9 @@ def test_voice_parameter_fallback_to_session(monkeypatch: pytest.MonkeyPatch) ->
             return _DummyResponse(
                 {
                     "error": {
-                        "message": "Unknown parameter: 'voice'.",
+                        "message": "Unknown parameter: 'audio.output.voice'.",
                         "type": "invalid_request_error",
-                        "param": "voice",
+                        "param": "audio.output.voice",
                         "code": "unknown_parameter",
                     }
                 },
@@ -822,22 +866,28 @@ def test_voice_parameter_fallback_to_session(monkeypatch: pytest.MonkeyPatch) ->
     assert first_request["url"] == "https://api.openai.com/v1/realtime/client_secrets"
     first_payload = first_request["json"]
     assert isinstance(first_payload, dict)
-    assert first_payload.get("voice") == "alloy"
+    assert "voice" not in first_payload
     session_payload = first_payload.get("session")
     assert isinstance(session_payload, dict)
-    assert "voice" not in session_payload
+    audio_payload = session_payload.get("audio")
+    assert isinstance(audio_payload, dict)
+    output_payload = audio_payload.get("output")
+    assert isinstance(output_payload, dict)
+    assert output_payload.get("voice") == "alloy"
 
     second_request = requests[1]
     assert second_request["url"] == "https://api.openai.com/v1/realtime/client_secrets"
     second_payload = second_request["json"]
     assert isinstance(second_payload, dict)
     assert "voice" not in second_payload
-    session_payload = second_payload.get("session")
-    assert isinstance(session_payload, dict)
-    assert session_payload.get("voice") == "alloy"
+    second_session = second_payload.get("session")
+    assert isinstance(second_session, dict)
+    second_audio = second_session.get("audio")
+    if isinstance(second_audio, dict):
+        assert "voice" not in (second_audio.get("output") or {})
 
 
-def test_realtime_parameter_top_level_default(
+def test_realtime_audio_configuration_embedded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
@@ -856,13 +906,21 @@ def test_realtime_parameter_top_level_default(
         lambda **kwargs: _DummyAsyncClient(captured=captured, **kwargs),
     )
 
+    realtime_config = {
+        "input_audio_format": {"type": "audio/pcm", "rate": 24_000},
+        "output_audio_format": {"type": "audio/pcm", "rate": 24_000},
+        "turn_detection": {"type": "server_vad"},
+        "speed": 1.0,
+        "modalities": ["audio"],
+    }
+
     handle = asyncio.run(
         realtime_runner.open_voice_session(
             user_id="user-realtime",
             model="gpt-realtime",
             instructions="Bonjour",
             provider_slug="openai",
-            realtime={"latency": "low"},
+            realtime=realtime_config,
         )
     )
 
@@ -873,13 +931,24 @@ def test_realtime_parameter_top_level_default(
     first_request = requests[0]
     payload = first_request["json"]
     assert isinstance(payload, dict)
-    assert payload.get("realtime") == {"latency": "low"}
+    assert "realtime" not in payload
     session_payload = payload.get("session")
     assert isinstance(session_payload, dict)
-    assert "realtime" not in session_payload
+    assert session_payload.get("output_modalities") == ["audio"]
+    assert "modalities" not in session_payload
+    audio_payload = session_payload.get("audio")
+    assert isinstance(audio_payload, dict)
+    input_payload = audio_payload.get("input")
+    assert isinstance(input_payload, dict)
+    assert input_payload.get("format") == {"type": "audio/pcm", "rate": 24_000}
+    assert input_payload.get("turn_detection") == {"type": "server_vad"}
+    output_payload = audio_payload.get("output")
+    assert isinstance(output_payload, dict)
+    assert output_payload.get("format") == {"type": "audio/pcm", "rate": 24_000}
+    assert output_payload.get("speed") == 1.0
 
 
-def test_realtime_parameter_fallback_to_session(
+def test_realtime_audio_configuration_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
@@ -900,9 +969,9 @@ def test_realtime_parameter_fallback_to_session(
             return _DummyResponse(
                 {
                     "error": {
-                        "message": "Unknown parameter: 'realtime'.",
+                        "message": "Unknown parameter: 'audio.input.turn_detection'.",
                         "type": "invalid_request_error",
-                        "param": "realtime",
+                        "param": "audio.input.turn_detection",
                         "code": "unknown_parameter",
                     }
                 },
@@ -918,13 +987,18 @@ def test_realtime_parameter_fallback_to_session(
         ),
     )
 
+    realtime_config = {
+        "input_audio_format": {"type": "audio/pcm", "rate": 16_000},
+        "turn_detection": {"type": "server_vad", "threshold": 0.5},
+    }
+
     handle = asyncio.run(
         realtime_runner.open_voice_session(
             user_id="user-realtime",
             model="gpt-realtime",
             instructions="Bonjour",
             provider_slug="openai",
-            realtime={"latency": "low"},
+            realtime=realtime_config,
         )
     )
 
@@ -935,20 +1009,29 @@ def test_realtime_parameter_fallback_to_session(
 
     first_payload = requests[0]["json"]
     assert isinstance(first_payload, dict)
-    assert first_payload.get("realtime") == {"latency": "low"}
+    assert "realtime" not in first_payload
     first_session_payload = first_payload.get("session")
     assert isinstance(first_session_payload, dict)
-    assert "realtime" not in first_session_payload
+    first_audio = first_session_payload.get("audio")
+    assert isinstance(first_audio, dict)
+    first_input = first_audio.get("input")
+    assert isinstance(first_input, dict)
+    assert first_input.get("turn_detection") == {
+        "type": "server_vad",
+        "threshold": 0.5,
+    }
 
     second_payload = requests[1]["json"]
     assert isinstance(second_payload, dict)
     assert "realtime" not in second_payload
     second_session_payload = second_payload.get("session")
     assert isinstance(second_session_payload, dict)
-    assert second_session_payload.get("realtime") == {"latency": "low"}
+    second_audio = second_session_payload.get("audio")
+    if isinstance(second_audio, dict):
+        assert "turn_detection" not in (second_audio.get("input") or {})
 
 
-def test_realtime_parameter_fallback_to_none(
+def test_realtime_audio_configuration_eventually_removed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("CHATKIT_API_BASE", raising=False)
@@ -969,21 +1052,9 @@ def test_realtime_parameter_fallback_to_none(
             return _DummyResponse(
                 {
                     "error": {
-                        "message": "Unknown parameter: 'realtime'.",
+                        "message": "Unknown parameter: 'audio.input.turn_detection'.",
                         "type": "invalid_request_error",
-                        "param": "realtime",
-                        "code": "unknown_parameter",
-                    }
-                },
-                status_code=400,
-            )
-        if call_count == 2:
-            return _DummyResponse(
-                {
-                    "error": {
-                        "message": "Unknown parameter: 'session.realtime'.",
-                        "type": "invalid_request_error",
-                        "param": "session.realtime",
+                        "param": "audio.input.turn_detection",
                         "code": "unknown_parameter",
                     }
                 },
@@ -999,35 +1070,33 @@ def test_realtime_parameter_fallback_to_none(
         ),
     )
 
+    realtime_config = {
+        "input_audio_format": {"type": "audio/pcm", "rate": 16_000},
+        "turn_detection": {"type": "server_vad"},
+    }
+
     handle = asyncio.run(
         realtime_runner.open_voice_session(
             user_id="user-realtime",
             model="gpt-realtime",
             instructions="Bonjour",
             provider_slug="openai",
-            realtime={"latency": "low"},
+            realtime=realtime_config,
         )
     )
 
     assert handle.payload == {"client_secret": {"value": "secret"}}
     requests = captured.get("requests")
     assert isinstance(requests, list)
-    assert len(requests) == 3
+    assert len(requests) == 2
 
     first_payload = requests[0]["json"]
     assert isinstance(first_payload, dict)
-    assert first_payload.get("realtime") == {"latency": "low"}
+    first_audio = first_payload["session"]["audio"]
+    assert first_audio["input"].get("turn_detection") == {"type": "server_vad"}
 
     second_payload = requests[1]["json"]
     assert isinstance(second_payload, dict)
-    assert "realtime" not in second_payload
-    second_session_payload = second_payload.get("session")
-    assert isinstance(second_session_payload, dict)
-    assert second_session_payload.get("realtime") == {"latency": "low"}
-
-    third_payload = requests[2]["json"]
-    assert isinstance(third_payload, dict)
-    assert "realtime" not in third_payload
-    third_session_payload = third_payload.get("session")
-    assert isinstance(third_session_payload, dict)
-    assert "realtime" not in third_session_payload
+    second_audio = second_payload["session"].get("audio")
+    if isinstance(second_audio, dict):
+        assert "turn_detection" not in (second_audio.get("input") or {})

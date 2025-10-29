@@ -22,6 +22,15 @@ class SelectedCodec:
     clock_rate: int
 
 
+@dataclass(frozen=True)
+class InviteHandlingResult:
+    """Détails techniques renvoyés après l'acceptation d'un INVITE."""
+
+    remote_host: str | None
+    remote_port: int | None
+    selected_codec: SelectedCodec
+
+
 _STATIC_PAYLOADS: dict[int, tuple[str, int]] = {
     0: ("pcmu", 8000),
     18: ("g729", 8000),
@@ -103,6 +112,38 @@ def _parse_audio_media_line(sdp_lines: Iterable[str]) -> tuple[int, list[int]] |
     return None
 
 
+def _parse_connection_addresses(
+    sdp_lines: Iterable[str],
+) -> tuple[str | None, str | None]:
+    """Retourne les adresses de session et audio détectées dans un SDP."""
+
+    session_address: str | None = None
+    audio_address: str | None = None
+    in_audio_section = False
+
+    for line in sdp_lines:
+        lowered = line.lower()
+        if lowered.startswith("m="):
+            in_audio_section = lowered.startswith("m=audio")
+            continue
+
+        if not lowered.startswith("c="):
+            continue
+
+        parts = line.split()
+        if len(parts) < 3:
+            logger.debug("Ligne c= ignorée (mal formée) : %s", line)
+            continue
+
+        address = parts[-1]
+        if in_audio_section:
+            audio_address = address
+        elif session_address is None:
+            session_address = address
+
+    return session_address, audio_address
+
+
 def _build_sdp_answer(
     *,
     connection_address: str,
@@ -136,7 +177,7 @@ async def handle_incoming_invite(
     media_port: int,
     preferred_codecs: Iterable[str] = ("pcmu", "g729"),
     contact_uri: str | None = None,
-) -> None:
+) -> InviteHandlingResult:
     """Répondre à un ``INVITE`` SIP en négociant une session RTP simple."""
 
     call_id = _extract_header(request, "Call-ID")
@@ -250,6 +291,8 @@ async def handle_incoming_invite(
         ",".join(str(p) for p in offered_payloads),
     )
 
+    session_address, audio_address = _parse_connection_addresses(sdp_lines)
+
     payload_map = _parse_payload_map(sdp_lines)
     codec = _select_codec(
         offered_payloads=offered_payloads,
@@ -310,6 +353,17 @@ async def handle_incoming_invite(
         payload=sdp_answer,
         call_id=call_id,
         contact_uri=contact_uri,
+    )
+
+    remote_port = offered_port if offered_port and offered_port > 0 else None
+    remote_host = audio_address or session_address
+    if remote_host in {"0.0.0.0", "::", "[::]"}:
+        remote_host = None
+
+    return InviteHandlingResult(
+        remote_host=remote_host,
+        remote_port=remote_port,
+        selected_codec=codec,
     )
 
 

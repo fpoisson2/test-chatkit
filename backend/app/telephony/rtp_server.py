@@ -27,6 +27,7 @@ class RtpServerConfig:
     payload_type: int = 0  # PCMU par défaut
     output_codec: str = "pcmu"
     ssrc: int | None = None
+    input_sample_rate: int = 24_000
 
 
 class RtpServer:
@@ -42,14 +43,39 @@ class RtpServer:
         self._timestamp = 0
         self._ssrc = config.ssrc or int(time.time() * 1000) & 0xFFFFFFFF
         self._remote_addr: tuple[str, int] | None = None
+        self._input_sample_rate = max(1, int(config.input_sample_rate))
         if config.remote_host and config.remote_port:
             self._remote_addr = (config.remote_host, config.remote_port)
 
-    async def start(self) -> None:
-        """Démarre le serveur UDP RTP."""
+    @property
+    def socket(self) -> Any | None:
+        """Retourne le socket sous-jacent si disponible."""
+
+        if self._transport is None:
+            return None
+        return self._transport.get_extra_info("socket")
+
+    @property
+    def remote_ip(self) -> str | None:
+        return self._remote_addr[0] if self._remote_addr else None
+
+    @property
+    def remote_port(self) -> int | None:
+        return self._remote_addr[1] if self._remote_addr else None
+
+    @property
+    def payload_type(self) -> int:
+        return int(self._config.payload_type)
+
+    @property
+    def ssrc(self) -> int:
+        return int(self._ssrc)
+
+    async def start(self) -> int:
+        """Démarre le serveur UDP RTP et retourne le port local."""
         if self._running:
             logger.warning("Serveur RTP déjà démarré")
-            return
+            return self._config.local_port
 
         loop = asyncio.get_running_loop()
         self._protocol = _RtpProtocol(
@@ -67,6 +93,7 @@ class RtpServer:
 
             # Récupère le port réellement assigné si c'était 0
             sock = self._transport.get_extra_info("socket")
+            actual_port = self._config.local_port
             if sock:
                 actual_port = sock.getsockname()[1]
                 if actual_port != self._config.local_port:
@@ -82,6 +109,13 @@ class RtpServer:
                         self._config.local_host,
                         self._config.local_port,
                     )
+            else:
+                logger.info(
+                    "Serveur RTP démarré sur %s:%d",
+                    self._config.local_host,
+                    self._config.local_port,
+                )
+            return actual_port
         except Exception as exc:
             logger.exception(
                 "Impossible de démarrer le serveur RTP sur %s:%d",
@@ -105,6 +139,26 @@ class RtpServer:
             self._transport = None
 
         logger.info("Serveur RTP arrêté")
+
+    def set_remote_target(self, host: str | None, port: int | None) -> None:
+        """Fixe explicitement la cible RTP distante.
+
+        Args:
+            host: Adresse IP ou nom d'hôte du pair RTP.
+            port: Port UDP du pair RTP.
+        """
+
+        if not host or not port:
+            return
+
+        try:
+            port_int = int(port)
+        except (TypeError, ValueError):  # pragma: no cover - garde-fou
+            logger.warning("Port RTP distant invalide : %r", port)
+            return
+
+        self._remote_addr = (host, port_int)
+        logger.info("Cible RTP distante définie : %s:%d", host, port_int)
 
     def _on_remote_discovered(self, addr: tuple[str, int]) -> None:
         """Callback appelé quand l'adresse distante est découverte."""
@@ -165,7 +219,12 @@ class RtpServer:
                 if i < num_packets - 1:  # Pas de délai après le dernier paquet
                     await asyncio.sleep(0.02)
             except Exception as exc:
-                logger.error("Erreur lors de l'envoi RTP paquet %d/%d : %s", i+1, num_packets, exc)
+                logger.error(
+                    "Erreur lors de l'envoi RTP paquet %d/%d : %s",
+                    i + 1,
+                    num_packets,
+                    exc,
+                )
 
     def _encode_audio(self, pcm_data: bytes) -> bytes:
         """Encode le PCM16 dans le codec de sortie."""
@@ -176,21 +235,27 @@ class RtpServer:
         codec = self._config.output_codec.lower()
 
         # Conversion du taux d'échantillonnage si nécessaire
-        # OpenAI Realtime GA envoie du PCM16 à 24kHz, mais PCMU attend du 8kHz
+        # (Realtime peut fournir du PCM16 à 24kHz alors que PCMU attend du 8kHz)
         if codec in ("pcmu", "pcma"):
-            # Convertir de 24kHz à 8kHz
-            try:
-                pcm_8k, _ = audioop.ratecv(pcm_data, 2, 1, 24_000, 8_000, None)
-            except Exception as exc:
-                logger.debug("Erreur lors de la conversion de taux : %s", exc)
-                return b""
+            source_rate = self._input_sample_rate
+            target_rate = 8_000
+            pcm_for_encoding = pcm_data
+
+            if source_rate != target_rate:
+                try:
+                    pcm_for_encoding, _ = audioop.ratecv(
+                        pcm_data, 2, 1, source_rate, target_rate, None
+                    )
+                except Exception as exc:
+                    logger.debug("Erreur lors de la conversion de taux : %s", exc)
+                    return b""
 
             # Encoder en μ-law ou A-law
             try:
                 if codec == "pcmu":
-                    return audioop.lin2ulaw(pcm_8k, 2)
+                    return audioop.lin2ulaw(pcm_for_encoding, 2)
                 else:  # pcma
-                    return audioop.lin2alaw(pcm_8k, 2)
+                    return audioop.lin2alaw(pcm_for_encoding, 2)
             except Exception as exc:
                 logger.debug("Erreur lors de l'encodage audio : %s", exc)
                 return b""
@@ -305,7 +370,9 @@ class _RtpProtocol(asyncio.DatagramProtocol):
                 # Si extension présente, lire la longueur
                 if len(data) < header_length + 4:
                     return None
-                ext_length = struct.unpack("!H", data[header_length + 2 : header_length + 4])[0]
+                ext_length = struct.unpack(
+                    "!H", data[header_length + 2 : header_length + 4]
+                )[0]
                 header_length += 4 + (ext_length * 4)
 
             if len(data) < header_length:

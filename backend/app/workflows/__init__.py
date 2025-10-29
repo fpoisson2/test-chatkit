@@ -3,8 +3,6 @@
 from .service import (
     HostedWorkflowConfig,
     HostedWorkflowNotFoundError,
-    TelephonyRouteConfig,
-    TelephonyRouteOverrides,
     TelephonyStartConfiguration,
     WorkflowNotFoundError,
     WorkflowService,
@@ -38,8 +36,6 @@ __all__ = [
     "resolve_start_auto_start_assistant_message",
     "resolve_start_telephony_config",
     "resolve_start_hosted_workflows",
-    "TelephonyRouteConfig",
-    "TelephonyRouteOverrides",
     "TelephonyStartConfiguration",
     "HostedWorkflowConfig",
 ]

@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import uuid
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from fastapi import FastAPI
@@ -58,6 +59,7 @@ from .telephony.sip_server import (
     SipCallRequestHandler,
     SipCallSession,
     TelephonyRouteSelectionError,
+    prepare_voice_workflow,
     resolve_workflow_for_phone_number,
 )
 from .telephony.voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
@@ -71,6 +73,196 @@ from .vector_store import (
 from .workflows.service import WorkflowService
 
 logger = logging.getLogger("chatkit.server")
+
+TELEPHONY_SAMPLE_RATE = 8_000
+
+
+def _extract_remote_media_target(payload: Any) -> tuple[str | None, int | None]:
+    """Retourne l'adresse et le port RTP annoncés dans un SDP d'INVITE."""
+
+    def _coerce_payload(raw: Any, seen: set[int] | None = None) -> bytes | str | None:
+        if raw is None:
+            return None
+        if seen is None:
+            seen = set()
+        identity = id(raw)
+        if identity in seen:
+            return None
+        seen.add(identity)
+        if isinstance(raw, bytes | str):
+            return raw
+
+        # Certains objets ``aiosip`` exposent l'SDP via un attribut ``body``.
+        for attr in ("body", "payload", "data", "text", "content"):
+            candidate = getattr(raw, attr, None)
+            if candidate is None:
+                continue
+            if isinstance(candidate, bytes | str):
+                return candidate
+            nested = _coerce_payload(candidate, seen)
+            if nested is not None:
+                return nested
+
+        if isinstance(raw, Mapping):
+            for key in ("body", "payload", "sdp", "data", "text", "content"):
+                candidate = raw.get(key)
+                if isinstance(candidate, bytes | str):
+                    return candidate
+                nested = _coerce_payload(candidate, seen)
+                if nested is not None:
+                    return nested
+
+            for value in raw.values():
+                nested = _coerce_payload(value, seen)
+                if nested is not None:
+                    return nested
+
+        if isinstance(raw, list | tuple | set):
+            for item in raw:
+                nested = _coerce_payload(item, seen)
+                if nested is not None:
+                    return nested
+
+        decode = getattr(raw, "decode", None)
+        if callable(decode):
+            try:
+                candidate = decode()
+            except TypeError:
+                try:
+                    candidate = decode("utf-8")
+                except Exception:  # pragma: no cover - garde-fou
+                    candidate = None
+            if isinstance(candidate, bytes | str):
+                return candidate
+
+        try:
+            stringified = str(raw)
+        except Exception:  # pragma: no cover - garde-fou
+            stringified = None
+        if isinstance(stringified, str):
+            lowered = stringified.lower()
+            if any(token in lowered for token in ("m=", "v=", "c=", "a=")):
+                return stringified
+
+        return None
+
+    text: str | None = None
+    normalized_payload = _coerce_payload(payload)
+    if isinstance(normalized_payload, bytes):
+        try:
+            text = normalized_payload.decode("utf-8")
+        except UnicodeDecodeError:
+            text = normalized_payload.decode("utf-8", errors="ignore")
+    elif isinstance(normalized_payload, str):
+        text = normalized_payload
+
+    if not text:
+        return None, None
+
+    normalized_lines = [
+        line.strip()
+        for line in text.replace("\r\n", "\n").split("\n")
+        if line.strip()
+    ]
+
+    session_address: str | None = None
+    audio_address: str | None = None
+    audio_port: int | None = None
+    in_audio_section = False
+
+    for line in normalized_lines:
+        lowered = line.lower()
+
+        if lowered.startswith("m="):
+            if in_audio_section:
+                break
+
+            if lowered.startswith("m=audio"):
+                in_audio_section = True
+                parts = line.split()
+                if len(parts) >= 2:
+                    try:
+                        candidate = int(parts[1])
+                    except ValueError:
+                        candidate = None
+                    audio_port = candidate if candidate and candidate > 0 else None
+                continue
+
+            in_audio_section = False
+            continue
+
+        if lowered.startswith("c="):
+            parts = line.split()
+            if len(parts) >= 3:
+                address = parts[-1]
+                if in_audio_section:
+                    audio_address = address
+                elif session_address is None:
+                    session_address = address
+
+    remote_address = audio_address or session_address
+    return remote_address, audio_port
+
+
+_SIP_URI_RE = re.compile(r"sip:(?:[^@;>]+@)?(?P<host>[^:;>]+)(?::(?P<port>\d+))?")
+
+
+def _extract_remote_host_hint(request: Any) -> str | None:
+    """Tente de déduire l'hôte RTP depuis les en-têtes SIP."""
+
+    headers = getattr(request, "headers", None)
+    if isinstance(headers, Mapping):
+        header_items = list(headers.items())
+    elif isinstance(headers, dict):
+        header_items = list(headers.items())
+    else:
+        header_items = []
+
+    normalized: dict[str, Any] = {}
+    for key, value in header_items:
+        if isinstance(key, str):
+            normalized[key.lower()] = value
+
+    def _parse_header(value: Any) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, list | tuple):
+            for entry in value:
+                host = _parse_header(entry)
+                if host:
+                    return host
+            return None
+        text = str(value)
+        uri_match = _SIP_URI_RE.search(text)
+        if uri_match:
+            return uri_match.group("host")
+        via_match = re.search(
+            r"SIP/2\.0/[A-Z]+\s+(?P<endpoint>[^;\s]+)", text, re.IGNORECASE
+        )
+        if via_match:
+            endpoint = via_match.group("endpoint")
+            endpoint = endpoint.split(";", 1)[0]
+            if endpoint.startswith("[") and "]" in endpoint:
+                return endpoint.split("]", 1)[0].lstrip("[")
+            if ":" in endpoint:
+                return endpoint.split(":", 1)[0]
+            return endpoint
+        return None
+
+    for header_name in ("contact", "via", "record-route", "route"):
+        host = _parse_header(normalized.get(header_name))
+        if host:
+            return host
+
+    remote_addr = getattr(request, "remote_addr", None)
+    if isinstance(remote_addr, tuple) and remote_addr:
+        return str(remote_addr[0])
+
+    peer = getattr(request, "peer", None)
+    if isinstance(peer, tuple) and peer:
+        return str(peer[0])
+
+    return None
 
 for noisy_logger in (
     "aiosip",
@@ -104,9 +296,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         try:
             dialog.on_message = _on_message  # type: ignore[attr-defined]
         except Exception:  # pragma: no cover - dépend des implémentations aiosip
-            logger.debug(
-                "Impossible de lier on_message au dialogue SIP", exc_info=True
-            )
+            logger.debug("Impossible de lier on_message au dialogue SIP", exc_info=True)
 
         # `aiosip.Dialog.register` est dédié aux messages SIP REGISTER.
         # Utiliser ce mécanisme ici provoquerait une corruption des en-têtes
@@ -242,79 +432,9 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     transcript_count,
                 )
             return
+        logger.info("Aucun callback de reprise vocal pour Call-ID=%s", session.call_id)
 
-        thread_id = metadata.get("thread_id")
-        if not thread_id:
-            logger.info(
-                "Reprise workflow non configurée (Call-ID=%s, transcriptions=%d)",
-                session.call_id,
-                transcript_count,
-            )
-            return
-
-        server = get_chatkit_server()
-        context = ChatKitRequestContext(
-            user_id=f"sip:{session.call_id}",
-            email=None,
-            authorization=None,
-            public_base_url=settings.backend_public_base_url,
-            voice_model=metadata.get("voice_model"),
-            voice_instructions=metadata.get("voice_instructions"),
-            voice_voice=metadata.get("voice_voice"),
-            voice_prompt_variables=metadata.get("voice_prompt_variables"),
-        )
-
-        post_callable = getattr(server, "post", None)
-        if callable(post_callable):
-            # Extraire les messages de l'utilisateur depuis les transcriptions
-            user_messages = [
-                t.get("text", "").strip()
-                for t in transcripts
-                if t.get("role") == "user" and t.get("text", "").strip()
-            ]
-            # Combiner tous les messages de l'utilisateur
-            combined_text = " ".join(user_messages) if user_messages else ""
-
-            # Construire le payload avec le contenu de l'utilisateur
-            message_content = []
-            if combined_text:
-                message_content.append({"type": "input_text", "text": combined_text})
-
-            payload = {
-                "type": "user_message",
-                "thread_id": thread_id,
-                "message": {"content": message_content},
-                "metadata": {"source": "sip", "transcripts": transcripts},
-            }
-            try:
-                await post_callable(payload, context)
-            except Exception:  # pragma: no cover - dépend du serveur ChatKit
-                logger.exception(
-                    "Échec de la reprise du workflow via post() (Call-ID=%s)",
-                    session.call_id,
-                )
-            else:
-                preview_text = (
-                    f"{combined_text[:50]}..."
-                    if len(combined_text) > 50
-                    else combined_text
-                )
-                logger.info(
-                    "Workflow repris via ChatKitServer.post "
-                    "(Call-ID=%s, transcriptions=%d, texte=%s)",
-                    session.call_id,
-                    transcript_count,
-                    preview_text,
-                )
-            return
-
-        logger.info(
-            "Aucune méthode de reprise disponible pour Call-ID=%s", session.call_id
-        )
-
-    async def _register_session(
-        session: SipCallSession, request: Any
-    ) -> None:
+    async def _register_session(session: SipCallSession, request: Any) -> None:
         incoming_number = _extract_incoming_number(request)
         logger.info(
             "Appel SIP initialisé (Call-ID=%s, numéro entrant=%s)",
@@ -327,6 +447,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             {
                 "call_id": session.call_id,
                 "incoming_number": incoming_number,
+                "voice_session_active": False,
             }
         )
 
@@ -356,57 +477,121 @@ def _build_invite_handler(manager: SIPRegistrationManager):
 
         workflow_obj = getattr(context.workflow_definition, "workflow", None)
         workflow_slug = getattr(workflow_obj, "slug", None)
-        telephony_metadata.update(
-            {
-                "workflow_slug": workflow_slug,
-                "voice_model": context.voice_model,
-                "voice_instructions": context.voice_instructions,
-                "voice_voice": context.voice_voice,
-                "voice_prompt_variables": dict(context.voice_prompt_variables),
-                "voice_provider_id": context.voice_provider_id,
-                "voice_provider_slug": context.voice_provider_slug,
-                "voice_session_active": False,
-            }
-        )
+        telephony_metadata.update({"workflow_slug": workflow_slug})
 
-        if context.route is None:
+        telephony_metadata["voice_defaults"] = {
+            "model": context.voice_model,
+            "instructions": context.voice_instructions,
+            "voice": context.voice_voice,
+            "prompt_variables": dict(context.voice_prompt_variables),
+            "provider_id": context.voice_provider_id,
+            "provider_slug": context.voice_provider_slug,
+        }
+
+        telephony_metadata["sip_entrypoint"] = context.is_sip_entrypoint
+        if context.is_sip_entrypoint:
             logger.info(
-                "Route téléphonie par défaut retenue (Call-ID=%s, workflow=%s)",
+                "Workflow téléphonie retenu comme point d'entrée SIP "
+                "(Call-ID=%s, workflow=%s)",
                 session.call_id,
                 workflow_slug or "<inconnu>",
             )
         else:
-            telephony_metadata.update(
-                {
-                    "route_label": context.route.label,
-                    "route_workflow_slug": context.route.workflow_slug,
-                    "route_priority": context.route.priority,
-                }
-            )
             logger.info(
-                "Route téléphonie sélectionnée (Call-ID=%s) : label=%s, "
-                "workflow=%s, priorité=%s",
+                "Aucun point d'entrée SIP déclaré : utilisation des réglages "
+                "vocaux globaux (Call-ID=%s, workflow=%s)",
                 session.call_id,
-                context.route.label or "<sans-label>",
-                context.route.workflow_slug or workflow_slug or "<inconnu>",
-                context.route.priority,
+                workflow_slug or "<inconnu>",
+            )
+
+        try:
+            voice_workflow = await prepare_voice_workflow(
+                context,
+                call_id=session.call_id,
+                settings=settings,
+            )
+        except Exception:  # pragma: no cover - journalisation best effort
+            logger.exception(
+                "Initialisation du workflow voix impossible (Call-ID=%s)",
+                session.call_id,
+            )
+            voice_workflow = None
+
+        if voice_workflow is not None:
+            metadata_payload = dict(voice_workflow.metadata)
+            voice_context = metadata_payload.get("voice_context")
+            tool_permissions = metadata_payload.get("tool_permissions")
+
+            telephony_metadata["voice_event"] = dict(voice_workflow.voice_event)
+            telephony_metadata["resume_workflow_callable"] = (
+                voice_workflow.resume_callback
+            )
+            telephony_metadata["thread_id"] = metadata_payload.get("thread_id")
+            if isinstance(tool_permissions, Mapping):
+                telephony_metadata["voice_tool_permissions"] = dict(tool_permissions)
+
+            if isinstance(voice_context, Mapping):
+                telephony_metadata["voice_model"] = voice_context.get("model")
+                telephony_metadata["voice_instructions"] = voice_context.get(
+                    "instructions"
+                )
+                telephony_metadata["voice_voice"] = voice_context.get("voice")
+                telephony_metadata["voice_prompt_variables"] = dict(
+                    voice_context.get("prompt_variables") or {}
+                )
+                telephony_metadata["voice_provider_id"] = voice_context.get(
+                    "model_provider_id"
+                )
+                telephony_metadata["voice_provider_slug"] = voice_context.get(
+                    "model_provider_slug"
+                )
+                telephony_metadata["voice_realtime"] = voice_context.get("realtime")
+                telephony_metadata["voice_tools"] = voice_context.get("tools")
+                telephony_metadata["voice_handoffs"] = voice_context.get("handoffs")
+                telephony_metadata["voice_tool_metadata"] = voice_context.get(
+                    "tool_metadata"
+                )
+
+            telephony_metadata["voice_wait_state"] = metadata_payload.get("wait_state")
+            telephony_metadata["resume_input_item_id"] = metadata_payload.get(
+                "resume_input_item_id"
+            )
+            if metadata_payload.get("realtime_session_id"):
+                telephony_metadata["realtime_session_id"] = metadata_payload[
+                    "realtime_session_id"
+                ]
+            if metadata_payload.get("voice_step_slug"):
+                telephony_metadata["voice_step_slug"] = metadata_payload[
+                    "voice_step_slug"
+                ]
+        else:
+            defaults = telephony_metadata.get("voice_defaults") or {}
+            telephony_metadata.setdefault("voice_model", defaults.get("model"))
+            telephony_metadata.setdefault(
+                "voice_instructions", defaults.get("instructions")
+            )
+            telephony_metadata.setdefault("voice_voice", defaults.get("voice"))
+            telephony_metadata.setdefault(
+                "voice_prompt_variables", dict(defaults.get("prompt_variables") or {})
+            )
+            telephony_metadata.setdefault(
+                "voice_provider_id", defaults.get("provider_id")
+            )
+            telephony_metadata.setdefault(
+                "voice_provider_slug", defaults.get("provider_slug")
             )
 
     async def _start_rtp(session: SipCallSession) -> None:
         metadata = session.metadata.get("telephony") or {}
-        voice_model = metadata.get("voice_model")
-        instructions = metadata.get("voice_instructions")
-        voice_name = metadata.get("voice_voice")
-        voice_provider_id = metadata.get("voice_provider_id")
-        voice_provider_slug = metadata.get("voice_provider_slug")
         rtp_stream_factory = metadata.get("rtp_stream_factory")
         send_audio = metadata.get("send_audio")
+        rtp_server_ref = metadata.get("rtp_server")
 
-        if not voice_model or not instructions:
-            logger.error(
-                "Paramètres voix incomplets pour Call-ID=%s", session.call_id
-            )
-            return
+        logger.info(
+            "Initialisation du pont voix pour Call-ID=%s (metadata=%s)",
+            session.call_id,
+            ", ".join(sorted(metadata.keys())) or "<aucune donnée>",
+        )
 
         if not callable(rtp_stream_factory) or not callable(send_audio):
             logger.error(
@@ -417,59 +602,218 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             )
             return
 
-        # Créer un nouveau thread pour cet appel avant de démarrer la session vocale
-        thread_id = str(uuid.uuid4())
-        thread = ThreadMetadata(
-            id=thread_id,
-            created_at=datetime.datetime.now(datetime.UTC),
+        def _normalize_realtime_config(
+            config: Mapping[str, Any] | None,
+        ) -> dict[str, Any] | None:
+            if not isinstance(config, Mapping):
+                return None
+            sanitized = dict(config)
+
+            def _force_format(field: str) -> None:
+                value = sanitized.get(field)
+                format_payload = dict(value) if isinstance(value, Mapping) else {}
+                format_payload["type"] = "audio/pcm"
+                format_payload["rate"] = TELEPHONY_SAMPLE_RATE
+                sanitized[field] = format_payload
+
+            _force_format("input_audio_format")
+            _force_format("output_audio_format")
+            return sanitized
+
+        voice_event = metadata.get("voice_event")
+        event_payload = (
+            voice_event.get("event") if isinstance(voice_event, Mapping) else None
+        )
+        session_config = (
+            event_payload.get("session") if isinstance(event_payload, Mapping) else None
         )
 
-        # Sauvegarder le thread dans le store ChatKit
-        server = get_chatkit_server()
-        store = getattr(server, "store", None)
-        if store is not None:
-            chatkit_context = ChatKitRequestContext(
-                user_id=f"sip:{session.call_id}",
-                email=None,
-                authorization=None,
-                public_base_url=settings.backend_public_base_url,
-                voice_model=voice_model,
-                voice_instructions=instructions,
-                voice_voice=voice_name,
-                voice_prompt_variables=metadata.get("voice_prompt_variables"),
+        if isinstance(event_payload, Mapping):
+            logger.info(
+                "Wait state vocal détecté pour Call-ID=%s (session_id=%s)",
+                session.call_id,
+                event_payload.get("session_id") or "<inconnu>",
             )
-            try:
-                await store.save_thread(thread, chatkit_context)
-                metadata["thread_id"] = thread_id
-                logger.info(
-                    "Thread créé pour l'appel SIP (Call-ID=%s, thread_id=%s)",
-                    session.call_id,
-                    thread_id,
-                )
-            except Exception as exc:
-                logger.exception(
-                    "Erreur lors de la création du thread pour Call-ID=%s",
-                    session.call_id,
-                    exc_info=exc,
-                )
         else:
-            logger.warning(
-                "Store ChatKit non disponible, thread non créé pour Call-ID=%s",
+            logger.info(
+                "Aucun wait state vocal structuré pour Call-ID=%s : "
+                "utilisation des paramètres enregistrés",
                 session.call_id,
             )
 
-        metadata["voice_session_active"] = True
-        logger.info(
-            "Démarrage du pont voix Realtime (Call-ID=%s, modèle=%s, voix=%s, "
-            "provider=%s)",
-            session.call_id,
-            voice_model,
-            voice_name or "<auto>",
-            voice_provider_slug or voice_provider_id or "<défaut>",
-        )
+        voice_model: str | None = None
+        instructions: str | None = None
+        voice_name: str | None = None
+        voice_provider_id: str | None = None
+        voice_provider_slug: str | None = None
+        prompt_variables: dict[str, Any] = {}
+        tools: Any = None
+        handoffs: Any = None
+        tool_permissions: Mapping[str, Any] | None = None
+        realtime_config: Mapping[str, Any] | None = None
+        session_update_config: Mapping[str, Any] | dict[str, Any] | None = None
+        client_secret: str | None = metadata.get("client_secret")
 
-        client_secret = metadata.get("client_secret")
-        if client_secret is None:
+        sanitized_session_config: dict[str, Any] | None = None
+
+        if session_config is not None:
+            voice_model = session_config.get("model")
+            instructions = session_config.get("instructions")
+            voice_name = session_config.get("voice")
+            voice_provider_id = session_config.get("model_provider_id")
+            voice_provider_slug = session_config.get("model_provider_slug")
+            prompt_variables = dict(session_config.get("prompt_variables") or {})
+            tools = session_config.get("tools")
+            handoffs = session_config.get("handoffs")
+            realtime_config = _normalize_realtime_config(
+                session_config.get("realtime")
+                if isinstance(session_config.get("realtime"), Mapping)
+                else None
+            )
+            tool_permissions = (
+                event_payload.get("tool_permissions")
+                if isinstance(event_payload, Mapping)
+                else None
+            )
+            parsed_secret = session_secret_parser.parse(event_payload)
+            client_secret = parsed_secret.as_text()
+            if not client_secret:
+                logger.error(
+                    "Client secret Realtime introuvable pour Call-ID=%s",
+                    session.call_id,
+                )
+                return
+            metadata["client_secret"] = client_secret
+            metadata["client_secret_expires_at"] = parsed_secret.expires_at_isoformat()
+            metadata["realtime_session_id"] = event_payload.get("session_id")
+            metadata["voice_tool_permissions"] = dict(tool_permissions or {})
+            metadata["voice_tools"] = tools
+            metadata["voice_handoffs"] = handoffs
+            if realtime_config is not None:
+                metadata["voice_realtime"] = realtime_config
+                sanitized_session_config = dict(session_config)
+                sanitized_session_config["realtime"] = realtime_config
+            metadata["voice_prompt_variables"] = prompt_variables
+            metadata["voice_model"] = voice_model
+            metadata["voice_instructions"] = instructions
+            metadata["voice_voice"] = voice_name
+            metadata["voice_provider_id"] = voice_provider_id
+            metadata["voice_provider_slug"] = voice_provider_slug
+            if isinstance(session_config, Mapping):
+                if sanitized_session_config is None:
+                    sanitized_session_config = dict(session_config)
+                session_update_config = sanitized_session_config
+                metadata["voice_session_config"] = dict(sanitized_session_config)
+            logger.info(
+                "Paramètres voix récupérés depuis le workflow pour Call-ID=%s "
+                "(modèle=%s, voix=%s)",
+                session.call_id,
+                voice_model or "<inconnu>",
+                voice_name or "<auto>",
+            )
+        else:
+            defaults = metadata.get("voice_defaults") or {}
+            voice_model = metadata.get("voice_model") or defaults.get("model")
+            instructions = metadata.get("voice_instructions") or defaults.get(
+                "instructions"
+            )
+            voice_name = metadata.get("voice_voice") or defaults.get("voice")
+            voice_provider_id = metadata.get("voice_provider_id") or defaults.get(
+                "provider_id"
+            )
+            voice_provider_slug = metadata.get("voice_provider_slug") or defaults.get(
+                "provider_slug"
+            )
+            prompt_variables = dict(
+                metadata.get("voice_prompt_variables")
+                or defaults.get("prompt_variables")
+                or {}
+            )
+            metadata["voice_prompt_variables"] = prompt_variables
+            tools = metadata.get("voice_tools")
+            handoffs = metadata.get("voice_handoffs")
+            stored_realtime = metadata.get("voice_realtime")
+            realtime_config = _normalize_realtime_config(
+                stored_realtime if isinstance(stored_realtime, Mapping) else None
+            )
+            tool_permissions = metadata.get("voice_tool_permissions")
+
+            fallback_session: dict[str, Any] = {
+                "model": voice_model,
+                "instructions": instructions,
+            }
+            if voice_name:
+                fallback_session["voice"] = voice_name
+            if prompt_variables:
+                fallback_session["prompt_variables"] = dict(prompt_variables)
+            if isinstance(realtime_config, Mapping):
+                fallback_session["realtime"] = dict(realtime_config)
+            if isinstance(tools, Sequence):
+                fallback_session["tools"] = list(tools)
+            elif tools is not None:
+                fallback_session["tools"] = tools
+            if isinstance(handoffs, Sequence):
+                fallback_session["handoffs"] = list(handoffs)
+            elif handoffs is not None:
+                fallback_session["handoffs"] = handoffs
+            if isinstance(tool_permissions, Mapping):
+                fallback_session["tool_permissions"] = dict(tool_permissions)
+
+            session_update_config = fallback_session
+            metadata["voice_session_config"] = dict(fallback_session)
+            logger.info(
+                "Paramètres voix par défaut appliqués pour Call-ID=%s "
+                "(modèle=%s, voix=%s)",
+                session.call_id,
+                voice_model or "<inconnu>",
+                voice_name or "<auto>",
+            )
+
+            if not voice_model or not instructions:
+                logger.error(
+                    "Paramètres voix incomplets pour Call-ID=%s", session.call_id
+                )
+                return
+
+            thread_id = str(uuid.uuid4())
+            thread = ThreadMetadata(
+                id=thread_id,
+                created_at=datetime.datetime.now(datetime.UTC),
+            )
+            server = get_chatkit_server()
+            store = getattr(server, "store", None)
+            chatkit_context: ChatKitRequestContext | None = None
+            if store is not None:
+                chatkit_context = ChatKitRequestContext(
+                    user_id=f"sip:{session.call_id}",
+                    email=None,
+                    authorization=None,
+                    public_base_url=settings.backend_public_base_url,
+                    voice_model=voice_model,
+                    voice_instructions=instructions,
+                    voice_voice=voice_name,
+                    voice_prompt_variables=prompt_variables,
+                )
+                try:
+                    await store.save_thread(thread, chatkit_context)
+                    metadata["thread_id"] = thread_id
+                    logger.info(
+                        "Thread créé pour l'appel SIP (Call-ID=%s, thread_id=%s)",
+                        session.call_id,
+                        thread_id,
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "Erreur lors de la création du thread pour Call-ID=%s",
+                        session.call_id,
+                        exc_info=exc,
+                    )
+            else:
+                logger.warning(
+                    "Store ChatKit non disponible, thread non créé pour Call-ID=%s",
+                    session.call_id,
+                )
+
             metadata_extras: dict[str, Any] = {}
             thread_identifier = metadata.get("thread_id")
             if isinstance(thread_identifier, str) and thread_identifier.strip():
@@ -481,10 +825,10 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 voice=voice_name,
                 provider_id=voice_provider_id,
                 provider_slug=voice_provider_slug,
+                realtime=realtime_config,
                 metadata=metadata_extras or None,
             )
-            secret_payload = session_handle.payload
-            parsed_secret = session_secret_parser.parse(secret_payload)
+            parsed_secret = session_secret_parser.parse(session_handle.payload)
             client_secret = parsed_secret.as_text()
             if not client_secret:
                 logger.error(
@@ -493,77 +837,114 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 )
                 return
             metadata["client_secret"] = client_secret
-            metadata["client_secret_expires_at"] = (
-                parsed_secret.expires_at_isoformat()
-            )
+            metadata["client_secret_expires_at"] = parsed_secret.expires_at_isoformat()
             metadata["realtime_session_id"] = session_handle.session_id
+            logger.info(
+                "Session Realtime créée pour Call-ID=%s (session_id=%s)",
+                session.call_id,
+                session_handle.session_id,
+            )
 
-        # Créer un wait_state pour que le frontend puisse détecter la session vocale
-        if store is not None and thread_id:
-            try:
-                thread = await store.load_thread(thread_id, chatkit_context)
-
-                # Créer l'événement realtime.event aligné avec les workflows
-                voice_event = {
-                    "type": "realtime.event",
-                    "step": {
-                        "slug": "sip-voice-session",
-                        "title": "Appel SIP",
-                    },
-                    "event": {
-                        "type": "history",
-                        "session_id": metadata.get("realtime_session_id"),
-                        "client_secret": client_secret,
-                        "tool_permissions": {},
-                        "session": {
-                            "model": voice_model,
-                            "voice": voice_name or "alloy",
-                            "instructions": instructions,
-                            "realtime": {
-                                "start_mode": "auto",
-                                "stop_mode": "manual",
-                                "tools": {},
+            if store is not None and chatkit_context is not None and thread_id:
+                try:
+                    thread = await store.load_thread(thread_id, chatkit_context)
+                    fallback_event = {
+                        "type": "realtime.event",
+                        "step": {"slug": "sip-voice-session", "title": "Appel SIP"},
+                        "event": {
+                            "type": "history",
+                            "session_id": metadata.get("realtime_session_id"),
+                            "client_secret": client_secret,
+                            "tool_permissions": dict(tool_permissions or {}),
+                            "session": {
+                                "model": voice_model,
+                                "voice": voice_name or "alloy",
+                                "instructions": instructions,
+                                "realtime": {
+                                    "start_mode": "auto",
+                                    "stop_mode": "manual",
+                                    "tools": dict(tool_permissions or {}),
+                                    "input_audio_format": {
+                                        "type": "audio/pcm",
+                                        "rate": TELEPHONY_SAMPLE_RATE,
+                                    },
+                                    "output_audio_format": {
+                                        "type": "audio/pcm",
+                                        "rate": TELEPHONY_SAMPLE_RATE,
+                                    },
+                                },
                             },
                         },
-                    },
-                }
+                    }
+                    _set_wait_state_metadata(
+                        thread,
+                        {
+                            "type": "voice",
+                            "voice_event": fallback_event,
+                            "voice_event_consumed": False,
+                        },
+                    )
+                    await store.save_thread(thread, chatkit_context)
+                    metadata.setdefault("voice_event", fallback_event)
+                except Exception as exc:
+                    logger.exception(
+                        "Erreur lors de la création du wait_state pour Call-ID=%s",
+                        session.call_id,
+                        exc_info=exc,
+                    )
 
-                # Créer le wait_state
-                wait_state = {
-                    "type": "voice",
-                    "voice_event": voice_event,
-                    "voice_event_consumed": False
-                }
+        if not voice_model or not instructions:
+            logger.error("Paramètres voix incomplets pour Call-ID=%s", session.call_id)
+            return
 
-                # Mettre à jour le thread avec le wait_state
-                _set_wait_state_metadata(thread, wait_state)
-                await store.save_thread(thread, chatkit_context)
+        if not client_secret:
+            logger.error(
+                "Client secret Realtime absent pour Call-ID=%s", session.call_id
+            )
+            return
 
-                logger.info(
-                    "Wait state vocal créé pour le thread %s (Call-ID=%s)",
-                    thread_id,
-                    session.call_id,
-                )
-            except Exception as exc:
-                logger.exception(
-                    "Erreur lors de la création du wait_state pour Call-ID=%s",
-                    session.call_id,
-                    exc_info=exc,
-                )
+        metadata["voice_session_active"] = True
+        logger.info(
+            "Démarrage du pont voix Realtime (Call-ID=%s, modèle=%s, voix=%s, "
+            "provider=%s)",
+            session.call_id,
+            voice_model,
+            voice_name or "<auto>",
+            voice_provider_slug or voice_provider_id or "<défaut>",
+        )
+
+        if session_update_config:
+            try:
+                session_keys = sorted(dict(session_update_config).keys())
+            except Exception:  # pragma: no cover - garde-fou
+                session_keys = ["<inconnu>"]
+            logger.info(
+                "Session.update initialisée pour Call-ID=%s (clés=%s)",
+                session.call_id,
+                ", ".join(session_keys),
+            )
+        if isinstance(tool_permissions, Mapping) and tool_permissions:
+            logger.info(
+                "Permissions d'outils disponibles pour Call-ID=%s : %s",
+                session.call_id,
+                ", ".join(sorted(tool_permissions.keys())),
+            )
 
         hooks = VoiceBridgeHooks(
             close_dialog=lambda: _close_dialog(session),
             clear_voice_state=lambda: _clear_voice_state(session),
-            resume_workflow=lambda transcripts: _resume_workflow(
-                session, transcripts
-            ),
+            resume_workflow=lambda transcripts: _resume_workflow(session, transcripts),
         )
-        voice_bridge = TelephonyVoiceBridge(hooks=hooks)
+        voice_bridge = TelephonyVoiceBridge(
+            hooks=hooks,
+            target_sample_rate=TELEPHONY_SAMPLE_RATE,
+        )
 
-        # Déterminer le base URL pour le provider (OpenAI, etc.)
         realtime_api_base: str | None = None
         if voice_provider_slug == "openai":
-            realtime_api_base = os.environ.get("CHATKIT_API_BASE") or "https://api.openai.com"
+            realtime_api_base = (
+                os.environ.get("CHATKIT_API_BASE") or "https://api.openai.com"
+            )
 
         try:
             stats = await voice_bridge.run(
@@ -571,9 +952,13 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 model=voice_model,
                 instructions=instructions,
                 voice=voice_name,
+                call_id=session.call_id,
                 rtp_stream=rtp_stream_factory(),
                 send_to_peer=send_audio,
                 api_base=realtime_api_base,
+                session_config=session_update_config,
+                tool_permissions=tool_permissions,
+                rtp_server=rtp_server_ref,
             )
         except Exception as exc:  # pragma: no cover - dépend réseau
             logger.exception(
@@ -599,9 +984,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 stats.transcript_count,
             )
 
-    async def _terminate_session(
-        session: SipCallSession, dialog: Any | None
-    ) -> None:
+    async def _terminate_session(session: SipCallSession, dialog: Any | None) -> None:
         del dialog  # Le nettoyage spécifique est géré par les hooks.
         await _clear_voice_state(session)
         metadata = session.metadata.get("telephony") or {}
@@ -625,20 +1008,18 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             or settings.sip_bind_host
         )
         contact_uri = config.contact_uri() if config is not None else None
-        media_port = getattr(settings, "sip_media_port", None)
-
-        if media_port is None:
-            logger.warning(
-                "INVITE reçu mais aucun port RTP n'est configuré; réponse 486 Busy"
-            )
-            with contextlib.suppress(Exception):
-                await send_sip_reply(
-                    dialog,
-                    486,
-                    reason="Busy Here",
-                    contact_uri=contact_uri,
+        configured_media_port = getattr(settings, "sip_media_port", None)
+        requested_media_port = 0
+        if isinstance(configured_media_port, int):
+            requested_media_port = int(configured_media_port)
+        elif isinstance(configured_media_port, str) and configured_media_port.strip():
+            try:
+                requested_media_port = int(configured_media_port.strip())
+            except ValueError:
+                logger.warning(
+                    "Port RTP configuré invalide (%s); utilisation d'un port dynamique",
+                    configured_media_port,
                 )
-            return
 
         if not media_host:
             logger.warning(
@@ -653,17 +1034,38 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 )
             return
 
+        remote_host, remote_port = _extract_remote_media_target(
+            getattr(request, "payload", None)
+        )
+        if not remote_host or remote_host in {"0.0.0.0", "::", "[::]"}:
+            hint_host = _extract_remote_host_hint(request)
+            if hint_host:
+                logger.info(
+                    "Cible RTP distante déduite via les en-têtes : %s", hint_host
+                )
+                remote_host = hint_host
+        if remote_host or remote_port:
+            logger.info(
+                "Cible RTP distante annoncée : %s:%s",
+                remote_host or "<inconnue>",
+                remote_port if remote_port is not None else "<auto>",
+            )
+
         # Créer et démarrer le serveur RTP
         rtp_config = RtpServerConfig(
             local_host=media_host,
-            local_port=int(media_port) if media_port else 0,
+            local_port=requested_media_port,
             payload_type=0,  # PCMU
             output_codec="pcmu",
+            input_sample_rate=TELEPHONY_SAMPLE_RATE,
+            remote_host=remote_host,
+            remote_port=remote_port,
         )
         rtp_server = RtpServer(rtp_config)
 
+        actual_media_port: int
         try:
-            await rtp_server.start()
+            actual_media_port = await rtp_server.start()
         except Exception as exc:
             logger.exception(
                 "Impossible de démarrer le serveur RTP",
@@ -679,16 +1081,13 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             return
 
         # Utiliser le port réel du serveur RTP pour la négociation SDP
-        actual_media_port = rtp_server.local_port
 
         # Enregistrer la session et attacher les callbacks AVANT d'envoyer le 200 OK
         # pour que l'ACK soit capturé correctement
         try:
             await sip_handler.handle_invite(request, dialog=dialog)
         except Exception:  # pragma: no cover - dépend des callbacks
-            logger.exception(
-                "Erreur lors de la gestion applicative de l'INVITE"
-            )
+            logger.exception("Erreur lors de la gestion applicative de l'INVITE")
             await rtp_server.stop()
             raise
 
@@ -696,6 +1095,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         call_id_raw = getattr(request, "headers", {}).get("Call-ID")
         call_id: str | None = None
         session: SipCallSession | None = None
+        telephony_metadata: dict[str, Any] | None = None
 
         if call_id_raw:
             if isinstance(call_id_raw, list | tuple) and call_id_raw:
@@ -731,8 +1131,9 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         await _attach_dialog_callbacks(dialog, sip_handler)
 
         # Maintenant envoyer le 200 OK
+        invite_result: Any | None = None
         try:
-            await handle_incoming_invite(
+            invite_result = await handle_incoming_invite(
                 dialog,
                 request,
                 media_host=media_host,
@@ -757,6 +1158,36 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     contact_uri=contact_uri,
                 )
             return
+
+        invite_host = getattr(invite_result, "remote_host", None)
+        invite_port = getattr(invite_result, "remote_port", None)
+
+        invalid_hosts = {"0.0.0.0", "::", "[::]"}
+        if remote_host in invalid_hosts:
+            remote_host = None
+        if invite_host in invalid_hosts:
+            invite_host = None
+
+        final_host = remote_host or invite_host
+        final_port = remote_port if remote_port is not None else invite_port
+
+        if final_host and final_port is not None:
+            rtp_server.set_remote_target(final_host, final_port)
+            logger.info(
+                "Cible RTP distante retenue : %s:%s",
+                final_host,
+                final_port,
+            )
+        elif final_host or final_port is not None:
+            logger.info(
+                "Cible RTP distante partielle : %s:%s",
+                final_host or "<inconnue>",
+                final_port if final_port is not None else "<auto>",
+            )
+
+        if telephony_metadata is not None:
+            telephony_metadata["rtp_remote_host"] = final_host
+            telephony_metadata["rtp_remote_port"] = final_port
 
         # Démarrer la session RTP immédiatement après le 200 OK
         # Le téléphone commence déjà à envoyer de l'audio, pas besoin d'attendre l'ACK
@@ -839,8 +1270,7 @@ def _run_ad_hoc_migrations() -> None:
                 )
             if "store" not in available_models_columns:
                 logger.info(
-                    "Migration du schéma available_models : ajout de la colonne "
-                    "store"
+                    "Migration du schéma available_models : ajout de la colonne store"
                 )
                 connection.execute(
                     text("ALTER TABLE available_models ADD COLUMN store BOOLEAN")
@@ -863,8 +1293,7 @@ def _run_ad_hoc_migrations() -> None:
                 )
                 connection.execute(
                     text(
-                        "ALTER TABLE voice_settings ADD COLUMN provider_id "
-                        "VARCHAR(128)"
+                        "ALTER TABLE voice_settings ADD COLUMN provider_id VARCHAR(128)"
                     )
                 )
             if "provider_slug" not in voice_settings_columns:
@@ -971,9 +1400,7 @@ def _run_ad_hoc_migrations() -> None:
                     "sip_contact_port"
                 )
                 connection.execute(
-                    text(
-                        "ALTER TABLE app_settings ADD COLUMN sip_contact_port INTEGER"
-                    )
+                    text("ALTER TABLE app_settings ADD COLUMN sip_contact_port INTEGER")
                 )
             if "sip_contact_transport" not in app_settings_columns:
                 logger.info(
@@ -993,8 +1420,7 @@ def _run_ad_hoc_migrations() -> None:
                 )
                 connection.execute(
                     text(
-                        "ALTER TABLE app_settings ADD COLUMN model_provider "
-                        "VARCHAR(64)"
+                        "ALTER TABLE app_settings ADD COLUMN model_provider VARCHAR(64)"
                     )
                 )
             if "model_api_base" not in app_settings_columns:
@@ -1003,9 +1429,7 @@ def _run_ad_hoc_migrations() -> None:
                     "model_api_base"
                 )
                 connection.execute(
-                    text(
-                        "ALTER TABLE app_settings ADD COLUMN model_api_base TEXT"
-                    )
+                    text("ALTER TABLE app_settings ADD COLUMN model_api_base TEXT")
                 )
             if "model_api_key_encrypted" not in app_settings_columns:
                 logger.info(
@@ -1154,10 +1578,7 @@ def _run_ad_hoc_migrations() -> None:
 
             if "slug" not in columns:
                 connection.execute(
-                    text(
-                        "ALTER TABLE workflow_steps "
-                        "ADD COLUMN slug VARCHAR(128)"
-                    )
+                    text("ALTER TABLE workflow_steps ADD COLUMN slug VARCHAR(128)")
                 )
                 if dialect == "postgresql":
                     connection.execute(
@@ -1165,8 +1586,7 @@ def _run_ad_hoc_migrations() -> None:
                     )
                     connection.execute(
                         text(
-                            "ALTER TABLE workflow_steps ALTER COLUMN slug "
-                            "SET NOT NULL"
+                            "ALTER TABLE workflow_steps ALTER COLUMN slug SET NOT NULL"
                         )
                     )
                 else:
@@ -1196,10 +1616,7 @@ def _run_ad_hoc_migrations() -> None:
             agent_key_column = _get_column("agent_key")
             if agent_key_column is None:
                 connection.execute(
-                    text(
-                        "ALTER TABLE workflow_steps "
-                        "ADD COLUMN agent_key VARCHAR(128)"
-                    )
+                    text("ALTER TABLE workflow_steps ADD COLUMN agent_key VARCHAR(128)")
                 )
                 agent_key_column = _get_column("agent_key")
             if agent_key_column is not None and not agent_key_column.get(
