@@ -419,9 +419,18 @@ def _build_invite_handler(manager: SIPRegistrationManager):
 
         # Créer un nouveau thread pour cet appel avant de démarrer la session vocale
         thread_id = str(uuid.uuid4())
+
+        # Ajouter les informations de l'appel SIP aux métadonnées du thread
+        sip_metadata = {
+            "sip_caller_number": metadata.get("normalized_number") or metadata.get("original_number"),
+            "sip_original_number": metadata.get("original_number"),
+            "sip_call_id": session.call_id,
+        }
+
         thread = ThreadMetadata(
             id=thread_id,
             created_at=datetime.datetime.now(datetime.UTC),
+            metadata=sip_metadata,
         )
 
         # Sauvegarder le thread dans le store ChatKit

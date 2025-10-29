@@ -260,155 +260,56 @@ def resolve_workflow_for_phone_number(
     session: Session | None = None,
     settings: Settings | None = None,
 ) -> TelephonyCallContext:
-    """Résout le workflow et les overrides voix pour un appel entrant."""
+    """Résout le workflow pour un appel SIP entrant.
+
+    Cherche le workflow marqué comme workflow SIP (is_sip_workflow=true).
+    Les paramètres voix seront pris du bloc voice-agent du workflow.
+    """
 
     effective_settings = settings or get_settings()
-
-    logger.info(
-        "Appel entrant reçu pour %s (workflow demandé=%s)",
-        phone_number,
-        workflow_slug or "<non spécifié>",
-    )
-
-    if workflow_slug:
-        definition = workflow_service.get_definition_by_slug(
-            workflow_slug, session=session
-        )
-    else:
-        definition = workflow_service.get_current(session=session)
-
     normalized_number = _normalize_incoming_number(phone_number)
 
-    if normalized_number != phone_number:
-        logger.info(
-            "Numéro entrant normalisé de %s vers %s",
-            phone_number,
-            normalized_number,
-        )
-    else:
-        logger.info("Numéro entrant %s déjà normalisé", normalized_number)
+    logger.info(
+        "Appel SIP entrant pour %s (normalisé: %s)",
+        phone_number,
+        normalized_number,
+    )
 
-    telephony_config = resolve_start_telephony_config(definition)
-    if telephony_config is None:
-        logger.info(
-            "Workflow %s sans configuration téléphonie : utilisation de la définition "
-            "courante.",
-            getattr(definition.workflow, "slug", "<inconnu>"),
-        )
-        model, instructions, voice, prompt_variables, provider_id, provider_slug = (
-            _merge_voice_settings(
-                session=session,
-                overrides=None,
-                settings=effective_settings,
-                workflow_definition=definition,
-            )
-        )
-        return TelephonyCallContext(
-            workflow_definition=definition,
-            normalized_number=normalized_number,
-            original_number=phone_number,
-            route=None,
-            voice_model=model,
-            voice_instructions=instructions,
-            voice_voice=voice,
-            voice_prompt_variables=prompt_variables,
-            voice_provider_id=provider_id,
-            voice_provider_slug=provider_slug,
-        )
-    else:
-        logger.info(
-            "Configuration téléphonie chargée pour %s : %d route(s), "
-            "route par défaut=%s",
-            getattr(definition.workflow, "slug", "<inconnu>"),
-            len(telephony_config.routes),
-            "oui" if telephony_config.default_route else "non",
-        )
+    # Chercher le workflow SIP
+    definition = workflow_service.get_sip_workflow(session=session)
 
-    route = _match_route(telephony_config, normalized_number)
-
-    if route is None:
-        logger.warning(
-            "Aucune route téléphonie ne correspond au numéro %s pour le workflow %s",
-            phone_number,
-            getattr(definition.workflow, "slug", "<inconnu>"),
-        )
+    if definition is None:
+        logger.error("Aucun workflow SIP configuré")
         raise TelephonyRouteSelectionError(
-            f"Aucune route téléphonie pour le numéro {phone_number!r}"
-        )
-
-    if route is telephony_config.default_route:
-        match_reason = "route par défaut"
-    elif normalized_number and normalized_number in route.phone_numbers:
-        match_reason = "correspondance exacte"
-    else:
-        matched_prefix = next(
-            (
-                prefix
-                for prefix in route.prefixes
-                if normalized_number.startswith(prefix)
-            ),
-            None,
-        )
-        match_reason = (
-            f"préfixe {matched_prefix}" if matched_prefix else "route configurée"
+            "Aucun workflow configuré pour les appels SIP"
         )
 
     logger.info(
-        "Route téléphonie sélectionnée (%s) : label=%s, workflow=%s, priorité=%s",
-        match_reason,
-        route.label or "<sans-label>",
-        route.workflow_slug or getattr(definition.workflow, "slug", "<inconnu>"),
-        route.priority,
+        "Workflow SIP sélectionné : %s",
+        getattr(definition.workflow, "slug", "<inconnu>"),
     )
 
-    selected_definition = definition
-    if route.workflow_slug and (
-        not hasattr(definition, "workflow")
-        or getattr(definition.workflow, "slug", None) != route.workflow_slug
-    ):
-        try:
-            selected_definition = workflow_service.get_definition_by_slug(
-                route.workflow_slug,
-                session=session,
-            )
-        except Exception as exc:
-            logger.error(
-                "Impossible de charger le workflow %s référencé dans la route %s",
-                route.workflow_slug,
-                route.label or route.workflow_slug or "<sans-label>",
-                exc_info=exc,
-            )
-            raise TelephonyRouteSelectionError(
-                f"Workflow {route.workflow_slug!r} introuvable pour la route téléphonie"
-            ) from exc
-        else:
-            logger.info(
-                "Workflow surchargé chargé depuis la route : %s",
-                route.workflow_slug,
-            )
-
+    # Récupérer les paramètres voix du bloc voice-agent
     model, instructions, voice, prompt_variables, provider_id, provider_slug = (
         _merge_voice_settings(
             session=session,
-            overrides=route.overrides,
+            overrides=None,  # Plus d'overrides, tout vient du voice-agent
             settings=effective_settings,
-            workflow_definition=selected_definition,
+            workflow_definition=definition,
         )
     )
 
     logger.info(
-        "Paramètres voix appliqués : modèle=%s, voix=%s, instructions=%s, variables=%s",
+        "Paramètres voix du voice-agent : modèle=%s, voix=%s",
         model,
         voice,
-        instructions,
-        prompt_variables,
     )
 
     return TelephonyCallContext(
-        workflow_definition=selected_definition,
+        workflow_definition=definition,
         normalized_number=normalized_number,
         original_number=phone_number,
-        route=route,
+        route=None,  # Plus de routes
         voice_model=model,
         voice_instructions=instructions,
         voice_voice=voice,
