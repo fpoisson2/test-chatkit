@@ -22,6 +22,7 @@ from ..chatkit_server.context import (
 )
 from ..config import Settings, get_settings
 from ..database import SessionLocal
+from ..models import TelephonyRoute
 from ..voice_settings import get_or_create_voice_settings
 from ..workflows.executor import (
     AgentContext,
@@ -78,6 +79,7 @@ class TelephonyCallContext:
     voice_prompt_variables: dict[str, str]
     voice_provider_id: str | None = None
     voice_provider_slug: str | None = None
+    route: TelephonyRoute | None = None
 
 
 @dataclass(frozen=True)
@@ -366,6 +368,38 @@ def resolve_workflow_for_phone_number(
     else:
         logger.info("Numéro entrant %s déjà normalisé", normalized_number)
 
+    telephony_route: TelephonyRoute | None = None
+    if session is not None:
+        route_candidates: list[str] = []
+        if normalized_number:
+            route_candidates.append(normalized_number)
+        trimmed_original = str(phone_number).strip()
+        if trimmed_original and trimmed_original not in route_candidates:
+            route_candidates.append(trimmed_original)
+
+        for candidate in route_candidates:
+            try:
+                telephony_route = workflow_service.get_telephony_route_by_number(
+                    candidate,
+                    session=session,
+                )
+            except Exception as exc:  # pragma: no cover - dépend BDD
+                logger.warning(
+                    "Impossible de charger la route téléphonie pour le numéro %s",
+                    candidate,
+                    exc_info=exc,
+                )
+                continue
+
+            if telephony_route is not None:
+                logger.info(
+                    "Route téléphonie %s associée au workflow %s (id=%s)",
+                    candidate,
+                    getattr(telephony_route, "workflow_slug", "<inconnu>"),
+                    getattr(telephony_route, "workflow_id", "<aucun>"),
+                )
+                break
+
     base_workflow = getattr(definition, "workflow", None)
     base_slug = getattr(base_workflow, "slug", "<inconnu>")
     base_workflow_id = getattr(base_workflow, "id", None)
@@ -373,40 +407,75 @@ def resolve_workflow_for_phone_number(
     telephony_config = resolve_start_telephony_config(definition)
     selected_definition = definition
     selected_config = telephony_config
+    selected_route = telephony_route
 
-    if telephony_config and telephony_config.sip_entrypoint:
-        logger.info("Workflow %s déclaré comme point d'entrée SIP.", base_slug)
-    else:
-        logger.info(
-            "Workflow %s sans point d'entrée SIP explicite, recherche d'une "
-            "définition marquée.",
-            base_slug,
-        )
-        candidate = _load_entrypoint_from_settings(
-            workflow_service,
-            settings=effective_settings,
-            session=session,
-        )
-        if candidate is None:
-            candidate = _find_entrypoint_workflow(
-                workflow_service,
-                session=session,
-                exclude_workflow_id=base_workflow_id,
+    if selected_route is not None:
+        try:
+            if selected_route.workflow_id:
+                selected_definition = workflow_service.get_definition_by_workflow_id(
+                    selected_route.workflow_id,
+                    session=session,
+                )
+            else:
+                selected_definition = workflow_service.get_definition_by_slug(
+                    selected_route.workflow_slug,
+                    session=session,
+                )
+        except Exception as exc:  # pragma: no cover - dépend BDD
+            logger.warning(
+                "Impossible de charger le workflow %s défini par la route "
+                "téléphonie %s",
+                getattr(selected_route, "workflow_slug", "<inconnu>"),
+                getattr(selected_route, "phone_number", "<inconnu>"),
+                exc_info=exc,
             )
-        if candidate is not None:
-            selected_definition, selected_config = candidate
+            selected_route = None
+            selected_definition = definition
+            selected_config = telephony_config
+        else:
+            selected_config = resolve_start_telephony_config(selected_definition)
             selected_workflow = getattr(selected_definition, "workflow", None)
             logger.info(
-                "Workflow %s sélectionné comme point d'entrée SIP pour le numéro %s.",
+                "Workflow %s chargé depuis la route téléphonie %s",
                 getattr(selected_workflow, "slug", "<inconnu>"),
-                normalized_number or "<vide>",
+                getattr(selected_route, "phone_number", "<inconnu>"),
             )
+
+    if selected_route is None:
+        if selected_config and selected_config.sip_entrypoint:
+            logger.info("Workflow %s déclaré comme point d'entrée SIP.", base_slug)
         else:
-            selected_config = None
             logger.info(
-                "Aucun workflow déclaré comme point d'entrée SIP, "
-                "utilisation des paramètres vocaux par défaut.",
+                "Workflow %s sans point d'entrée SIP explicite, recherche d'une "
+                "définition marquée.",
+                base_slug,
             )
+            candidate = _load_entrypoint_from_settings(
+                workflow_service,
+                settings=effective_settings,
+                session=session,
+            )
+            if candidate is None:
+                candidate = _find_entrypoint_workflow(
+                    workflow_service,
+                    session=session,
+                    exclude_workflow_id=base_workflow_id,
+                )
+            if candidate is not None:
+                selected_definition, selected_config = candidate
+                selected_workflow = getattr(selected_definition, "workflow", None)
+                logger.info(
+                    "Workflow %s sélectionné comme point d'entrée SIP pour le "
+                    "numéro %s.",
+                    getattr(selected_workflow, "slug", "<inconnu>"),
+                    normalized_number or "<vide>",
+                )
+            else:
+                selected_config = None
+                logger.info(
+                    "Aucun workflow déclaré comme point d'entrée SIP, "
+                    "utilisation des paramètres vocaux par défaut.",
+                )
 
     (
         model,
@@ -440,6 +509,7 @@ def resolve_workflow_for_phone_number(
         voice_prompt_variables=prompt_variables,
         voice_provider_id=provider_id,
         voice_provider_slug=provider_slug,
+        route=selected_route,
     )
 
 async def prepare_voice_workflow(

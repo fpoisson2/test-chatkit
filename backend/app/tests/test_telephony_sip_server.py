@@ -66,13 +66,27 @@ class _Definition:
         self.workflow = SimpleNamespace(slug=self.slug, id=self.workflow_id)
 
 
+@dataclass
+class _Route:
+    phone_number: str
+    workflow_slug: str
+    workflow_id: int | None = None
+    metadata_: dict[str, Any] = field(default_factory=dict)
+
+
 class _FakeWorkflowService:
-    def __init__(self, definitions: dict[str, _Definition], current: str) -> None:
+    def __init__(
+        self,
+        definitions: dict[str, _Definition],
+        current: str,
+        routes: dict[str, _Route] | None = None,
+    ) -> None:
         self._definitions = definitions
         self._definitions_by_id = {
             definition.workflow_id: definition for definition in definitions.values()
         }
         self._current = current
+        self._routes = routes or {}
 
     def get_current(self, session: Any | None = None) -> _Definition:
         return self._definitions[self._current]
@@ -86,6 +100,11 @@ class _FakeWorkflowService:
         self, workflow_id: int, session: Any | None = None
     ) -> _Definition:
         return self._definitions_by_id[workflow_id]
+
+    def get_telephony_route_by_number(
+        self, phone_number: str, session: Any | None = None
+    ) -> _Route | None:
+        return self._routes.get(phone_number)
 
     def list_workflows(self, session: Any | None = None) -> list[Any]:
         return [definition.workflow for definition in self._definitions.values()]
@@ -276,6 +295,39 @@ def test_resolve_workflow_for_phone_number_prefers_flagged_workflow(
     )
 
     assert context.workflow_definition is service.get_definition_by_slug("voice")
+    assert context.is_sip_entrypoint is True
+
+
+def test_resolve_workflow_for_phone_number_uses_telephony_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    voice_definition = _Definition(
+        slug="voice",
+        telephony_config={"sip_entrypoint": True},
+    )
+    service = _FakeWorkflowService(
+        definitions={
+            "base": _Definition(slug="base", telephony_config={}),
+            "voice": voice_definition,
+        },
+        current="base",
+        routes={"100": _Route(phone_number="100", workflow_slug="voice")},
+    )
+
+    monkeypatch.setattr(
+        "backend.app.telephony.sip_server.get_or_create_voice_settings",
+        lambda session: _DummyVoiceSettings(),
+    )
+
+    context = resolve_workflow_for_phone_number(
+        service,
+        phone_number="100",
+        session=object(),
+        settings=_make_settings(),
+    )
+
+    assert context.workflow_definition is voice_definition
+    assert context.route is service.get_telephony_route_by_number("100")
     assert context.is_sip_entrypoint is True
 
 

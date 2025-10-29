@@ -22,6 +22,7 @@ from ..model_capabilities import (
 from ..models import (
     AvailableModel,
     HostedWorkflow,
+    TelephonyRoute,
     Workflow,
     WorkflowDefinition,
     WorkflowStep,
@@ -819,6 +820,24 @@ class WorkflowService:
         session.commit()
         session.refresh(definition)
         return self._fully_load_definition(definition)
+
+    def get_telephony_route_by_number(
+        self, phone_number: str, session: Session | None = None
+    ) -> TelephonyRoute | None:
+        normalized = phone_number.strip()
+        if not normalized:
+            return None
+
+        db, owns_session = self._get_session(session)
+        try:
+            return db.scalar(
+                select(TelephonyRoute).where(
+                    TelephonyRoute.phone_number == normalized
+                )
+            )
+        finally:
+            if owns_session:
+                db.close()
 
     def list_workflows(self, session: Session | None = None) -> list[Workflow]:
         db, owns_session = self._get_session(session)

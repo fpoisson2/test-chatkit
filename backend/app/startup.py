@@ -479,6 +479,17 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         workflow_slug = getattr(workflow_obj, "slug", None)
         telephony_metadata.update({"workflow_slug": workflow_slug})
 
+        if context.route is not None:
+            route_metadata = getattr(context.route, "metadata_", {}) or {}
+            telephony_metadata["route"] = {
+                "phone_number": getattr(context.route, "phone_number", None),
+                "workflow_slug": getattr(context.route, "workflow_slug", None),
+                "workflow_id": getattr(context.route, "workflow_id", None),
+                "metadata": dict(route_metadata)
+                if isinstance(route_metadata, Mapping)
+                else dict(getattr(context.route, "metadata", {}) or {}),
+            }
+
         telephony_metadata["voice_defaults"] = {
             "model": context.voice_model,
             "instructions": context.voice_instructions,
