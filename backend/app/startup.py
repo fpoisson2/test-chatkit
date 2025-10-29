@@ -121,9 +121,11 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             if hasattr(dialog, 'callbacks'):
                 if 'BYE' not in dialog.callbacks:
                     dialog.callbacks['BYE'] = []
-                # Format attendu par aiosip: dict avec 'callable' et autres paramètres
+                # Format attendu par aiosip: dict avec 'callable', 'args', 'kwargs', et 'wait'
                 dialog.callbacks['BYE'].append({
                     'callable': _on_bye,
+                    'args': (),
+                    'kwargs': {},
                     'wait': True
                 })
                 logger.debug("Callback BYE enregistré pour le dialogue")

@@ -249,7 +249,7 @@ class TelephonyVoiceBridge:
             stop_event.set()
 
         async def forward_audio() -> None:
-            nonlocal inbound_audio_bytes, agent_is_speaking
+            nonlocal inbound_audio_bytes
             packet_count = 0
             try:
                 async for packet in rtp_stream:
@@ -259,8 +259,10 @@ class TelephonyVoiceBridge:
                         continue
                     inbound_audio_bytes += len(pcm)
 
-                    # Use SDK's send_audio method with commit=False for continuous streaming
-                    # The VAD (semantic_vad) will automatically detect speech boundaries and commit
+                    # Send audio continuously - OpenAI's semantic_vad handles:
+                    # - Speech detection and commit
+                    # - Automatic interruption when user speaks
+                    # - Turn-taking management
                     await session.send_audio(pcm, commit=False)
 
                     if not should_continue():
@@ -275,10 +277,11 @@ class TelephonyVoiceBridge:
         audio_interrupted = asyncio.Event()
         last_response_id: str | None = None
         agent_is_speaking = False
+        speech_detected = False
 
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking
+            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, speech_detected
             try:
                 async for event in session:
                     if not should_continue():
@@ -295,8 +298,17 @@ class TelephonyVoiceBridge:
                         audio_event = event.audio
                         pcm_data = audio_event.data
                         if pcm_data:
-                            outbound_audio_bytes += len(pcm_data)
-                            await send_to_peer(pcm_data)
+                            # Mark that agent started speaking (for interrupt detection)
+                            if not agent_is_speaking:
+                                agent_is_speaking = True
+                                speech_detected = False  # Reset for next potential interrupt
+                                logger.debug("Agent commence à parler")
+                            # Don't send audio if user is speaking (interrupted)
+                            if not audio_interrupted.is_set():
+                                outbound_audio_bytes += len(pcm_data)
+                                await send_to_peer(pcm_data)
+                            else:
+                                logger.debug("Audio ignoré - utilisateur parle")
                         continue
 
                     # Handle audio interruption
@@ -309,6 +321,7 @@ class TelephonyVoiceBridge:
                     # Handle audio end
                     if isinstance(event, RealtimeAudioEnd):
                         agent_is_speaking = False
+                        audio_interrupted.clear()
                         logger.debug("Agent a fini de parler")
                         continue
 
