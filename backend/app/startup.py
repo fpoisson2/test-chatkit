@@ -398,6 +398,12 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         rtp_stream_factory = metadata.get("rtp_stream_factory")
         send_audio = metadata.get("send_audio")
 
+        logger.info(
+            "Initialisation du pont voix pour Call-ID=%s (metadata=%s)",
+            session.call_id,
+            ", ".join(sorted(metadata.keys())) or "<aucune donnée>",
+        )
+
         if not callable(rtp_stream_factory) or not callable(send_audio):
             logger.error(
                 "Flux RTP non configuré pour Call-ID=%s (stream=%s, send=%s)",
@@ -432,6 +438,19 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         session_config = (
             event_payload.get("session") if isinstance(event_payload, Mapping) else None
         )
+
+        if isinstance(event_payload, Mapping):
+            logger.info(
+                "Wait state vocal détecté pour Call-ID=%s (session_id=%s)",
+                session.call_id,
+                event_payload.get("session_id") or "<inconnu>",
+            )
+        else:
+            logger.info(
+                "Aucun wait state vocal structuré pour Call-ID=%s : "
+                "utilisation des paramètres enregistrés",
+                session.call_id,
+            )
 
         voice_model: str | None = None
         instructions: str | None = None
@@ -496,6 +515,13 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     sanitized_session_config = dict(session_config)
                 session_update_config = sanitized_session_config
                 metadata["voice_session_config"] = dict(sanitized_session_config)
+            logger.info(
+                "Paramètres voix récupérés depuis le workflow pour Call-ID=%s "
+                "(modèle=%s, voix=%s)",
+                session.call_id,
+                voice_model or "<inconnu>",
+                voice_name or "<auto>",
+            )
         else:
             defaults = metadata.get("voice_defaults") or {}
             voice_model = metadata.get("voice_model") or defaults.get("model")
@@ -546,6 +572,13 @@ def _build_invite_handler(manager: SIPRegistrationManager):
 
             session_update_config = fallback_session
             metadata["voice_session_config"] = dict(fallback_session)
+            logger.info(
+                "Paramètres voix par défaut appliqués pour Call-ID=%s "
+                "(modèle=%s, voix=%s)",
+                session.call_id,
+                voice_model or "<inconnu>",
+                voice_name or "<auto>",
+            )
 
             if not voice_model or not instructions:
                 logger.error(
@@ -617,6 +650,11 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             metadata["client_secret"] = client_secret
             metadata["client_secret_expires_at"] = parsed_secret.expires_at_isoformat()
             metadata["realtime_session_id"] = session_handle.session_id
+            logger.info(
+                "Session Realtime créée pour Call-ID=%s (session_id=%s)",
+                session.call_id,
+                session_handle.session_id,
+            )
 
             if store is not None and chatkit_context is not None and thread_id:
                 try:
@@ -686,6 +724,23 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             voice_provider_slug or voice_provider_id or "<défaut>",
         )
 
+        if session_update_config:
+            try:
+                session_keys = sorted(dict(session_update_config).keys())
+            except Exception:  # pragma: no cover - garde-fou
+                session_keys = ["<inconnu>"]
+            logger.info(
+                "Session.update initialisée pour Call-ID=%s (clés=%s)",
+                session.call_id,
+                ", ".join(session_keys),
+            )
+        if isinstance(tool_permissions, Mapping) and tool_permissions:
+            logger.info(
+                "Permissions d'outils disponibles pour Call-ID=%s : %s",
+                session.call_id,
+                ", ".join(sorted(tool_permissions.keys())),
+            )
+
         hooks = VoiceBridgeHooks(
             close_dialog=lambda: _close_dialog(session),
             clear_voice_state=lambda: _clear_voice_state(session),
@@ -708,6 +763,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 model=voice_model,
                 instructions=instructions,
                 voice=voice_name,
+                call_id=session.call_id,
                 rtp_stream=rtp_stream_factory(),
                 send_to_peer=send_audio,
                 api_base=realtime_api_base,

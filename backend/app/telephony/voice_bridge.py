@@ -215,6 +215,7 @@ class TelephonyVoiceBridge:
         model: str,
         instructions: str,
         voice: str | None,
+        call_id: str | None = None,
         rtp_stream: AsyncIterator[RtpPacket],
         send_to_peer: Callable[[bytes], Awaitable[None]],
         api_base: str | None = None,
@@ -229,11 +230,25 @@ class TelephonyVoiceBridge:
             # Note: "OpenAI-Beta: realtime=v1" retiré pour utiliser l'API GA
         }
 
+        call_context = f" (Call-ID={call_id})" if call_id else ""
         logger.info(
-            "Ouverture de la session Realtime voix (modèle=%s, voix=%s)",
+            "Ouverture de la session Realtime voix%s (modèle=%s, voix=%s)",
+            call_context,
             model,
             voice,
         )
+        if isinstance(session_config, Mapping) and session_config:
+            logger.info(
+                "Session.update initiale%s : champs=%s",
+                call_context,
+                sorted(session_config.keys()),
+            )
+        if isinstance(tool_permissions, Mapping) and tool_permissions:
+            logger.info(
+                "Permissions outils initiales%s : %s",
+                call_context,
+                sorted(tool_permissions.keys()),
+            )
 
         start_time = time.monotonic()
         inbound_audio_bytes = 0
@@ -242,6 +257,8 @@ class TelephonyVoiceBridge:
         error: Exception | None = None
         websocket: WebSocketLike | None = None
         stop_event = asyncio.Event()
+        user_audio_logged = False
+        agent_audio_logged = False
 
         def should_continue() -> bool:
             if stop_event.is_set():
@@ -265,13 +282,21 @@ class TelephonyVoiceBridge:
             await websocket.send(payload)  # type: ignore[arg-type]
 
         async def forward_audio() -> None:
-            nonlocal inbound_audio_bytes, agent_is_speaking
+            nonlocal inbound_audio_bytes, agent_is_speaking, user_audio_logged
             try:
                 async for packet in rtp_stream:
                     pcm = self._decode_packet(packet)
                     if not pcm:
                         continue
                     inbound_audio_bytes += len(pcm)
+                    if not user_audio_logged:
+                        logger.info(
+                            "Flux RTP utilisateur démarré%s (octets=%d, séquence=%d)",
+                            call_context,
+                            len(pcm),
+                            packet.sequence_number,
+                        )
+                        user_audio_logged = True
 
                     # VAD local : détecter si l'utilisateur parle pendant que
                     # l'agent parle
@@ -301,6 +326,10 @@ class TelephonyVoiceBridge:
                 logger.debug(
                     "Fin du flux audio RTP, attente de la fermeture de session"
                 )
+                if not user_audio_logged:
+                    logger.info(
+                        "Flux RTP utilisateur terminé sans audio%s", call_context
+                    )
                 await request_stop()
 
         transcript_buffers: dict[str, list[str]] = {}
@@ -309,7 +338,8 @@ class TelephonyVoiceBridge:
         agent_is_speaking = False
 
         async def handle_realtime() -> None:
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking
+            nonlocal outbound_audio_bytes, error, last_response_id
+            nonlocal agent_is_speaking, agent_audio_logged
             while True:
                 try:
                     raw = await asyncio.wait_for(
@@ -395,6 +425,13 @@ class TelephonyVoiceBridge:
                             continue
                         if pcm:
                             outbound_audio_bytes += len(pcm)
+                            if not agent_audio_logged:
+                                logger.info(
+                                    "Première réponse audio agent%s (octets=%d)",
+                                    call_context,
+                                    len(pcm),
+                                )
+                                agent_audio_logged = True
                             await send_to_peer(pcm)
                     if not should_continue():
                         break
@@ -447,6 +484,11 @@ class TelephonyVoiceBridge:
         stats: VoiceBridgeStats | None = None
         try:
             websocket = await self._websocket_connector(url, headers)
+            logger.info(
+                "Connexion WebSocket Realtime établie%s (url=%s)",
+                call_context,
+                url,
+            )
             await send_json(
                 {
                     "type": "session.update",
@@ -475,7 +517,9 @@ class TelephonyVoiceBridge:
                 error = exc
         except Exception as exc:
             error = exc
-            logger.error("Session voix Realtime interrompue : %s", exc)
+            logger.error(
+                "Session voix Realtime interrompue%s : %s", call_context, exc
+            )
         finally:
             if websocket is not None:
                 try:
@@ -498,8 +542,9 @@ class TelephonyVoiceBridge:
             await self._teardown(transcripts, error)
             if error is None:
                 logger.info(
-                    "Session voix terminée (durée=%.2fs, audio_in=%d, audio_out=%d, "
-                    "transcripts=%d)",
+                    "Session voix terminée%s (durée=%.2fs, audio_in=%d, "
+                    "audio_out=%d, transcripts=%d)",
+                    call_context,
                     duration,
                     inbound_audio_bytes,
                     outbound_audio_bytes,
@@ -507,7 +552,9 @@ class TelephonyVoiceBridge:
                 )
             else:
                 logger.warning(
-                    "Session voix terminée avec erreur après %.2fs", duration
+                    "Session voix terminée avec erreur%s après %.2fs",
+                    call_context,
+                    duration,
                 )
 
         if stats is None:  # pragma: no cover - garde-fou
