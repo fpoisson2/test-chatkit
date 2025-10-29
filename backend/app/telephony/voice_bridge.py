@@ -518,7 +518,7 @@ class TelephonyVoiceBridge:
                 "input": {
                     "format": {"type": "audio/pcm", "rate": 24000},
                     "turn_detection": {
-                        "type": "semantic",
+                        "type": "semantic_vad",  # VAD sémantique pour une meilleure détection de fin de phrase
                         "create_response": True,
                         "interrupt_response": True,
                     },

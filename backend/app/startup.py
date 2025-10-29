@@ -109,6 +109,25 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 "Impossible de lier on_message au dialogue SIP", exc_info=True
             )
 
+        # Enregistrer un handler pour BYE pour éviter le KeyError
+        async def _on_bye(message: Any) -> None:
+            call_id_header = getattr(message, 'headers', {}).get('Call-ID', ['unknown'])
+            call_id = call_id_header[0] if isinstance(call_id_header, list) and call_id_header else str(call_id_header)
+            logger.info("BYE reçu pour Call-ID=%s", call_id)
+            await handler.handle_request(message, dialog=dialog)
+
+        try:
+            # Enregistrer le callback BYE dans dialog.callbacks
+            if hasattr(dialog, 'callbacks'):
+                if 'BYE' not in dialog.callbacks:
+                    dialog.callbacks['BYE'] = []
+                dialog.callbacks['BYE'].append((_on_bye, {}))
+                logger.debug("Callback BYE enregistré pour le dialogue")
+        except Exception:  # pragma: no cover - dépend des implémentations aiosip
+            logger.debug(
+                "Impossible d'enregistrer le callback BYE", exc_info=True
+            )
+
         # `aiosip.Dialog.register` est dédié aux messages SIP REGISTER.
         # Utiliser ce mécanisme ici provoquerait une corruption des en-têtes
         # (les journaux d'erreur le montrent), d'où la limitation au hook
