@@ -201,21 +201,18 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         dialog = session.dialog
         if dialog is None:
             return
-        for method_name in ("bye", "close"):
-            method = getattr(dialog, method_name, None)
-            if not callable(method):
-                continue
+        # Only try bye() - close() has a bug in aiosip that causes "Dialog is not subscriptable"
+        method = getattr(dialog, "bye", None)
+        if callable(method):
             try:
                 outcome = method()
                 if asyncio.iscoroutine(outcome):
                     await outcome
             except Exception:  # pragma: no cover - best effort
                 logger.debug(
-                    "Fermeture du dialogue SIP via %s échouée",
-                    method_name,
+                    "Fermeture du dialogue SIP via bye échouée",
                     exc_info=True,
                 )
-            break
 
     async def _clear_voice_state(session: SipCallSession) -> None:
         metadata = session.metadata.get("telephony")
