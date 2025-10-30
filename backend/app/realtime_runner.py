@@ -68,6 +68,7 @@ def _normalize_realtime_tools_payload(
         "authorization",
         "name",
         "description",
+        "require_approval",  # Allow require_approval for telephony (set to 'none')
     }
 
     for index, entry in enumerate(source_entries):
@@ -162,6 +163,10 @@ def _normalize_realtime_tools_payload(
                     if key in mcp_allowed_keys
                 }
                 tool_entry["type"] = "mcp"
+
+                # For telephony, force require_approval to 'none' to allow automatic tool use
+                if "require_approval" not in tool_entry:
+                    tool_entry["require_approval"] = "none"
 
                 if (
                     mcp_server_configs is not None
