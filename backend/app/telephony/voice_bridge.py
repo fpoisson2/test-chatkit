@@ -324,8 +324,19 @@ class TelephonyVoiceBridge:
                 )
                 return True
 
+        session_closing = [False]  # Track if we're already closing the session
+
         async def request_stop() -> None:
+            """Request immediate stop of both audio forwarding and event handling."""
             stop_event.set()
+            # Close the session to unblock handle_events from 'async for event in session'
+            if not session_closing[0]:
+                session_closing[0] = True
+                try:
+                    logger.debug("request_stop: fermeture immédiate de la session pour débloquer handle_events")
+                    await session.close()
+                except Exception as e:
+                    logger.debug("Erreur lors de la fermeture anticipée de session: %s", e)
 
         async def forward_audio() -> None:
             nonlocal inbound_audio_bytes
@@ -887,8 +898,9 @@ class TelephonyVoiceBridge:
             error = exc
             logger.error("Session voix Realtime interrompue : %s", exc)
         finally:
-            if session is not None:
+            if session is not None and not session_closing[0]:
                 try:
+                    session_closing[0] = True
                     await session.close()
                 except Exception:  # pragma: no cover - fermeture best effort
                     logger.debug(
