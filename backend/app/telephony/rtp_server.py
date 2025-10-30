@@ -43,6 +43,7 @@ class RtpServer:
         self._ssrc = config.ssrc or int(time.time() * 1000) & 0xFFFFFFFF
         self._remote_addr: tuple[str, int] | None = None
         self._audio_buffer: list[bytes] = []  # Buffer pour audio pré-généré
+        self._first_packet_received = False  # Flag pour savoir si on a reçu au moins un paquet
         if config.remote_host and config.remote_port:
             self._remote_addr = (config.remote_host, config.remote_port)
 
@@ -108,13 +109,18 @@ class RtpServer:
         logger.info("Serveur RTP arrêté")
 
     def _on_remote_discovered(self, addr: tuple[str, int]) -> None:
-        """Callback appelé quand l'adresse distante est découverte."""
+        """Callback appelé quand l'adresse distante est découverte (premier paquet RTP reçu)."""
         if self._remote_addr is None:
             self._remote_addr = addr
             logger.info(
-                "Adresse distante RTP découverte : %s:%d", addr[0], addr[1]
+                "🔍 Adresse distante RTP découverte via premier paquet reçu : %s:%d", addr[0], addr[1]
             )
-            # Flush l'audio qui a été bufferisé pendant la découverte
+
+        # Marquer que le premier paquet a été reçu (téléphone prêt à recevoir l'audio)
+        if not self._first_packet_received:
+            self._first_packet_received = True
+            logger.info("✅ Premier paquet RTP reçu - téléphone prêt, flush du buffer audio")
+            # Flush l'audio qui a été bufferisé en attendant que le téléphone soit prêt
             asyncio.create_task(self._flush_audio_buffer())
 
     async def send_audio(self, pcm_data: bytes) -> None:
@@ -129,9 +135,13 @@ class RtpServer:
         if not self._transport:
             logger.warning("RTP send_audio: transport non disponible")
             return
-        if not self._remote_addr:
-            # Bufferiser l'audio en attendant la découverte de l'adresse distante
-            logger.debug("RTP send_audio: adresse distante inconnue, bufferisation de %d octets", len(pcm_data))
+
+        # Bufferiser l'audio si:
+        # 1. On ne connaît pas l'adresse distante, OU
+        # 2. On connaît l'adresse mais on n'a pas encore reçu de paquet (téléphone pas prêt)
+        if not self._remote_addr or not self._first_packet_received:
+            reason = "adresse distante inconnue" if not self._remote_addr else "en attente du premier paquet RTP reçu"
+            logger.debug("RTP send_audio: %s, bufferisation de %d octets", reason, len(pcm_data))
             self._audio_buffer.append(pcm_data)
             return
 
