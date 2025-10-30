@@ -429,9 +429,28 @@ class TelephonyVoiceBridge:
                         logger.debug("Agent arrête de parler")
                         continue
 
-                    # Handle audio interruption (for logging)
+                    # Handle audio interruption - BLOCK AUDIO IMMEDIATELY!
                     if isinstance(event, RealtimeAudioInterrupted):
-                        logger.info("Audio interrompu confirmé par OpenAI")
+                        logger.info("🛑 Audio interrompu confirmé par OpenAI - blocage audio")
+                        block_audio_send = True
+                        # For WebRTC/telephony, send response.cancel + output_audio_buffer.clear
+                        try:
+                            from agents.realtime.model_inputs import RealtimeModelSendRawMessage
+                            # Cancel the current response
+                            await session._model.send_event(
+                                RealtimeModelSendRawMessage(
+                                    event={"type": "response.cancel"}
+                                )
+                            )
+                            # Clear the output audio buffer
+                            await session._model.send_event(
+                                RealtimeModelSendRawMessage(
+                                    event={"type": "output_audio_buffer.clear"}
+                                )
+                            )
+                            logger.info("✅ Envoyé response.cancel + output_audio_buffer.clear")
+                        except Exception as e:
+                            logger.warning("Erreur lors de l'envoi des commandes d'interruption: %s", e)
                         continue
 
                     # Handle audio events (agent speaking) - only send if not blocked
@@ -450,7 +469,9 @@ class TelephonyVoiceBridge:
                                     event.content_index,
                                     pcm_data
                                 )
-                        # else: drop audio, user is interrupting
+                        else:
+                            # Audio blocked - user is interrupting
+                            logger.debug("🚫 Audio agent bloqué (interruption en cours)")
                         continue
 
                     # Handle audio end
