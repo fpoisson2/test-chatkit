@@ -380,6 +380,11 @@ class TelephonyVoiceBridge:
                     if not should_continue():
                         break
 
+                    # DEBUG: Log ALL event types to understand what we receive
+                    event_type = type(event).__name__
+                    if event_type not in ("RealtimeAudio",):  # Skip audio events (too noisy)
+                        logger.debug(f"🔍 EVENT TYPE: {event_type}")
+
                     # Handle error events
                     if isinstance(event, RealtimeError):
                         error = VoiceBridgeError(str(event.error))
@@ -388,7 +393,6 @@ class TelephonyVoiceBridge:
 
                     # Check for input_audio_buffer.speech_started in raw events
                     # This is the KEY event for detecting user interruption!
-                    event_type = type(event).__name__
                     if event_type == "RealtimeRawModelEvent":
                         raw_data = getattr(event, 'raw_event', None) or getattr(event, 'event', None)
                         if raw_data and isinstance(raw_data, dict):
@@ -433,7 +437,8 @@ class TelephonyVoiceBridge:
                     if isinstance(event, RealtimeAudioInterrupted):
                         logger.info("🛑 Audio interrompu confirmé par OpenAI - blocage audio")
                         block_audio_send = True
-                        # Cancel the current response generation
+                        # Try to cancel the current response generation
+                        # (may fail if response already completed, which is OK)
                         try:
                             from agents.realtime.model_inputs import RealtimeModelSendRawMessage
                             await session._model.send_event(
@@ -441,9 +446,10 @@ class TelephonyVoiceBridge:
                                     message={"type": "response.cancel"}
                                 )
                             )
-                            logger.info("✅ Envoyé response.cancel pour arrêter la génération")
+                            logger.info("✅ Envoyé response.cancel")
                         except Exception as e:
-                            logger.warning("Erreur lors de response.cancel: %s", e)
+                            # It's OK if there's no active response to cancel
+                            logger.debug("response.cancel ignoré: %s", e)
                         continue
 
                     # Handle audio events (agent speaking) - only send if not blocked
