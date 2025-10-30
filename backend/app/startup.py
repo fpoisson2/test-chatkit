@@ -209,12 +209,17 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
             request: La requête INVITE SIP
 
         Returns:
-            L'ID du compte SIP qui a reçu l'appel, ou None si non déterminé
+            L'ID du compte SIP qui a reçu l'appel, ou None en mode legacy
+
+        Raises:
+            TelephonyRouteSelectionError: Si aucun compte SIP ne correspond à l'URI
+                                         en mode multi-SIP
         """
         if not isinstance(manager, MultiSIPRegistrationManager):
             # Pour un gestionnaire simple, retourner None (comportement legacy)
             return None
 
+        # Mode multi-SIP : on doit trouver une correspondance exacte
         # Extraire l'en-tête To:
         to_header = None
         headers = getattr(request, "headers", None)
@@ -230,15 +235,19 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                     break
 
         if not to_header:
-            logger.debug("Impossible d'extraire l'en-tête To: de l'INVITE")
-            return manager.default_account_id
+            logger.error("Impossible d'extraire l'en-tête To: de l'INVITE SIP")
+            raise TelephonyRouteSelectionError(
+                "En-tête To: manquant dans la requête INVITE"
+            )
 
         # Extraire l'URI SIP depuis l'en-tête To:
         # Format typique: "Display Name" <sip:user@domain> ou sip:user@domain
         match = re.search(r"sips?:([^@>;]+@[^>;]+)", to_header, flags=re.IGNORECASE)
         if not match:
-            logger.debug("Format d'en-tête To: non reconnu: %s", to_header)
-            return manager.default_account_id
+            logger.error("Format d'en-tête To: non reconnu: %s", to_header)
+            raise TelephonyRouteSelectionError(
+                f"Format d'en-tête To: invalide: {to_header}"
+            )
 
         to_uri_part = match.group(1).lower()  # user@domain
 
@@ -263,11 +272,14 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                         )
                         return account.id
 
-        logger.debug(
-            "Aucune correspondance trouvée pour To: %s, utilisation du compte par défaut",
-            to_header,
+        # Aucune correspondance trouvée - rejeter l'appel
+        logger.error(
+            "Aucun compte SIP actif ne correspond à l'URI: %s",
+            to_uri_part,
         )
-        return manager.default_account_id
+        raise TelephonyRouteSelectionError(
+            f"Aucun compte SIP configuré pour l'URI {to_uri_part}"
+        )
 
     async def _close_dialog(session: SipCallSession) -> None:
         dialog = session.dialog
