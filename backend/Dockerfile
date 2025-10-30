@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     automake \
     libtool \
     pkg-config \
+    swig \
     # PJSIP audio/video dependencies
     libasound2-dev \
     libssl-dev \
