@@ -309,10 +309,10 @@ class TelephonyVoiceBridge:
         async def forward_audio() -> None:
             nonlocal inbound_audio_bytes
             packet_count = 0
-            bytes_since_commit = 0
-            should_commit_next = False
+            bytes_sent = 0
+            turn_detection_enabled = False
             # At 24kHz PCM16: 100ms = 24000 samples/sec * 0.1 sec * 2 bytes/sample = 4800 bytes
-            MIN_COMMIT_SIZE = 4800  # 100ms minimum required by OpenAI
+            MIN_AUDIO_BEFORE_VAD = 4800  # 100ms minimum before enabling VAD
 
             try:
                 async for packet in rtp_stream:
@@ -326,31 +326,40 @@ class TelephonyVoiceBridge:
                     if packet_count == 1:
                         logger.info("Premier paquet audio reçu: %d bytes PCM", len(pcm))
 
-                    # Send audio WITHOUT committing (just buffer it)
+                    # Always send audio with commit=False - let turn_detection handle commits
                     await session.send_audio(pcm, commit=False)
-                    bytes_since_commit += len(pcm)
+                    bytes_sent += len(pcm)
 
-                    # When we've buffered enough, commit immediately
-                    # We send a tiny chunk (20ms of silence) with commit=True to trigger the commit
-                    if bytes_since_commit >= MIN_COMMIT_SIZE:
-                        logger.debug(
-                            "Committing buffer: %.1fms of audio",
-                            bytes_since_commit / 2 / 24000 * 1000
+                    # After sending enough audio, enable turn_detection
+                    if not turn_detection_enabled and bytes_sent >= MIN_AUDIO_BEFORE_VAD:
+                        logger.info(
+                            "Activation de turn_detection après %.1fms d'audio",
+                            bytes_sent / 2 / 24000 * 1000
                         )
-                        # Send 20ms of silence (480 samples * 2 bytes = 960 bytes) with commit=True
-                        silence = b"\x00" * 960
-                        await session.send_audio(silence, commit=True)
-                        bytes_since_commit = 960  # Account for the silence we just sent
+                        try:
+                            from agents.realtime.model_inputs import RealtimeModelSendSessionUpdate
+                            await session._model.send_event(
+                                RealtimeModelSendSessionUpdate(
+                                    session_settings={
+                                        "input_audio_transcription": {
+                                            "model": "whisper-1",
+                                        },
+                                        "turn_detection": {
+                                            "type": "semantic_vad",
+                                            "create_response": True,
+                                            "interrupt_response": True,
+                                        },
+                                    }
+                                )
+                            )
+                            turn_detection_enabled = True
+                            logger.info("Turn detection (semantic_vad) activé avec succès")
+                        except Exception as e:
+                            logger.warning("Impossible d'activer turn_detection: %s", e)
 
                     if not should_continue():
                         logger.info("forward_audio: arrêt demandé par should_continue()")
                         break
-
-                # Commit any remaining buffered audio at the end
-                if bytes_since_commit > 0:
-                    logger.debug("Committing final %d bytes at end of stream", bytes_since_commit)
-                    # Send a small silence chunk with commit to flush the buffer
-                    await session.send_audio(b"\x00" * 100, commit=True)
 
                 logger.info("forward_audio: fin de la boucle RTP stream (paquets reçus: %d)", packet_count)
             finally:
