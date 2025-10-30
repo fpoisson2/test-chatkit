@@ -1137,7 +1137,7 @@ async def run_workflow(
         "function_call": False,
     }
     _VOICE_DEFAULT_TURN_DETECTION: dict[str, Any] = {
-        "type": "semantic",
+        "type": "semantic_vad",
         "create_response": True,
         "interrupt_response": True,
     }

@@ -177,7 +177,7 @@ async def test_voice_bridge_forwards_audio_and_transcripts() -> None:
     turn_detection = (
         session_update["session"]["audio"]["input"].get("turn_detection") or {}
     )
-    assert turn_detection.get("type") == "semantic"
+    assert turn_detection.get("type") == "semantic_vad"
 
     append_payload = fake_ws.sent[1]
     assert append_payload["type"] == "input_audio_buffer.append"
