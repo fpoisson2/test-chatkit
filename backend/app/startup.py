@@ -540,6 +540,15 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             )
             metadata["realtime_session_id"] = session_handle.session_id
 
+            # Get filtered SDK tools from session_handle.metadata (these are actual Tool objects)
+            sdk_tools = session_handle.metadata.get("sdk_tools") or []
+            sdk_handoffs = session_handle.metadata.get("sdk_handoffs") or []
+            logger.info(
+                "Outils SDK récupérés pour la téléphonie : %d tools, %d handoffs",
+                len(sdk_tools) if sdk_tools else 0,
+                len(sdk_handoffs) if sdk_handoffs else 0,
+            )
+
         # Créer un wait_state pour que le frontend puisse détecter la session vocale
         if store is not None and thread_id:
             try:
@@ -622,8 +631,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 rtp_stream=rtp_stream_factory(),
                 send_to_peer=send_audio,
                 api_base=realtime_api_base,
-                tools=voice_tools,
-                handoffs=voice_handoffs,
+                tools=sdk_tools,  # Use filtered SDK Tool objects, not raw dicts
+                handoffs=sdk_handoffs,  # Use filtered SDK Handoff objects, not raw dicts
             )
         except Exception as exc:  # pragma: no cover - dépend réseau
             logger.exception(
