@@ -271,13 +271,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
   const handleApplicationNavigate = useCallback(
     (application: ApplicationDescriptor) => {
-      if (!isDesktopLayout) {
-        closeSidebar();
-      }
-
       navigate(application.path);
     },
-    [closeSidebar, isDesktopLayout, navigate],
+    [navigate],
   );
 
   const handleOpenSettings = useCallback(
