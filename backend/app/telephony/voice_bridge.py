@@ -536,51 +536,13 @@ class TelephonyVoiceBridge:
                                     if event_subtype == 'response.mcp_call.completed':
                                         tool_data = raw_data.get('mcp_call', {}) if isinstance(raw_data.get('mcp_call'), dict) else {}
                                         tool_name = tool_data.get('name', 'unknown')
-                                        logger.info("🔧 Tool MCP terminé EN TEMPS RÉEL: %s", tool_name)
-
-                                        # Send response.create immediately to force verbal confirmation
-                                        try:
-                                            from agents.realtime.model_inputs import (
-                                                RealtimeModelRawClientMessage,
-                                                RealtimeModelSendRawMessage,
-                                            )
-                                            logger.info("Envoi de response.create IMMÉDIATEMENT après exécution du tool MCP")
-                                            await session._model.send_event(
-                                                RealtimeModelSendRawMessage(
-                                                    message=RealtimeModelRawClientMessage(
-                                                        type="response.create",
-                                                        other_data={},
-                                                    )
-                                                )
-                                            )
-                                            logger.info("✅ response.create envoyé - l'assistant va maintenant confirmer verbalement")
-                                        except Exception as e:
-                                            logger.warning("Impossible d'envoyer response.create: %s", e)
+                                        logger.info("🔧 Tool MCP terminé EN TEMPS RÉEL: %s (turn_detection gérera la confirmation)", tool_name)
                                         continue
 
                                     # Detect standard function call completion in real-time
                                     if event_subtype == 'response.function_call_arguments.done':
                                         function_name = raw_data.get('name', 'unknown')
-                                        logger.info("🔧 Function call terminé EN TEMPS RÉEL: %s", function_name)
-
-                                        # Send response.create immediately to force verbal confirmation
-                                        try:
-                                            from agents.realtime.model_inputs import (
-                                                RealtimeModelRawClientMessage,
-                                                RealtimeModelSendRawMessage,
-                                            )
-                                            logger.info("Envoi de response.create IMMÉDIATEMENT après function call")
-                                            await session._model.send_event(
-                                                RealtimeModelSendRawMessage(
-                                                    message=RealtimeModelRawClientMessage(
-                                                        type="response.create",
-                                                        other_data={},
-                                                    )
-                                                )
-                                            )
-                                            logger.info("✅ response.create envoyé - l'assistant va maintenant confirmer verbalement")
-                                        except Exception as e:
-                                            logger.warning("Impossible d'envoyer response.create: %s", e)
+                                        logger.info("🔧 Function call terminé EN TEMPS RÉEL: %s (turn_detection gérera la confirmation)", function_name)
                                         continue
 
                     # Track when agent starts speaking
