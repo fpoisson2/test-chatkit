@@ -9,6 +9,7 @@ from .routes import (
     auth,
     docs,
     model_registry,
+    outbound,
     tools,
     users,
     vector_stores,
@@ -49,5 +50,6 @@ app.include_router(vector_stores.router)
 app.include_router(voice_settings.router)
 app.include_router(widgets.router)
 app.include_router(workflows.router)
+app.include_router(outbound.router)
 
 register_startup_events(app)

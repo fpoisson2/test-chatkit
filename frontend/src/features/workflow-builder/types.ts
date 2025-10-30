@@ -13,6 +13,7 @@ export type NodeKind =
   | "start"
   | "agent"
   | "voice_agent"
+  | "outbound_call"
   | "condition"
   | "state"
   | "transform"

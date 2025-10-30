@@ -61,6 +61,7 @@ import { ConditionInspectorSection } from "./sections/ConditionInspectorSection"
 import { EndInspectorSection } from "./sections/EndInspectorSection";
 import { JsonVectorStoreInspectorSection } from "./sections/JsonVectorStoreInspectorSection";
 import { VoiceAgentInspectorSection } from "./sections/VoiceAgentInspectorSection";
+import { OutboundCallInspectorSection } from "./sections/OutboundCallInspectorSection";
 import { StartInspectorSection } from "./sections/StartInspectorSection";
 import { StateInspectorSection } from "./sections/StateInspectorSection";
 import { TransformInspectorSection } from "./sections/TransformInspectorSection";
@@ -573,6 +574,14 @@ const NodeInspector = ({
           onAgentWorkflowValidationToolChange={onAgentWorkflowValidationToolChange}
           onAgentWorkflowToolToggle={onAgentWorkflowToolToggle}
           onAgentMcpSseConfigChange={onAgentMcpSseConfigChange}
+        />
+      ) : null}
+
+      {kind === "outbound_call" ? (
+        <OutboundCallInspectorSection
+          nodeId={node.id}
+          parameters={parameters}
+          onParametersChange={onParametersChange}
         />
       ) : null}
 

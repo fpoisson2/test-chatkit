@@ -4130,6 +4130,38 @@ const WorkflowBuilderPage = () => {
     addNodeToGraph(newNode);
   }, [addNodeToGraph]);
 
+  const handleAddOutboundCallNode = useCallback(() => {
+    const slug = `outbound-call-${Date.now()}`;
+    const parameters: AgentParameters = {
+      to_number: "",
+      voice_workflow_id: null,
+      sip_account_id: null,
+      wait_for_completion: true,
+      metadata: {},
+    };
+    const displayName = humanizeSlug(slug);
+    const newNode: FlowNode = {
+      id: slug,
+      position: { x: 300, y: 240 },
+      data: {
+        slug,
+        kind: "outbound_call",
+        displayName,
+        label: displayName,
+        isEnabled: true,
+        agentKey: null,
+        parameters,
+        parametersText: stringifyAgentParameters(parameters),
+        parametersError: null,
+        isPreviewActive: false,
+        isPreviewDimmed: false,
+        metadata: {},
+      },
+      draggable: true,
+    } satisfies FlowNode;
+    addNodeToGraph(newNode);
+  }, [addNodeToGraph]);
+
   const handleAddConditionNode = useCallback(() => {
     const slug = `condition-${Date.now()}`;
     const parameters: AgentParameters = {};
@@ -6714,6 +6746,12 @@ const WorkflowBuilderPage = () => {
         kind: "voice_agent",
         shortLabel: "AV",
         onClick: handleAddVoiceAgentNode,
+      },
+      {
+        key: "outbound-call",
+        kind: "outbound_call",
+        shortLabel: "AS",
+        onClick: handleAddOutboundCallNode,
       },
       { key: "condition", kind: "condition", shortLabel: "C", onClick: handleAddConditionNode },
       { key: "parallel-split", kind: "parallel_split", shortLabel: "SP", onClick: handleAddParallelSplitNode },
