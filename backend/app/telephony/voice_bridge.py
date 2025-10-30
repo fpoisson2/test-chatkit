@@ -275,10 +275,13 @@ class TelephonyVoiceBridge:
 
         transcript_buffers: dict[str, list[str]] = {}
         last_response_id: str | None = None
+        agent_is_speaking = False  # Track if agent is currently speaking
+        user_speech_detected = False  # Track if we detected user speech
+        block_audio_send = False  # Block sending audio when user interrupts
 
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
-            nonlocal outbound_audio_bytes, error, last_response_id
+            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, block_audio_send
             try:
                 async for event in session:
                     if not should_continue():
@@ -290,13 +293,45 @@ class TelephonyVoiceBridge:
                         logger.error("Erreur Realtime API: %s", event.error)
                         break
 
-                    # Handle audio interruption - actively interrupt the model!
+                    # Check for input_audio_buffer.speech_started in raw events
+                    # This is the KEY event for detecting user interruption!
+                    event_type = type(event).__name__
+                    if event_type == "RealtimeRawModelEvent":
+                        raw_data = getattr(event, 'raw_event', None) or getattr(event, 'event', None)
+                        if raw_data and isinstance(raw_data, dict):
+                            event_subtype = raw_data.get('type', '')
+
+                            # User started speaking - INTERRUPT THE AGENT!
+                            if event_subtype == 'input_audio_buffer.speech_started':
+                                if agent_is_speaking:
+                                    logger.info("🛑 Utilisateur parle - interruption de l'agent!")
+                                    try:
+                                        await session.interrupt()
+                                    except Exception as e:
+                                        logger.warning("Erreur lors de session.interrupt(): %s", e)
+                                user_speech_detected = True
+                                continue
+
+                            # User stopped speaking
+                            if event_subtype == 'input_audio_buffer.speech_stopped':
+                                user_speech_detected = False
+                                continue
+
+                    # Track when agent starts speaking
+                    if isinstance(event, RealtimeAgentStartEvent):
+                        agent_is_speaking = True
+                        logger.debug("Agent commence à parler")
+                        continue
+
+                    # Track when agent stops speaking
+                    if isinstance(event, RealtimeAgentEndEvent):
+                        agent_is_speaking = False
+                        logger.debug("Agent arrête de parler")
+                        continue
+
+                    # Handle audio interruption (for logging)
                     if isinstance(event, RealtimeAudioInterrupted):
-                        logger.info("🛑 Interruption détectée - appel session.interrupt()")
-                        try:
-                            await session.interrupt()
-                        except Exception as e:
-                            logger.warning("Erreur lors de session.interrupt(): %s", e)
+                        logger.info("Audio interrompu confirmé par OpenAI")
                         continue
 
                     # Handle audio events (agent speaking) - send to phone
@@ -342,29 +377,6 @@ class TelephonyVoiceBridge:
                         output = event.output
                         logger.info("Outil MCP terminé: %s, résultat: %s", tool_name, output)
                         continue
-
-                    # Log only critical events for interruption debugging
-                    event_type = type(event).__name__
-                    if event_type == "RealtimeRawModelEvent":
-                        raw_data = getattr(event, 'raw_event', None) or getattr(event, 'event', None)
-                        if raw_data and isinstance(raw_data, dict):
-                            event_subtype = raw_data.get('type', 'unknown')
-
-                            # Only log critical interruption-related events
-                            critical_events = [
-                                'input_audio_buffer.speech_started',
-                                'input_audio_buffer.speech_stopped',
-                                'input_audio_buffer.committed',
-                                'response.created',
-                                'response.cancelled',  # This is the key interruption event!
-                                'response.done',
-                                'conversation.item.input_audio_transcription.completed',
-                            ]
-
-                            if event_subtype in critical_events:
-                                logger.info("🔴 ÉVÉNEMENT CRITIQUE: %s", event_subtype)
-                                # Log full details for these critical events
-                                logger.info("   Détails: %s", raw_data)
 
             except Exception as exc:
                 logger.exception("Erreur dans le flux d'événements SDK")
