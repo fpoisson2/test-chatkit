@@ -350,7 +350,7 @@ class TelephonyVoiceBridge:
                                             "interrupt_response": True,
                                             "threshold": 0.3,  # Plus sensible (0.0-1.0, défaut 0.5)
                                             "prefix_padding_ms": 100,  # Moins de délai avant détection
-                                            "silence_duration_ms": 300,  # Détecte la fin plus rapidement
+                                            "silence_duration_ms": 1000,  # Attendre 1 seconde de silence avant de déclarer la fin
                                         },
                                     }
                                 )
@@ -434,23 +434,28 @@ class TelephonyVoiceBridge:
                                     if event_subtype == 'input_audio_buffer.speech_stopped':
                                         logger.info("🎤 Utilisateur arrête de parler")
                                         user_speech_detected = False
+                                        # If agent is not speaking, unblock audio
+                                        if not agent_is_speaking:
+                                            block_audio_send = False
+                                            logger.info("→ Déblocage audio (agent ne parle pas)")
                                         continue
 
-                    # Track when agent starts speaking - unblock audio
+                    # Track when agent starts speaking
                     if isinstance(event, RealtimeAgentStartEvent):
                         agent_is_speaking = True
-                        # Only unblock audio if user is not currently speaking
-                        if not user_speech_detected:
-                            block_audio_send = False  # Allow audio again for new response
-                            logger.debug("Agent commence à parler - déblocage audio")
-                        else:
-                            logger.debug("Agent commence à parler mais user_speech_detected=True - audio reste bloqué")
+                        # Don't change block_audio_send here - let RealtimeAgentEndEvent unblock it
+                        logger.debug("Agent commence à parler (block_audio_send=%s)", block_audio_send)
                         continue
 
-                    # Track when agent stops speaking
+                    # Track when agent stops speaking - THIS is when we unblock audio
                     if isinstance(event, RealtimeAgentEndEvent):
                         agent_is_speaking = False
-                        logger.debug("Agent arrête de parler")
+                        # Only unblock audio if user is not currently speaking
+                        if not user_speech_detected:
+                            block_audio_send = False
+                            logger.debug("Agent arrête de parler - déblocage audio")
+                        else:
+                            logger.debug("Agent arrête de parler mais user parle encore - audio reste bloqué")
                         continue
 
                     # Handle audio interruption - BLOCK AUDIO IMMEDIATELY!
