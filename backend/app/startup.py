@@ -708,7 +708,13 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
     )
 
     async def _on_invite(dialog: Any, request: Any) -> None:
-        config = manager.active_config
+        # Récupérer le gestionnaire par défaut pour MultiSIPRegistrationManager
+        if isinstance(manager, MultiSIPRegistrationManager):
+            default_manager = manager.get_default_manager()
+            config = default_manager.active_config if default_manager else None
+        else:
+            config = manager.active_config
+
         media_host = (
             manager.contact_host
             or (config.contact_host if config else None)

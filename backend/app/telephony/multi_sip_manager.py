@@ -232,6 +232,11 @@ class MultiSIPRegistrationManager:
         """Retourne l'ID du compte SIP par défaut."""
         return self._default_account_id
 
+    @property
+    def contact_host(self) -> str | None:
+        """Retourne le contact_host global."""
+        return self._contact_host
+
     def has_accounts(self) -> bool:
         """Vérifie s'il y a au moins un compte SIP actif."""
         return len(self._managers) > 0
