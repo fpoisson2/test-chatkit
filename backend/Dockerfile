@@ -52,7 +52,7 @@ RUN cd /tmp \
     # Mettre à jour le cache des bibliothèques partagées
     && ldconfig \
     # Vérifier l'installation
-    && python3 -c "import pjsua2; print('PJSUA2 version:', pjsua2.Endpoint.libVersion().full)" \
+    && python3 -c "import pjsua2; ep = pjsua2.Endpoint(); ep.libCreate(); print('PJSUA2 version:', ep.libVersion().full); ep.libDestroy()" \
     # Cleanup
     && cd /tmp \
     && rm -rf /tmp/pjproject-${PJSIP_VERSION} /tmp/${PJSIP_VERSION}.tar.gz
