@@ -337,6 +337,8 @@ class TelephonyVoiceBridge:
                 logger.info("Turn detection déjà activé (session pré-initialisée)")
             # At 24kHz PCM16: 100ms = 24000 samples/sec * 0.1 sec * 2 bytes/sample = 4800 bytes
             MIN_AUDIO_BEFORE_VAD = 4800  # 100ms minimum before enabling VAD
+            # Track if we've sent response.create when phone became ready
+            response_create_sent_on_ready = False
 
             try:
                 async for packet in rtp_stream:
@@ -349,6 +351,34 @@ class TelephonyVoiceBridge:
 
                     if packet_count == 1:
                         logger.info("Premier paquet audio reçu: %d bytes PCM", len(pcm))
+
+                        # Si speak_first est activé et qu'on n'a pas encore envoyé response.create,
+                        # l'envoyer maintenant que le téléphone est prêt à recevoir l'audio
+                        if speak_first and not preinit_response_create_sent and not response_create_sent_on_ready:
+                            # Lancer une tâche async pour attendre un peu que le téléphone soit vraiment prêt
+                            # (le RTP server attend 150ms, on attend 200ms pour être sûr)
+                            async def send_response_create_when_ready():
+                                await asyncio.sleep(0.2)  # 200ms
+                                logger.info("📞 Téléphone prêt (200ms après premier paquet) - envoi de response.create pour speak_first")
+                                try:
+                                    from agents.realtime.model_inputs import (
+                                        RealtimeModelRawClientMessage,
+                                        RealtimeModelSendRawMessage,
+                                    )
+                                    await session._model.send_event(
+                                        RealtimeModelSendRawMessage(
+                                            message=RealtimeModelRawClientMessage(
+                                                type="response.create",
+                                                other_data={},
+                                            )
+                                        )
+                                    )
+                                    logger.info("✅ response.create envoyé - l'assistant va parler en premier")
+                                except Exception as exc:
+                                    logger.warning("Erreur lors de l'envoi de response.create: %s", exc)
+
+                            asyncio.create_task(send_response_create_when_ready())
+                            response_create_sent_on_ready = True
 
                     # Always send audio with commit=False - let turn_detection handle commits
                     await session.send_audio(pcm, commit=False)
@@ -831,29 +861,8 @@ class TelephonyVoiceBridge:
                 await session.__aenter__()
                 logger.info("Session SDK démarrée avec succès")
 
-            # Si speak_first est activé, envoyer un événement response.create pour que l'assistant parle en premier
-            # SAUF si response.create a déjà été envoyé pendant la pré-initialisation
-            if speak_first:
-                if preinit_response_create_sent:
-                    logger.info("speak_first activé mais response.create déjà pré-envoyé - audio déjà en génération")
-                else:
-                    logger.info("speak_first activé : envoi de response.create pour démarrer la conversation")
-                    try:
-                        from agents.realtime.model_inputs import (
-                            RealtimeModelRawClientMessage,
-                            RealtimeModelSendRawMessage,
-                        )
-                        await session._model.send_event(
-                            RealtimeModelSendRawMessage(
-                                message=RealtimeModelRawClientMessage(
-                                    type="response.create",
-                                    other_data={},
-                                )
-                            )
-                        )
-                        logger.info("Événement response.create envoyé avec succès")
-                    except Exception as e:
-                        logger.warning("Impossible d'envoyer response.create: %s", e)
+            # Note: Si speak_first est activé, response.create sera envoyé dans forward_audio()
+            # quand le premier paquet RTP sera reçu (téléphone prêt à recevoir l'audio)
 
             # Log available tools
             try:

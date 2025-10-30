@@ -1244,23 +1244,13 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                                             session.call_id,
                                         )
 
-                                        # Maintenant on peut envoyer response.create
-                                        from agents.realtime.model_inputs import (
-                                            RealtimeModelRawClientMessage,
-                                            RealtimeModelSendRawMessage,
-                                        )
-                                        await preinit_session._model.send_event(
-                                            RealtimeModelSendRawMessage(
-                                                message=RealtimeModelRawClientMessage(
-                                                    type="response.create",
-                                                    other_data={},
-                                                )
-                                            )
-                                        )
-                                        telephony_meta["preinit_response_create_sent"] = True
+                                        # NE PAS envoyer response.create ici car le RTP bridge n'est pas encore prêt
+                                        # L'audio généré maintenant n'aurait nulle part où aller
+                                        # voice_bridge.py l'enverra une fois que le téléphone sera prêt
+                                        telephony_meta["preinit_response_create_sent"] = False
                                         logger.info(
-                                            "✅ response.create pré-envoyé - audio en génération "
-                                            "(Call-ID=%s)",
+                                            "✅ Session pré-initialisée, response.create sera envoyé "
+                                            "une fois le téléphone prêt (Call-ID=%s)",
                                             session.call_id,
                                         )
                                 except Exception as exc:
