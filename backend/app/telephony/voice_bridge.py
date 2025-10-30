@@ -699,9 +699,11 @@ class TelephonyVoiceBridge:
                             response_watchdog_task.cancel()
                             logger.debug("✅ Watchdog annulé - agent parle vraiment")
 
+                        audio_event = event.audio
+                        pcm_data = audio_event.data
+                        logger.debug("🎵 RealtimeAudio reçu: %d bytes, bloqué=%s", len(pcm_data) if pcm_data else 0, block_audio_send_ref[0])
+
                         if not block_audio_send_ref[0]:
-                            audio_event = event.audio
-                            pcm_data = audio_event.data
                             if pcm_data:
                                 outbound_audio_bytes += len(pcm_data)
                                 # Send audio and wait until it's actually sent via RTP
@@ -713,7 +715,8 @@ class TelephonyVoiceBridge:
                                     event.content_index,
                                     pcm_data
                                 )
-                        # Audio blocked - user is interrupting (don't log to avoid spam)
+                        else:
+                            logger.debug("❌ Audio bloqué - pas envoyé à send_to_peer")
                         continue
 
                     # Handle audio end
