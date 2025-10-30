@@ -544,19 +544,22 @@ class TelephonyVoiceBridge:
                             # Debug: Log ALL history items to trace tool calls
                             item_id = getattr(item, "id", None)
 
+                            # Create a unique identifier for this item (even if id is None)
+                            # Use index in history + role + content_count as fallback
+                            item_unique_id = item_id if item_id else f"{idx}_{role}_{len(getattr(item, 'content', []))}"
+
                             # DEDUPLICATION: Skip items we've already processed (filters out replays)
-                            if item_id and item_id in processed_item_ids:
+                            if item_unique_id in processed_item_ids:
                                 continue  # Already processed this item
 
                             # Mark this item as processed
-                            if item_id:
-                                processed_item_ids.add(item_id)
+                            processed_item_ids.add(item_unique_id)
 
                             item_type = getattr(item, "type", None)
                             contents = getattr(item, "content", [])
                             content_count = len(contents) if contents else 0
-                            logger.info("📋 History item: role=%s, type=%s, id=%s, content_count=%d",
-                                       role, item_type, item_id, content_count)
+                            logger.info("📋 History item: role=%s, type=%s, id=%s, unique_id=%s, content_count=%d",
+                                       role, item_type, item_id, item_unique_id, content_count)
 
                             # DETECT TOOL CALLS: assistant message with content_count=0 indicates a tool call
                             if role == "assistant" and content_count == 0:
