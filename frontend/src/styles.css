@@ -384,6 +384,10 @@ button {
   padding-inline: var(--chatkit-sidebar-padding-x);
 }
 
+.chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__main {
+  padding-inline: 0;
+}
+
 .chatkit-layout--desktop .chatkit-sidebar--open {
   transform: none;
 }
