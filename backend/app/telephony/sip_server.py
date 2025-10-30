@@ -152,12 +152,41 @@ def _merge_voice_settings(
             return []
 
         # Chercher le premier bloc agent vocal dans le workflow pour ses paramètres
+        # Et aussi chercher le bloc start pour ring_timeout_seconds
         if workflow_definition is not None:
             steps = getattr(workflow_definition, "steps", [])
             logger.info(
                 "Recherche de bloc agent vocal dans le workflow (nombre de steps=%d)",
                 len(steps),
             )
+
+            # Premier passage : chercher ring_timeout_seconds dans le bloc start
+            for step in steps:
+                step_kind = getattr(step, "kind", "")
+                if step_kind == "start":
+                    params = getattr(step, "parameters", {})
+                    if isinstance(params, dict):
+                        # Le frontend stocke ce paramètre dans telephony.ring_timeout_seconds du bloc start
+                        if "telephony" in params and isinstance(params["telephony"], dict):
+                            raw_timeout = params["telephony"].get("ring_timeout_seconds")
+                            if raw_timeout is not None:
+                                try:
+                                    ring_timeout_seconds = float(raw_timeout)
+                                    if ring_timeout_seconds < 0:
+                                        ring_timeout_seconds = 0.0
+                                    logger.info(
+                                        "Délai de sonnerie trouvé dans bloc start : %.2f secondes",
+                                        ring_timeout_seconds,
+                                    )
+                                except (TypeError, ValueError):
+                                    logger.warning(
+                                        "ring_timeout_seconds invalide dans bloc start (%s), utilisation de 0.0",
+                                        raw_timeout,
+                                    )
+                                    ring_timeout_seconds = 0.0
+                    break
+
+            # Deuxième passage : chercher les paramètres du voice-agent
             for step in steps:
                 step_kind = getattr(step, "kind", "")
                 step_slug = getattr(step, "slug", "<inconnu>")
@@ -199,29 +228,30 @@ def _merge_voice_settings(
                                 step_slug,
                                 len(handoffs),
                             )
-                        # Extraire ring_timeout_seconds si présent
-                        # Le frontend stocke ce paramètre dans telephony.ring_timeout_seconds
-                        raw_timeout = None
+                        # Extraire ring_timeout_seconds si présent dans le voice-agent
+                        # (priorité sur le bloc start si présent)
+                        raw_timeout_agent = None
                         if "ring_timeout_seconds" in params:
-                            raw_timeout = params["ring_timeout_seconds"]
+                            raw_timeout_agent = params["ring_timeout_seconds"]
                         elif "telephony" in params and isinstance(params["telephony"], dict):
-                            raw_timeout = params["telephony"].get("ring_timeout_seconds")
+                            raw_timeout_agent = params["telephony"].get("ring_timeout_seconds")
 
-                        if raw_timeout is not None:
+                        if raw_timeout_agent is not None:
                             try:
-                                ring_timeout_seconds = float(raw_timeout)
+                                ring_timeout_seconds = float(raw_timeout_agent)
                                 if ring_timeout_seconds < 0:
                                     ring_timeout_seconds = 0.0
                                 logger.info(
-                                    "Délai de sonnerie configuré : %.2f secondes",
+                                    "Délai de sonnerie trouvé dans bloc %s (écrase bloc start) : %.2f secondes",
+                                    step_slug,
                                     ring_timeout_seconds,
                                 )
                             except (TypeError, ValueError):
                                 logger.warning(
-                                    "ring_timeout_seconds invalide (%s), utilisation de 0.0",
-                                    raw_timeout,
+                                    "ring_timeout_seconds invalide dans bloc %s (%s), utilisation de la valeur du bloc start",
+                                    step_slug,
+                                    raw_timeout_agent,
                                 )
-                                ring_timeout_seconds = 0.0
                         logger.info(
                             "Paramètres voix extraits du bloc %s (kind=%s) : "
                             "model=%s, voice=%s, provider=%s, tools=%d, handoffs=%d, ring_timeout=%.2fs",
