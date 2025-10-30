@@ -947,6 +947,11 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
         if session:
             telephony_meta = session.metadata.get("telephony") or {}
             ring_timeout_seconds = telephony_meta.get("ring_timeout_seconds", 0.0)
+            logger.info(
+                "Ring timeout extrait des métadonnées (Call-ID=%s): %.2f secondes",
+                call_id or "inconnu",
+                ring_timeout_seconds,
+            )
 
         # Maintenant envoyer le 200 OK
         try:

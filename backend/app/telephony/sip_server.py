@@ -200,8 +200,14 @@ def _merge_voice_settings(
                                 len(handoffs),
                             )
                         # Extraire ring_timeout_seconds si présent
+                        # Le frontend stocke ce paramètre dans telephony.ring_timeout_seconds
+                        raw_timeout = None
                         if "ring_timeout_seconds" in params:
                             raw_timeout = params["ring_timeout_seconds"]
+                        elif "telephony" in params and isinstance(params["telephony"], dict):
+                            raw_timeout = params["telephony"].get("ring_timeout_seconds")
+
+                        if raw_timeout is not None:
                             try:
                                 ring_timeout_seconds = float(raw_timeout)
                                 if ring_timeout_seconds < 0:
