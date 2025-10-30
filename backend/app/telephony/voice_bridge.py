@@ -26,10 +26,65 @@ from agents.realtime.events import (
     RealtimeToolEnd,
     RealtimeToolStart,
 )
+from agents.realtime.model import RealtimePlaybackTracker, RealtimePlaybackState
 
 from ..config import Settings, get_settings
 
 logger = logging.getLogger("chatkit.telephony.voice_bridge")
+
+
+class TelephonyPlaybackTracker(RealtimePlaybackTracker):
+    """Tracks audio playback progress for telephony to enable proper interruption handling.
+
+    In telephony scenarios, audio is sent via RTP packets with delays (20ms between packets).
+    We need to tell OpenAI exactly when audio has been played so it can handle interruptions correctly.
+    """
+
+    def __init__(self) -> None:
+        self._current_item_id: str | None = None
+        self._current_item_content_index: int | None = None
+        self._elapsed_ms: float = 0.0
+        self._audio_format: Any = None
+        self._lock = asyncio.Lock()
+
+    def on_play_bytes(self, item_id: str, item_content_index: int, audio_bytes: bytes) -> None:
+        """Called when we have actually sent audio bytes via RTP."""
+        if self._audio_format is None:
+            logger.warning("TelephonyPlaybackTracker: audio format not set yet")
+            return
+
+        # Calculate duration from bytes based on audio format
+        # PCM16 at 24kHz: 2 bytes per sample, 24000 samples per second
+        # So: bytes / 2 / 24000 * 1000 = ms
+        sample_rate = getattr(self._audio_format, 'rate', 24000)
+        bytes_per_sample = 2  # PCM16 is 16-bit = 2 bytes
+        ms = (len(audio_bytes) / bytes_per_sample / sample_rate) * 1000
+
+        self.on_play_ms(item_id, item_content_index, ms)
+
+    def on_play_ms(self, item_id: str, item_content_index: int, ms: float) -> None:
+        """Called when we have actually sent audio (measured in milliseconds)."""
+        self._current_item_id = item_id
+        self._current_item_content_index = item_content_index
+        self._elapsed_ms += ms
+
+    def on_interrupted(self) -> None:
+        """Called by OpenAI when audio playback has been interrupted."""
+        logger.info("TelephonyPlaybackTracker: playback interrupted, resetting state")
+        self._elapsed_ms = 0.0
+
+    def set_audio_format(self, format: Any) -> None:
+        """Called by OpenAI to set the audio format."""
+        self._audio_format = format
+        logger.debug("TelephonyPlaybackTracker: audio format set to %s", format)
+
+    def get_state(self) -> RealtimePlaybackState:
+        """Called by OpenAI to get current playback state."""
+        return {
+            "current_item_id": self._current_item_id,
+            "current_item_content_index": self._current_item_content_index,
+            "elapsed_ms": self._elapsed_ms,
+        }
 
 
 class VoiceBridgeError(RuntimeError):
@@ -231,6 +286,9 @@ class TelephonyVoiceBridge:
         session: Any | None = None
         stop_event = asyncio.Event()
 
+        # Create playback tracker for proper interruption handling
+        playback_tracker = TelephonyPlaybackTracker()
+
         def should_continue() -> bool:
             if stop_event.is_set():
                 return False
@@ -259,8 +317,9 @@ class TelephonyVoiceBridge:
                         continue
                     inbound_audio_bytes += len(pcm)
 
-                    # Send audio continuously - semantic_vad in client_secret handles detection
-                    await session.send_audio(pcm, commit=False)
+                    # Send audio continuously with commit=True so semantic_vad can detect speech!
+                    # commit=False would just buffer without VAD analysis
+                    await session.send_audio(pcm, commit=True)
 
                     if not should_continue():
                         logger.info("forward_audio: arrêt demandé par should_continue()")
@@ -278,7 +337,7 @@ class TelephonyVoiceBridge:
 
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, block_audio_send
+            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, block_audio_send, playback_tracker
             try:
                 async for event in session:
                     if not should_continue():
@@ -345,7 +404,15 @@ class TelephonyVoiceBridge:
                             pcm_data = audio_event.data
                             if pcm_data:
                                 outbound_audio_bytes += len(pcm_data)
+                                # Send audio and wait until it's actually sent via RTP
                                 await send_to_peer(pcm_data)
+                                # Now update the playback tracker so OpenAI knows when audio was played
+                                # This is critical for proper interruption handling!
+                                playback_tracker.on_play_bytes(
+                                    event.item_id,
+                                    event.content_index,
+                                    pcm_data
+                                )
                         # else: drop audio, user is interrupting
                         continue
 
@@ -406,6 +473,7 @@ class TelephonyVoiceBridge:
             model_config: dict[str, Any] = {
                 "api_key": client_secret,
                 "initial_model_settings": model_settings,
+                "playback_tracker": playback_tracker,  # Track audio playback for interruptions
             }
 
             # Create session using the SDK runner (this is what enables tool calls!)
