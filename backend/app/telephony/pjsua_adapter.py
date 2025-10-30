@@ -233,9 +233,9 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
     def __init__(self, adapter: PJSUAAdapter, call_id: int | None = None, acc: Any = None):
         if PJSUA_AVAILABLE:
             if call_id is not None:
-                super().__init__(acc or adapter.account, call_id)
+                super().__init__(acc or adapter._account, call_id)
             else:
-                super().__init__(acc or adapter.account)
+                super().__init__(acc or adapter._account)
         self.adapter = adapter
         self._media_active = False
         self._audio_port: AudioMediaPort | None = None
