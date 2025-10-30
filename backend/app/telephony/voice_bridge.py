@@ -353,32 +353,27 @@ class TelephonyVoiceBridge:
                         logger.info("Premier paquet audio reçu: %d bytes PCM", len(pcm))
 
                         # Si speak_first est activé et qu'on n'a pas encore envoyé response.create,
-                        # l'envoyer maintenant que le téléphone est prêt à recevoir l'audio
+                        # l'envoyer immédiatement - le RTP server attendra 150ms avant de flusher le buffer
+                        # et OpenAI prendra 200-400ms pour générer l'audio, donc le téléphone sera prêt à temps
                         if speak_first and not preinit_response_create_sent and not response_create_sent_on_ready:
-                            # Lancer une tâche async pour attendre un peu que le téléphone soit vraiment prêt
-                            # (le RTP server attend 150ms, on attend 200ms pour être sûr)
-                            async def send_response_create_when_ready():
-                                await asyncio.sleep(0.2)  # 200ms
-                                logger.info("📞 Téléphone prêt (200ms après premier paquet) - envoi de response.create pour speak_first")
-                                try:
-                                    from agents.realtime.model_inputs import (
-                                        RealtimeModelRawClientMessage,
-                                        RealtimeModelSendRawMessage,
-                                    )
-                                    await session._model.send_event(
-                                        RealtimeModelSendRawMessage(
-                                            message=RealtimeModelRawClientMessage(
-                                                type="response.create",
-                                                other_data={},
-                                            )
+                            logger.info("📞 Premier paquet RTP reçu - envoi immédiat de response.create pour speak_first")
+                            try:
+                                from agents.realtime.model_inputs import (
+                                    RealtimeModelRawClientMessage,
+                                    RealtimeModelSendRawMessage,
+                                )
+                                await session._model.send_event(
+                                    RealtimeModelSendRawMessage(
+                                        message=RealtimeModelRawClientMessage(
+                                            type="response.create",
+                                            other_data={},
                                         )
                                     )
-                                    logger.info("✅ response.create envoyé - l'assistant va parler en premier")
-                                except Exception as exc:
-                                    logger.warning("Erreur lors de l'envoi de response.create: %s", exc)
-
-                            asyncio.create_task(send_response_create_when_ready())
-                            response_create_sent_on_ready = True
+                                )
+                                response_create_sent_on_ready = True
+                                logger.info("✅ response.create envoyé - l'assistant va parler en premier")
+                            except Exception as exc:
+                                logger.warning("Erreur lors de l'envoi de response.create: %s", exc)
 
                     # Always send audio with commit=False - let turn_detection handle commits
                     await session.send_audio(pcm, commit=False)
