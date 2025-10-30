@@ -40,12 +40,13 @@ class TelephonyPlaybackTracker(RealtimePlaybackTracker):
     We need to tell OpenAI exactly when audio has been played so it can handle interruptions correctly.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, on_interrupt_callback: callable | None = None) -> None:
         self._current_item_id: str | None = None
         self._current_item_content_index: int | None = None
         self._elapsed_ms: float = 0.0
         self._audio_format: Any = None
         self._lock = asyncio.Lock()
+        self._on_interrupt_callback = on_interrupt_callback
 
     def on_play_bytes(self, item_id: str, item_content_index: int, audio_bytes: bytes) -> None:
         """Called when we have actually sent audio bytes via RTP."""
@@ -72,6 +73,9 @@ class TelephonyPlaybackTracker(RealtimePlaybackTracker):
         """Called by OpenAI when audio playback has been interrupted."""
         logger.info("TelephonyPlaybackTracker: playback interrupted, resetting state")
         self._elapsed_ms = 0.0
+        # Call the callback to block audio immediately
+        if self._on_interrupt_callback:
+            self._on_interrupt_callback()
 
     def set_audio_format(self, format: Any) -> None:
         """Called by OpenAI to set the audio format."""
@@ -286,8 +290,16 @@ class TelephonyVoiceBridge:
         session: Any | None = None
         stop_event = asyncio.Event()
 
+        # Use a list to create a mutable reference for block_audio_send
+        block_audio_send_ref = [False]
+
+        def on_playback_interrupted():
+            """Called when SDK detects audio interruption."""
+            block_audio_send_ref[0] = True
+            logger.info("🛑 Audio bloqué via playback tracker (interruption détectée par SDK)")
+
         # Create playback tracker for proper interruption handling
-        playback_tracker = TelephonyPlaybackTracker()
+        playback_tracker = TelephonyPlaybackTracker(on_interrupt_callback=on_playback_interrupted)
 
         def should_continue() -> bool:
             if stop_event.is_set():
@@ -370,11 +382,11 @@ class TelephonyVoiceBridge:
         last_response_id: str | None = None
         agent_is_speaking = False  # Track if agent is currently speaking
         user_speech_detected = False  # Track if we detected user speech
-        block_audio_send = False  # Block sending audio when user interrupts
+        # block_audio_send is now block_audio_send_ref[0]
 
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, block_audio_send, playback_tracker
+            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker
             try:
                 async for event in session:
                     if not should_continue():
@@ -415,7 +427,7 @@ class TelephonyVoiceBridge:
                                         logger.info("🎤 Utilisateur commence à parler")
                                         # ALWAYS block audio when user speaks, even if agent just finished
                                         # (there might be audio packets still in the pipeline)
-                                        block_audio_send = True
+                                        block_audio_send_ref[0] = True
                                         if agent_is_speaking:
                                             logger.info("🛑 Interruption de l'agent (agent parlait)!")
                                             try:
@@ -433,7 +445,7 @@ class TelephonyVoiceBridge:
                                         user_speech_detected = False
                                         # If agent is not speaking, unblock audio
                                         if not agent_is_speaking:
-                                            block_audio_send = False
+                                            block_audio_send_ref[0] = False
                                             logger.info("→ Déblocage audio (agent ne parle pas)")
                                         continue
 
@@ -441,7 +453,7 @@ class TelephonyVoiceBridge:
                     if isinstance(event, RealtimeAgentStartEvent):
                         agent_is_speaking = True
                         # Don't change block_audio_send here - let RealtimeAgentEndEvent unblock it
-                        logger.debug("Agent commence à parler (block_audio_send=%s)", block_audio_send)
+                        logger.debug("Agent commence à parler (block_audio_send=%s)", block_audio_send_ref[0])
                         continue
 
                     # Track when agent stops speaking - THIS is when we unblock audio
@@ -449,7 +461,7 @@ class TelephonyVoiceBridge:
                         agent_is_speaking = False
                         # Only unblock audio if user is not currently speaking
                         if not user_speech_detected:
-                            block_audio_send = False
+                            block_audio_send_ref[0] = False
                             logger.debug("Agent arrête de parler - déblocage audio")
                         else:
                             logger.debug("Agent arrête de parler mais user parle encore - audio reste bloqué")
@@ -458,7 +470,7 @@ class TelephonyVoiceBridge:
                     # Handle audio interruption - BLOCK AUDIO IMMEDIATELY!
                     if isinstance(event, RealtimeAudioInterrupted):
                         logger.info("🛑 Audio interrompu confirmé par OpenAI - blocage audio")
-                        block_audio_send = True
+                        block_audio_send_ref[0] = True
                         # Try to cancel the current response generation
                         # (may fail if response already completed, which is OK)
                         try:
@@ -476,7 +488,7 @@ class TelephonyVoiceBridge:
 
                     # Handle audio events (agent speaking) - only send if not blocked
                     if isinstance(event, RealtimeAudio):
-                        if not block_audio_send:
+                        if not block_audio_send_ref[0]:
                             audio_event = event.audio
                             pcm_data = audio_event.data
                             if pcm_data:
