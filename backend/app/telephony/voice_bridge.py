@@ -618,11 +618,23 @@ class TelephonyVoiceBridge:
                             logger.info("📋 History item: role=%s, type=%s, id=%s, unique_id=%s, content_count=%d",
                                        role, item_type, item_id, item_unique_id, content_count)
 
-                            # DETECT TOOL CALLS: assistant message with content_count=0 indicates a tool call
-                            # (This is for tracking only - actual response.create is sent via real-time events)
-                            if role == "assistant" and content_count == 0:
+                            # DETECT TOOL CALLS: Check if there are actual function_call or tool_call contents
+                            # Don't just rely on content_count=0, verify there's a real tool call
+                            has_tool_call_content = False
+                            if contents:
+                                for content in contents:
+                                    content_type = getattr(content, "type", None)
+                                    if content_type in ("function_call", "tool_call", "function_call_output"):
+                                        has_tool_call_content = True
+                                        break
+
+                            # Only detect tool call if:
+                            # 1. It's an assistant message AND
+                            # 2. Either has tool call content OR is type="function_call"
+                            if role == "assistant" and (has_tool_call_content or item_type == "function_call"):
                                 tool_call_detected = True
-                                logger.debug("🔧 Tool call détecté dans l'historique (assistant message avec content_count=0)")
+                                logger.debug("🔧 Tool call détecté dans l'historique (type=%s, has_tool_content=%s)",
+                                           item_type, has_tool_call_content)
 
                             # Inspect content types for tool-related data
                             if contents:
