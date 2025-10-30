@@ -42,6 +42,7 @@ class RtpServer:
         self._timestamp = 0
         self._ssrc = config.ssrc or int(time.time() * 1000) & 0xFFFFFFFF
         self._remote_addr: tuple[str, int] | None = None
+        self._audio_buffer: list[bytes] = []  # Buffer pour audio pré-généré
         if config.remote_host and config.remote_port:
             self._remote_addr = (config.remote_host, config.remote_port)
 
@@ -113,6 +114,8 @@ class RtpServer:
             logger.info(
                 "Adresse distante RTP découverte : %s:%d", addr[0], addr[1]
             )
+            # Flush l'audio qui a été bufferisé pendant la découverte
+            asyncio.create_task(self._flush_audio_buffer())
 
     async def send_audio(self, pcm_data: bytes) -> None:
         """Envoie de l'audio PCM16 au peer SIP.
@@ -127,7 +130,9 @@ class RtpServer:
             logger.warning("RTP send_audio: transport non disponible")
             return
         if not self._remote_addr:
-            logger.warning("RTP send_audio: adresse distante inconnue")
+            # Bufferiser l'audio en attendant la découverte de l'adresse distante
+            logger.debug("RTP send_audio: adresse distante inconnue, bufferisation de %d octets", len(pcm_data))
+            self._audio_buffer.append(pcm_data)
             return
 
         # Convertir PCM16 en codec de sortie (PCMU par défaut)
@@ -166,6 +171,72 @@ class RtpServer:
                     await asyncio.sleep(0.02)
             except Exception as exc:
                 logger.error("Erreur lors de l'envoi RTP paquet %d/%d : %s", i+1, num_packets, exc)
+
+    async def _flush_audio_buffer(self) -> None:
+        """Envoie tout l'audio bufferisé vers le peer distant."""
+        if not self._audio_buffer:
+            return
+
+        buffered_count = len(self._audio_buffer)
+        total_bytes = sum(len(chunk) for chunk in self._audio_buffer)
+        logger.info(
+            "🔊 Flush du buffer audio: %d chunks (%d octets total) vers %s:%d",
+            buffered_count,
+            total_bytes,
+            self._remote_addr[0] if self._remote_addr else "unknown",
+            self._remote_addr[1] if self._remote_addr else 0,
+        )
+
+        # Envoyer chaque chunk bufferisé
+        for pcm_data in self._audio_buffer:
+            await self.send_audio(pcm_data)
+
+        # Vider le buffer
+        self._audio_buffer.clear()
+
+    async def send_silence_packet(self, count: int = 5) -> None:
+        """Envoie des paquets de silence pour accélérer la découverte de l'adresse distante.
+
+        Doit être appelé immédiatement après l'envoi du 200 OK pour forcer le peer
+        distant à commencer à envoyer des paquets RTP, ce qui déclenche la découverte.
+
+        Args:
+            count: Nombre de paquets de silence à envoyer (défaut: 5)
+        """
+        if not self._running or not self._transport:
+            return
+
+        # Si on a déjà découvert l'adresse distante réelle, pas besoin d'envoyer
+        if self._remote_addr:
+            logger.debug("send_silence_packet: adresse distante déjà découverte, skip")
+            return
+
+        # Utiliser l'adresse du SDP si disponible
+        if self._config.remote_host and self._config.remote_port:
+            target_addr = (self._config.remote_host, self._config.remote_port)
+        else:
+            # Pas d'adresse distante connue, on ne peut pas envoyer
+            logger.debug("send_silence_packet: pas d'adresse distante configurée dans SDP")
+            return
+
+        # Créer un paquet de silence PCMU (160 octets = 20ms à 8kHz)
+        # En PCMU, le silence est représenté par la valeur 0xFF (μ-law zero)
+        silence_payload = b"\xff" * 160
+
+        logger.info("📡 Envoi de %d paquets de silence vers %s:%d pour accélérer la découverte RTP", count, target_addr[0], target_addr[1])
+
+        for i in range(count):
+            # Construire et envoyer un paquet RTP de silence
+            rtp_packet = self._build_rtp_packet(silence_payload)
+
+            try:
+                self._transport.sendto(rtp_packet, target_addr)
+            except Exception as exc:
+                logger.debug("Erreur lors de l'envoi du paquet de silence %d/%d : %s", i+1, count, exc)
+
+            # Petit délai entre les paquets (20ms comme le timing audio normal)
+            if i < count - 1 and self._remote_addr is None:
+                await asyncio.sleep(0.02)
 
     def _encode_audio(self, pcm_data: bytes) -> bytes:
         """Encode le PCM16 dans le codec de sortie."""

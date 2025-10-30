@@ -886,10 +886,50 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 )
             return
 
+        # Parser le SDP de l'INVITE pour extraire l'adresse RTP distante
+        remote_rtp_host: str | None = None
+        remote_rtp_port: int | None = None
+
+        try:
+            from app.telephony.invite_handler import (
+                _parse_audio_media_line,
+                _parse_connection_address,
+            )
+
+            payload = request.payload
+            if isinstance(payload, bytes):
+                payload_text = payload.decode("utf-8", errors="ignore")
+            elif isinstance(payload, str):
+                payload_text = payload
+            else:
+                payload_text = str(payload)
+
+            sdp_lines = [
+                line.strip()
+                for line in payload_text.replace("\r\n", "\n").replace("\r", "\n").splitlines()
+                if line.strip()
+            ]
+
+            remote_rtp_host = _parse_connection_address(sdp_lines)
+            audio_media = _parse_audio_media_line(sdp_lines)
+            if audio_media:
+                remote_rtp_port, _ = audio_media
+
+            if remote_rtp_host and remote_rtp_port:
+                logger.info(
+                    "Adresse RTP distante extraite du SDP : %s:%d",
+                    remote_rtp_host,
+                    remote_rtp_port,
+                )
+        except Exception as exc:
+            logger.debug("Impossible d'extraire l'adresse RTP distante du SDP : %s", exc)
+
         # Créer et démarrer le serveur RTP
         rtp_config = RtpServerConfig(
             local_host=media_host,
             local_port=int(media_port) if media_port else 0,
+            remote_host=remote_rtp_host,
+            remote_port=remote_rtp_port,
             payload_type=0,  # PCMU
             output_codec="pcmu",
         )
@@ -1218,6 +1258,8 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 contact_uri=contact_uri,
                 ring_timeout_seconds=ring_timeout_seconds,
             )
+            # Envoyer un paquet de silence immédiatement pour accélérer la découverte RTP
+            await rtp_server.send_silence_packet()
         except InviteHandlingError as exc:
             logger.warning("Traitement de l'INVITE interrompu : %s", exc)
             if session_init_task:

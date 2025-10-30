@@ -104,6 +104,18 @@ def _parse_audio_media_line(sdp_lines: Iterable[str]) -> tuple[int, list[int]] |
     return None
 
 
+def _parse_connection_address(sdp_lines: Iterable[str]) -> str | None:
+    """Extrait l'adresse IP de connexion depuis les lignes SDP (c=IN IP4 x.x.x.x)."""
+    for line in sdp_lines:
+        if not line.startswith("c="):
+            continue
+        # Format: c=IN IP4 192.168.1.100
+        parts = line.split()
+        if len(parts) >= 3 and parts[1].upper() in ("IP4", "IP6"):
+            return parts[2]
+    return None
+
+
 def _build_sdp_answer(
     *,
     connection_address: str,
