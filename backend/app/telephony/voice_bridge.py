@@ -387,6 +387,12 @@ class TelephonyVoiceBridge:
 
                     # Handle error events
                     if isinstance(event, RealtimeError):
+                        error_code = getattr(event.error, 'code', None)
+                        # Ignore "response_cancel_not_active" - it's OK if there's no active response
+                        if error_code == 'response_cancel_not_active':
+                            logger.debug("response.cancel ignoré (pas de réponse active): %s", event.error)
+                            continue
+                        # For other errors, fail the session
                         error = VoiceBridgeError(str(event.error))
                         logger.error("Erreur Realtime API: %s", event.error)
                         break
@@ -419,6 +425,8 @@ class TelephonyVoiceBridge:
                                 logger.info("🎤 Utilisateur arrête de parler")
                                 user_speech_detected = False
                                 continue
+                        else:
+                            logger.debug(f"⚠️ RealtimeRawModelEvent sans raw_data détectable")
 
                     # Track when agent starts speaking - unblock audio
                     if isinstance(event, RealtimeAgentStartEvent):
