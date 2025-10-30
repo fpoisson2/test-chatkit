@@ -906,14 +906,23 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 payload_text = str(payload)
 
             logger.info("📋 Parsing SDP pour extraire l'adresse RTP distante")
+            logger.debug("SDP brut (100 premiers caractères): %s", payload_text[:100])
 
-            sdp_lines = [
-                line.strip()
-                for line in payload_text.replace("\r\n", "\n").replace("\r", "\n").splitlines()
-                if line.strip()
-            ]
+            # Le SDP peut être sur une seule ligne ou sur plusieurs lignes séparées par \r\n
+            # On essaie d'abord le split normal, puis on force un split si tout est collé
+            normalized = payload_text.replace("\r\n", "\n").replace("\r", "\n")
+            sdp_lines = [line.strip() for line in normalized.splitlines() if line.strip()]
 
-            logger.debug("SDP lines: %s", sdp_lines[:10])  # Log first 10 lines
+            # Si on n'a qu'une seule ligne très longue, c'est que le SDP est mal formaté
+            # On force un split en cherchant les patterns SDP standard (v=, o=, s=, c=, t=, m=, a=)
+            if len(sdp_lines) == 1 and len(sdp_lines[0]) > 50:
+                logger.debug("SDP sur une seule ligne détecté, split forcé")
+                import re
+                # Split sur les patterns SDP standard
+                sdp_lines = [s.strip() for s in re.split(r'(?=[vosctma]=)', sdp_lines[0]) if s.strip()]
+
+            logger.debug("SDP lines après split: %d lignes", len(sdp_lines))
+            logger.debug("Premières lignes SDP: %s", sdp_lines[:5])
 
             remote_rtp_host = _parse_connection_address(sdp_lines)
             logger.info("🔍 Connection address from SDP: %s", remote_rtp_host)
