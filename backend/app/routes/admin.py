@@ -388,7 +388,6 @@ async def list_sip_accounts_availability(
         # Chercher si ce compte est déjà associé à un workflow
         assigned_definition = session.scalar(
             select(WorkflowDefinition)
-            .join(Workflow)
             .where(
                 WorkflowDefinition.sip_account_id == account.id,
                 WorkflowDefinition.is_active == True,
@@ -401,6 +400,11 @@ async def list_sip_accounts_availability(
                 workflow_id is not None
                 and assigned_definition.workflow_id == workflow_id
             )
+
+            # Récupérer le slug du workflow
+            workflow = session.get(Workflow, assigned_definition.workflow_id)
+            workflow_slug = workflow.slug if workflow else None
+
             result.append(
                 SipAccountAvailability(
                     id=account.id,
@@ -408,11 +412,7 @@ async def list_sip_accounts_availability(
                     is_active=account.is_active,
                     is_available=is_available,
                     assigned_workflow_id=assigned_definition.workflow_id,
-                    assigned_workflow_slug=session.scalar(
-                        select(Workflow.slug).where(
-                            Workflow.id == assigned_definition.workflow_id
-                        )
-                    ),
+                    assigned_workflow_slug=workflow_slug,
                 )
             )
         else:
