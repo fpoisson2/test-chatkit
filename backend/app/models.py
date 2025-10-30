@@ -669,6 +669,76 @@ class JsonChunk(Base):
     )
 
 
+class OutboundCall(Base):
+    """Enregistrement d'un appel sortant."""
+
+    __tablename__ = "outbound_calls"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    call_sid: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True
+    )
+
+    # Configuration de l'appel
+    to_number: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    from_number: Mapped[str] = mapped_column(String(32), nullable=False)
+    workflow_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("workflow_definitions.id"), nullable=False
+    )
+    sip_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("sip_accounts.id"), nullable=False
+    )
+
+    # Workflow context (quel workflow a déclenché cet appel)
+    triggered_by_workflow_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("workflow_definitions.id"), nullable=True
+    )
+    triggered_by_session_id: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    trigger_node_slug: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    # États
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="queued", index=True
+    )
+
+    # Timestamps
+    queued_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.UTC),
+    )
+    initiated_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    answered_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ended_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Métriques
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    conversation_duration: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Erreurs
+    failure_reason: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    sip_response_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Metadata
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", PortableJSONB(), nullable=False, default=dict
+    )
+
+    # Relations
+    workflow: Mapped[WorkflowDefinition] = relationship(
+        "WorkflowDefinition", foreign_keys=[workflow_id]
+    )
+    sip_account: Mapped[SipAccount] = relationship("SipAccount")
+
+
 Index("ix_json_documents_metadata", JsonDocument.metadata_json, postgresql_using="gin")
 Index("ix_json_chunks_metadata", JsonChunk.metadata_json, postgresql_using="gin")
 Index(

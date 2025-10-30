@@ -64,6 +64,14 @@ from .telephony.sip_server import (
     resolve_workflow_for_phone_number,
 )
 from .telephony.voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
+# PJSUA imports
+try:
+    from .telephony.pjsua_adapter import PJSUAAdapter, PJSUA_AVAILABLE
+    from .telephony.pjsua_audio_bridge import create_pjsua_audio_bridge
+except ImportError:
+    PJSUA_AVAILABLE = False
+    PJSUAAdapter = None  # type: ignore
+    create_pjsua_audio_bridge = None  # type: ignore
 from .vector_store import (
     WORKFLOW_VECTOR_STORE_DESCRIPTION,
     WORKFLOW_VECTOR_STORE_METADATA,
@@ -74,6 +82,10 @@ from .vector_store import (
 from .workflows.service import WorkflowService
 
 logger = logging.getLogger("chatkit.server")
+
+# Configuration: utiliser PJSUA au lieu d'aiosip pour SIP/RTP
+# TODO: Déplacer vers settings une fois la migration terminée
+USE_PJSUA = PJSUA_AVAILABLE  # Utiliser PJSUA si disponible
 
 for noisy_logger in (
     "aiosip",
@@ -2367,6 +2379,226 @@ def _ensure_protected_vector_store() -> None:
         session.commit()
 
 
+def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
+    """Construit le handler pour les appels entrants PJSUA."""
+
+    async def _handle_pjsua_incoming_call(call: Any, call_info: Any) -> None:
+        """Gère un appel entrant PJSUA."""
+        from .telephony.pjsua_audio_bridge import create_pjsua_audio_bridge
+
+        pjsua_adapter: PJSUAAdapter = app.state.pjsua_adapter
+        call_id = str(uuid.uuid4())
+
+        logger.info(
+            "Appel PJSUA entrant: call_id=%s, remote_uri=%s",
+            call_id,
+            call_info.remoteUri if hasattr(call_info, 'remoteUri') else '<unknown>',
+        )
+
+        # Extraire le numéro appelant depuis l'URI SIP
+        # Format: sip:+33612345678@domain ou "Display Name" <sip:+33612345678@domain>
+        remote_uri = call_info.remoteUri if hasattr(call_info, 'remoteUri') else ""
+        incoming_number = None
+
+        # Parser l'URI SIP pour extraire le numéro
+        import re
+        match = re.search(r"sip:([^@>;]+)@", remote_uri, flags=re.IGNORECASE)
+        if match:
+            incoming_number = match.group(1)
+            logger.info("Numéro entrant extrait: %s", incoming_number)
+
+        try:
+            # Résoudre le workflow
+            with SessionLocal() as db_session:
+                workflow_service = WorkflowService(db_session)
+                try:
+                    context = resolve_workflow_for_phone_number(
+                        workflow_service,
+                        phone_number=incoming_number or "",
+                        session=db_session,
+                        sip_account_id=None,  # TODO: extraire depuis call_info
+                    )
+                except TelephonyRouteSelectionError as exc:
+                    logger.warning(
+                        "Aucune route téléphonie pour l'appel PJSUA (call_id=%s, numéro=%s): %s",
+                        call_id,
+                        incoming_number,
+                        exc,
+                    )
+                    # Rejeter l'appel
+                    await pjsua_adapter.hangup_call(call)
+                    return
+                except Exception as exc:
+                    logger.exception(
+                        "Erreur résolution workflow PJSUA (call_id=%s): %s",
+                        call_id,
+                        exc,
+                    )
+                    await pjsua_adapter.hangup_call(call)
+                    return
+
+                voice_model = context.voice_model
+                instructions = context.voice_instructions
+                voice_name = context.voice_voice
+                voice_provider_id = context.voice_provider_id
+                voice_provider_slug = context.voice_provider_slug
+                voice_tools = context.voice_tools or []
+                voice_handoffs = context.voice_handoffs or []
+                speak_first = context.speak_first
+                ring_timeout_seconds = context.ring_timeout_seconds
+
+            # Envoyer 180 Ringing
+            logger.info("Envoi 180 Ringing (call_id=%s)", call_id)
+            await pjsua_adapter.answer_call(call, code=180)
+
+            # Attendre le délai configuré avant de répondre
+            if ring_timeout_seconds > 0:
+                logger.info(
+                    "Attente de %.2f secondes avant de répondre (call_id=%s)",
+                    ring_timeout_seconds,
+                    call_id,
+                )
+                await asyncio.sleep(ring_timeout_seconds)
+
+            # Répondre à l'appel (200 OK)
+            logger.info("Réponse à l'appel PJSUA (call_id=%s)", call_id)
+            await pjsua_adapter.answer_call(call, code=200)
+
+            # Attendre que le média soit actif
+            # TODO: Implémenter une vraie attente conditionnelle
+            await asyncio.sleep(0.5)  # 500ms pour que le RTP se stabilise
+
+            # Créer l'audio bridge
+            logger.info("Création de l'audio bridge PJSUA (call_id=%s)", call_id)
+            rtp_stream, send_to_peer, clear_queue = await create_pjsua_audio_bridge(call)
+
+            # Ouvrir la session vocale
+            logger.info("Ouverture session vocale PJSUA (call_id=%s)", call_id)
+
+            # Ajouter le tool de transfert d'appel
+            telephony_tools = list(voice_tools) if voice_tools else []
+            transfer_tool_config = {
+                "type": "function",
+                "name": "transfer_call",
+                "description": (
+                    "Transfère l'appel en cours vers un autre numéro de téléphone. "
+                    "Utilisez cette fonction lorsque l'appelant demande à être "
+                    "transféré vers un service spécifique, un département, ou une personne."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "phone_number": {
+                            "type": "string",
+                            "description": (
+                                "Le numéro de téléphone vers lequel transférer l'appel. "
+                                "Format recommandé: E.164 (ex: +33123456789)"
+                            ),
+                        },
+                        "announcement": {
+                            "type": "string",
+                            "description": "Message optionnel à annoncer avant le transfert",
+                        },
+                    },
+                    "required": ["phone_number"],
+                },
+            }
+            telephony_tools.append(transfer_tool_config)
+
+            session_handle = await open_voice_session(
+                user_id=f"pjsua:{call_id}",
+                model=voice_model,
+                instructions=instructions,
+                voice=voice_name,
+                provider_id=voice_provider_id,
+                provider_slug=voice_provider_slug,
+                tools=telephony_tools,
+                handoffs=voice_handoffs,
+                realtime={},
+                metadata={
+                    "pjsua_call_id": call_id,
+                    "incoming_number": incoming_number,
+                },
+            )
+
+            # Récupérer le client secret
+            client_secret = session_handle.client_secret
+
+            if not client_secret:
+                raise ValueError(f"Client secret introuvable pour l'appel {call_id}")
+
+            logger.info("Session vocale créée (session_id=%s)", session_handle.session_id)
+
+            # Créer les hooks pour le voice bridge
+            async def close_dialog_hook() -> None:
+                """Ferme le dialogue SIP."""
+                try:
+                    await pjsua_adapter.hangup_call(call)
+                    logger.info("Appel PJSUA terminé (call_id=%s)", call_id)
+                except Exception as e:
+                    logger.warning("Erreur fermeture appel PJSUA: %s", e)
+
+            async def clear_voice_state_hook() -> None:
+                """Nettoie l'état vocal."""
+                # Pas de cleanup spécifique pour PJSUA (géré par l'adaptateur)
+                pass
+
+            async def resume_workflow_hook(transcripts: list[dict[str, str]]) -> None:
+                """Callback appelé à la fin de la session vocale."""
+                logger.info(
+                    "Session vocale PJSUA terminée avec %d transcripts (call_id=%s)",
+                    len(transcripts),
+                    call_id,
+                )
+                # TODO: Intégrer avec workflow executor si nécessaire
+
+            hooks = VoiceBridgeHooks(
+                close_dialog=close_dialog_hook,
+                clear_voice_state=clear_voice_state_hook,
+                resume_workflow=resume_workflow_hook,
+            )
+
+            # Créer le voice bridge
+            voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
+
+            # Déterminer le base URL pour le provider
+            realtime_api_base: str | None = None
+            if voice_provider_slug == "openai":
+                realtime_api_base = os.environ.get("CHATKIT_API_BASE") or "https://api.openai.com"
+
+            # Exécuter le voice bridge
+            logger.info("Démarrage TelephonyVoiceBridge PJSUA (call_id=%s)", call_id)
+            try:
+                stats = await voice_bridge.run(
+                    runner=session_handle.runner,
+                    client_secret=client_secret,
+                    model=voice_model,
+                    instructions=instructions,
+                    voice=voice_name,
+                    rtp_stream=rtp_stream,
+                    send_to_peer=send_to_peer,
+                    clear_audio_queue=clear_queue,
+                    api_base=realtime_api_base,
+                    tools=telephony_tools,
+                    handoffs=voice_handoffs,
+                    speak_first=speak_first,
+                )
+
+                logger.info("TelephonyVoiceBridge PJSUA terminé: %s (call_id=%s)", stats, call_id)
+
+            except Exception as e:
+                logger.exception("Erreur dans VoiceBridge PJSUA (call_id=%s): %s", call_id, e)
+
+        except Exception as e:
+            logger.exception("Erreur traitement appel entrant PJSUA (call_id=%s): %s", call_id, e)
+            try:
+                await pjsua_adapter.hangup_call(call)
+            except Exception:
+                pass
+
+    return _handle_pjsua_incoming_call
+
+
 def register_startup_events(app: FastAPI) -> None:
     sip_contact_host = settings.sip_contact_host
     sip_contact_port = (
@@ -2375,19 +2607,29 @@ def register_startup_events(app: FastAPI) -> None:
         else settings.sip_bind_port
     )
 
-    # Utiliser le gestionnaire multi-SIP pour supporter plusieurs comptes
-    sip_registration_manager = MultiSIPRegistrationManager(
-        session_factory=SessionLocal,
-        settings=settings,
-        contact_host=sip_contact_host,
-        contact_port=sip_contact_port,
-        contact_transport=settings.sip_contact_transport,
-        bind_host=settings.sip_bind_host,
-    )
-    sip_registration_manager.set_invite_handler(
-        _build_invite_handler(sip_registration_manager)
-    )
-    app.state.sip_registration = sip_registration_manager
+    # Choisir entre PJSUA ou aiosip selon la configuration
+    if USE_PJSUA:
+        logger.info("Utilisation de PJSUA pour la téléphonie SIP")
+        # Créer l'adaptateur PJSUA (sera initialisé au démarrage)
+        pjsua_adapter = PJSUAAdapter()
+        app.state.pjsua_adapter = pjsua_adapter
+        app.state.sip_registration = None  # Pas de MultiSIPRegistrationManager avec PJSUA
+    else:
+        logger.info("Utilisation d'aiosip pour la téléphonie SIP (legacy)")
+        # Utiliser le gestionnaire multi-SIP pour supporter plusieurs comptes
+        sip_registration_manager = MultiSIPRegistrationManager(
+            session_factory=SessionLocal,
+            settings=settings,
+            contact_host=sip_contact_host,
+            contact_port=sip_contact_port,
+            contact_transport=settings.sip_contact_transport,
+            bind_host=settings.sip_bind_host,
+        )
+        sip_registration_manager.set_invite_handler(
+            _build_invite_handler(sip_registration_manager)
+        )
+        app.state.sip_registration = sip_registration_manager
+        app.state.pjsua_adapter = None
 
     @app.on_event("startup")
     def _on_startup() -> None:
@@ -2463,56 +2705,98 @@ def register_startup_events(app: FastAPI) -> None:
 
     @app.on_event("startup")
     async def _start_sip_registration() -> None:
-        manager: MultiSIPRegistrationManager = app.state.sip_registration
-        with SessionLocal() as session:
-            # Charger tous les comptes SIP actifs depuis la BD
-            await manager.load_accounts_from_db(session)
+        if USE_PJSUA:
+            # Démarrer PJSUA
+            pjsua_adapter: PJSUAAdapter = app.state.pjsua_adapter
+            try:
+                # Initialiser l'endpoint PJSUA
+                port = settings.sip_bind_port or 5060
+                await pjsua_adapter.initialize(port=port)
+                logger.info("PJSUA endpoint initialisé sur port %d", port)
 
-            # Si aucun compte SIP n'est configuré, essayer les anciens paramètres
-            if not manager.has_accounts():
-                logger.info(
-                    "Aucun compte SIP trouvé en BD, tentative de chargement depuis AppSettings"
-                )
-                # Fallback : créer un gestionnaire unique avec les anciens paramètres
-                stored_settings = session.scalar(select(AppSettings).limit(1))
-                if stored_settings and stored_settings.sip_trunk_uri:
-                    from .telephony.registration import SIPRegistrationConfig
+                # Charger le compte SIP depuis la BD
+                with SessionLocal() as session:
+                    account_loaded = await pjsua_adapter.load_account_from_db(session)
+                    if account_loaded:
+                        logger.info("Compte SIP chargé depuis la BD pour PJSUA")
+                    else:
+                        logger.warning("Aucun compte SIP actif trouvé - PJSUA en mode sans compte")
 
-                    # Créer un compte SIP temporaire depuis AppSettings
-                    fallback_config = SIPRegistrationConfig(
-                        uri=stored_settings.sip_trunk_uri,
-                        username=stored_settings.sip_trunk_username or "",
-                        password=stored_settings.sip_trunk_password or "",
-                        contact_host=stored_settings.sip_contact_host or sip_contact_host or "127.0.0.1",
-                        contact_port=stored_settings.sip_contact_port or sip_contact_port or 5060,
-                        transport=stored_settings.sip_contact_transport,
-                        bind_host=settings.sip_bind_host,
+                # Initialiser le gestionnaire d'appels sortants avec PJSUA
+                from .telephony.outbound_call_manager import get_outbound_call_manager
+                get_outbound_call_manager(pjsua_adapter=pjsua_adapter)
+                logger.info("OutboundCallManager initialisé avec PJSUA")
+
+                # Configurer le callback pour les appels entrants
+                incoming_call_handler = _build_pjsua_incoming_call_handler(app)
+                pjsua_adapter.set_incoming_call_callback(incoming_call_handler)
+                logger.info("Callback appels entrants PJSUA configuré")
+
+                logger.info("PJSUA prêt pour les appels SIP")
+            except Exception as e:
+                logger.exception("Erreur lors du démarrage de PJSUA: %s", e)
+        else:
+            # Démarrer aiosip (legacy)
+            manager: MultiSIPRegistrationManager = app.state.sip_registration
+            with SessionLocal() as session:
+                # Charger tous les comptes SIP actifs depuis la BD
+                await manager.load_accounts_from_db(session)
+
+                # Si aucun compte SIP n'est configuré, essayer les anciens paramètres
+                if not manager.has_accounts():
+                    logger.info(
+                        "Aucun compte SIP trouvé en BD, tentative de chargement depuis AppSettings"
                     )
+                    # Fallback : créer un gestionnaire unique avec les anciens paramètres
+                    stored_settings = session.scalar(select(AppSettings).limit(1))
+                    if stored_settings and stored_settings.sip_trunk_uri:
+                        from .telephony.registration import SIPRegistrationConfig
 
-                    # Créer un gestionnaire temporaire
-                    fallback_manager = SIPRegistrationManager(
-                        session_factory=SessionLocal,
-                        settings=settings,
-                        contact_host=sip_contact_host,
-                        contact_port=sip_contact_port,
-                        contact_transport=settings.sip_contact_transport,
-                        bind_host=settings.sip_bind_host,
-                        invite_handler=_build_invite_handler(manager),
-                    )
-                    fallback_manager.apply_config(fallback_config)
-                    # Stocker temporairement le gestionnaire fallback
-                    manager._managers[0] = fallback_manager
-                    logger.info("Compte SIP de fallback créé depuis AppSettings")
+                        # Créer un compte SIP temporaire depuis AppSettings
+                        fallback_config = SIPRegistrationConfig(
+                            uri=stored_settings.sip_trunk_uri,
+                            username=stored_settings.sip_trunk_username or "",
+                            password=stored_settings.sip_trunk_password or "",
+                            contact_host=stored_settings.sip_contact_host or sip_contact_host or "127.0.0.1",
+                            contact_port=stored_settings.sip_contact_port or sip_contact_port or 5060,
+                            transport=stored_settings.sip_contact_transport,
+                            bind_host=settings.sip_bind_host,
+                        )
 
-        await manager.start()
+                        # Créer un gestionnaire temporaire
+                        fallback_manager = SIPRegistrationManager(
+                            session_factory=SessionLocal,
+                            settings=settings,
+                            contact_host=sip_contact_host,
+                            contact_port=sip_contact_port,
+                            contact_transport=settings.sip_contact_transport,
+                            bind_host=settings.sip_bind_host,
+                            invite_handler=_build_invite_handler(manager),
+                        )
+                        fallback_manager.apply_config(fallback_config)
+                        # Stocker temporairement le gestionnaire fallback
+                        manager._managers[0] = fallback_manager
+                        logger.info("Compte SIP de fallback créé depuis AppSettings")
+
+            await manager.start()
 
     @app.on_event("shutdown")
     async def _stop_sip_registration() -> None:
-        manager: MultiSIPRegistrationManager = app.state.sip_registration
-        try:
-            await manager.stop()
-        except Exception as exc:  # pragma: no cover - network dependent
-            logger.exception(
-                "Arrêt du gestionnaire d'enregistrement SIP échoué",
-                exc_info=exc,
-            )
+        if USE_PJSUA:
+            # Arrêter PJSUA
+            pjsua_adapter: PJSUAAdapter = app.state.pjsua_adapter
+            try:
+                await pjsua_adapter.shutdown()
+                logger.info("PJSUA arrêté proprement")
+            except Exception as exc:
+                logger.exception("Erreur lors de l'arrêt de PJSUA", exc_info=exc)
+        else:
+            # Arrêter aiosip (legacy)
+            manager: MultiSIPRegistrationManager = app.state.sip_registration
+            try:
+                await manager.stop()
+            except Exception as exc:  # pragma: no cover - network dependent
+                logger.exception(
+                    "Arrêt du gestionnaire d'enregistrement SIP échoué",
+                    exc_info=exc,
+                )

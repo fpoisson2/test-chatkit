@@ -3309,6 +3309,158 @@ async def run_workflow(
             )
             break
 
+        if current_node.kind == "outbound_call":
+            from ..telephony.outbound_call_manager import get_outbound_call_manager
+            from ..models import SipAccount
+
+            title = _node_title(current_node)
+            params = current_node.parameters or {}
+
+            # Résoudre le numéro à appeler (peut être une variable)
+            to_number_raw = params.get("to_number", "")
+            # Pour l'instant, utilise directement la valeur
+            # TODO: Implémenter la résolution de templates {{state.phone_number}}
+            to_number = to_number_raw
+
+            # Récupérer les paramètres
+            voice_workflow_id = params.get("voice_workflow_id")
+            sip_account_id = params.get("sip_account_id")
+            wait_for_completion = params.get("wait_for_completion", True)
+
+            # Validation
+            if not to_number or not isinstance(to_number, str):
+                raise WorkflowExecutionError(
+                    "configuration",
+                    f"Numéro de téléphone invalide: {to_number}",
+                    step=current_node.slug,
+                    steps=list(steps),
+                )
+
+            if not voice_workflow_id:
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "voice_workflow_id est requis pour un appel sortant",
+                    step=current_node.slug,
+                    steps=list(steps),
+                )
+
+            # Récupérer le compte SIP (ou utiliser le défaut)
+            if not sip_account_id and database_session:
+                default_account = database_session.query(SipAccount).filter_by(
+                    is_default=True, is_active=True
+                ).first()
+                if default_account:
+                    sip_account_id = default_account.id
+
+            if not sip_account_id:
+                raise WorkflowExecutionError(
+                    "configuration",
+                    "Aucun compte SIP configuré pour les appels sortants",
+                    step=current_node.slug,
+                    steps=list(steps),
+                )
+
+            # Récupérer from_number depuis le compte SIP
+            if database_session:
+                sip_account = database_session.query(SipAccount).filter_by(
+                    id=sip_account_id
+                ).first()
+                from_number = sip_account.contact_host if sip_account else "unknown"
+            else:
+                from_number = "unknown"
+
+            # Préparer les métadonnées
+            metadata = {
+                "triggered_by_workflow_id": workflow_definition.id if workflow_definition else None,
+                "triggered_by_session_id": agent_context.thread.id if agent_context else None,
+                "trigger_node_slug": current_node.slug,
+                "trigger_context": params.get("metadata", {}),
+            }
+
+            try:
+                # Initier l'appel
+                outbound_manager = get_outbound_call_manager()
+                if not database_session:
+                    raise WorkflowExecutionError(
+                        "configuration",
+                        "Session de base de données non disponible",
+                        step=current_node.slug,
+                        steps=list(steps),
+                    )
+
+                call_session = await outbound_manager.initiate_call(
+                    db=database_session,
+                    to_number=to_number,
+                    from_number=from_number,
+                    workflow_id=voice_workflow_id,
+                    sip_account_id=sip_account_id,
+                    metadata=metadata,
+                )
+
+                await record_step(
+                    current_node.slug,
+                    title,
+                    f"Appel sortant vers {to_number}",
+                )
+
+                # Attendre la fin de l'appel si demandé
+                if wait_for_completion:
+                    logger.info(
+                        "Attente de la fin de l'appel sortant %s",
+                        call_session.call_id,
+                    )
+                    await call_session.wait_until_complete()
+
+                    # Récupérer le résultat de l'appel
+                    call_result = await outbound_manager.get_call_status(
+                        database_session, call_session.call_id
+                    )
+
+                    if call_result:
+                        last_step_context = {
+                            "outbound_call": {
+                                "call_id": call_result["call_id"],
+                                "call_status": call_result["status"],
+                                "answered": call_result["status"] == "completed",
+                                "duration_seconds": call_result.get("duration_seconds"),
+                                "to_number": to_number,
+                            }
+                        }
+                    else:
+                        last_step_context = {
+                            "outbound_call": {
+                                "call_id": call_session.call_id,
+                                "call_status": "unknown",
+                                "answered": False,
+                                "to_number": to_number,
+                            }
+                        }
+                else:
+                    # Mode fire-and-forget
+                    last_step_context = {
+                        "outbound_call": {
+                            "call_id": call_session.call_id,
+                            "call_status": "initiated",
+                            "to_number": to_number,
+                        }
+                    }
+
+            except Exception as exc:
+                logger.error(
+                    "Erreur lors de l'appel sortant vers %s: %s",
+                    to_number,
+                    exc,
+                )
+                raise_step_error(current_node.slug, title, exc)
+
+            transition = _next_edge(current_slug)
+            if transition is None:
+                if _fallback_to_start("outbound_call", current_node.slug):
+                    continue
+                break
+            current_slug = transition.target_step.slug
+            continue
+
         if current_node.kind == "assistant_message":
             title = _node_title(current_node)
             raw_message = _resolve_assistant_message(current_node)

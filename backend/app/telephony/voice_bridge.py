@@ -276,6 +276,7 @@ class TelephonyVoiceBridge:
         voice: str | None,
         rtp_stream: AsyncIterator[RtpPacket],
         send_to_peer: Callable[[bytes], Awaitable[None]],
+        clear_audio_queue: Callable[[], int] | None = None,
         api_base: str | None = None,
         tools: list[Any] | None = None,
         handoffs: list[Any] | None = None,
@@ -407,14 +408,14 @@ class TelephonyVoiceBridge:
                                         },
                                         "turn_detection": {
                                             "type": "semantic_vad",
-                                            "create_response": False,  # On force manuellement via speech_stopped
+                                            "create_response": True,  # OpenAI crée automatiquement une réponse quand l'utilisateur arrête de parler
                                             "interrupt_response": True,
                                         },
                                     }
                                 )
                             )
                             turn_detection_enabled = True
-                            logger.info("Turn detection (semantic_vad) activé avec succès (sans create_response)")
+                            logger.info("Turn detection (semantic_vad) activé avec succès (avec create_response automatique)")
                         except Exception as e:
                             logger.warning("Impossible d'activer turn_detection: %s", e)
 
@@ -499,6 +500,10 @@ class TelephonyVoiceBridge:
 
                     event_type = type(event).__name__
 
+                    # Debug: log ALL audio and agent events
+                    if 'audio' in event_type.lower() or 'agent' in event_type.lower():
+                        logger.debug("📡 Event: %s", event_type)
+
                     # Debug: log ALL events to trace MCP tool calls
                     if 'tool' in event_type.lower() or 'function' in event_type.lower():
                         logger.info("🔧 Event: %s - %s", event_type, event)
@@ -548,6 +553,12 @@ class TelephonyVoiceBridge:
                                         # ALWAYS block audio when user speaks, even if agent just finished
                                         # (there might be audio packets still in the pipeline)
                                         block_audio_send_ref[0] = True
+
+                                        # Clear outgoing audio queue to stop playback immediately
+                                        if clear_audio_queue:
+                                            frames_cleared = clear_audio_queue()
+                                            if frames_cleared > 0:
+                                                logger.info("🗑️  Audio queue vidée: %d frames supprimées pour interruption rapide", frames_cleared)
 
                                         # Reset tool call tracking when user speaks
                                         # (no need for confirmation if user moved on)
@@ -699,9 +710,11 @@ class TelephonyVoiceBridge:
                             response_watchdog_task.cancel()
                             logger.debug("✅ Watchdog annulé - agent parle vraiment")
 
+                        audio_event = event.audio
+                        pcm_data = audio_event.data
+                        logger.debug("🎵 RealtimeAudio reçu: %d bytes, bloqué=%s", len(pcm_data) if pcm_data else 0, block_audio_send_ref[0])
+
                         if not block_audio_send_ref[0]:
-                            audio_event = event.audio
-                            pcm_data = audio_event.data
                             if pcm_data:
                                 outbound_audio_bytes += len(pcm_data)
                                 # Send audio and wait until it's actually sent via RTP
@@ -713,7 +726,8 @@ class TelephonyVoiceBridge:
                                     event.content_index,
                                     pcm_data
                                 )
-                        # Audio blocked - user is interrupting (don't log to avoid spam)
+                        else:
+                            logger.debug("❌ Audio bloqué - pas envoyé à send_to_peer")
                         continue
 
                     # Handle audio end
@@ -831,6 +845,7 @@ class TelephonyVoiceBridge:
             model_settings: dict[str, Any] = {
                 "model_name": model,
                 "modalities": ["audio"],  # For telephony, audio only (tool calls work internally)
+                "output_modalities": ["audio"],  # CRITICAL: Explicitly force audio-only output
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
             }
@@ -973,6 +988,7 @@ class TelephonyVoiceBridge:
             "type": "realtime",
             "model": model,
             "instructions": instructions,
+            "output_modalities": ["audio"],  # CRITICAL: Force audio output for telephony
             "audio": {
                 "input": {
                     "format": {"type": "audio/pcm", "rate": 24000},
