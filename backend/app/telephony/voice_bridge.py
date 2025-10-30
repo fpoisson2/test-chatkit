@@ -400,60 +400,40 @@ class TelephonyVoiceBridge:
                     # Check for input_audio_buffer.speech_started in raw events
                     # This is the KEY event for detecting user interruption!
                     if event_type == "RealtimeRawModelEvent":
-                        # Try to find the raw data in various possible attributes
-                        raw_data = None
-                        for attr in ('raw_event', 'event', 'data', 'message', 'payload'):
-                            raw_data = getattr(event, attr, None)
-                            if raw_data and isinstance(raw_data, dict):
-                                break
+                        # SDK structure: RealtimeRawModelEvent.data is a RealtimeModelEvent
+                        # When it's RealtimeModelRawServerEvent, the .data attribute contains the raw dict
+                        model_event = getattr(event, 'data', None)
+                        if model_event:
+                            model_event_type = getattr(model_event, 'type', None)
 
-                        # If still no raw_data, inspect the object
-                        if not raw_data:
-                            # The `data` attribute is an object, let's inspect it
-                            data_obj = getattr(event, 'data', None)
-                            if data_obj:
-                                # Try to find a dict attribute in the data object
-                                for attr_name in ('event', 'raw_event', 'data', 'message', 'payload'):
-                                    raw_data = getattr(data_obj, attr_name, None)
-                                    if raw_data and isinstance(raw_data, dict):
-                                        logger.debug(f"✅ Found raw_data in data.{attr_name}")
-                                        break
+                            # Check if this is a raw_server_event (contains raw OpenAI events)
+                            if model_event_type == 'raw_server_event':
+                                # Extract the raw data dictionary
+                                raw_data = getattr(model_event, 'data', None)
+                                if raw_data and isinstance(raw_data, dict):
+                                    event_subtype = raw_data.get('type', '')
 
-                                # If still not found, inspect the data object
-                                if not raw_data:
-                                    data_attrs = {k: type(v).__name__ for k, v in vars(data_obj).items() if not k.startswith('_')}
-                                    logger.debug(f"🔬 data object attributes: {data_attrs}")
-                                    # Try to get the first dict attribute
-                                    for k, v in vars(data_obj).items():
-                                        if not k.startswith('_') and isinstance(v, dict):
-                                            raw_data = v
-                                            logger.info(f"✅ Found raw_data in data.{k}: type={raw_data.get('type', 'NO TYPE')}")
-                                            break
+                                    # DEBUG: Log ALL raw events to see what's happening
+                                    logger.info(f"📡 RAW EVENT: {event_subtype}")
 
-                        if raw_data and isinstance(raw_data, dict):
-                            event_subtype = raw_data.get('type', '')
+                                    # User started speaking - INTERRUPT THE AGENT AND BLOCK AUDIO!
+                                    if event_subtype == 'input_audio_buffer.speech_started':
+                                        logger.info("🎤 Utilisateur commence à parler")
+                                        if agent_is_speaking:
+                                            logger.info("🛑 Interruption de l'agent!")
+                                            block_audio_send = True  # Stop sending audio immediately
+                                            try:
+                                                await session.interrupt()
+                                            except Exception as e:
+                                                logger.warning("Erreur lors de session.interrupt(): %s", e)
+                                        user_speech_detected = True
+                                        continue
 
-                            # DEBUG: Log ALL raw events to see what's happening
-                            logger.info(f"📡 RAW EVENT: {event_subtype}")
-
-                            # User started speaking - INTERRUPT THE AGENT AND BLOCK AUDIO!
-                            if event_subtype == 'input_audio_buffer.speech_started':
-                                logger.info("🎤 Utilisateur commence à parler")
-                                if agent_is_speaking:
-                                    logger.info("🛑 Interruption de l'agent!")
-                                    block_audio_send = True  # Stop sending audio immediately
-                                    try:
-                                        await session.interrupt()
-                                    except Exception as e:
-                                        logger.warning("Erreur lors de session.interrupt(): %s", e)
-                                user_speech_detected = True
-                                continue
-
-                            # User stopped speaking
-                            if event_subtype == 'input_audio_buffer.speech_stopped':
-                                logger.info("🎤 Utilisateur arrête de parler")
-                                user_speech_detected = False
-                                continue
+                                    # User stopped speaking
+                                    if event_subtype == 'input_audio_buffer.speech_stopped':
+                                        logger.info("🎤 Utilisateur arrête de parler")
+                                        user_speech_detected = False
+                                        continue
 
                     # Track when agent starts speaking - unblock audio
                     if isinstance(event, RealtimeAgentStartEvent):
