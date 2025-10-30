@@ -22,14 +22,27 @@ from ..realtime_runner import open_voice_session, close_voice_session
 
 logger = logging.getLogger("chatkit.telephony.outbound")
 
-# Import aiosip avec gestion d'erreur
+# Note: aiosip a des problèmes de compatibilité avec Python 3.11+
+# À cause de l'utilisation de @asyncio.coroutine qui a été supprimé
+# Pour l'instant, on désactive complètement aiosip pour ne pas bloquer le démarrage
+AIOSIP_AVAILABLE = False
+logger.info(
+    "aiosip est désactivé en raison de problèmes de compatibilité avec Python 3.11+ - "
+    "utilisation de PJSUA pour les appels sortants"
+)
+
+# PJSUA imports
 try:
-    import aiosip
-    AIOSIP_AVAILABLE = True
-except ImportError:
-    aiosip = None  # type: ignore[assignment]
-    AIOSIP_AVAILABLE = False
-    logger.warning("aiosip n'est pas disponible - les appels sortants ne fonctionneront pas")
+    from .pjsua_adapter import PJSUAAdapter, PJSUACall, PJSUA_AVAILABLE
+    from .pjsua_audio_bridge import create_pjsua_audio_bridge
+    if PJSUA_AVAILABLE:
+        logger.info("PJSUA disponible pour les appels sortants")
+except ImportError as e:
+    PJSUA_AVAILABLE = False
+    PJSUAAdapter = None  # type: ignore
+    PJSUACall = None  # type: ignore
+    create_pjsua_audio_bridge = None  # type: ignore
+    logger.warning("PJSUA non disponible: %s", e)
 
 
 class OutboundCallSession:
@@ -52,8 +65,13 @@ class OutboundCallSession:
         self.metadata = metadata
         self.status = "queued"
         self._completion_event = asyncio.Event()
+        # Legacy aiosip (désactivé)
         self._dialog: Any = None
         self._rtp_server: Any = None
+        # PJSUA
+        self._pjsua_call: PJSUACall | None = None
+        self._audio_bridge: Any = None
+        # Shared
         self._voice_bridge: Any = None
 
     async def wait_until_complete(self) -> None:
@@ -68,17 +86,38 @@ class OutboundCallSession:
 class OutboundCallManager:
     """Gère l'initiation et l'exécution des appels sortants avec SIP."""
 
-    def __init__(self):
+    def __init__(self, pjsua_adapter: PJSUAAdapter | None = None):
+        """Initialise le gestionnaire d'appels sortants.
+
+        Args:
+            pjsua_adapter: Adaptateur PJSUA pour gérer les appels (optionnel si aiosip est utilisé)
+        """
         self.active_calls: dict[str, OutboundCallSession] = {}
-        self._app: Any = None  # aiosip.Application
+        self._app: Any = None  # aiosip.Application (legacy)
+        self._pjsua_adapter = pjsua_adapter
 
     async def _ensure_sip_application(self) -> Any:
         """S'assure que l'application SIP est initialisée."""
         if not AIOSIP_AVAILABLE:
-            raise RuntimeError("aiosip n'est pas disponible")
+            raise RuntimeError(
+                "aiosip n'est pas disponible - incompatibilité avec Python 3.11+. "
+                "Les appels sortants SIP ne sont pas supportés actuellement."
+            )
+
+        # Import dynamique pour éviter les problèmes de compatibilité
+        # Note: Ceci ne devrait jamais être atteint car AIOSIP_AVAILABLE est False
+        try:
+            import aiosip  # noqa: F401
+        except (ImportError, AttributeError) as e:
+            raise RuntimeError(
+                f"Impossible de charger aiosip: {e}. "
+                "Incompatibilité avec Python 3.11+ (@asyncio.coroutine supprimé)."
+            ) from e
 
         if self._app is None:
             logger.info("Initialisation de l'application SIP pour appels sortants")
+            # Cette ligne ne sera jamais atteinte tant que AIOSIP_AVAILABLE est False
+            import aiosip
             self._app = aiosip.Application(loop=asyncio.get_running_loop())
 
         return self._app
@@ -147,16 +186,274 @@ class OutboundCallManager:
         # Enregistrer la session active
         self.active_calls[call_id] = session
 
-        # Lancer l'appel en background
-        asyncio.create_task(self._execute_call_sip(db, session, call_record.id))
+        # Lancer l'appel en background avec PJSUA ou aiosip
+        if PJSUA_AVAILABLE and self._pjsua_adapter is not None:
+            logger.info("Utilisation de PJSUA pour l'appel sortant")
+            asyncio.create_task(self._execute_call_pjsua(db, session, call_record.id))
+        else:
+            logger.info("Utilisation d'aiosip pour l'appel sortant (legacy)")
+            asyncio.create_task(self._execute_call_sip(db, session, call_record.id))
 
         return session
+
+    async def _execute_call_pjsua(
+        self, db: Session, session: OutboundCallSession, call_db_id: int
+    ) -> None:
+        """Exécute l'appel sortant avec PJSUA."""
+        try:
+            # Récupérer le compte SIP
+            sip_account = db.query(SipAccount).filter_by(
+                id=session.sip_account_id
+            ).first()
+
+            if not sip_account:
+                raise ValueError(f"SIP account {session.sip_account_id} not found")
+
+            # Mettre à jour le statut
+            session.status = "initiating"
+            self._update_call_status(
+                db, call_db_id, "initiating", initiated_at=datetime.now(UTC)
+            )
+
+            logger.info(
+                "Executing PJSUA outbound call %s to %s via SIP account %s",
+                session.call_id,
+                session.to_number,
+                sip_account.label,
+            )
+
+            # Construire l'URI de destination SIP
+            # Format: sip:+33612345678@domain.com
+            to_uri = self._build_sip_uri(session.to_number, sip_account.trunk_uri)
+
+            logger.info("Making PJSUA call to %s", to_uri)
+
+            # Initier l'appel avec PJSUA
+            pjsua_call = await self._pjsua_adapter.make_call(to_uri)
+            session._pjsua_call = pjsua_call
+
+            # Attendre que l'appel soit connecté (200 OK)
+            # TODO: Ajouter un timeout et gérer les différents états
+            # Pour l'instant, on continue directement
+            session.status = "ringing"
+            self._update_call_status(db, call_db_id, "ringing")
+
+            # Attendre que le média soit actif
+            # TODO: Implémenter une attente conditionnelle sur l'état du média
+            await asyncio.sleep(1)  # Attendre 1s pour que le média soit prêt
+
+            # Créer l'audio bridge (8kHz ↔ 24kHz)
+            rtp_stream, send_to_peer = await create_pjsua_audio_bridge(pjsua_call)
+
+            # Marquer l'appel comme connecté
+            session.status = "answered"
+            self._update_call_status(
+                db, call_db_id, "answered", answered_at=datetime.now(UTC)
+            )
+
+            logger.info("PJSUA call %s answered, starting voice bridge", session.call_id)
+
+            # Démarrer la session vocale (similaire au code existant)
+            await self._run_voice_session_pjsua(
+                db, session, call_db_id, rtp_stream, send_to_peer
+            )
+
+        except Exception as e:
+            logger.exception("Error executing PJSUA outbound call %s: %s", session.call_id, e)
+            session.status = "failed"
+            self._update_call_status(
+                db,
+                call_db_id,
+                "failed",
+                ended_at=datetime.now(UTC),
+                failure_reason=str(e),
+            )
+        finally:
+            # Nettoyer
+            if session._pjsua_call:
+                try:
+                    await self._pjsua_adapter.hangup_call(session._pjsua_call)
+                except Exception as e:
+                    logger.warning("Error hanging up PJSUA call: %s", e)
+
+            session.mark_complete()
+            self.active_calls.pop(session.call_id, None)
+
+    async def _run_voice_session_pjsua(
+        self,
+        db: Session,
+        session: OutboundCallSession,
+        call_db_id: int,
+        rtp_stream: Any,
+        send_to_peer: Any,
+    ) -> None:
+        """Exécute la session vocale avec PJSUA audio bridge."""
+        try:
+            # Charger le workflow et la configuration (code identique à _execute_call_sip)
+            workflow = db.query(WorkflowDefinition).filter_by(
+                id=session.workflow_id
+            ).first()
+
+            if not workflow:
+                raise ValueError(f"Workflow {session.workflow_id} not found")
+
+            # Résoudre la configuration de démarrage
+            from ..workflows.service import resolve_start_telephony_config
+
+            route, instructions, voice_model, voice_name = resolve_start_telephony_config(
+                workflow, db
+            )
+
+            # Extraire les tools et handoffs du workflow (identique au code existant)
+            voice_tools = []
+            voice_handoffs = []
+
+            for step in workflow.steps:
+                if getattr(step, "kind", None) == "voice_agent":
+                    params = getattr(step, "parameters", None)
+                    if isinstance(params, dict):
+                        tools_payload = params.get("tools")
+                        if isinstance(tools_payload, list):
+                            voice_tools.extend(tools_payload)
+
+                        handoffs_payload = params.get("handoffs")
+                        if isinstance(handoffs_payload, list):
+                            voice_handoffs.extend(handoffs_payload)
+                    break
+
+            # Ouvrir la session vocale
+            voice_provider_slug = getattr(route, "provider_slug", None) or "openai"
+            voice_provider_id = getattr(route, "provider_id", None)
+
+            session_handle = await open_voice_session(
+                user_id=f"outbound:{session.call_id}",
+                model=voice_model,
+                instructions=instructions,
+                voice=voice_name,
+                provider_id=voice_provider_id,
+                provider_slug=voice_provider_slug,
+                tools=voice_tools,
+                handoffs=voice_handoffs,
+                realtime={},
+                metadata={
+                    "outbound_call_id": session.call_id,
+                    "to_number": session.to_number,
+                    "from_number": session.from_number,
+                },
+            )
+
+            # Récupérer le client secret
+            from ..session_secret import session_secret_parser
+
+            secret_payload = session_handle.payload
+            parsed_secret = session_secret_parser.parse(secret_payload)
+            client_secret = parsed_secret.as_text()
+
+            if not client_secret:
+                raise ValueError(f"Client secret introuvable pour l'appel {session.call_id}")
+
+            logger.info("PJSUA voice session created (session_id=%s)", session_handle.session_id)
+
+            # Créer les hooks pour le voice bridge (adapté pour PJSUA)
+            async def close_dialog_hook() -> None:
+                pass  # Géré dans le cleanup final
+
+            async def clear_voice_state_hook() -> None:
+                # Pas de RTP server à arrêter avec PJSUA
+                pass
+
+            async def resume_workflow_hook(transcripts: list[dict[str, str]]) -> None:
+                logger.info("Voice session completed with %d transcripts", len(transcripts))
+                # Sauvegarder les transcriptions (code identique)
+                try:
+                    call = db.query(OutboundCall).filter_by(id=call_db_id).first()
+                    if call:
+                        metadata = call.metadata_ or {}
+                        if not isinstance(metadata, dict):
+                            metadata = {}
+                        metadata["transcripts"] = transcripts
+                        metadata["transcript_count"] = len(transcripts)
+                        call.metadata_ = metadata
+                        db.commit()
+                        logger.info("Saved %d transcripts for outbound call %s", len(transcripts), session.call_id)
+                except Exception as e:
+                    logger.exception("Failed to save transcripts for call %s: %s", session.call_id, e)
+
+            hooks = VoiceBridgeHooks(
+                close_dialog=close_dialog_hook,
+                clear_voice_state=clear_voice_state_hook,
+                resume_workflow=resume_workflow_hook,
+            )
+
+            # Créer le voice bridge
+            voice_bridge = TelephonyVoiceBridge(hooks=hooks)
+            session._voice_bridge = voice_bridge
+
+            # Déterminer le base URL pour le provider
+            realtime_api_base: str | None = None
+            if voice_provider_slug == "openai":
+                realtime_api_base = os.environ.get("CHATKIT_API_BASE") or "https://api.openai.com"
+
+            # Exécuter le voice bridge avec PJSUA audio bridge
+            logger.info("Starting TelephonyVoiceBridge for PJSUA outbound call")
+            try:
+                stats = await voice_bridge.run(
+                    runner=session_handle.runner,
+                    client_secret=client_secret,
+                    model=voice_model,
+                    instructions=instructions,
+                    voice=voice_name,
+                    rtp_stream=rtp_stream,  # PJSUA audio bridge stream
+                    send_to_peer=send_to_peer,  # PJSUA audio bridge callback
+                    api_base=realtime_api_base,
+                    tools=voice_tools,
+                    handoffs=voice_handoffs,
+                )
+
+                logger.info("PJSUA TelephonyVoiceBridge completed: %s", stats)
+
+                # Sauvegarder les stats (identique au code existant)
+                try:
+                    call = db.query(OutboundCall).filter_by(id=call_db_id).first()
+                    if call:
+                        metadata = call.metadata_ or {}
+                        if not isinstance(metadata, dict):
+                            metadata = {}
+                        metadata["voice_bridge_stats"] = {
+                            "duration_seconds": stats.duration_seconds,
+                            "inbound_audio_bytes": stats.inbound_audio_bytes,
+                            "outbound_audio_bytes": stats.outbound_audio_bytes,
+                            "transcript_count": stats.transcript_count,
+                            "error": str(stats.error) if stats.error else None,
+                        }
+                        call.metadata_ = metadata
+                        db.commit()
+                except Exception as e:
+                    logger.warning("Failed to save voice bridge stats: %s", e)
+
+                # Marquer l'appel comme terminé
+                session.status = "completed"
+                self._update_call_status(
+                    db,
+                    call_db_id,
+                    "completed",
+                    ended_at=datetime.now(UTC),
+                    duration_seconds=int(stats.duration_seconds),
+                )
+
+            except Exception as e:
+                logger.exception("Error in PJSUA voice bridge: %s", e)
+                raise
+
+        except Exception as e:
+            logger.exception("Error running PJSUA voice session: %s", e)
+            raise
 
     async def _execute_call_sip(
         self, db: Session, session: OutboundCallSession, call_db_id: int
     ) -> None:
         """
-        Exécute l'appel sortant avec SIP complet.
+        Exécute l'appel sortant avec SIP complet (aiosip - legacy).
         """
         try:
             # Récupérer le compte SIP
@@ -759,9 +1056,27 @@ a=sendrecv
 _outbound_call_manager: OutboundCallManager | None = None
 
 
-def get_outbound_call_manager() -> OutboundCallManager:
-    """Récupère l'instance globale du gestionnaire d'appels sortants."""
+def get_outbound_call_manager(pjsua_adapter: PJSUAAdapter | None = None) -> OutboundCallManager:
+    """Récupère l'instance globale du gestionnaire d'appels sortants.
+
+    Args:
+        pjsua_adapter: Adaptateur PJSUA optionnel pour les appels sortants.
+                      Si fourni, l'instance sera (re)créée avec cet adaptateur.
+
+    Returns:
+        L'instance globale du gestionnaire
+    """
     global _outbound_call_manager
-    if _outbound_call_manager is None:
+
+    # Si un adaptateur est fourni et qu'on n'a pas encore d'instance,
+    # ou si l'adaptateur est différent, créer une nouvelle instance
+    if pjsua_adapter is not None:
+        if _outbound_call_manager is None or _outbound_call_manager._pjsua_adapter != pjsua_adapter:
+            logger.info("Création du OutboundCallManager avec PJSUA adapter")
+            _outbound_call_manager = OutboundCallManager(pjsua_adapter=pjsua_adapter)
+    elif _outbound_call_manager is None:
+        # Créer sans adaptateur (legacy aiosip)
+        logger.info("Création du OutboundCallManager sans PJSUA (legacy)")
         _outbound_call_manager = OutboundCallManager()
+
     return _outbound_call_manager

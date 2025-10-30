@@ -3,9 +3,57 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    PJSIP_VERSION=2.14.1
 
 WORKDIR /app
+
+# Installer les dépendances système pour PJSIP et autres outils
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # PJSIP build dependencies
+    build-essential \
+    autoconf \
+    automake \
+    libtool \
+    pkg-config \
+    # PJSIP audio/video dependencies
+    libasound2-dev \
+    libssl-dev \
+    libv4l-dev \
+    libsdl2-dev \
+    # Python headers for pjsua2 Python bindings
+    python3-dev \
+    # Download tools
+    wget \
+    ca-certificates \
+    # Cleanup
+    && rm -rf /var/lib/apt/lists/*
+
+# Télécharger, compiler et installer PJSIP avec Python bindings
+RUN cd /tmp \
+    && wget https://github.com/pjsip/pjproject/archive/refs/tags/${PJSIP_VERSION}.tar.gz \
+    && tar xzf ${PJSIP_VERSION}.tar.gz \
+    && cd pjproject-${PJSIP_VERSION} \
+    # Configure PJSIP avec support Python
+    && ./configure \
+        --enable-shared \
+        --disable-video \
+        --disable-openh264 \
+        --disable-libyuv \
+        CFLAGS="-O2 -DNDEBUG" \
+    && make dep \
+    && make -j$(nproc) \
+    && make install \
+    # Compiler les bindings Python pjsua2
+    && cd pjsip-apps/src/swig/python \
+    && make \
+    && make install \
+    # Vérifier l'installation
+    && python3 -c "import pjsua2; print('PJSUA2 version:', pjsua2.Endpoint.libVersion().full)" \
+    # Cleanup
+    && cd /tmp \
+    && rm -rf /tmp/pjproject-${PJSIP_VERSION} /tmp/${PJSIP_VERSION}.tar.gz \
+    && ldconfig
 
 # Pré-installe les dépendances Python (dont la version locale d'openai-chatkit)
 COPY chatkit-python /tmp/chatkit-python
