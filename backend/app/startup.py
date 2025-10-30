@@ -1244,13 +1244,24 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                                             session.call_id,
                                         )
 
-                                        # NE PAS envoyer response.create ici car le RTP bridge n'est pas encore prêt
-                                        # L'audio généré maintenant n'aurait nulle part où aller
-                                        # voice_bridge.py l'enverra une fois que le téléphone sera prêt
-                                        telephony_meta["preinit_response_create_sent"] = False
+                                        # Envoyer response.create maintenant pour pré-générer l'audio
+                                        # L'audio sera bufferisé jusqu'à ce que le téléphone soit prêt
+                                        from agents.realtime.model_inputs import (
+                                            RealtimeModelRawClientMessage,
+                                            RealtimeModelSendRawMessage,
+                                        )
+                                        await preinit_session._model.send_event(
+                                            RealtimeModelSendRawMessage(
+                                                message=RealtimeModelRawClientMessage(
+                                                    type="response.create",
+                                                    other_data={},
+                                                )
+                                            )
+                                        )
+                                        telephony_meta["preinit_response_create_sent"] = True
                                         logger.info(
-                                            "✅ Session pré-initialisée, response.create sera envoyé "
-                                            "une fois le téléphone prêt (Call-ID=%s)",
+                                            "✅ response.create pré-envoyé pendant la sonnerie - "
+                                            "audio en cours de génération (Call-ID=%s)",
                                             session.call_id,
                                         )
                                 except Exception as exc:
