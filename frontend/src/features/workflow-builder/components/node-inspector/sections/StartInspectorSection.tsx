@@ -20,11 +20,13 @@ type StartInspectorSectionProps = {
   startAutoRunAssistantMessage: string;
   startTelephonySipAccountId: number | null;
   startTelephonyRingTimeout: number;
+  startTelephonySpeakFirst: boolean;
   onStartAutoRunChange: (nodeId: string, value: boolean) => void;
   onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
   onStartAutoRunAssistantMessageChange: (nodeId: string, value: string) => void;
   onStartTelephonySipAccountIdChange: (nodeId: string, value: number | null) => void;
   onStartTelephonyRingTimeoutChange: (nodeId: string, value: number) => void;
+  onStartTelephonySpeakFirstChange: (nodeId: string, value: boolean) => void;
   workflowId: number | null;
 };
 
@@ -35,11 +37,13 @@ export const StartInspectorSection = ({
   startAutoRunAssistantMessage,
   startTelephonySipAccountId,
   startTelephonyRingTimeout,
+  startTelephonySpeakFirst,
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
   onStartAutoRunAssistantMessageChange,
   onStartTelephonySipAccountIdChange,
   onStartTelephonyRingTimeoutChange,
+  onStartTelephonySpeakFirstChange,
   workflowId,
 }: StartInspectorSectionProps) => {
   const { t } = useI18n();
@@ -151,32 +155,41 @@ export const StartInspectorSection = ({
       </label>
 
       {startTelephonySipAccountId ? (
-        <label className={styles.nodeInspectorField}>
-          <span className={styles.nodeInspectorLabel}>
-            {t("workflowBuilder.startInspector.telephonyRingTimeoutLabel")}
-          </span>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <input
-              type="number"
-              min="0"
-              max="30"
-              step="0.5"
-              value={startTelephonyRingTimeout}
-              onChange={(event) => {
-                const value = parseFloat(event.target.value);
-                if (!isNaN(value) && value >= 0) {
-                  onStartTelephonyRingTimeoutChange(nodeId, value);
-                }
-              }}
-              placeholder="0"
-              style={{ width: "120px" }}
-            />
-            <span style={{ fontSize: "14px", color: "#666" }}>secondes</span>
-          </div>
-          <p className={styles.nodeInspectorHintTextTight}>
-            {t("workflowBuilder.startInspector.telephonyRingTimeoutHelp")}
-          </p>
-        </label>
+        <>
+          <label className={styles.nodeInspectorField}>
+            <span className={styles.nodeInspectorLabel}>
+              {t("workflowBuilder.startInspector.telephonyRingTimeoutLabel")}
+            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <input
+                type="number"
+                min="0"
+                max="30"
+                step="0.5"
+                value={startTelephonyRingTimeout}
+                onChange={(event) => {
+                  const value = parseFloat(event.target.value);
+                  if (!isNaN(value) && value >= 0) {
+                    onStartTelephonyRingTimeoutChange(nodeId, value);
+                  }
+                }}
+                placeholder="0"
+                style={{ width: "120px" }}
+              />
+              <span style={{ fontSize: "14px", color: "#666" }}>secondes</span>
+            </div>
+            <p className={styles.nodeInspectorHintTextTight}>
+              {t("workflowBuilder.startInspector.telephonyRingTimeoutHelp")}
+            </p>
+          </label>
+
+          <ToggleRow
+            label="L'assistant parle en premier"
+            checked={startTelephonySpeakFirst}
+            onChange={(checked) => onStartTelephonySpeakFirstChange(nodeId, checked)}
+            help="Quand activé, l'assistant vocal commence à parler immédiatement après avoir répondu à l'appel, sans attendre que l'appelant parle en premier."
+          />
+        </>
       ) : null}
     </>
   );

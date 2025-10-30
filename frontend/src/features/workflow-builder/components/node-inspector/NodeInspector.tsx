@@ -25,6 +25,7 @@ import {
   getStartAutoRunMessage,
   getStartTelephonySipAccountId,
   getStartTelephonyRingTimeout,
+  getStartTelephonySpeakFirst,
   getStateAssignments,
   getUserMessage,
   getVectorStoreNodeConfig,
@@ -158,6 +159,7 @@ export type NodeInspectorProps = {
   onStartAutoRunAssistantMessageChange: (nodeId: string, value: string) => void;
   onStartTelephonySipAccountIdChange: (nodeId: string, value: number | null) => void;
   onStartTelephonyRingTimeoutChange: (nodeId: string, value: number) => void;
+  onStartTelephonySpeakFirstChange: (nodeId: string, value: boolean) => void;
   onConditionPathChange: (nodeId: string, value: string) => void;
   onConditionModeChange: (nodeId: string, value: string) => void;
   onConditionValueChange: (nodeId: string, value: string) => void;
@@ -245,6 +247,7 @@ const NodeInspector = ({
   onStartAutoRunAssistantMessageChange,
   onStartTelephonySipAccountIdChange,
   onStartTelephonyRingTimeoutChange,
+  onStartTelephonySpeakFirstChange,
   onConditionPathChange,
   onConditionModeChange,
   onConditionValueChange,
@@ -309,6 +312,7 @@ const NodeInspector = ({
     kind === "start" ? getStartAutoRunAssistantMessage(parameters) : "";
   const startTelephonySipAccountId = kind === "start" ? getStartTelephonySipAccountId(parameters) : null;
   const startTelephonyRingTimeout = kind === "start" ? getStartTelephonyRingTimeout(parameters) : 0;
+  const startTelephonySpeakFirst = kind === "start" ? getStartTelephonySpeakFirst(parameters) : false;
 
   const conditionPath = kind === "condition" ? getConditionPath(parameters) : "";
   const conditionMode = kind === "condition" ? getConditionMode(parameters) : "truthy";
@@ -404,11 +408,13 @@ const NodeInspector = ({
           startAutoRunAssistantMessage={startAutoRunAssistantMessage}
           startTelephonySipAccountId={startTelephonySipAccountId}
           startTelephonyRingTimeout={startTelephonyRingTimeout}
+          startTelephonySpeakFirst={startTelephonySpeakFirst}
           onStartAutoRunChange={onStartAutoRunChange}
           onStartAutoRunMessageChange={onStartAutoRunMessageChange}
           onStartAutoRunAssistantMessageChange={onStartAutoRunAssistantMessageChange}
           onStartTelephonySipAccountIdChange={onStartTelephonySipAccountIdChange}
           onStartTelephonyRingTimeoutChange={onStartTelephonyRingTimeoutChange}
+          onStartTelephonySpeakFirstChange={onStartTelephonySpeakFirstChange}
           workflowId={currentWorkflowId}
         />
       ) : null}

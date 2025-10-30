@@ -91,6 +91,7 @@ import {
   setStartAutoRunAssistantMessage,
   setStartTelephonySipAccountId,
   setStartTelephonyRingTimeout,
+  setStartTelephonySpeakFirst,
   setConditionMode,
   setConditionPath,
   setConditionValue,
@@ -2706,6 +2707,24 @@ const WorkflowBuilderPage = () => {
           return data;
         }
         const nextParameters = setStartTelephonyRingTimeout(data.parameters, ringTimeout);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleStartTelephonySpeakFirstChange = useCallback(
+    (nodeId: string, speakFirst: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "start") {
+          return data;
+        }
+        const nextParameters = setStartTelephonySpeakFirst(data.parameters, speakFirst);
         return {
           ...data,
           parameters: nextParameters,
@@ -7477,6 +7496,7 @@ const WorkflowBuilderPage = () => {
             }
             onStartTelephonySipAccountIdChange={handleStartTelephonySipAccountIdChange}
             onStartTelephonyRingTimeoutChange={handleStartTelephonyRingTimeoutChange}
+            onStartTelephonySpeakFirstChange={handleStartTelephonySpeakFirstChange}
             onConditionPathChange={handleConditionPathChange}
             onConditionModeChange={handleConditionModeChange}
             onConditionValueChange={handleConditionValueChange}
