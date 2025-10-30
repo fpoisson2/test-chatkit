@@ -559,6 +559,16 @@ class TelephonyVoiceBridge:
             if voice:
                 model_settings["voice"] = voice
 
+            # Add tools if provided
+            if tools:
+                model_settings["tools"] = tools
+                logger.info("Ajout de %d outils au model_settings", len(tools))
+
+            # Add handoffs if provided
+            if handoffs:
+                model_settings["handoffs"] = handoffs
+                logger.info("Ajout de %d handoffs au model_settings", len(handoffs))
+
             model_config: dict[str, Any] = {
                 "api_key": client_secret,
                 "initial_model_settings": model_settings,
