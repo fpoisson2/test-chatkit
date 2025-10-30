@@ -75,6 +75,8 @@ class TelephonyCallContext(TelephonyRouteResolution):
     voice_provider_slug: str | None = None
     voice_tools: list[Any] = field(default_factory=list)
     voice_handoffs: list[Any] = field(default_factory=list)
+    ring_timeout_seconds: float = 0.0
+    sip_account_id: int | None = None
 
 
 class TelephonyRouteSelectionError(RuntimeError):
@@ -113,7 +115,7 @@ def _merge_voice_settings(
     overrides: TelephonyRouteOverrides | None,
     settings: Settings,
     workflow_definition: WorkflowDefinition | None = None,
-) -> tuple[str, str, str, dict[str, str], str | None, str | None, list[Any], list[Any]]:
+) -> tuple[str, str, str, dict[str, str], str | None, str | None, list[Any], list[Any], float]:
     db: Session
     owns_session = False
     if session is None:
@@ -140,6 +142,7 @@ def _merge_voice_settings(
         provider_slug = getattr(voice_settings, "provider_slug", None)
         tools: list[Any] = []
         handoffs: list[Any] = []
+        ring_timeout_seconds: float = 0.0
 
         def _copy_sequence(value: Any) -> list[Any]:
             if isinstance(value, Sequence) and not isinstance(
@@ -196,9 +199,26 @@ def _merge_voice_settings(
                                 step_slug,
                                 len(handoffs),
                             )
+                        # Extraire ring_timeout_seconds si présent
+                        if "ring_timeout_seconds" in params:
+                            raw_timeout = params["ring_timeout_seconds"]
+                            try:
+                                ring_timeout_seconds = float(raw_timeout)
+                                if ring_timeout_seconds < 0:
+                                    ring_timeout_seconds = 0.0
+                                logger.info(
+                                    "Délai de sonnerie configuré : %.2f secondes",
+                                    ring_timeout_seconds,
+                                )
+                            except (TypeError, ValueError):
+                                logger.warning(
+                                    "ring_timeout_seconds invalide (%s), utilisation de 0.0",
+                                    raw_timeout,
+                                )
+                                ring_timeout_seconds = 0.0
                         logger.info(
                             "Paramètres voix extraits du bloc %s (kind=%s) : "
-                            "model=%s, voice=%s, provider=%s, tools=%d, handoffs=%d",
+                            "model=%s, voice=%s, provider=%s, tools=%d, handoffs=%d, ring_timeout=%.2fs",
                             step_slug,
                             step_kind,
                             model,
@@ -206,6 +226,7 @@ def _merge_voice_settings(
                             provider_slug or provider_id or "<aucun>",
                             len(tools),
                             len(handoffs),
+                            ring_timeout_seconds,
                         )
                     # Utiliser le premier bloc agent trouvé
                     break
@@ -236,6 +257,7 @@ def _merge_voice_settings(
         provider_slug,
         tools,
         handoffs,
+        ring_timeout_seconds,
     )
 
 
@@ -336,6 +358,7 @@ def resolve_workflow_for_phone_number(
         provider_slug,
         tools,
         handoffs,
+        ring_timeout_seconds,
     ) = _merge_voice_settings(
         session=session,
         overrides=None,  # Plus d'overrides, tout vient du voice-agent
@@ -344,10 +367,22 @@ def resolve_workflow_for_phone_number(
     )
 
     logger.info(
-        "Paramètres voix du voice-agent : modèle=%s, voix=%s",
+        "Paramètres voix du voice-agent : modèle=%s, voix=%s, ring_timeout=%.2fs",
         model,
         voice,
+        ring_timeout_seconds,
     )
+
+    # Récupérer l'ID du compte SIP associé au workflow
+    sip_account_id = getattr(definition, "sip_account_id", None)
+
+    if sip_account_id:
+        logger.info(
+            "Workflow associé au compte SIP ID: %d",
+            sip_account_id,
+        )
+    else:
+        logger.info("Workflow utilise le compte SIP par défaut")
 
     return TelephonyCallContext(
         workflow_definition=definition,
@@ -362,6 +397,8 @@ def resolve_workflow_for_phone_number(
         voice_provider_slug=provider_slug,
         voice_tools=tools,
         voice_handoffs=handoffs,
+        ring_timeout_seconds=ring_timeout_seconds,
+        sip_account_id=sip_account_id,
     )
 
 

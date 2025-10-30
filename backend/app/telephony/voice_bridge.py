@@ -29,6 +29,7 @@ from agents.realtime.events import (
 from agents.realtime.model import RealtimePlaybackTracker, RealtimePlaybackState
 
 from ..config import Settings, get_settings
+from .call_transfer import transfer_call
 
 logger = logging.getLogger("chatkit.telephony.voice_bridge")
 

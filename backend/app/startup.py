@@ -41,6 +41,7 @@ from .models import (
     AppSettings,
     AvailableModel,
     Base,
+    SipAccount,
     TelephonyRoute,
     User,
     VoiceSettings,
@@ -53,6 +54,7 @@ from .telephony.invite_handler import (
     handle_incoming_invite,
     send_sip_reply,
 )
+from .telephony.multi_sip_manager import MultiSIPRegistrationManager
 from .telephony.registration import SIPRegistrationManager
 from .telephony.rtp_server import RtpServer, RtpServerConfig
 from .telephony.sip_server import (
@@ -89,7 +91,7 @@ for noisy_logger in (
 settings = settings_proxy
 
 
-def _build_invite_handler(manager: SIPRegistrationManager):
+def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistrationManager):
     workflow_service = WorkflowService()
     session_secret_parser = SessionSecretParser()
 
@@ -390,6 +392,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 "voice_provider_slug": context.voice_provider_slug,
                 "voice_tools": copy.deepcopy(context.voice_tools),
                 "voice_handoffs": copy.deepcopy(context.voice_handoffs),
+                "ring_timeout_seconds": context.ring_timeout_seconds,
                 "voice_session_active": False,
             }
         )
@@ -510,6 +513,43 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             thread_identifier = metadata.get("thread_id")
             if isinstance(thread_identifier, str) and thread_identifier.strip():
                 metadata_extras["thread_id"] = thread_identifier.strip()
+
+            # Ajouter automatiquement le tool de transfert d'appel pour la téléphonie
+            telephony_tools = list(voice_tools) if voice_tools else []
+            transfer_tool_config = {
+                "type": "function",
+                "name": "transfer_call",
+                "description": (
+                    "Transfère l'appel en cours vers un autre numéro de téléphone. "
+                    "Utilisez cette fonction lorsque l'appelant demande à être "
+                    "transféré vers un service spécifique, un département, ou une personne."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "phone_number": {
+                            "type": "string",
+                            "description": (
+                                "Le numéro de téléphone vers lequel transférer l'appel. "
+                                "Format recommandé: E.164 (ex: +33123456789)"
+                            ),
+                        },
+                        "announcement": {
+                            "type": "string",
+                            "description": (
+                                "Message optionnel à annoncer à l'appelant avant le transfert"
+                            ),
+                        },
+                    },
+                    "required": ["phone_number"],
+                },
+            }
+            telephony_tools.append(transfer_tool_config)
+            logger.info(
+                "Ajout du tool de transfert d'appel (total tools: %d)",
+                len(telephony_tools),
+            )
+
             session_handle = await open_voice_session(
                 user_id=f"sip:{session.call_id}",
                 model=voice_model,
@@ -517,7 +557,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 voice=voice_name,
                 provider_id=voice_provider_id,
                 provider_slug=voice_provider_slug,
-                tools=voice_tools or None,
+                tools=telephony_tools or None,
                 handoffs=voice_handoffs or None,
                 realtime={
                     # Start WITHOUT turn_detection to avoid "buffer too small" error
@@ -780,6 +820,12 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         # pour capturer l'ACK qui arrive juste après
         await _attach_dialog_callbacks(dialog, sip_handler)
 
+        # Extraire le ring_timeout_seconds depuis les métadonnées de la session
+        ring_timeout_seconds = 0.0
+        if session:
+            telephony_meta = session.metadata.get("telephony") or {}
+            ring_timeout_seconds = telephony_meta.get("ring_timeout_seconds", 0.0)
+
         # Maintenant envoyer le 200 OK
         try:
             await handle_incoming_invite(
@@ -788,6 +834,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 media_host=media_host,
                 media_port=actual_media_port,
                 contact_uri=contact_uri,
+                ring_timeout_seconds=ring_timeout_seconds,
             )
         except InviteHandlingError as exc:
             logger.warning("Traitement de l'INVITE interrompu : %s", exc)
@@ -933,6 +980,36 @@ def _run_ad_hoc_migrations() -> None:
             logger.info("Création de la table app_settings manquante")
             AppSettings.__table__.create(bind=connection)
             table_names.add("app_settings")
+
+        # Migration pour les comptes SIP multiples
+        if "sip_accounts" not in table_names:
+            logger.info("Création de la table sip_accounts pour les comptes SIP multiples")
+            SipAccount.__table__.create(bind=connection)
+            table_names.add("sip_accounts")
+
+        # Ajouter la colonne sip_account_id dans workflow_definitions
+        if "workflow_definitions" in table_names:
+            workflow_definitions_columns = {
+                column["name"]
+                for column in inspect(connection).get_columns("workflow_definitions")
+            }
+            if "sip_account_id" not in workflow_definitions_columns:
+                logger.info(
+                    "Migration du schéma workflow_definitions : ajout de la colonne "
+                    "sip_account_id"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflow_definitions ADD COLUMN sip_account_id "
+                        "INTEGER REFERENCES sip_accounts(id) ON DELETE SET NULL"
+                    )
+                )
+                connection.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS idx_workflow_definitions_sip_account "
+                        "ON workflow_definitions(sip_account_id)"
+                    )
+                )
 
         if "app_settings" in table_names:
             app_settings_columns = {
@@ -1738,7 +1815,9 @@ def register_startup_events(app: FastAPI) -> None:
         if settings.sip_contact_port is not None
         else settings.sip_bind_port
     )
-    sip_registration_manager = SIPRegistrationManager(
+
+    # Utiliser le gestionnaire multi-SIP pour supporter plusieurs comptes
+    sip_registration_manager = MultiSIPRegistrationManager(
         session_factory=SessionLocal,
         settings=settings,
         contact_host=sip_contact_host,
@@ -1825,15 +1904,52 @@ def register_startup_events(app: FastAPI) -> None:
 
     @app.on_event("startup")
     async def _start_sip_registration() -> None:
-        manager: SIPRegistrationManager = app.state.sip_registration
+        manager: MultiSIPRegistrationManager = app.state.sip_registration
         with SessionLocal() as session:
-            stored_settings = session.scalar(select(AppSettings).limit(1))
-            await manager.apply_config_from_settings(session, stored_settings)
+            # Charger tous les comptes SIP actifs depuis la BD
+            await manager.load_accounts_from_db(session)
+
+            # Si aucun compte SIP n'est configuré, essayer les anciens paramètres
+            if not manager.has_accounts():
+                logger.info(
+                    "Aucun compte SIP trouvé en BD, tentative de chargement depuis AppSettings"
+                )
+                # Fallback : créer un gestionnaire unique avec les anciens paramètres
+                stored_settings = session.scalar(select(AppSettings).limit(1))
+                if stored_settings and stored_settings.sip_trunk_uri:
+                    from .telephony.registration import SIPRegistrationConfig
+
+                    # Créer un compte SIP temporaire depuis AppSettings
+                    fallback_config = SIPRegistrationConfig(
+                        uri=stored_settings.sip_trunk_uri,
+                        username=stored_settings.sip_trunk_username or "",
+                        password=stored_settings.sip_trunk_password or "",
+                        contact_host=stored_settings.sip_contact_host or sip_contact_host or "127.0.0.1",
+                        contact_port=stored_settings.sip_contact_port or sip_contact_port or 5060,
+                        transport=stored_settings.sip_contact_transport,
+                        bind_host=settings.sip_bind_host,
+                    )
+
+                    # Créer un gestionnaire temporaire
+                    fallback_manager = SIPRegistrationManager(
+                        session_factory=SessionLocal,
+                        settings=settings,
+                        contact_host=sip_contact_host,
+                        contact_port=sip_contact_port,
+                        contact_transport=settings.sip_contact_transport,
+                        bind_host=settings.sip_bind_host,
+                        invite_handler=_build_invite_handler(manager),
+                    )
+                    fallback_manager.apply_config(fallback_config)
+                    # Stocker temporairement le gestionnaire fallback
+                    manager._managers[0] = fallback_manager
+                    logger.info("Compte SIP de fallback créé depuis AppSettings")
+
         await manager.start()
 
     @app.on_event("shutdown")
     async def _stop_sip_registration() -> None:
-        manager: SIPRegistrationManager = app.state.sip_registration
+        manager: MultiSIPRegistrationManager = app.state.sip_registration
         try:
             await manager.stop()
         except Exception as exc:  # pragma: no cover - network dependent

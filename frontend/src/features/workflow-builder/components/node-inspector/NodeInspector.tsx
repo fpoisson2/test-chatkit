@@ -24,6 +24,7 @@ import {
   getStartAutoRunAssistantMessage,
   getStartAutoRunMessage,
   getStartTelephonyIsSipWorkflow,
+  getStartTelephonyRingTimeout,
   getStateAssignments,
   getUserMessage,
   getVectorStoreNodeConfig,
@@ -156,6 +157,7 @@ export type NodeInspectorProps = {
   onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
   onStartAutoRunAssistantMessageChange: (nodeId: string, value: string) => void;
   onStartTelephonyIsSipWorkflowChange: (nodeId: string, value: boolean) => void;
+  onStartTelephonyRingTimeoutChange: (nodeId: string, value: number) => void;
   onConditionPathChange: (nodeId: string, value: string) => void;
   onConditionModeChange: (nodeId: string, value: string) => void;
   onConditionValueChange: (nodeId: string, value: string) => void;
@@ -242,6 +244,7 @@ const NodeInspector = ({
   onStartAutoRunMessageChange,
   onStartAutoRunAssistantMessageChange,
   onStartTelephonyIsSipWorkflowChange,
+  onStartTelephonyRingTimeoutChange,
   onConditionPathChange,
   onConditionModeChange,
   onConditionValueChange,
@@ -305,6 +308,7 @@ const NodeInspector = ({
   const startAutoRunAssistantMessage =
     kind === "start" ? getStartAutoRunAssistantMessage(parameters) : "";
   const startTelephonyIsSipWorkflow = kind === "start" ? getStartTelephonyIsSipWorkflow(parameters) : false;
+  const startTelephonyRingTimeout = kind === "start" ? getStartTelephonyRingTimeout(parameters) : 0;
 
   const conditionPath = kind === "condition" ? getConditionPath(parameters) : "";
   const conditionMode = kind === "condition" ? getConditionMode(parameters) : "truthy";
@@ -399,10 +403,12 @@ const NodeInspector = ({
           startAutoRunMessage={startAutoRunMessage}
           startAutoRunAssistantMessage={startAutoRunAssistantMessage}
           startTelephonyIsSipWorkflow={startTelephonyIsSipWorkflow}
+          startTelephonyRingTimeout={startTelephonyRingTimeout}
           onStartAutoRunChange={onStartAutoRunChange}
           onStartAutoRunMessageChange={onStartAutoRunMessageChange}
           onStartAutoRunAssistantMessageChange={onStartAutoRunAssistantMessageChange}
           onStartTelephonyIsSipWorkflowChange={onStartTelephonyIsSipWorkflowChange}
+          onStartTelephonyRingTimeoutChange={onStartTelephonyRingTimeoutChange}
         />
       ) : null}
 

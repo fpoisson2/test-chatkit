@@ -8,10 +8,12 @@ type StartInspectorSectionProps = {
   startAutoRunMessage: string;
   startAutoRunAssistantMessage: string;
   startTelephonyIsSipWorkflow: boolean;
+  startTelephonyRingTimeout: number;
   onStartAutoRunChange: (nodeId: string, value: boolean) => void;
   onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
   onStartAutoRunAssistantMessageChange: (nodeId: string, value: string) => void;
   onStartTelephonyIsSipWorkflowChange: (nodeId: string, value: boolean) => void;
+  onStartTelephonyRingTimeoutChange: (nodeId: string, value: number) => void;
 };
 
 export const StartInspectorSection = ({
@@ -20,10 +22,12 @@ export const StartInspectorSection = ({
   startAutoRunMessage,
   startAutoRunAssistantMessage,
   startTelephonyIsSipWorkflow,
+  startTelephonyRingTimeout,
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
   onStartAutoRunAssistantMessageChange,
   onStartTelephonyIsSipWorkflowChange,
+  onStartTelephonyRingTimeoutChange,
 }: StartInspectorSectionProps) => {
   const { t } = useI18n();
 
@@ -87,6 +91,31 @@ export const StartInspectorSection = ({
         onChange={(next) => onStartTelephonyIsSipWorkflowChange(nodeId, next)}
         help={t("workflowBuilder.startInspector.telephonyIsSipWorkflowHelp")}
       />
+
+      {startTelephonyIsSipWorkflow ? (
+        <label className={styles.nodeInspectorInlineField}>
+          <span className={styles.nodeInspectorLabel}>
+            {t("workflowBuilder.startInspector.telephonyRingTimeoutLabel")}
+          </span>
+          <input
+            type="number"
+            min="0"
+            max="30"
+            step="0.5"
+            value={startTelephonyRingTimeout}
+            onChange={(event) => {
+              const value = parseFloat(event.target.value);
+              if (!isNaN(value) && value >= 0) {
+                onStartTelephonyRingTimeoutChange(nodeId, value);
+              }
+            }}
+            placeholder="0"
+          />
+          <p className={styles.nodeInspectorHintTextTight}>
+            {t("workflowBuilder.startInspector.telephonyRingTimeoutHelp")}
+          </p>
+        </label>
+      ) : null}
     </>
   );
 };

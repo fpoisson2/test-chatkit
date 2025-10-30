@@ -19,10 +19,13 @@ from ..config import get_settings
 from ..database import get_session
 from ..dependencies import require_admin
 from ..model_providers import configure_model_provider
-from ..models import TelephonyRoute, User
+from ..models import SipAccount, TelephonyRoute, User
 from ..schemas import (
     AppSettingsResponse,
     AppSettingsUpdateRequest,
+    SipAccountCreateRequest,
+    SipAccountResponse,
+    SipAccountUpdateRequest,
     TelephonyRouteCreateRequest,
     TelephonyRouteResponse,
     TelephonyRouteUpdateRequest,
@@ -323,4 +326,178 @@ async def delete_telephony_route(
 
     session.delete(route)
     session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# ========== SIP Accounts ==========
+
+
+@router.get("/api/admin/sip-accounts", response_model=list[SipAccountResponse])
+async def list_sip_accounts(
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """Récupère la liste de tous les comptes SIP."""
+    accounts = session.scalars(
+        select(SipAccount).order_by(SipAccount.is_default.desc(), SipAccount.label.asc())
+    ).all()
+    return accounts
+
+
+@router.post(
+    "/api/admin/sip-accounts",
+    response_model=SipAccountResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_sip_account(
+    payload: SipAccountCreateRequest,
+    request: Request,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """Crée un nouveau compte SIP."""
+    # Si is_default est True, désactiver les autres comptes par défaut
+    if payload.is_default:
+        existing_defaults = session.scalars(
+            select(SipAccount).where(SipAccount.is_default == True)
+        ).all()
+        for account in existing_defaults:
+            account.is_default = False
+            session.add(account)
+
+    account = SipAccount(
+        label=payload.label,
+        trunk_uri=payload.trunk_uri,
+        username=payload.username,
+        password=payload.password,
+        contact_host=payload.contact_host,
+        contact_port=payload.contact_port,
+        contact_transport=payload.contact_transport,
+        is_default=payload.is_default,
+        is_active=payload.is_active,
+    )
+    session.add(account)
+    session.commit()
+    session.refresh(account)
+
+    # Recharger les comptes SIP dans le gestionnaire
+    manager = getattr(request.app.state, "sip_registration", None)
+    if manager is not None:
+        try:
+            await manager.load_accounts_from_db(session)
+            logger.info("Comptes SIP rechargés après création")
+        except Exception as exc:
+            logger.exception("Erreur lors du rechargement des comptes SIP", exc_info=exc)
+
+    return account
+
+
+@router.patch("/api/admin/sip-accounts/{account_id}", response_model=SipAccountResponse)
+async def update_sip_account(
+    account_id: int,
+    payload: SipAccountUpdateRequest,
+    request: Request,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """Met à jour un compte SIP existant."""
+    account = session.get(SipAccount, account_id)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Compte SIP introuvable",
+        )
+
+    updated = False
+
+    # Si on définit ce compte comme défaut, désactiver les autres
+    if payload.is_default is True and not account.is_default:
+        existing_defaults = session.scalars(
+            select(SipAccount).where(
+                SipAccount.is_default == True,
+                SipAccount.id != account_id,
+            )
+        ).all()
+        for other in existing_defaults:
+            other.is_default = False
+            session.add(other)
+        account.is_default = True
+        updated = True
+    elif payload.is_default is False:
+        account.is_default = False
+        updated = True
+
+    if payload.label is not None:
+        account.label = payload.label
+        updated = True
+    if payload.trunk_uri is not None:
+        account.trunk_uri = payload.trunk_uri
+        updated = True
+    if payload.username is not None:
+        account.username = payload.username
+        updated = True
+    if payload.password is not None:
+        account.password = payload.password
+        updated = True
+    if payload.contact_host is not None:
+        account.contact_host = payload.contact_host
+        updated = True
+    if payload.contact_port is not None:
+        account.contact_port = payload.contact_port
+        updated = True
+    if payload.contact_transport is not None:
+        account.contact_transport = payload.contact_transport
+        updated = True
+    if payload.is_active is not None:
+        account.is_active = payload.is_active
+        updated = True
+
+    if updated:
+        account.updated_at = datetime.datetime.now(datetime.UTC)
+        session.add(account)
+        session.commit()
+        session.refresh(account)
+
+        # Recharger les comptes SIP dans le gestionnaire
+        manager = getattr(request.app.state, "sip_registration", None)
+        if manager is not None:
+            try:
+                await manager.load_accounts_from_db(session)
+                logger.info("Comptes SIP rechargés après modification")
+            except Exception as exc:
+                logger.exception("Erreur lors du rechargement des comptes SIP", exc_info=exc)
+
+    return account
+
+
+@router.delete(
+    "/api/admin/sip-accounts/{account_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_sip_account(
+    account_id: int,
+    request: Request,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """Supprime un compte SIP."""
+    account = session.get(SipAccount, account_id)
+    if not account:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Compte SIP introuvable",
+        )
+
+    session.delete(account)
+    session.commit()
+
+    # Recharger les comptes SIP dans le gestionnaire
+    manager = getattr(request.app.state, "sip_registration", None)
+    if manager is not None:
+        try:
+            await manager.load_accounts_from_db(session)
+            logger.info("Comptes SIP rechargés après suppression")
+        except Exception as exc:
+            logger.exception("Erreur lors du rechargement des comptes SIP", exc_info=exc)
+
     return Response(status_code=status.HTTP_204_NO_CONTENT)

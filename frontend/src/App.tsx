@@ -12,6 +12,7 @@ import WidgetLibraryPage from "./pages/WidgetLibraryPage";
 import { AdminPage } from "./pages/AdminPage";
 import { AdminModelsPage } from "./pages/AdminModelsPage";
 import { AdminAppSettingsPage } from "./pages/AdminAppSettingsPage";
+import { AdminTelephonyPage } from "./pages/AdminTelephonyPage";
 import { DocsPage } from "./pages/docs/DocsPage";
 import { DocDetail } from "./pages/docs/DocDetail";
 
@@ -124,6 +125,16 @@ export const App = () => (
         <RequireAdmin>
           <AppLayout>
             <AdminModelsPage />
+          </AppLayout>
+        </RequireAdmin>
+      }
+    />
+    <Route
+      path="/admin/sip-accounts"
+      element={
+        <RequireAdmin>
+          <AppLayout>
+            <AdminTelephonyPage />
           </AppLayout>
         </RequireAdmin>
       }

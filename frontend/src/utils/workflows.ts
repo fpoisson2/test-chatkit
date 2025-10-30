@@ -607,6 +607,36 @@ export const setStartTelephonyIsSipWorkflow = (
     return { ...current, is_sip_workflow: true };
   });
 
+export const getStartTelephonyRingTimeout = (
+  parameters: AgentParameters | null | undefined,
+): number => {
+  if (!parameters) {
+    return 0;
+  }
+
+  const telephony = cloneStartTelephonyConfig(
+    (parameters as Record<string, unknown>).telephony,
+  );
+
+  const value = telephony.ring_timeout_seconds;
+  if (typeof value === "number" && value >= 0) {
+    return value;
+  }
+  return 0;
+};
+
+export const setStartTelephonyRingTimeout = (
+  parameters: AgentParameters,
+  ringTimeout: number,
+): AgentParameters =>
+  updateStartTelephonyConfig(parameters, (current) => {
+    if (ringTimeout <= 0) {
+      const { ring_timeout_seconds: _ignored, ...rest } = current;
+      return rest;
+    }
+    return { ...current, ring_timeout_seconds: ringTimeout };
+  });
+
 export const setConditionPath = (
   parameters: AgentParameters,
   path: string,
