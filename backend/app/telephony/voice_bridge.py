@@ -550,6 +550,7 @@ class TelephonyVoiceBridge:
         try:
             # Build model config for the SDK runner
             # Note: turn_detection is already configured in client_secret (semantic_vad)
+            # Note: tools are already available via the runner's MCP server connections
             model_settings: dict[str, Any] = {
                 "model_name": model,
                 "modalities": ["audio"],  # For telephony, audio only
@@ -558,16 +559,6 @@ class TelephonyVoiceBridge:
             }
             if voice:
                 model_settings["voice"] = voice
-
-            # Add tools if provided
-            if tools:
-                model_settings["tools"] = tools
-                logger.info("Ajout de %d outils au model_settings", len(tools))
-
-            # Add handoffs if provided
-            if handoffs:
-                model_settings["handoffs"] = handoffs
-                logger.info("Ajout de %d handoffs au model_settings", len(handoffs))
 
             model_config: dict[str, Any] = {
                 "api_key": client_secret,
