@@ -404,14 +404,29 @@ class TelephonyVoiceBridge:
         response_started_after_user_speech = False  # Track if agent started generating ANY response
 
         async def force_response_if_silent() -> None:
-            """Wait 0.1s and force a response if agent hasn't started responding at all."""
+            """Wait 0.1s and force audio response if no audio received."""
             nonlocal audio_received_after_user_speech, response_started_after_user_speech
             try:
                 await asyncio.sleep(0.1)  # Wait 0.1 second
-                # If we reach here and agent hasn't started ANY response, force one
-                # This catches total silence, not just "response without audio"
-                if not response_started_after_user_speech and not audio_received_after_user_speech:
-                    logger.warning("⏱️ 0.1s silence TOTAL détecté après user speech - forçage response.create")
+                # If we reach here and NO AUDIO received, force response with audio
+                # This ensures there's ALWAYS a verbal preamble, even before function calls
+                if not audio_received_after_user_speech:
+                    if response_started_after_user_speech:
+                        logger.warning("⏱️ 0.1s sans audio détecté (function call sans préambule) - forçage response.create avec audio")
+                        # Cancel the current response first (it has no audio anyway)
+                        try:
+                            from agents.realtime.model_inputs import RealtimeModelSendRawMessage
+                            await session._model.send_event(
+                                RealtimeModelSendRawMessage(
+                                    message={"type": "response.cancel"}
+                                )
+                            )
+                            logger.info("🚫 Réponse sans audio annulée")
+                        except Exception as e:
+                            logger.debug("response.cancel échoué: %s", e)
+                    else:
+                        logger.warning("⏱️ 0.1s silence TOTAL détecté - forçage response.create")
+
                     try:
                         from agents.realtime.model_inputs import (
                             RealtimeModelRawClientMessage,
@@ -425,15 +440,12 @@ class TelephonyVoiceBridge:
                                 )
                             )
                         )
-                        logger.info("✅ response.create forcé pour éviter le silence total")
+                        logger.info("✅ response.create forcé pour garantir audio")
                     except Exception as e:
                         logger.warning("Impossible de forcer response.create: %s", e)
-                elif response_started_after_user_speech and not audio_received_after_user_speech:
-                    # Response started but no audio yet - this is OK for function calls
-                    logger.debug("⏱️ Réponse démarrée sans audio (probablement function call) - pas de forçage")
             except asyncio.CancelledError:
-                # Watchdog cancelled - this is good!
-                logger.debug("Watchdog annulé - réponse commencée à temps")
+                # Watchdog cancelled because audio arrived - this is good!
+                logger.debug("Watchdog annulé - audio reçu à temps")
 
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
@@ -517,15 +529,24 @@ class TelephonyVoiceBridge:
                                             block_audio_send_ref[0] = False
                                             logger.info("→ Déblocage audio (agent ne parle pas)")
 
-                                        # Start watchdog to force response if agent doesn't speak within 0.1s
-                                        # Cancel any existing watchdog first
-                                        if response_watchdog_task and not response_watchdog_task.done():
-                                            response_watchdog_task.cancel()
-                                        # Reset flags - we're waiting for new response from agent
-                                        audio_received_after_user_speech = False
-                                        response_started_after_user_speech = False
-                                        response_watchdog_task = asyncio.create_task(force_response_if_silent())
-                                        logger.debug("⏱️ Watchdog démarré - max 0.1s de silence")
+                                        # Force immediate response - no delay!
+                                        logger.info("⚡ Forçage response.create IMMÉDIAT")
+                                        try:
+                                            from agents.realtime.model_inputs import (
+                                                RealtimeModelRawClientMessage,
+                                                RealtimeModelSendRawMessage,
+                                            )
+                                            await session._model.send_event(
+                                                RealtimeModelSendRawMessage(
+                                                    message=RealtimeModelRawClientMessage(
+                                                        type="response.create",
+                                                        other_data={},
+                                                    )
+                                                )
+                                            )
+                                            logger.info("✅ response.create envoyé immédiatement après speech_stopped")
+                                        except Exception as e:
+                                            logger.warning("Impossible d'envoyer response.create immédiat: %s", e)
                                         continue
 
                                     # Detect MCP tool call completion in real-time
