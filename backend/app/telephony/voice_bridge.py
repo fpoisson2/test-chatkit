@@ -251,6 +251,7 @@ class TelephonyVoiceBridge:
         async def forward_audio() -> None:
             nonlocal inbound_audio_bytes
             packet_count = 0
+            energy_threshold = 500  # Threshold for detecting speech energy
             try:
                 async for packet in rtp_stream:
                     packet_count += 1
@@ -259,11 +260,13 @@ class TelephonyVoiceBridge:
                         continue
                     inbound_audio_bytes += len(pcm)
 
-                    # Send audio continuously - OpenAI's semantic_vad handles:
-                    # - Speech detection and commit
-                    # - Automatic interruption when user speaks
-                    # - Turn-taking management
-                    await session.send_audio(pcm, commit=False)
+                    # Calculate audio energy to detect speech
+                    audio_array = audioop.rms(pcm, 2)  # RMS energy
+                    has_speech = audio_array > energy_threshold
+
+                    # Send audio with commit when we detect speech energy
+                    # This helps semantic_vad detect speech faster
+                    await session.send_audio(pcm, commit=has_speech)
 
                     if not should_continue():
                         logger.info("forward_audio: arrêt demandé par should_continue()")
@@ -300,6 +303,9 @@ class TelephonyVoiceBridge:
                         raw_data = getattr(event, 'raw_event', None) or getattr(event, 'event', None)
                         if raw_data and isinstance(raw_data, dict):
                             event_subtype = raw_data.get('type', '')
+
+                            # Log ALL raw events to debug why speech_started doesn't arrive
+                            logger.info("📡 Événement brut OpenAI: %s", event_subtype)
 
                             # User started speaking - INTERRUPT THE AGENT AND BLOCK AUDIO!
                             if event_subtype == 'input_audio_buffer.speech_started':
