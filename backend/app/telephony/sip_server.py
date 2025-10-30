@@ -318,30 +318,57 @@ def resolve_workflow_for_phone_number(
     workflow_slug: str | None = None,
     session: Session | None = None,
     settings: Settings | None = None,
+    sip_account_id: int | None = None,
 ) -> TelephonyCallContext:
     """Résout le workflow pour un appel SIP entrant.
 
-    Cherche le workflow marqué comme workflow SIP (is_sip_workflow=true).
+    Cherche le workflow associé au compte SIP spécifié.
+    Si aucun compte SIP n'est spécifié, cherche le workflow avec is_sip_workflow=true (comportement legacy).
     Les paramètres voix seront pris du bloc voice-agent du workflow.
+
+    Args:
+        workflow_service: Service de gestion des workflows
+        phone_number: Numéro de téléphone entrant
+        workflow_slug: Slug du workflow (non utilisé actuellement)
+        session: Session SQLAlchemy
+        settings: Paramètres de l'application
+        sip_account_id: ID du compte SIP qui a reçu l'appel. Si None, utilise le comportement legacy.
+
+    Returns:
+        Le contexte de l'appel téléphonique avec les informations du workflow
+
+    Raises:
+        TelephonyRouteSelectionError: Si aucun workflow n'est trouvé pour le compte SIP
     """
 
     effective_settings = settings or get_settings()
     normalized_number = _normalize_incoming_number(phone_number)
 
     logger.info(
-        "Appel SIP entrant pour %s (normalisé: %s)",
+        "Appel SIP entrant pour %s (normalisé: %s) sur compte SIP ID=%s",
         phone_number,
         normalized_number,
+        sip_account_id if sip_account_id is not None else "<legacy>",
     )
 
-    # Chercher le workflow SIP
-    definition = workflow_service.get_sip_workflow(session=session)
+    # Chercher le workflow associé au compte SIP
+    definition = workflow_service.get_sip_workflow(
+        session=session, sip_account_id=sip_account_id
+    )
 
     if definition is None:
-        logger.error("Aucun workflow SIP configuré")
-        raise TelephonyRouteSelectionError(
-            "Aucun workflow configuré pour les appels SIP"
-        )
+        if sip_account_id is not None:
+            logger.error(
+                "Aucun workflow configuré pour le compte SIP ID=%d", sip_account_id
+            )
+            raise TelephonyRouteSelectionError(
+                f"Aucun workflow configuré pour le compte SIP ID={sip_account_id}"
+            )
+        else:
+            logger.error("Aucun workflow SIP configuré")
+            raise TelephonyRouteSelectionError(
+                "Aucun workflow configuré pour les appels SIP"
+            )
 
     logger.info(
         "Workflow SIP sélectionné : %s",

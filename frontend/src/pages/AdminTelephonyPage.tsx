@@ -34,22 +34,6 @@ interface SipAccountForm {
   is_active: boolean;
 }
 
-interface TelephonyRoute {
-  id: number;
-  phone_number: string;
-  workflow_slug: string | null;
-  workflow_id: number | null;
-  metadata_: Record<string, any>;
-  created_at: string;
-  updated_at: string;
-}
-
-interface TelephonyRouteForm {
-  phone_number: string;
-  workflow_slug: string;
-  workflow_id: string;
-}
-
 // ========== Helper Functions ==========
 
 const emptySipAccountForm = (): SipAccountForm => ({
@@ -62,12 +46,6 @@ const emptySipAccountForm = (): SipAccountForm => ({
   contact_transport: "udp",
   is_default: false,
   is_active: true,
-});
-
-const emptyTelephonyRouteForm = (): TelephonyRouteForm => ({
-  phone_number: "",
-  workflow_slug: "",
-  workflow_id: "",
 });
 
 // ========== Main Component ==========
@@ -84,15 +62,6 @@ export const AdminTelephonyPage = () => {
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [accountFormData, setAccountFormData] = useState<SipAccountForm>(emptySipAccountForm());
   const [isSavingAccount, setSavingAccount] = useState(false);
-
-  // Telephony Routes state
-  const [routes, setRoutes] = useState<TelephonyRoute[]>([]);
-  const [routesLoading, setRoutesLoading] = useState(true);
-  const [routeError, setRouteError] = useState<string | null>(null);
-  const [isCreatingRoute, setIsCreatingRoute] = useState(false);
-  const [editingRouteId, setEditingRouteId] = useState<number | null>(null);
-  const [routeFormData, setRouteFormData] = useState<TelephonyRouteForm>(emptyTelephonyRouteForm());
-  const [isSavingRoute, setSavingRoute] = useState(false);
 
   // ========== SIP Accounts Functions ==========
 
@@ -233,140 +202,11 @@ export const AdminTelephonyPage = () => {
     }
   };
 
-  // ========== Telephony Routes Functions ==========
-
-  const loadRoutes = useCallback(async () => {
-    if (!token) return;
-
-    setRoutesLoading(true);
-    setRouteError(null);
-
-    try {
-      const response = await fetch("/api/admin/telephony-routes", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) {
-        if (isUnauthorizedError(response)) {
-          logout();
-          return;
-        }
-        throw new Error("Erreur lors du chargement des routes");
-      }
-
-      const data = await response.json();
-      setRoutes(data);
-    } catch (err) {
-      setRouteError(err instanceof Error ? err.message : "Erreur inconnue");
-    } finally {
-      setRoutesLoading(false);
-    }
-  }, [token, logout]);
-
-  const handleCreateRoute = () => {
-    setIsCreatingRoute(true);
-    setEditingRouteId(null);
-    setRouteFormData(emptyTelephonyRouteForm());
-    setRouteError(null);
-  };
-
-  const handleEditRoute = (route: TelephonyRoute) => {
-    setIsCreatingRoute(false);
-    setEditingRouteId(route.id);
-    setRouteFormData({
-      phone_number: route.phone_number,
-      workflow_slug: route.workflow_slug || "",
-      workflow_id: route.workflow_id?.toString() || "",
-    });
-    setRouteError(null);
-  };
-
-  const handleCancelRoute = () => {
-    setIsCreatingRoute(false);
-    setEditingRouteId(null);
-    setRouteFormData(emptyTelephonyRouteForm());
-    setRouteError(null);
-  };
-
-  const handleSubmitRoute = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!token) return;
-
-    setSavingRoute(true);
-    setRouteError(null);
-
-    try {
-      const payload: any = {
-        phone_number: routeFormData.phone_number,
-        workflow_slug: routeFormData.workflow_slug || null,
-        workflow_id: routeFormData.workflow_id ? parseInt(routeFormData.workflow_id) : null,
-        metadata: {},
-      };
-
-      const url = isCreatingRoute
-        ? "/api/admin/telephony-routes"
-        : `/api/admin/telephony-routes/${editingRouteId}`;
-      const method = isCreatingRoute ? "POST" : "PATCH";
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        if (isUnauthorizedError(response)) {
-          logout();
-          return;
-        }
-        const errorData = await response.json();
-        throw new Error(errorData.detail || "Erreur lors de l'enregistrement");
-      }
-
-      handleCancelRoute();
-      await loadRoutes();
-    } catch (err) {
-      setRouteError(err instanceof Error ? err.message : "Erreur inconnue");
-    } finally {
-      setSavingRoute(false);
-    }
-  };
-
-  const handleDeleteRoute = async (id: number) => {
-    if (!token) return;
-    if (!confirm("Êtes-vous sûr de vouloir supprimer cette route ?")) return;
-
-    setRouteError(null);
-
-    try {
-      const response = await fetch(`/api/admin/telephony-routes/${id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) {
-        if (isUnauthorizedError(response)) {
-          logout();
-          return;
-        }
-        throw new Error("Erreur lors de la suppression de la route");
-      }
-
-      await loadRoutes();
-    } catch (err) {
-      setRouteError(err instanceof Error ? err.message : "Erreur inconnue");
-    }
-  };
-
   // ========== Effects ==========
 
   useEffect(() => {
     loadAccounts();
-    loadRoutes();
-  }, [loadAccounts, loadRoutes]);
+  }, [loadAccounts]);
 
   // ========== Render ==========
 
@@ -375,7 +215,6 @@ export const AdminTelephonyPage = () => {
       <AdminTabs activeTab="telephony" />
       <ManagementPageLayout>
         {accountError && <div className="alert alert--danger">{accountError}</div>}
-        {routeError && <div className="alert alert--danger">{routeError}</div>}
 
         <div className="admin-grid">
           {/* ========== SIP Accounts Section ========== */}
@@ -599,133 +438,6 @@ export const AdminTelephonyPage = () => {
               <div className="admin-form__actions">
                 <button className="button" onClick={handleCreateAccount}>
                   + Ajouter un compte SIP
-                </button>
-              </div>
-            </section>
-          )}
-
-          {/* ========== Telephony Routes Section ========== */}
-          {(isCreatingRoute || editingRouteId) ? (
-            <section className="admin-card">
-              <div>
-                <h2 className="admin-card__title">
-                  {isCreatingRoute ? "Nouvelle route" : "Modifier la route"}
-                </h2>
-                <p className="admin-card__subtitle">
-                  Associez un numéro de téléphone à un workflow spécifique.
-                </p>
-              </div>
-              <form className="admin-form" onSubmit={handleSubmitRoute}>
-                <div className="admin-form__row">
-                  <label className="label">
-                    Numéro de téléphone *
-                    <input
-                      className="input"
-                      type="text"
-                      required
-                      value={routeFormData.phone_number}
-                      onChange={(e) => setRouteFormData({ ...routeFormData, phone_number: e.target.value })}
-                      placeholder="+33123456789"
-                      disabled={isSavingRoute}
-                    />
-                    <p className="admin-form__hint">
-                      Format recommandé : E.164 (+33123456789)
-                    </p>
-                  </label>
-
-                  <label className="label">
-                    Workflow Slug
-                    <input
-                      className="input"
-                      type="text"
-                      value={routeFormData.workflow_slug}
-                      onChange={(e) => setRouteFormData({ ...routeFormData, workflow_slug: e.target.value })}
-                      placeholder="my-workflow"
-                      disabled={isSavingRoute}
-                    />
-                  </label>
-
-                  <label className="label">
-                    Workflow ID
-                    <input
-                      className="input"
-                      type="number"
-                      value={routeFormData.workflow_id}
-                      onChange={(e) => setRouteFormData({ ...routeFormData, workflow_id: e.target.value })}
-                      placeholder="1"
-                      disabled={isSavingRoute}
-                    />
-                  </label>
-                </div>
-
-                <div className="admin-form__actions">
-                  <button className="button" type="submit" disabled={isSavingRoute}>
-                    {isSavingRoute ? "Enregistrement..." : isCreatingRoute ? "Créer la route" : "Enregistrer"}
-                  </button>
-                  <button
-                    className="button button--secondary"
-                    type="button"
-                    onClick={handleCancelRoute}
-                    disabled={isSavingRoute}
-                  >
-                    Annuler
-                  </button>
-                </div>
-              </form>
-            </section>
-          ) : (
-            <section className="admin-card">
-              <div>
-                <h2 className="admin-card__title">Routes de téléphonie</h2>
-                <p className="admin-card__subtitle">
-                  Configurez le routage des appels entrants vers les workflows appropriés.
-                </p>
-              </div>
-              {routesLoading ? (
-                <p className="admin-card__subtitle">Chargement des routes…</p>
-              ) : routes.length === 0 ? (
-                <p className="admin-card__subtitle">Aucune route configurée.</p>
-              ) : (
-                <div className="admin-table-wrapper">
-                  <table className="admin-table admin-table--stack">
-                    <thead>
-                      <tr>
-                        <th>Numéro</th>
-                        <th>Workflow Slug</th>
-                        <th>Workflow ID</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {routes.map((route) => (
-                        <tr key={route.id}>
-                          <td><strong>{route.phone_number}</strong></td>
-                          <td>{route.workflow_slug || "—"}</td>
-                          <td>{route.workflow_id || "—"}</td>
-                          <td>
-                            <button
-                              className="button button--small button--secondary"
-                              onClick={() => handleEditRoute(route)}
-                            >
-                              Modifier
-                            </button>
-                            {" "}
-                            <button
-                              className="button button--small button--danger"
-                              onClick={() => handleDeleteRoute(route.id)}
-                            >
-                              Supprimer
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-              <div className="admin-form__actions">
-                <button className="button" onClick={handleCreateRoute}>
-                  + Ajouter une route
                 </button>
               </div>
             </section>

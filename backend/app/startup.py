@@ -199,6 +199,76 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 return candidate
         return None
 
+    def _extract_sip_account_id_from_request(request: Any) -> int | None:
+        """Extrait l'ID du compte SIP depuis la requête INVITE.
+
+        Analyse l'en-tête To: de l'INVITE et le compare aux comptes SIP
+        enregistrés pour déterminer quel compte a reçu l'appel.
+
+        Args:
+            request: La requête INVITE SIP
+
+        Returns:
+            L'ID du compte SIP qui a reçu l'appel, ou None si non déterminé
+        """
+        if not isinstance(manager, MultiSIPRegistrationManager):
+            # Pour un gestionnaire simple, retourner None (comportement legacy)
+            return None
+
+        # Extraire l'en-tête To:
+        to_header = None
+        headers = getattr(request, "headers", None)
+        if isinstance(headers, dict):
+            for key, value in headers.items():
+                if isinstance(key, str) and key.lower() == "to":
+                    if isinstance(value, list) and value:
+                        to_header = str(value[0])
+                    elif isinstance(value, tuple) and value:
+                        to_header = str(value[0])
+                    else:
+                        to_header = str(value)
+                    break
+
+        if not to_header:
+            logger.debug("Impossible d'extraire l'en-tête To: de l'INVITE")
+            return manager.default_account_id
+
+        # Extraire l'URI SIP depuis l'en-tête To:
+        # Format typique: "Display Name" <sip:user@domain> ou sip:user@domain
+        match = re.search(r"sips?:([^@>;]+@[^>;]+)", to_header, flags=re.IGNORECASE)
+        if not match:
+            logger.debug("Format d'en-tête To: non reconnu: %s", to_header)
+            return manager.default_account_id
+
+        to_uri_part = match.group(1).lower()  # user@domain
+
+        # Comparer avec les URIs des comptes SIP enregistrés
+        with SessionLocal() as session:
+            accounts = session.scalars(
+                select(SipAccount).where(SipAccount.is_active == True)
+            ).all()
+
+            for account in accounts:
+                # Extraire user@domain du trunk_uri du compte
+                trunk_match = re.search(
+                    r"sips?:([^@>;]+@[^>;]+)", account.trunk_uri, flags=re.IGNORECASE
+                )
+                if trunk_match:
+                    trunk_uri_part = trunk_match.group(1).lower()
+                    if trunk_uri_part == to_uri_part:
+                        logger.info(
+                            "Appel SIP correspond au compte '%s' (ID=%d)",
+                            account.label,
+                            account.id,
+                        )
+                        return account.id
+
+        logger.debug(
+            "Aucune correspondance trouvée pour To: %s, utilisation du compte par défaut",
+            to_header,
+        )
+        return manager.default_account_id
+
     async def _close_dialog(session: SipCallSession) -> None:
         dialog = session.dialog
         if dialog is None:
@@ -341,10 +411,13 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
         session: SipCallSession, request: Any
     ) -> None:
         incoming_number = _extract_incoming_number(request)
+        sip_account_id = _extract_sip_account_id_from_request(request)
+
         logger.info(
-            "Appel SIP initialisé (Call-ID=%s, numéro entrant=%s)",
+            "Appel SIP initialisé (Call-ID=%s, numéro entrant=%s, compte SIP ID=%s)",
             session.call_id,
             incoming_number or "<inconnu>",
+            sip_account_id if sip_account_id is not None else "<legacy>",
         )
 
         telephony_metadata = session.metadata.setdefault("telephony", {})
@@ -352,6 +425,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
             {
                 "call_id": session.call_id,
                 "incoming_number": incoming_number,
+                "sip_account_id": sip_account_id,
             }
         )
 
@@ -361,6 +435,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                     workflow_service,
                     phone_number=incoming_number or "",
                     session=db_session,
+                    sip_account_id=sip_account_id,
                 )
             except TelephonyRouteSelectionError as exc:
                 logger.warning(
