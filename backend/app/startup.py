@@ -525,6 +525,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
         voice_tools = metadata.get("voice_tools") or []
         voice_handoffs = metadata.get("voice_handoffs") or []
         speak_first = metadata.get("speak_first", False)
+        preinit_response_create_sent = metadata.get("preinit_response_create_sent", False)
         rtp_stream_factory = metadata.get("rtp_stream_factory")
         send_audio = metadata.get("send_audio")
 
@@ -797,6 +798,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 tools=voice_tools,
                 handoffs=voice_handoffs,
                 speak_first=speak_first,
+                preinit_response_create_sent=preinit_response_create_sent,
             )
         except Exception as exc:  # pragma: no cover - dépend réseau
             logger.exception(
@@ -1004,6 +1006,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
             voice_provider_slug = telephony_meta.get("voice_provider_slug")
             voice_tools = telephony_meta.get("voice_tools") or []
             voice_handoffs = telephony_meta.get("voice_handoffs") or []
+            speak_first = telephony_meta.get("speak_first", False)
 
             if voice_model and instructions:
                 logger.info(
@@ -1124,6 +1127,44 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                                 session.call_id,
                                 session_handle.session_id,
                             )
+
+                            # Si speak_first est activé, envoyer response.create MAINTENANT
+                            # pour pré-générer l'audio pendant la sonnerie
+                            if speak_first:
+                                try:
+                                    runner = session_handle.runner
+                                    if runner:
+                                        logger.info(
+                                            "🎯 Pré-génération de l'audio pendant la sonnerie "
+                                            "(speak_first activé, Call-ID=%s)",
+                                            session.call_id,
+                                        )
+                                        # Importer les classes nécessaires pour envoyer l'événement
+                                        from agents.realtime.model_inputs import (
+                                            RealtimeModelRawClientMessage,
+                                            RealtimeModelSendRawMessage,
+                                        )
+                                        # Envoyer response.create via le runner
+                                        await runner._model.send_event(
+                                            RealtimeModelSendRawMessage(
+                                                message=RealtimeModelRawClientMessage(
+                                                    type="response.create",
+                                                    other_data={},
+                                                )
+                                            )
+                                        )
+                                        telephony_meta["preinit_response_create_sent"] = True
+                                        logger.info(
+                                            "✅ response.create pré-envoyé - audio en cours de génération "
+                                            "(Call-ID=%s)",
+                                            session.call_id,
+                                        )
+                                except Exception as exc:
+                                    logger.warning(
+                                        "Impossible de pré-envoyer response.create (Call-ID=%s): %s",
+                                        session.call_id,
+                                        exc,
+                                    )
                     except Exception as exc:
                         logger.exception(
                             "Erreur lors de la pré-initialisation de la session Realtime "

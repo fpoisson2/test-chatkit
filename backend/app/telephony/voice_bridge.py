@@ -275,6 +275,7 @@ class TelephonyVoiceBridge:
         tools: list[Any] | None = None,
         handoffs: list[Any] | None = None,
         speak_first: bool = False,
+        preinit_response_create_sent: bool = False,
     ) -> VoiceBridgeStats:
         """Démarre le pont voix jusqu'à la fin de session ou erreur."""
 
@@ -721,24 +722,28 @@ class TelephonyVoiceBridge:
             logger.info("Session SDK démarrée avec succès")
 
             # Si speak_first est activé, envoyer un événement response.create pour que l'assistant parle en premier
+            # SAUF si response.create a déjà été envoyé pendant la pré-initialisation
             if speak_first:
-                logger.info("speak_first activé : envoi de response.create pour démarrer la conversation")
-                try:
-                    from agents.realtime.model_inputs import (
-                        RealtimeModelRawClientMessage,
-                        RealtimeModelSendRawMessage,
-                    )
-                    await session._model.send_event(
-                        RealtimeModelSendRawMessage(
-                            message=RealtimeModelRawClientMessage(
-                                type="response.create",
-                                other_data={},
+                if preinit_response_create_sent:
+                    logger.info("speak_first activé mais response.create déjà pré-envoyé - audio déjà en génération")
+                else:
+                    logger.info("speak_first activé : envoi de response.create pour démarrer la conversation")
+                    try:
+                        from agents.realtime.model_inputs import (
+                            RealtimeModelRawClientMessage,
+                            RealtimeModelSendRawMessage,
+                        )
+                        await session._model.send_event(
+                            RealtimeModelSendRawMessage(
+                                message=RealtimeModelRawClientMessage(
+                                    type="response.create",
+                                    other_data={},
+                                )
                             )
                         )
-                    )
-                    logger.info("Événement response.create envoyé avec succès")
-                except Exception as e:
-                    logger.warning("Impossible d'envoyer response.create: %s", e)
+                        logger.info("Événement response.create envoyé avec succès")
+                    except Exception as e:
+                        logger.warning("Impossible d'envoyer response.create: %s", e)
 
             # Log available tools
             try:
