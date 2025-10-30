@@ -119,9 +119,9 @@ class RtpServer:
         # Marquer que le premier paquet a été reçu (téléphone prêt à recevoir l'audio)
         if not self._first_packet_received:
             self._first_packet_received = True
-            logger.info("✅ Premier paquet RTP reçu - téléphone prêt, flush du buffer audio")
-            # Flush l'audio qui a été bufferisé en attendant que le téléphone soit prêt
-            asyncio.create_task(self._flush_audio_buffer())
+            logger.info("✅ Premier paquet RTP reçu - attente de 150ms pour que le téléphone soit prêt")
+            # Attendre un peu que le téléphone soit vraiment prêt avant de flusher
+            asyncio.create_task(self._flush_audio_buffer_delayed())
 
     async def send_audio(self, pcm_data: bytes) -> None:
         """Envoie de l'audio PCM16 au peer SIP.
@@ -181,6 +181,13 @@ class RtpServer:
                     await asyncio.sleep(0.02)
             except Exception as exc:
                 logger.error("Erreur lors de l'envoi RTP paquet %d/%d : %s", i+1, num_packets, exc)
+
+    async def _flush_audio_buffer_delayed(self) -> None:
+        """Attend un peu puis flush le buffer audio pour laisser le téléphone se préparer."""
+        # Attendre 150ms pour que le téléphone soit vraiment prêt à recevoir
+        await asyncio.sleep(0.15)
+        logger.info("🔊 Téléphone prêt, flush du buffer audio maintenant")
+        await self._flush_audio_buffer()
 
     async def _flush_audio_buffer(self) -> None:
         """Envoie tout l'audio bufferisé vers le peer distant."""
