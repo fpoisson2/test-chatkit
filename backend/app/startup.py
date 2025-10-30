@@ -463,7 +463,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                     incoming_number or "<inconnu>",
                 )
                 telephony_metadata["workflow_resolution_error"] = str(exc)
-                return
+                raise
             except Exception as exc:  # pragma: no cover - dépend BDD
                 logger.exception(
                     "Résolution du workflow téléphonie impossible (Call-ID=%s)",
@@ -471,7 +471,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                     exc_info=exc,
                 )
                 telephony_metadata["workflow_resolution_error"] = str(exc)
-                return
+                raise
 
         workflow_obj = getattr(context.workflow_definition, "workflow", None)
         workflow_slug = getattr(workflow_obj, "slug", None)
