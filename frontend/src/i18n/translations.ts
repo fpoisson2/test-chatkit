@@ -451,15 +451,23 @@ const fr: TranslationDictionary = {
   "workflowBuilder.startInspector.telephonyRingTimeoutLabel": "Délai de sonnerie (secondes)",
   "workflowBuilder.startInspector.telephonyRingTimeoutHelp":
     "Durée pendant laquelle le téléphone sonnera avant que l'agent vocal ne réponde. Valeur entre 0 et 30 secondes.",
-  "workflowBuilder.createWorkflow.chooseHosted":
-    "Créer un workflow hébergé ? Cliquez sur OK pour ajouter un workflow hébergé ou sur Annuler pour créer un workflow local.",
-  "workflowBuilder.createWorkflow.promptSlug": "Slug du workflow hébergé ?",
-  "workflowBuilder.createWorkflow.promptId": "Identifiant du workflow distant ?",
-  "workflowBuilder.createWorkflow.promptLabel":
-    "Libellé à afficher pour ce workflow (laisser vide pour utiliser le slug).",
-  "workflowBuilder.createWorkflow.promptDescription": "Description du workflow hébergé (optionnel).",
-  "workflowBuilder.createWorkflow.errorMissingSlug": "Le slug du workflow hébergé est obligatoire.",
-  "workflowBuilder.createWorkflow.errorMissingId": "L'identifiant du workflow hébergé est obligatoire.",
+  "workflows.hostedBadge": "Hébergé",
+  "workflows.hostedUnavailable": "Indisponible pour le moment.",
+  "workflows.hostedCompactLabel": "{label} (hébergé)",
+  "workflowBuilder.createWorkflow.modal.title": "Nouveau workflow",
+  "workflowBuilder.createWorkflow.modal.typeLabel": "Type",
+  "workflowBuilder.createWorkflow.modal.typeLocal": "Local",
+  "workflowBuilder.createWorkflow.modal.typeHosted": "Hébergé",
+  "workflowBuilder.createWorkflow.modal.nameLabel": "Nom du workflow",
+  "workflowBuilder.createWorkflow.modal.remoteIdLabel":
+    "ID du workflow hébergé",
+  "workflowBuilder.createWorkflow.modal.submit": "Créer",
+  "workflowBuilder.createWorkflow.modal.cancel": "Annuler",
+  "workflowBuilder.createWorkflow.openModal": "Créer un workflow",
+  "workflowBuilder.createWorkflow.errorMissingName":
+    "Le nom du workflow est obligatoire.",
+  "workflowBuilder.createWorkflow.errorMissingRemoteId":
+    "L'identifiant du workflow hébergé est obligatoire.",
   "workflowBuilder.createWorkflow.creatingHosted": "Création du workflow hébergé…",
   "workflowBuilder.createWorkflow.successHosted":
     "Workflow hébergé \"{label}\" ajouté avec succès.",
@@ -467,7 +475,6 @@ const fr: TranslationDictionary = {
     "Impossible de créer le workflow hébergé.",
   "workflowBuilder.createWorkflow.errorAuthentication":
     "Vous devez être connecté pour gérer les workflows hébergés.",
-  "workflowBuilder.createWorkflow.promptLocalName": "Nom du nouveau workflow local ?",
   "workflowBuilder.createWorkflow.successLocal":
     "Workflow \"{name}\" créé avec succès.",
   "workflowBuilder.createWorkflow.errorCreateLocal":
@@ -477,7 +484,7 @@ const fr: TranslationDictionary = {
   "workflowBuilder.hostedSection.empty":
     "Aucun workflow hébergé géré depuis l'interface n'est disponible pour le moment.",
   "workflowBuilder.hostedSection.deleteAction": "Supprimer",
-  "workflowBuilder.hostedSection.remoteId": "ID distant : {id}",
+  "workflowBuilder.hostedSection.openActions": "Actions pour {label}",
   "workflowBuilder.hostedSection.deleting": "Suppression du workflow hébergé…",
   "workflowBuilder.hostedSection.deleteSuccess":
     "Workflow hébergé \"{label}\" supprimé.",
@@ -1034,15 +1041,21 @@ const en: TranslationDictionary = {
   "workflowBuilder.startInspector.telephonyRingTimeoutLabel": "Ring timeout (seconds)",
   "workflowBuilder.startInspector.telephonyRingTimeoutHelp":
     "Duration the phone will ring before the voice agent answers. Value between 0 and 30 seconds.",
-  "workflowBuilder.createWorkflow.chooseHosted":
-    "Create a hosted workflow? Click OK to add a hosted workflow or Cancel to create a local workflow.",
-  "workflowBuilder.createWorkflow.promptSlug": "Hosted workflow slug?",
-  "workflowBuilder.createWorkflow.promptId": "Remote workflow identifier?",
-  "workflowBuilder.createWorkflow.promptLabel":
-    "Display label for this workflow (leave blank to reuse the slug).",
-  "workflowBuilder.createWorkflow.promptDescription": "Hosted workflow description (optional).",
-  "workflowBuilder.createWorkflow.errorMissingSlug": "Hosted workflow slug is required.",
-  "workflowBuilder.createWorkflow.errorMissingId": "Hosted workflow identifier is required.",
+  "workflows.hostedBadge": "Hosted",
+  "workflows.hostedUnavailable": "Unavailable right now.",
+  "workflows.hostedCompactLabel": "{label} (hosted)",
+  "workflowBuilder.createWorkflow.modal.title": "New workflow",
+  "workflowBuilder.createWorkflow.modal.typeLabel": "Type",
+  "workflowBuilder.createWorkflow.modal.typeLocal": "Local",
+  "workflowBuilder.createWorkflow.modal.typeHosted": "Hosted",
+  "workflowBuilder.createWorkflow.modal.nameLabel": "Workflow name",
+  "workflowBuilder.createWorkflow.modal.remoteIdLabel": "Hosted workflow ID",
+  "workflowBuilder.createWorkflow.modal.submit": "Create",
+  "workflowBuilder.createWorkflow.modal.cancel": "Cancel",
+  "workflowBuilder.createWorkflow.openModal": "Create a workflow",
+  "workflowBuilder.createWorkflow.errorMissingName": "Workflow name is required.",
+  "workflowBuilder.createWorkflow.errorMissingRemoteId":
+    "Hosted workflow identifier is required.",
   "workflowBuilder.createWorkflow.creatingHosted": "Creating hosted workflow…",
   "workflowBuilder.createWorkflow.successHosted":
     "Hosted workflow \"{label}\" added successfully.",
@@ -1050,7 +1063,6 @@ const en: TranslationDictionary = {
     "Unable to create hosted workflow.",
   "workflowBuilder.createWorkflow.errorAuthentication":
     "You must be signed in to manage hosted workflows.",
-  "workflowBuilder.createWorkflow.promptLocalName": "Name of the new local workflow?",
   "workflowBuilder.createWorkflow.successLocal":
     "Workflow \"{name}\" created successfully.",
   "workflowBuilder.createWorkflow.errorCreateLocal":
@@ -1060,7 +1072,7 @@ const en: TranslationDictionary = {
   "workflowBuilder.hostedSection.empty":
     "No hosted workflow managed from the interface yet.",
   "workflowBuilder.hostedSection.deleteAction": "Delete",
-  "workflowBuilder.hostedSection.remoteId": "Remote ID: {id}",
+  "workflowBuilder.hostedSection.openActions": "Actions for {label}",
   "workflowBuilder.hostedSection.deleting": "Deleting hosted workflow…",
   "workflowBuilder.hostedSection.deleteSuccess":
     "Hosted workflow \"{label}\" removed.",

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../auth";
+import { useI18n } from "../../i18n";
 import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
 import { chatkitApi, workflowsApi } from "../../utils/backend";
 import type { HostedWorkflowMetadata } from "../../utils/backend";
@@ -42,6 +43,7 @@ type ChatWorkflowSidebarProps = {
 };
 
 export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: ChatWorkflowSidebarProps) => {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { closeSidebar, isDesktopLayout, isSidebarCollapsed } = useAppLayout();
   const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
@@ -364,24 +366,27 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   );
 
   const compactWorkflows = useMemo(
-    () => [
-      ...hostedWorkflows.map((option) => ({
-        key: `hosted:${option.slug}`,
-        label: option.label,
-        onClick: () => void handleHostedWorkflowClick(option.slug),
-        disabled: !option.available,
-        isActive: mode === "hosted" && selectedHostedSlug === option.slug,
-        initials: getWorkflowInitials(option.label),
-      })),
-      ...workflows.map((workflow) => ({
-        key: `local:${workflow.id}`,
-        label: workflow.display_name,
-        onClick: () => void handleWorkflowClick(workflow.id),
-        disabled: workflow.active_version_id === null,
-        isActive: mode === "local" && workflow.id === selectedWorkflowId,
-        initials: getWorkflowInitials(workflow.display_name),
-      })),
-    ],
+    () =>
+      [
+        ...hostedWorkflows.map((option) => ({
+          key: `hosted:${option.slug}`,
+          label: option.label,
+          onClick: () => void handleHostedWorkflowClick(option.slug),
+          disabled: !option.available,
+          isActive: mode === "hosted" && selectedHostedSlug === option.slug,
+          initials: getWorkflowInitials(option.label),
+          kind: "hosted" as const,
+        })),
+        ...workflows.map((workflow) => ({
+          key: `local:${workflow.id}`,
+          label: workflow.display_name,
+          onClick: () => void handleWorkflowClick(workflow.id),
+          disabled: workflow.active_version_id === null,
+          isActive: mode === "local" && workflow.id === selectedWorkflowId,
+          initials: getWorkflowInitials(workflow.display_name),
+          kind: "local" as const,
+        })),
+      ],
     [
       handleHostedWorkflowClick,
       handleWorkflowClick,
@@ -389,6 +394,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       mode,
       selectedHostedSlug,
       selectedWorkflowId,
+      t,
       workflows,
     ],
   );
@@ -474,6 +480,11 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       );
     }
 
+    const combinedEntries = [
+      ...hostedWorkflows.map((option) => ({ kind: "hosted" as const, option })),
+      ...workflows.map((workflow) => ({ kind: "local" as const, workflow })),
+    ];
+
     return (
       <section className="chatkit-sidebar__section" aria-labelledby={`${sectionId}-title`}>
         <div className="chatkit-sidebar__section-header">
@@ -482,28 +493,46 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           </h2>
         </div>
         <ul className="chatkit-sidebar__workflow-list">
-          {hostedWorkflows.map((option) => {
-            const isSelected = mode === "hosted" && selectedHostedSlug === option.slug;
-            return (
-              <li className="chatkit-sidebar__workflow-list-item" key={option.slug}>
-                <button
-                  type="button"
-                  className="chatkit-sidebar__workflow-button"
-                  onClick={() => void handleHostedWorkflowClick(option.slug)}
-                  disabled={!option.available}
-                  aria-current={isSelected ? "true" : undefined}
-                  title={option.description ?? undefined}
+          {combinedEntries.map((entry) => {
+            if (entry.kind === "hosted") {
+              const { option } = entry;
+              const isSelected = mode === "hosted" && selectedHostedSlug === option.slug;
+              return (
+                <li
+                  className="chatkit-sidebar__workflow-list-item"
+                  key={`hosted:${option.slug}`}
+                  data-hosted-workflow=""
                 >
-                  {option.label}
-                </button>
-              </li>
-            );
-          })}
-          {workflows.map((workflow) => {
+                  <button
+                    type="button"
+                    className="chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted"
+                    onClick={() => void handleHostedWorkflowClick(option.slug)}
+                    disabled={!option.available}
+                    aria-current={isSelected ? "true" : undefined}
+                    title={option.description ?? t("workflows.hostedBadge")}
+                  >
+                    <span className="chatkit-sidebar__workflow-label">{option.label}</span>
+                    <span className="chatkit-sidebar__workflow-badge chatkit-sidebar__workflow-badge--hosted">
+                      {t("workflows.hostedBadge")}
+                    </span>
+                  </button>
+                  {!option.available ? (
+                    <p className="chatkit-sidebar__workflow-meta" aria-live="polite">
+                      {t("workflows.hostedUnavailable")}
+                    </p>
+                  ) : null}
+                  {option.description ? (
+                    <p className="chatkit-sidebar__workflow-meta">{option.description}</p>
+                  ) : null}
+                </li>
+              );
+            }
+
+            const { workflow } = entry;
             const isActive = mode === "local" && workflow.id === selectedWorkflowId;
             const hasProduction = workflow.active_version_id !== null;
             return (
-              <li key={workflow.id} className="chatkit-sidebar__workflow-list-item">
+              <li key={`local:${workflow.id}`} className="chatkit-sidebar__workflow-list-item">
                 <button
                   type="button"
                   className="chatkit-sidebar__workflow-button"
@@ -511,7 +540,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
                   disabled={!hasProduction}
                   aria-current={isActive ? "true" : undefined}
                 >
-                  {workflow.display_name}
+                  <span className="chatkit-sidebar__workflow-label">{workflow.display_name}</span>
                 </button>
               </li>
             );
@@ -540,6 +569,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     mode,
     selectedHostedSlug,
     selectedWorkflowId,
+    t,
     user,
     workflows,
   ]);
@@ -557,22 +587,30 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
               type="button"
               className={`chatkit-sidebar__workflow-compact-button${
                 workflow.isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
-              }`}
+              }${workflow.kind === "hosted" ? " chatkit-sidebar__workflow-compact-button--hosted" : ""}`}
               onClick={workflow.onClick}
               disabled={workflow.disabled}
               aria-current={workflow.isActive ? "true" : undefined}
               tabIndex={isSidebarCollapsed ? 0 : -1}
+              aria-label={
+                workflow.kind === "hosted"
+                  ? t("workflows.hostedCompactLabel", { label: workflow.label })
+                  : workflow.label
+              }
             >
               <span aria-hidden="true" className="chatkit-sidebar__workflow-compact-initial">
                 {workflow.initials}
               </span>
-              <span className="visually-hidden">{workflow.label}</span>
+              <span className="visually-hidden">
+                {workflow.label}
+                {workflow.kind === "hosted" ? ` (${t("workflows.hostedBadge")})` : ""}
+              </span>
             </button>
           </li>
         ))}
       </ul>
     );
-  }, [compactWorkflows, error, isSidebarCollapsed, loading, user]);
+  }, [compactWorkflows, error, isSidebarCollapsed, loading, t, user]);
 
   useEffect(() => {
     setSidebarContent(sidebarContent);
