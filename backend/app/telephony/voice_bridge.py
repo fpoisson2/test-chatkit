@@ -398,9 +398,40 @@ class TelephonyVoiceBridge:
         # Track processed history items to avoid re-processing replays
         processed_item_ids: set[str] = set()  # Track item IDs we've already seen
 
+        # Force immediate response after user speech (max 0.1s silence)
+        response_watchdog_task: asyncio.Task | None = None  # Task monitoring response delay
+
+        async def force_response_if_silent() -> None:
+            """Wait 0.1s and force a response if agent hasn't started speaking."""
+            nonlocal agent_is_speaking
+            try:
+                await asyncio.sleep(0.1)  # Wait 0.1 second
+                # If we reach here and agent still hasn't started speaking, force response
+                if not agent_is_speaking:
+                    logger.warning("⏱️ 0.1s silence détecté après user speech - forçage response.create")
+                    try:
+                        from agents.realtime.model_inputs import (
+                            RealtimeModelRawClientMessage,
+                            RealtimeModelSendRawMessage,
+                        )
+                        await session._model.send_event(
+                            RealtimeModelSendRawMessage(
+                                message=RealtimeModelRawClientMessage(
+                                    type="response.create",
+                                    other_data={},
+                                )
+                            )
+                        )
+                        logger.info("✅ response.create forcé pour éviter le silence")
+                    except Exception as e:
+                        logger.warning("Impossible de forcer response.create: %s", e)
+            except asyncio.CancelledError:
+                # Watchdog cancelled because agent started speaking - this is good!
+                logger.debug("Watchdog annulé - l'agent a commencé à parler à temps")
+
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_item_ids
+            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_item_ids, response_watchdog_task
             try:
                 async for event in session:
                     if not should_continue():
@@ -479,6 +510,13 @@ class TelephonyVoiceBridge:
                                         if not agent_is_speaking:
                                             block_audio_send_ref[0] = False
                                             logger.info("→ Déblocage audio (agent ne parle pas)")
+
+                                        # Start watchdog to force response if agent doesn't speak within 0.1s
+                                        # Cancel any existing watchdog first
+                                        if response_watchdog_task and not response_watchdog_task.done():
+                                            response_watchdog_task.cancel()
+                                        response_watchdog_task = asyncio.create_task(force_response_if_silent())
+                                        logger.debug("⏱️ Watchdog démarré - max 0.1s de silence")
                                         continue
 
                                     # Detect MCP tool call completion in real-time
@@ -535,6 +573,10 @@ class TelephonyVoiceBridge:
                     # Track when agent starts speaking
                     if isinstance(event, RealtimeAgentStartEvent):
                         agent_is_speaking = True
+                        # Cancel watchdog - agent started speaking in time!
+                        if response_watchdog_task and not response_watchdog_task.done():
+                            response_watchdog_task.cancel()
+                            logger.debug("✅ Watchdog annulé - agent a répondu à temps")
                         # Don't change block_audio_send here - let RealtimeAgentEndEvent unblock it
                         logger.debug("Agent commence à parler (block_audio_send=%s)", block_audio_send_ref[0])
                         continue
