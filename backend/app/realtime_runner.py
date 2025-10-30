@@ -1027,6 +1027,8 @@ class RealtimeVoiceSessionOrchestrator:
                     metadata_payload["tools"] = json_safe_tools
             if agent_tools:
                 metadata_payload["sdk_tools"] = list(agent_tools)
+            if agent_handoffs:
+                metadata_payload["sdk_handoffs"] = list(agent_handoffs)
             if mcp_server_configs:
                 metadata_payload["mcp_servers"] = [
                     {
