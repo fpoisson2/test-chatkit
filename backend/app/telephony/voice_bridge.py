@@ -536,13 +536,63 @@ class TelephonyVoiceBridge:
                                     if event_subtype == 'response.mcp_call.completed':
                                         tool_data = raw_data.get('mcp_call', {}) if isinstance(raw_data.get('mcp_call'), dict) else {}
                                         tool_name = tool_data.get('name', 'unknown')
-                                        logger.info("🔧 Tool MCP terminé EN TEMPS RÉEL: %s (turn_detection gérera la confirmation)", tool_name)
+                                        logger.info("🔧 Tool MCP terminé EN TEMPS RÉEL: %s", tool_name)
+
+                                        # Force response.create pour confirmation vocale
+                                        # Ignore l'erreur si turn_detection a déjà créé une réponse
+                                        try:
+                                            from agents.realtime.model_inputs import (
+                                                RealtimeModelRawClientMessage,
+                                                RealtimeModelSendRawMessage,
+                                            )
+                                            logger.info("→ Envoi response.create pour forcer confirmation vocale")
+                                            await session._model.send_event(
+                                                RealtimeModelSendRawMessage(
+                                                    message=RealtimeModelRawClientMessage(
+                                                        type="response.create",
+                                                        other_data={},
+                                                    )
+                                                )
+                                            )
+                                            logger.info("✅ response.create envoyé")
+                                        except Exception as e:
+                                            # Ignorer silencieusement si turn_detection a déjà créé une réponse
+                                            error_msg = str(e).lower()
+                                            if "already has an active response" in error_msg or "conversation_already_has_active_response" in error_msg:
+                                                logger.debug("response.create ignoré (réponse déjà active): %s", e)
+                                            else:
+                                                logger.warning("Erreur lors de l'envoi de response.create: %s", e)
                                         continue
 
                                     # Detect standard function call completion in real-time
                                     if event_subtype == 'response.function_call_arguments.done':
                                         function_name = raw_data.get('name', 'unknown')
-                                        logger.info("🔧 Function call terminé EN TEMPS RÉEL: %s (turn_detection gérera la confirmation)", function_name)
+                                        logger.info("🔧 Function call terminé EN TEMPS RÉEL: %s", function_name)
+
+                                        # Force response.create pour confirmation vocale
+                                        # Ignore l'erreur si turn_detection a déjà créé une réponse
+                                        try:
+                                            from agents.realtime.model_inputs import (
+                                                RealtimeModelRawClientMessage,
+                                                RealtimeModelSendRawMessage,
+                                            )
+                                            logger.info("→ Envoi response.create pour forcer confirmation vocale")
+                                            await session._model.send_event(
+                                                RealtimeModelSendRawMessage(
+                                                    message=RealtimeModelRawClientMessage(
+                                                        type="response.create",
+                                                        other_data={},
+                                                    )
+                                                )
+                                            )
+                                            logger.info("✅ response.create envoyé")
+                                        except Exception as e:
+                                            # Ignorer silencieusement si turn_detection a déjà créé une réponse
+                                            error_msg = str(e).lower()
+                                            if "already has an active response" in error_msg or "conversation_already_has_active_response" in error_msg:
+                                                logger.debug("response.create ignoré (réponse déjà active): %s", e)
+                                            else:
+                                                logger.warning("Erreur lors de l'envoi de response.create: %s", e)
                                         continue
 
                     # Track when agent starts speaking
