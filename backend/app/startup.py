@@ -2508,10 +2508,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             )
 
             # Récupérer le client secret
-            from .session_secret import session_secret_parser
-            secret_payload = session_handle.payload
-            parsed_secret = session_secret_parser.parse(secret_payload)
-            client_secret = parsed_secret.as_text()
+            client_secret = session_handle.client_secret
 
             if not client_secret:
                 raise ValueError(f"Client secret introuvable pour l'appel {call_id}")
