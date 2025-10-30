@@ -502,9 +502,7 @@ class TelephonyVoiceBridge:
                                     event.content_index,
                                     pcm_data
                                 )
-                        else:
-                            # Audio blocked - user is interrupting
-                            logger.debug("🚫 Audio agent bloqué (interruption en cours)")
+                        # Audio blocked - user is interrupting (don't log to avoid spam)
                         continue
 
                     # Handle audio end
