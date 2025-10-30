@@ -1582,14 +1582,14 @@ button {
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__profile-menu {
-  left: 50%;
+  left: calc(100% + 12px);
   right: auto;
   min-width: 220px;
-  transform: translate(-50%, 12px);
+  transform: translateY(12px);
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__profile--open .chatkit-sidebar__profile-menu {
-  transform: translate(-50%, 0);
+  transform: translateY(0);
 }
 
 .login-layout,
