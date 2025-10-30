@@ -400,7 +400,25 @@ class TelephonyVoiceBridge:
                     # Check for input_audio_buffer.speech_started in raw events
                     # This is the KEY event for detecting user interruption!
                     if event_type == "RealtimeRawModelEvent":
-                        raw_data = getattr(event, 'raw_event', None) or getattr(event, 'event', None)
+                        # Try to find the raw data in various possible attributes
+                        raw_data = None
+                        for attr in ('raw_event', 'event', 'data', 'message', 'payload'):
+                            raw_data = getattr(event, attr, None)
+                            if raw_data and isinstance(raw_data, dict):
+                                break
+
+                        # If still no raw_data, inspect the object
+                        if not raw_data:
+                            # Log first event's attributes to understand structure
+                            attrs = {k: type(v).__name__ for k, v in vars(event).items() if not k.startswith('_')}
+                            logger.info(f"🔬 RealtimeRawModelEvent attributes: {attrs}")
+                            # Try to get the first non-private attribute that's a dict
+                            for k, v in vars(event).items():
+                                if not k.startswith('_') and isinstance(v, dict):
+                                    raw_data = v
+                                    logger.info(f"✅ Found raw_data in attribute '{k}': {list(raw_data.keys())[:5]}")
+                                    break
+
                         if raw_data and isinstance(raw_data, dict):
                             event_subtype = raw_data.get('type', '')
 
@@ -425,8 +443,6 @@ class TelephonyVoiceBridge:
                                 logger.info("🎤 Utilisateur arrête de parler")
                                 user_speech_detected = False
                                 continue
-                        else:
-                            logger.debug(f"⚠️ RealtimeRawModelEvent sans raw_data détectable")
 
                     # Track when agent starts speaking - unblock audio
                     if isinstance(event, RealtimeAgentStartEvent):
