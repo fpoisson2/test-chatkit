@@ -658,13 +658,24 @@ class RealtimeVoiceSessionOrchestrator:
             if handoffs:
                 session_payload["handoffs"] = list(handoffs)
 
+            # For OpenAI, turn_detection must be in session.audio.input.turn_detection
+            if isinstance(realtime, Mapping) and "turn_detection" in realtime:
+                if "audio" not in session_payload:
+                    session_payload["audio"] = {}
+                if "input" not in session_payload["audio"]:
+                    session_payload["audio"]["input"] = {}
+                session_payload["audio"]["input"]["turn_detection"] = dict(realtime["turn_detection"])
+
             payload: dict[str, Any] = {"session": session_payload}
 
             if isinstance(realtime, Mapping):
-                if realtime_mode == "session":
-                    session_payload["realtime"] = dict(realtime)
-                elif realtime_mode == "top_level":
-                    payload["realtime"] = dict(realtime)
+                # Only add non-turn_detection settings to realtime
+                realtime_filtered = {k: v for k, v in realtime.items() if k != "turn_detection"}
+                if realtime_filtered:
+                    if realtime_mode == "session":
+                        session_payload["realtime"] = realtime_filtered
+                    elif realtime_mode == "top_level":
+                        payload["realtime"] = realtime_filtered
 
             if voice_value:
                 if voice_mode == "session":

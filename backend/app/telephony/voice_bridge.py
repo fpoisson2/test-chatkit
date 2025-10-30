@@ -298,13 +298,11 @@ class TelephonyVoiceBridge:
                         if raw_data and isinstance(raw_data, dict):
                             event_subtype = raw_data.get('type', '')
 
-                            # Log ALL raw events to debug why speech_started doesn't arrive
-                            logger.info("📡 Événement brut OpenAI: %s", event_subtype)
-
                             # User started speaking - INTERRUPT THE AGENT AND BLOCK AUDIO!
                             if event_subtype == 'input_audio_buffer.speech_started':
+                                logger.info("🎤 Utilisateur commence à parler")
                                 if agent_is_speaking:
-                                    logger.info("🛑 Utilisateur parle - interruption + blocage audio!")
+                                    logger.info("🛑 Interruption de l'agent!")
                                     block_audio_send = True  # Stop sending audio immediately
                                     try:
                                         await session.interrupt()
@@ -315,6 +313,7 @@ class TelephonyVoiceBridge:
 
                             # User stopped speaking
                             if event_subtype == 'input_audio_buffer.speech_stopped':
+                                logger.info("🎤 Utilisateur arrête de parler")
                                 user_speech_detected = False
                                 continue
 
