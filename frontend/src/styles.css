@@ -561,6 +561,21 @@ button {
   width: 100%;
 }
 
+.chatkit-sidebar__section-header--with-action {
+  position: relative;
+}
+
+.chatkit-sidebar__section-header--with-action .chatkit-sidebar__section-title {
+  padding-right: 3rem;
+}
+
+.chatkit-sidebar__section-header--with-action .chatkit-sidebar__section-icon-button {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+}
+
 .chatkit-sidebar__section-title {
   margin: 0;
   font-size: 1.05rem;
@@ -674,6 +689,15 @@ button {
   opacity: 0.55;
   cursor: not-allowed;
   transform: none;
+}
+
+.chatkit-sidebar__section-header--with-action .chatkit-sidebar__section-icon-button:hover,
+.chatkit-sidebar__section-header--with-action .chatkit-sidebar__section-icon-button:focus-visible {
+  transform: translateY(calc(-50% - 1px));
+}
+
+.chatkit-sidebar__section-header--with-action .chatkit-sidebar__section-icon-button:disabled {
+  transform: translateY(-50%);
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__section-button {

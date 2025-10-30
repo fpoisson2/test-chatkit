@@ -7227,7 +7227,7 @@ const WorkflowBuilderPage = () => {
 
     return (
       <section className="chatkit-sidebar__section" aria-labelledby={`${sectionId}-title`}>
-        <div className="chatkit-sidebar__section-header">
+        <div className="chatkit-sidebar__section-header chatkit-sidebar__section-header--with-action">
           <h2 id={`${sectionId}-title`} className="chatkit-sidebar__section-title">
             Workflow
           </h2>
