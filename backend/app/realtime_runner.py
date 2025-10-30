@@ -15,6 +15,7 @@ import httpx
 from agents.handoffs import Handoff
 from agents.mcp import MCPServer, MCPServerSse, MCPServerStreamableHttp
 from agents.realtime.agent import RealtimeAgent
+from agents.realtime.config import RealtimeRunConfig
 from agents.realtime.runner import RealtimeRunner
 from agents.tool import (
     CodeInterpreterTool,
@@ -990,7 +991,11 @@ class RealtimeVoiceSessionOrchestrator:
                 handoffs=agent_handoffs,
                 mcp_servers=agent_mcp_servers,
             )
-            runner = RealtimeRunner(agent)
+            # Configure runner with async tool calls for better responsiveness
+            runner_config: RealtimeRunConfig = {
+                "async_tool_calls": True,  # Enable asynchronous tool execution
+            }
+            runner = RealtimeRunner(agent, config=runner_config)
 
             payload = await self._request_client_secret(
                 user_id=user_id,
