@@ -384,9 +384,13 @@ class TelephonyVoiceBridge:
         user_speech_detected = False  # Track if we detected user speech
         # block_audio_send is now block_audio_send_ref[0]
 
+        # Track tool calls to ensure confirmations
+        tool_call_detected = False  # Set to True when we detect a tool call
+        last_assistant_message_was_short = False  # Track if last message was likely just a preamble
+
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker
+            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short
             try:
                 async for event in session:
                     if not should_continue():
@@ -432,6 +436,14 @@ class TelephonyVoiceBridge:
                                         # ALWAYS block audio when user speaks, even if agent just finished
                                         # (there might be audio packets still in the pipeline)
                                         block_audio_send_ref[0] = True
+
+                                        # Reset tool call tracking when user speaks
+                                        # (no need for confirmation if user moved on)
+                                        if tool_call_detected:
+                                            logger.debug("Réinitialisation du tracking tool call (utilisateur parle)")
+                                            tool_call_detected = False
+                                            last_assistant_message_was_short = False
+
                                         if agent_is_speaking:
                                             logger.info("🛑 Interruption de l'agent (agent parlait)!")
                                             try:
@@ -469,6 +481,39 @@ class TelephonyVoiceBridge:
                             logger.debug("Agent arrête de parler - déblocage audio")
                         else:
                             logger.debug("Agent arrête de parler mais user parle encore - audio reste bloqué")
+
+                        # CHECK: If a tool call was detected but no proper confirmation was given
+                        if tool_call_detected and last_assistant_message_was_short:
+                            logger.warning("🚨 Tool call détecté mais pas de confirmation complète! Envoi d'un rappel...")
+                            try:
+                                # Send a conversation item to prompt the model for confirmation
+                                from agents.realtime.model_inputs import RealtimeModelSendRawMessage
+                                await session._model.send_event(
+                                    RealtimeModelSendRawMessage(
+                                        message={
+                                            "type": "conversation.item.create",
+                                            "item": {
+                                                "type": "message",
+                                                "role": "user",
+                                                "content": [{
+                                                    "type": "input_text",
+                                                    "text": "Confirme que l'action est terminée."
+                                                }]
+                                            }
+                                        }
+                                    )
+                                )
+                                # Trigger a response
+                                await session._model.send_event(
+                                    RealtimeModelSendRawMessage(
+                                        message={"type": "response.create"}
+                                    )
+                                )
+                                logger.info("✅ Rappel de confirmation envoyé")
+                                tool_call_detected = False  # Clear the flag
+                            except Exception as e:
+                                logger.error("Erreur lors de l'envoi du rappel de confirmation: %s", e)
+
                         continue
 
                     # Handle audio interruption - BLOCK AUDIO IMMEDIATELY!
@@ -524,8 +569,14 @@ class TelephonyVoiceBridge:
                             item_id = getattr(item, "id", None)
                             item_type = getattr(item, "type", None)
                             contents = getattr(item, "content", [])
+                            content_count = len(contents) if contents else 0
                             logger.info("📋 History item: role=%s, type=%s, id=%s, content_count=%d",
-                                       role, item_type, item_id, len(contents) if contents else 0)
+                                       role, item_type, item_id, content_count)
+
+                            # DETECT TOOL CALLS: assistant message with content_count=0 indicates a tool call
+                            if role == "assistant" and content_count == 0:
+                                tool_call_detected = True
+                                logger.info("🔧 Tool call détecté (assistant message avec content_count=0)")
 
                             # Inspect content types for tool-related data
                             if contents:
@@ -544,11 +595,25 @@ class TelephonyVoiceBridge:
                                 text = getattr(content, "text", None) or getattr(content, "transcript", None)
                                 if isinstance(text, str) and text.strip():
                                     text_parts.append(text.strip())
+
                             if text_parts:
                                 combined_text = "\n".join(text_parts)
                                 transcripts.append({"role": role, "text": combined_text})
                                 # Log transcription to help debug tool usage
                                 logger.info("💬 %s: %s", role.upper(), combined_text[:200])
+
+                                # Track if assistant message is short (likely just a preamble)
+                                if role == "assistant":
+                                    # Short messages (< 30 chars) are likely preambles like "Je m'en occupe"
+                                    is_short = len(combined_text) < 30
+                                    last_assistant_message_was_short = is_short
+
+                                    # If we had a tool call and now get a proper response, clear the flag
+                                    if tool_call_detected and not is_short:
+                                        logger.info("✅ Confirmation détectée après tool call: %s", combined_text[:50])
+                                        tool_call_detected = False
+                                    elif tool_call_detected and is_short:
+                                        logger.warning("⚠️ Message court après tool call (probable préambule): %s", combined_text)
                         continue
 
                     # Handle tool calls (the SDK automatically executes these!)
