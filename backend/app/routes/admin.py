@@ -5,6 +5,7 @@ import datetime
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -342,6 +343,92 @@ async def list_sip_accounts(
         select(SipAccount).order_by(SipAccount.is_default.desc(), SipAccount.label.asc())
     ).all()
     return accounts
+
+
+class SipAccountAvailability(BaseModel):
+    """Disponibilité d'un compte SIP pour association à un workflow."""
+
+    id: int
+    label: str
+    is_active: bool
+    is_available: bool
+    assigned_workflow_id: int | None = None
+    assigned_workflow_slug: str | None = None
+
+
+@router.get(
+    "/api/admin/sip-accounts/availability",
+    response_model=list[SipAccountAvailability],
+)
+async def list_sip_accounts_availability(
+    workflow_id: int | None = None,
+    session: Session = Depends(get_session),
+    _: User = Depends(require_admin),
+):
+    """Récupère la liste des comptes SIP avec leur disponibilité pour association.
+
+    Args:
+        workflow_id: ID du workflow pour lequel on vérifie la disponibilité.
+            Si fourni, le compte associé à ce workflow sera marqué comme disponible.
+
+    Returns:
+        Liste des comptes SIP avec leur statut de disponibilité.
+    """
+    from ..models import Workflow, WorkflowDefinition
+
+    # Récupérer tous les comptes SIP actifs
+    accounts = session.scalars(
+        select(SipAccount)
+        .where(SipAccount.is_active == True)
+        .order_by(SipAccount.is_default.desc(), SipAccount.label.asc())
+    ).all()
+
+    result = []
+    for account in accounts:
+        # Chercher si ce compte est déjà associé à un workflow
+        assigned_definition = session.scalar(
+            select(WorkflowDefinition)
+            .join(Workflow)
+            .where(
+                WorkflowDefinition.sip_account_id == account.id,
+                WorkflowDefinition.is_active == True,
+            )
+        )
+
+        if assigned_definition:
+            # Le compte est assigné, vérifier si c'est au workflow courant
+            is_available = (
+                workflow_id is not None
+                and assigned_definition.workflow_id == workflow_id
+            )
+            result.append(
+                SipAccountAvailability(
+                    id=account.id,
+                    label=account.label,
+                    is_active=account.is_active,
+                    is_available=is_available,
+                    assigned_workflow_id=assigned_definition.workflow_id,
+                    assigned_workflow_slug=session.scalar(
+                        select(Workflow.slug).where(
+                            Workflow.id == assigned_definition.workflow_id
+                        )
+                    ),
+                )
+            )
+        else:
+            # Le compte n'est pas assigné, il est disponible
+            result.append(
+                SipAccountAvailability(
+                    id=account.id,
+                    label=account.label,
+                    is_active=account.is_active,
+                    is_available=True,
+                    assigned_workflow_id=None,
+                    assigned_workflow_slug=None,
+                )
+            )
+
+    return result
 
 
 @router.post(

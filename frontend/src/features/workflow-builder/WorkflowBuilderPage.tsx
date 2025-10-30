@@ -89,7 +89,7 @@ import {
   setStartAutoRun,
   setStartAutoRunMessage,
   setStartAutoRunAssistantMessage,
-  setStartTelephonyIsSipWorkflow,
+  setStartTelephonySipAccountId,
   setStartTelephonyRingTimeout,
   setConditionMode,
   setConditionPath,
@@ -2681,13 +2681,13 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
-  const handleStartTelephonyIsSipWorkflowChange = useCallback(
-    (nodeId: string, isSipWorkflow: boolean) => {
+  const handleStartTelephonySipAccountIdChange = useCallback(
+    (nodeId: string, sipAccountId: number | null) => {
       updateNodeData(nodeId, (data) => {
         if (data.kind !== "start") {
           return data;
         }
-        const nextParameters = setStartTelephonyIsSipWorkflow(data.parameters, isSipWorkflow);
+        const nextParameters = setStartTelephonySipAccountId(data.parameters, sipAccountId);
         return {
           ...data,
           parameters: nextParameters,
@@ -7475,7 +7475,7 @@ const WorkflowBuilderPage = () => {
             onStartAutoRunAssistantMessageChange={
               handleStartAutoRunAssistantMessageChange
             }
-            onStartTelephonyIsSipWorkflowChange={handleStartTelephonyIsSipWorkflowChange}
+            onStartTelephonySipAccountIdChange={handleStartTelephonySipAccountIdChange}
             onStartTelephonyRingTimeoutChange={handleStartTelephonyRingTimeoutChange}
             onConditionPathChange={handleConditionPathChange}
             onConditionModeChange={handleConditionModeChange}

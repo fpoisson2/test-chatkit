@@ -581,30 +581,34 @@ export const setStartTelephonyWorkflow = (
     return { ...current, workflow: payload };
   });
 
-export const getStartTelephonyIsSipWorkflow = (
+export const getStartTelephonySipAccountId = (
   parameters: AgentParameters | null | undefined,
-): boolean => {
+): number | null => {
   if (!parameters) {
-    return false;
+    return null;
   }
 
   const telephony = cloneStartTelephonyConfig(
     (parameters as Record<string, unknown>).telephony,
   );
 
-  return telephony.is_sip_workflow === true;
+  const value = telephony.sip_account_id;
+  if (typeof value === "number" && value > 0) {
+    return value;
+  }
+  return null;
 };
 
-export const setStartTelephonyIsSipWorkflow = (
+export const setStartTelephonySipAccountId = (
   parameters: AgentParameters,
-  isSipWorkflow: boolean,
+  sipAccountId: number | null,
 ): AgentParameters =>
   updateStartTelephonyConfig(parameters, (current) => {
-    if (!isSipWorkflow) {
-      const { is_sip_workflow: _ignored, ...rest } = current;
+    if (!sipAccountId) {
+      const { sip_account_id: _ignored, ...rest } = current;
       return rest;
     }
-    return { ...current, is_sip_workflow: true };
+    return { ...current, sip_account_id: sipAccountId };
   });
 
 export const getStartTelephonyRingTimeout = (

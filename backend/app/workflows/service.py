@@ -813,6 +813,10 @@ class WorkflowService:
     ) -> WorkflowDefinition:
         self._validate_nested_workflows_for_definition(nodes, definition.workflow)
 
+        # Extraire et mettre à jour le sip_account_id
+        sip_account_id = self._extract_sip_account_id_from_nodes(nodes)
+        definition.sip_account_id = sip_account_id
+
         definition.transitions[:] = []
         session.flush()
         definition.steps[:] = []
@@ -846,6 +850,19 @@ class WorkflowService:
         session.flush()
         return definition
 
+    def _extract_sip_account_id_from_nodes(
+        self, nodes: list[NormalizedNode]
+    ) -> int | None:
+        """Extrait l'ID du compte SIP depuis le noeud start."""
+        for node in nodes:
+            if node.kind == "start" and node.parameters:
+                telephony = node.parameters.get("telephony")
+                if isinstance(telephony, dict):
+                    sip_account_id = telephony.get("sip_account_id")
+                    if isinstance(sip_account_id, int) and sip_account_id > 0:
+                        return sip_account_id
+        return None
+
     def _create_definition_from_graph(
         self,
         *,
@@ -857,11 +874,16 @@ class WorkflowService:
         mark_active: bool = False,
     ) -> WorkflowDefinition:
         version_number = self._get_next_version(workflow, session)
+
+        # Extraire le sip_account_id du graph
+        sip_account_id = self._extract_sip_account_id_from_nodes(nodes)
+
         definition = WorkflowDefinition(
             workflow=workflow,
             name=name or f"v{version_number}",
             version=version_number,
             is_active=False,
+            sip_account_id=sip_account_id,
         )
         session.add(definition)
         session.flush()

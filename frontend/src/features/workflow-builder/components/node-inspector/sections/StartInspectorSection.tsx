@@ -1,19 +1,31 @@
+import { useEffect, useState } from "react";
 import { useI18n } from "../../../../../i18n";
+import { useAuth } from "../../../../../auth";
 import { ToggleRow } from "../components/ToggleRow";
 import styles from "../NodeInspector.module.css";
+
+interface SipAccountAvailability {
+  id: number;
+  label: string;
+  is_active: boolean;
+  is_available: boolean;
+  assigned_workflow_id: number | null;
+  assigned_workflow_slug: string | null;
+}
 
 type StartInspectorSectionProps = {
   nodeId: string;
   startAutoRun: boolean;
   startAutoRunMessage: string;
   startAutoRunAssistantMessage: string;
-  startTelephonyIsSipWorkflow: boolean;
+  startTelephonySipAccountId: number | null;
   startTelephonyRingTimeout: number;
   onStartAutoRunChange: (nodeId: string, value: boolean) => void;
   onStartAutoRunMessageChange: (nodeId: string, value: string) => void;
   onStartAutoRunAssistantMessageChange: (nodeId: string, value: string) => void;
-  onStartTelephonyIsSipWorkflowChange: (nodeId: string, value: boolean) => void;
+  onStartTelephonySipAccountIdChange: (nodeId: string, value: number | null) => void;
   onStartTelephonyRingTimeoutChange: (nodeId: string, value: number) => void;
+  workflowId: number | null;
 };
 
 export const StartInspectorSection = ({
@@ -21,15 +33,37 @@ export const StartInspectorSection = ({
   startAutoRun,
   startAutoRunMessage,
   startAutoRunAssistantMessage,
-  startTelephonyIsSipWorkflow,
+  startTelephonySipAccountId,
   startTelephonyRingTimeout,
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
   onStartAutoRunAssistantMessageChange,
-  onStartTelephonyIsSipWorkflowChange,
+  onStartTelephonySipAccountIdChange,
   onStartTelephonyRingTimeoutChange,
+  workflowId,
 }: StartInspectorSectionProps) => {
   const { t } = useI18n();
+  const { token } = useAuth();
+  const [sipAccounts, setSipAccounts] = useState<SipAccountAvailability[]>([]);
+  const [sipAccountsLoading, setSipAccountsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+
+    setSipAccountsLoading(true);
+    const params = new URLSearchParams();
+    if (workflowId) {
+      params.append("workflow_id", String(workflowId));
+    }
+
+    fetch(`/api/admin/sip-accounts/availability?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => res.json())
+      .then((data) => setSipAccounts(data))
+      .catch((err) => console.error("Failed to load SIP accounts:", err))
+      .finally(() => setSipAccountsLoading(false));
+  }, [token, workflowId]);
 
   const hasStartAutoRunUserMessage = startAutoRunMessage.trim().length > 0;
   const hasStartAutoRunAssistantMessage = startAutoRunAssistantMessage.trim().length > 0;
@@ -85,14 +119,38 @@ export const StartInspectorSection = ({
         </>
       ) : null}
 
-      <ToggleRow
-        label={t("workflowBuilder.startInspector.telephonyIsSipWorkflowLabel")}
-        checked={startTelephonyIsSipWorkflow}
-        onChange={(next) => onStartTelephonyIsSipWorkflowChange(nodeId, next)}
-        help={t("workflowBuilder.startInspector.telephonyIsSipWorkflowHelp")}
-      />
+      <label className={styles.nodeInspectorField}>
+        <span className={styles.nodeInspectorLabel}>
+          Compte SIP
+        </span>
+        <select
+          value={startTelephonySipAccountId || ""}
+          onChange={(event) => {
+            const value = event.target.value;
+            onStartTelephonySipAccountIdChange(nodeId, value ? parseInt(value, 10) : null);
+          }}
+          disabled={sipAccountsLoading}
+        >
+          <option value="">Aucun (workflow sans téléphonie)</option>
+          {sipAccounts.map((account) => (
+            <option
+              key={account.id}
+              value={account.id}
+              disabled={!account.is_available}
+            >
+              {account.label}
+              {!account.is_available && account.assigned_workflow_slug
+                ? ` (assigné à ${account.assigned_workflow_slug})`
+                : ""}
+            </option>
+          ))}
+        </select>
+        <p className={styles.nodeInspectorHintTextTight}>
+          Sélectionnez le compte SIP pour ce workflow. Un compte SIP ne peut être associé qu'à un seul workflow.
+        </p>
+      </label>
 
-      {startTelephonyIsSipWorkflow ? (
+      {startTelephonySipAccountId ? (
         <label className={styles.nodeInspectorField}>
           <span className={styles.nodeInspectorLabel}>
             {t("workflowBuilder.startInspector.telephonyRingTimeoutLabel")}
