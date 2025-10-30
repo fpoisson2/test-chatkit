@@ -309,7 +309,7 @@ class TelephonyVoiceBridge:
         async def forward_audio() -> None:
             nonlocal inbound_audio_bytes
             packet_count = 0
-            audio_buffer = bytearray()
+            bytes_since_commit = 0
             # At 24kHz PCM16: 100ms = 24000 samples/sec * 0.1 sec * 2 bytes/sample = 4800 bytes
             MIN_COMMIT_SIZE = 4800  # 100ms minimum required by OpenAI
 
@@ -318,26 +318,36 @@ class TelephonyVoiceBridge:
                     packet_count += 1
                     pcm = self._decode_packet(packet)
                     if not pcm:
+                        logger.debug("Paquet RTP #%d: décodage vide, ignoré", packet_count)
                         continue
                     inbound_audio_bytes += len(pcm)
 
-                    # Buffer audio until we have at least 100ms to commit
-                    audio_buffer.extend(pcm)
+                    if packet_count == 1:
+                        logger.info("Premier paquet audio reçu: %d bytes PCM", len(pcm))
 
-                    # When we have enough audio, send and commit it
-                    if len(audio_buffer) >= MIN_COMMIT_SIZE:
-                        chunk = bytes(audio_buffer)
-                        audio_buffer.clear()
-                        # Send with commit=True so semantic_vad can analyze it
-                        await session.send_audio(chunk, commit=True)
+                    # Send audio continuously WITHOUT committing (just buffer it)
+                    await session.send_audio(pcm, commit=False)
+                    bytes_since_commit += len(pcm)
+
+                    # When we have buffered enough audio, commit it
+                    if bytes_since_commit >= MIN_COMMIT_SIZE:
+                        logger.debug(
+                            "Committing %d bytes (%.1fms) of buffered audio to OpenAI",
+                            bytes_since_commit,
+                            bytes_since_commit / 2 / 24000 * 1000
+                        )
+                        # Commit the buffer (send empty chunk with commit=True)
+                        await session.send_audio(b"", commit=True)
+                        bytes_since_commit = 0
 
                     if not should_continue():
                         logger.info("forward_audio: arrêt demandé par should_continue()")
                         break
 
-                # Send any remaining buffered audio at the end
-                if audio_buffer:
-                    await session.send_audio(bytes(audio_buffer), commit=True)
+                # Commit any remaining buffered audio at the end
+                if bytes_since_commit > 0:
+                    logger.debug("Committing final %d bytes at end of stream", bytes_since_commit)
+                    await session.send_audio(b"", commit=True)
 
                 logger.info("forward_audio: fin de la boucle RTP stream (paquets reçus: %d)", packet_count)
             finally:
