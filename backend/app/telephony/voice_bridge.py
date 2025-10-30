@@ -29,6 +29,7 @@ from agents.realtime.events import (
 from agents.realtime.model import RealtimePlaybackTracker, RealtimePlaybackState
 
 from ..config import Settings, get_settings
+from .call_transfer import transfer_call
 
 logger = logging.getLogger("chatkit.telephony.voice_bridge")
 
@@ -81,6 +82,11 @@ class TelephonyPlaybackTracker(RealtimePlaybackTracker):
         """Called by OpenAI to set the audio format."""
         self._audio_format = format
         logger.debug("TelephonyPlaybackTracker: audio format set to %s", format)
+
+    def set_interrupt_callback(self, callback: callable | None) -> None:
+        """Update the interrupt callback (useful when reusing preinit session)."""
+        self._on_interrupt_callback = callback
+        logger.debug("TelephonyPlaybackTracker: interrupt callback updated")
 
     def get_state(self) -> RealtimePlaybackState:
         """Called by OpenAI to get current playback state."""
@@ -273,6 +279,9 @@ class TelephonyVoiceBridge:
         api_base: str | None = None,
         tools: list[Any] | None = None,
         handoffs: list[Any] | None = None,
+        speak_first: bool = False,
+        preinit_response_create_sent: bool = False,
+        preinit_session: Any | None = None,
     ) -> VoiceBridgeStats:
         """Démarre le pont voix jusqu'à la fin de session ou erreur."""
 
@@ -315,16 +324,32 @@ class TelephonyVoiceBridge:
                 )
                 return True
 
+        session_closing = [False]  # Track if we're already closing the session
+
         async def request_stop() -> None:
+            """Request immediate stop of both audio forwarding and event handling."""
             stop_event.set()
+            # Close the session to unblock handle_events from 'async for event in session'
+            if not session_closing[0]:
+                session_closing[0] = True
+                try:
+                    logger.debug("request_stop: fermeture immédiate de la session pour débloquer handle_events")
+                    await session.close()
+                except Exception as e:
+                    logger.debug("Erreur lors de la fermeture anticipée de session: %s", e)
 
         async def forward_audio() -> None:
             nonlocal inbound_audio_bytes
             packet_count = 0
             bytes_sent = 0
-            turn_detection_enabled = False
+            # Si on utilise une session pré-initialisée, turn_detection est déjà activé
+            turn_detection_enabled = preinit_session is not None
+            if turn_detection_enabled:
+                logger.info("Turn detection déjà activé (session pré-initialisée)")
             # At 24kHz PCM16: 100ms = 24000 samples/sec * 0.1 sec * 2 bytes/sample = 4800 bytes
             MIN_AUDIO_BEFORE_VAD = 4800  # 100ms minimum before enabling VAD
+            # Track if we've sent response.create when phone became ready
+            response_create_sent_on_ready = False
 
             try:
                 async for packet in rtp_stream:
@@ -338,11 +363,35 @@ class TelephonyVoiceBridge:
                     if packet_count == 1:
                         logger.info("Premier paquet audio reçu: %d bytes PCM", len(pcm))
 
+                        # Si speak_first est activé et qu'on n'a pas encore envoyé response.create,
+                        # l'envoyer immédiatement - le RTP server attendra 150ms avant de flusher le buffer
+                        # et OpenAI prendra 200-400ms pour générer l'audio, donc le téléphone sera prêt à temps
+                        if speak_first and not preinit_response_create_sent and not response_create_sent_on_ready:
+                            logger.info("📞 Premier paquet RTP reçu - envoi immédiat de response.create pour speak_first")
+                            try:
+                                from agents.realtime.model_inputs import (
+                                    RealtimeModelRawClientMessage,
+                                    RealtimeModelSendRawMessage,
+                                )
+                                await session._model.send_event(
+                                    RealtimeModelSendRawMessage(
+                                        message=RealtimeModelRawClientMessage(
+                                            type="response.create",
+                                            other_data={},
+                                        )
+                                    )
+                                )
+                                response_create_sent_on_ready = True
+                                logger.info("✅ response.create envoyé - l'assistant va parler en premier")
+                            except Exception as exc:
+                                logger.warning("Erreur lors de l'envoi de response.create: %s", exc)
+
                     # Always send audio with commit=False - let turn_detection handle commits
                     await session.send_audio(pcm, commit=False)
                     bytes_sent += len(pcm)
 
-                    # After sending enough audio, enable turn_detection
+                    # After sending enough audio, enable turn_detection (if not already enabled)
+                    # Note: create_response=False car on gère manuellement via response.create
                     if not turn_detection_enabled and bytes_sent >= MIN_AUDIO_BEFORE_VAD:
                         logger.info(
                             "Activation de turn_detection après %.1fms d'audio",
@@ -358,14 +407,14 @@ class TelephonyVoiceBridge:
                                         },
                                         "turn_detection": {
                                             "type": "semantic_vad",
-                                            "create_response": True,
+                                            "create_response": False,  # On force manuellement via speech_stopped
                                             "interrupt_response": True,
                                         },
                                     }
                                 )
                             )
                             turn_detection_enabled = True
-                            logger.info("Turn detection (semantic_vad) activé avec succès")
+                            logger.info("Turn detection (semantic_vad) activé avec succès (sans create_response)")
                         except Exception as e:
                             logger.warning("Impossible d'activer turn_detection: %s", e)
 
@@ -391,9 +440,58 @@ class TelephonyVoiceBridge:
         # Track processed history items to avoid re-processing replays
         processed_item_ids: set[str] = set()  # Track item IDs we've already seen
 
+        # Force immediate response after user speech (max 0.1s silence)
+        response_watchdog_task: asyncio.Task | None = None  # Task monitoring response delay
+        audio_received_after_user_speech = False  # Track if we got actual audio
+        response_started_after_user_speech = False  # Track if agent started generating ANY response
+
+        async def force_response_if_silent() -> None:
+            """Wait 0.1s and force audio response if no audio received."""
+            nonlocal audio_received_after_user_speech, response_started_after_user_speech
+            try:
+                await asyncio.sleep(0.1)  # Wait 0.1 second
+                # If we reach here and NO AUDIO received, force response with audio
+                # This ensures there's ALWAYS a verbal preamble, even before function calls
+                if not audio_received_after_user_speech:
+                    if response_started_after_user_speech:
+                        logger.warning("⏱️ 0.1s sans audio détecté (function call sans préambule) - forçage response.create avec audio")
+                        # Cancel the current response first (it has no audio anyway)
+                        try:
+                            from agents.realtime.model_inputs import RealtimeModelSendRawMessage
+                            await session._model.send_event(
+                                RealtimeModelSendRawMessage(
+                                    message={"type": "response.cancel"}
+                                )
+                            )
+                            logger.info("🚫 Réponse sans audio annulée")
+                        except Exception as e:
+                            logger.debug("response.cancel échoué: %s", e)
+                    else:
+                        logger.warning("⏱️ 0.1s silence TOTAL détecté - forçage response.create")
+
+                    try:
+                        from agents.realtime.model_inputs import (
+                            RealtimeModelRawClientMessage,
+                            RealtimeModelSendRawMessage,
+                        )
+                        await session._model.send_event(
+                            RealtimeModelSendRawMessage(
+                                message=RealtimeModelRawClientMessage(
+                                    type="response.create",
+                                    other_data={},
+                                )
+                            )
+                        )
+                        logger.info("✅ response.create forcé pour garantir audio")
+                    except Exception as e:
+                        logger.warning("Impossible de forcer response.create: %s", e)
+            except asyncio.CancelledError:
+                # Watchdog cancelled because audio arrived - this is good!
+                logger.debug("Watchdog annulé - audio reçu à temps")
+
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_item_ids
+            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_item_ids, response_watchdog_task, audio_received_after_user_speech, response_started_after_user_speech
             try:
                 async for event in session:
                     if not should_continue():
@@ -411,6 +509,11 @@ class TelephonyVoiceBridge:
                         # Ignore "response_cancel_not_active" - it's OK if there's no active response
                         if error_code == 'response_cancel_not_active':
                             logger.debug("response.cancel ignoré (pas de réponse active): %s", event.error)
+                            continue
+                        # Ignore "conversation_already_has_active_response" - happens when turn_detection
+                        # and manual response.create race (expected behavior)
+                        if error_code == 'conversation_already_has_active_response':
+                            logger.debug("response.create ignoré (réponse déjà active - turn_detection l'a créée): %s", event.error)
                             continue
                         # For other errors, fail the session
                         error = VoiceBridgeError(str(event.error))
@@ -432,6 +535,12 @@ class TelephonyVoiceBridge:
                                 raw_data = getattr(model_event, 'data', None)
                                 if raw_data and isinstance(raw_data, dict):
                                     event_subtype = raw_data.get('type', '')
+
+                                    # Debug: Log specific event types (disabled by default for performance)
+                                    # if event_subtype not in ('input_audio_buffer.speech_started', 'input_audio_buffer.speech_stopped',
+                                    #                          'input_audio_buffer.committed', 'response.audio.delta',
+                                    #                          'response.audio_transcript.delta', 'conversation.item.input_audio_transcription.completed'):
+                                    #     logger.info("🔍 RAW EVENT: %s", event_subtype)
 
                                     # User started speaking - INTERRUPT THE AGENT AND BLOCK AUDIO!
                                     if event_subtype == 'input_audio_buffer.speech_started':
@@ -466,11 +575,80 @@ class TelephonyVoiceBridge:
                                         if not agent_is_speaking:
                                             block_audio_send_ref[0] = False
                                             logger.info("→ Déblocage audio (agent ne parle pas)")
+                                        # Turn detection will create response automatically (no manual intervention)
+                                        continue
+
+                                    # Detect MCP tool call completion in real-time
+                                    if event_subtype == 'response.mcp_call.completed':
+                                        tool_data = raw_data.get('mcp_call', {}) if isinstance(raw_data.get('mcp_call'), dict) else {}
+                                        tool_name = tool_data.get('name', 'unknown')
+                                        logger.info("🔧 Tool MCP terminé EN TEMPS RÉEL: %s", tool_name)
+
+                                        # Force response.create pour confirmation vocale
+                                        # Ignore l'erreur si turn_detection a déjà créé une réponse
+                                        try:
+                                            from agents.realtime.model_inputs import (
+                                                RealtimeModelRawClientMessage,
+                                                RealtimeModelSendRawMessage,
+                                            )
+                                            logger.info("→ Envoi response.create pour forcer confirmation vocale")
+                                            await session._model.send_event(
+                                                RealtimeModelSendRawMessage(
+                                                    message=RealtimeModelRawClientMessage(
+                                                        type="response.create",
+                                                        other_data={},
+                                                    )
+                                                )
+                                            )
+                                            logger.info("✅ response.create envoyé")
+                                        except Exception as e:
+                                            # Ignorer silencieusement si turn_detection a déjà créé une réponse
+                                            error_msg = str(e).lower()
+                                            if "already has an active response" in error_msg or "conversation_already_has_active_response" in error_msg:
+                                                logger.debug("response.create ignoré (réponse déjà active): %s", e)
+                                            else:
+                                                logger.warning("Erreur lors de l'envoi de response.create: %s", e)
+                                        continue
+
+                                    # Detect standard function call completion in real-time
+                                    if event_subtype == 'response.function_call_arguments.done':
+                                        function_name = raw_data.get('name', 'unknown')
+                                        logger.info("🔧 Function call terminé EN TEMPS RÉEL: %s", function_name)
+
+                                        # Force response.create pour confirmation vocale
+                                        # Ignore l'erreur si turn_detection a déjà créé une réponse
+                                        try:
+                                            from agents.realtime.model_inputs import (
+                                                RealtimeModelRawClientMessage,
+                                                RealtimeModelSendRawMessage,
+                                            )
+                                            logger.info("→ Envoi response.create pour forcer confirmation vocale")
+                                            await session._model.send_event(
+                                                RealtimeModelSendRawMessage(
+                                                    message=RealtimeModelRawClientMessage(
+                                                        type="response.create",
+                                                        other_data={},
+                                                    )
+                                                )
+                                            )
+                                            logger.info("✅ response.create envoyé")
+                                        except Exception as e:
+                                            # Ignorer silencieusement si turn_detection a déjà créé une réponse
+                                            error_msg = str(e).lower()
+                                            if "already has an active response" in error_msg or "conversation_already_has_active_response" in error_msg:
+                                                logger.debug("response.create ignoré (réponse déjà active): %s", e)
+                                            else:
+                                                logger.warning("Erreur lors de l'envoi de response.create: %s", e)
                                         continue
 
                     # Track when agent starts speaking
                     if isinstance(event, RealtimeAgentStartEvent):
                         agent_is_speaking = True
+                        # Mark that a response has started (even if no audio yet)
+                        # This prevents watchdog from forcing duplicate response.create
+                        response_started_after_user_speech = True
+                        # DON'T cancel watchdog here - wait for actual audio chunk
+                        # (AgentStart can fire even for responses without audio, like pure tool calls)
                         # Don't change block_audio_send here - let RealtimeAgentEndEvent unblock it
                         logger.debug("Agent commence à parler (block_audio_send=%s)", block_audio_send_ref[0])
                         continue
@@ -485,37 +663,8 @@ class TelephonyVoiceBridge:
                         else:
                             logger.debug("Agent arrête de parler mais user parle encore - audio reste bloqué")
 
-                        # CHECK: If a tool call was detected but no proper confirmation was given
-                        if tool_call_detected and last_assistant_message_was_short:
-                            logger.warning("🚨 Tool call détecté mais pas de confirmation complète! Envoi d'un rappel...")
-                            try:
-                                # Send a conversation item to prompt the model for confirmation
-                                from agents.realtime.model_inputs import RealtimeModelSendRawMessage
-                                await session._model.send_event(
-                                    RealtimeModelSendRawMessage(
-                                        message={
-                                            "type": "conversation.item.create",
-                                            "item": {
-                                                "type": "message",
-                                                "role": "user",
-                                                "content": [{
-                                                    "type": "input_text",
-                                                    "text": "Confirme que l'action est terminée."
-                                                }]
-                                            }
-                                        }
-                                    )
-                                )
-                                # Trigger a response
-                                await session._model.send_event(
-                                    RealtimeModelSendRawMessage(
-                                        message={"type": "response.create"}
-                                    )
-                                )
-                                logger.info("✅ Rappel de confirmation envoyé")
-                                tool_call_detected = False  # Clear the flag
-                            except Exception as e:
-                                logger.error("Erreur lors de l'envoi du rappel de confirmation: %s", e)
+                        # Tool call handling is now done immediately when detected (see history processing)
+                        # No need for a delayed confirmation check here
 
                         continue
 
@@ -540,6 +689,16 @@ class TelephonyVoiceBridge:
 
                     # Handle audio events (agent speaking) - only send if not blocked
                     if isinstance(event, RealtimeAudio):
+                        # Mark that we received audio - this prevents watchdog from firing
+                        if not audio_received_after_user_speech:
+                            audio_received_after_user_speech = True
+                            logger.debug("✅ Audio reçu - watchdog ne se déclenchera pas")
+
+                        # Cancel watchdog on FIRST audio chunk - agent is actually speaking!
+                        if response_watchdog_task and not response_watchdog_task.done():
+                            response_watchdog_task.cancel()
+                            logger.debug("✅ Watchdog annulé - agent parle vraiment")
+
                         if not block_audio_send_ref[0]:
                             audio_event = event.audio
                             pcm_data = audio_event.data
@@ -565,30 +724,46 @@ class TelephonyVoiceBridge:
                     # Handle history updates (contains transcripts)
                     if isinstance(event, (RealtimeHistoryAdded, RealtimeHistoryUpdated)):
                         history = getattr(event, "history", [event.item] if hasattr(event, "item") else [])
-                        for item in history:
+                        for idx, item in enumerate(history):
                             role = getattr(item, "role", None)
 
                             # Debug: Log ALL history items to trace tool calls
                             item_id = getattr(item, "id", None)
 
+                            # Create a unique identifier for this item (even if id is None)
+                            # Use index in history + role + content_count as fallback
+                            item_unique_id = item_id if item_id else f"{idx}_{role}_{len(getattr(item, 'content', []))}"
+
                             # DEDUPLICATION: Skip items we've already processed (filters out replays)
-                            if item_id and item_id in processed_item_ids:
+                            if item_unique_id in processed_item_ids:
                                 continue  # Already processed this item
 
                             # Mark this item as processed
-                            if item_id:
-                                processed_item_ids.add(item_id)
+                            processed_item_ids.add(item_unique_id)
 
                             item_type = getattr(item, "type", None)
                             contents = getattr(item, "content", [])
                             content_count = len(contents) if contents else 0
-                            logger.info("📋 History item: role=%s, type=%s, id=%s, content_count=%d",
-                                       role, item_type, item_id, content_count)
+                            logger.info("📋 History item: role=%s, type=%s, id=%s, unique_id=%s, content_count=%d",
+                                       role, item_type, item_id, item_unique_id, content_count)
 
-                            # DETECT TOOL CALLS: assistant message with content_count=0 indicates a tool call
-                            if role == "assistant" and content_count == 0:
+                            # DETECT TOOL CALLS: Check if there are actual function_call or tool_call contents
+                            # Don't just rely on content_count=0, verify there's a real tool call
+                            has_tool_call_content = False
+                            if contents:
+                                for content in contents:
+                                    content_type = getattr(content, "type", None)
+                                    if content_type in ("function_call", "tool_call", "function_call_output"):
+                                        has_tool_call_content = True
+                                        break
+
+                            # Only detect tool call if:
+                            # 1. It's an assistant message AND
+                            # 2. Either has tool call content OR is type="function_call"
+                            if role == "assistant" and (has_tool_call_content or item_type == "function_call"):
                                 tool_call_detected = True
-                                logger.info("🔧 Tool call détecté (assistant message avec content_count=0)")
+                                logger.debug("🔧 Tool call détecté dans l'historique (type=%s, has_tool_content=%s)",
+                                           item_type, has_tool_call_content)
 
                             # Inspect content types for tool-related data
                             if contents:
@@ -638,6 +813,7 @@ class TelephonyVoiceBridge:
                         tool_name = getattr(event.tool, "name", None)
                         output = event.output
                         logger.info("Outil MCP terminé: %s, résultat: %s", tool_name, output)
+                        # Note: response.create is sent when tool call is detected via history (content_count=0)
                         continue
 
             except Exception as exc:
@@ -668,10 +844,31 @@ class TelephonyVoiceBridge:
             }
 
             # Create session using the SDK runner (this is what enables tool calls!)
-            logger.info("Démarrage session SDK avec runner")
-            session = await runner.run(model_config=model_config)
-            await session.__aenter__()
-            logger.info("Session SDK démarrée avec succès")
+            # OU utiliser la session pré-connectée si elle existe
+            if preinit_session is not None:
+                logger.info("Utilisation de la session pré-connectée (déjà démarrée pendant la sonnerie)")
+                session = preinit_session
+
+                # Récupérer le playback_tracker de la session pré-initialisée
+                # et mettre à jour son callback d'interruption
+                try:
+                    preinit_playback_tracker = session._model._playback_tracker
+                    if isinstance(preinit_playback_tracker, TelephonyPlaybackTracker):
+                        preinit_playback_tracker.set_interrupt_callback(on_playback_interrupted)
+                        playback_tracker = preinit_playback_tracker
+                        logger.info("✅ Playback tracker pré-initialisé réutilisé avec callback d'interruption mis à jour")
+                    else:
+                        logger.warning("Playback tracker pré-initialisé n'est pas un TelephonyPlaybackTracker, création d'un nouveau")
+                except (AttributeError, TypeError) as e:
+                    logger.warning("Impossible de récupérer le playback tracker pré-initialisé: %s", e)
+            else:
+                logger.info("Démarrage session SDK avec runner")
+                session = await runner.run(model_config=model_config)
+                await session.__aenter__()
+                logger.info("Session SDK démarrée avec succès")
+
+            # Note: Si speak_first est activé, response.create sera envoyé dans forward_audio()
+            # quand le premier paquet RTP sera reçu (téléphone prêt à recevoir l'audio)
 
             # Log available tools
             try:
@@ -701,8 +898,9 @@ class TelephonyVoiceBridge:
             error = exc
             logger.error("Session voix Realtime interrompue : %s", exc)
         finally:
-            if session is not None:
+            if session is not None and not session_closing[0]:
                 try:
+                    session_closing[0] = True
                     await session.close()
                 except Exception:  # pragma: no cover - fermeture best effort
                     logger.debug(

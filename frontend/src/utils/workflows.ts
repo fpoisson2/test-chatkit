@@ -581,7 +581,67 @@ export const setStartTelephonyWorkflow = (
     return { ...current, workflow: payload };
   });
 
-export const getStartTelephonyIsSipWorkflow = (
+export const getStartTelephonySipAccountId = (
+  parameters: AgentParameters | null | undefined,
+): number | null => {
+  if (!parameters) {
+    return null;
+  }
+
+  const telephony = cloneStartTelephonyConfig(
+    (parameters as Record<string, unknown>).telephony,
+  );
+
+  const value = telephony.sip_account_id;
+  if (typeof value === "number" && value > 0) {
+    return value;
+  }
+  return null;
+};
+
+export const setStartTelephonySipAccountId = (
+  parameters: AgentParameters,
+  sipAccountId: number | null,
+): AgentParameters =>
+  updateStartTelephonyConfig(parameters, (current) => {
+    if (!sipAccountId) {
+      const { sip_account_id: _ignored, ...rest } = current;
+      return rest;
+    }
+    return { ...current, sip_account_id: sipAccountId };
+  });
+
+export const getStartTelephonyRingTimeout = (
+  parameters: AgentParameters | null | undefined,
+): number => {
+  if (!parameters) {
+    return 0;
+  }
+
+  const telephony = cloneStartTelephonyConfig(
+    (parameters as Record<string, unknown>).telephony,
+  );
+
+  const value = telephony.ring_timeout_seconds;
+  if (typeof value === "number" && value >= 0) {
+    return value;
+  }
+  return 0;
+};
+
+export const setStartTelephonyRingTimeout = (
+  parameters: AgentParameters,
+  ringTimeout: number,
+): AgentParameters =>
+  updateStartTelephonyConfig(parameters, (current) => {
+    if (ringTimeout <= 0) {
+      const { ring_timeout_seconds: _ignored, ...rest } = current;
+      return rest;
+    }
+    return { ...current, ring_timeout_seconds: ringTimeout };
+  });
+
+export const getStartTelephonySpeakFirst = (
   parameters: AgentParameters | null | undefined,
 ): boolean => {
   if (!parameters) {
@@ -592,19 +652,20 @@ export const getStartTelephonyIsSipWorkflow = (
     (parameters as Record<string, unknown>).telephony,
   );
 
-  return telephony.is_sip_workflow === true;
+  const value = telephony.speak_first;
+  return typeof value === "boolean" ? value : false;
 };
 
-export const setStartTelephonyIsSipWorkflow = (
+export const setStartTelephonySpeakFirst = (
   parameters: AgentParameters,
-  isSipWorkflow: boolean,
+  speakFirst: boolean,
 ): AgentParameters =>
   updateStartTelephonyConfig(parameters, (current) => {
-    if (!isSipWorkflow) {
-      const { is_sip_workflow: _ignored, ...rest } = current;
+    if (!speakFirst) {
+      const { speak_first: _ignored, ...rest } = current;
       return rest;
     }
-    return { ...current, is_sip_workflow: true };
+    return { ...current, speak_first: speakFirst };
   });
 
 export const setConditionPath = (

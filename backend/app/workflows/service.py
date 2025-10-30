@@ -813,6 +813,10 @@ class WorkflowService:
     ) -> WorkflowDefinition:
         self._validate_nested_workflows_for_definition(nodes, definition.workflow)
 
+        # Extraire et mettre à jour le sip_account_id
+        sip_account_id = self._extract_sip_account_id_from_nodes(nodes)
+        definition.sip_account_id = sip_account_id
+
         definition.transitions[:] = []
         session.flush()
         definition.steps[:] = []
@@ -846,6 +850,19 @@ class WorkflowService:
         session.flush()
         return definition
 
+    def _extract_sip_account_id_from_nodes(
+        self, nodes: list[NormalizedNode]
+    ) -> int | None:
+        """Extrait l'ID du compte SIP depuis le noeud start."""
+        for node in nodes:
+            if node.kind == "start" and node.parameters:
+                telephony = node.parameters.get("telephony")
+                if isinstance(telephony, dict):
+                    sip_account_id = telephony.get("sip_account_id")
+                    if isinstance(sip_account_id, int) and sip_account_id > 0:
+                        return sip_account_id
+        return None
+
     def _create_definition_from_graph(
         self,
         *,
@@ -857,11 +874,16 @@ class WorkflowService:
         mark_active: bool = False,
     ) -> WorkflowDefinition:
         version_number = self._get_next_version(workflow, session)
+
+        # Extraire le sip_account_id du graph
+        sip_account_id = self._extract_sip_account_id_from_nodes(nodes)
+
         definition = WorkflowDefinition(
             workflow=workflow,
             name=name or f"v{version_number}",
             version=version_number,
             is_active=False,
+            sip_account_id=sip_account_id,
         )
         session.add(definition)
         session.flush()
@@ -945,11 +967,54 @@ class WorkflowService:
                 db.close()
 
     def get_sip_workflow(
-        self, session: Session | None = None
+        self, session: Session | None = None, sip_account_id: int | None = None
     ) -> WorkflowDefinition | None:
-        """Cherche le workflow marqué comme workflow SIP (is_sip_workflow=true)."""
+        """Cherche le workflow associé à un compte SIP.
+
+        Args:
+            session: Session SQLAlchemy (optionnelle)
+            sip_account_id: ID du compte SIP pour lequel trouver le workflow.
+                          Si None, cherche le workflow avec is_sip_workflow=true (comportement legacy).
+
+        Returns:
+            La définition du workflow associée au compte SIP, ou None si aucune.
+        """
         db, owns_session = self._get_session(session)
         try:
+            # Nouvelle logique: chercher par sip_account_id
+            if sip_account_id is not None:
+                # Trouver la définition active associée à ce compte SIP
+                from ..models import WorkflowDefinition
+
+                definition = db.scalar(
+                    select(WorkflowDefinition)
+                    .where(
+                        WorkflowDefinition.sip_account_id == sip_account_id,
+                        WorkflowDefinition.is_active == True,
+                    )
+                )
+
+                if definition is not None:
+                    definition = self._fully_load_definition(definition)
+                    if self._needs_graph_backfill(definition):
+                        workflow = definition.workflow
+                        logger.info(
+                            "Legacy SIP workflow detected, backfilling default graph for slug %s",
+                            workflow.slug,
+                        )
+                        definition = self._backfill_legacy_definition(definition, db)
+                        self._set_active_definition(workflow, definition, db)
+                        db.commit()
+                    return definition
+
+                # Aucun workflow trouvé pour ce compte SIP
+                logger.warning(
+                    "Aucun workflow actif trouvé pour le compte SIP ID=%d",
+                    sip_account_id,
+                )
+                return None
+
+            # Comportement legacy: chercher is_sip_workflow=true
             # Chercher tous les workflows actifs
             workflows = db.scalars(select(Workflow)).all()
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 import random
@@ -103,6 +104,18 @@ def _parse_audio_media_line(sdp_lines: Iterable[str]) -> tuple[int, list[int]] |
     return None
 
 
+def _parse_connection_address(sdp_lines: Iterable[str]) -> str | None:
+    """Extrait l'adresse IP de connexion depuis les lignes SDP (c=IN IP4 x.x.x.x)."""
+    for line in sdp_lines:
+        if not line.startswith("c="):
+            continue
+        # Format: c=IN IP4 192.168.1.100
+        parts = line.split()
+        if len(parts) >= 3 and parts[1].upper() in ("IP4", "IP6"):
+            return parts[2]
+    return None
+
+
 def _build_sdp_answer(
     *,
     connection_address: str,
@@ -136,8 +149,13 @@ async def handle_incoming_invite(
     media_port: int,
     preferred_codecs: Iterable[str] = ("pcmu", "g729"),
     contact_uri: str | None = None,
+    ring_timeout_seconds: float = 0.0,
 ) -> None:
-    """Répondre à un ``INVITE`` SIP en négociant une session RTP simple."""
+    """Répondre à un ``INVITE`` SIP en négociant une session RTP simple.
+
+    Args:
+        ring_timeout_seconds: Délai en secondes avant de répondre après l'envoi du 180 Ringing.
+    """
 
     call_id = _extract_header(request, "Call-ID")
     from_header = _extract_header(request, "From")
@@ -281,6 +299,15 @@ async def handle_incoming_invite(
         call_id=call_id,
         contact_uri=contact_uri,
     )
+
+    # Attendre le délai configuré avant de répondre
+    if ring_timeout_seconds > 0:
+        logger.info(
+            "Attente de %.2f secondes avant de répondre (Call-ID=%s)",
+            ring_timeout_seconds,
+            call_id or "inconnu",
+        )
+        await asyncio.sleep(ring_timeout_seconds)
 
     sdp_answer = _build_sdp_answer(
         connection_address=media_host,

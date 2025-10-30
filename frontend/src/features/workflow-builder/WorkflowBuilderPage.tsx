@@ -89,7 +89,9 @@ import {
   setStartAutoRun,
   setStartAutoRunMessage,
   setStartAutoRunAssistantMessage,
-  setStartTelephonyIsSipWorkflow,
+  setStartTelephonySipAccountId,
+  setStartTelephonyRingTimeout,
+  setStartTelephonySpeakFirst,
   setConditionMode,
   setConditionPath,
   setConditionValue,
@@ -2680,13 +2682,49 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
-  const handleStartTelephonyIsSipWorkflowChange = useCallback(
-    (nodeId: string, isSipWorkflow: boolean) => {
+  const handleStartTelephonySipAccountIdChange = useCallback(
+    (nodeId: string, sipAccountId: number | null) => {
       updateNodeData(nodeId, (data) => {
         if (data.kind !== "start") {
           return data;
         }
-        const nextParameters = setStartTelephonyIsSipWorkflow(data.parameters, isSipWorkflow);
+        const nextParameters = setStartTelephonySipAccountId(data.parameters, sipAccountId);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleStartTelephonyRingTimeoutChange = useCallback(
+    (nodeId: string, ringTimeout: number) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "start") {
+          return data;
+        }
+        const nextParameters = setStartTelephonyRingTimeout(data.parameters, ringTimeout);
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
+  const handleStartTelephonySpeakFirstChange = useCallback(
+    (nodeId: string, speakFirst: boolean) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "start") {
+          return data;
+        }
+        const nextParameters = setStartTelephonySpeakFirst(data.parameters, speakFirst);
         return {
           ...data,
           parameters: nextParameters,
@@ -7456,7 +7494,9 @@ const WorkflowBuilderPage = () => {
             onStartAutoRunAssistantMessageChange={
               handleStartAutoRunAssistantMessageChange
             }
-            onStartTelephonyIsSipWorkflowChange={handleStartTelephonyIsSipWorkflowChange}
+            onStartTelephonySipAccountIdChange={handleStartTelephonySipAccountIdChange}
+            onStartTelephonyRingTimeoutChange={handleStartTelephonyRingTimeoutChange}
+            onStartTelephonySpeakFirstChange={handleStartTelephonySpeakFirstChange}
             onConditionPathChange={handleConditionPathChange}
             onConditionModeChange={handleConditionModeChange}
             onConditionValueChange={handleConditionValueChange}

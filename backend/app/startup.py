@@ -41,6 +41,7 @@ from .models import (
     AppSettings,
     AvailableModel,
     Base,
+    SipAccount,
     TelephonyRoute,
     User,
     VoiceSettings,
@@ -53,6 +54,7 @@ from .telephony.invite_handler import (
     handle_incoming_invite,
     send_sip_reply,
 )
+from .telephony.multi_sip_manager import MultiSIPRegistrationManager
 from .telephony.registration import SIPRegistrationManager
 from .telephony.rtp_server import RtpServer, RtpServerConfig
 from .telephony.sip_server import (
@@ -89,7 +91,7 @@ for noisy_logger in (
 settings = settings_proxy
 
 
-def _build_invite_handler(manager: SIPRegistrationManager):
+def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistrationManager):
     workflow_service = WorkflowService()
     session_secret_parser = SessionSecretParser()
 
@@ -196,6 +198,95 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             if candidate:
                 return candidate
         return None
+
+    def _extract_sip_account_id_from_request(request: Any) -> int | None:
+        """Extrait l'ID du compte SIP depuis la requête INVITE.
+
+        Analyse l'en-tête To: de l'INVITE et le compare aux comptes SIP
+        enregistrés pour déterminer quel compte a reçu l'appel.
+
+        Args:
+            request: La requête INVITE SIP
+
+        Returns:
+            L'ID du compte SIP qui a reçu l'appel, ou None en mode legacy
+
+        Raises:
+            TelephonyRouteSelectionError: Si aucun compte SIP ne correspond à l'URI
+                                         en mode multi-SIP
+        """
+        if not isinstance(manager, MultiSIPRegistrationManager):
+            # Pour un gestionnaire simple, retourner None (comportement legacy)
+            return None
+
+        # Mode multi-SIP : on doit trouver une correspondance exacte
+        # Extraire l'en-tête To: en utilisant la même logique que _extract_incoming_number
+        headers = getattr(request, "headers", None)
+        items = getattr(headers, "items", None)
+        iterable: list[tuple[Any, Any]]
+        if callable(items):
+            try:
+                iterable = list(items())
+            except Exception:  # pragma: no cover - garde-fou
+                iterable = []
+        elif isinstance(headers, dict):
+            iterable = list(headers.items())
+        else:
+            iterable = []
+
+        to_header = None
+        for key, value in iterable:
+            if isinstance(key, str) and key.lower() == "to":
+                if isinstance(value, list) and value:
+                    to_header = str(value[0])
+                elif isinstance(value, tuple) and value:
+                    to_header = str(value[0])
+                else:
+                    to_header = str(value)
+                break
+
+        if not to_header:
+            logger.error("Impossible d'extraire l'en-tête To: de l'INVITE SIP")
+            raise TelephonyRouteSelectionError(
+                "En-tête To: manquant dans la requête INVITE"
+            )
+
+        # Extraire l'URI SIP depuis l'en-tête To:
+        # Format typique: "Display Name" <sip:user@domain> ou sip:user@domain
+        match = re.search(r"sips?:([^@>;]+)@", to_header, flags=re.IGNORECASE)
+        if not match:
+            logger.error("Format d'en-tête To: non reconnu: %s", to_header)
+            raise TelephonyRouteSelectionError(
+                f"Format d'en-tête To: invalide: {to_header}"
+            )
+
+        to_username = match.group(1).lower()  # Juste le username (partie avant @)
+
+        # Comparer le username avec les comptes SIP enregistrés
+        with SessionLocal() as session:
+            accounts = session.scalars(
+                select(SipAccount).where(SipAccount.is_active == True)
+            ).all()
+
+            for account in accounts:
+                # Comparer avec le username du compte SIP
+                if account.username and account.username.lower() == to_username:
+                    logger.info(
+                        "Appel SIP correspond au compte '%s' (ID=%d) via username '%s'",
+                        account.label,
+                        account.id,
+                        account.username,
+                    )
+                    return account.id
+
+        # Aucune correspondance trouvée - rejeter l'appel
+        logger.error(
+            "Aucun compte SIP actif ne correspond au username: %s",
+            to_username,
+        )
+        raise TelephonyRouteSelectionError(
+            f"Aucun compte SIP configuré pour le username {to_username}"
+        )
 
     async def _close_dialog(session: SipCallSession) -> None:
         dialog = session.dialog
@@ -339,10 +430,13 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         session: SipCallSession, request: Any
     ) -> None:
         incoming_number = _extract_incoming_number(request)
+        sip_account_id = _extract_sip_account_id_from_request(request)
+
         logger.info(
-            "Appel SIP initialisé (Call-ID=%s, numéro entrant=%s)",
+            "Appel SIP initialisé (Call-ID=%s, numéro entrant=%s, compte SIP ID=%s)",
             session.call_id,
             incoming_number or "<inconnu>",
+            sip_account_id if sip_account_id is not None else "<legacy>",
         )
 
         telephony_metadata = session.metadata.setdefault("telephony", {})
@@ -350,6 +444,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             {
                 "call_id": session.call_id,
                 "incoming_number": incoming_number,
+                "sip_account_id": sip_account_id,
             }
         )
 
@@ -359,6 +454,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     workflow_service,
                     phone_number=incoming_number or "",
                     session=db_session,
+                    sip_account_id=sip_account_id,
                 )
             except TelephonyRouteSelectionError as exc:
                 logger.warning(
@@ -367,7 +463,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     incoming_number or "<inconnu>",
                 )
                 telephony_metadata["workflow_resolution_error"] = str(exc)
-                return
+                raise
             except Exception as exc:  # pragma: no cover - dépend BDD
                 logger.exception(
                     "Résolution du workflow téléphonie impossible (Call-ID=%s)",
@@ -375,7 +471,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     exc_info=exc,
                 )
                 telephony_metadata["workflow_resolution_error"] = str(exc)
-                return
+                raise
 
         workflow_obj = getattr(context.workflow_definition, "workflow", None)
         workflow_slug = getattr(workflow_obj, "slug", None)
@@ -390,6 +486,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 "voice_provider_slug": context.voice_provider_slug,
                 "voice_tools": copy.deepcopy(context.voice_tools),
                 "voice_handoffs": copy.deepcopy(context.voice_handoffs),
+                "ring_timeout_seconds": context.ring_timeout_seconds,
+                "speak_first": context.speak_first,
                 "voice_session_active": False,
             }
         )
@@ -426,6 +524,9 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         voice_provider_slug = metadata.get("voice_provider_slug")
         voice_tools = metadata.get("voice_tools") or []
         voice_handoffs = metadata.get("voice_handoffs") or []
+        speak_first = metadata.get("speak_first", False)
+        preinit_response_create_sent = metadata.get("preinit_response_create_sent", False)
+        preinit_session = metadata.get("preinit_session")
         rtp_stream_factory = metadata.get("rtp_stream_factory")
         send_audio = metadata.get("send_audio")
 
@@ -444,54 +545,66 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             )
             return
 
-        # Créer un nouveau thread pour cet appel avant de démarrer la session vocale
-        thread_id = str(uuid.uuid4())
+        # Vérifier si un thread a déjà été créé pendant la pré-initialisation
+        thread_id = metadata.get("thread_id")
 
-        # Ajouter les informations de l'appel SIP aux métadonnées du thread
-        sip_metadata = {
-            "sip_caller_number": metadata.get("normalized_number") or metadata.get("original_number"),
-            "sip_original_number": metadata.get("original_number"),
-            "sip_call_id": session.call_id,
-        }
-
-        thread = ThreadMetadata(
-            id=thread_id,
-            created_at=datetime.datetime.now(datetime.UTC),
-            metadata=sip_metadata,
-        )
-
-        # Sauvegarder le thread dans le store ChatKit
+        # Créer le contexte ChatKit (nécessaire pour thread et wait_state)
         server = get_chatkit_server()
         store = getattr(server, "store", None)
-        if store is not None:
-            chatkit_context = ChatKitRequestContext(
-                user_id=f"sip:{session.call_id}",
-                email=None,
-                authorization=None,
-                public_base_url=settings.backend_public_base_url,
-                voice_model=voice_model,
-                voice_instructions=instructions,
-                voice_voice=voice_name,
-                voice_prompt_variables=metadata.get("voice_prompt_variables"),
+        chatkit_context = ChatKitRequestContext(
+            user_id=f"sip:{session.call_id}",
+            email=None,
+            authorization=None,
+            public_base_url=settings.backend_public_base_url,
+            voice_model=voice_model,
+            voice_instructions=instructions,
+            voice_voice=voice_name,
+            voice_prompt_variables=metadata.get("voice_prompt_variables"),
+        )
+
+        if not thread_id:
+            # Créer un nouveau thread pour cet appel avant de démarrer la session vocale
+            thread_id = str(uuid.uuid4())
+
+            # Ajouter les informations de l'appel SIP aux métadonnées du thread
+            sip_metadata = {
+                "sip_caller_number": metadata.get("normalized_number") or metadata.get("original_number"),
+                "sip_original_number": metadata.get("original_number"),
+                "sip_call_id": session.call_id,
+            }
+
+            thread = ThreadMetadata(
+                id=thread_id,
+                created_at=datetime.datetime.now(datetime.UTC),
+                metadata=sip_metadata,
             )
-            try:
-                await store.save_thread(thread, chatkit_context)
-                metadata["thread_id"] = thread_id
-                logger.info(
-                    "Thread créé pour l'appel SIP (Call-ID=%s, thread_id=%s)",
+
+            # Sauvegarder le thread dans le store ChatKit
+            if store is not None:
+                try:
+                    await store.save_thread(thread, chatkit_context)
+                    metadata["thread_id"] = thread_id
+                    logger.info(
+                        "Thread créé pour l'appel SIP (Call-ID=%s, thread_id=%s)",
+                        session.call_id,
+                        thread_id,
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "Erreur lors de la création du thread pour Call-ID=%s",
+                        session.call_id,
+                        exc_info=exc,
+                    )
+            else:
+                logger.warning(
+                    "Store ChatKit non disponible, thread non créé pour Call-ID=%s",
                     session.call_id,
-                    thread_id,
-                )
-            except Exception as exc:
-                logger.exception(
-                    "Erreur lors de la création du thread pour Call-ID=%s",
-                    session.call_id,
-                    exc_info=exc,
                 )
         else:
-            logger.warning(
-                "Store ChatKit non disponible, thread non créé pour Call-ID=%s",
+            logger.info(
+                "Thread pré-existant utilisé (Call-ID=%s, thread_id=%s)",
                 session.call_id,
+                thread_id,
             )
 
         metadata["voice_session_active"] = True
@@ -504,12 +617,66 @@ def _build_invite_handler(manager: SIPRegistrationManager):
             voice_provider_slug or voice_provider_id or "<défaut>",
         )
 
+        # Vérifier si une session a été pré-initialisée pendant le ring timeout
+        preinit_session_handle = metadata.pop("preinit_session_handle", None)
         client_secret = metadata.get("client_secret")
-        if client_secret is None:
+
+        if preinit_session_handle is not None:
+            # Utiliser la session pré-initialisée
+            session_handle = preinit_session_handle
+            logger.info(
+                "🚀 Utilisation de la session Realtime pré-initialisée "
+                "(Call-ID=%s, session_id=%s) - AUCUN DÉLAI",
+                session.call_id,
+                metadata.get("realtime_session_id"),
+            )
+        elif client_secret is None:
+            # Pas de session pré-initialisée, créer une nouvelle session
+            logger.info(
+                "Création d'une nouvelle session Realtime (Call-ID=%s)",
+                session.call_id,
+            )
             metadata_extras: dict[str, Any] = {}
             thread_identifier = metadata.get("thread_id")
             if isinstance(thread_identifier, str) and thread_identifier.strip():
                 metadata_extras["thread_id"] = thread_identifier.strip()
+
+            # Ajouter automatiquement le tool de transfert d'appel pour la téléphonie
+            telephony_tools = list(voice_tools) if voice_tools else []
+            transfer_tool_config = {
+                "type": "function",
+                "name": "transfer_call",
+                "description": (
+                    "Transfère l'appel en cours vers un autre numéro de téléphone. "
+                    "Utilisez cette fonction lorsque l'appelant demande à être "
+                    "transféré vers un service spécifique, un département, ou une personne."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "phone_number": {
+                            "type": "string",
+                            "description": (
+                                "Le numéro de téléphone vers lequel transférer l'appel. "
+                                "Format recommandé: E.164 (ex: +33123456789)"
+                            ),
+                        },
+                        "announcement": {
+                            "type": "string",
+                            "description": (
+                                "Message optionnel à annoncer à l'appelant avant le transfert"
+                            ),
+                        },
+                    },
+                    "required": ["phone_number"],
+                },
+            }
+            telephony_tools.append(transfer_tool_config)
+            logger.info(
+                "Ajout du tool de transfert d'appel (total tools: %d)",
+                len(telephony_tools),
+            )
+
             session_handle = await open_voice_session(
                 user_id=f"sip:{session.call_id}",
                 model=voice_model,
@@ -517,7 +684,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 voice=voice_name,
                 provider_id=voice_provider_id,
                 provider_slug=voice_provider_slug,
-                tools=voice_tools or None,
+                tools=telephony_tools or None,
                 handoffs=voice_handoffs or None,
                 realtime={
                     # Start WITHOUT turn_detection to avoid "buffer too small" error
@@ -539,6 +706,13 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 parsed_secret.expires_at_isoformat()
             )
             metadata["realtime_session_id"] = session_handle.session_id
+        else:
+            # Session déjà créée (fallback pour compatibilité)
+            logger.warning(
+                "Session Realtime déjà créée pour Call-ID=%s, session_handle introuvable",
+                session.call_id,
+            )
+            return
 
         # Créer un wait_state pour que le frontend puisse détecter la session vocale
         if store is not None and thread_id:
@@ -624,6 +798,9 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 api_base=realtime_api_base,
                 tools=voice_tools,
                 handoffs=voice_handoffs,
+                speak_first=speak_first,
+                preinit_response_create_sent=preinit_response_create_sent,
+                preinit_session=preinit_session,
             )
         except Exception as exc:  # pragma: no cover - dépend réseau
             logger.exception(
@@ -668,7 +845,14 @@ def _build_invite_handler(manager: SIPRegistrationManager):
     )
 
     async def _on_invite(dialog: Any, request: Any) -> None:
-        config = manager.active_config
+        logger.info("🔔 _on_invite appelé - CODE MODIFIÉ v2")
+        # Récupérer le gestionnaire par défaut pour MultiSIPRegistrationManager
+        if isinstance(manager, MultiSIPRegistrationManager):
+            default_manager = manager.get_default_manager()
+            config = default_manager.active_config if default_manager else None
+        else:
+            config = manager.active_config
+
         media_host = (
             manager.contact_host
             or (config.contact_host if config else None)
@@ -703,10 +887,72 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 )
             return
 
+        # Parser le SDP de l'INVITE pour extraire l'adresse RTP distante
+        remote_rtp_host: str | None = None
+        remote_rtp_port: int | None = None
+
+        try:
+            from app.telephony.invite_handler import (
+                _parse_audio_media_line,
+                _parse_connection_address,
+            )
+
+            payload = request.payload
+            if isinstance(payload, bytes):
+                payload_text = payload.decode("utf-8", errors="ignore")
+            elif isinstance(payload, str):
+                payload_text = payload
+            else:
+                payload_text = str(payload)
+
+            logger.info("📋 Parsing SDP pour extraire l'adresse RTP distante")
+            logger.debug("SDP brut (100 premiers caractères): %s", payload_text[:100])
+
+            # Le SDP peut être sur une seule ligne ou sur plusieurs lignes séparées par \r\n
+            # On essaie d'abord le split normal, puis on force un split si tout est collé
+            normalized = payload_text.replace("\r\n", "\n").replace("\r", "\n")
+            sdp_lines = [line.strip() for line in normalized.splitlines() if line.strip()]
+
+            # Si on n'a qu'une seule ligne très longue, c'est que le SDP est mal formaté
+            # On force un split en cherchant les patterns SDP standard (v=, o=, s=, c=, t=, m=, a=)
+            if len(sdp_lines) == 1 and len(sdp_lines[0]) > 50:
+                logger.debug("SDP sur une seule ligne détecté, split forcé")
+                import re
+                # Split sur les patterns SDP standard
+                sdp_lines = [s.strip() for s in re.split(r'(?=[vosctma]=)', sdp_lines[0]) if s.strip()]
+
+            logger.debug("SDP lines après split: %d lignes", len(sdp_lines))
+            logger.debug("Premières lignes SDP: %s", sdp_lines[:5])
+
+            remote_rtp_host = _parse_connection_address(sdp_lines)
+            logger.info("🔍 Connection address from SDP: %s", remote_rtp_host)
+
+            audio_media = _parse_audio_media_line(sdp_lines)
+            if audio_media:
+                remote_rtp_port, _ = audio_media
+                logger.info("🔍 Audio media port from SDP: %s", remote_rtp_port)
+
+            if remote_rtp_host and remote_rtp_port:
+                logger.info(
+                    "✅ Adresse RTP distante extraite du SDP : %s:%d",
+                    remote_rtp_host,
+                    remote_rtp_port,
+                )
+            else:
+                logger.warning(
+                    "⚠️ Impossible d'extraire l'adresse RTP complète (host=%s, port=%s)",
+                    remote_rtp_host,
+                    remote_rtp_port,
+                )
+        except Exception as exc:
+            logger.warning("❌ Erreur lors de l'extraction de l'adresse RTP du SDP : %s", exc, exc_info=True)
+
         # Créer et démarrer le serveur RTP
         rtp_config = RtpServerConfig(
             local_host=media_host,
             local_port=int(media_port) if media_port else 0,
+            remote_host=remote_rtp_host,
+            remote_port=remote_rtp_port,
             payload_type=0,  # PCMU
             output_codec="pcmu",
         )
@@ -735,12 +981,34 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         # pour que l'ACK soit capturé correctement
         try:
             await sip_handler.handle_invite(request, dialog=dialog)
+        except TelephonyRouteSelectionError as exc:
+            # Appel vers un compte SIP sans workflow configuré ou en-tête invalide
+            logger.warning(
+                "Appel SIP rejeté : %s",
+                str(exc),
+            )
+            await rtp_server.stop()
+            with contextlib.suppress(Exception):
+                await send_sip_reply(
+                    dialog,
+                    404,
+                    reason="Not Found",
+                    contact_uri=contact_uri,
+                )
+            return
         except Exception:  # pragma: no cover - dépend des callbacks
             logger.exception(
                 "Erreur lors de la gestion applicative de l'INVITE"
             )
             await rtp_server.stop()
-            raise
+            with contextlib.suppress(Exception):
+                await send_sip_reply(
+                    dialog,
+                    500,
+                    reason="Server Internal Error",
+                    contact_uri=contact_uri,
+                )
+            return
 
         # Récupérer la session créée et y stocker les callbacks RTP
         call_id_raw = getattr(request, "headers", {}).get("Call-ID")
@@ -780,7 +1048,240 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         # pour capturer l'ACK qui arrive juste après
         await _attach_dialog_callbacks(dialog, sip_handler)
 
-        # Maintenant envoyer le 200 OK
+        # Extraire le ring_timeout_seconds depuis les métadonnées de la session
+        ring_timeout_seconds = 0.0
+        if session:
+            telephony_meta = session.metadata.get("telephony") or {}
+            ring_timeout_seconds = telephony_meta.get("ring_timeout_seconds", 0.0)
+            logger.info(
+                "Ring timeout extrait des métadonnées (Call-ID=%s): %.2f secondes",
+                call_id or "inconnu",
+                ring_timeout_seconds,
+            )
+
+        # Si ring_timeout > 0, pré-initialiser la session Realtime en parallèle
+        # pour qu'elle soit prête quand l'appel sera répondu
+        session_init_task = None
+        if session and ring_timeout_seconds > 0:
+            telephony_meta = session.metadata.get("telephony") or {}
+            voice_model = telephony_meta.get("voice_model")
+            instructions = telephony_meta.get("voice_instructions")
+            voice_name = telephony_meta.get("voice_voice")
+            voice_provider_id = telephony_meta.get("voice_provider_id")
+            voice_provider_slug = telephony_meta.get("voice_provider_slug")
+            voice_tools = telephony_meta.get("voice_tools") or []
+            voice_handoffs = telephony_meta.get("voice_handoffs") or []
+            speak_first = telephony_meta.get("speak_first", False)
+
+            if voice_model and instructions:
+                logger.info(
+                    "Pré-initialisation de la session Realtime pendant le ring timeout "
+                    "(Call-ID=%s)",
+                    call_id,
+                )
+
+                async def _preinit_realtime_session():
+                    """Initialise la session Realtime pendant que le téléphone sonne."""
+                    try:
+                        # Créer un nouveau thread pour cet appel
+                        thread_id = str(uuid.uuid4())
+
+                        # Ajouter les informations de l'appel SIP aux métadonnées du thread
+                        sip_metadata = {
+                            "sip_caller_number": telephony_meta.get("normalized_number") or telephony_meta.get("original_number"),
+                            "sip_original_number": telephony_meta.get("original_number"),
+                            "sip_call_id": session.call_id,
+                        }
+
+                        thread = ThreadMetadata(
+                            id=thread_id,
+                            created_at=datetime.datetime.now(datetime.UTC),
+                            metadata=sip_metadata,
+                        )
+
+                        # Sauvegarder le thread dans le store ChatKit
+                        server = get_chatkit_server()
+                        store = getattr(server, "store", None)
+                        if store is not None:
+                            chatkit_context = ChatKitRequestContext(
+                                user_id=f"sip:{session.call_id}",
+                                email=None,
+                                authorization=None,
+                                public_base_url=settings.backend_public_base_url,
+                                voice_model=voice_model,
+                                voice_instructions=instructions,
+                                voice_voice=voice_name,
+                                voice_prompt_variables=telephony_meta.get("voice_prompt_variables"),
+                            )
+                            await store.save_thread(thread, chatkit_context)
+                            telephony_meta["thread_id"] = thread_id
+                            logger.info(
+                                "Thread pré-créé pendant le ring (Call-ID=%s, thread_id=%s)",
+                                session.call_id,
+                                thread_id,
+                            )
+
+                        # Ajouter automatiquement le tool de transfert d'appel
+                        telephony_tools = list(voice_tools) if voice_tools else []
+                        transfer_tool_config = {
+                            "type": "function",
+                            "name": "transfer_call",
+                            "description": (
+                                "Transfère l'appel en cours vers un autre numéro de téléphone. "
+                                "Utilisez cette fonction lorsque l'appelant demande à être "
+                                "transféré vers un service spécifique, un département, ou une personne."
+                            ),
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "phone_number": {
+                                        "type": "string",
+                                        "description": (
+                                            "Le numéro de téléphone vers lequel transférer l'appel. "
+                                            "Format recommandé: E.164 (ex: +33123456789)"
+                                        ),
+                                    },
+                                    "announcement": {
+                                        "type": "string",
+                                        "description": (
+                                            "Message optionnel à annoncer à l'appelant avant le transfert"
+                                        ),
+                                    },
+                                },
+                                "required": ["phone_number"],
+                            },
+                        }
+                        telephony_tools.append(transfer_tool_config)
+
+                        metadata_extras: dict[str, Any] = {}
+                        if thread_id:
+                            metadata_extras["thread_id"] = thread_id
+
+                        # Ouvrir la session Realtime
+                        session_handle = await open_voice_session(
+                            user_id=f"sip:{session.call_id}",
+                            model=voice_model,
+                            instructions=instructions,
+                            voice=voice_name,
+                            provider_id=voice_provider_id,
+                            provider_slug=voice_provider_slug,
+                            tools=telephony_tools or None,
+                            handoffs=voice_handoffs or None,
+                            realtime={
+                                # Start WITHOUT turn_detection to avoid "buffer too small" error
+                                # It will be enabled dynamically after sending initial audio
+                            },
+                            metadata=metadata_extras or None,
+                        )
+
+                        # Stocker le session handle dans les métadonnées
+                        telephony_meta["preinit_session_handle"] = session_handle
+
+                        secret_payload = session_handle.payload
+                        parsed_secret = session_secret_parser.parse(secret_payload)
+                        client_secret = parsed_secret.as_text()
+                        if client_secret:
+                            telephony_meta["client_secret"] = client_secret
+                            telephony_meta["client_secret_expires_at"] = (
+                                parsed_secret.expires_at_isoformat()
+                            )
+                            telephony_meta["realtime_session_id"] = session_handle.session_id
+                            logger.info(
+                                "✅ Session Realtime pré-initialisée pendant le ring "
+                                "(Call-ID=%s, session_id=%s)",
+                                session.call_id,
+                                session_handle.session_id,
+                            )
+
+                            # Si speak_first est activé, démarrer la session websocket et pré-générer l'audio
+                            if speak_first:
+                                try:
+                                    runner = session_handle.runner
+                                    if runner:
+                                        logger.info(
+                                            "🎯 Démarrage complet de la session pour pré-génération audio "
+                                            "(speak_first activé, Call-ID=%s)",
+                                            session.call_id,
+                                        )
+
+                                        # Créer la config du modèle (format dictionnaire comme voice_bridge.py)
+                                        from app.telephony.voice_bridge import TelephonyPlaybackTracker
+
+                                        # Créer un playback tracker avec gestion des interruptions (comme dans voice_bridge.py)
+                                        # Note: on ne peut pas utiliser le callback d'interruption ici car on n'a pas encore
+                                        # de référence au mécanisme de blocage audio
+                                        preinit_playback_tracker = TelephonyPlaybackTracker(on_interrupt_callback=None)
+
+                                        model_settings: dict[str, Any] = {
+                                            "model_name": voice_model,
+                                            "modalities": ["audio"],
+                                            "input_audio_format": "pcm16",
+                                            "output_audio_format": "pcm16",
+                                            # Activer turn_detection avec create_response pour réponse automatique
+                                            "input_audio_transcription": {"model": "whisper-1"},
+                                            "turn_detection": {
+                                                "type": "semantic_vad",
+                                                "create_response": True,
+                                                "interrupt_response": True,
+                                            },
+                                        }
+                                        if voice_name:
+                                            model_settings["voice"] = voice_name
+
+                                        model_config: dict[str, Any] = {
+                                            "api_key": client_secret,
+                                            "initial_model_settings": model_settings,
+                                            "playback_tracker": preinit_playback_tracker,
+                                        }
+
+                                        # Démarrer la session complète (établit la connexion websocket)
+                                        preinit_session = await runner.run(model_config=model_config)
+                                        await preinit_session.__aenter__()
+                                        telephony_meta["preinit_session"] = preinit_session
+
+                                        logger.info(
+                                            "✅ Session websocket connectée pendant la sonnerie (Call-ID=%s)",
+                                            session.call_id,
+                                        )
+
+                                        # Envoyer response.create maintenant pour pré-générer l'audio
+                                        # L'audio sera bufferisé jusqu'à ce que le téléphone soit prêt
+                                        from agents.realtime.model_inputs import (
+                                            RealtimeModelRawClientMessage,
+                                            RealtimeModelSendRawMessage,
+                                        )
+                                        await preinit_session._model.send_event(
+                                            RealtimeModelSendRawMessage(
+                                                message=RealtimeModelRawClientMessage(
+                                                    type="response.create",
+                                                    other_data={},
+                                                )
+                                            )
+                                        )
+                                        telephony_meta["preinit_response_create_sent"] = True
+                                        logger.info(
+                                            "✅ response.create pré-envoyé pendant la sonnerie - "
+                                            "audio en cours de génération (Call-ID=%s)",
+                                            session.call_id,
+                                        )
+                                except Exception as exc:
+                                    logger.warning(
+                                        "Impossible de pré-générer l'audio (Call-ID=%s): %s",
+                                        session.call_id,
+                                        exc,
+                                    )
+                    except Exception as exc:
+                        logger.exception(
+                            "Erreur lors de la pré-initialisation de la session Realtime "
+                            "(Call-ID=%s)",
+                            session.call_id,
+                            exc_info=exc,
+                        )
+
+                # Démarrer la pré-initialisation en arrière-plan
+                session_init_task = asyncio.create_task(_preinit_realtime_session())
+
+        # Maintenant envoyer le 200 OK (avec le ring timeout)
         try:
             await handle_incoming_invite(
                 dialog,
@@ -788,9 +1289,14 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 media_host=media_host,
                 media_port=actual_media_port,
                 contact_uri=contact_uri,
+                ring_timeout_seconds=ring_timeout_seconds,
             )
+            # Envoyer un paquet de silence immédiatement pour accélérer la découverte RTP
+            await rtp_server.send_silence_packet()
         except InviteHandlingError as exc:
             logger.warning("Traitement de l'INVITE interrompu : %s", exc)
+            if session_init_task:
+                session_init_task.cancel()
             await rtp_server.stop()
             return
         except Exception as exc:  # pragma: no cover - dépend de aiosip
@@ -798,6 +1304,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 "Erreur inattendue lors du traitement d'un INVITE",
                 exc_info=exc,
             )
+            if session_init_task:
+                session_init_task.cancel()
             await rtp_server.stop()
             with contextlib.suppress(Exception):
                 await send_sip_reply(
@@ -807,6 +1315,23 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                     contact_uri=contact_uri,
                 )
             return
+
+        # Attendre que la pré-initialisation se termine (si elle était lancée)
+        if session_init_task:
+            try:
+                await session_init_task
+                logger.info(
+                    "Pré-initialisation de la session Realtime terminée avant réponse "
+                    "(Call-ID=%s)",
+                    call_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "La pré-initialisation a échoué, la session sera créée normalement "
+                    "(Call-ID=%s): %s",
+                    call_id,
+                    exc,
+                )
 
         # Démarrer la session RTP immédiatement après le 200 OK
         # Le téléphone commence déjà à envoyer de l'audio, pas besoin d'attendre l'ACK
@@ -933,6 +1458,117 @@ def _run_ad_hoc_migrations() -> None:
             logger.info("Création de la table app_settings manquante")
             AppSettings.__table__.create(bind=connection)
             table_names.add("app_settings")
+
+        # Migration pour les comptes SIP multiples
+        if "sip_accounts" not in table_names:
+            logger.info("Création de la table sip_accounts pour les comptes SIP multiples")
+            SipAccount.__table__.create(bind=connection)
+            table_names.add("sip_accounts")
+
+        # Ajouter la colonne sip_account_id dans workflow_definitions
+        if "workflow_definitions" in table_names:
+            workflow_definitions_columns = {
+                column["name"]
+                for column in inspect(connection).get_columns("workflow_definitions")
+            }
+            if "sip_account_id" not in workflow_definitions_columns:
+                logger.info(
+                    "Migration du schéma workflow_definitions : ajout de la colonne "
+                    "sip_account_id"
+                )
+                connection.execute(
+                    text(
+                        "ALTER TABLE workflow_definitions ADD COLUMN sip_account_id "
+                        "INTEGER REFERENCES sip_accounts(id) ON DELETE SET NULL"
+                    )
+                )
+                connection.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS idx_workflow_definitions_sip_account "
+                        "ON workflow_definitions(sip_account_id)"
+                    )
+                )
+
+        # Migration automatique des paramètres SIP globaux vers un compte SIP
+        if "sip_accounts" in table_names and "app_settings" in table_names:
+            # Vérifier s'il n'y a pas déjà de comptes SIP
+            existing_accounts_count = connection.execute(
+                text("SELECT COUNT(*) FROM sip_accounts")
+            ).scalar()
+
+            if existing_accounts_count == 0:
+                # Récupérer les paramètres globaux
+                app_settings_row = connection.execute(
+                    text(
+                        "SELECT sip_trunk_uri, sip_trunk_username, sip_trunk_password, "
+                        "sip_contact_host, sip_contact_port, sip_contact_transport "
+                        "FROM app_settings LIMIT 1"
+                    )
+                ).first()
+
+                if app_settings_row and app_settings_row[0]:  # sip_trunk_uri existe
+                    trunk_uri_raw = app_settings_row[0]
+                    username = app_settings_row[1]
+                    password = app_settings_row[2]
+                    contact_host = app_settings_row[3]
+                    contact_port = app_settings_row[4]
+                    contact_transport = app_settings_row[5] or "udp"
+
+                    # Construire un URI SIP valide
+                    trunk_uri = trunk_uri_raw.strip()
+                    if not trunk_uri.lower().startswith(("sip:", "sips:")):
+                        # Format legacy: probablement juste l'host
+                        if username:
+                            trunk_uri = f"sip:{username}@{trunk_uri}"
+                        else:
+                            trunk_uri = f"sip:chatkit@{trunk_uri}"
+
+                    logger.info(
+                        "Migration automatique des paramètres SIP globaux vers un compte SIP"
+                    )
+
+                    # Créer le compte SIP
+                    connection.execute(
+                        text(
+                            "INSERT INTO sip_accounts "
+                            "(label, trunk_uri, username, password, contact_host, contact_port, "
+                            "contact_transport, is_default, is_active, created_at, updated_at) "
+                            "VALUES (:label, :trunk_uri, :username, :password, :contact_host, "
+                            ":contact_port, :contact_transport, :is_default, :is_active, "
+                            ":created_at, :updated_at)"
+                        ),
+                        {
+                            "label": "Compte migré (legacy)",
+                            "trunk_uri": trunk_uri,
+                            "username": username,
+                            "password": password,
+                            "contact_host": contact_host,
+                            "contact_port": contact_port,
+                            "contact_transport": contact_transport,
+                            "is_default": True,
+                            "is_active": True,
+                            "created_at": datetime.datetime.now(datetime.UTC),
+                            "updated_at": datetime.datetime.now(datetime.UTC),
+                        },
+                    )
+
+                    # Nettoyer les paramètres globaux
+                    connection.execute(
+                        text(
+                            "UPDATE app_settings SET "
+                            "sip_trunk_uri = NULL, "
+                            "sip_trunk_username = NULL, "
+                            "sip_trunk_password = NULL, "
+                            "sip_contact_host = NULL, "
+                            "sip_contact_port = NULL, "
+                            "sip_contact_transport = NULL"
+                        )
+                    )
+
+                    logger.info(
+                        "Migration SIP terminée : ancien système désactivé, "
+                        "nouveau compte SIP créé"
+                    )
 
         if "app_settings" in table_names:
             app_settings_columns = {
@@ -1738,7 +2374,9 @@ def register_startup_events(app: FastAPI) -> None:
         if settings.sip_contact_port is not None
         else settings.sip_bind_port
     )
-    sip_registration_manager = SIPRegistrationManager(
+
+    # Utiliser le gestionnaire multi-SIP pour supporter plusieurs comptes
+    sip_registration_manager = MultiSIPRegistrationManager(
         session_factory=SessionLocal,
         settings=settings,
         contact_host=sip_contact_host,
@@ -1825,15 +2463,52 @@ def register_startup_events(app: FastAPI) -> None:
 
     @app.on_event("startup")
     async def _start_sip_registration() -> None:
-        manager: SIPRegistrationManager = app.state.sip_registration
+        manager: MultiSIPRegistrationManager = app.state.sip_registration
         with SessionLocal() as session:
-            stored_settings = session.scalar(select(AppSettings).limit(1))
-            await manager.apply_config_from_settings(session, stored_settings)
+            # Charger tous les comptes SIP actifs depuis la BD
+            await manager.load_accounts_from_db(session)
+
+            # Si aucun compte SIP n'est configuré, essayer les anciens paramètres
+            if not manager.has_accounts():
+                logger.info(
+                    "Aucun compte SIP trouvé en BD, tentative de chargement depuis AppSettings"
+                )
+                # Fallback : créer un gestionnaire unique avec les anciens paramètres
+                stored_settings = session.scalar(select(AppSettings).limit(1))
+                if stored_settings and stored_settings.sip_trunk_uri:
+                    from .telephony.registration import SIPRegistrationConfig
+
+                    # Créer un compte SIP temporaire depuis AppSettings
+                    fallback_config = SIPRegistrationConfig(
+                        uri=stored_settings.sip_trunk_uri,
+                        username=stored_settings.sip_trunk_username or "",
+                        password=stored_settings.sip_trunk_password or "",
+                        contact_host=stored_settings.sip_contact_host or sip_contact_host or "127.0.0.1",
+                        contact_port=stored_settings.sip_contact_port or sip_contact_port or 5060,
+                        transport=stored_settings.sip_contact_transport,
+                        bind_host=settings.sip_bind_host,
+                    )
+
+                    # Créer un gestionnaire temporaire
+                    fallback_manager = SIPRegistrationManager(
+                        session_factory=SessionLocal,
+                        settings=settings,
+                        contact_host=sip_contact_host,
+                        contact_port=sip_contact_port,
+                        contact_transport=settings.sip_contact_transport,
+                        bind_host=settings.sip_bind_host,
+                        invite_handler=_build_invite_handler(manager),
+                    )
+                    fallback_manager.apply_config(fallback_config)
+                    # Stocker temporairement le gestionnaire fallback
+                    manager._managers[0] = fallback_manager
+                    logger.info("Compte SIP de fallback créé depuis AppSettings")
+
         await manager.start()
 
     @app.on_event("shutdown")
     async def _stop_sip_registration() -> None:
-        manager: SIPRegistrationManager = app.state.sip_registration
+        manager: MultiSIPRegistrationManager = app.state.sip_registration
         try:
             await manager.stop()
         except Exception as exc:  # pragma: no cover - network dependent

@@ -401,6 +401,66 @@ class TelephonyRouteResponse(TelephonyRouteBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SipAccountBase(BaseModel):
+    label: constr(strip_whitespace=True, min_length=1, max_length=128)
+    trunk_uri: constr(strip_whitespace=True, min_length=1)
+    username: constr(strip_whitespace=True, max_length=128) | None = None
+    password: str | None = None
+    contact_host: constr(strip_whitespace=True, max_length=255) | None = None
+    contact_port: int | None = Field(default=None, ge=1, le=65535)
+    contact_transport: Literal["udp", "tcp", "tls"] | None = "udp"
+    is_default: bool = False
+    is_active: bool = True
+
+    @field_validator("trunk_uri")
+    @classmethod
+    def validate_sip_uri(cls, v: str) -> str:
+        """Valide que l'URI SIP est au bon format."""
+        v = v.strip()
+        if not v:
+            raise ValueError("L'URI SIP ne peut pas être vide")
+
+        # Vérifier que l'URI commence par sip: ou sips:
+        if not (v.lower().startswith("sip:") or v.lower().startswith("sips:")):
+            raise ValueError(
+                "L'URI SIP doit commencer par 'sip:' ou 'sips:'. "
+                f"Exemple: sip:username@provider.com (reçu: {v})"
+            )
+
+        # Vérifier qu'il y a un @ dans l'URI (format user@host requis)
+        if "@" not in v:
+            raise ValueError(
+                "L'URI SIP doit contenir un '@'. "
+                f"Format attendu: sip:username@provider.com (reçu: {v})"
+            )
+
+        return v
+
+
+class SipAccountCreateRequest(SipAccountBase):
+    pass
+
+
+class SipAccountUpdateRequest(BaseModel):
+    label: constr(strip_whitespace=True, min_length=1, max_length=128) | None = None
+    trunk_uri: constr(strip_whitespace=True, min_length=1) | None = None
+    username: constr(strip_whitespace=True, max_length=128) | None = None
+    password: str | None = None
+    contact_host: constr(strip_whitespace=True, max_length=255) | None = None
+    contact_port: int | None = Field(default=None, ge=1, le=65535)
+    contact_transport: Literal["udp", "tcp", "tls"] | None = None
+    is_default: bool | None = None
+    is_active: bool | None = None
+
+
+class SipAccountResponse(SipAccountBase):
+    id: int
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class AvailableModelBase(BaseModel):
     name: constr(strip_whitespace=True, min_length=1, max_length=128)
     display_name: constr(strip_whitespace=True, min_length=1, max_length=128) | None = (

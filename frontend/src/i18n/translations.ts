@@ -35,6 +35,7 @@ const fr: TranslationDictionary = {
   "admin.tabs.models": "Modèles disponibles",
   "admin.tabs.vectorStores": "Vector stores",
   "admin.tabs.widgets": "Bibliothèque de widgets",
+  "admin.tabs.telephony": "Téléphonie",
   "admin.tabs.settings": "Paramètres généraux",
   "admin.tabs.sectionTitle": "Administration",
   "admin.tabs.navigationLabel": "Navigation du panneau d'administration",
@@ -446,6 +447,9 @@ const fr: TranslationDictionary = {
   "workflowBuilder.startInspector.telephonyIsSipWorkflowLabel": "Workflow pour les appels SIP",
   "workflowBuilder.startInspector.telephonyIsSipWorkflowHelp":
     "Activez cette option pour que ce workflow soit utilisé lors des appels SIP entrants. Un seul workflow peut être configuré comme workflow SIP à la fois. Les paramètres voix seront pris du bloc voice-agent du workflow.",
+  "workflowBuilder.startInspector.telephonyRingTimeoutLabel": "Délai de sonnerie (secondes)",
+  "workflowBuilder.startInspector.telephonyRingTimeoutHelp":
+    "Durée pendant laquelle le téléphone sonnera avant que l'agent vocal ne réponde. Valeur entre 0 et 30 secondes.",
   "workflowBuilder.createWorkflow.chooseHosted":
     "Créer un workflow hébergé ? Cliquez sur OK pour ajouter un workflow hébergé ou sur Annuler pour créer un workflow local.",
   "workflowBuilder.createWorkflow.promptSlug": "Slug du workflow hébergé ?",
@@ -638,6 +642,7 @@ const en: TranslationDictionary = {
   "admin.tabs.models": "Available models",
   "admin.tabs.vectorStores": "Vector stores",
   "admin.tabs.widgets": "Widget library",
+  "admin.tabs.telephony": "Telephony",
   "admin.tabs.settings": "General settings",
   "admin.tabs.sectionTitle": "Administration",
   "admin.tabs.navigationLabel": "Administration navigation",
@@ -1033,6 +1038,9 @@ const en: TranslationDictionary = {
   "workflowBuilder.startInspector.telephonyIsSipWorkflowLabel": "SIP calls workflow",
   "workflowBuilder.startInspector.telephonyIsSipWorkflowHelp":
     "Enable this option to use this workflow for incoming SIP calls. Only one workflow can be configured as the SIP workflow at a time. Voice parameters will be taken from the voice-agent block in the workflow.",
+  "workflowBuilder.startInspector.telephonyRingTimeoutLabel": "Ring timeout (seconds)",
+  "workflowBuilder.startInspector.telephonyRingTimeoutHelp":
+    "Duration the phone will ring before the voice agent answers. Value between 0 and 30 seconds.",
   "workflowBuilder.createWorkflow.chooseHosted":
     "Create a hosted workflow? Click OK to add a hosted workflow or Cancel to create a local workflow.",
   "workflowBuilder.createWorkflow.promptSlug": "Hosted workflow slug?",
