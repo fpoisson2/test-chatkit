@@ -2445,10 +2445,24 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                 voice_tools = context.voice_tools or []
                 voice_handoffs = context.voice_handoffs or []
                 speak_first = context.speak_first
+                ring_timeout_seconds = context.ring_timeout_seconds
+
+            # Envoyer 180 Ringing
+            logger.info("Envoi 180 Ringing (call_id=%s)", call_id)
+            await pjsua_adapter.answer_call(call, code=180)
+
+            # Attendre le délai configuré avant de répondre
+            if ring_timeout_seconds > 0:
+                logger.info(
+                    "Attente de %.2f secondes avant de répondre (call_id=%s)",
+                    ring_timeout_seconds,
+                    call_id,
+                )
+                await asyncio.sleep(ring_timeout_seconds)
 
             # Répondre à l'appel (200 OK)
             logger.info("Réponse à l'appel PJSUA (call_id=%s)", call_id)
-            await pjsua_adapter.answer_call(call)
+            await pjsua_adapter.answer_call(call, code=200)
 
             # Attendre que le média soit actif
             # TODO: Implémenter une vraie attente conditionnelle
@@ -2456,7 +2470,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
             # Créer l'audio bridge
             logger.info("Création de l'audio bridge PJSUA (call_id=%s)", call_id)
-            rtp_stream, send_to_peer = await create_pjsua_audio_bridge(call)
+            rtp_stream, send_to_peer, clear_queue = await create_pjsua_audio_bridge(call)
 
             # Ouvrir la session vocale
             logger.info("Ouverture session vocale PJSUA (call_id=%s)", call_id)
@@ -2563,6 +2577,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     voice=voice_name,
                     rtp_stream=rtp_stream,
                     send_to_peer=send_to_peer,
+                    clear_audio_queue=clear_queue,
                     api_base=realtime_api_base,
                     tools=telephony_tools,
                     handoffs=voice_handoffs,

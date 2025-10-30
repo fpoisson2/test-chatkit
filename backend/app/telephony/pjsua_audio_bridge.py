@@ -170,6 +170,14 @@ class PJSUAAudioBridge:
         except Exception as e:
             logger.warning("Failed to send audio to PJSUA: %s", e)
 
+    def clear_audio_queue(self) -> int:
+        """Clear the outgoing audio queue (used during interruptions).
+
+        Returns:
+            Number of frames cleared
+        """
+        return self._adapter.clear_call_audio_queue(self._call)
+
     def stop(self) -> None:
         """Stop the audio bridge."""
         logger.info("Stopping PJSUA audio bridge")
@@ -183,21 +191,21 @@ class PJSUAAudioBridge:
 
 async def create_pjsua_audio_bridge(
     call: PJSUACall,
-) -> tuple[AsyncIterator[RtpPacket], Callable[[bytes], Awaitable[None]]]:
+) -> tuple[AsyncIterator[RtpPacket], Callable[[bytes], Awaitable[None]], Callable[[], int]]:
     """Create audio bridge components for a PJSUA call.
 
     This is a convenience function that creates a bridge and returns the
-    rtp_stream and send_to_peer callables ready for TelephonyVoiceBridge.run().
+    rtp_stream, send_to_peer, and clear_queue callables ready for TelephonyVoiceBridge.run().
 
     Args:
         call: The PJSUA call to bridge
 
     Returns:
-        Tuple of (rtp_stream, send_to_peer) for VoiceBridge.run()
+        Tuple of (rtp_stream, send_to_peer, clear_queue) for VoiceBridge.run()
 
     Example:
         ```python
-        rtp_stream, send_to_peer = await create_pjsua_audio_bridge(call)
+        rtp_stream, send_to_peer, clear_queue = await create_pjsua_audio_bridge(call)
         stats = await voice_bridge.run(
             runner=runner,
             client_secret=secret,
@@ -206,11 +214,12 @@ async def create_pjsua_audio_bridge(
             voice=voice,
             rtp_stream=rtp_stream,
             send_to_peer=send_to_peer,
+            clear_audio_queue=clear_queue,
         )
         ```
     """
     bridge = PJSUAAudioBridge(call)
-    return bridge.rtp_stream(), bridge.send_to_peer
+    return bridge.rtp_stream(), bridge.send_to_peer, bridge.clear_audio_queue
 
 
 __all__ = [

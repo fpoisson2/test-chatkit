@@ -276,6 +276,7 @@ class TelephonyVoiceBridge:
         voice: str | None,
         rtp_stream: AsyncIterator[RtpPacket],
         send_to_peer: Callable[[bytes], Awaitable[None]],
+        clear_audio_queue: Callable[[], int] | None = None,
         api_base: str | None = None,
         tools: list[Any] | None = None,
         handoffs: list[Any] | None = None,
@@ -552,6 +553,12 @@ class TelephonyVoiceBridge:
                                         # ALWAYS block audio when user speaks, even if agent just finished
                                         # (there might be audio packets still in the pipeline)
                                         block_audio_send_ref[0] = True
+
+                                        # Clear outgoing audio queue to stop playback immediately
+                                        if clear_audio_queue:
+                                            frames_cleared = clear_audio_queue()
+                                            if frames_cleared > 0:
+                                                logger.info("🗑️  Audio queue vidée: %d frames supprimées pour interruption rapide", frames_cleared)
 
                                         # Reset tool call tracking when user speaks
                                         # (no need for confirmation if user moved on)
