@@ -348,6 +348,9 @@ class TelephonyVoiceBridge:
                                             "type": "semantic_vad",
                                             "create_response": True,
                                             "interrupt_response": True,
+                                            "threshold": 0.3,  # Plus sensible (0.0-1.0, défaut 0.5)
+                                            "prefix_padding_ms": 100,  # Moins de délai avant détection
+                                            "silence_duration_ms": 300,  # Détecte la fin plus rapidement
                                         },
                                     }
                                 )
@@ -380,10 +383,7 @@ class TelephonyVoiceBridge:
                     if not should_continue():
                         break
 
-                    # DEBUG: Log ALL event types to understand what we receive
                     event_type = type(event).__name__
-                    if event_type not in ("RealtimeAudio",):  # Skip audio events (too noisy)
-                        logger.debug(f"🔍 EVENT TYPE: {event_type}")
 
                     # Handle error events
                     if isinstance(event, RealtimeError):
@@ -413,19 +413,20 @@ class TelephonyVoiceBridge:
                                 if raw_data and isinstance(raw_data, dict):
                                     event_subtype = raw_data.get('type', '')
 
-                                    # DEBUG: Log ALL raw events to see what's happening
-                                    logger.info(f"📡 RAW EVENT: {event_subtype}")
-
                                     # User started speaking - INTERRUPT THE AGENT AND BLOCK AUDIO!
                                     if event_subtype == 'input_audio_buffer.speech_started':
                                         logger.info("🎤 Utilisateur commence à parler")
+                                        # ALWAYS block audio when user speaks, even if agent just finished
+                                        # (there might be audio packets still in the pipeline)
+                                        block_audio_send = True
                                         if agent_is_speaking:
-                                            logger.info("🛑 Interruption de l'agent!")
-                                            block_audio_send = True  # Stop sending audio immediately
+                                            logger.info("🛑 Interruption de l'agent (agent parlait)!")
                                             try:
                                                 await session.interrupt()
                                             except Exception as e:
                                                 logger.warning("Erreur lors de session.interrupt(): %s", e)
+                                        else:
+                                            logger.info("🛑 Blocage audio (agent vient de finir)")
                                         user_speech_detected = True
                                         continue
 
@@ -438,8 +439,12 @@ class TelephonyVoiceBridge:
                     # Track when agent starts speaking - unblock audio
                     if isinstance(event, RealtimeAgentStartEvent):
                         agent_is_speaking = True
-                        block_audio_send = False  # Allow audio again for new response
-                        logger.debug("Agent commence à parler - déblocage audio")
+                        # Only unblock audio if user is not currently speaking
+                        if not user_speech_detected:
+                            block_audio_send = False  # Allow audio again for new response
+                            logger.debug("Agent commence à parler - déblocage audio")
+                        else:
+                            logger.debug("Agent commence à parler mais user_speech_detected=True - audio reste bloqué")
                         continue
 
                     # Track when agent stops speaking
