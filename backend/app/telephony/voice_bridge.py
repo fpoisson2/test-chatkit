@@ -407,14 +407,14 @@ class TelephonyVoiceBridge:
                                         },
                                         "turn_detection": {
                                             "type": "semantic_vad",
-                                            "create_response": False,  # On force manuellement via speech_stopped
+                                            "create_response": True,  # OpenAI crée automatiquement une réponse quand l'utilisateur arrête de parler
                                             "interrupt_response": True,
                                         },
                                     }
                                 )
                             )
                             turn_detection_enabled = True
-                            logger.info("Turn detection (semantic_vad) activé avec succès (sans create_response)")
+                            logger.info("Turn detection (semantic_vad) activé avec succès (avec create_response automatique)")
                         except Exception as e:
                             logger.warning("Impossible d'activer turn_detection: %s", e)
 
