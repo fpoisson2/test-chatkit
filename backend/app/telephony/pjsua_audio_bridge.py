@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from .pjsua_adapter import PJSUACall
 
 logger = logging.getLogger("chatkit.telephony.pjsua_audio_bridge")
+logger.setLevel(logging.DEBUG)  # Force DEBUG pour diagnostiquer l'audio
 
 
 class PJSUAAudioBridge:

@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger("chatkit.telephony.pjsua")
+logger.setLevel(logging.DEBUG)  # Force DEBUG pour diagnostiquer l'audio
 
 # Import conditionnel de pjsua2
 PJSUA_AVAILABLE = False
