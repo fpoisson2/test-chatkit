@@ -521,7 +521,7 @@ const WorkflowBuilderPage = () => {
   const [widgets, setWidgets] = useState<WidgetTemplateSummary[]>([]);
   const [widgetsLoading, setWidgetsLoading] = useState(false);
   const [widgetsError, setWidgetsError] = useState<string | null>(null);
-  const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<number | null>(null);
+  const [openWorkflowMenuId, setOpenWorkflowMenuId] = useState<string | number | null>(null);
   const [isDeployModalOpen, setDeployModalOpen] = useState(false);
   const [isCreateModalOpen, setCreateModalOpen] = useState(false);
   const [createWorkflowKind, setCreateWorkflowKind] = useState<"local" | "hosted">("local");
@@ -5575,6 +5575,7 @@ const WorkflowBuilderPage = () => {
       if (!entry) {
         return;
       }
+      closeWorkflowMenu();
       const confirmed = window.confirm(
         t("workflowBuilder.hostedSection.confirmDelete", { label: entry.label }),
       );
@@ -5601,7 +5602,7 @@ const WorkflowBuilderPage = () => {
         setSaveMessage(message);
       }
     },
-    [hostedWorkflows, loadHostedWorkflows, t, token],
+    [closeWorkflowMenu, hostedWorkflows, loadHostedWorkflows, t, token],
   );
 
   const buildGraphPayload = useCallback(
@@ -7005,6 +7006,12 @@ const WorkflowBuilderPage = () => {
             {combinedEntries.map((entry) => {
               if (entry.kind === "hosted") {
                 const { hosted } = entry;
+                const menuKey = `hosted:${hosted.slug}`;
+                const isMenuOpen = openWorkflowMenuId === menuKey;
+                const menuId = `workflow-actions-${hosted.slug}`;
+                const placement =
+                  isMobileLayout && isMenuOpen ? workflowMenuPlacement : "down";
+                const menuStyle = getActionMenuStyle(isMobileLayout, placement);
                 return (
                   <li
                     key={`hosted:${hosted.slug}`}
@@ -7022,19 +7029,72 @@ const WorkflowBuilderPage = () => {
                         {t("workflows.hostedBadge")}
                       </span>
                     </button>
-                    <div className="chatkit-sidebar__workflow-actions">
+                    <div className="chatkit-sidebar__workflow-actions" data-workflow-menu-container="">
                       <button
                         type="button"
                         className="chatkit-sidebar__workflow-action-button"
-                        onClick={() => void handleDeleteHostedWorkflow(hosted.slug)}
+                        data-workflow-menu-trigger=""
+                        aria-haspopup="true"
+                        aria-expanded={isMenuOpen}
+                        aria-controls={menuId}
                         disabled={hostedLoading}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (openWorkflowMenuId === menuKey) {
+                            closeWorkflowMenu();
+                            return;
+                          }
+                          if (isMobileLayout && typeof window !== "undefined") {
+                            const triggerRect = event.currentTarget.getBoundingClientRect();
+                            const viewport = window.visualViewport;
+                            const viewportHeight =
+                              viewport?.height ??
+                              window.innerHeight ??
+                              document.documentElement.clientHeight ??
+                              0;
+                            const viewportOffsetTop = viewport?.offsetTop ?? 0;
+                            const adjustedTop = triggerRect.top - viewportOffsetTop;
+                            const adjustedBottom = triggerRect.bottom - viewportOffsetTop;
+                            const spaceAbove = Math.max(0, adjustedTop);
+                            const spaceBelow = Math.max(0, viewportHeight - adjustedBottom);
+                            const estimatedMenuHeight = 180;
+                            const shouldOpenUpwards =
+                              spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow;
+                            setWorkflowMenuPlacement(shouldOpenUpwards ? "up" : "down");
+                          } else {
+                            setWorkflowMenuPlacement("down");
+                          }
+
+                          setOpenWorkflowMenuId(menuKey);
+                        }}
                       >
-                        {t("workflowBuilder.hostedSection.deleteAction")}
+                        <span aria-hidden="true">…</span>
+                        <span className="visually-hidden">
+                          {t("workflowBuilder.hostedSection.openActions", { label: hosted.label })}
+                        </span>
                       </button>
                     </div>
-                    <p className="chatkit-sidebar__workflow-meta">
-                      {t("workflowBuilder.hostedSection.remoteId", { id: hosted.id })}
-                    </p>
+                    {isMenuOpen ? (
+                      <div
+                        id={menuId}
+                        role="menu"
+                        data-workflow-menu=""
+                        className="chatkit-sidebar__workflow-menu"
+                        style={menuStyle}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteHostedWorkflow(hosted.slug)}
+                          disabled={hostedLoading}
+                          style={getActionMenuItemStyle(isMobileLayout, {
+                            disabled: hostedLoading,
+                            danger: true,
+                          })}
+                        >
+                          {t("workflowBuilder.hostedSection.deleteAction")}
+                        </button>
+                      </div>
+                    ) : null}
                     {hosted.description ? (
                       <p className="chatkit-sidebar__workflow-meta">{hosted.description}</p>
                     ) : null}

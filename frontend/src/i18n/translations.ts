@@ -484,7 +484,7 @@ const fr: TranslationDictionary = {
   "workflowBuilder.hostedSection.empty":
     "Aucun workflow hébergé géré depuis l'interface n'est disponible pour le moment.",
   "workflowBuilder.hostedSection.deleteAction": "Supprimer",
-  "workflowBuilder.hostedSection.remoteId": "ID distant : {id}",
+  "workflowBuilder.hostedSection.openActions": "Actions pour {label}",
   "workflowBuilder.hostedSection.deleting": "Suppression du workflow hébergé…",
   "workflowBuilder.hostedSection.deleteSuccess":
     "Workflow hébergé \"{label}\" supprimé.",
@@ -1081,7 +1081,7 @@ const en: TranslationDictionary = {
   "workflowBuilder.hostedSection.empty":
     "No hosted workflow managed from the interface yet.",
   "workflowBuilder.hostedSection.deleteAction": "Delete",
-  "workflowBuilder.hostedSection.remoteId": "Remote ID: {id}",
+  "workflowBuilder.hostedSection.openActions": "Actions for {label}",
   "workflowBuilder.hostedSection.deleting": "Deleting hosted workflow…",
   "workflowBuilder.hostedSection.deleteSuccess":
     "Hosted workflow \"{label}\" removed.",
