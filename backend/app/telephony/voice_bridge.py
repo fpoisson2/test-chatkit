@@ -526,6 +526,8 @@ class TelephonyVoiceBridge:
                             if text_parts:
                                 combined_text = "\n".join(text_parts)
                                 transcripts.append({"role": role, "text": combined_text})
+                                # Log transcription to help debug tool usage
+                                logger.info("💬 %s: %s", role.upper(), combined_text[:200])
                         continue
 
                     # Handle tool calls (the SDK automatically executes these!)
