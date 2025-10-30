@@ -220,19 +220,30 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
             return None
 
         # Mode multi-SIP : on doit trouver une correspondance exacte
-        # Extraire l'en-tête To:
-        to_header = None
+        # Extraire l'en-tête To: en utilisant la même logique que _extract_incoming_number
         headers = getattr(request, "headers", None)
-        if isinstance(headers, dict):
-            for key, value in headers.items():
-                if isinstance(key, str) and key.lower() == "to":
-                    if isinstance(value, list) and value:
-                        to_header = str(value[0])
-                    elif isinstance(value, tuple) and value:
-                        to_header = str(value[0])
-                    else:
-                        to_header = str(value)
-                    break
+        items = getattr(headers, "items", None)
+        iterable: list[tuple[Any, Any]]
+        if callable(items):
+            try:
+                iterable = list(items())
+            except Exception:  # pragma: no cover - garde-fou
+                iterable = []
+        elif isinstance(headers, dict):
+            iterable = list(headers.items())
+        else:
+            iterable = []
+
+        to_header = None
+        for key, value in iterable:
+            if isinstance(key, str) and key.lower() == "to":
+                if isinstance(value, list) and value:
+                    to_header = str(value[0])
+                elif isinstance(value, tuple) and value:
+                    to_header = str(value[0])
+                else:
+                    to_header = str(value)
+                break
 
         if not to_header:
             logger.error("Impossible d'extraire l'en-tête To: de l'INVITE SIP")
@@ -868,12 +879,34 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
         # pour que l'ACK soit capturé correctement
         try:
             await sip_handler.handle_invite(request, dialog=dialog)
+        except TelephonyRouteSelectionError as exc:
+            # Appel vers un compte SIP sans workflow configuré ou en-tête invalide
+            logger.warning(
+                "Appel SIP rejeté : %s",
+                str(exc),
+            )
+            await rtp_server.stop()
+            with contextlib.suppress(Exception):
+                await send_sip_reply(
+                    dialog,
+                    404,
+                    reason="Not Found",
+                    contact_uri=contact_uri,
+                )
+            return
         except Exception:  # pragma: no cover - dépend des callbacks
             logger.exception(
                 "Erreur lors de la gestion applicative de l'INVITE"
             )
             await rtp_server.stop()
-            raise
+            with contextlib.suppress(Exception):
+                await send_sip_reply(
+                    dialog,
+                    500,
+                    reason="Server Internal Error",
+                    contact_uri=contact_uri,
+                )
+            return
 
         # Récupérer la session créée et y stocker les callbacks RTP
         call_id_raw = getattr(request, "headers", {}).get("Call-ID")
