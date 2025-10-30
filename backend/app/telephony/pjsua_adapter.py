@@ -348,6 +348,11 @@ class PJSUAAdapter:
         # Initialiser l'endpoint
         self._ep.libInit(ep_cfg)
 
+        # Configure null audio device (no hardware required)
+        # This is essential for Docker environments without sound cards
+        self._ep.audDevManager().setNullDev()
+        logger.info("PJSUA configured to use null audio device (no hardware)")
+
         # Créer le transport UDP
         transport_cfg = pj.TransportConfig()
         transport_cfg.port = port if config is None else config.port
