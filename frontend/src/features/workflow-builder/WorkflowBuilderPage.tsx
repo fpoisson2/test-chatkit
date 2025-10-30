@@ -7021,7 +7021,8 @@ const WorkflowBuilderPage = () => {
                     <button
                       type="button"
                       className="chatkit-sidebar__workflow-button chatkit-sidebar__workflow-button--hosted"
-                      disabled
+                      aria-disabled="true"
+                      tabIndex={-1}
                       title={hosted.description ?? t("workflows.hostedBadge")}
                     >
                       <span className="chatkit-sidebar__workflow-label">{hosted.label}</span>
@@ -7094,6 +7095,11 @@ const WorkflowBuilderPage = () => {
                           {t("workflowBuilder.hostedSection.deleteAction")}
                         </button>
                       </div>
+                    ) : null}
+                    {!hosted.available ? (
+                      <p className="chatkit-sidebar__workflow-meta" aria-live="polite">
+                        {t("workflows.hostedUnavailable")}
+                      </p>
                     ) : null}
                     {hosted.description ? (
                       <p className="chatkit-sidebar__workflow-meta">{hosted.description}</p>

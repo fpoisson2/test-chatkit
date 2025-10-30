@@ -864,6 +864,23 @@ button {
   opacity: 0.6;
 }
 
+.chatkit-sidebar__workflow-button[aria-disabled="true"] {
+  cursor: default;
+  opacity: 1;
+}
+
+.chatkit-sidebar__workflow-button[aria-disabled="true"],
+.chatkit-sidebar__workflow-button[aria-disabled="true"]:hover,
+.chatkit-sidebar__workflow-button[aria-disabled="true"]:focus-visible {
+  color: var(--text-color);
+}
+
+.chatkit-sidebar__workflow-button[aria-disabled="true"]::after,
+.chatkit-sidebar__workflow-button[aria-disabled="true"]:hover::after,
+.chatkit-sidebar__workflow-button[aria-disabled="true"]:focus-visible::after {
+  background: transparent;
+}
+
 .chatkit-sidebar__workflow-button:hover,
 .chatkit-sidebar__workflow-button:focus-visible {
   color: var(--primary-hover);
