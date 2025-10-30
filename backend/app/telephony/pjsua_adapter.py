@@ -178,19 +178,19 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                 # Tronquer si trop long
                 audio_data = audio_data[:expected_size]
 
-            # Copier les données dans le buffer pré-alloué de PJSUA
-            # frame.buf est déjà un ByteVector alloué - on doit y copier les données
-            for i, byte in enumerate(audio_data):
-                frame.buf[i] = byte
+            # Redimensionner le buffer et copier les données
+            frame.buf.clear()
+            for byte in audio_data:
+                frame.buf.append(byte)
 
             frame.size = len(audio_data)
             frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
         except queue.Empty:
             # Pas d'audio disponible, envoyer du silence
-            # Remplir le buffer avec des zéros
-            for i in range(expected_size):
-                frame.buf[i] = 0
+            frame.buf.clear()
+            for _ in range(expected_size):
+                frame.buf.append(0)
 
             frame.size = expected_size
             frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
