@@ -135,7 +135,6 @@ import {
 } from "../../utils/workflows";
 import EdgeInspector from "./components/EdgeInspector";
 import NodeInspector from "./components/NodeInspector";
-import { WorkflowPreviewPanel } from "./components/WorkflowPreviewPanel";
 import {
   parseWorkflowImport,
   WorkflowImportError,
@@ -421,48 +420,17 @@ const WorkflowBuilderPage = () => {
   const { openSidebar, closeSidebar, isSidebarCollapsed } = useAppLayout();
   const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
 
-  const ensurePreviewDefaults = useCallback((data: FlowNodeData): FlowNodeData => {
-    const hasActive = typeof data.isPreviewActive === "boolean";
-    const hasDimmed = typeof data.isPreviewDimmed === "boolean";
-    if (hasActive && hasDimmed) {
-      return data;
-    }
-    return {
-      ...data,
-      isPreviewActive: hasActive ? data.isPreviewActive : false,
-      isPreviewDimmed: hasDimmed ? data.isPreviewDimmed : false,
-    } satisfies FlowNodeData;
-  }, []);
-
-  const getNodeClassName = useCallback(
-    (data: FlowNodeData) => {
-      const classNames: string[] = [styles.flowNode];
-      if (data.isPreviewActive) {
-        classNames.push(styles.flowNodePreviewActive);
-      }
-      if (data.isPreviewDimmed) {
-        classNames.push(styles.flowNodePreviewDimmed);
-      }
-      return classNames.join(" ");
-    },
-    [],
-  );
-
   const decorateNode = useCallback(
     (node: FlowNode): FlowNode => {
-      const dataWithDefaults = ensurePreviewDefaults(node.data);
       return {
         ...node,
-        data: dataWithDefaults,
-        className: getNodeClassName(dataWithDefaults),
-        style: buildNodeStyle(dataWithDefaults.kind, {
+        className: styles.flowNode,
+        style: buildNodeStyle(node.data.kind, {
           isSelected: node.selected ?? false,
-          isPreviewActive: Boolean(dataWithDefaults.isPreviewActive),
-          isPreviewDimmed: Boolean(dataWithDefaults.isPreviewDimmed),
         }),
       } satisfies FlowNode;
     },
-    [ensurePreviewDefaults, getNodeClassName, buildNodeStyle],
+    [buildNodeStyle],
   );
 
   const decorateNodes = useCallback(
@@ -481,8 +449,6 @@ const WorkflowBuilderPage = () => {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNodeData>([]);
   const [edges, setEdges, applyEdgesChange] = useEdgesState<FlowEdgeData>([]);
-  const [isPreviewMode, setIsPreviewMode] = useState(false);
-  const [activePreviewStepSlug, setActivePreviewStepSlug] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>(
@@ -505,12 +471,9 @@ const WorkflowBuilderPage = () => {
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const updateHasPendingChanges = useCallback(
     (value: boolean | ((previous: boolean) => boolean)) => {
-      if (isPreviewMode) {
-        return;
-      }
       setHasPendingChanges(value);
     },
-    [isPreviewMode],
+    [],
   );
   const [vectorStores, setVectorStores] = useState<VectorStoreSummary[]>([]);
   const [vectorStoresLoading, setVectorStoresLoading] = useState(false);
@@ -543,41 +506,6 @@ const WorkflowBuilderPage = () => {
   const hasPendingChangesRef = useRef(hasPendingChanges);
   const saveStateRef = useRef<SaveState>(saveState);
 
-  useEffect(() => {
-    if (!isPreviewMode) {
-      setActivePreviewStepSlug(null);
-    }
-  }, [isPreviewMode]);
-
-  useEffect(() => {
-    setNodes((current) => {
-      let changed = false;
-      const nextNodes = current.map((node) => {
-        const dataWithDefaults = ensurePreviewDefaults(node.data);
-        const isActive =
-          isPreviewMode &&
-          activePreviewStepSlug != null &&
-          dataWithDefaults.slug === activePreviewStepSlug;
-        const isDimmed = isPreviewMode && !isActive;
-        if (
-          dataWithDefaults.isPreviewActive === isActive &&
-          dataWithDefaults.isPreviewDimmed === isDimmed
-        ) {
-          return node;
-        }
-        changed = true;
-        return decorateNode({
-          ...node,
-          data: {
-            ...dataWithDefaults,
-            isPreviewActive: isActive,
-            isPreviewDimmed: isDimmed,
-          },
-        });
-      });
-      return changed ? nextNodes : current;
-    });
-  }, [activePreviewStepSlug, decorateNode, ensurePreviewDefaults, isPreviewMode, setNodes]);
   const selectedVersionIdRef = useRef<number | null>(null);
   const isCreatingDraftRef = useRef(false);
   const isHydratingRef = useRef(false);
@@ -850,25 +778,19 @@ const WorkflowBuilderPage = () => {
 
   const handleNodesChange = useCallback(
     (changes: NodeChange<FlowNodeData>[]) => {
-      if (isPreviewMode) {
-        return;
-      }
       onNodesChange(changes);
     },
-    [isPreviewMode, onNodesChange],
+    [onNodesChange],
   );
 
   const handleEdgesChange = useCallback(
     (changes: EdgeChange<FlowEdgeData>[]) => {
-      if (isPreviewMode) {
-        return;
-      }
       if (changes.some((change) => change.type !== "select")) {
         updateHasPendingChanges(true);
       }
       applyEdgesChange(changes);
     },
-    [applyEdgesChange, isPreviewMode, updateHasPendingChanges],
+    [applyEdgesChange, updateHasPendingChanges],
   );
 
   const [isBlockLibraryOpen, setBlockLibraryOpen] = useState<boolean>(() => !isMobileLayout);
@@ -1139,12 +1061,9 @@ const WorkflowBuilderPage = () => {
 
       setNodes((currentNodes) =>
         currentNodes.map((node) => {
-          const dataWithDefaults = ensurePreviewDefaults(node.data);
           const isSelected = nodeIdSet.has(node.id);
-          const nextStyle = buildNodeStyle(dataWithDefaults.kind, {
+          const nextStyle = buildNodeStyle(node.data.kind, {
             isSelected,
-            isPreviewActive: Boolean(dataWithDefaults.isPreviewActive),
-            isPreviewDimmed: Boolean(dataWithDefaults.isPreviewDimmed),
           });
           const currentStyle = node.style ?? {};
           const hasSameSelection = (node.selected ?? false) === isSelected;
@@ -1155,7 +1074,7 @@ const WorkflowBuilderPage = () => {
                 Object.prototype.hasOwnProperty.call(currentStyle, key) &&
                 (currentStyle as Record<string, unknown>)[key] === value,
             );
-          const nextClassName = getNodeClassName(dataWithDefaults);
+          const nextClassName = styles.flowNode;
           const hasSameClassName = node.className === nextClassName;
 
           if (hasSameSelection && hasSameStyle && hasSameClassName) {
@@ -1164,7 +1083,6 @@ const WorkflowBuilderPage = () => {
 
           return {
             ...node,
-            data: dataWithDefaults,
             selected: isSelected,
             style: nextStyle,
             className: nextClassName,
@@ -1241,46 +1159,6 @@ const WorkflowBuilderPage = () => {
       </div>
     ) : null;
 
-  const handleEnterPreviewMode = useCallback(() => {
-    if (isPreviewMode) {
-      return;
-    }
-    setIsMobileActionsOpen(false);
-    setBlockLibraryOpen(false);
-    setPropertiesPanelOpen(false);
-    setSelectedNodeId(null);
-    setSelectedEdgeId(null);
-    applySelection({ nodeIds: [], edgeIds: [] });
-    setIsPreviewMode(true);
-  }, [
-    applySelection,
-    isPreviewMode,
-    setBlockLibraryOpen,
-    setIsMobileActionsOpen,
-    setPropertiesPanelOpen,
-    setSelectedEdgeId,
-    setSelectedNodeId,
-  ]);
-
-  const handleExitPreviewMode = useCallback(() => {
-    if (!isPreviewMode) {
-      return;
-    }
-    setIsMobileActionsOpen(false);
-    setIsPreviewMode(false);
-    setActivePreviewStepSlug(null);
-  }, [isPreviewMode, setActivePreviewStepSlug]);
-
-  const handlePreviewActiveStepChange = useCallback(
-    (slug: string | null) => {
-      if (!isPreviewMode) {
-        return;
-      }
-      setActivePreviewStepSlug(slug);
-    },
-    [isPreviewMode, setActivePreviewStepSlug],
-  );
-
   const renderHeaderControls = () => {
     const importDisabled = loading || isImporting;
     const exportDisabled =
@@ -1293,32 +1171,6 @@ const WorkflowBuilderPage = () => {
     const exportLabel = isExporting
       ? t("workflowBuilder.export.preparing")
       : t("workflowBuilder.actions.exportJson");
-    const previewLabel = isPreviewMode
-      ? t("workflowBuilder.preview.exit")
-      : t("workflowBuilder.preview.enter");
-    const previewDisabled = isPreviewMode
-      ? false
-      : loading ||
-        loadError !== null ||
-        !selectedWorkflowId ||
-        isImporting ||
-        isExporting ||
-        isDeploying;
-
-    const previewToggleButton = (
-      <button
-        type="button"
-        onClick={isPreviewMode ? handleExitPreviewMode : handleEnterPreviewMode}
-        disabled={previewDisabled}
-        aria-pressed={isPreviewMode}
-        className={cx(styles.previewToggleButton, {
-          [styles.previewToggleButtonActive]: isPreviewMode,
-        })}
-      >
-        {previewLabel}
-      </button>
-    );
-
     const versionSelect = (
       <div style={getHeaderLayoutStyle(isMobileLayout)}>
         <div style={getHeaderGroupStyle(isMobileLayout)}>
@@ -1452,23 +1304,6 @@ const WorkflowBuilderPage = () => {
                       type="button"
                       role="menuitem"
                       onClick={() => {
-                        if (isPreviewMode) {
-                          handleExitPreviewMode();
-                        } else {
-                          handleEnterPreviewMode();
-                        }
-                        closeMobileActions();
-                      }}
-                      disabled={previewDisabled}
-                      aria-pressed={isPreviewMode}
-                      style={getMobileActionButtonStyle({ disabled: previewDisabled })}
-                    >
-                      {previewLabel}
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
                         handleTriggerImport();
                         closeMobileActions();
                       }}
@@ -1517,7 +1352,6 @@ const WorkflowBuilderPage = () => {
       <>
         {versionSelect}
         <div style={getHeaderActionAreaStyle(false)}>
-          {previewToggleButton}
           <button
             type="button"
             onClick={handleTriggerImport}
@@ -1801,8 +1635,6 @@ const WorkflowBuilderPage = () => {
                 parametersText: stringifyAgentParameters(parameters),
                 parametersError: null,
                 metadata: node.metadata ?? {},
-                isPreviewActive: false,
-                isPreviewDimmed: false,
               },
               draggable: true,
               selected: false,
@@ -2391,9 +2223,6 @@ const WorkflowBuilderPage = () => {
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      if (isPreviewMode) {
-        return;
-      }
       setEdges((current) =>
         addEdge<FlowEdgeData>(
           {
@@ -2411,7 +2240,7 @@ const WorkflowBuilderPage = () => {
       );
       updateHasPendingChanges(true);
     },
-    [isPreviewMode, setEdges, updateHasPendingChanges]
+    [setEdges, updateHasPendingChanges]
   );
 
   const selectedNode = useMemo(
@@ -2426,9 +2255,6 @@ const WorkflowBuilderPage = () => {
 
   const handleNodeClick = useCallback(
     (_: unknown, node: FlowNode) => {
-      if (isPreviewMode) {
-        return;
-      }
       const lastTapped = lastTappedElementRef.current;
       const isSameElement = lastTapped?.kind === "node" && lastTapped.id === node.id;
       const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
@@ -2439,14 +2265,11 @@ const WorkflowBuilderPage = () => {
         setPropertiesPanelOpen(true);
       }
     },
-    [isMobileLayout, isPreviewMode],
+    [isMobileLayout],
   );
 
   const handleEdgeClick = useCallback(
     (_: unknown, edge: FlowEdge) => {
-      if (isPreviewMode) {
-        return;
-      }
       const lastTapped = lastTappedElementRef.current;
       const isSameElement = lastTapped?.kind === "edge" && lastTapped.id === edge.id;
       const nextTapCount = isSameElement ? Math.min(lastTapped.tapCount + 1, 2) : 1;
@@ -2457,21 +2280,15 @@ const WorkflowBuilderPage = () => {
         setPropertiesPanelOpen(true);
       }
     },
-    [isMobileLayout, isPreviewMode],
+    [isMobileLayout],
   );
 
   const handleClearSelection = useCallback(() => {
-    if (isPreviewMode) {
-      return;
-    }
     applySelection({ nodeIds: [], edgeIds: [] });
-  }, [applySelection, isPreviewMode]);
+  }, [applySelection]);
 
   const handleSelectionChange = useCallback(
     ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: FlowNode[]; edges: FlowEdge[] }) => {
-      if (isPreviewMode) {
-        return;
-      }
       applySelection({
         nodeIds: selectedNodes.map((node) => node.id),
         edgeIds: selectedEdges.map((edge) => edge.id),
@@ -2479,20 +2296,14 @@ const WorkflowBuilderPage = () => {
         primaryEdgeId: selectedEdgeIdRef.current,
       });
     },
-    [applySelection, isPreviewMode]
+    [applySelection]
   );
 
   const handleNodeDragStart = useCallback(() => {
-    if (isPreviewMode) {
-      return;
-    }
     isNodeDragInProgressRef.current = true;
-  }, [isPreviewMode]);
+  }, []);
 
   const handleNodeDragStop = useCallback(() => {
-    if (isPreviewMode) {
-      return;
-    }
     isNodeDragInProgressRef.current = false;
     const history = historyRef.current;
     const pending = history.pendingSnapshot;
@@ -2507,7 +2318,7 @@ const WorkflowBuilderPage = () => {
       history.last = pending;
     }
     history.pendingSnapshot = null;
-  }, [isPreviewMode]);
+  }, []);
 
   const handleClosePropertiesPanel = useCallback(() => {
     if (isMobileLayout) {
@@ -2525,14 +2336,11 @@ const WorkflowBuilderPage = () => {
   }, [handleClearSelection, isMobileLayout]);
 
   const handleOpenPropertiesPanel = useCallback(() => {
-    if (isPreviewMode) {
-      return;
-    }
     if (!selectedNode && !selectedEdge) {
       return;
     }
     setPropertiesPanelOpen(true);
-  }, [isPreviewMode, selectedEdge, selectedNode]);
+  }, [selectedEdge, selectedNode]);
 
   const selectedElementKey = selectedNodeId ?? selectedEdgeId ?? null;
 
@@ -2621,16 +2429,12 @@ const WorkflowBuilderPage = () => {
 
   const updateNodeData = useCallback(
     (nodeId: string, updater: (data: FlowNodeData) => FlowNodeData) => {
-      if (isPreviewMode) {
-        return;
-      }
       setNodes((current) =>
         current.map((node) => {
           if (node.id !== nodeId) {
             return node;
           }
-          const currentData = ensurePreviewDefaults(node.data);
-          const nextData = ensurePreviewDefaults(updater(currentData));
+          const nextData = updater(node.data);
           return decorateNode({
             ...node,
             data: nextData,
@@ -2638,7 +2442,7 @@ const WorkflowBuilderPage = () => {
         })
       );
     },
-    [decorateNode, ensurePreviewDefaults, isPreviewMode, setNodes]
+    [decorateNode, setNodes]
   );
 
   const handleDisplayNameChange = useCallback(
@@ -3901,9 +3705,6 @@ const WorkflowBuilderPage = () => {
 
   const handleConditionChange = useCallback(
     (edgeId: string, value: string) => {
-      if (isPreviewMode) {
-        return;
-      }
       setEdges((current) =>
         current.map((edge) =>
           edge.id === edgeId
@@ -3917,14 +3718,11 @@ const WorkflowBuilderPage = () => {
       );
       updateHasPendingChanges(true);
     },
-    [isPreviewMode, setEdges, updateHasPendingChanges]
+    [setEdges, updateHasPendingChanges]
   );
 
   const handleEdgeLabelChange = useCallback(
     (edgeId: string, value: string) => {
-      if (isPreviewMode) {
-        return;
-      }
       setEdges((current) =>
         current.map((edge) =>
           edge.id === edgeId
@@ -3941,7 +3739,7 @@ const WorkflowBuilderPage = () => {
       );
       updateHasPendingChanges(true);
     },
-    [isPreviewMode, setEdges, updateHasPendingChanges]
+    [setEdges, updateHasPendingChanges]
   );
 
   const removeElements = useCallback(
@@ -3952,9 +3750,6 @@ const WorkflowBuilderPage = () => {
       nodeIds?: Iterable<string>;
       edgeIds?: Iterable<string>;
     }) => {
-      if (isPreviewMode) {
-        return;
-      }
       const nodeIdSet = new Set(nodeIds);
       const edgeIdSet = new Set(edgeIds);
 
@@ -4045,9 +3840,6 @@ const WorkflowBuilderPage = () => {
 
   const handleRemoveNode = useCallback(
     (nodeId: string) => {
-      if (isPreviewMode) {
-        return;
-      }
       const node = nodesRef.current.find((currentNode) => currentNode.id === nodeId);
       let confirmed = true;
       if (node) {
@@ -4069,14 +3861,11 @@ const WorkflowBuilderPage = () => {
         setSelectedNodeId(null);
       }
     },
-    [isPreviewMode, removeElements, selectedNodeId, t, updateHasPendingChanges]
+    [removeElements, selectedNodeId, t, updateHasPendingChanges]
   );
 
   const handleRemoveEdge = useCallback(
     (edgeId: string) => {
-      if (isPreviewMode) {
-        return;
-      }
       removeElements({ edgeIds: [edgeId] });
       setEdges((currentEdges) => currentEdges.filter((edge) => edge.id !== edgeId));
       updateHasPendingChanges(true);
@@ -4084,7 +3873,7 @@ const WorkflowBuilderPage = () => {
         setSelectedEdgeId(null);
       }
     },
-    [isPreviewMode, removeElements, selectedEdgeId, setEdges, updateHasPendingChanges]
+    [removeElements, selectedEdgeId, setEdges, updateHasPendingChanges]
   );
 
   const addNodeToGraph = useCallback(
@@ -4093,20 +3882,18 @@ const WorkflowBuilderPage = () => {
         const cleared = current.map((existing) =>
           decorateNode({
             ...existing,
-            data: ensurePreviewDefaults(existing.data),
             selected: false,
           }),
         );
         const prepared = decorateNode({
           ...node,
-          data: ensurePreviewDefaults(node.data),
           selected: true,
         });
         return [...cleared, prepared];
       });
       applySelection({ nodeIds: [node.id], primaryNodeId: node.id });
     },
-    [applySelection, decorateNode, ensurePreviewDefaults, setNodes]
+    [applySelection, decorateNode, setNodes]
   );
 
   const handleAddAgentNode = useCallback(() => {
@@ -4124,8 +3911,6 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
-        isPreviewActive: false,
-        isPreviewDimmed: false,
         metadata: {},
         label: humanizeSlug(slug),
       },
@@ -4151,8 +3936,6 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
-        isPreviewActive: false,
-        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
@@ -4176,8 +3959,6 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
-        isPreviewActive: false,
-        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
@@ -4206,8 +3987,6 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
-        isPreviewActive: false,
-        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
@@ -4232,8 +4011,6 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
-        isPreviewActive: false,
-        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
@@ -4257,8 +4034,6 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
-        isPreviewActive: false,
-        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
@@ -4282,8 +4057,6 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
-        isPreviewActive: false,
-        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
@@ -4307,8 +4080,6 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
-        isPreviewActive: false,
-        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
@@ -4332,8 +4103,6 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
-        isPreviewActive: false,
-        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
@@ -4357,8 +4126,6 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
-        isPreviewActive: false,
-        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
@@ -4382,8 +4149,6 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
-        isPreviewActive: false,
-        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
@@ -4408,8 +4173,6 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
-        isPreviewActive: false,
-        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
@@ -4433,8 +4196,6 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
-        isPreviewActive: false,
-        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
@@ -4458,8 +4219,6 @@ const WorkflowBuilderPage = () => {
         parameters,
         parametersText: stringifyAgentParameters(parameters),
         parametersError: null,
-        isPreviewActive: false,
-        isPreviewDimmed: false,
         metadata: {},
       },
       draggable: true,
@@ -4542,7 +4301,7 @@ const WorkflowBuilderPage = () => {
           nodesToInsert.push({
             id: nextSlug,
             position: { x: position.x, y: position.y },
-            data: ensurePreviewDefaults({
+            data: {
               slug: nextSlug,
               kind,
               displayName,
@@ -4553,7 +4312,7 @@ const WorkflowBuilderPage = () => {
               parametersText: stringifyAgentParameters(parameters),
               parametersError: null,
               metadata,
-            }),
+            },
             draggable: true,
             selected: false,
           });
@@ -4634,10 +4393,10 @@ const WorkflowBuilderPage = () => {
           return decorateNode({
             ...node,
             position: { x, y },
-            data: ensurePreviewDefaults({
+            data: {
               ...node.data,
               metadata: { ...node.data.metadata, position: { x, y } },
-            }),
+            },
           });
         });
 
@@ -4699,7 +4458,7 @@ const WorkflowBuilderPage = () => {
         return { success: false, reason: "error" };
       }
     },
-    [applySelection, isPreviewMode, setEdges, updateHasPendingChanges, setNodes],
+    [applySelection, setEdges, updateHasPendingChanges, setNodes],
   );
 
   const resetCopySequence = useCallback(() => {
@@ -4895,12 +4654,9 @@ const WorkflowBuilderPage = () => {
       setTimeout(() => setSaveState("idle"), 1500);
       return false;
     }
-  }, [insertGraphElements, isPreviewMode, t]);
+  }, [insertGraphElements, t]);
 
   const handleDuplicateSelection = useCallback((): boolean => {
-    if (isPreviewMode) {
-      return false;
-    }
     const selectedNodeIds = new Set(selectedNodeIdsRef.current);
     const selectedEdgeIds = new Set(selectedEdgeIdsRef.current);
 
@@ -4968,10 +4724,6 @@ const WorkflowBuilderPage = () => {
   }, [insertGraphElements, t]);
 
   const handleDeleteSelection = useCallback((): boolean => {
-    if (isPreviewMode) {
-      return false;
-    }
-
     const selectedNodeIds = selectedNodeIdsRef.current;
     const selectedEdgeIds = selectedEdgeIdsRef.current;
     const hasSelection = selectedNodeIds.size > 0 || selectedEdgeIds.size > 0;
@@ -4999,7 +4751,7 @@ const WorkflowBuilderPage = () => {
     });
     updateHasPendingChanges(true);
     return true;
-  }, [isPreviewMode, removeElements, t, updateHasPendingChanges]);
+  }, [removeElements, t, updateHasPendingChanges]);
 
   const restoreGraphFromSnapshot = useCallback(
     (snapshot: string): boolean => {
@@ -5036,7 +4788,7 @@ const WorkflowBuilderPage = () => {
           decorateNode({
             id: node.slug,
             position,
-            data: ensurePreviewDefaults({
+            data: {
               slug: node.slug,
               kind,
               displayName,
@@ -5047,7 +4799,7 @@ const WorkflowBuilderPage = () => {
               parametersText: stringifyAgentParameters(parameters),
               parametersError: null,
               metadata: node.metadata ?? {},
-            }),
+            },
             draggable: true,
             selected: false,
           }),
@@ -5086,9 +4838,6 @@ const WorkflowBuilderPage = () => {
   );
 
   const undoHistory = useCallback((): boolean => {
-    if (isPreviewMode) {
-      return false;
-    }
     const history = historyRef.current;
     if (history.past.length === 0 || !history.last) {
       return false;
@@ -5109,12 +4858,9 @@ const WorkflowBuilderPage = () => {
     history.last = previousSnapshot;
     history.pendingSnapshot = null;
     return true;
-  }, [isPreviewMode, restoreGraphFromSnapshot]);
+  }, [restoreGraphFromSnapshot]);
 
   const redoHistory = useCallback((): boolean => {
-    if (isPreviewMode) {
-      return false;
-    }
     const history = historyRef.current;
     if (history.future.length === 0) {
       return false;
@@ -5135,7 +4881,7 @@ const WorkflowBuilderPage = () => {
     history.last = nextSnapshot;
     history.pendingSnapshot = null;
     return true;
-  }, [isPreviewMode, restoreGraphFromSnapshot]);
+  }, [restoreGraphFromSnapshot]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -5160,7 +4906,7 @@ const WorkflowBuilderPage = () => {
       const isCtrlOrMeta = event.ctrlKey || event.metaKey;
       const key = event.key.toLowerCase();
       const now = Date.now();
-      const workflowBusy = loading || isImporting || isExporting || isPreviewMode;
+      const workflowBusy = loading || isImporting || isExporting;
 
       if (isCtrlOrMeta && key === "c") {
         const previousTimestamp = copySequenceRef.current.lastTimestamp;
@@ -5249,10 +4995,6 @@ const WorkflowBuilderPage = () => {
       }
 
       if (event.key === "Delete") {
-        if (isPreviewMode) {
-          resetCopySequence();
-          return;
-        }
         const hasSelection =
           selectedNodeIdsRef.current.size > 0 || selectedEdgeIdsRef.current.size > 0;
         if (!hasSelection) {
@@ -5282,7 +5024,6 @@ const WorkflowBuilderPage = () => {
     copySelectionToClipboard,
     isExporting,
     isImporting,
-    isPreviewMode,
     loading,
     pasteClipboardGraph,
     redoHistory,
@@ -6684,14 +6425,6 @@ const WorkflowBuilderPage = () => {
   }, [conditionGraphError]);
 
   useEffect(() => {
-    if (isPreviewMode) {
-      if (autoSaveTimeoutRef.current !== null) {
-        clearTimeout(autoSaveTimeoutRef.current);
-        autoSaveTimeoutRef.current = null;
-      }
-      return;
-    }
-
     if (
       !hasPendingChanges ||
       disableSave ||
@@ -6725,7 +6458,6 @@ const WorkflowBuilderPage = () => {
     disableSave,
     handleSave,
     hasPendingChanges,
-    isPreviewMode,
     loading,
     saveState,
     selectedWorkflowId,
@@ -7301,11 +7033,7 @@ const WorkflowBuilderPage = () => {
   const renderBlockLibraryContent = () => {
     if (isMobileLayout) {
       return (
-        <div
-          className={cx(styles.blockLibraryContent, {
-            [styles.blockLibraryDisabled]: isPreviewMode,
-          })}
-        >
+        <div className={styles.blockLibraryContent}>
           <div
             ref={(element) => {
               blockLibraryScrollRef.current = element;
@@ -7318,7 +7046,7 @@ const WorkflowBuilderPage = () => {
             aria-label="Blocs disponibles"
           >
             {blockLibraryItems.map((item) => {
-              const disabled = loading || !selectedWorkflowId || isPreviewMode;
+              const disabled = loading || !selectedWorkflowId;
               return (
                 <div
                   key={item.key}
@@ -7376,11 +7104,7 @@ const WorkflowBuilderPage = () => {
     const primaryTextColor = "var(--text-color)";
     const secondaryTextColor = "var(--text-muted)";
     return (
-      <div
-        className={cx({
-          [styles.blockLibraryDisabled]: isPreviewMode,
-        })}
-      >
+      <div>
         <div
           style={{
             marginBottom: "0.5rem",
@@ -7393,7 +7117,7 @@ const WorkflowBuilderPage = () => {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           {blockLibraryItems.map((item) => {
-            const disabled = loading || !selectedWorkflowId || isPreviewMode;
+            const disabled = loading || !selectedWorkflowId;
             return (
               <button
                 key={item.key}
@@ -7430,7 +7154,7 @@ const WorkflowBuilderPage = () => {
   };
 
   const workflowBusy = loading || isImporting || isExporting;
-  const editingLocked = isPreviewMode;
+  const editingLocked = false;
   const hasSelectedElement = !editingLocked && Boolean(selectedNode || selectedEdge);
   const canDeleteSelection = hasSelectedElement && !workflowBusy;
   const canDuplicateSelection = hasSelectedElement && !workflowBusy;
@@ -7761,16 +7485,7 @@ const WorkflowBuilderPage = () => {
     shouldShowWorkflowDescription,
   ]);
 
-  const editorContainerClassName = cx(styles.editorContainer, {
-    [styles.editorContainerPreview]: isPreviewMode && !isMobileLayout,
-    [styles.editorContainerMobilePreview]: isPreviewMode && isMobileLayout,
-  });
-
-  const previewBanner = isPreviewMode ? (
-    <div className={styles.previewBanner} role="status">
-      <span>{t("workflowBuilder.preview.banner")}</span>
-    </div>
-  ) : null;
+  const editorContainerClassName = styles.editorContainer;
 
   return (
     <ReactFlowProvider>
@@ -7808,12 +7523,7 @@ const WorkflowBuilderPage = () => {
               className={editorContainerClassName}
               aria-label="Éditeur visuel du workflow"
             >
-              {previewBanner}
-              <div
-                className={cx(styles.editorSplit, {
-                  [styles.editorSplitPreview]: isPreviewMode && !isMobileLayout,
-                })}
-              >
+              <div className={styles.editorSplit}>
                 <div className={styles.flowViewport}>
                   {loading ? (
                     <div style={loadingStyle}>Chargement du workflow…</div>
@@ -7835,10 +7545,7 @@ const WorkflowBuilderPage = () => {
                       onConnect={onConnect}
                       defaultEdgeOptions={defaultEdgeOptions}
                       connectionLineStyle={connectionLineStyle}
-                      selectionOnDrag={!isMobileLayout && !isPreviewMode}
-                      elementsSelectable={!isPreviewMode}
-                      nodesDraggable={!isPreviewMode}
-                      nodesConnectable={!isPreviewMode}
+                      selectionOnDrag={!isMobileLayout}
                       panOnDrag={isMobileLayout ? true : [1, 2]}
                       multiSelectionKeyCode={['Meta', 'Control']}
                       onSelectionChange={handleSelectionChange}
@@ -7880,25 +7587,7 @@ const WorkflowBuilderPage = () => {
                     </ReactFlow>
                   )}
                 </div>
-                {!isMobileLayout && isPreviewMode ? (
-                  <WorkflowPreviewPanel
-                    workflow={selectedWorkflow}
-                    version={selectedVersionDetail}
-                    onActiveStepChange={handlePreviewActiveStepChange}
-                    onExitPreview={handleExitPreviewMode}
-                  />
-                ) : null}
               </div>
-              {isMobileLayout && isPreviewMode ? (
-                <div className={styles.previewOverlay} role="dialog" aria-modal="true">
-                  <WorkflowPreviewPanel
-                    workflow={selectedWorkflow}
-                    version={selectedVersionDetail}
-                    onActiveStepChange={handlePreviewActiveStepChange}
-                    onExitPreview={handleExitPreviewMode}
-                  />
-                </div>
-              ) : null}
             </div>
           </div>
           {isMobileLayout ? (
@@ -7999,7 +7688,6 @@ const WorkflowBuilderPage = () => {
                   ref={blockLibraryToggleRef}
                   className={styles.mobileToggleButton}
                   onClick={toggleBlockLibrary}
-                  disabled={isPreviewMode}
                   aria-controls={blockLibraryId}
                   aria-expanded={isBlockLibraryOpen}
                 >
