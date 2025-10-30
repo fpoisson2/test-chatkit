@@ -543,54 +543,66 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
             )
             return
 
-        # Créer un nouveau thread pour cet appel avant de démarrer la session vocale
-        thread_id = str(uuid.uuid4())
+        # Vérifier si un thread a déjà été créé pendant la pré-initialisation
+        thread_id = metadata.get("thread_id")
 
-        # Ajouter les informations de l'appel SIP aux métadonnées du thread
-        sip_metadata = {
-            "sip_caller_number": metadata.get("normalized_number") or metadata.get("original_number"),
-            "sip_original_number": metadata.get("original_number"),
-            "sip_call_id": session.call_id,
-        }
-
-        thread = ThreadMetadata(
-            id=thread_id,
-            created_at=datetime.datetime.now(datetime.UTC),
-            metadata=sip_metadata,
-        )
-
-        # Sauvegarder le thread dans le store ChatKit
+        # Créer le contexte ChatKit (nécessaire pour thread et wait_state)
         server = get_chatkit_server()
         store = getattr(server, "store", None)
-        if store is not None:
-            chatkit_context = ChatKitRequestContext(
-                user_id=f"sip:{session.call_id}",
-                email=None,
-                authorization=None,
-                public_base_url=settings.backend_public_base_url,
-                voice_model=voice_model,
-                voice_instructions=instructions,
-                voice_voice=voice_name,
-                voice_prompt_variables=metadata.get("voice_prompt_variables"),
+        chatkit_context = ChatKitRequestContext(
+            user_id=f"sip:{session.call_id}",
+            email=None,
+            authorization=None,
+            public_base_url=settings.backend_public_base_url,
+            voice_model=voice_model,
+            voice_instructions=instructions,
+            voice_voice=voice_name,
+            voice_prompt_variables=metadata.get("voice_prompt_variables"),
+        )
+
+        if not thread_id:
+            # Créer un nouveau thread pour cet appel avant de démarrer la session vocale
+            thread_id = str(uuid.uuid4())
+
+            # Ajouter les informations de l'appel SIP aux métadonnées du thread
+            sip_metadata = {
+                "sip_caller_number": metadata.get("normalized_number") or metadata.get("original_number"),
+                "sip_original_number": metadata.get("original_number"),
+                "sip_call_id": session.call_id,
+            }
+
+            thread = ThreadMetadata(
+                id=thread_id,
+                created_at=datetime.datetime.now(datetime.UTC),
+                metadata=sip_metadata,
             )
-            try:
-                await store.save_thread(thread, chatkit_context)
-                metadata["thread_id"] = thread_id
-                logger.info(
-                    "Thread créé pour l'appel SIP (Call-ID=%s, thread_id=%s)",
+
+            # Sauvegarder le thread dans le store ChatKit
+            if store is not None:
+                try:
+                    await store.save_thread(thread, chatkit_context)
+                    metadata["thread_id"] = thread_id
+                    logger.info(
+                        "Thread créé pour l'appel SIP (Call-ID=%s, thread_id=%s)",
+                        session.call_id,
+                        thread_id,
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "Erreur lors de la création du thread pour Call-ID=%s",
+                        session.call_id,
+                        exc_info=exc,
+                    )
+            else:
+                logger.warning(
+                    "Store ChatKit non disponible, thread non créé pour Call-ID=%s",
                     session.call_id,
-                    thread_id,
-                )
-            except Exception as exc:
-                logger.exception(
-                    "Erreur lors de la création du thread pour Call-ID=%s",
-                    session.call_id,
-                    exc_info=exc,
                 )
         else:
-            logger.warning(
-                "Store ChatKit non disponible, thread non créé pour Call-ID=%s",
+            logger.info(
+                "Thread pré-existant utilisé (Call-ID=%s, thread_id=%s)",
                 session.call_id,
+                thread_id,
             )
 
         metadata["voice_session_active"] = True
@@ -603,8 +615,25 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
             voice_provider_slug or voice_provider_id or "<défaut>",
         )
 
+        # Vérifier si une session a été pré-initialisée pendant le ring timeout
+        preinit_session_handle = metadata.pop("preinit_session_handle", None)
         client_secret = metadata.get("client_secret")
-        if client_secret is None:
+
+        if preinit_session_handle is not None:
+            # Utiliser la session pré-initialisée
+            session_handle = preinit_session_handle
+            logger.info(
+                "🚀 Utilisation de la session Realtime pré-initialisée "
+                "(Call-ID=%s, session_id=%s) - AUCUN DÉLAI",
+                session.call_id,
+                metadata.get("realtime_session_id"),
+            )
+        elif client_secret is None:
+            # Pas de session pré-initialisée, créer une nouvelle session
+            logger.info(
+                "Création d'une nouvelle session Realtime (Call-ID=%s)",
+                session.call_id,
+            )
             metadata_extras: dict[str, Any] = {}
             thread_identifier = metadata.get("thread_id")
             if isinstance(thread_identifier, str) and thread_identifier.strip():
@@ -675,6 +704,13 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 parsed_secret.expires_at_isoformat()
             )
             metadata["realtime_session_id"] = session_handle.session_id
+        else:
+            # Session déjà créée (fallback pour compatibilité)
+            logger.warning(
+                "Session Realtime déjà créée pour Call-ID=%s, session_handle introuvable",
+                session.call_id,
+            )
+            return
 
         # Créer un wait_state pour que le frontend puisse détecter la session vocale
         if store is not None and thread_id:
@@ -956,7 +992,150 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 ring_timeout_seconds,
             )
 
-        # Maintenant envoyer le 200 OK
+        # Si ring_timeout > 0, pré-initialiser la session Realtime en parallèle
+        # pour qu'elle soit prête quand l'appel sera répondu
+        session_init_task = None
+        if session and ring_timeout_seconds > 0:
+            telephony_meta = session.metadata.get("telephony") or {}
+            voice_model = telephony_meta.get("voice_model")
+            instructions = telephony_meta.get("voice_instructions")
+            voice_name = telephony_meta.get("voice_voice")
+            voice_provider_id = telephony_meta.get("voice_provider_id")
+            voice_provider_slug = telephony_meta.get("voice_provider_slug")
+            voice_tools = telephony_meta.get("voice_tools") or []
+            voice_handoffs = telephony_meta.get("voice_handoffs") or []
+
+            if voice_model and instructions:
+                logger.info(
+                    "Pré-initialisation de la session Realtime pendant le ring timeout "
+                    "(Call-ID=%s)",
+                    call_id,
+                )
+
+                async def _preinit_realtime_session():
+                    """Initialise la session Realtime pendant que le téléphone sonne."""
+                    try:
+                        # Créer un nouveau thread pour cet appel
+                        thread_id = str(uuid.uuid4())
+
+                        # Ajouter les informations de l'appel SIP aux métadonnées du thread
+                        sip_metadata = {
+                            "sip_caller_number": telephony_meta.get("normalized_number") or telephony_meta.get("original_number"),
+                            "sip_original_number": telephony_meta.get("original_number"),
+                            "sip_call_id": session.call_id,
+                        }
+
+                        thread = ThreadMetadata(
+                            id=thread_id,
+                            created_at=datetime.datetime.now(datetime.UTC),
+                            metadata=sip_metadata,
+                        )
+
+                        # Sauvegarder le thread dans le store ChatKit
+                        server = get_chatkit_server()
+                        store = getattr(server, "store", None)
+                        if store is not None:
+                            chatkit_context = ChatKitRequestContext(
+                                user_id=f"sip:{session.call_id}",
+                                email=None,
+                                authorization=None,
+                                public_base_url=settings.backend_public_base_url,
+                                voice_model=voice_model,
+                                voice_instructions=instructions,
+                                voice_voice=voice_name,
+                                voice_prompt_variables=telephony_meta.get("voice_prompt_variables"),
+                            )
+                            await store.save_thread(thread, chatkit_context)
+                            telephony_meta["thread_id"] = thread_id
+                            logger.info(
+                                "Thread pré-créé pendant le ring (Call-ID=%s, thread_id=%s)",
+                                session.call_id,
+                                thread_id,
+                            )
+
+                        # Ajouter automatiquement le tool de transfert d'appel
+                        telephony_tools = list(voice_tools) if voice_tools else []
+                        transfer_tool_config = {
+                            "type": "function",
+                            "name": "transfer_call",
+                            "description": (
+                                "Transfère l'appel en cours vers un autre numéro de téléphone. "
+                                "Utilisez cette fonction lorsque l'appelant demande à être "
+                                "transféré vers un service spécifique, un département, ou une personne."
+                            ),
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "phone_number": {
+                                        "type": "string",
+                                        "description": (
+                                            "Le numéro de téléphone vers lequel transférer l'appel. "
+                                            "Format recommandé: E.164 (ex: +33123456789)"
+                                        ),
+                                    },
+                                    "announcement": {
+                                        "type": "string",
+                                        "description": (
+                                            "Message optionnel à annoncer à l'appelant avant le transfert"
+                                        ),
+                                    },
+                                },
+                                "required": ["phone_number"],
+                            },
+                        }
+                        telephony_tools.append(transfer_tool_config)
+
+                        metadata_extras: dict[str, Any] = {}
+                        if thread_id:
+                            metadata_extras["thread_id"] = thread_id
+
+                        # Ouvrir la session Realtime
+                        session_handle = await open_voice_session(
+                            user_id=f"sip:{session.call_id}",
+                            model=voice_model,
+                            instructions=instructions,
+                            voice=voice_name,
+                            provider_id=voice_provider_id,
+                            provider_slug=voice_provider_slug,
+                            tools=telephony_tools or None,
+                            handoffs=voice_handoffs or None,
+                            realtime={
+                                # Start WITHOUT turn_detection to avoid "buffer too small" error
+                                # It will be enabled dynamically after sending initial audio
+                            },
+                            metadata=metadata_extras or None,
+                        )
+
+                        # Stocker le session handle dans les métadonnées
+                        telephony_meta["preinit_session_handle"] = session_handle
+
+                        secret_payload = session_handle.payload
+                        parsed_secret = session_secret_parser.parse(secret_payload)
+                        client_secret = parsed_secret.as_text()
+                        if client_secret:
+                            telephony_meta["client_secret"] = client_secret
+                            telephony_meta["client_secret_expires_at"] = (
+                                parsed_secret.expires_at_isoformat()
+                            )
+                            telephony_meta["realtime_session_id"] = session_handle.session_id
+                            logger.info(
+                                "✅ Session Realtime pré-initialisée pendant le ring "
+                                "(Call-ID=%s, session_id=%s)",
+                                session.call_id,
+                                session_handle.session_id,
+                            )
+                    except Exception as exc:
+                        logger.exception(
+                            "Erreur lors de la pré-initialisation de la session Realtime "
+                            "(Call-ID=%s)",
+                            session.call_id,
+                            exc_info=exc,
+                        )
+
+                # Démarrer la pré-initialisation en arrière-plan
+                session_init_task = asyncio.create_task(_preinit_realtime_session())
+
+        # Maintenant envoyer le 200 OK (avec le ring timeout)
         try:
             await handle_incoming_invite(
                 dialog,
@@ -968,6 +1147,8 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
             )
         except InviteHandlingError as exc:
             logger.warning("Traitement de l'INVITE interrompu : %s", exc)
+            if session_init_task:
+                session_init_task.cancel()
             await rtp_server.stop()
             return
         except Exception as exc:  # pragma: no cover - dépend de aiosip
@@ -975,6 +1156,8 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 "Erreur inattendue lors du traitement d'un INVITE",
                 exc_info=exc,
             )
+            if session_init_task:
+                session_init_task.cancel()
             await rtp_server.stop()
             with contextlib.suppress(Exception):
                 await send_sip_reply(
@@ -984,6 +1167,23 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                     contact_uri=contact_uri,
                 )
             return
+
+        # Attendre que la pré-initialisation se termine (si elle était lancée)
+        if session_init_task:
+            try:
+                await session_init_task
+                logger.info(
+                    "Pré-initialisation de la session Realtime terminée avant réponse "
+                    "(Call-ID=%s)",
+                    call_id,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "La pré-initialisation a échoué, la session sera créée normalement "
+                    "(Call-ID=%s): %s",
+                    call_id,
+                    exc,
+                )
 
         # Démarrer la session RTP immédiatement après le 200 OK
         # Le téléphone commence déjà à envoyer de l'audio, pas besoin d'attendre l'ACK
