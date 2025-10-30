@@ -59,6 +59,7 @@ class PJSUAAudioBridge:
         logger.info("Starting RTP stream from PJSUA (8kHz → 24kHz)")
         resampling_state = None
 
+        packet_count = 0
         try:
             while not self._stop_event.is_set():
                 # Get audio from PJSUA (8kHz PCM16 mono)
@@ -72,6 +73,10 @@ class PJSUAAudioBridge:
                 if len(audio_8khz) == 0:
                     continue
 
+                # Log first few packets for diagnostics
+                if packet_count < 5:
+                    logger.debug("📥 RTP stream: reçu %d bytes @ 8kHz depuis PJSUA", len(audio_8khz))
+
                 # Resample 8kHz → 24kHz
                 try:
                     audio_24khz, resampling_state = audioop.ratecv(
@@ -82,6 +87,9 @@ class PJSUAAudioBridge:
                         self.VOICE_BRIDGE_SAMPLE_RATE,
                         resampling_state,
                     )
+
+                    if packet_count < 5:
+                        logger.debug("✅ Rééchantillonné à %d bytes @ 24kHz", len(audio_24khz))
                 except audioop.error as e:
                     logger.warning("Resampling error (8kHz→24kHz): %s", e)
                     continue
@@ -97,12 +105,17 @@ class PJSUAAudioBridge:
                     marker=False,
                 )
 
+                if packet_count < 5:
+                    logger.debug("📤 Envoi RtpPacket à OpenAI: seq=%d, ts=%d, %d bytes",
+                                self._sequence_number, self._timestamp, len(audio_24khz))
+
                 # Update RTP metadata
                 # At 24kHz: 20ms = 24000 samples/sec * 0.02 sec = 480 samples
                 samples_in_packet = len(audio_24khz) // self.BYTES_PER_SAMPLE
                 self._timestamp += samples_in_packet
                 self._sequence_number = (self._sequence_number + 1) % 65536
 
+                packet_count += 1
                 yield packet
 
         except asyncio.CancelledError:
