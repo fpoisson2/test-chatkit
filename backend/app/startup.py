@@ -904,25 +904,38 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
             else:
                 payload_text = str(payload)
 
+            logger.info("📋 Parsing SDP pour extraire l'adresse RTP distante")
+
             sdp_lines = [
                 line.strip()
                 for line in payload_text.replace("\r\n", "\n").replace("\r", "\n").splitlines()
                 if line.strip()
             ]
 
+            logger.debug("SDP lines: %s", sdp_lines[:10])  # Log first 10 lines
+
             remote_rtp_host = _parse_connection_address(sdp_lines)
+            logger.info("🔍 Connection address from SDP: %s", remote_rtp_host)
+
             audio_media = _parse_audio_media_line(sdp_lines)
             if audio_media:
                 remote_rtp_port, _ = audio_media
+                logger.info("🔍 Audio media port from SDP: %s", remote_rtp_port)
 
             if remote_rtp_host and remote_rtp_port:
                 logger.info(
-                    "Adresse RTP distante extraite du SDP : %s:%d",
+                    "✅ Adresse RTP distante extraite du SDP : %s:%d",
+                    remote_rtp_host,
+                    remote_rtp_port,
+                )
+            else:
+                logger.warning(
+                    "⚠️ Impossible d'extraire l'adresse RTP complète (host=%s, port=%s)",
                     remote_rtp_host,
                     remote_rtp_port,
                 )
         except Exception as exc:
-            logger.debug("Impossible d'extraire l'adresse RTP distante du SDP : %s", exc)
+            logger.warning("❌ Erreur lors de l'extraction de l'adresse RTP du SDP : %s", exc, exc_info=True)
 
         # Créer et démarrer le serveur RTP
         rtp_config = RtpServerConfig(

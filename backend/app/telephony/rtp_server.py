@@ -203,20 +203,25 @@ class RtpServer:
         Args:
             count: Nombre de paquets de silence à envoyer (défaut: 5)
         """
+        logger.info("🔔 send_silence_packet appelé (running=%s, transport=%s)", self._running, self._transport is not None)
+
         if not self._running or not self._transport:
+            logger.warning("⚠️ send_silence_packet: serveur non démarré ou transport indisponible")
             return
 
         # Si on a déjà découvert l'adresse distante réelle, pas besoin d'envoyer
         if self._remote_addr:
-            logger.debug("send_silence_packet: adresse distante déjà découverte, skip")
+            logger.info("✅ send_silence_packet: adresse distante déjà découverte (%s:%d), skip", self._remote_addr[0], self._remote_addr[1])
             return
 
         # Utiliser l'adresse du SDP si disponible
+        logger.info("🔍 Checking SDP address: remote_host=%s, remote_port=%s", self._config.remote_host, self._config.remote_port)
+
         if self._config.remote_host and self._config.remote_port:
             target_addr = (self._config.remote_host, self._config.remote_port)
         else:
             # Pas d'adresse distante connue, on ne peut pas envoyer
-            logger.debug("send_silence_packet: pas d'adresse distante configurée dans SDP")
+            logger.warning("⚠️ send_silence_packet: pas d'adresse distante configurée dans SDP")
             return
 
         # Créer un paquet de silence PCMU (160 octets = 20ms à 8kHz)
