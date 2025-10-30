@@ -635,6 +635,35 @@ button {
   cursor: not-allowed;
 }
 
+.chatkit-sidebar__section-icon-button {
+  border: none;
+  background: rgba(148, 163, 184, 0.22);
+  color: var(--text-color);
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.chatkit-sidebar__section-icon-button:hover,
+.chatkit-sidebar__section-icon-button:focus-visible {
+  background: rgba(37, 99, 235, 0.18);
+  color: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.chatkit-sidebar__section-icon-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__section-button {
   display: block;
   margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
@@ -788,6 +817,51 @@ button {
   z-index: -1;
 }
 
+.chatkit-sidebar__workflow-button--hosted {
+  border-radius: 12px;
+  border: 1px solid rgba(37, 99, 235, 0.32);
+  padding-inline: calc(var(--chatkit-sidebar-content-padding-x) - 2px);
+  margin-block: 4px;
+}
+
+.chatkit-sidebar__workflow-button--hosted::after {
+  border-radius: 12px;
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.chatkit-sidebar__workflow-button--hosted:hover::after,
+.chatkit-sidebar__workflow-button--hosted:focus-visible::after {
+  background: rgba(37, 99, 235, 0.18);
+}
+
+.chatkit-sidebar__workflow-badge {
+  margin-left: 0.5rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(148, 163, 184, 0.25);
+  color: var(--text-muted);
+}
+
+.chatkit-sidebar__workflow-badge--hosted {
+  background: rgba(37, 99, 235, 0.2);
+  color: #1d4ed8;
+}
+
+.chatkit-sidebar__workflow-meta {
+  margin: 0.35rem 0 0;
+  padding-inline: var(--chatkit-sidebar-content-padding-x);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.chatkit-sidebar__workflow-list-item[data-hosted-workflow] .chatkit-sidebar__workflow-meta {
+  padding-inline: calc(var(--chatkit-sidebar-content-padding-x) - 2px);
+}
+
 .chatkit-sidebar__workflow-button[disabled] {
   cursor: not-allowed;
   opacity: 0.6;
@@ -886,6 +960,17 @@ button {
   background: var(--primary-hover);
   border-color: var(--primary-hover);
   color: #fff;
+}
+
+.chatkit-sidebar__workflow-compact-button--hosted {
+  border-color: rgba(37, 99, 235, 0.35);
+  color: #1d4ed8;
+}
+
+.chatkit-sidebar__workflow-compact-button--hosted.chatkit-sidebar__workflow-compact-button--active {
+  background: rgba(37, 99, 235, 0.22);
+  border-color: rgba(37, 99, 235, 0.45);
+  color: #0f172a;
 }
 
 .chatkit-sidebar__workflow-compact-button[disabled] {
@@ -2353,6 +2438,110 @@ button {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.create-workflow-modal__form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.create-workflow-modal__fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.create-workflow-modal__legend {
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-right: 0.5rem;
+}
+
+.create-workflow-modal__radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.create-workflow-modal__radio input {
+  width: 1rem;
+  height: 1rem;
+}
+
+.create-workflow-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.create-workflow-modal__field input {
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-muted);
+  color: var(--text-color);
+  font: inherit;
+}
+
+.create-workflow-modal__field input:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.3);
+  outline-offset: 2px;
+  border-color: rgba(37, 99, 235, 0.4);
+}
+
+.create-workflow-modal__error {
+  margin: 0;
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.create-workflow-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.create-workflow-modal__button {
+  border-radius: 0.75rem;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-strong);
+  color: var(--text-color);
+  padding: 0.6rem 1.2rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.create-workflow-modal__button:hover,
+.create-workflow-modal__button:focus-visible {
+  background: color-mix(in srgb, var(--surface-strong) 88%, #2563eb 12%);
+  border-color: rgba(37, 99, 235, 0.4);
+  color: var(--primary-hover);
+}
+
+.create-workflow-modal__button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.create-workflow-modal__button--primary {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #fff;
+}
+
+.create-workflow-modal__button--primary:hover,
+.create-workflow-modal__button--primary:focus-visible {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: #fff;
 }
 
 .vector-store__steps {
