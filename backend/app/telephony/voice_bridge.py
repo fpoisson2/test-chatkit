@@ -487,37 +487,8 @@ class TelephonyVoiceBridge:
                         else:
                             logger.debug("Agent arrête de parler mais user parle encore - audio reste bloqué")
 
-                        # CHECK: If a tool call was detected but no proper confirmation was given
-                        if tool_call_detected and last_assistant_message_was_short:
-                            logger.warning("🚨 Tool call détecté mais pas de confirmation complète! Envoi d'un rappel...")
-                            try:
-                                # Send a conversation item to prompt the model for confirmation
-                                from agents.realtime.model_inputs import RealtimeModelSendRawMessage
-                                await session._model.send_event(
-                                    RealtimeModelSendRawMessage(
-                                        message={
-                                            "type": "conversation.item.create",
-                                            "item": {
-                                                "type": "message",
-                                                "role": "user",
-                                                "content": [{
-                                                    "type": "input_text",
-                                                    "text": "Confirme que l'action est terminée."
-                                                }]
-                                            }
-                                        }
-                                    )
-                                )
-                                # Trigger a response
-                                await session._model.send_event(
-                                    RealtimeModelSendRawMessage(
-                                        message={"type": "response.create"}
-                                    )
-                                )
-                                logger.info("✅ Rappel de confirmation envoyé")
-                                tool_call_detected = False  # Clear the flag
-                            except Exception as e:
-                                logger.error("Erreur lors de l'envoi du rappel de confirmation: %s", e)
+                        # Tool call handling is now done immediately when detected (see history processing)
+                        # No need for a delayed confirmation check here
 
                         continue
 
@@ -592,6 +563,25 @@ class TelephonyVoiceBridge:
                                 tool_call_detected = True
                                 logger.info("🔧 Tool call détecté (assistant message avec content_count=0)")
 
+                                # Envoyer response.create immédiatement pour forcer une confirmation verbale
+                                try:
+                                    from agents.realtime.model_inputs import (
+                                        RealtimeModelRawClientMessage,
+                                        RealtimeModelSendRawMessage,
+                                    )
+                                    logger.info("Envoi de response.create pour forcer confirmation verbale après tool call")
+                                    await session._model.send_event(
+                                        RealtimeModelSendRawMessage(
+                                            message=RealtimeModelRawClientMessage(
+                                                type="response.create",
+                                                other_data={},
+                                            )
+                                        )
+                                    )
+                                    logger.info("✅ response.create envoyé après détection du tool call")
+                                except Exception as e:
+                                    logger.warning("Impossible d'envoyer response.create: %s", e)
+
                             # Inspect content types for tool-related data
                             if contents:
                                 for idx, content in enumerate(contents):
@@ -640,26 +630,7 @@ class TelephonyVoiceBridge:
                         tool_name = getattr(event.tool, "name", None)
                         output = event.output
                         logger.info("Outil MCP terminé: %s, résultat: %s", tool_name, output)
-
-                        # Forcer l'assistant à parler après chaque tool call
-                        try:
-                            from agents.realtime.model_inputs import (
-                                RealtimeModelRawClientMessage,
-                                RealtimeModelSendRawMessage,
-                            )
-                            logger.info("Envoi de response.create pour forcer la confirmation verbale après tool call")
-                            await session._model.send_event(
-                                RealtimeModelSendRawMessage(
-                                    message=RealtimeModelRawClientMessage(
-                                        type="response.create",
-                                        other_data={},
-                                    )
-                                )
-                            )
-                            logger.info("Événement response.create envoyé après tool call")
-                        except Exception as e:
-                            logger.warning("Impossible d'envoyer response.create après tool call: %s", e)
-
+                        # Note: response.create is sent when tool call is detected via history (content_count=0)
                         continue
 
             except Exception as exc:
