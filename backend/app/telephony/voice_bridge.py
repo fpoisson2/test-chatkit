@@ -435,9 +435,11 @@ class TelephonyVoiceBridge:
                                 if raw_data and isinstance(raw_data, dict):
                                     event_subtype = raw_data.get('type', '')
 
-                                    # Debug: Log all event types to find tool call events
-                                    if 'function' in event_subtype or 'tool' in event_subtype:
-                                        logger.info("🔍 Événement détecté: %s - data: %s", event_subtype, raw_data)
+                                    # Debug: Log ALL raw event types to find tool call events
+                                    if event_subtype not in ('input_audio_buffer.speech_started', 'input_audio_buffer.speech_stopped',
+                                                             'input_audio_buffer.committed', 'response.audio.delta',
+                                                             'response.audio_transcript.delta', 'conversation.item.input_audio_transcription.completed'):
+                                        logger.info("🔍 RAW EVENT: %s", event_subtype)
 
                                     # User started speaking - INTERRUPT THE AGENT AND BLOCK AUDIO!
                                     if event_subtype == 'input_audio_buffer.speech_started':
