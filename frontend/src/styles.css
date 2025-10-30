@@ -472,14 +472,6 @@ button {
   gap: 12px;
 }
 
-.chatkit-sidebar__switcher--inline {
-  flex-direction: row;
-  align-items: center;
-  gap: 12px;
-  width: auto;
-  min-width: 0;
-}
-
 .chatkit-sidebar__dynamic {
   display: flex;
   flex-direction: column;
@@ -516,13 +508,6 @@ button {
     gap: 16px;
   }
 
-  .chatkit-sidebar__switcher--inline {
-    gap: 20px;
-  }
-
-  .chatkit-sidebar__switcher--inline .chatkit-sidebar__app-switcher {
-    gap: 8px;
-  }
 }
 
 @media (min-width: 1024px) {
@@ -953,14 +938,6 @@ button {
   flex-shrink: 0;
 }
 
-.chatkit-sidebar__brand-group {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 .chatkit-sidebar__brand {
   display: flex;
   align-items: center;
@@ -991,19 +968,6 @@ button {
   text-overflow: ellipsis;
 }
 
-.chatkit-sidebar__brand-switcher {
-  position: relative;
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.chatkit-sidebar__brand-group .chatkit-sidebar__brand-switcher {
-  flex: 0 1 320px;
-}
-
 .chatkit-sidebar__logo {
   width: 24px;
   height: 24px;
@@ -1022,16 +986,6 @@ button {
   width: 100%;
   min-width: 0;
   flex-wrap: wrap;
-}
-
-.chatkit-sidebar__app-switcher--inline {
-  width: auto;
-  flex-wrap: nowrap;
-  justify-content: flex-start;
-  align-items: center;
-  min-height: 0;
-  padding: 2px;
-  background: rgba(15, 23, 42, 0.06);
 }
 
 .chatkit-sidebar__app-switcher--compact {
@@ -1059,13 +1013,6 @@ button {
   min-width: 0;
   flex: 1 1 120px;
   transition: color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.chatkit-sidebar__app-switcher--inline .chatkit-sidebar__app-switcher-button {
-  flex: 0 1 auto;
-  padding: 6px 12px;
-  font-size: 0.9rem;
-  line-height: 1.1;
 }
 
 .chatkit-sidebar__app-switcher--compact .chatkit-sidebar__app-switcher-button {
@@ -1111,12 +1058,6 @@ button {
 .chatkit-sidebar__app-switcher-icon svg {
   width: 20px;
   height: 20px;
-}
-
-.chatkit-sidebar__app-switcher--inline .chatkit-sidebar__app-switcher-icon,
-.chatkit-sidebar__app-switcher--inline .chatkit-sidebar__app-switcher-icon svg {
-  width: 18px;
-  height: 18px;
 }
 
 .chatkit-sidebar__app-switcher-label {
