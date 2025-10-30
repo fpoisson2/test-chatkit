@@ -845,6 +845,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
     )
 
     async def _on_invite(dialog: Any, request: Any) -> None:
+        logger.info("🔔 _on_invite appelé - CODE MODIFIÉ v2")
         # Récupérer le gestionnaire par défaut pour MultiSIPRegistrationManager
         if isinstance(manager, MultiSIPRegistrationManager):
             default_manager = manager.get_default_manager()
