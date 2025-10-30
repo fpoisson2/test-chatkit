@@ -573,10 +573,8 @@ class TelephonyVoiceBridge:
                     # Track when agent starts speaking
                     if isinstance(event, RealtimeAgentStartEvent):
                         agent_is_speaking = True
-                        # Cancel watchdog - agent started speaking in time!
-                        if response_watchdog_task and not response_watchdog_task.done():
-                            response_watchdog_task.cancel()
-                            logger.debug("✅ Watchdog annulé - agent a répondu à temps")
+                        # DON'T cancel watchdog here - wait for actual audio chunk
+                        # (AgentStart can fire even for responses without audio, like pure tool calls)
                         # Don't change block_audio_send here - let RealtimeAgentEndEvent unblock it
                         logger.debug("Agent commence à parler (block_audio_send=%s)", block_audio_send_ref[0])
                         continue
@@ -617,6 +615,11 @@ class TelephonyVoiceBridge:
 
                     # Handle audio events (agent speaking) - only send if not blocked
                     if isinstance(event, RealtimeAudio):
+                        # Cancel watchdog on FIRST audio chunk - agent is actually speaking!
+                        if response_watchdog_task and not response_watchdog_task.done():
+                            response_watchdog_task.cancel()
+                            logger.debug("✅ Watchdog annulé - agent parle vraiment")
+
                         if not block_audio_send_ref[0]:
                             audio_event = event.audio
                             pcm_data = audio_event.data
