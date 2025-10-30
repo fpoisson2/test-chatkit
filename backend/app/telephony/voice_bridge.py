@@ -596,7 +596,7 @@ class TelephonyVoiceBridge:
                                                 RealtimeModelSendRawMessage(
                                                     message=RealtimeModelRawClientMessage(
                                                         type="response.create",
-                                                        other_data={},
+                                                        other_data={"response": {"modalities": ["audio", "text"]}},
                                                     )
                                                 )
                                             )
@@ -627,7 +627,7 @@ class TelephonyVoiceBridge:
                                                 RealtimeModelSendRawMessage(
                                                     message=RealtimeModelRawClientMessage(
                                                         type="response.create",
-                                                        other_data={},
+                                                        other_data={"response": {"modalities": ["audio", "text"]}},
                                                     )
                                                 )
                                             )
