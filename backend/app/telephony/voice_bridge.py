@@ -400,14 +400,16 @@ class TelephonyVoiceBridge:
 
         # Force immediate response after user speech (max 0.1s silence)
         response_watchdog_task: asyncio.Task | None = None  # Task monitoring response delay
+        audio_received_after_user_speech = False  # Track if we got actual audio
 
         async def force_response_if_silent() -> None:
-            """Wait 0.1s and force a response if agent hasn't started speaking."""
-            nonlocal agent_is_speaking
+            """Wait 0.1s and force a response if agent hasn't sent audio."""
+            nonlocal audio_received_after_user_speech
             try:
                 await asyncio.sleep(0.1)  # Wait 0.1 second
-                # If we reach here and agent still hasn't started speaking, force response
-                if not agent_is_speaking:
+                # If we reach here and still no audio received, force response
+                # (agent might have started "speaking" via AgentStart but without actual audio)
+                if not audio_received_after_user_speech:
                     logger.warning("⏱️ 0.1s silence détecté après user speech - forçage response.create")
                     try:
                         from agents.realtime.model_inputs import (
@@ -431,7 +433,7 @@ class TelephonyVoiceBridge:
 
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_item_ids, response_watchdog_task
+            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_item_ids, response_watchdog_task, audio_received_after_user_speech
             try:
                 async for event in session:
                     if not should_continue():
@@ -515,6 +517,8 @@ class TelephonyVoiceBridge:
                                         # Cancel any existing watchdog first
                                         if response_watchdog_task and not response_watchdog_task.done():
                                             response_watchdog_task.cancel()
+                                        # Reset audio flag - we're waiting for new audio from agent
+                                        audio_received_after_user_speech = False
                                         response_watchdog_task = asyncio.create_task(force_response_if_silent())
                                         logger.debug("⏱️ Watchdog démarré - max 0.1s de silence")
                                         continue
@@ -615,6 +619,11 @@ class TelephonyVoiceBridge:
 
                     # Handle audio events (agent speaking) - only send if not blocked
                     if isinstance(event, RealtimeAudio):
+                        # Mark that we received audio - this prevents watchdog from firing
+                        if not audio_received_after_user_speech:
+                            audio_received_after_user_speech = True
+                            logger.debug("✅ Audio reçu - watchdog ne se déclenchera pas")
+
                         # Cancel watchdog on FIRST audio chunk - agent is actually speaking!
                         if response_watchdog_task and not response_watchdog_task.done():
                             response_watchdog_task.cancel()
