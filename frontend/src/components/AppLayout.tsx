@@ -36,6 +36,45 @@ type ApplicationDescriptor = {
   requiresAdmin?: boolean;
 };
 
+const SIDEBAR_OPEN_STORAGE_KEY = "chatkit.sidebar.open";
+
+const readStoredSidebarOpen = (): boolean | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const value = window.localStorage?.getItem(SIDEBAR_OPEN_STORAGE_KEY);
+    if (value === "true") {
+      return true;
+    }
+
+    if (value === "false") {
+      return false;
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("Unable to read the sidebar open state preference.", error);
+    }
+  }
+
+  return null;
+};
+
+const writeStoredSidebarOpen = (isOpen: boolean) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage?.setItem(SIDEBAR_OPEN_STORAGE_KEY, isOpen ? "true" : "false");
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("Unable to persist the sidebar open state preference.", error);
+    }
+  }
+};
+
 const APPLICATIONS: ApplicationDescriptor[] = [
   { key: "chat", labelKey: "app.sidebar.applications.chat", path: "/" },
   {
@@ -141,7 +180,14 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const location = useLocation();
   const isDesktopLayout = useIsDesktopLayout();
   const previousIsDesktopRef = useRef(isDesktopLayout);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(getDesktopLayoutPreference);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    const storedPreference = readStoredSidebarOpen();
+    if (storedPreference !== null) {
+      return storedPreference;
+    }
+
+    return getDesktopLayoutPreference();
+  });
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
@@ -153,7 +199,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
     if (isDesktopLayout) {
       if (!wasDesktop) {
-        setIsSidebarOpen(true);
+        const storedPreference = readStoredSidebarOpen();
+        setIsSidebarOpen(storedPreference ?? true);
       }
     } else {
       setIsSidebarOpen(false);
@@ -161,6 +208,14 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
     previousIsDesktopRef.current = isDesktopLayout;
   }, [isDesktopLayout]);
+
+  useEffect(() => {
+    if (!isDesktopLayout) {
+      return;
+    }
+
+    writeStoredSidebarOpen(isSidebarOpen);
+  }, [isDesktopLayout, isSidebarOpen]);
 
   const openSidebar = useCallback(() => {
     setIsSidebarOpen(true);

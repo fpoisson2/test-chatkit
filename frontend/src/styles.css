@@ -630,6 +630,11 @@ button {
   flex-direction: column;
 }
 
+.chatkit-layout--desktop .chatkit-sidebar__workflow-list {
+  margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
+  padding-inline: var(--chatkit-sidebar-content-padding-x);
+}
+
 .chatkit-sidebar__nav-list {
   list-style: none;
   margin: 0;
