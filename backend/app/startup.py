@@ -520,11 +520,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 tools=voice_tools or None,
                 handoffs=voice_handoffs or None,
                 realtime={
-                    "turn_detection": {
-                        "type": "semantic_vad",
-                        "create_response": True,
-                        "interrupt_response": True,
-                    }
+                    # Start WITHOUT turn_detection to avoid "buffer too small" error
+                    # It will be enabled dynamically after sending initial audio
                 },
                 metadata=metadata_extras or None,
             )

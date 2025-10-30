@@ -326,24 +326,21 @@ class TelephonyVoiceBridge:
                     if packet_count == 1:
                         logger.info("Premier paquet audio reçu: %d bytes PCM", len(pcm))
 
-                    # If we should commit, commit THIS packet (which will also commit the buffered data)
-                    if should_commit_next:
-                        logger.debug(
-                            "Committing buffer + %d bytes (total %.1fms buffered)",
-                            len(pcm),
-                            (bytes_since_commit + len(pcm)) / 2 / 24000 * 1000
-                        )
-                        await session.send_audio(pcm, commit=True)
-                        bytes_since_commit = 0
-                        should_commit_next = False
-                    else:
-                        # Send audio WITHOUT committing (just buffer it)
-                        await session.send_audio(pcm, commit=False)
-                        bytes_since_commit += len(pcm)
+                    # Send audio WITHOUT committing (just buffer it)
+                    await session.send_audio(pcm, commit=False)
+                    bytes_since_commit += len(pcm)
 
-                        # When we've buffered enough, mark that next packet should commit
-                        if bytes_since_commit >= MIN_COMMIT_SIZE:
-                            should_commit_next = True
+                    # When we've buffered enough, commit immediately
+                    # We send a tiny chunk (20ms of silence) with commit=True to trigger the commit
+                    if bytes_since_commit >= MIN_COMMIT_SIZE:
+                        logger.debug(
+                            "Committing buffer: %.1fms of audio",
+                            bytes_since_commit / 2 / 24000 * 1000
+                        )
+                        # Send 20ms of silence (480 samples * 2 bytes = 960 bytes) with commit=True
+                        silence = b"\x00" * 960
+                        await session.send_audio(silence, commit=True)
+                        bytes_since_commit = 960  # Account for the silence we just sent
 
                     if not should_continue():
                         logger.info("forward_audio: arrêt demandé par should_continue()")
