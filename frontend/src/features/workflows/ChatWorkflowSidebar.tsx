@@ -7,6 +7,7 @@ import { chatkitApi, workflowsApi } from "../../utils/backend";
 import type { HostedWorkflowMetadata } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
 import type { HostedFlowMode } from "../../hooks/useHostedFlow";
+import { getWorkflowInitials } from "./utils";
 
 const isApiError = (error: unknown): error is { status?: number; message?: string } =>
   Boolean(error) && typeof error === "object" && "status" in error;
@@ -30,26 +31,6 @@ type ChatWorkflowSidebarProps = {
   mode: HostedFlowMode;
   setMode: (mode: HostedFlowMode) => void;
   onWorkflowActivated: (selection: WorkflowActivation, context: ActivationContext) => void;
-};
-
-const getWorkflowInitials = (label: string) => {
-  const trimmed = label.trim();
-
-  if (!trimmed) {
-    return "?";
-  }
-
-  const words = trimmed.split(/\s+/).filter(Boolean);
-
-  if (words.length === 0) {
-    return "?";
-  }
-
-  if (words.length === 1) {
-    return trimmed.slice(0, 2).toUpperCase();
-  }
-
-  return (words[0]?.charAt(0) ?? "").concat(words[1]?.charAt(0) ?? "").toUpperCase();
 };
 
 export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: ChatWorkflowSidebarProps) => {

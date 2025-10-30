@@ -31,6 +31,7 @@ import { Copy, PenSquare, Redo2, Trash2, Undo2 } from "lucide-react";
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
+import { getWorkflowInitials } from "../workflows/utils";
 import {
   chatkitApi,
   makeApiEndpointCandidates,
@@ -429,8 +430,8 @@ const WorkflowBuilderPage = () => {
     () => (token ? { Authorization: `Bearer ${token}` } : {}),
     [token],
   );
-  const { openSidebar, closeSidebar } = useAppLayout();
-  const { setSidebarContent, clearSidebarContent } = useSidebarPortal();
+  const { openSidebar, closeSidebar, isSidebarCollapsed } = useAppLayout();
+  const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
 
   const ensurePreviewDefaults = useCallback((data: FlowNodeData): FlowNodeData => {
     const hasActive = typeof data.isPreviewActive === "boolean";
@@ -7155,10 +7156,80 @@ const WorkflowBuilderPage = () => {
     t,
   ]);
 
+  const collapsedWorkflowShortcuts = useMemo(() => {
+    if (loading || loadError) {
+      return null;
+    }
+
+    const managedHosted = hostedWorkflows.filter((workflow) => workflow.managed);
+    const entries = [
+      ...managedHosted.map((workflow) => ({
+        key: `hosted:${workflow.slug}`,
+        label: workflow.label,
+        onClick: undefined as (() => void) | undefined,
+        disabled: true,
+        isActive: false,
+        initials: getWorkflowInitials(workflow.label),
+      })),
+      ...workflows.map((workflow) => ({
+        key: `local:${workflow.id}`,
+        label: workflow.display_name,
+        onClick: () => handleSelectWorkflow(workflow.id),
+        disabled: loading,
+        isActive: workflow.id === selectedWorkflowId,
+        initials: getWorkflowInitials(workflow.display_name),
+      })),
+    ];
+
+    if (entries.length === 0) {
+      return null;
+    }
+
+    return (
+      <ul className="chatkit-sidebar__workflow-compact-list" role="list">
+        {entries.map((workflow) => (
+          <li key={workflow.key} className="chatkit-sidebar__workflow-compact-item">
+            <button
+              type="button"
+              className={`chatkit-sidebar__workflow-compact-button${
+                workflow.isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
+              }`}
+              onClick={workflow.onClick}
+              disabled={workflow.disabled}
+              aria-current={workflow.isActive ? "true" : undefined}
+              title={workflow.label}
+              tabIndex={isSidebarCollapsed ? 0 : -1}
+            >
+              <span aria-hidden="true" className="chatkit-sidebar__workflow-compact-initial">
+                {workflow.initials}
+              </span>
+              <span className="visually-hidden">{workflow.label}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    );
+  }, [
+    handleSelectWorkflow,
+    hostedWorkflows,
+    isSidebarCollapsed,
+    loadError,
+    loading,
+    selectedWorkflowId,
+    workflows,
+  ]);
+
   useEffect(() => {
     setSidebarContent(workflowSidebarContent);
+    setCollapsedSidebarContent(collapsedWorkflowShortcuts);
     return () => clearSidebarContent();
-  }, [clearSidebarContent, setSidebarContent, workflowSidebarContent]);
+  }, [
+    clearSidebarContent,
+    collapsedWorkflowShortcuts,
+    setCollapsedSidebarContent,
+    setSidebarContent,
+    workflowSidebarContent,
+  ]);
 
   const renderBlockLibraryContent = () => {
     if (isMobileLayout) {
