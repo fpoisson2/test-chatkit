@@ -433,24 +433,17 @@ class TelephonyVoiceBridge:
                     if isinstance(event, RealtimeAudioInterrupted):
                         logger.info("🛑 Audio interrompu confirmé par OpenAI - blocage audio")
                         block_audio_send = True
-                        # For WebRTC/telephony, send response.cancel + output_audio_buffer.clear
+                        # Cancel the current response generation
                         try:
                             from agents.realtime.model_inputs import RealtimeModelSendRawMessage
-                            # Cancel the current response
                             await session._model.send_event(
                                 RealtimeModelSendRawMessage(
                                     message={"type": "response.cancel"}
                                 )
                             )
-                            # Clear the output audio buffer
-                            await session._model.send_event(
-                                RealtimeModelSendRawMessage(
-                                    message={"type": "output_audio_buffer.clear"}
-                                )
-                            )
-                            logger.info("✅ Envoyé response.cancel + output_audio_buffer.clear")
+                            logger.info("✅ Envoyé response.cancel pour arrêter la génération")
                         except Exception as e:
-                            logger.warning("Erreur lors de l'envoi des commandes d'interruption: %s", e)
+                            logger.warning("Erreur lors de response.cancel: %s", e)
                         continue
 
                     # Handle audio events (agent speaking) - only send if not blocked
