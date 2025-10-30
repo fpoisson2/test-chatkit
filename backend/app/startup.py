@@ -56,14 +56,12 @@ from .telephony.invite_handler import (
 )
 from .telephony.multi_sip_manager import MultiSIPRegistrationManager
 from .telephony.registration import SIPRegistrationManager
-from .telephony.routing import (
-    TelephonyRouteSelectionError,
-    resolve_workflow_for_phone_number,
-)
 from .telephony.rtp_server import RtpServer, RtpServerConfig
 from .telephony.sip_server import (
     SipCallRequestHandler,
     SipCallSession,
+    TelephonyRouteSelectionError,
+    resolve_workflow_for_phone_number,
 )
 from .telephony.voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
 # PJSUA imports
