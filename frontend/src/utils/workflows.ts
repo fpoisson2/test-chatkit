@@ -641,6 +641,33 @@ export const setStartTelephonyRingTimeout = (
     return { ...current, ring_timeout_seconds: ringTimeout };
   });
 
+export const getStartTelephonySpeakFirst = (
+  parameters: AgentParameters | null | undefined,
+): boolean => {
+  if (!parameters) {
+    return false;
+  }
+
+  const telephony = cloneStartTelephonyConfig(
+    (parameters as Record<string, unknown>).telephony,
+  );
+
+  const value = telephony.speak_first;
+  return typeof value === "boolean" ? value : false;
+};
+
+export const setStartTelephonySpeakFirst = (
+  parameters: AgentParameters,
+  speakFirst: boolean,
+): AgentParameters =>
+  updateStartTelephonyConfig(parameters, (current) => {
+    if (!speakFirst) {
+      const { speak_first: _ignored, ...rest } = current;
+      return rest;
+    }
+    return { ...current, speak_first: speakFirst };
+  });
+
 export const setConditionPath = (
   parameters: AgentParameters,
   path: string,

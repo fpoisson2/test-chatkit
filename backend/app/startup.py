@@ -487,6 +487,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 "voice_tools": copy.deepcopy(context.voice_tools),
                 "voice_handoffs": copy.deepcopy(context.voice_handoffs),
                 "ring_timeout_seconds": context.ring_timeout_seconds,
+                "speak_first": context.speak_first,
                 "voice_session_active": False,
             }
         )
@@ -523,6 +524,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
         voice_provider_slug = metadata.get("voice_provider_slug")
         voice_tools = metadata.get("voice_tools") or []
         voice_handoffs = metadata.get("voice_handoffs") or []
+        speak_first = metadata.get("speak_first", False)
         rtp_stream_factory = metadata.get("rtp_stream_factory")
         send_audio = metadata.get("send_audio")
 
@@ -758,6 +760,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 api_base=realtime_api_base,
                 tools=voice_tools,
                 handoffs=voice_handoffs,
+                speak_first=speak_first,
             )
         except Exception as exc:  # pragma: no cover - dépend réseau
             logger.exception(

@@ -274,6 +274,7 @@ class TelephonyVoiceBridge:
         api_base: str | None = None,
         tools: list[Any] | None = None,
         handoffs: list[Any] | None = None,
+        speak_first: bool = False,
     ) -> VoiceBridgeStats:
         """Démarre le pont voix jusqu'à la fin de session ou erreur."""
 
@@ -673,6 +674,18 @@ class TelephonyVoiceBridge:
             session = await runner.run(model_config=model_config)
             await session.__aenter__()
             logger.info("Session SDK démarrée avec succès")
+
+            # Si speak_first est activé, envoyer un événement response.create pour que l'assistant parle en premier
+            if speak_first:
+                logger.info("speak_first activé : envoi de response.create pour démarrer la conversation")
+                try:
+                    from agents.realtime.model_inputs import RealtimeModelCreateResponse
+                    await session._model.send_event(
+                        RealtimeModelCreateResponse()
+                    )
+                    logger.info("Événement response.create envoyé avec succès")
+                except Exception as e:
+                    logger.warning("Impossible d'envoyer response.create: %s", e)
 
             # Log available tools
             try:

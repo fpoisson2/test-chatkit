@@ -76,6 +76,7 @@ class TelephonyCallContext(TelephonyRouteResolution):
     voice_tools: list[Any] = field(default_factory=list)
     voice_handoffs: list[Any] = field(default_factory=list)
     ring_timeout_seconds: float = 0.0
+    speak_first: bool = False
     sip_account_id: int | None = None
 
 
@@ -115,7 +116,7 @@ def _merge_voice_settings(
     overrides: TelephonyRouteOverrides | None,
     settings: Settings,
     workflow_definition: WorkflowDefinition | None = None,
-) -> tuple[str, str, str, dict[str, str], str | None, str | None, list[Any], list[Any], float]:
+) -> tuple[str, str, str, dict[str, str], str | None, str | None, list[Any], list[Any], float, bool]:
     db: Session
     owns_session = False
     if session is None:
@@ -143,6 +144,7 @@ def _merge_voice_settings(
         tools: list[Any] = []
         handoffs: list[Any] = []
         ring_timeout_seconds: float = 0.0
+        speak_first: bool = False
 
         def _copy_sequence(value: Any) -> list[Any]:
             if isinstance(value, Sequence) and not isinstance(
@@ -160,15 +162,18 @@ def _merge_voice_settings(
                 len(steps),
             )
 
-            # Premier passage : chercher ring_timeout_seconds dans le bloc start
+            # Premier passage : chercher ring_timeout_seconds et speak_first dans le bloc start
             for step in steps:
                 step_kind = getattr(step, "kind", "")
                 if step_kind == "start":
                     params = getattr(step, "parameters", {})
                     if isinstance(params, dict):
-                        # Le frontend stocke ce paramètre dans telephony.ring_timeout_seconds du bloc start
+                        # Le frontend stocke ces paramètres dans telephony.* du bloc start
                         if "telephony" in params and isinstance(params["telephony"], dict):
-                            raw_timeout = params["telephony"].get("ring_timeout_seconds")
+                            telephony_params = params["telephony"]
+
+                            # Extraire ring_timeout_seconds
+                            raw_timeout = telephony_params.get("ring_timeout_seconds")
                             if raw_timeout is not None:
                                 try:
                                     ring_timeout_seconds = float(raw_timeout)
@@ -184,6 +189,15 @@ def _merge_voice_settings(
                                         raw_timeout,
                                     )
                                     ring_timeout_seconds = 0.0
+
+                            # Extraire speak_first
+                            raw_speak_first = telephony_params.get("speak_first")
+                            if raw_speak_first is not None:
+                                speak_first = bool(raw_speak_first)
+                                logger.info(
+                                    "speak_first trouvé dans bloc start : %s",
+                                    speak_first,
+                                )
                     break
 
             # Deuxième passage : chercher les paramètres du voice-agent
@@ -228,7 +242,7 @@ def _merge_voice_settings(
                                 step_slug,
                                 len(handoffs),
                             )
-                        # Extraire ring_timeout_seconds si présent dans le voice-agent
+                        # Extraire ring_timeout_seconds et speak_first si présents dans le voice-agent
                         # (priorité sur le bloc start si présent)
                         raw_timeout_agent = None
                         if "ring_timeout_seconds" in params:
@@ -252,9 +266,24 @@ def _merge_voice_settings(
                                     step_slug,
                                     raw_timeout_agent,
                                 )
+
+                        # Extraire speak_first
+                        raw_speak_first_agent = None
+                        if "speak_first" in params:
+                            raw_speak_first_agent = params["speak_first"]
+                        elif "telephony" in params and isinstance(params["telephony"], dict):
+                            raw_speak_first_agent = params["telephony"].get("speak_first")
+
+                        if raw_speak_first_agent is not None:
+                            speak_first = bool(raw_speak_first_agent)
+                            logger.info(
+                                "speak_first trouvé dans bloc %s (écrase bloc start) : %s",
+                                step_slug,
+                                speak_first,
+                            )
                         logger.info(
                             "Paramètres voix extraits du bloc %s (kind=%s) : "
-                            "model=%s, voice=%s, provider=%s, tools=%d, handoffs=%d, ring_timeout=%.2fs",
+                            "model=%s, voice=%s, provider=%s, tools=%d, handoffs=%d, ring_timeout=%.2fs, speak_first=%s",
                             step_slug,
                             step_kind,
                             model,
@@ -263,6 +292,7 @@ def _merge_voice_settings(
                             len(tools),
                             len(handoffs),
                             ring_timeout_seconds,
+                            speak_first,
                         )
                     # Utiliser le premier bloc agent trouvé
                     break
@@ -294,6 +324,7 @@ def _merge_voice_settings(
         tools,
         handoffs,
         ring_timeout_seconds,
+        speak_first,
     )
 
 
@@ -422,6 +453,7 @@ def resolve_workflow_for_phone_number(
         tools,
         handoffs,
         ring_timeout_seconds,
+        speak_first,
     ) = _merge_voice_settings(
         session=session,
         overrides=None,  # Plus d'overrides, tout vient du voice-agent
@@ -430,10 +462,11 @@ def resolve_workflow_for_phone_number(
     )
 
     logger.info(
-        "Paramètres voix du voice-agent : modèle=%s, voix=%s, ring_timeout=%.2fs",
+        "Paramètres voix du voice-agent : modèle=%s, voix=%s, ring_timeout=%.2fs, speak_first=%s",
         model,
         voice,
         ring_timeout_seconds,
+        speak_first,
     )
 
     # Récupérer l'ID du compte SIP associé au workflow
@@ -461,6 +494,7 @@ def resolve_workflow_for_phone_number(
         voice_tools=tools,
         voice_handoffs=handoffs,
         ring_timeout_seconds=ring_timeout_seconds,
+        speak_first=speak_first,
         sip_account_id=sip_account_id,
     )
 
