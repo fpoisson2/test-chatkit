@@ -435,6 +435,10 @@ class TelephonyVoiceBridge:
                                 if raw_data and isinstance(raw_data, dict):
                                     event_subtype = raw_data.get('type', '')
 
+                                    # Debug: Log all event types to find tool call events
+                                    if 'function' in event_subtype or 'tool' in event_subtype:
+                                        logger.info("🔍 Événement détecté: %s - data: %s", event_subtype, raw_data)
+
                                     # User started speaking - INTERRUPT THE AGENT AND BLOCK AUDIO!
                                     if event_subtype == 'input_audio_buffer.speech_started':
                                         logger.info("🎤 Utilisateur commence à parler")
@@ -468,6 +472,31 @@ class TelephonyVoiceBridge:
                                         if not agent_is_speaking:
                                             block_audio_send_ref[0] = False
                                             logger.info("→ Déblocage audio (agent ne parle pas)")
+                                        continue
+
+                                    # Detect tool call completion in real-time
+                                    if event_subtype == 'response.function_call_arguments.done':
+                                        tool_name = raw_data.get('name', 'unknown')
+                                        logger.info("🔧 Tool call terminé EN TEMPS RÉEL: %s", tool_name)
+
+                                        # Send response.create immediately to force verbal confirmation
+                                        try:
+                                            from agents.realtime.model_inputs import (
+                                                RealtimeModelRawClientMessage,
+                                                RealtimeModelSendRawMessage,
+                                            )
+                                            logger.info("Envoi de response.create immédiatement après tool call")
+                                            await session._model.send_event(
+                                                RealtimeModelSendRawMessage(
+                                                    message=RealtimeModelRawClientMessage(
+                                                        type="response.create",
+                                                        other_data={},
+                                                    )
+                                                )
+                                            )
+                                            logger.info("✅ response.create envoyé en temps réel après tool call")
+                                        except Exception as e:
+                                            logger.warning("Impossible d'envoyer response.create: %s", e)
                                         continue
 
                     # Track when agent starts speaking
@@ -562,28 +591,10 @@ class TelephonyVoiceBridge:
                                        role, item_type, item_id, item_unique_id, content_count)
 
                             # DETECT TOOL CALLS: assistant message with content_count=0 indicates a tool call
+                            # (This is for tracking only - actual response.create is sent via real-time events)
                             if role == "assistant" and content_count == 0:
                                 tool_call_detected = True
-                                logger.info("🔧 Tool call détecté (assistant message avec content_count=0)")
-
-                                # Envoyer response.create immédiatement pour forcer une confirmation verbale
-                                try:
-                                    from agents.realtime.model_inputs import (
-                                        RealtimeModelRawClientMessage,
-                                        RealtimeModelSendRawMessage,
-                                    )
-                                    logger.info("Envoi de response.create pour forcer confirmation verbale après tool call")
-                                    await session._model.send_event(
-                                        RealtimeModelSendRawMessage(
-                                            message=RealtimeModelRawClientMessage(
-                                                type="response.create",
-                                                other_data={},
-                                            )
-                                        )
-                                    )
-                                    logger.info("✅ response.create envoyé après détection du tool call")
-                                except Exception as e:
-                                    logger.warning("Impossible d'envoyer response.create: %s", e)
+                                logger.debug("🔧 Tool call détecté dans l'historique (assistant message avec content_count=0)")
 
                             # Inspect content types for tool-related data
                             if contents:
