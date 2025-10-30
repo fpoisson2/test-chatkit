@@ -1141,22 +1141,26 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                                             session.call_id,
                                         )
 
-                                        # Importer les model_config nécessaires
-                                        from agents import ModelSettings
-                                        from agents.extensions.realtime import RealtimeModelSettings
+                                        # Créer la config du modèle (format dictionnaire comme voice_bridge.py)
+                                        from agents.realtime.model import RealtimePlaybackTracker
 
-                                        # Créer la config du modèle (copié de voice_bridge.py)
-                                        model_settings = ModelSettings(
-                                            model=voice_model,
-                                            instructions=instructions,
-                                        )
+                                        # Créer un playback tracker minimal pour l'initialisation
+                                        preinit_playback_tracker = RealtimePlaybackTracker()
+
+                                        model_settings: dict[str, Any] = {
+                                            "model_name": voice_model,
+                                            "modalities": ["audio"],
+                                            "input_audio_format": "pcm16",
+                                            "output_audio_format": "pcm16",
+                                        }
                                         if voice_name:
-                                            model_settings.voice = voice_name
+                                            model_settings["voice"] = voice_name
 
-                                        realtime_settings = RealtimeModelSettings(
-                                            turn_detection=None,  # Désactivé initialement
-                                        )
-                                        model_config = {"model": model_settings, "realtime": realtime_settings}
+                                        model_config: dict[str, Any] = {
+                                            "api_key": client_secret,
+                                            "initial_model_settings": model_settings,
+                                            "playback_tracker": preinit_playback_tracker,
+                                        }
 
                                         # Démarrer la session complète (établit la connexion websocket)
                                         preinit_session = await runner.run(model_config=model_config)
