@@ -393,7 +393,7 @@ class TelephonyVoiceBridge:
 
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short
+            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_item_ids
             try:
                 async for event in session:
                     if not should_continue():
@@ -570,6 +570,15 @@ class TelephonyVoiceBridge:
 
                             # Debug: Log ALL history items to trace tool calls
                             item_id = getattr(item, "id", None)
+
+                            # DEDUPLICATION: Skip items we've already processed (filters out replays)
+                            if item_id and item_id in processed_item_ids:
+                                continue  # Already processed this item
+
+                            # Mark this item as processed
+                            if item_id:
+                                processed_item_ids.add(item_id)
+
                             item_type = getattr(item, "type", None)
                             contents = getattr(item, "content", [])
                             content_count = len(contents) if contents else 0
