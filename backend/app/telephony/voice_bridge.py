@@ -519,10 +519,27 @@ class TelephonyVoiceBridge:
                         history = getattr(event, "history", [event.item] if hasattr(event, "item") else [])
                         for item in history:
                             role = getattr(item, "role", None)
+
+                            # Debug: Log ALL history items to trace tool calls
+                            item_id = getattr(item, "id", None)
+                            item_type = getattr(item, "type", None)
+                            contents = getattr(item, "content", [])
+                            logger.info("📋 History item: role=%s, type=%s, id=%s, content_count=%d",
+                                       role, item_type, item_id, len(contents) if contents else 0)
+
+                            # Inspect content types for tool-related data
+                            if contents:
+                                for idx, content in enumerate(contents):
+                                    content_type = getattr(content, "type", None)
+                                    logger.info("  📄 Content[%d]: type=%s", idx, content_type)
+                                    # Log tool call details if present
+                                    if content_type in ("function_call", "tool_call", "function_call_output"):
+                                        logger.info("    🔧 Tool content: %s", content)
+
+                            # Only process user/assistant text for transcripts
                             if role not in ("user", "assistant"):
                                 continue
                             text_parts: list[str] = []
-                            contents = getattr(item, "content", [])
                             for content in contents:
                                 text = getattr(content, "text", None) or getattr(content, "transcript", None)
                                 if isinstance(text, str) and text.strip():
@@ -559,7 +576,7 @@ class TelephonyVoiceBridge:
             # Note: tools are already available via the runner's MCP server connections
             model_settings: dict[str, Any] = {
                 "model_name": model,
-                "modalities": ["audio"],  # For telephony, audio only
+                "modalities": ["text", "audio"],  # Need text for MCP tool calls + audio for speech
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
             }
