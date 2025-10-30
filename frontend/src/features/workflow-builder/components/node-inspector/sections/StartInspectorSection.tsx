@@ -93,24 +93,28 @@ export const StartInspectorSection = ({
       />
 
       {startTelephonyIsSipWorkflow ? (
-        <label className={styles.nodeInspectorInlineField}>
+        <label className={styles.nodeInspectorField}>
           <span className={styles.nodeInspectorLabel}>
             {t("workflowBuilder.startInspector.telephonyRingTimeoutLabel")}
           </span>
-          <input
-            type="number"
-            min="0"
-            max="30"
-            step="0.5"
-            value={startTelephonyRingTimeout}
-            onChange={(event) => {
-              const value = parseFloat(event.target.value);
-              if (!isNaN(value) && value >= 0) {
-                onStartTelephonyRingTimeoutChange(nodeId, value);
-              }
-            }}
-            placeholder="0"
-          />
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <input
+              type="number"
+              min="0"
+              max="30"
+              step="0.5"
+              value={startTelephonyRingTimeout}
+              onChange={(event) => {
+                const value = parseFloat(event.target.value);
+                if (!isNaN(value) && value >= 0) {
+                  onStartTelephonyRingTimeoutChange(nodeId, value);
+                }
+              }}
+              placeholder="0"
+              style={{ width: "120px" }}
+            />
+            <span style={{ fontSize: "14px", color: "#666" }}>secondes</span>
+          </div>
           <p className={styles.nodeInspectorHintTextTight}>
             {t("workflowBuilder.startInspector.telephonyRingTimeoutHelp")}
           </p>

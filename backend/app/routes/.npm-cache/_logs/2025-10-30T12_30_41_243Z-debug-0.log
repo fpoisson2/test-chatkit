@@ -1,0 +1,37 @@
+0 verbose cli /usr/local/bin/node /usr/local/bin/npm
+1 info using npm@11.6.1
+2 info using node@v22.15.0
+3 silly config load:file:/usr/local/lib/node_modules/npm/npmrc
+4 silly config load:file:/home/fpoisson/Documents/GitHub/test-chatkit/.npmrc
+5 silly config load:file:/home/fpoisson/.npmrc
+6 silly config load:file:/usr/local/etc/npmrc
+7 verbose title npm run lint
+8 verbose argv "run" "lint"
+9 verbose logfile logs-max:10 dir:/home/fpoisson/Documents/GitHub/test-chatkit/backend/app/routes/.npm-cache/_logs/2025-10-30T12_30_41_243Z-
+10 verbose logfile /home/fpoisson/Documents/GitHub/test-chatkit/backend/app/routes/.npm-cache/_logs/2025-10-30T12_30_41_243Z-debug-0.log
+11 silly logfile done cleaning log files
+12 verbose stack Error: Missing script: "lint"
+12 verbose stack
+12 verbose stack Did you mean this?
+12 verbose stack   npm link # Symlink a package folder
+12 verbose stack
+12 verbose stack To see a list of scripts, run:
+12 verbose stack   npm run
+12 verbose stack     at #run (/usr/local/lib/node_modules/npm/lib/commands/run.js:115:13)
+12 verbose stack     at async RunScript.exec (/usr/local/lib/node_modules/npm/lib/commands/run.js:44:7)
+12 verbose stack     at async Npm.exec (/usr/local/lib/node_modules/npm/lib/npm.js:208:9)
+12 verbose stack     at async module.exports (/usr/local/lib/node_modules/npm/lib/cli/entry.js:67:5)
+13 error Missing script: "lint"
+13 error
+13 error Did you mean this?
+13 error   npm link # Symlink a package folder
+13 error
+13 error To see a list of scripts, run:
+13 error   npm run
+14 verbose cwd /home/fpoisson/Documents/GitHub/test-chatkit/backend/app/routes
+15 verbose os Linux 6.14.0-33-generic
+16 verbose node v22.15.0
+17 verbose npm  v11.6.1
+18 verbose exit 1
+19 verbose code 1
+20 error A complete log of this run can be found in: /home/fpoisson/Documents/GitHub/test-chatkit/backend/app/routes/.npm-cache/_logs/2025-10-30T12_30_41_243Z-debug-0.log

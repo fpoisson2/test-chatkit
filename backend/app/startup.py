@@ -1011,6 +1011,87 @@ def _run_ad_hoc_migrations() -> None:
                     )
                 )
 
+        # Migration automatique des paramètres SIP globaux vers un compte SIP
+        if "sip_accounts" in table_names and "app_settings" in table_names:
+            # Vérifier s'il n'y a pas déjà de comptes SIP
+            existing_accounts_count = connection.execute(
+                text("SELECT COUNT(*) FROM sip_accounts")
+            ).scalar()
+
+            if existing_accounts_count == 0:
+                # Récupérer les paramètres globaux
+                app_settings_row = connection.execute(
+                    text(
+                        "SELECT sip_trunk_uri, sip_trunk_username, sip_trunk_password, "
+                        "sip_contact_host, sip_contact_port, sip_contact_transport "
+                        "FROM app_settings LIMIT 1"
+                    )
+                ).first()
+
+                if app_settings_row and app_settings_row[0]:  # sip_trunk_uri existe
+                    trunk_uri_raw = app_settings_row[0]
+                    username = app_settings_row[1]
+                    password = app_settings_row[2]
+                    contact_host = app_settings_row[3]
+                    contact_port = app_settings_row[4]
+                    contact_transport = app_settings_row[5] or "udp"
+
+                    # Construire un URI SIP valide
+                    trunk_uri = trunk_uri_raw.strip()
+                    if not trunk_uri.lower().startswith(("sip:", "sips:")):
+                        # Format legacy: probablement juste l'host
+                        if username:
+                            trunk_uri = f"sip:{username}@{trunk_uri}"
+                        else:
+                            trunk_uri = f"sip:chatkit@{trunk_uri}"
+
+                    logger.info(
+                        "Migration automatique des paramètres SIP globaux vers un compte SIP"
+                    )
+
+                    # Créer le compte SIP
+                    connection.execute(
+                        text(
+                            "INSERT INTO sip_accounts "
+                            "(label, trunk_uri, username, password, contact_host, contact_port, "
+                            "contact_transport, is_default, is_active, created_at, updated_at) "
+                            "VALUES (:label, :trunk_uri, :username, :password, :contact_host, "
+                            ":contact_port, :contact_transport, :is_default, :is_active, "
+                            ":created_at, :updated_at)"
+                        ),
+                        {
+                            "label": "Compte migré (legacy)",
+                            "trunk_uri": trunk_uri,
+                            "username": username,
+                            "password": password,
+                            "contact_host": contact_host,
+                            "contact_port": contact_port,
+                            "contact_transport": contact_transport,
+                            "is_default": True,
+                            "is_active": True,
+                            "created_at": datetime.datetime.now(datetime.UTC),
+                            "updated_at": datetime.datetime.now(datetime.UTC),
+                        },
+                    )
+
+                    # Nettoyer les paramètres globaux
+                    connection.execute(
+                        text(
+                            "UPDATE app_settings SET "
+                            "sip_trunk_uri = NULL, "
+                            "sip_trunk_username = NULL, "
+                            "sip_trunk_password = NULL, "
+                            "sip_contact_host = NULL, "
+                            "sip_contact_port = NULL, "
+                            "sip_contact_transport = NULL"
+                        )
+                    )
+
+                    logger.info(
+                        "Migration SIP terminée : ancien système désactivé, "
+                        "nouveau compte SIP créé"
+                    )
+
         if "app_settings" in table_names:
             app_settings_columns = {
                 column["name"]

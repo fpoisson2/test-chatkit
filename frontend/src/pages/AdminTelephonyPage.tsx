@@ -7,15 +7,6 @@ import { isUnauthorizedError } from "../utils/backend";
 
 // ========== Types ==========
 
-interface GlobalSipSettings {
-  sip_trunk_uri: string | null;
-  sip_trunk_username: string | null;
-  sip_trunk_password: string | null;
-  sip_contact_host: string | null;
-  sip_contact_port: number | null;
-  sip_contact_transport: string | null;
-}
-
 interface SipAccount {
   id: number;
   label: string;
@@ -85,10 +76,6 @@ export const AdminTelephonyPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
 
-  // Global SIP Settings state
-  const [globalSettings, setGlobalSettings] = useState<GlobalSipSettings | null>(null);
-  const [globalSettingsLoading, setGlobalSettingsLoading] = useState(true);
-
   // SIP Accounts state
   const [accounts, setAccounts] = useState<SipAccount[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
@@ -106,43 +93,6 @@ export const AdminTelephonyPage = () => {
   const [editingRouteId, setEditingRouteId] = useState<number | null>(null);
   const [routeFormData, setRouteFormData] = useState<TelephonyRouteForm>(emptyTelephonyRouteForm());
   const [isSavingRoute, setSavingRoute] = useState(false);
-
-  // ========== Global SIP Settings Functions ==========
-
-  const loadGlobalSettings = useCallback(async () => {
-    if (!token) return;
-
-    setGlobalSettingsLoading(true);
-
-    try {
-      const response = await fetch("/api/admin/app-settings", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!response.ok) {
-        if (isUnauthorizedError(response)) {
-          logout();
-          return;
-        }
-        throw new Error("Erreur lors du chargement des paramètres globaux");
-      }
-
-      const data = await response.json();
-      setGlobalSettings({
-        sip_trunk_uri: data.sip_trunk_uri,
-        sip_trunk_username: data.sip_trunk_username,
-        sip_trunk_password: data.sip_trunk_password,
-        sip_contact_host: data.sip_contact_host,
-        sip_contact_port: data.sip_contact_port,
-        sip_contact_transport: data.sip_contact_transport,
-      });
-    } catch (err) {
-      console.error("Failed to load global SIP settings:", err);
-      setGlobalSettings(null);
-    } finally {
-      setGlobalSettingsLoading(false);
-    }
-  }, [token, logout]);
 
   // ========== SIP Accounts Functions ==========
 
@@ -414,10 +364,9 @@ export const AdminTelephonyPage = () => {
   // ========== Effects ==========
 
   useEffect(() => {
-    loadGlobalSettings();
     loadAccounts();
     loadRoutes();
-  }, [loadGlobalSettings, loadAccounts, loadRoutes]);
+  }, [loadAccounts, loadRoutes]);
 
   // ========== Render ==========
 
@@ -589,49 +538,6 @@ export const AdminTelephonyPage = () => {
                   Chaque compte peut être associé à des workflows spécifiques.
                 </p>
               </div>
-
-              {/* Global SIP Settings Info Box */}
-              {!globalSettingsLoading && globalSettings && (
-                globalSettings.sip_trunk_uri ||
-                globalSettings.sip_contact_host ||
-                globalSettings.sip_contact_port
-              ) && (
-                <div style={{
-                  padding: "12px 16px",
-                  marginBottom: "16px",
-                  backgroundColor: "#f8f9fa",
-                  border: "1px solid #dee2e6",
-                  borderRadius: "4px",
-                }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
-                    <strong style={{ fontSize: "14px" }}>⚙️ Paramètres SIP globaux (legacy)</strong>
-                    <a href="/admin/settings" className="button button--small button--secondary" style={{ marginLeft: "auto" }}>
-                      Modifier
-                    </a>
-                  </div>
-                  <p style={{ fontSize: "13px", color: "#6c757d", marginBottom: "8px" }}>
-                    Ces paramètres sont utilisés par défaut si aucun compte SIP n'est configuré ci-dessous.
-                    Les comptes SIP configurés ont la priorité.
-                  </p>
-                  <div style={{ fontSize: "13px", fontFamily: "monospace", lineHeight: "1.6" }}>
-                    {globalSettings.sip_trunk_uri && (
-                      <div><strong>URI:</strong> {globalSettings.sip_trunk_uri}</div>
-                    )}
-                    {globalSettings.sip_trunk_username && (
-                      <div><strong>Utilisateur:</strong> {globalSettings.sip_trunk_username}</div>
-                    )}
-                    {globalSettings.sip_contact_host && (
-                      <div><strong>Contact Host:</strong> {globalSettings.sip_contact_host}</div>
-                    )}
-                    {globalSettings.sip_contact_port && (
-                      <div><strong>Contact Port:</strong> {globalSettings.sip_contact_port}</div>
-                    )}
-                    {globalSettings.sip_contact_transport && (
-                      <div><strong>Transport:</strong> {globalSettings.sip_contact_transport.toUpperCase()}</div>
-                    )}
-                  </div>
-                </div>
-              )}
 
               {accountsLoading ? (
                 <p className="admin-card__subtitle">Chargement des comptes SIP…</p>
