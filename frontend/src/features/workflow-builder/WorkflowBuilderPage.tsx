@@ -32,6 +32,13 @@ import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
 import {
+  getWorkflowInitials,
+  readStoredWorkflowSelection,
+  readWorkflowSidebarCache,
+  updateStoredWorkflowSelection,
+  writeWorkflowSidebarCache,
+} from "../workflows/utils";
+import {
   chatkitApi,
   makeApiEndpointCandidates,
   modelRegistryApi,
@@ -197,26 +204,6 @@ const backendUrl = (import.meta.env.VITE_BACKEND_URL ?? "").trim();
 const DESKTOP_MIN_VIEWPORT_ZOOM = 0.1;
 const MOBILE_MIN_VIEWPORT_ZOOM = 0.05;
 const DESKTOP_WORKSPACE_HORIZONTAL_PADDING = "1.5rem";
-const PERSISTED_WORKFLOW_ID_KEY = "workflow-builder:selected-workflow-id";
-
-const readPersistedWorkflowId = (): number | null => {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    const stored = window.sessionStorage.getItem(PERSISTED_WORKFLOW_ID_KEY);
-    if (!stored) {
-      return null;
-    }
-
-    const parsed = Number.parseInt(stored, 10);
-    return Number.isNaN(parsed) ? null : parsed;
-  } catch (error) {
-    console.warn("Unable to read persisted workflow id", error);
-    return null;
-  }
-};
 const HISTORY_LIMIT = 50;
 const REMOTE_VERSION_POLL_INTERVAL_MS = 10000;
 
@@ -431,8 +418,8 @@ const WorkflowBuilderPage = () => {
     () => (token ? { Authorization: `Bearer ${token}` } : {}),
     [token],
   );
-  const { openSidebar, closeSidebar } = useAppLayout();
-  const { setSidebarContent, clearSidebarContent } = useSidebarPortal();
+  const { openSidebar, closeSidebar, isSidebarCollapsed } = useAppLayout();
+  const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
 
   const ensurePreviewDefaults = useCallback((data: FlowNodeData): FlowNodeData => {
     const hasActive = typeof data.isPreviewActive === "boolean";
@@ -482,7 +469,13 @@ const WorkflowBuilderPage = () => {
     (list: FlowNode[]): FlowNode[] => list.map(decorateNode),
     [decorateNode],
   );
-  const [loading, setLoading] = useState(true);
+  const initialSidebarCacheRef = useRef(readWorkflowSidebarCache());
+  const initialStoredSelectionRef = useRef(readStoredWorkflowSelection());
+  const initialSidebarCache = initialSidebarCacheRef.current;
+  const initialStoredSelection = initialStoredSelectionRef.current;
+  const initialSidebarCacheUsedRef = useRef(Boolean(initialSidebarCache));
+
+  const [loading, setLoading] = useState(() => !initialSidebarCache);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -492,15 +485,22 @@ const WorkflowBuilderPage = () => {
   const [activePreviewStepSlug, setActivePreviewStepSlug] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
-  const [hostedWorkflows, setHostedWorkflows] = useState<HostedWorkflowMetadata[]>([]);
+  const [workflows, setWorkflows] = useState<WorkflowSummary[]>(
+    () => initialSidebarCache?.workflows ?? [],
+  );
+  const [hostedWorkflows, setHostedWorkflows] = useState<HostedWorkflowMetadata[]>(
+    () => initialSidebarCache?.hostedWorkflows ?? [],
+  );
   const [hostedLoading, setHostedLoading] = useState(false);
   const [hostedError, setHostedError] = useState<string | null>(null);
   const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
   const [selectedVersionDetail, setSelectedVersionDetail] = useState<WorkflowVersionResponse | null>(null);
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(() =>
-    readPersistedWorkflowId(),
-  );
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(() => {
+    if (initialSidebarCache?.selectedWorkflowId != null) {
+      return initialSidebarCache.selectedWorkflowId;
+    }
+    return initialStoredSelection?.localWorkflowId ?? null;
+  });
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [hasPendingChanges, setHasPendingChanges] = useState(false);
   const updateHasPendingChanges = useCallback(
@@ -975,23 +975,41 @@ const WorkflowBuilderPage = () => {
   }, [selectedWorkflowId]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    updateStoredWorkflowSelection((previous) => {
+      if (selectedWorkflowId == null) {
+        if (!previous) {
+          return null;
+        }
+        if (previous.mode === "hosted") {
+          return previous;
+        }
+        return { ...previous, localWorkflowId: null };
+      }
+
+      return {
+        mode: "local",
+        localWorkflowId: selectedWorkflowId,
+        hostedSlug: previous?.hostedSlug ?? null,
+      };
+    });
+  }, [selectedWorkflowId]);
+
+  useEffect(() => {
+    if (workflows.length === 0 && hostedWorkflows.length === 0) {
       return;
     }
 
-    try {
-      if (selectedWorkflowId == null) {
-        window.sessionStorage.removeItem(PERSISTED_WORKFLOW_ID_KEY);
-      } else {
-        window.sessionStorage.setItem(
-          PERSISTED_WORKFLOW_ID_KEY,
-          String(selectedWorkflowId),
-        );
-      }
-    } catch (error) {
-      console.warn("Unable to persist workflow id", error);
-    }
-  }, [selectedWorkflowId]);
+    const existingCache = readWorkflowSidebarCache();
+    const storedSelection = initialStoredSelectionRef.current;
+
+    writeWorkflowSidebarCache({
+      workflows,
+      hostedWorkflows,
+      selectedWorkflowId,
+      selectedHostedSlug: existingCache?.selectedHostedSlug ?? storedSelection?.hostedSlug ?? null,
+      mode: existingCache?.mode ?? storedSelection?.mode ?? "local",
+    });
+  }, [hostedWorkflows, selectedWorkflowId, workflows]);
 
   useEffect(() => {
     hasPendingChangesRef.current = hasPendingChanges;
@@ -2082,9 +2100,18 @@ const WorkflowBuilderPage = () => {
         selectWorkflowId?: number | null;
         selectVersionId?: number | null;
         excludeWorkflowId?: number | null;
+        suppressLoadingState?: boolean;
       } = {},
     ): Promise<void> => {
-      setLoading(true);
+      const {
+        selectWorkflowId,
+        selectVersionId,
+        excludeWorkflowId,
+        suppressLoadingState = false,
+      } = options;
+      if (!suppressLoadingState) {
+        setLoading(true);
+      }
       setLoadError(null);
       const candidates = makeApiEndpointCandidates(backendUrl, "/api/workflows");
       let lastError: Error | null = null;
@@ -2126,14 +2153,14 @@ const WorkflowBuilderPage = () => {
             return;
           }
           const availableIds = new Set(data.map((workflow) => workflow.id));
-          const excluded = options.excludeWorkflowId ?? null;
+          const excluded = excludeWorkflowId ?? null;
           const chatkitWorkflow = data.find(
             (workflow) =>
               workflow.is_chatkit_default &&
               workflow.id !== excluded &&
               availableIds.has(workflow.id),
           );
-          let nextWorkflowId = options.selectWorkflowId ?? null;
+          let nextWorkflowId = selectWorkflowId ?? null;
           if (
             nextWorkflowId &&
             (!availableIds.has(nextWorkflowId) || (excluded != null && nextWorkflowId === excluded))
@@ -2154,7 +2181,9 @@ const WorkflowBuilderPage = () => {
           }
           setSelectedWorkflowId(nextWorkflowId);
           if (nextWorkflowId != null) {
-            await loadVersions(nextWorkflowId, options.selectVersionId ?? null);
+            await loadVersions(nextWorkflowId, selectVersionId ?? null, {
+              background: suppressLoadingState,
+            });
           } else {
             setLoading(false);
           }
@@ -2214,7 +2243,8 @@ const WorkflowBuilderPage = () => {
   }, [t, token]);
 
   useEffect(() => {
-    void loadWorkflows();
+    void loadWorkflows({ suppressLoadingState: initialSidebarCacheUsedRef.current });
+    initialSidebarCacheUsedRef.current = false;
   }, [loadWorkflows]);
 
   useEffect(() => {
@@ -7193,10 +7223,80 @@ const WorkflowBuilderPage = () => {
     t,
   ]);
 
+  const collapsedWorkflowShortcuts = useMemo(() => {
+    if (loadError) {
+      return null;
+    }
+
+    const managedHosted = hostedWorkflows.filter((workflow) => workflow.managed);
+    const entries = [
+      ...managedHosted.map((workflow) => ({
+        key: `hosted:${workflow.slug}`,
+        label: workflow.label,
+        onClick: undefined as (() => void) | undefined,
+        disabled: true,
+        isActive: false,
+        initials: getWorkflowInitials(workflow.label),
+      })),
+      ...workflows.map((workflow) => ({
+        key: `local:${workflow.id}`,
+        label: workflow.display_name,
+        onClick: () => handleSelectWorkflow(workflow.id),
+        disabled: loading,
+        isActive: workflow.id === selectedWorkflowId,
+        initials: getWorkflowInitials(workflow.display_name),
+      })),
+    ];
+
+    if (entries.length === 0) {
+      return null;
+    }
+
+    return (
+      <ul className="chatkit-sidebar__workflow-compact-list" role="list">
+        {entries.map((workflow) => (
+          <li key={workflow.key} className="chatkit-sidebar__workflow-compact-item">
+            <button
+              type="button"
+              className={`chatkit-sidebar__workflow-compact-button${
+                workflow.isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
+              }`}
+              onClick={workflow.onClick}
+              disabled={workflow.disabled}
+              aria-current={workflow.isActive ? "true" : undefined}
+              title={workflow.label}
+              tabIndex={isSidebarCollapsed ? 0 : -1}
+            >
+              <span aria-hidden="true" className="chatkit-sidebar__workflow-compact-initial">
+                {workflow.initials}
+              </span>
+              <span className="visually-hidden">{workflow.label}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    );
+  }, [
+    handleSelectWorkflow,
+    hostedWorkflows,
+    isSidebarCollapsed,
+    loadError,
+    loading,
+    selectedWorkflowId,
+    workflows,
+  ]);
+
   useEffect(() => {
     setSidebarContent(workflowSidebarContent);
+    setCollapsedSidebarContent(collapsedWorkflowShortcuts);
     return () => clearSidebarContent();
-  }, [clearSidebarContent, setSidebarContent, workflowSidebarContent]);
+  }, [
+    clearSidebarContent,
+    collapsedWorkflowShortcuts,
+    setCollapsedSidebarContent,
+    setSidebarContent,
+    workflowSidebarContent,
+  ]);
 
   const renderBlockLibraryContent = () => {
     if (isMobileLayout) {

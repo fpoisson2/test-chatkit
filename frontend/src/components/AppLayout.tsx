@@ -36,6 +36,45 @@ type ApplicationDescriptor = {
   requiresAdmin?: boolean;
 };
 
+const SIDEBAR_OPEN_STORAGE_KEY = "chatkit.sidebar.open";
+
+const readStoredSidebarOpen = (): boolean | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const value = window.localStorage?.getItem(SIDEBAR_OPEN_STORAGE_KEY);
+    if (value === "true") {
+      return true;
+    }
+
+    if (value === "false") {
+      return false;
+    }
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("Unable to read the sidebar open state preference.", error);
+    }
+  }
+
+  return null;
+};
+
+const writeStoredSidebarOpen = (isOpen: boolean) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage?.setItem(SIDEBAR_OPEN_STORAGE_KEY, isOpen ? "true" : "false");
+  } catch (error) {
+    if (import.meta.env.DEV) {
+      console.warn("Unable to persist the sidebar open state preference.", error);
+    }
+  }
+};
+
 const APPLICATIONS: ApplicationDescriptor[] = [
   { key: "chat", labelKey: "app.sidebar.applications.chat", path: "/" },
   {
@@ -98,6 +137,7 @@ type AppLayoutContextValue = {
   closeSidebar: () => void;
   isDesktopLayout: boolean;
   isSidebarOpen: boolean;
+  isSidebarCollapsed: boolean;
 };
 
 const AppLayoutContext = createContext<AppLayoutContextValue | undefined>(undefined);
@@ -105,6 +145,8 @@ const AppLayoutContext = createContext<AppLayoutContextValue | undefined>(undefi
 type SidebarPortalContextValue = {
   setSidebarContent: (content: ReactNode | null) => void;
   clearSidebarContent: () => void;
+  setCollapsedSidebarContent: (content: ReactNode | null) => void;
+  clearCollapsedSidebarContent: () => void;
 };
 
 const SidebarPortalContext = createContext<SidebarPortalContextValue | undefined>(undefined);
@@ -138,10 +180,18 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const location = useLocation();
   const isDesktopLayout = useIsDesktopLayout();
   const previousIsDesktopRef = useRef(isDesktopLayout);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(getDesktopLayoutPreference);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    const storedPreference = readStoredSidebarOpen();
+    if (storedPreference !== null) {
+      return storedPreference;
+    }
+
+    return getDesktopLayoutPreference();
+  });
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
+  const [collapsedSidebarContent, setCollapsedSidebarContent] = useState<ReactNode | null>(null);
   const appSwitcherLabelId = useId();
 
   useEffect(() => {
@@ -149,7 +199,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
     if (isDesktopLayout) {
       if (!wasDesktop) {
-        setIsSidebarOpen(true);
+        const storedPreference = readStoredSidebarOpen();
+        setIsSidebarOpen(storedPreference ?? true);
       }
     } else {
       setIsSidebarOpen(false);
@@ -157,6 +208,14 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
     previousIsDesktopRef.current = isDesktopLayout;
   }, [isDesktopLayout]);
+
+  useEffect(() => {
+    if (!isDesktopLayout) {
+      return;
+    }
+
+    writeStoredSidebarOpen(isSidebarOpen);
+  }, [isDesktopLayout, isSidebarOpen]);
 
   const openSidebar = useCallback(() => {
     setIsSidebarOpen(true);
@@ -389,8 +448,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
       closeSidebar,
       isDesktopLayout,
       isSidebarOpen,
+      isSidebarCollapsed,
     }),
-    [closeSidebar, isDesktopLayout, isSidebarOpen, openSidebar],
+    [closeSidebar, isDesktopLayout, isSidebarCollapsed, isSidebarOpen, openSidebar],
   );
 
   const handleSetSidebarContent = useCallback((content: ReactNode | null) => {
@@ -399,15 +459,86 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
   const handleClearSidebarContent = useCallback(() => {
     setSidebarContent(null);
+    setCollapsedSidebarContent(null);
+  }, []);
+
+  const handleSetCollapsedSidebarContent = useCallback((content: ReactNode | null) => {
+    setCollapsedSidebarContent(content);
+  }, []);
+
+  const handleClearCollapsedSidebarContent = useCallback(() => {
+    setCollapsedSidebarContent(null);
   }, []);
 
   const sidebarPortalValue = useMemo(
     () => ({
       setSidebarContent: handleSetSidebarContent,
       clearSidebarContent: handleClearSidebarContent,
+      setCollapsedSidebarContent: handleSetCollapsedSidebarContent,
+      clearCollapsedSidebarContent: handleClearCollapsedSidebarContent,
     }),
-    [handleClearSidebarContent, handleSetSidebarContent],
+    [
+      handleClearCollapsedSidebarContent,
+      handleClearSidebarContent,
+      handleSetCollapsedSidebarContent,
+      handleSetSidebarContent,
+    ],
   );
+
+  const renderAppSwitcher = useCallback(() => {
+    if (availableApplications.length === 0) {
+      return null;
+    }
+
+    const navClassName = [
+      "chatkit-sidebar__app-switcher",
+      isSidebarCollapsed ? "chatkit-sidebar__app-switcher--compact" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    return (
+      <div className="chatkit-sidebar__switcher">
+        <span id={appSwitcherLabelId} className="visually-hidden">
+          {t("app.sidebar.switcherLabel")}
+        </span>
+        <nav className={navClassName} aria-labelledby={appSwitcherLabelId}>
+          {availableApplications.map((application) => {
+            const isActive = activeApplication === application.key;
+
+            return (
+              <button
+                key={application.key}
+                type="button"
+                className={`chatkit-sidebar__app-switcher-button${
+                  isActive ? " chatkit-sidebar__app-switcher-button--active" : ""
+                }`}
+                onClick={() => handleApplicationNavigate(application)}
+                tabIndex={sidebarTabIndex}
+                aria-current={isActive ? "page" : undefined}
+                aria-label={application.label}
+              >
+                <span className="chatkit-sidebar__app-switcher-icon" aria-hidden="true">
+                  <SidebarIcon name={APPLICATION_ICONS[application.key]} />
+                </span>
+                <span className="chatkit-sidebar__app-switcher-label">
+                  {application.label}
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+    );
+  }, [
+    activeApplication,
+    appSwitcherLabelId,
+    availableApplications,
+    handleApplicationNavigate,
+    isSidebarCollapsed,
+    sidebarTabIndex,
+    t,
+  ]);
 
   return (
     <SidebarPortalContext.Provider value={sidebarPortalValue}>
@@ -421,7 +552,12 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
           <header className="chatkit-sidebar__header">
             <div className="chatkit-sidebar__topline">
               <div className="chatkit-sidebar__brand">
-                <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
+                <span className="chatkit-sidebar__brand-mark" aria-hidden="true">
+                  <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
+                </span>
+                <span className="chatkit-sidebar__brand-title">
+                  {t("app.sidebar.brandTitle")}
+                </span>
               </div>
               <div className="chatkit-sidebar__actions">
                 {isSidebarOpen ? (
@@ -439,47 +575,22 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                 ) : null}
               </div>
             </div>
-            {availableApplications.length > 0 ? (
-              <div className="chatkit-sidebar__switcher">
-                <span id={appSwitcherLabelId} className="visually-hidden">
-                  {t("app.sidebar.switcherLabel")}
-                </span>
-                <nav
-                  className={`chatkit-sidebar__app-switcher${
-                    isSidebarCollapsed ? " chatkit-sidebar__app-switcher--compact" : ""
-                  }`}
-                  aria-labelledby={appSwitcherLabelId}
-                >
-                  {availableApplications.map((application) => {
-                    const isActive = activeApplication === application.key;
-
-                    return (
-                      <button
-                        key={application.key}
-                        type="button"
-                        className={`chatkit-sidebar__app-switcher-button${
-                          isActive ? " chatkit-sidebar__app-switcher-button--active" : ""
-                        }`}
-                        onClick={() => handleApplicationNavigate(application)}
-                        tabIndex={sidebarTabIndex}
-                        aria-current={isActive ? "page" : undefined}
-                        aria-label={application.label}
-                      >
-                        <span className="chatkit-sidebar__app-switcher-icon" aria-hidden="true">
-                          <SidebarIcon name={APPLICATION_ICONS[application.key]} />
-                        </span>
-                        <span className="chatkit-sidebar__app-switcher-label">{application.label}</span>
-                      </button>
-                    );
-                  })}
-                </nav>
-              </div>
-            ) : null}
+            {renderAppSwitcher()}
           </header>
-          {(sidebarContent || navigationItems.length > 0) && (
+          {(sidebarContent || collapsedSidebarContent || navigationItems.length > 0) && (
             <div className="chatkit-sidebar__main">
               {sidebarContent ? (
                 <div className="chatkit-sidebar__dynamic">{sidebarContent}</div>
+              ) : null}
+              {collapsedSidebarContent ? (
+                <div
+                  className={`chatkit-sidebar__collapsed-preview${
+                    isSidebarCollapsed ? " chatkit-sidebar__collapsed-preview--visible" : ""
+                  }`}
+                  aria-hidden={!isSidebarCollapsed}
+                >
+                  {collapsedSidebarContent}
+                </div>
               ) : null}
               {navigationItems.length > 0 && (
                 <nav className="chatkit-sidebar__nav" aria-label={t("app.sidebar.menu")}>
