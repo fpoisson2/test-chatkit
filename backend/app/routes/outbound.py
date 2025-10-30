@@ -9,9 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from ..auth import require_admin_user
-from ..database import get_db
-from ..models import OutboundCall, SipAccount, WorkflowDefinition
+from ..database import get_session
+from ..dependencies import require_admin
+from ..models import OutboundCall, SipAccount, User, WorkflowDefinition
 from ..telephony.outbound_call_manager import get_outbound_call_manager
 
 logger = logging.getLogger("chatkit.routes.outbound")
@@ -62,8 +62,8 @@ class CallListResponse(BaseModel):
 @router.post("/api/outbound/call")
 async def initiate_single_call(
     request: InitiateCallRequest,
-    db: Session = Depends(get_db),
-    _: Any = Depends(require_admin_user),
+    db: Session = Depends(get_session),
+    _: User = Depends(require_admin),
 ) -> dict[str, Any]:
     """
     Initie un appel sortant immédiat (usage API direct).
@@ -127,8 +127,8 @@ async def initiate_single_call(
 @router.get("/api/outbound/call/{call_id}")
 async def get_call_status(
     call_id: str,
-    db: Session = Depends(get_db),
-    _: Any = Depends(require_admin_user),
+    db: Session = Depends(get_session),
+    _: User = Depends(require_admin),
 ) -> CallStatusResponse:
     """
     Récupère le statut d'un appel sortant.
@@ -166,8 +166,8 @@ async def list_outbound_calls(
     skip: int = 0,
     limit: int = 50,
     status: str | None = None,
-    db: Session = Depends(get_db),
-    _: Any = Depends(require_admin_user),
+    db: Session = Depends(get_session),
+    _: User = Depends(require_admin),
 ) -> CallListResponse:
     """
     Liste les appels sortants récents.
