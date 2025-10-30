@@ -349,7 +349,8 @@ class TelephonyVoiceBridge:
                     await session.send_audio(pcm, commit=False)
                     bytes_sent += len(pcm)
 
-                    # After sending enough audio, enable turn_detection
+                    # After sending enough audio, enable turn_detection (if not already enabled)
+                    # Note: create_response=False car on gère manuellement via response.create
                     if not turn_detection_enabled and bytes_sent >= MIN_AUDIO_BEFORE_VAD:
                         logger.info(
                             "Activation de turn_detection après %.1fms d'audio",
@@ -365,14 +366,14 @@ class TelephonyVoiceBridge:
                                         },
                                         "turn_detection": {
                                             "type": "semantic_vad",
-                                            "create_response": True,
+                                            "create_response": False,  # On force manuellement via speech_stopped
                                             "interrupt_response": True,
                                         },
                                     }
                                 )
                             )
                             turn_detection_enabled = True
-                            logger.info("Turn detection (semantic_vad) activé avec succès")
+                            logger.info("Turn detection (semantic_vad) activé avec succès (sans create_response)")
                         except Exception as e:
                             logger.warning("Impossible d'activer turn_detection: %s", e)
 
@@ -528,25 +529,7 @@ class TelephonyVoiceBridge:
                                         if not agent_is_speaking:
                                             block_audio_send_ref[0] = False
                                             logger.info("→ Déblocage audio (agent ne parle pas)")
-
-                                        # Force immediate response - no delay!
-                                        logger.info("⚡ Forçage response.create IMMÉDIAT")
-                                        try:
-                                            from agents.realtime.model_inputs import (
-                                                RealtimeModelRawClientMessage,
-                                                RealtimeModelSendRawMessage,
-                                            )
-                                            await session._model.send_event(
-                                                RealtimeModelSendRawMessage(
-                                                    message=RealtimeModelRawClientMessage(
-                                                        type="response.create",
-                                                        other_data={},
-                                                    )
-                                                )
-                                            )
-                                            logger.info("✅ response.create envoyé immédiatement après speech_stopped")
-                                        except Exception as e:
-                                            logger.warning("Impossible d'envoyer response.create immédiat: %s", e)
+                                        # Turn detection will create response automatically (no manual intervention)
                                         continue
 
                                     # Detect MCP tool call completion in real-time
