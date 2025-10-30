@@ -15,6 +15,9 @@
   --text-muted: var(--color-text-muted);
   --sidebar-background: var(--color-surface);
   --sidebar-border: var(--color-border-subtle);
+  --sidebar-scrollbar-thumb: rgba(24, 24, 27, 0.24);
+  --sidebar-scrollbar-thumb-hover: rgba(24, 24, 27, 0.32);
+  --sidebar-scrollbar-track: rgba(24, 24, 27, 0.08);
   --main-background: var(--color-surface-subtle);
   --primary-color: #2563eb;
   --primary-hover: #1d4ed8;
@@ -50,6 +53,9 @@
   --text-muted: var(--color-text-muted);
   --sidebar-background: #09090b;
   --sidebar-border: rgba(228, 228, 231, 0.08);
+  --sidebar-scrollbar-thumb: rgba(228, 228, 231, 0.32);
+  --sidebar-scrollbar-thumb-hover: rgba(228, 228, 231, 0.42);
+  --sidebar-scrollbar-track: rgba(228, 228, 231, 0.12);
   --main-background: #09090b;
   --primary-color: #38bdf8;
   --primary-hover: #0ea5e9;
@@ -93,6 +99,9 @@
     --danger-hover: #dc2626;
     --shadow-soft: 0 20px 45px rgba(3, 7, 18, 0.6);
     --shadow-card: 0 30px 60px rgba(3, 7, 18, 0.5);
+    --sidebar-scrollbar-thumb: rgba(228, 228, 231, 0.32);
+    --sidebar-scrollbar-thumb-hover: rgba(228, 228, 231, 0.42);
+    --sidebar-scrollbar-track: rgba(228, 228, 231, 0.12);
   }
 }
 
@@ -1396,6 +1405,28 @@ button {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sidebar-scrollbar-thumb) var(--sidebar-scrollbar-track);
+}
+
+.chatkit-sidebar__main::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chatkit-sidebar__main::-webkit-scrollbar-track {
+  background: var(--sidebar-scrollbar-track);
+  border-radius: 999px;
+}
+
+.chatkit-sidebar__main::-webkit-scrollbar-thumb {
+  background-color: var(--sidebar-scrollbar-thumb);
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+.chatkit-sidebar__main::-webkit-scrollbar-thumb:hover {
+  background-color: var(--sidebar-scrollbar-thumb-hover);
 }
 
 .chatkit-sidebar__dynamic {
