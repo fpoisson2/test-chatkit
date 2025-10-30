@@ -635,6 +635,19 @@ button {
   padding-inline: var(--chatkit-sidebar-content-padding-x);
 }
 
+.chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__workflow-button {
+  margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
+  padding-inline-start: var(--chatkit-sidebar-content-padding-x);
+  padding-inline-end: calc(var(--chatkit-sidebar-content-padding-x) + 3rem);
+  --chatkit-sidebar-workflow-highlight-gutter: calc(
+    var(--chatkit-sidebar-content-padding-x) + 3rem
+  );
+}
+
+.chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__workflow-button::after {
+  inset-inline-start: calc(-1 * var(--chatkit-sidebar-content-padding-x));
+}
+
 .chatkit-sidebar__nav-list {
   list-style: none;
   margin: 0;
