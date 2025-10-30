@@ -1065,6 +1065,7 @@ button {
   padding: 0;
   flex-direction: column;
   gap: 12px;
+  align-items: center;
 }
 
 .chatkit-sidebar__app-switcher-button {
@@ -1093,6 +1094,7 @@ button {
   height: 52px;
   padding: 0;
   border-radius: 16px;
+  justify-content: center;
 }
 
 .chatkit-sidebar__app-switcher--compact .chatkit-sidebar__app-switcher-icon,
@@ -1462,13 +1464,32 @@ button {
   align-items: center;
 }
 
+.chatkit-sidebar--collapsed .chatkit-sidebar__topline {
+  justify-content: center;
+}
+
 .chatkit-sidebar--collapsed .chatkit-sidebar__brand {
   justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__brand-mark {
+  width: 32px;
+  height: 32px;
+}
+
+.chatkit-sidebar--collapsed .chatkit-sidebar__brand-title {
+  font-size: 0.78rem;
+  text-align: center;
+  line-height: 1.2;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__switcher {
   width: 100%;
   align-items: center;
+  justify-content: center;
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__label,
