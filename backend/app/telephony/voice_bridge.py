@@ -538,7 +538,7 @@ class TelephonyVoiceBridge:
                     # Handle history updates (contains transcripts)
                     if isinstance(event, (RealtimeHistoryAdded, RealtimeHistoryUpdated)):
                         history = getattr(event, "history", [event.item] if hasattr(event, "item") else [])
-                        for item in history:
+                        for idx, item in enumerate(history):
                             role = getattr(item, "role", None)
 
                             # Debug: Log ALL history items to trace tool calls
