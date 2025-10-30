@@ -377,7 +377,7 @@ class TelephonyVoiceBridge:
                                     RealtimeModelSendRawMessage(
                                         message=RealtimeModelRawClientMessage(
                                             type="response.create",
-                                            other_data={"response": {"modalities": ["audio", "text"]}},
+                                            other_data={"response": {"modalities": ["audio"]}},
                                         )
                                     )
                                 )
@@ -478,7 +478,7 @@ class TelephonyVoiceBridge:
                             RealtimeModelSendRawMessage(
                                 message=RealtimeModelRawClientMessage(
                                     type="response.create",
-                                    other_data={"response": {"modalities": ["audio", "text"]}},
+                                    other_data={"response": {"modalities": ["audio"]}},
                                 )
                             )
                         )
@@ -596,7 +596,7 @@ class TelephonyVoiceBridge:
                                                 RealtimeModelSendRawMessage(
                                                     message=RealtimeModelRawClientMessage(
                                                         type="response.create",
-                                                        other_data={"response": {"modalities": ["audio", "text"]}},
+                                                        other_data={"response": {"modalities": ["audio"]}},
                                                     )
                                                 )
                                             )
@@ -627,7 +627,7 @@ class TelephonyVoiceBridge:
                                                 RealtimeModelSendRawMessage(
                                                     message=RealtimeModelRawClientMessage(
                                                         type="response.create",
-                                                        other_data={"response": {"modalities": ["audio", "text"]}},
+                                                        other_data={"response": {"modalities": ["audio"]}},
                                                     )
                                                 )
                                             )
