@@ -574,9 +574,10 @@ class TelephonyVoiceBridge:
             # Build model config for the SDK runner
             # Note: turn_detection is already configured in client_secret (semantic_vad)
             # Note: tools are already available via the runner's MCP server connections
+            # Note: Tool calls work with audio-only mode - they happen internally and don't require text modality
             model_settings: dict[str, Any] = {
                 "model_name": model,
-                "modalities": ["text", "audio"],  # Need text for MCP tool calls + audio for speech
+                "modalities": ["audio"],  # For telephony, audio only (tool calls work internally)
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
             }
