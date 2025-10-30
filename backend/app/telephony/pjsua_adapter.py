@@ -164,12 +164,13 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         if not PJSUA_AVAILABLE:
             return
 
+        expected_size = self.samples_per_frame * 2  # 320 bytes pour 160 samples @ 16-bit
+
         try:
             # Récupérer l'audio de la queue (non-bloquant)
             audio_data = self._outgoing_audio_queue.get_nowait()
 
-            # S'assurer que la taille est correcte (320 bytes pour 160 samples @ 16-bit)
-            expected_size = self.samples_per_frame * 2
+            # S'assurer que la taille est correcte
             if len(audio_data) < expected_size:
                 # Padding avec du silence si nécessaire
                 audio_data += b'\x00' * (expected_size - len(audio_data))
@@ -177,16 +178,21 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                 # Tronquer si trop long
                 audio_data = audio_data[:expected_size]
 
-            # Copier dans le frame (utiliser bytearray pour compatibilité PJSUA)
-            frame.buf = bytearray(audio_data)
+            # Copier les données dans le buffer pré-alloué de PJSUA
+            # frame.buf est déjà un ByteVector alloué - on doit y copier les données
+            for i, byte in enumerate(audio_data):
+                frame.buf[i] = byte
+
             frame.size = len(audio_data)
             frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
         except queue.Empty:
             # Pas d'audio disponible, envoyer du silence
-            silence = bytearray(self.samples_per_frame * 2)
-            frame.buf = silence
-            frame.size = len(silence)
+            # Remplir le buffer avec des zéros
+            for i in range(expected_size):
+                frame.buf[i] = 0
+
+            frame.size = expected_size
             frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
     def onFrameReceived(self, frame: pj.MediaFrame) -> None:
