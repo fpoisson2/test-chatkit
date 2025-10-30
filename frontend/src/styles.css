@@ -364,6 +364,19 @@ button {
   pointer-events: none;
 }
 
+.chatkit-sidebar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 6px;
+  border-radius: 999px;
+  background: var(--sidebar-scrollbar-track);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
 .chatkit-sidebar--open {
   transform: translateX(0);
   pointer-events: auto;
@@ -377,6 +390,10 @@ button {
   gap: 20px;
   overflow: visible;
   pointer-events: auto;
+}
+
+.chatkit-sidebar--collapsed::after {
+  display: none;
 }
 
 .chatkit-layout--desktop {
@@ -1399,6 +1416,7 @@ button {
   gap: 24px;
   margin: 0;
   padding: 16px var(--chatkit-sidebar-content-padding-x);
+  margin-right: calc(var(--chatkit-sidebar-content-padding-x) * -1);
   border-bottom: 1px solid var(--sidebar-border);
   overflow-x: hidden;
   overflow-y: auto;
