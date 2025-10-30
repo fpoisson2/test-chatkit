@@ -439,13 +439,13 @@ class TelephonyVoiceBridge:
                             # Cancel the current response
                             await session._model.send_event(
                                 RealtimeModelSendRawMessage(
-                                    event={"type": "response.cancel"}
+                                    message={"type": "response.cancel"}
                                 )
                             )
                             # Clear the output audio buffer
                             await session._model.send_event(
                                 RealtimeModelSendRawMessage(
-                                    event={"type": "output_audio_buffer.clear"}
+                                    message={"type": "output_audio_buffer.clear"}
                                 )
                             )
                             logger.info("✅ Envoyé response.cancel + output_audio_buffer.clear")
