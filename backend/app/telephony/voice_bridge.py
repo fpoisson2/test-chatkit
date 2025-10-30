@@ -435,11 +435,11 @@ class TelephonyVoiceBridge:
                                 if raw_data and isinstance(raw_data, dict):
                                     event_subtype = raw_data.get('type', '')
 
-                                    # Debug: Log ALL raw event types to find tool call events
-                                    if event_subtype not in ('input_audio_buffer.speech_started', 'input_audio_buffer.speech_stopped',
-                                                             'input_audio_buffer.committed', 'response.audio.delta',
-                                                             'response.audio_transcript.delta', 'conversation.item.input_audio_transcription.completed'):
-                                        logger.info("🔍 RAW EVENT: %s", event_subtype)
+                                    # Debug: Log specific event types (disabled by default for performance)
+                                    # if event_subtype not in ('input_audio_buffer.speech_started', 'input_audio_buffer.speech_stopped',
+                                    #                          'input_audio_buffer.committed', 'response.audio.delta',
+                                    #                          'response.audio_transcript.delta', 'conversation.item.input_audio_transcription.completed'):
+                                    #     logger.info("🔍 RAW EVENT: %s", event_subtype)
 
                                     # User started speaking - INTERRUPT THE AGENT AND BLOCK AUDIO!
                                     if event_subtype == 'input_audio_buffer.speech_started':
@@ -476,10 +476,11 @@ class TelephonyVoiceBridge:
                                             logger.info("→ Déblocage audio (agent ne parle pas)")
                                         continue
 
-                                    # Detect tool call completion in real-time
-                                    if event_subtype == 'response.function_call_arguments.done':
-                                        tool_name = raw_data.get('name', 'unknown')
-                                        logger.info("🔧 Tool call terminé EN TEMPS RÉEL: %s", tool_name)
+                                    # Detect MCP tool call completion in real-time
+                                    if event_subtype == 'response.mcp_call.completed':
+                                        tool_data = raw_data.get('mcp_call', {}) if isinstance(raw_data.get('mcp_call'), dict) else {}
+                                        tool_name = tool_data.get('name', 'unknown')
+                                        logger.info("🔧 Tool MCP call terminé EN TEMPS RÉEL: %s", tool_name)
 
                                         # Send response.create immediately to force verbal confirmation
                                         try:
@@ -487,7 +488,7 @@ class TelephonyVoiceBridge:
                                                 RealtimeModelRawClientMessage,
                                                 RealtimeModelSendRawMessage,
                                             )
-                                            logger.info("Envoi de response.create immédiatement après tool call")
+                                            logger.info("Envoi de response.create IMMÉDIATEMENT après exécution du tool")
                                             await session._model.send_event(
                                                 RealtimeModelSendRawMessage(
                                                     message=RealtimeModelRawClientMessage(
@@ -496,7 +497,7 @@ class TelephonyVoiceBridge:
                                                     )
                                                 )
                                             )
-                                            logger.info("✅ response.create envoyé en temps réel après tool call")
+                                            logger.info("✅ response.create envoyé - l'assistant va maintenant confirmer verbalement")
                                         except Exception as e:
                                             logger.warning("Impossible d'envoyer response.create: %s", e)
                                         continue
