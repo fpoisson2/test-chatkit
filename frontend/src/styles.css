@@ -353,6 +353,7 @@ button {
   --chatkit-sidebar-content-padding-x: var(--chatkit-sidebar-padding-x);
   padding: 28px var(--chatkit-sidebar-padding-x);
   gap: 20px;
+  overflow: visible;
   pointer-events: auto;
 }
 

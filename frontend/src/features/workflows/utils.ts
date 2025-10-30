@@ -1,3 +1,7 @@
+import type { HostedWorkflowMetadata } from "../../utils/backend";
+import type { WorkflowSummary } from "../../types/workflows";
+import type { HostedFlowMode } from "../../hooks/useHostedFlow";
+
 export const getWorkflowInitials = (label: string) => {
   const trimmed = label.trim();
 
@@ -22,6 +26,14 @@ export type StoredWorkflowSelection = {
   mode: "local" | "hosted";
   localWorkflowId: number | null;
   hostedSlug: string | null;
+};
+
+export type WorkflowSidebarCache = {
+  workflows: WorkflowSummary[];
+  hostedWorkflows: HostedWorkflowMetadata[];
+  selectedWorkflowId: number | null;
+  selectedHostedSlug: string | null;
+  mode: HostedFlowMode;
 };
 
 const WORKFLOW_SELECTION_STORAGE_KEY = "chatkit:workflow-selection";
@@ -98,4 +110,16 @@ export const updateStoredWorkflowSelection = (
   const previous = readStoredWorkflowSelection();
   const next = updater(previous);
   writeStoredWorkflowSelection(next);
+};
+
+let workflowSidebarCache: WorkflowSidebarCache | null = null;
+
+export const readWorkflowSidebarCache = (): WorkflowSidebarCache | null => workflowSidebarCache;
+
+export const writeWorkflowSidebarCache = (cache: WorkflowSidebarCache | null) => {
+  workflowSidebarCache = cache;
+};
+
+export const clearWorkflowSidebarCache = () => {
+  workflowSidebarCache = null;
 };

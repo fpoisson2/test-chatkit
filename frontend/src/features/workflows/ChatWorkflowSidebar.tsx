@@ -8,21 +8,14 @@ import type { HostedWorkflowMetadata } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
 import type { HostedFlowMode } from "../../hooks/useHostedFlow";
 import {
+  clearWorkflowSidebarCache,
   getWorkflowInitials,
   readStoredWorkflowSelection,
+  readWorkflowSidebarCache,
   updateStoredWorkflowSelection,
   writeStoredWorkflowSelection,
+  writeWorkflowSidebarCache,
 } from "./utils";
-
-type WorkflowSidebarCache = {
-  workflows: WorkflowSummary[];
-  hostedWorkflows: HostedWorkflowMetadata[];
-  selectedWorkflowId: number | null;
-  selectedHostedSlug: string | null;
-  mode: HostedFlowMode;
-};
-
-let workflowSidebarCache: WorkflowSidebarCache | null = null;
 
 const isApiError = (error: unknown): error is { status?: number; message?: string } =>
   Boolean(error) && typeof error === "object" && "status" in error;
@@ -54,7 +47,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
   const { token, user } = useAuth();
   const isAdmin = Boolean(user?.is_admin);
-  const cachedState = useMemo(() => (token ? workflowSidebarCache : null), [token]);
+  const cachedState = useMemo(() => (token ? readWorkflowSidebarCache() : null), [token]);
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>(
     () => cachedState?.workflows ?? [],
   );
@@ -79,7 +72,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
   const loadWorkflows = useCallback(async () => {
     if (!token) {
-      workflowSidebarCache = null;
+      clearWorkflowSidebarCache();
       writeStoredWorkflowSelection(null);
       setWorkflows([]);
       setHostedWorkflows([]);
@@ -402,17 +395,17 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
   useEffect(() => {
     if (!token) {
-      workflowSidebarCache = null;
+      clearWorkflowSidebarCache();
       return;
     }
 
-    workflowSidebarCache = {
+    writeWorkflowSidebarCache({
       workflows,
       hostedWorkflows,
       selectedWorkflowId,
       selectedHostedSlug,
       mode,
-    };
+    });
   }, [hostedWorkflows, mode, selectedHostedSlug, selectedWorkflowId, token, workflows]);
 
   const handleOpenBuilder = useCallback(() => {
