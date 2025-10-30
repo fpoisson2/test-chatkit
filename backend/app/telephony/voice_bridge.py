@@ -640,6 +640,26 @@ class TelephonyVoiceBridge:
                         tool_name = getattr(event.tool, "name", None)
                         output = event.output
                         logger.info("Outil MCP terminé: %s, résultat: %s", tool_name, output)
+
+                        # Forcer l'assistant à parler après chaque tool call
+                        try:
+                            from agents.realtime.model_inputs import (
+                                RealtimeModelRawClientMessage,
+                                RealtimeModelSendRawMessage,
+                            )
+                            logger.info("Envoi de response.create pour forcer la confirmation verbale après tool call")
+                            await session._model.send_event(
+                                RealtimeModelSendRawMessage(
+                                    message=RealtimeModelRawClientMessage(
+                                        type="response.create",
+                                        other_data={},
+                                    )
+                                )
+                            )
+                            logger.info("Événement response.create envoyé après tool call")
+                        except Exception as e:
+                            logger.warning("Impossible d'envoyer response.create après tool call: %s", e)
+
                         continue
 
             except Exception as exc:
