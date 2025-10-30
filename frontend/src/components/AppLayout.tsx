@@ -98,6 +98,7 @@ type AppLayoutContextValue = {
   closeSidebar: () => void;
   isDesktopLayout: boolean;
   isSidebarOpen: boolean;
+  isSidebarCollapsed: boolean;
 };
 
 const AppLayoutContext = createContext<AppLayoutContextValue | undefined>(undefined);
@@ -105,6 +106,8 @@ const AppLayoutContext = createContext<AppLayoutContextValue | undefined>(undefi
 type SidebarPortalContextValue = {
   setSidebarContent: (content: ReactNode | null) => void;
   clearSidebarContent: () => void;
+  setCollapsedSidebarContent: (content: ReactNode | null) => void;
+  clearCollapsedSidebarContent: () => void;
 };
 
 const SidebarPortalContext = createContext<SidebarPortalContextValue | undefined>(undefined);
@@ -142,6 +145,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
+  const [collapsedSidebarContent, setCollapsedSidebarContent] = useState<ReactNode | null>(null);
   const appSwitcherLabelId = useId();
 
   useEffect(() => {
@@ -389,8 +393,9 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
       closeSidebar,
       isDesktopLayout,
       isSidebarOpen,
+      isSidebarCollapsed,
     }),
-    [closeSidebar, isDesktopLayout, isSidebarOpen, openSidebar],
+    [closeSidebar, isDesktopLayout, isSidebarCollapsed, isSidebarOpen, openSidebar],
   );
 
   const handleSetSidebarContent = useCallback((content: ReactNode | null) => {
@@ -399,14 +404,30 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
   const handleClearSidebarContent = useCallback(() => {
     setSidebarContent(null);
+    setCollapsedSidebarContent(null);
+  }, []);
+
+  const handleSetCollapsedSidebarContent = useCallback((content: ReactNode | null) => {
+    setCollapsedSidebarContent(content);
+  }, []);
+
+  const handleClearCollapsedSidebarContent = useCallback(() => {
+    setCollapsedSidebarContent(null);
   }, []);
 
   const sidebarPortalValue = useMemo(
     () => ({
       setSidebarContent: handleSetSidebarContent,
       clearSidebarContent: handleClearSidebarContent,
+      setCollapsedSidebarContent: handleSetCollapsedSidebarContent,
+      clearCollapsedSidebarContent: handleClearCollapsedSidebarContent,
     }),
-    [handleClearSidebarContent, handleSetSidebarContent],
+    [
+      handleClearCollapsedSidebarContent,
+      handleClearSidebarContent,
+      handleSetCollapsedSidebarContent,
+      handleSetSidebarContent,
+    ],
   );
 
   const renderAppSwitcher = useCallback(() => {
@@ -501,10 +522,20 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             </div>
             {renderAppSwitcher()}
           </header>
-          {(sidebarContent || navigationItems.length > 0) && (
+          {(sidebarContent || collapsedSidebarContent || navigationItems.length > 0) && (
             <div className="chatkit-sidebar__main">
               {sidebarContent ? (
                 <div className="chatkit-sidebar__dynamic">{sidebarContent}</div>
+              ) : null}
+              {collapsedSidebarContent ? (
+                <div
+                  className={`chatkit-sidebar__collapsed-preview${
+                    isSidebarCollapsed ? " chatkit-sidebar__collapsed-preview--visible" : ""
+                  }`}
+                  aria-hidden={!isSidebarCollapsed}
+                >
+                  {collapsedSidebarContent}
+                </div>
               ) : null}
               {navigationItems.length > 0 && (
                 <nav className="chatkit-sidebar__nav" aria-label={t("app.sidebar.menu")}>

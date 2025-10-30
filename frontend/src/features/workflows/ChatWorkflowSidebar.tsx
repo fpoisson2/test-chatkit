@@ -32,10 +32,30 @@ type ChatWorkflowSidebarProps = {
   onWorkflowActivated: (selection: WorkflowActivation, context: ActivationContext) => void;
 };
 
+const getWorkflowInitials = (label: string) => {
+  const trimmed = label.trim();
+
+  if (!trimmed) {
+    return "?";
+  }
+
+  const words = trimmed.split(/\s+/).filter(Boolean);
+
+  if (words.length === 0) {
+    return "?";
+  }
+
+  if (words.length === 1) {
+    return trimmed.slice(0, 2).toUpperCase();
+  }
+
+  return (words[0]?.charAt(0) ?? "").concat(words[1]?.charAt(0) ?? "").toUpperCase();
+};
+
 export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: ChatWorkflowSidebarProps) => {
   const navigate = useNavigate();
-  const { closeSidebar, isDesktopLayout } = useAppLayout();
-  const { setSidebarContent, clearSidebarContent } = useSidebarPortal();
+  const { closeSidebar, isDesktopLayout, isSidebarCollapsed } = useAppLayout();
+  const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
   const { token, user } = useAuth();
   const isAdmin = Boolean(user?.is_admin);
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
@@ -268,6 +288,36 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     [closeSidebar, hostedWorkflows, isDesktopLayout, mode, setMode],
   );
 
+  const compactWorkflows = useMemo(
+    () => [
+      ...hostedWorkflows.map((option) => ({
+        key: `hosted:${option.slug}`,
+        label: option.label,
+        onClick: () => void handleHostedWorkflowClick(option.slug),
+        disabled: !option.available,
+        isActive: mode === "hosted" && selectedHostedSlug === option.slug,
+        initials: getWorkflowInitials(option.label),
+      })),
+      ...workflows.map((workflow) => ({
+        key: `local:${workflow.id}`,
+        label: workflow.display_name,
+        onClick: () => void handleWorkflowClick(workflow.id),
+        disabled: workflow.active_version_id === null,
+        isActive: mode === "local" && workflow.id === selectedWorkflowId,
+        initials: getWorkflowInitials(workflow.display_name),
+      })),
+    ],
+    [
+      handleHostedWorkflowClick,
+      handleWorkflowClick,
+      hostedWorkflows,
+      mode,
+      selectedHostedSlug,
+      selectedWorkflowId,
+      workflows,
+    ],
+  );
+
   const handleOpenBuilder = useCallback(() => {
     navigate("/workflows");
     if (!isDesktopLayout) {
@@ -404,10 +454,47 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     workflows,
   ]);
 
+  const collapsedSidebarContent = useMemo(() => {
+    if (!user || error || loading || compactWorkflows.length === 0) {
+      return null;
+    }
+
+    return (
+      <ul className="chatkit-sidebar__workflow-compact-list" role="list">
+        {compactWorkflows.map((workflow) => (
+          <li key={workflow.key} className="chatkit-sidebar__workflow-compact-item">
+            <button
+              type="button"
+              className={`chatkit-sidebar__workflow-compact-button${
+                workflow.isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
+              }`}
+              onClick={workflow.onClick}
+              disabled={workflow.disabled}
+              aria-current={workflow.isActive ? "true" : undefined}
+              tabIndex={isSidebarCollapsed ? 0 : -1}
+            >
+              <span aria-hidden="true" className="chatkit-sidebar__workflow-compact-initial">
+                {workflow.initials}
+              </span>
+              <span className="visually-hidden">{workflow.label}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    );
+  }, [compactWorkflows, error, isSidebarCollapsed, loading, user]);
+
   useEffect(() => {
     setSidebarContent(sidebarContent);
+    setCollapsedSidebarContent(collapsedSidebarContent);
     return () => clearSidebarContent();
-  }, [clearSidebarContent, setSidebarContent, sidebarContent]);
+  }, [
+    clearSidebarContent,
+    collapsedSidebarContent,
+    setCollapsedSidebarContent,
+    setSidebarContent,
+    sidebarContent,
+  ]);
 
   return null;
 };

@@ -29,10 +29,13 @@ vi.mock("../../../components/AppLayout", () => ({
     openSettings: vi.fn(),
     isDesktopLayout: true,
     isSidebarOpen: true,
+    isSidebarCollapsed: false,
   }),
   useSidebarPortal: () => ({
     setSidebarContent: vi.fn(),
     clearSidebarContent: vi.fn(),
+    setCollapsedSidebarContent: vi.fn(),
+    clearCollapsedSidebarContent: vi.fn(),
   }),
   AppLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));

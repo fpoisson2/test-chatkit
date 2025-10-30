@@ -215,7 +215,7 @@ button {
   width: 100%;
   background: var(--main-background);
   --chatkit-sidebar-width: min(320px, 85vw);
-  --chatkit-sidebar-collapsed-width: clamp(68px, 12vw, 96px);
+  --chatkit-sidebar-collapsed-width: clamp(48px, 9vw, 64px);
   overflow: hidden;
 }
 
@@ -770,6 +770,76 @@ button {
   }
 }
 
+.chatkit-sidebar__workflow-compact-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.chatkit-sidebar__workflow-compact-item {
+  margin: 0;
+}
+
+.chatkit-sidebar__workflow-compact-button {
+  width: clamp(40px, 4vw, 48px);
+  height: clamp(40px, 4vw, 48px);
+  border-radius: 999px;
+  border: 1px solid var(--sidebar-border);
+  background: color-mix(in srgb, var(--sidebar-background) 88%, transparent);
+  color: var(--text-color);
+  font-weight: 700;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease,
+    transform 0.2s ease;
+  cursor: pointer;
+}
+
+.chatkit-sidebar__workflow-compact-button:not([disabled]):hover,
+.chatkit-sidebar__workflow-compact-button:not([disabled]):focus-visible {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--primary-hover);
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+.chatkit-sidebar__workflow-compact-button:not([disabled]):focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 2px;
+}
+
+.chatkit-sidebar__workflow-compact-button--active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: #fff;
+}
+
+.chatkit-sidebar__workflow-compact-button--active:not([disabled]):hover,
+.chatkit-sidebar__workflow-compact-button--active:not([disabled]):focus-visible {
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
+  color: #fff;
+}
+
+.chatkit-sidebar__workflow-compact-button[disabled] {
+  cursor: not-allowed;
+  opacity: 0.55;
+  background: color-mix(in srgb, var(--sidebar-background) 75%, transparent);
+  border-color: color-mix(in srgb, var(--sidebar-border) 80%, transparent);
+  color: var(--text-muted);
+}
+
+.chatkit-sidebar__workflow-compact-initial {
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+}
+
 .chatkit-sidebar__workflow-actions {
   position: absolute;
   top: 0;
@@ -1135,6 +1205,19 @@ button {
 
 .chatkit-sidebar__dynamic {
   flex-shrink: 0;
+}
+
+.chatkit-sidebar__collapsed-preview {
+  display: none;
+  width: 100%;
+}
+
+.chatkit-sidebar__collapsed-preview--visible {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
 }
 
 .chatkit-sidebar__list {
