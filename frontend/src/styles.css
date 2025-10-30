@@ -619,6 +619,7 @@ button {
   cursor: pointer;
   text-align: center;
   transition: background-color 0.2s ease, color 0.2s ease;
+  width: 100%;
 }
 
 .chatkit-sidebar__section-button:hover,
@@ -631,6 +632,12 @@ button {
 .chatkit-sidebar__section-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__section-button {
+  display: block;
+  margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
+  padding-inline: var(--chatkit-sidebar-content-padding-x);
 }
 
 .chatkit-sidebar__workflow-list {
