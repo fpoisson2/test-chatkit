@@ -177,14 +177,14 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                 # Tronquer si trop long
                 audio_data = audio_data[:expected_size]
 
-            # Copier dans le frame (PJSUA attend une liste, pas bytes)
-            frame.buf = list(audio_data)
+            # Copier dans le frame (utiliser bytearray pour compatibilité PJSUA)
+            frame.buf = bytearray(audio_data)
             frame.size = len(audio_data)
             frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
         except queue.Empty:
             # Pas d'audio disponible, envoyer du silence
-            silence = [0] * (self.samples_per_frame * 2)
+            silence = bytearray(self.samples_per_frame * 2)
             frame.buf = silence
             frame.size = len(silence)
             frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
