@@ -309,6 +309,10 @@ class TelephonyVoiceBridge:
         async def forward_audio() -> None:
             nonlocal inbound_audio_bytes
             packet_count = 0
+            audio_buffer = bytearray()
+            # At 24kHz PCM16: 100ms = 24000 samples/sec * 0.1 sec * 2 bytes/sample = 4800 bytes
+            MIN_COMMIT_SIZE = 4800  # 100ms minimum required by OpenAI
+
             try:
                 async for packet in rtp_stream:
                     packet_count += 1
@@ -317,13 +321,24 @@ class TelephonyVoiceBridge:
                         continue
                     inbound_audio_bytes += len(pcm)
 
-                    # Send audio continuously with commit=True so semantic_vad can detect speech!
-                    # commit=False would just buffer without VAD analysis
-                    await session.send_audio(pcm, commit=True)
+                    # Buffer audio until we have at least 100ms to commit
+                    audio_buffer.extend(pcm)
+
+                    # When we have enough audio, send and commit it
+                    if len(audio_buffer) >= MIN_COMMIT_SIZE:
+                        chunk = bytes(audio_buffer)
+                        audio_buffer.clear()
+                        # Send with commit=True so semantic_vad can analyze it
+                        await session.send_audio(chunk, commit=True)
 
                     if not should_continue():
                         logger.info("forward_audio: arrêt demandé par should_continue()")
                         break
+
+                # Send any remaining buffered audio at the end
+                if audio_buffer:
+                    await session.send_audio(bytes(audio_buffer), commit=True)
+
                 logger.info("forward_audio: fin de la boucle RTP stream (paquets reçus: %d)", packet_count)
             finally:
                 logger.debug("Fin du flux audio RTP, attente de la fermeture de session")
