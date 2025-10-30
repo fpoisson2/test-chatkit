@@ -188,6 +188,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
     return getDesktopLayoutPreference();
   });
+  const keepSidebarOpenOnNavigationRef = useRef(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
@@ -271,10 +272,31 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
   const handleApplicationNavigate = useCallback(
     (application: ApplicationDescriptor) => {
+      if (!isDesktopLayout) {
+        const targetPath = application.path;
+        const isAlreadyOnTarget =
+          (targetPath === "/" && location.pathname === "/") ||
+          (targetPath !== "/" &&
+            (location.pathname === targetPath || location.pathname.startsWith(`${targetPath}/`)));
+
+        if (!isAlreadyOnTarget) {
+          keepSidebarOpenOnNavigationRef.current = true;
+        }
+      }
+
       navigate(application.path);
     },
-    [navigate],
+    [isDesktopLayout, location.pathname, navigate],
   );
+
+  useEffect(() => {
+    if (!keepSidebarOpenOnNavigationRef.current) {
+      return;
+    }
+
+    keepSidebarOpenOnNavigationRef.current = false;
+    setIsSidebarOpen(true);
+  }, [location.pathname]);
 
   const handleOpenSettings = useCallback(
     (sectionId?: SettingsSectionId) => {
