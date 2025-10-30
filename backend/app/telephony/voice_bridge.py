@@ -348,9 +348,6 @@ class TelephonyVoiceBridge:
                                             "type": "semantic_vad",
                                             "create_response": True,
                                             "interrupt_response": True,
-                                            "threshold": 0.3,  # Plus sensible (0.0-1.0, défaut 0.5)
-                                            "prefix_padding_ms": 100,  # Moins de délai avant détection
-                                            "silence_duration_ms": 1000,  # Attendre 1 seconde de silence avant de déclarer la fin
                                         },
                                     }
                                 )
