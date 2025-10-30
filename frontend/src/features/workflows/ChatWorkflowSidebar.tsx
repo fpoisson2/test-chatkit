@@ -7,7 +7,22 @@ import { chatkitApi, workflowsApi } from "../../utils/backend";
 import type { HostedWorkflowMetadata } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
 import type { HostedFlowMode } from "../../hooks/useHostedFlow";
-import { getWorkflowInitials } from "./utils";
+import {
+  getWorkflowInitials,
+  readStoredWorkflowSelection,
+  updateStoredWorkflowSelection,
+  writeStoredWorkflowSelection,
+} from "./utils";
+
+type WorkflowSidebarCache = {
+  workflows: WorkflowSummary[];
+  hostedWorkflows: HostedWorkflowMetadata[];
+  selectedWorkflowId: number | null;
+  selectedHostedSlug: string | null;
+  mode: HostedFlowMode;
+};
+
+let workflowSidebarCache: WorkflowSidebarCache | null = null;
 
 const isApiError = (error: unknown): error is { status?: number; message?: string } =>
   Boolean(error) && typeof error === "object" && "status" in error;
@@ -39,11 +54,20 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
   const { token, user } = useAuth();
   const isAdmin = Boolean(user?.is_admin);
-  const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(null);
-  const [hostedWorkflows, setHostedWorkflows] = useState<HostedWorkflowMetadata[]>([]);
-  const [selectedHostedSlug, setSelectedHostedSlug] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const cachedState = useMemo(() => (token ? workflowSidebarCache : null), [token]);
+  const [workflows, setWorkflows] = useState<WorkflowSummary[]>(
+    () => cachedState?.workflows ?? [],
+  );
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(
+    () => cachedState?.selectedWorkflowId ?? null,
+  );
+  const [hostedWorkflows, setHostedWorkflows] = useState<HostedWorkflowMetadata[]>(
+    () => cachedState?.hostedWorkflows ?? [],
+  );
+  const [selectedHostedSlug, setSelectedHostedSlug] = useState<string | null>(
+    () => cachedState?.selectedHostedSlug ?? null,
+  );
+  const [loading, setLoading] = useState(() => !cachedState);
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
   const hostedInitialAnnouncedRef = useRef(false);
@@ -55,6 +79,8 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
   const loadWorkflows = useCallback(async () => {
     if (!token) {
+      workflowSidebarCache = null;
+      writeStoredWorkflowSelection(null);
       setWorkflows([]);
       setHostedWorkflows([]);
       setSelectedHostedSlug(null);
@@ -65,13 +91,16 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       if (mode !== "local") {
         setMode("local");
       }
-      const selection: WorkflowActivation = { kind: "local", workflow: null };
-      onWorkflowActivatedRef.current(selection, { reason: "initial" });
+      onWorkflowActivatedRef.current({ kind: "local", workflow: null }, { reason: "initial" });
       return;
     }
 
-    setLoading(true);
+    const hasExistingData = workflows.length > 0 || hostedWorkflows.length > 0;
+    if (!hasExistingData) {
+      setLoading(true);
+    }
     setError(null);
+
     try {
       const workflowsPromise = isAdmin
         ? workflowsApi.list(token)
@@ -89,31 +118,86 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         });
 
       const [items, hosted] = await Promise.all([workflowsPromise, hostedPromise]);
-      setWorkflows(items);
       const hostedList = Array.isArray(hosted) ? hosted : [];
-      setHostedWorkflows(hostedList);
-      setSelectedHostedSlug((current) => {
-        if (!hostedList.length) {
-          return null;
-        }
-        if (current && hostedList.some((entry) => entry.slug === current)) {
-          return current;
-        }
-        const preferred = hostedList.find((entry) => entry.available) ?? hostedList[0];
-        return preferred?.slug ?? null;
-      });
-      const active =
+
+      const storedSelection = readStoredWorkflowSelection();
+      const defaultLocal =
         items.find((workflow) => workflow.is_chatkit_default && workflow.active_version_id !== null) ??
         items.find((workflow) => workflow.active_version_id !== null) ??
         null;
-      setSelectedWorkflowId(active?.id ?? null);
 
-      const selection: WorkflowActivation = { kind: "local", workflow: active ?? null };
-      if (mode === "local") {
-        onWorkflowActivatedRef.current(selection, { reason: "initial" });
-      } else if (mode === "hosted" && hostedList.length === 0) {
-        setMode("local");
-        onWorkflowActivatedRef.current(selection, { reason: "initial" });
+      let resolvedLocalWorkflow: WorkflowSummary | null = defaultLocal;
+      if (storedSelection?.localWorkflowId != null) {
+        const matchingLocal = items.find((workflow) => workflow.id === storedSelection.localWorkflowId);
+        if (matchingLocal && matchingLocal.active_version_id !== null) {
+          resolvedLocalWorkflow = matchingLocal;
+        }
+      }
+
+      let resolvedHostedSlug: string | null = null;
+      if (storedSelection?.hostedSlug) {
+        const matchingHosted = hostedList.find((entry) => entry.slug === storedSelection.hostedSlug);
+        if (matchingHosted) {
+          resolvedHostedSlug = matchingHosted.slug;
+        }
+      }
+
+      const fallbackHosted =
+        hostedList.find((entry) => entry.available) ?? hostedList[0] ?? null;
+      if (!resolvedHostedSlug && fallbackHosted) {
+        resolvedHostedSlug = fallbackHosted.slug;
+      }
+
+      let resolvedMode: HostedFlowMode = mode;
+      if (storedSelection) {
+        if (storedSelection.mode === "hosted" && resolvedHostedSlug) {
+          resolvedMode = "hosted";
+        } else if (storedSelection.mode === "local" && resolvedLocalWorkflow) {
+          resolvedMode = "local";
+        }
+      }
+
+      if (resolvedMode === "hosted" && !resolvedHostedSlug) {
+        resolvedMode = "local";
+      }
+
+      if (resolvedMode === "local" && !resolvedLocalWorkflow) {
+        resolvedLocalWorkflow = defaultLocal;
+      }
+
+      const resolvedLocalId = resolvedLocalWorkflow?.id ?? null;
+
+      setWorkflows(items);
+      setHostedWorkflows(hostedList);
+      setSelectedHostedSlug(resolvedHostedSlug ?? null);
+      setSelectedWorkflowId(resolvedLocalId);
+
+      if (resolvedMode !== mode) {
+        setMode(resolvedMode);
+      }
+
+      hostedInitialAnnouncedRef.current = false;
+
+      updateStoredWorkflowSelection((previous) => {
+        const preservedHostedSlug =
+          resolvedHostedSlug ??
+          (previous?.hostedSlug &&
+          hostedList.some((entry) => entry.slug === previous.hostedSlug)
+            ? previous.hostedSlug
+            : null);
+
+        return {
+          mode: resolvedMode,
+          localWorkflowId: resolvedLocalId,
+          hostedSlug: preservedHostedSlug,
+        };
+      });
+
+      if (resolvedMode === "local") {
+        onWorkflowActivatedRef.current(
+          { kind: "local", workflow: resolvedLocalWorkflow ?? null },
+          { reason: "initial" },
+        );
       }
     } catch (err) {
       let message = err instanceof Error ? err.message : "Impossible de charger les workflows.";
@@ -133,7 +217,14 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     } finally {
       setLoading(false);
     }
-  }, [isAdmin, mode, setMode, token]);
+  }, [
+    hostedWorkflows.length,
+    isAdmin,
+    mode,
+    setMode,
+    token,
+    workflows.length,
+  ]);
 
   useEffect(() => {
     void loadWorkflows();
@@ -210,6 +301,11 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           );
         });
         setSelectedWorkflowId(updated.id);
+        updateStoredWorkflowSelection((previous) => ({
+          mode: "local",
+          localWorkflowId: updated.id,
+          hostedSlug: previous?.hostedSlug ?? null,
+        }));
         if (mode !== "local") {
           setMode("local");
         }
@@ -258,6 +354,11 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       if (mode !== "hosted") {
         setMode("hosted");
       }
+      updateStoredWorkflowSelection((previous) => ({
+        mode: "hosted",
+        localWorkflowId: previous?.localWorkflowId ?? selectedWorkflowId ?? null,
+        hostedSlug: option.slug,
+      }));
       onWorkflowActivatedRef.current(
         { kind: "hosted", slug: option.slug, option },
         { reason: "user" },
@@ -266,7 +367,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         closeSidebar();
       }
     },
-    [closeSidebar, hostedWorkflows, isDesktopLayout, mode, setMode],
+    [closeSidebar, hostedWorkflows, isDesktopLayout, mode, selectedWorkflowId, setMode],
   );
 
   const compactWorkflows = useMemo(
@@ -298,6 +399,21 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       workflows,
     ],
   );
+
+  useEffect(() => {
+    if (!token) {
+      workflowSidebarCache = null;
+      return;
+    }
+
+    workflowSidebarCache = {
+      workflows,
+      hostedWorkflows,
+      selectedWorkflowId,
+      selectedHostedSlug,
+      mode,
+    };
+  }, [hostedWorkflows, mode, selectedHostedSlug, selectedWorkflowId, token, workflows]);
 
   const handleOpenBuilder = useCallback(() => {
     navigate("/workflows");
