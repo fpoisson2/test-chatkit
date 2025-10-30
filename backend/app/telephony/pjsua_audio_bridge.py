@@ -141,15 +141,19 @@ class PJSUAAudioBridge:
                 self.PJSUA_SAMPLE_RATE,
                 None,  # No state - each chunk is independent
             )
-            logger.debug("✅ Resamplé à %d bytes @ 8kHz, envoi vers PJSUA", len(audio_8khz))
+            logger.debug("✅ Resamplé à %d bytes @ 8kHz", len(audio_8khz))
         except audioop.error as e:
             logger.warning("Resampling error (24kHz→8kHz): %s", e)
             return
 
-        # Send to PJSUA
+        # Send to PJSUA in chunks of 320 bytes (20ms @ 8kHz, 16-bit, mono)
+        # PJSUA expects 160 samples/frame × 2 bytes/sample = 320 bytes
+        chunk_size = 320
         try:
-            self._adapter.send_audio_to_call(self._call, audio_8khz)
-            logger.debug("📤 Audio envoyé vers PJSUA queue")
+            for i in range(0, len(audio_8khz), chunk_size):
+                chunk = audio_8khz[i:i + chunk_size]
+                self._adapter.send_audio_to_call(self._call, chunk)
+                logger.debug("📤 Chunk %d bytes envoyé vers PJSUA queue", len(chunk))
         except Exception as e:
             logger.warning("Failed to send audio to PJSUA: %s", e)
 
