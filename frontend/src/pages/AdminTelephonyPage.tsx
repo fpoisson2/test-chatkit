@@ -7,6 +7,15 @@ import { isUnauthorizedError } from "../utils/backend";
 
 // ========== Types ==========
 
+interface GlobalSipSettings {
+  sip_trunk_uri: string | null;
+  sip_trunk_username: string | null;
+  sip_trunk_password: string | null;
+  sip_contact_host: string | null;
+  sip_contact_port: number | null;
+  sip_contact_transport: string | null;
+}
+
 interface SipAccount {
   id: number;
   label: string;
@@ -50,8 +59,6 @@ interface TelephonyRouteForm {
   workflow_id: string;
 }
 
-type TelephonyTab = "accounts" | "routes" | "settings";
-
 // ========== Helper Functions ==========
 
 const emptySipAccountForm = (): SipAccountForm => ({
@@ -78,14 +85,14 @@ export const AdminTelephonyPage = () => {
   const { token, logout } = useAuth();
   const { t } = useI18n();
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState<TelephonyTab>("accounts");
+  // Global SIP Settings state
+  const [globalSettings, setGlobalSettings] = useState<GlobalSipSettings | null>(null);
+  const [globalSettingsLoading, setGlobalSettingsLoading] = useState(true);
 
   // SIP Accounts state
   const [accounts, setAccounts] = useState<SipAccount[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [accountError, setAccountError] = useState<string | null>(null);
-  const [accountSuccess, setAccountSuccess] = useState<string | null>(null);
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [accountFormData, setAccountFormData] = useState<SipAccountForm>(emptySipAccountForm());
@@ -95,11 +102,47 @@ export const AdminTelephonyPage = () => {
   const [routes, setRoutes] = useState<TelephonyRoute[]>([]);
   const [routesLoading, setRoutesLoading] = useState(true);
   const [routeError, setRouteError] = useState<string | null>(null);
-  const [routeSuccess, setRouteSuccess] = useState<string | null>(null);
   const [isCreatingRoute, setIsCreatingRoute] = useState(false);
   const [editingRouteId, setEditingRouteId] = useState<number | null>(null);
   const [routeFormData, setRouteFormData] = useState<TelephonyRouteForm>(emptyTelephonyRouteForm());
   const [isSavingRoute, setSavingRoute] = useState(false);
+
+  // ========== Global SIP Settings Functions ==========
+
+  const loadGlobalSettings = useCallback(async () => {
+    if (!token) return;
+
+    setGlobalSettingsLoading(true);
+
+    try {
+      const response = await fetch("/api/admin/app-settings", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!response.ok) {
+        if (isUnauthorizedError(response)) {
+          logout();
+          return;
+        }
+        throw new Error("Erreur lors du chargement des paramètres globaux");
+      }
+
+      const data = await response.json();
+      setGlobalSettings({
+        sip_trunk_uri: data.sip_trunk_uri,
+        sip_trunk_username: data.sip_trunk_username,
+        sip_trunk_password: data.sip_trunk_password,
+        sip_contact_host: data.sip_contact_host,
+        sip_contact_port: data.sip_contact_port,
+        sip_contact_transport: data.sip_contact_transport,
+      });
+    } catch (err) {
+      console.error("Failed to load global SIP settings:", err);
+      setGlobalSettings(null);
+    } finally {
+      setGlobalSettingsLoading(false);
+    }
+  }, [token, logout]);
 
   // ========== SIP Accounts Functions ==========
 
@@ -111,9 +154,7 @@ export const AdminTelephonyPage = () => {
 
     try {
       const response = await fetch("/api/admin/sip-accounts", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) {
@@ -138,7 +179,6 @@ export const AdminTelephonyPage = () => {
     setEditingAccountId(null);
     setAccountFormData(emptySipAccountForm());
     setAccountError(null);
-    setAccountSuccess(null);
   };
 
   const handleEditAccount = (account: SipAccount) => {
@@ -156,7 +196,6 @@ export const AdminTelephonyPage = () => {
       is_active: account.is_active,
     });
     setAccountError(null);
-    setAccountSuccess(null);
   };
 
   const handleCancelAccount = () => {
@@ -164,7 +203,6 @@ export const AdminTelephonyPage = () => {
     setEditingAccountId(null);
     setAccountFormData(emptySipAccountForm());
     setAccountError(null);
-    setAccountSuccess(null);
   };
 
   const handleSubmitAccount = async (e: FormEvent) => {
@@ -173,7 +211,6 @@ export const AdminTelephonyPage = () => {
 
     setSavingAccount(true);
     setAccountError(null);
-    setAccountSuccess(null);
 
     try {
       const payload: any = {
@@ -211,7 +248,6 @@ export const AdminTelephonyPage = () => {
         throw new Error(errorData.detail || "Erreur lors de l'enregistrement");
       }
 
-      setAccountSuccess(isCreatingAccount ? "Compte SIP créé avec succès" : "Compte SIP mis à jour avec succès");
       handleCancelAccount();
       await loadAccounts();
     } catch (err) {
@@ -226,14 +262,11 @@ export const AdminTelephonyPage = () => {
     if (!confirm("Êtes-vous sûr de vouloir supprimer ce compte SIP ?")) return;
 
     setAccountError(null);
-    setAccountSuccess(null);
 
     try {
       const response = await fetch(`/api/admin/sip-accounts/${id}`, {
         method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) {
@@ -244,7 +277,6 @@ export const AdminTelephonyPage = () => {
         throw new Error("Erreur lors de la suppression du compte SIP");
       }
 
-      setAccountSuccess("Compte SIP supprimé avec succès");
       await loadAccounts();
     } catch (err) {
       setAccountError(err instanceof Error ? err.message : "Erreur inconnue");
@@ -261,9 +293,7 @@ export const AdminTelephonyPage = () => {
 
     try {
       const response = await fetch("/api/admin/telephony-routes", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) {
@@ -288,7 +318,6 @@ export const AdminTelephonyPage = () => {
     setEditingRouteId(null);
     setRouteFormData(emptyTelephonyRouteForm());
     setRouteError(null);
-    setRouteSuccess(null);
   };
 
   const handleEditRoute = (route: TelephonyRoute) => {
@@ -300,7 +329,6 @@ export const AdminTelephonyPage = () => {
       workflow_id: route.workflow_id?.toString() || "",
     });
     setRouteError(null);
-    setRouteSuccess(null);
   };
 
   const handleCancelRoute = () => {
@@ -308,7 +336,6 @@ export const AdminTelephonyPage = () => {
     setEditingRouteId(null);
     setRouteFormData(emptyTelephonyRouteForm());
     setRouteError(null);
-    setRouteSuccess(null);
   };
 
   const handleSubmitRoute = async (e: FormEvent) => {
@@ -317,7 +344,6 @@ export const AdminTelephonyPage = () => {
 
     setSavingRoute(true);
     setRouteError(null);
-    setRouteSuccess(null);
 
     try {
       const payload: any = {
@@ -350,7 +376,6 @@ export const AdminTelephonyPage = () => {
         throw new Error(errorData.detail || "Erreur lors de l'enregistrement");
       }
 
-      setRouteSuccess(isCreatingRoute ? "Route créée avec succès" : "Route mise à jour avec succès");
       handleCancelRoute();
       await loadRoutes();
     } catch (err) {
@@ -365,14 +390,11 @@ export const AdminTelephonyPage = () => {
     if (!confirm("Êtes-vous sûr de vouloir supprimer cette route ?")) return;
 
     setRouteError(null);
-    setRouteSuccess(null);
 
     try {
       const response = await fetch(`/api/admin/telephony-routes/${id}`, {
         method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!response.ok) {
@@ -383,7 +405,6 @@ export const AdminTelephonyPage = () => {
         throw new Error("Erreur lors de la suppression de la route");
       }
 
-      setRouteSuccess("Route supprimée avec succès");
       await loadRoutes();
     } catch (err) {
       setRouteError(err instanceof Error ? err.message : "Erreur inconnue");
@@ -393,333 +414,272 @@ export const AdminTelephonyPage = () => {
   // ========== Effects ==========
 
   useEffect(() => {
-    if (activeTab === "accounts") {
-      loadAccounts();
-    } else if (activeTab === "routes") {
-      loadRoutes();
-    }
-  }, [activeTab, loadAccounts, loadRoutes]);
+    loadGlobalSettings();
+    loadAccounts();
+    loadRoutes();
+  }, [loadGlobalSettings, loadAccounts, loadRoutes]);
 
   // ========== Render ==========
 
   return (
-    <ManagementPageLayout>
-      <AdminTabs />
-      <div className="px-6 py-8">
-        <div className="max-w-6xl mx-auto">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">
-            Téléphonie
-          </h1>
+    <>
+      <AdminTabs activeTab="telephony" />
+      <ManagementPageLayout>
+        {accountError && <div className="alert alert--danger">{accountError}</div>}
+        {routeError && <div className="alert alert--danger">{routeError}</div>}
 
-          {/* Sub-tabs */}
-          <div className="mb-6 border-b border-gray-200 dark:border-gray-700">
-            <nav className="-mb-px flex space-x-8">
-              <button
-                onClick={() => setActiveTab("accounts")}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === "accounts"
-                    ? "border-blue-500 text-blue-600 dark:text-blue-400"
-                    : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
-                }`}
-              >
-                Comptes SIP
-              </button>
-              <button
-                onClick={() => setActiveTab("routes")}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === "routes"
-                    ? "border-blue-500 text-blue-600 dark:text-blue-400"
-                    : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
-                }`}
-              >
-                Routes
-              </button>
-              <button
-                onClick={() => setActiveTab("settings")}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === "settings"
-                    ? "border-blue-500 text-blue-600 dark:text-blue-400"
-                    : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"
-                }`}
-              >
-                Paramètres globaux
-              </button>
-            </nav>
-          </div>
-
-          {/* SIP Accounts Tab */}
-          {activeTab === "accounts" && (
-            <div>
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  Gestion des comptes SIP
+        <div className="admin-grid">
+          {/* ========== SIP Accounts Section ========== */}
+          {(isCreatingAccount || editingAccountId) ? (
+            <section className="admin-card">
+              <div>
+                <h2 className="admin-card__title">
+                  {isCreatingAccount ? "Nouveau compte SIP" : "Modifier le compte SIP"}
                 </h2>
-                {!isCreatingAccount && !editingAccountId && (
-                  <button
-                    onClick={handleCreateAccount}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    + Ajouter un compte
+                <p className="admin-card__subtitle">
+                  Configurez les paramètres de connexion au trunk SIP.
+                </p>
+              </div>
+              <form className="admin-form" onSubmit={handleSubmitAccount}>
+                <div className="admin-form__row">
+                  <label className="label">
+                    Label *
+                    <input
+                      className="input"
+                      type="text"
+                      required
+                      value={accountFormData.label}
+                      onChange={(e) => setAccountFormData({ ...accountFormData, label: e.target.value })}
+                      placeholder="Trunk Principal"
+                      disabled={isSavingAccount}
+                    />
+                  </label>
+
+                  <label className="label">
+                    URI SIP *
+                    <input
+                      className="input"
+                      type="text"
+                      required
+                      value={accountFormData.trunk_uri}
+                      onChange={(e) => setAccountFormData({ ...accountFormData, trunk_uri: e.target.value })}
+                      placeholder="sip:username@provider.com"
+                      pattern="sips?:.+@.+"
+                      title="Format: sip:username@provider.com ou sips:username@provider.com"
+                      disabled={isSavingAccount}
+                    />
+                    <p className="admin-form__hint">
+                      Format requis : <code>sip:username@provider.com</code> ou <code>sips:username@provider.com</code>
+                    </p>
+                  </label>
+                </div>
+
+                <div className="admin-form__row">
+                  <label className="label">
+                    Nom d'utilisateur
+                    <input
+                      className="input"
+                      type="text"
+                      value={accountFormData.username}
+                      onChange={(e) => setAccountFormData({ ...accountFormData, username: e.target.value })}
+                      disabled={isSavingAccount}
+                    />
+                  </label>
+
+                  <label className="label">
+                    Mot de passe
+                    <input
+                      className="input"
+                      type="password"
+                      value={accountFormData.password}
+                      onChange={(e) => setAccountFormData({ ...accountFormData, password: e.target.value })}
+                      placeholder={editingAccountId ? "(laisser vide pour ne pas changer)" : ""}
+                      disabled={isSavingAccount}
+                    />
+                  </label>
+                </div>
+
+                <div className="admin-form__divider" />
+
+                <div className="admin-form__row">
+                  <label className="label">
+                    Hôte de contact
+                    <input
+                      className="input"
+                      type="text"
+                      value={accountFormData.contact_host}
+                      onChange={(e) => setAccountFormData({ ...accountFormData, contact_host: e.target.value })}
+                      placeholder="votre-ip-publique.com"
+                      disabled={isSavingAccount}
+                    />
+                  </label>
+
+                  <label className="label">
+                    Port de contact
+                    <input
+                      className="input"
+                      type="number"
+                      value={accountFormData.contact_port}
+                      onChange={(e) => setAccountFormData({ ...accountFormData, contact_port: e.target.value })}
+                      placeholder="5060"
+                      min="1"
+                      max="65535"
+                      disabled={isSavingAccount}
+                    />
+                  </label>
+
+                  <label className="label">
+                    Transport
+                    <select
+                      className="input"
+                      value={accountFormData.contact_transport}
+                      onChange={(e) => setAccountFormData({ ...accountFormData, contact_transport: e.target.value })}
+                      disabled={isSavingAccount}
+                    >
+                      <option value="udp">UDP</option>
+                      <option value="tcp">TCP</option>
+                      <option value="tls">TLS</option>
+                    </select>
+                  </label>
+                </div>
+
+                <div className="admin-form__divider" />
+
+                <label className="checkbox-field">
+                  <input
+                    type="checkbox"
+                    checked={accountFormData.is_default}
+                    onChange={(e) => setAccountFormData({ ...accountFormData, is_default: e.target.checked })}
+                    disabled={isSavingAccount}
+                  />
+                  Compte par défaut
+                </label>
+
+                <label className="checkbox-field">
+                  <input
+                    type="checkbox"
+                    checked={accountFormData.is_active}
+                    onChange={(e) => setAccountFormData({ ...accountFormData, is_active: e.target.checked })}
+                    disabled={isSavingAccount}
+                  />
+                  Actif
+                </label>
+
+                <div className="admin-form__actions">
+                  <button className="button" type="submit" disabled={isSavingAccount}>
+                    {isSavingAccount ? "Enregistrement..." : isCreatingAccount ? "Créer le compte" : "Enregistrer"}
                   </button>
-                )}
+                  <button
+                    className="button button--secondary"
+                    type="button"
+                    onClick={handleCancelAccount}
+                    disabled={isSavingAccount}
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </form>
+            </section>
+          ) : (
+            <section className="admin-card">
+              <div>
+                <h2 className="admin-card__title">Comptes SIP</h2>
+                <p className="admin-card__subtitle">
+                  Gérez les comptes SIP pour connecter ChatKit à vos trunks téléphoniques.
+                  Chaque compte peut être associé à des workflows spécifiques.
+                </p>
               </div>
 
-              {accountError && (
-                <div className="mb-4 p-4 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 rounded-lg">
-                  {accountError}
-                </div>
-              )}
-
-              {accountSuccess && (
-                <div className="mb-4 p-4 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 rounded-lg">
-                  {accountSuccess}
-                </div>
-              )}
-
-              {(isCreatingAccount || editingAccountId) && (
-                <div className="mb-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
-                  <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
-                    {isCreatingAccount ? "Nouveau compte SIP" : "Modifier le compte SIP"}
-                  </h3>
-                  <form onSubmit={handleSubmitAccount} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Label *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={accountFormData.label}
-                          onChange={(e) => setAccountFormData({ ...accountFormData, label: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                          placeholder="Trunk Principal"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          URI SIP *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={accountFormData.trunk_uri}
-                          onChange={(e) => setAccountFormData({ ...accountFormData, trunk_uri: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                          placeholder="sip:username@provider.com"
-                          pattern="sips?:.+@.+"
-                          title="Format: sip:username@provider.com ou sips:username@provider.com"
-                        />
-                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                          Format: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">sip:username@provider.com</code> ou <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">sips:username@provider.com</code>
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Nom d'utilisateur
-                        </label>
-                        <input
-                          type="text"
-                          value={accountFormData.username}
-                          onChange={(e) => setAccountFormData({ ...accountFormData, username: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Mot de passe
-                        </label>
-                        <input
-                          type="password"
-                          value={accountFormData.password}
-                          onChange={(e) => setAccountFormData({ ...accountFormData, password: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                          placeholder={editingAccountId ? "(laisser vide pour ne pas changer)" : ""}
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Hôte de contact
-                        </label>
-                        <input
-                          type="text"
-                          value={accountFormData.contact_host}
-                          onChange={(e) => setAccountFormData({ ...accountFormData, contact_host: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                          placeholder="votre-ip-publique.com"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Port de contact
-                        </label>
-                        <input
-                          type="number"
-                          value={accountFormData.contact_port}
-                          onChange={(e) => setAccountFormData({ ...accountFormData, contact_port: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                          placeholder="5060"
-                          min="1"
-                          max="65535"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Transport
-                        </label>
-                        <select
-                          value={accountFormData.contact_transport}
-                          onChange={(e) => setAccountFormData({ ...accountFormData, contact_transport: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                        >
-                          <option value="udp">UDP</option>
-                          <option value="tcp">TCP</option>
-                          <option value="tls">TLS</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-6">
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={accountFormData.is_default}
-                          onChange={(e) => setAccountFormData({ ...accountFormData, is_default: e.target.checked })}
-                          className="w-4 h-4 text-blue-600"
-                        />
-                        <span className="text-sm text-gray-700 dark:text-gray-300">
-                          Compte par défaut
-                        </span>
-                      </label>
-
-                      <label className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={accountFormData.is_active}
-                          onChange={(e) => setAccountFormData({ ...accountFormData, is_active: e.target.checked })}
-                          className="w-4 h-4 text-blue-600"
-                        />
-                        <span className="text-sm text-gray-700 dark:text-gray-300">
-                          Actif
-                        </span>
-                      </label>
-                    </div>
-
-                    <div className="flex gap-3">
-                      <button
-                        type="submit"
-                        disabled={isSavingAccount}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isSavingAccount ? "Enregistrement..." : isCreatingAccount ? "Créer" : "Enregistrer"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleCancelAccount}
-                        disabled={isSavingAccount}
-                        className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-                      >
-                        Annuler
-                      </button>
-                    </div>
-                  </form>
+              {/* Global SIP Settings Info Box */}
+              {!globalSettingsLoading && globalSettings && (
+                globalSettings.sip_trunk_uri ||
+                globalSettings.sip_contact_host ||
+                globalSettings.sip_contact_port
+              ) && (
+                <div style={{
+                  padding: "12px 16px",
+                  marginBottom: "16px",
+                  backgroundColor: "#f8f9fa",
+                  border: "1px solid #dee2e6",
+                  borderRadius: "4px",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                    <strong style={{ fontSize: "14px" }}>⚙️ Paramètres SIP globaux (legacy)</strong>
+                    <a href="/admin/settings" className="button button--small button--secondary" style={{ marginLeft: "auto" }}>
+                      Modifier
+                    </a>
+                  </div>
+                  <p style={{ fontSize: "13px", color: "#6c757d", marginBottom: "8px" }}>
+                    Ces paramètres sont utilisés par défaut si aucun compte SIP n'est configuré ci-dessous.
+                    Les comptes SIP configurés ont la priorité.
+                  </p>
+                  <div style={{ fontSize: "13px", fontFamily: "monospace", lineHeight: "1.6" }}>
+                    {globalSettings.sip_trunk_uri && (
+                      <div><strong>URI:</strong> {globalSettings.sip_trunk_uri}</div>
+                    )}
+                    {globalSettings.sip_trunk_username && (
+                      <div><strong>Utilisateur:</strong> {globalSettings.sip_trunk_username}</div>
+                    )}
+                    {globalSettings.sip_contact_host && (
+                      <div><strong>Contact Host:</strong> {globalSettings.sip_contact_host}</div>
+                    )}
+                    {globalSettings.sip_contact_port && (
+                      <div><strong>Contact Port:</strong> {globalSettings.sip_contact_port}</div>
+                    )}
+                    {globalSettings.sip_contact_transport && (
+                      <div><strong>Transport:</strong> {globalSettings.sip_contact_transport.toUpperCase()}</div>
+                    )}
+                  </div>
                 </div>
               )}
 
               {accountsLoading ? (
-                <div className="text-center py-12 text-gray-600 dark:text-gray-400">
-                  Chargement...
-                </div>
+                <p className="admin-card__subtitle">Chargement des comptes SIP…</p>
               ) : accounts.length === 0 ? (
-                <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-                  <p className="text-gray-600 dark:text-gray-400 mb-4">
-                    Aucun compte SIP configuré
-                  </p>
-                  {!isCreatingAccount && (
-                    <button
-                      onClick={handleCreateAccount}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      Ajouter le premier compte
-                    </button>
-                  )}
-                </div>
+                <p className="admin-card__subtitle">Aucun compte SIP configuré.</p>
               ) : (
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 dark:bg-gray-900">
+                <div className="admin-table-wrapper">
+                  <table className="admin-table admin-table--stack">
+                    <thead>
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          Label
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          URI
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          Utilisateur
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          Transport
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          Statut
-                        </th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          Actions
-                        </th>
+                        <th>Label</th>
+                        <th>URI</th>
+                        <th>Utilisateur</th>
+                        <th>Transport</th>
+                        <th>Statut</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    <tbody>
                       {accounts.map((account) => (
-                        <tr key={account.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-gray-900 dark:text-white">
-                                {account.label}
+                        <tr key={account.id}>
+                          <td>
+                            <strong>{account.label}</strong>
+                            {account.is_default && (
+                              <span className="badge badge--primary" style={{ marginLeft: "8px" }}>
+                                Défaut
                               </span>
-                              {account.is_default && (
-                                <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 rounded">
-                                  Défaut
-                                </span>
-                              )}
-                            </div>
+                            )}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                            {account.trunk_uri}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                            {account.username || "-"}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                            {account.contact_transport?.toUpperCase() || "UDP"}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span
-                              className={`px-2 py-1 text-xs rounded ${
-                                account.is_active
-                                  ? "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200"
-                                  : "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300"
-                              }`}
-                            >
+                          <td><code>{account.trunk_uri}</code></td>
+                          <td>{account.username || "—"}</td>
+                          <td>{account.contact_transport?.toUpperCase() || "UDP"}</td>
+                          <td>
+                            <span className={`badge ${account.is_active ? "badge--success" : "badge--secondary"}`}>
                               {account.is_active ? "Actif" : "Inactif"}
                             </span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <td>
                             <button
+                              className="button button--small button--secondary"
                               onClick={() => handleEditAccount(account)}
-                              className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 mr-4"
                             >
                               Modifier
                             </button>
+                            {" "}
                             <button
+                              className="button button--small button--danger"
                               onClick={() => handleDeleteAccount(account.id)}
-                              className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
                             >
                               Supprimer
                             </button>
@@ -730,166 +690,123 @@ export const AdminTelephonyPage = () => {
                   </table>
                 </div>
               )}
-            </div>
+              <div className="admin-form__actions">
+                <button className="button" onClick={handleCreateAccount}>
+                  + Ajouter un compte SIP
+                </button>
+              </div>
+            </section>
           )}
 
-          {/* Telephony Routes Tab */}
-          {activeTab === "routes" && (
-            <div>
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  Gestion des routes de téléphonie
+          {/* ========== Telephony Routes Section ========== */}
+          {(isCreatingRoute || editingRouteId) ? (
+            <section className="admin-card">
+              <div>
+                <h2 className="admin-card__title">
+                  {isCreatingRoute ? "Nouvelle route" : "Modifier la route"}
                 </h2>
-                {!isCreatingRoute && !editingRouteId && (
-                  <button
-                    onClick={handleCreateRoute}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                  >
-                    + Ajouter une route
-                  </button>
-                )}
+                <p className="admin-card__subtitle">
+                  Associez un numéro de téléphone à un workflow spécifique.
+                </p>
               </div>
+              <form className="admin-form" onSubmit={handleSubmitRoute}>
+                <div className="admin-form__row">
+                  <label className="label">
+                    Numéro de téléphone *
+                    <input
+                      className="input"
+                      type="text"
+                      required
+                      value={routeFormData.phone_number}
+                      onChange={(e) => setRouteFormData({ ...routeFormData, phone_number: e.target.value })}
+                      placeholder="+33123456789"
+                      disabled={isSavingRoute}
+                    />
+                    <p className="admin-form__hint">
+                      Format recommandé : E.164 (+33123456789)
+                    </p>
+                  </label>
 
-              {routeError && (
-                <div className="mb-4 p-4 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 rounded-lg">
-                  {routeError}
+                  <label className="label">
+                    Workflow Slug
+                    <input
+                      className="input"
+                      type="text"
+                      value={routeFormData.workflow_slug}
+                      onChange={(e) => setRouteFormData({ ...routeFormData, workflow_slug: e.target.value })}
+                      placeholder="my-workflow"
+                      disabled={isSavingRoute}
+                    />
+                  </label>
+
+                  <label className="label">
+                    Workflow ID
+                    <input
+                      className="input"
+                      type="number"
+                      value={routeFormData.workflow_id}
+                      onChange={(e) => setRouteFormData({ ...routeFormData, workflow_id: e.target.value })}
+                      placeholder="1"
+                      disabled={isSavingRoute}
+                    />
+                  </label>
                 </div>
-              )}
 
-              {routeSuccess && (
-                <div className="mb-4 p-4 bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 rounded-lg">
-                  {routeSuccess}
+                <div className="admin-form__actions">
+                  <button className="button" type="submit" disabled={isSavingRoute}>
+                    {isSavingRoute ? "Enregistrement..." : isCreatingRoute ? "Créer la route" : "Enregistrer"}
+                  </button>
+                  <button
+                    className="button button--secondary"
+                    type="button"
+                    onClick={handleCancelRoute}
+                    disabled={isSavingRoute}
+                  >
+                    Annuler
+                  </button>
                 </div>
-              )}
-
-              {(isCreatingRoute || editingRouteId) && (
-                <div className="mb-6 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
-                  <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
-                    {isCreatingRoute ? "Nouvelle route" : "Modifier la route"}
-                  </h3>
-                  <form onSubmit={handleSubmitRoute} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Numéro de téléphone *
-                        </label>
-                        <input
-                          type="text"
-                          required
-                          value={routeFormData.phone_number}
-                          onChange={(e) => setRouteFormData({ ...routeFormData, phone_number: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                          placeholder="+33123456789"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Workflow Slug
-                        </label>
-                        <input
-                          type="text"
-                          value={routeFormData.workflow_slug}
-                          onChange={(e) => setRouteFormData({ ...routeFormData, workflow_slug: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                          placeholder="my-workflow"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                          Workflow ID
-                        </label>
-                        <input
-                          type="number"
-                          value={routeFormData.workflow_id}
-                          onChange={(e) => setRouteFormData({ ...routeFormData, workflow_id: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                          placeholder="1"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex gap-3">
-                      <button
-                        type="submit"
-                        disabled={isSavingRoute}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isSavingRoute ? "Enregistrement..." : isCreatingRoute ? "Créer" : "Enregistrer"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleCancelRoute}
-                        disabled={isSavingRoute}
-                        className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
-                      >
-                        Annuler
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              )}
-
+              </form>
+            </section>
+          ) : (
+            <section className="admin-card">
+              <div>
+                <h2 className="admin-card__title">Routes de téléphonie</h2>
+                <p className="admin-card__subtitle">
+                  Configurez le routage des appels entrants vers les workflows appropriés.
+                </p>
+              </div>
               {routesLoading ? (
-                <div className="text-center py-12 text-gray-600 dark:text-gray-400">
-                  Chargement...
-                </div>
+                <p className="admin-card__subtitle">Chargement des routes…</p>
               ) : routes.length === 0 ? (
-                <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
-                  <p className="text-gray-600 dark:text-gray-400 mb-4">
-                    Aucune route configurée
-                  </p>
-                  {!isCreatingRoute && (
-                    <button
-                      onClick={handleCreateRoute}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                    >
-                      Ajouter la première route
-                    </button>
-                  )}
-                </div>
+                <p className="admin-card__subtitle">Aucune route configurée.</p>
               ) : (
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 dark:bg-gray-900">
+                <div className="admin-table-wrapper">
+                  <table className="admin-table admin-table--stack">
+                    <thead>
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          Numéro
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          Workflow Slug
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          Workflow ID
-                        </th>
-                        <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                          Actions
-                        </th>
+                        <th>Numéro</th>
+                        <th>Workflow Slug</th>
+                        <th>Workflow ID</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    <tbody>
                       {routes.map((route) => (
-                        <tr key={route.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-white">
-                            {route.phone_number}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                            {route.workflow_slug || "-"}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 dark:text-gray-400">
-                            {route.workflow_id || "-"}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <tr key={route.id}>
+                          <td><strong>{route.phone_number}</strong></td>
+                          <td>{route.workflow_slug || "—"}</td>
+                          <td>{route.workflow_id || "—"}</td>
+                          <td>
                             <button
+                              className="button button--small button--secondary"
                               onClick={() => handleEditRoute(route)}
-                              className="text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 mr-4"
                             >
                               Modifier
                             </button>
+                            {" "}
                             <button
+                              className="button button--small button--danger"
                               onClick={() => handleDeleteRoute(route.id)}
-                              className="text-red-600 dark:text-red-400 hover:text-red-900 dark:hover:text-red-300"
                             >
                               Supprimer
                             </button>
@@ -900,34 +817,15 @@ export const AdminTelephonyPage = () => {
                   </table>
                 </div>
               )}
-            </div>
-          )}
-
-          {/* Settings Tab */}
-          {activeTab === "settings" && (
-            <div>
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-                  Paramètres SIP Globaux
-                </h2>
-                <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  Les paramètres SIP globaux (compatibilité avec l'ancien système) sont configurés dans les paramètres d'application.
-                </p>
-                <p className="text-gray-600 dark:text-gray-400 mb-6">
-                  <strong>Note :</strong> Si vous avez des comptes SIP configurés dans l'onglet "Comptes SIP", ils seront utilisés en priorité.
-                  Les paramètres globaux ne sont utilisés que si aucun compte SIP n'est configuré en base de données.
-                </p>
-                <a
-                  href="/admin/settings"
-                  className="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Ouvrir les paramètres d'application
-                </a>
+              <div className="admin-form__actions">
+                <button className="button" onClick={handleCreateRoute}>
+                  + Ajouter une route
+                </button>
               </div>
-            </div>
+            </section>
           )}
         </div>
-      </div>
-    </ManagementPageLayout>
+      </ManagementPageLayout>
+    </>
   );
 };
