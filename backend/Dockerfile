@@ -49,12 +49,13 @@ RUN cd /tmp \
     && cd pjsip-apps/src/swig/python \
     && make \
     && make install \
+    # Mettre à jour le cache des bibliothèques partagées
+    && ldconfig \
     # Vérifier l'installation
     && python3 -c "import pjsua2; print('PJSUA2 version:', pjsua2.Endpoint.libVersion().full)" \
     # Cleanup
     && cd /tmp \
-    && rm -rf /tmp/pjproject-${PJSIP_VERSION} /tmp/${PJSIP_VERSION}.tar.gz \
-    && ldconfig
+    && rm -rf /tmp/pjproject-${PJSIP_VERSION} /tmp/${PJSIP_VERSION}.tar.gz
 
 # Pré-installe les dépendances Python (dont la version locale d'openai-chatkit)
 COPY chatkit-python /tmp/chatkit-python
