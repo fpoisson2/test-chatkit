@@ -326,7 +326,10 @@ class TelephonyVoiceBridge:
             nonlocal inbound_audio_bytes
             packet_count = 0
             bytes_sent = 0
-            turn_detection_enabled = False
+            # Si on utilise une session pré-initialisée, turn_detection est déjà activé
+            turn_detection_enabled = preinit_session is not None
+            if turn_detection_enabled:
+                logger.info("Turn detection déjà activé (session pré-initialisée)")
             # At 24kHz PCM16: 100ms = 24000 samples/sec * 0.1 sec * 2 bytes/sample = 4800 bytes
             MIN_AUDIO_BEFORE_VAD = 4800  # 100ms minimum before enabling VAD
 

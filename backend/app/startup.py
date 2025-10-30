@@ -1192,6 +1192,14 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                                             "modalities": ["audio"],
                                             "input_audio_format": "pcm16",
                                             "output_audio_format": "pcm16",
+                                            # Activer turn_detection dès le début pour éviter
+                                            # l'erreur "cannot update voice if assistant audio present"
+                                            "input_audio_transcription": {"model": "whisper-1"},
+                                            "turn_detection": {
+                                                "type": "semantic_vad",
+                                                "create_response": True,
+                                                "interrupt_response": True,
+                                            },
                                         }
                                         if voice_name:
                                             model_settings["voice"] = voice_name
