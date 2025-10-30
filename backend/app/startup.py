@@ -519,6 +519,13 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 provider_slug=voice_provider_slug,
                 tools=voice_tools or None,
                 handoffs=voice_handoffs or None,
+                realtime={
+                    "turn_detection": {
+                        "type": "semantic_vad",
+                        "create_response": True,
+                        "interrupt_response": True,
+                    }
+                },
                 metadata=metadata_extras or None,
             )
             secret_payload = session_handle.payload

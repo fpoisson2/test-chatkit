@@ -251,7 +251,6 @@ class TelephonyVoiceBridge:
         async def forward_audio() -> None:
             nonlocal inbound_audio_bytes
             packet_count = 0
-            energy_threshold = 500  # Threshold for detecting speech energy
             try:
                 async for packet in rtp_stream:
                     packet_count += 1
@@ -260,13 +259,8 @@ class TelephonyVoiceBridge:
                         continue
                     inbound_audio_bytes += len(pcm)
 
-                    # Calculate audio energy to detect speech
-                    audio_array = audioop.rms(pcm, 2)  # RMS energy
-                    has_speech = audio_array > energy_threshold
-
-                    # Send audio with commit when we detect speech energy
-                    # This helps semantic_vad detect speech faster
-                    await session.send_audio(pcm, commit=has_speech)
+                    # Send audio continuously - semantic_vad in client_secret handles detection
+                    await session.send_audio(pcm, commit=False)
 
                     if not should_continue():
                         logger.info("forward_audio: arrêt demandé par should_continue()")
@@ -396,15 +390,11 @@ class TelephonyVoiceBridge:
 
         stats: VoiceBridgeStats | None = None
         try:
-            # Build model config for the SDK runner (like the browser does)
+            # Build model config for the SDK runner
+            # Note: turn_detection is already configured in client_secret (semantic_vad)
             model_settings: dict[str, Any] = {
                 "model_name": model,
-                "turn_detection": {
-                    "type": "semantic_vad",
-                    "create_response": True,
-                    "interrupt_response": True,
-                },
-                "modalities": ["audio"],  # For telephony, audio only (not ['text', 'audio'])
+                "modalities": ["audio"],  # For telephony, audio only
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
             }
