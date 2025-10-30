@@ -169,6 +169,7 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         try:
             # Récupérer l'audio de la queue (non-bloquant)
             audio_data = self._outgoing_audio_queue.get_nowait()
+            logger.debug("📢 onFrameRequested: audio trouvé dans queue (%d bytes)", len(audio_data))
 
             # S'assurer que la taille est correcte
             if len(audio_data) < expected_size:
@@ -187,7 +188,7 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
             frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
         except queue.Empty:
-            # Pas d'audio disponible, envoyer du silence
+            # Pas d'audio disponible, envoyer du silence (normal si agent ne parle pas)
             frame.buf.clear()
             for _ in range(expected_size):
                 frame.buf.append(0)

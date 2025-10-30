@@ -125,6 +125,8 @@ class PJSUAAudioBridge:
         if len(audio_24khz) == 0:
             return
 
+        logger.debug("🔊 send_to_peer reçu %d bytes @ 24kHz depuis OpenAI", len(audio_24khz))
+
         # Resample 24kHz → 8kHz
         try:
             # Note: ratecv maintains state for better quality, but for send_to_peer
@@ -138,6 +140,7 @@ class PJSUAAudioBridge:
                 self.PJSUA_SAMPLE_RATE,
                 None,  # No state - each chunk is independent
             )
+            logger.debug("✅ Resamplé à %d bytes @ 8kHz, envoi vers PJSUA", len(audio_8khz))
         except audioop.error as e:
             logger.warning("Resampling error (24kHz→8kHz): %s", e)
             return
@@ -145,6 +148,7 @@ class PJSUAAudioBridge:
         # Send to PJSUA
         try:
             self._adapter.send_audio_to_call(self._call, audio_8khz)
+            logger.debug("📤 Audio envoyé vers PJSUA queue")
         except Exception as e:
             logger.warning("Failed to send audio to PJSUA: %s", e)
 
