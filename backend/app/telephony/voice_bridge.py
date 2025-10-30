@@ -834,6 +834,7 @@ class TelephonyVoiceBridge:
             model_settings: dict[str, Any] = {
                 "model_name": model,
                 "modalities": ["audio"],  # For telephony, audio only (tool calls work internally)
+                "output_modalities": ["audio"],  # CRITICAL: Explicitly force audio-only output
                 "input_audio_format": "pcm16",
                 "output_audio_format": "pcm16",
             }
