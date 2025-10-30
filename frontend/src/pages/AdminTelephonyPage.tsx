@@ -508,7 +508,12 @@ export const AdminTelephonyPage = () => {
                           onChange={(e) => setAccountFormData({ ...accountFormData, trunk_uri: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                           placeholder="sip:username@provider.com"
+                          pattern="sips?:.+@.+"
+                          title="Format: sip:username@provider.com ou sips:username@provider.com"
                         />
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          Format: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">sip:username@provider.com</code> ou <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">sips:username@provider.com</code>
+                        </p>
                       </div>
 
                       <div>

@@ -412,6 +412,30 @@ class SipAccountBase(BaseModel):
     is_default: bool = False
     is_active: bool = True
 
+    @field_validator("trunk_uri")
+    @classmethod
+    def validate_sip_uri(cls, v: str) -> str:
+        """Valide que l'URI SIP est au bon format."""
+        v = v.strip()
+        if not v:
+            raise ValueError("L'URI SIP ne peut pas être vide")
+
+        # Vérifier que l'URI commence par sip: ou sips:
+        if not (v.lower().startswith("sip:") or v.lower().startswith("sips:")):
+            raise ValueError(
+                "L'URI SIP doit commencer par 'sip:' ou 'sips:'. "
+                f"Exemple: sip:username@provider.com (reçu: {v})"
+            )
+
+        # Vérifier qu'il y a un @ dans l'URI (format user@host requis)
+        if "@" not in v:
+            raise ValueError(
+                "L'URI SIP doit contenir un '@'. "
+                f"Format attendu: sip:username@provider.com (reçu: {v})"
+            )
+
+        return v
+
 
 class SipAccountCreateRequest(SipAccountBase):
     pass
