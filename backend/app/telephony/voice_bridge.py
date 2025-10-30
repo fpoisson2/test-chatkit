@@ -388,6 +388,9 @@ class TelephonyVoiceBridge:
         tool_call_detected = False  # Set to True when we detect a tool call
         last_assistant_message_was_short = False  # Track if last message was likely just a preamble
 
+        # Track processed history items to avoid re-processing replays
+        processed_item_ids: set[str] = set()  # Track item IDs we've already seen
+
         async def handle_events() -> None:
             """Handle events from the SDK session (replaces raw WebSocket handling)."""
             nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short
