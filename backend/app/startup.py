@@ -526,6 +526,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
         voice_handoffs = metadata.get("voice_handoffs") or []
         speak_first = metadata.get("speak_first", False)
         preinit_response_create_sent = metadata.get("preinit_response_create_sent", False)
+        preinit_session = metadata.get("preinit_session")
         rtp_stream_factory = metadata.get("rtp_stream_factory")
         send_audio = metadata.get("send_audio")
 
@@ -799,6 +800,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 handoffs=voice_handoffs,
                 speak_first=speak_first,
                 preinit_response_create_sent=preinit_response_create_sent,
+                preinit_session=preinit_session,
             )
         except Exception as exc:  # pragma: no cover - dépend réseau
             logger.exception(
@@ -1128,24 +1130,50 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                                 session_handle.session_id,
                             )
 
-                            # Si speak_first est activé, envoyer response.create MAINTENANT
-                            # pour pré-générer l'audio pendant la sonnerie
+                            # Si speak_first est activé, démarrer la session websocket et pré-générer l'audio
                             if speak_first:
                                 try:
                                     runner = session_handle.runner
                                     if runner:
                                         logger.info(
-                                            "🎯 Pré-génération de l'audio pendant la sonnerie "
+                                            "🎯 Démarrage complet de la session pour pré-génération audio "
                                             "(speak_first activé, Call-ID=%s)",
                                             session.call_id,
                                         )
-                                        # Importer les classes nécessaires pour envoyer l'événement
+
+                                        # Importer les model_config nécessaires
+                                        from agents import ModelSettings
+                                        from agents.extensions.realtime import RealtimeModelSettings
+
+                                        # Créer la config du modèle (copié de voice_bridge.py)
+                                        model_settings = ModelSettings(
+                                            model=voice_model,
+                                            instructions=instructions,
+                                        )
+                                        if voice_name:
+                                            model_settings.voice = voice_name
+
+                                        realtime_settings = RealtimeModelSettings(
+                                            turn_detection=None,  # Désactivé initialement
+                                        )
+                                        model_config = {"model": model_settings, "realtime": realtime_settings}
+
+                                        # Démarrer la session complète (établit la connexion websocket)
+                                        preinit_session = await runner.run(model_config=model_config)
+                                        await preinit_session.__aenter__()
+                                        telephony_meta["preinit_session"] = preinit_session
+
+                                        logger.info(
+                                            "✅ Session websocket connectée pendant la sonnerie (Call-ID=%s)",
+                                            session.call_id,
+                                        )
+
+                                        # Maintenant on peut envoyer response.create
                                         from agents.realtime.model_inputs import (
                                             RealtimeModelRawClientMessage,
                                             RealtimeModelSendRawMessage,
                                         )
-                                        # Envoyer response.create via le runner
-                                        await runner._model.send_event(
+                                        await preinit_session._model.send_event(
                                             RealtimeModelSendRawMessage(
                                                 message=RealtimeModelRawClientMessage(
                                                     type="response.create",
@@ -1155,13 +1183,13 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                                         )
                                         telephony_meta["preinit_response_create_sent"] = True
                                         logger.info(
-                                            "✅ response.create pré-envoyé - audio en cours de génération "
+                                            "✅ response.create pré-envoyé - audio en génération "
                                             "(Call-ID=%s)",
                                             session.call_id,
                                         )
                                 except Exception as exc:
                                     logger.warning(
-                                        "Impossible de pré-envoyer response.create (Call-ID=%s): %s",
+                                        "Impossible de pré-générer l'audio (Call-ID=%s): %s",
                                         session.call_id,
                                         exc,
                                     )

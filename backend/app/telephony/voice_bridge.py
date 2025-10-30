@@ -276,6 +276,7 @@ class TelephonyVoiceBridge:
         handoffs: list[Any] | None = None,
         speak_first: bool = False,
         preinit_response_create_sent: bool = False,
+        preinit_session: Any | None = None,
     ) -> VoiceBridgeStats:
         """Démarre le pont voix jusqu'à la fin de session ou erreur."""
 
@@ -716,10 +717,15 @@ class TelephonyVoiceBridge:
             }
 
             # Create session using the SDK runner (this is what enables tool calls!)
-            logger.info("Démarrage session SDK avec runner")
-            session = await runner.run(model_config=model_config)
-            await session.__aenter__()
-            logger.info("Session SDK démarrée avec succès")
+            # OU utiliser la session pré-connectée si elle existe
+            if preinit_session is not None:
+                logger.info("Utilisation de la session pré-connectée (déjà démarrée pendant la sonnerie)")
+                session = preinit_session
+            else:
+                logger.info("Démarrage session SDK avec runner")
+                session = await runner.run(model_config=model_config)
+                await session.__aenter__()
+                logger.info("Session SDK démarrée avec succès")
 
             # Si speak_first est activé, envoyer un événement response.create pour que l'assistant parle en premier
             # SAUF si response.create a déjà été envoyé pendant la pré-initialisation
