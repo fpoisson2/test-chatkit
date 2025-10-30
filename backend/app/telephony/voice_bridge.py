@@ -301,10 +301,11 @@ class TelephonyVoiceBridge:
                         if raw_data and isinstance(raw_data, dict):
                             event_subtype = raw_data.get('type', '')
 
-                            # User started speaking - INTERRUPT THE AGENT!
+                            # User started speaking - INTERRUPT THE AGENT AND BLOCK AUDIO!
                             if event_subtype == 'input_audio_buffer.speech_started':
                                 if agent_is_speaking:
-                                    logger.info("🛑 Utilisateur parle - interruption de l'agent!")
+                                    logger.info("🛑 Utilisateur parle - interruption + blocage audio!")
+                                    block_audio_send = True  # Stop sending audio immediately
                                     try:
                                         await session.interrupt()
                                     except Exception as e:
@@ -317,10 +318,11 @@ class TelephonyVoiceBridge:
                                 user_speech_detected = False
                                 continue
 
-                    # Track when agent starts speaking
+                    # Track when agent starts speaking - unblock audio
                     if isinstance(event, RealtimeAgentStartEvent):
                         agent_is_speaking = True
-                        logger.debug("Agent commence à parler")
+                        block_audio_send = False  # Allow audio again for new response
+                        logger.debug("Agent commence à parler - déblocage audio")
                         continue
 
                     # Track when agent stops speaking
@@ -334,13 +336,15 @@ class TelephonyVoiceBridge:
                         logger.info("Audio interrompu confirmé par OpenAI")
                         continue
 
-                    # Handle audio events (agent speaking) - send to phone
+                    # Handle audio events (agent speaking) - only send if not blocked
                     if isinstance(event, RealtimeAudio):
-                        audio_event = event.audio
-                        pcm_data = audio_event.data
-                        if pcm_data:
-                            outbound_audio_bytes += len(pcm_data)
-                            await send_to_peer(pcm_data)
+                        if not block_audio_send:
+                            audio_event = event.audio
+                            pcm_data = audio_event.data
+                            if pcm_data:
+                                outbound_audio_bytes += len(pcm_data)
+                                await send_to_peer(pcm_data)
+                        # else: drop audio, user is interrupting
                         continue
 
                     # Handle audio end
