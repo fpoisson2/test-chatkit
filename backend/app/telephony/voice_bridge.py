@@ -469,6 +469,11 @@ class TelephonyVoiceBridge:
                         if error_code == 'response_cancel_not_active':
                             logger.debug("response.cancel ignoré (pas de réponse active): %s", event.error)
                             continue
+                        # Ignore "conversation_already_has_active_response" - happens when turn_detection
+                        # and manual response.create race (expected behavior)
+                        if error_code == 'conversation_already_has_active_response':
+                            logger.debug("response.create ignoré (réponse déjà active - turn_detection l'a créée): %s", event.error)
+                            continue
                         # For other errors, fail the session
                         error = VoiceBridgeError(str(event.error))
                         logger.error("Erreur Realtime API: %s", event.error)
