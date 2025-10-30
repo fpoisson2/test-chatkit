@@ -228,11 +228,16 @@ class RtpServer:
 
     async def packet_stream(self) -> AsyncIterator[RtpPacket]:
         """Itérateur asynchrone qui yield les paquets RTP reçus."""
+        packet_count = 0
         while self._running:
             packet = await self._packet_queue.get()
             if packet is None:  # Signal d'arrêt
+                logger.debug("Signal d'arrêt reçu dans packet_stream (paquets traités: %d)", packet_count)
                 break
+            packet_count += 1
             yield packet
+        if not self._running:
+            logger.debug("packet_stream terminé: _running est False (paquets traités: %d)", packet_count)
 
     @property
     def local_port(self) -> int:

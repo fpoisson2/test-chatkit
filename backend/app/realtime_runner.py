@@ -15,6 +15,7 @@ import httpx
 from agents.handoffs import Handoff
 from agents.mcp import MCPServer, MCPServerSse, MCPServerStreamableHttp
 from agents.realtime.agent import RealtimeAgent
+from agents.realtime.config import RealtimeRunConfig
 from agents.realtime.runner import RealtimeRunner
 from agents.tool import (
     CodeInterpreterTool,
@@ -68,6 +69,7 @@ def _normalize_realtime_tools_payload(
         "authorization",
         "name",
         "description",
+        "require_approval",  # Allow require_approval for telephony (set to 'never')
     }
 
     for index, entry in enumerate(source_entries):
@@ -162,6 +164,10 @@ def _normalize_realtime_tools_payload(
                     if key in mcp_allowed_keys
                 }
                 tool_entry["type"] = "mcp"
+
+                # For telephony, force require_approval to 'never' to allow automatic tool use
+                if "require_approval" not in tool_entry:
+                    tool_entry["require_approval"] = "never"
 
                 if (
                     mcp_server_configs is not None
@@ -658,13 +664,24 @@ class RealtimeVoiceSessionOrchestrator:
             if handoffs:
                 session_payload["handoffs"] = list(handoffs)
 
+            # For OpenAI, turn_detection must be in session.audio.input.turn_detection
+            if isinstance(realtime, Mapping) and "turn_detection" in realtime:
+                if "audio" not in session_payload:
+                    session_payload["audio"] = {}
+                if "input" not in session_payload["audio"]:
+                    session_payload["audio"]["input"] = {}
+                session_payload["audio"]["input"]["turn_detection"] = dict(realtime["turn_detection"])
+
             payload: dict[str, Any] = {"session": session_payload}
 
             if isinstance(realtime, Mapping):
-                if realtime_mode == "session":
-                    session_payload["realtime"] = dict(realtime)
-                elif realtime_mode == "top_level":
-                    payload["realtime"] = dict(realtime)
+                # Only add non-turn_detection settings to realtime
+                realtime_filtered = {k: v for k, v in realtime.items() if k != "turn_detection"}
+                if realtime_filtered:
+                    if realtime_mode == "session":
+                        session_payload["realtime"] = realtime_filtered
+                    elif realtime_mode == "top_level":
+                        payload["realtime"] = realtime_filtered
 
             if voice_value:
                 if voice_mode == "session":
@@ -974,7 +991,11 @@ class RealtimeVoiceSessionOrchestrator:
                 handoffs=agent_handoffs,
                 mcp_servers=agent_mcp_servers,
             )
-            runner = RealtimeRunner(agent)
+            # Configure runner with async tool calls for better responsiveness
+            runner_config: RealtimeRunConfig = {
+                "async_tool_calls": True,  # Enable asynchronous tool execution
+            }
+            runner = RealtimeRunner(agent, config=runner_config)
 
             payload = await self._request_client_secret(
                 user_id=user_id,
@@ -1016,6 +1037,8 @@ class RealtimeVoiceSessionOrchestrator:
                     metadata_payload["tools"] = json_safe_tools
             if agent_tools:
                 metadata_payload["sdk_tools"] = list(agent_tools)
+            if agent_handoffs:
+                metadata_payload["sdk_handoffs"] = list(agent_handoffs)
             if mcp_server_configs:
                 metadata_payload["mcp_servers"] = [
                     {

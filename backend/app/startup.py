@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import datetime
 import logging
 import os
@@ -108,6 +109,31 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 "Impossible de lier on_message au dialogue SIP", exc_info=True
             )
 
+        # Enregistrer un handler pour BYE pour éviter le KeyError
+        async def _on_bye(dialog_arg: Any, message: Any) -> None:
+            call_id_header = getattr(message, 'headers', {}).get('Call-ID', ['unknown'])
+            call_id = call_id_header[0] if isinstance(call_id_header, list) and call_id_header else str(call_id_header)
+            logger.info("BYE reçu pour Call-ID=%s", call_id)
+            await handler.handle_request(message, dialog=dialog_arg)
+
+        try:
+            # Enregistrer le callback BYE dans dialog.callbacks
+            if hasattr(dialog, 'callbacks'):
+                if 'BYE' not in dialog.callbacks:
+                    dialog.callbacks['BYE'] = []
+                # Format attendu par aiosip: dict avec 'callable', 'args', 'kwargs', et 'wait'
+                dialog.callbacks['BYE'].append({
+                    'callable': _on_bye,
+                    'args': (),
+                    'kwargs': {},
+                    'wait': True
+                })
+                logger.debug("Callback BYE enregistré pour le dialogue")
+        except Exception:  # pragma: no cover - dépend des implémentations aiosip
+            logger.debug(
+                "Impossible d'enregistrer le callback BYE", exc_info=True
+            )
+
         # `aiosip.Dialog.register` est dédié aux messages SIP REGISTER.
         # Utiliser ce mécanisme ici provoquerait une corruption des en-têtes
         # (les journaux d'erreur le montrent), d'où la limitation au hook
@@ -175,21 +201,18 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         dialog = session.dialog
         if dialog is None:
             return
-        for method_name in ("bye", "close"):
-            method = getattr(dialog, method_name, None)
-            if not callable(method):
-                continue
+        # Only try bye() - close() has a bug in aiosip that causes "Dialog is not subscriptable"
+        method = getattr(dialog, "bye", None)
+        if callable(method):
             try:
                 outcome = method()
                 if asyncio.iscoroutine(outcome):
                     await outcome
             except Exception:  # pragma: no cover - best effort
                 logger.debug(
-                    "Fermeture du dialogue SIP via %s échouée",
-                    method_name,
+                    "Fermeture du dialogue SIP via bye échouée",
                     exc_info=True,
                 )
-            break
 
     async def _clear_voice_state(session: SipCallSession) -> None:
         metadata = session.metadata.get("telephony")
@@ -365,6 +388,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 "voice_prompt_variables": dict(context.voice_prompt_variables),
                 "voice_provider_id": context.voice_provider_id,
                 "voice_provider_slug": context.voice_provider_slug,
+                "voice_tools": copy.deepcopy(context.voice_tools),
+                "voice_handoffs": copy.deepcopy(context.voice_handoffs),
                 "voice_session_active": False,
             }
         )
@@ -399,6 +424,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
         voice_name = metadata.get("voice_voice")
         voice_provider_id = metadata.get("voice_provider_id")
         voice_provider_slug = metadata.get("voice_provider_slug")
+        voice_tools = metadata.get("voice_tools") or []
+        voice_handoffs = metadata.get("voice_handoffs") or []
         rtp_stream_factory = metadata.get("rtp_stream_factory")
         send_audio = metadata.get("send_audio")
 
@@ -490,6 +517,12 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 voice=voice_name,
                 provider_id=voice_provider_id,
                 provider_slug=voice_provider_slug,
+                tools=voice_tools or None,
+                handoffs=voice_handoffs or None,
+                realtime={
+                    # Start WITHOUT turn_detection to avoid "buffer too small" error
+                    # It will be enabled dynamically after sending initial audio
+                },
                 metadata=metadata_extras or None,
             )
             secret_payload = session_handle.payload
@@ -536,6 +569,11 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                         },
                     },
                 }
+                session_payload = voice_event["event"]["session"]
+                if voice_tools:
+                    session_payload["tools"] = copy.deepcopy(voice_tools)
+                if voice_handoffs:
+                    session_payload["handoffs"] = copy.deepcopy(voice_handoffs)
 
                 # Créer le wait_state
                 wait_state = {
@@ -576,6 +614,7 @@ def _build_invite_handler(manager: SIPRegistrationManager):
 
         try:
             stats = await voice_bridge.run(
+                runner=session_handle.runner,
                 client_secret=client_secret,
                 model=voice_model,
                 instructions=instructions,
@@ -583,6 +622,8 @@ def _build_invite_handler(manager: SIPRegistrationManager):
                 rtp_stream=rtp_stream_factory(),
                 send_to_peer=send_audio,
                 api_base=realtime_api_base,
+                tools=voice_tools,
+                handoffs=voice_handoffs,
             )
         except Exception as exc:  # pragma: no cover - dépend réseau
             logger.exception(

@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable, Mapping
+import copy
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -72,6 +73,8 @@ class TelephonyCallContext(TelephonyRouteResolution):
     voice_prompt_variables: dict[str, str]
     voice_provider_id: str | None = None
     voice_provider_slug: str | None = None
+    voice_tools: list[Any] = field(default_factory=list)
+    voice_handoffs: list[Any] = field(default_factory=list)
 
 
 class TelephonyRouteSelectionError(RuntimeError):
@@ -110,7 +113,7 @@ def _merge_voice_settings(
     overrides: TelephonyRouteOverrides | None,
     settings: Settings,
     workflow_definition: WorkflowDefinition | None = None,
-) -> tuple[str, str, str, dict[str, str], str | None, str | None]:
+) -> tuple[str, str, str, dict[str, str], str | None, str | None, list[Any], list[Any]]:
     db: Session
     owns_session = False
     if session is None:
@@ -135,6 +138,15 @@ def _merge_voice_settings(
         )
         provider_id = getattr(voice_settings, "provider_id", None)
         provider_slug = getattr(voice_settings, "provider_slug", None)
+        tools: list[Any] = []
+        handoffs: list[Any] = []
+
+        def _copy_sequence(value: Any) -> list[Any]:
+            if isinstance(value, Sequence) and not isinstance(
+                value, (str, bytes, bytearray)
+            ):
+                return [copy.deepcopy(item) for item in value]
+            return []
 
         # Chercher le premier bloc agent vocal dans le workflow pour ses paramètres
         if workflow_definition is not None:
@@ -170,14 +182,30 @@ def _merge_voice_settings(
                             provider_id = params["model_provider"]
                         if params.get("model_provider_slug"):
                             provider_slug = params["model_provider_slug"]
+                        if "tools" in params:
+                            tools = _copy_sequence(params.get("tools"))
+                            logger.info(
+                                "Outils extraits du bloc %s : %d outils",
+                                step_slug,
+                                len(tools),
+                            )
+                        if "handoffs" in params:
+                            handoffs = _copy_sequence(params.get("handoffs"))
+                            logger.info(
+                                "Handoffs extraits du bloc %s : %d handoffs",
+                                step_slug,
+                                len(handoffs),
+                            )
                         logger.info(
                             "Paramètres voix extraits du bloc %s (kind=%s) : "
-                            "model=%s, voice=%s, provider=%s",
+                            "model=%s, voice=%s, provider=%s, tools=%d, handoffs=%d",
                             step_slug,
                             step_kind,
                             model,
                             voice,
                             provider_slug or provider_id or "<aucun>",
+                            len(tools),
+                            len(handoffs),
                         )
                     # Utiliser le premier bloc agent trouvé
                     break
@@ -199,7 +227,16 @@ def _merge_voice_settings(
         if getattr(overrides, "provider_slug", None):
             provider_slug = overrides.provider_slug
 
-    return model, instructions, voice, prompt_variables, provider_id, provider_slug
+    return (
+        model,
+        instructions,
+        voice,
+        prompt_variables,
+        provider_id,
+        provider_slug,
+        tools,
+        handoffs,
+    )
 
 
 def _match_route(
@@ -290,13 +327,20 @@ def resolve_workflow_for_phone_number(
     )
 
     # Récupérer les paramètres voix du bloc voice-agent
-    model, instructions, voice, prompt_variables, provider_id, provider_slug = (
-        _merge_voice_settings(
-            session=session,
-            overrides=None,  # Plus d'overrides, tout vient du voice-agent
-            settings=effective_settings,
-            workflow_definition=definition,
-        )
+    (
+        model,
+        instructions,
+        voice,
+        prompt_variables,
+        provider_id,
+        provider_slug,
+        tools,
+        handoffs,
+    ) = _merge_voice_settings(
+        session=session,
+        overrides=None,  # Plus d'overrides, tout vient du voice-agent
+        settings=effective_settings,
+        workflow_definition=definition,
     )
 
     logger.info(
@@ -316,6 +360,8 @@ def resolve_workflow_for_phone_number(
         voice_prompt_variables=prompt_variables,
         voice_provider_id=provider_id,
         voice_provider_slug=provider_slug,
+        voice_tools=tools,
+        voice_handoffs=handoffs,
     )
 
 

@@ -14,9 +14,81 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 from urllib.parse import quote
 
+from agents.realtime.events import (
+    RealtimeAgentEndEvent,
+    RealtimeAgentStartEvent,
+    RealtimeAudio,
+    RealtimeAudioEnd,
+    RealtimeAudioInterrupted,
+    RealtimeError,
+    RealtimeHistoryAdded,
+    RealtimeHistoryUpdated,
+    RealtimeToolEnd,
+    RealtimeToolStart,
+)
+from agents.realtime.model import RealtimePlaybackTracker, RealtimePlaybackState
+
 from ..config import Settings, get_settings
 
 logger = logging.getLogger("chatkit.telephony.voice_bridge")
+
+
+class TelephonyPlaybackTracker(RealtimePlaybackTracker):
+    """Tracks audio playback progress for telephony to enable proper interruption handling.
+
+    In telephony scenarios, audio is sent via RTP packets with delays (20ms between packets).
+    We need to tell OpenAI exactly when audio has been played so it can handle interruptions correctly.
+    """
+
+    def __init__(self, on_interrupt_callback: callable | None = None) -> None:
+        self._current_item_id: str | None = None
+        self._current_item_content_index: int | None = None
+        self._elapsed_ms: float = 0.0
+        self._audio_format: Any = None
+        self._lock = asyncio.Lock()
+        self._on_interrupt_callback = on_interrupt_callback
+
+    def on_play_bytes(self, item_id: str, item_content_index: int, audio_bytes: bytes) -> None:
+        """Called when we have actually sent audio bytes via RTP."""
+        if self._audio_format is None:
+            logger.warning("TelephonyPlaybackTracker: audio format not set yet")
+            return
+
+        # Calculate duration from bytes based on audio format
+        # PCM16 at 24kHz: 2 bytes per sample, 24000 samples per second
+        # So: bytes / 2 / 24000 * 1000 = ms
+        sample_rate = getattr(self._audio_format, 'rate', 24000)
+        bytes_per_sample = 2  # PCM16 is 16-bit = 2 bytes
+        ms = (len(audio_bytes) / bytes_per_sample / sample_rate) * 1000
+
+        self.on_play_ms(item_id, item_content_index, ms)
+
+    def on_play_ms(self, item_id: str, item_content_index: int, ms: float) -> None:
+        """Called when we have actually sent audio (measured in milliseconds)."""
+        self._current_item_id = item_id
+        self._current_item_content_index = item_content_index
+        self._elapsed_ms += ms
+
+    def on_interrupted(self) -> None:
+        """Called by OpenAI when audio playback has been interrupted."""
+        logger.info("TelephonyPlaybackTracker: playback interrupted, resetting state")
+        self._elapsed_ms = 0.0
+        # Call the callback to block audio immediately
+        if self._on_interrupt_callback:
+            self._on_interrupt_callback()
+
+    def set_audio_format(self, format: Any) -> None:
+        """Called by OpenAI to set the audio format."""
+        self._audio_format = format
+        logger.debug("TelephonyPlaybackTracker: audio format set to %s", format)
+
+    def get_state(self) -> RealtimePlaybackState:
+        """Called by OpenAI to get current playback state."""
+        return {
+            "current_item_id": self._current_item_id,
+            "current_item_content_index": self._current_item_content_index,
+            "elapsed_ms": self._elapsed_ms,
+        }
 
 
 class VoiceBridgeError(RuntimeError):
@@ -177,7 +249,6 @@ class TelephonyVoiceBridge:
         input_codec: str = "pcmu",
         target_sample_rate: int = 24_000,
         receive_timeout: float = 0.5,
-        vad_threshold: float = 500.0,
         settings: Settings | None = None,
     ) -> None:
         self._hooks = hooks
@@ -187,27 +258,12 @@ class TelephonyVoiceBridge:
         self._input_codec = input_codec.lower()
         self._target_sample_rate = target_sample_rate
         self._receive_timeout = max(0.1, receive_timeout)
-        self._vad_threshold = vad_threshold
         self._settings = settings or get_settings()
-
-    @staticmethod
-    def _calculate_audio_energy(pcm_data: bytes) -> float:
-        """Calcule l'énergie RMS de l'audio PCM16."""
-        if not pcm_data or len(pcm_data) < 2:
-            return 0.0
-
-        # Convertir bytes en samples int16
-        num_samples = len(pcm_data) // 2
-        samples = struct.unpack(f"{num_samples}h", pcm_data)
-
-        # Calculer RMS (Root Mean Square)
-        sum_squares = sum(s * s for s in samples)
-        rms = (sum_squares / num_samples) ** 0.5
-        return rms
 
     async def run(
         self,
         *,
+        runner: Any,
         client_secret: str,
         model: str,
         instructions: str,
@@ -215,17 +271,13 @@ class TelephonyVoiceBridge:
         rtp_stream: AsyncIterator[RtpPacket],
         send_to_peer: Callable[[bytes], Awaitable[None]],
         api_base: str | None = None,
+        tools: list[Any] | None = None,
+        handoffs: list[Any] | None = None,
     ) -> VoiceBridgeStats:
         """Démarre le pont voix jusqu'à la fin de session ou erreur."""
 
-        url = build_realtime_ws_url(model, api_base=api_base, settings=self._settings)
-        headers = {
-            "Authorization": f"Bearer {client_secret}",
-            # Note: "OpenAI-Beta: realtime=v1" retiré pour utiliser l'API GA
-        }
-
         logger.info(
-            "Ouverture de la session Realtime voix (modèle=%s, voix=%s)",
+            "Ouverture de la session Realtime voix avec runner (modèle=%s, voix=%s)",
             model,
             voice,
         )
@@ -235,8 +287,19 @@ class TelephonyVoiceBridge:
         outbound_audio_bytes = 0
         transcripts: list[dict[str, str]] = []
         error: Exception | None = None
-        websocket: WebSocketLike | None = None
+        session: Any | None = None
         stop_event = asyncio.Event()
+
+        # Use a list to create a mutable reference for block_audio_send
+        block_audio_send_ref = [False]
+
+        def on_playback_interrupted():
+            """Called when SDK detects audio interruption."""
+            block_audio_send_ref[0] = True
+            logger.info("🛑 Audio bloqué via playback tracker (interruption détectée par SDK)")
+
+        # Create playback tracker for proper interruption handling
+        playback_tracker = TelephonyPlaybackTracker(on_interrupt_callback=on_playback_interrupted)
 
         def should_continue() -> bool:
             if stop_event.is_set():
@@ -255,213 +318,395 @@ class TelephonyVoiceBridge:
         async def request_stop() -> None:
             stop_event.set()
 
-        async def send_json(message: Mapping[str, Any]) -> None:
-            payload = json.dumps(message)
-            await websocket.send(payload)  # type: ignore[arg-type]
-
         async def forward_audio() -> None:
-            nonlocal inbound_audio_bytes, agent_is_speaking
+            nonlocal inbound_audio_bytes
+            packet_count = 0
+            bytes_sent = 0
+            turn_detection_enabled = False
+            # At 24kHz PCM16: 100ms = 24000 samples/sec * 0.1 sec * 2 bytes/sample = 4800 bytes
+            MIN_AUDIO_BEFORE_VAD = 4800  # 100ms minimum before enabling VAD
+
             try:
                 async for packet in rtp_stream:
+                    packet_count += 1
                     pcm = self._decode_packet(packet)
                     if not pcm:
+                        logger.debug("Paquet RTP #%d: décodage vide, ignoré", packet_count)
                         continue
                     inbound_audio_bytes += len(pcm)
 
-                    # VAD local : détecter si l'utilisateur parle pendant que l'agent parle
-                    energy = self._calculate_audio_energy(pcm)
-                    if energy > self._vad_threshold and agent_is_speaking:
-                        if not audio_interrupted.is_set():
-                            logger.info(
-                                "VAD local : interruption détectée (énergie=%.1f, seuil=%.1f)",
-                                energy,
-                                self._vad_threshold
-                            )
-                            audio_interrupted.set()
+                    if packet_count == 1:
+                        logger.info("Premier paquet audio reçu: %d bytes PCM", len(pcm))
 
-                    encoded = base64.b64encode(pcm).decode("ascii")
-                    await send_json(
-                        {
-                            "type": "input_audio_buffer.append",
-                            "audio": encoded,
-                        }
-                    )
+                    # Always send audio with commit=False - let turn_detection handle commits
+                    await session.send_audio(pcm, commit=False)
+                    bytes_sent += len(pcm)
+
+                    # After sending enough audio, enable turn_detection
+                    if not turn_detection_enabled and bytes_sent >= MIN_AUDIO_BEFORE_VAD:
+                        logger.info(
+                            "Activation de turn_detection après %.1fms d'audio",
+                            bytes_sent / 2 / 24000 * 1000
+                        )
+                        try:
+                            from agents.realtime.model_inputs import RealtimeModelSendSessionUpdate
+                            await session._model.send_event(
+                                RealtimeModelSendSessionUpdate(
+                                    session_settings={
+                                        "input_audio_transcription": {
+                                            "model": "whisper-1",
+                                        },
+                                        "turn_detection": {
+                                            "type": "semantic_vad",
+                                            "create_response": True,
+                                            "interrupt_response": True,
+                                        },
+                                    }
+                                )
+                            )
+                            turn_detection_enabled = True
+                            logger.info("Turn detection (semantic_vad) activé avec succès")
+                        except Exception as e:
+                            logger.warning("Impossible d'activer turn_detection: %s", e)
+
                     if not should_continue():
+                        logger.info("forward_audio: arrêt demandé par should_continue()")
                         break
+
+                logger.info("forward_audio: fin de la boucle RTP stream (paquets reçus: %d)", packet_count)
             finally:
-                # Mode conversation : le VAD gère automatiquement le commit et la création de réponse
-                # Pas de commit manuel, l'API le fait quand speech_stopped est détecté
                 logger.debug("Fin du flux audio RTP, attente de la fermeture de session")
                 await request_stop()
 
         transcript_buffers: dict[str, list[str]] = {}
-        audio_interrupted = asyncio.Event()
         last_response_id: str | None = None
-        agent_is_speaking = False
+        agent_is_speaking = False  # Track if agent is currently speaking
+        user_speech_detected = False  # Track if we detected user speech
+        # block_audio_send is now block_audio_send_ref[0]
 
-        async def handle_realtime() -> None:
-            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking
-            while True:
-                try:
-                    raw = await asyncio.wait_for(
-                        websocket.recv(), timeout=self._receive_timeout
-                    )
-                except asyncio.TimeoutError:
+        # Track tool calls to ensure confirmations
+        tool_call_detected = False  # Set to True when we detect a tool call
+        last_assistant_message_was_short = False  # Track if last message was likely just a preamble
+
+        # Track processed history items to avoid re-processing replays
+        processed_item_ids: set[str] = set()  # Track item IDs we've already seen
+
+        async def handle_events() -> None:
+            """Handle events from the SDK session (replaces raw WebSocket handling)."""
+            nonlocal outbound_audio_bytes, error, last_response_id, agent_is_speaking, user_speech_detected, playback_tracker, tool_call_detected, last_assistant_message_was_short, processed_item_ids
+            try:
+                async for event in session:
                     if not should_continue():
                         break
-                    continue
-                except (StopAsyncIteration, EOFError):
-                    break
-                except Exception as exc:
-                    error = VoiceBridgeError("Erreur de transport WebSocket")
-                    logger.error("Erreur de transport WebSocket", exc_info=exc)
-                    break
 
-                message = self._parse_ws_message(raw)
-                if not message:
-                    if not should_continue():
+                    event_type = type(event).__name__
+
+                    # Debug: log ALL events to trace MCP tool calls
+                    if 'tool' in event_type.lower() or 'function' in event_type.lower():
+                        logger.info("🔧 Event: %s - %s", event_type, event)
+
+                    # Handle error events
+                    if isinstance(event, RealtimeError):
+                        error_code = getattr(event.error, 'code', None)
+                        # Ignore "response_cancel_not_active" - it's OK if there's no active response
+                        if error_code == 'response_cancel_not_active':
+                            logger.debug("response.cancel ignoré (pas de réponse active): %s", event.error)
+                            continue
+                        # For other errors, fail the session
+                        error = VoiceBridgeError(str(event.error))
+                        logger.error("Erreur Realtime API: %s", event.error)
                         break
-                    continue
-                message_type = str(message.get("type") or "").strip()
-                if message_type == "session.ended":
-                    break
-                if message_type == "error":
-                    description = self._extract_error_message(message)
-                    error = VoiceBridgeError(description)
-                    break
 
-                # Événements VAD et interruption
-                if message_type == "input_audio_buffer.speech_started":
-                    logger.info("Détection de parole utilisateur - interruption de l'agent")
-                    audio_interrupted.set()
-                    continue
-                if message_type == "input_audio_buffer.speech_stopped":
-                    logger.debug("Fin de parole utilisateur détectée")
-                    # Ne PAS réinitialiser le flag ici - on attend la nouvelle réponse
-                    continue
-                if message_type == "response.cancelled":
-                    logger.info("Réponse annulée par l'API")
-                    continue
-                if message_type == "audio_interrupted" or message_type == "response.audio_interrupted":
-                    logger.info("Audio interrompu par l'utilisateur")
-                    continue
+                    # Check for input_audio_buffer.speech_started in raw events
+                    # This is the KEY event for detecting user interruption!
+                    if event_type == "RealtimeRawModelEvent":
+                        # SDK structure: RealtimeRawModelEvent.data is a RealtimeModelEvent
+                        # When it's RealtimeModelRawServerEvent, the .data attribute contains the raw dict
+                        model_event = getattr(event, 'data', None)
+                        if model_event:
+                            model_event_type = getattr(model_event, 'type', None)
 
-                if message_type.endswith("audio.delta"):
-                    # Vérifier le response_id pour détecter une nouvelle réponse
-                    response_id = self._extract_response_id(message)
+                            # Check if this is a raw_server_event (contains raw OpenAI events)
+                            if model_event_type == 'raw_server_event':
+                                # Extract the raw data dictionary
+                                raw_data = getattr(model_event, 'data', None)
+                                if raw_data and isinstance(raw_data, dict):
+                                    event_subtype = raw_data.get('type', '')
 
-                    # Si c'est une nouvelle réponse (response_id différent), réinitialiser le flag
-                    if response_id and response_id != last_response_id:
-                        if audio_interrupted.is_set():
-                            logger.info(
-                                "Nouvelle réponse %s détectée - réinitialisation du flag d'interruption",
-                                response_id
-                            )
-                        audio_interrupted.clear()
-                        last_response_id = response_id
+                                    # User started speaking - INTERRUPT THE AGENT AND BLOCK AUDIO!
+                                    if event_subtype == 'input_audio_buffer.speech_started':
+                                        logger.info("🎤 Utilisateur commence à parler")
+                                        # ALWAYS block audio when user speaks, even if agent just finished
+                                        # (there might be audio packets still in the pipeline)
+                                        block_audio_send_ref[0] = True
+
+                                        # Reset tool call tracking when user speaks
+                                        # (no need for confirmation if user moved on)
+                                        if tool_call_detected:
+                                            logger.debug("Réinitialisation du tracking tool call (utilisateur parle)")
+                                            tool_call_detected = False
+                                            last_assistant_message_was_short = False
+
+                                        if agent_is_speaking:
+                                            logger.info("🛑 Interruption de l'agent (agent parlait)!")
+                                            try:
+                                                await session.interrupt()
+                                            except Exception as e:
+                                                logger.warning("Erreur lors de session.interrupt(): %s", e)
+                                        else:
+                                            logger.info("🛑 Blocage audio (agent vient de finir)")
+                                        user_speech_detected = True
+                                        continue
+
+                                    # User stopped speaking
+                                    if event_subtype == 'input_audio_buffer.speech_stopped':
+                                        logger.info("🎤 Utilisateur arrête de parler")
+                                        user_speech_detected = False
+                                        # If agent is not speaking, unblock audio
+                                        if not agent_is_speaking:
+                                            block_audio_send_ref[0] = False
+                                            logger.info("→ Déblocage audio (agent ne parle pas)")
+                                        continue
+
+                    # Track when agent starts speaking
+                    if isinstance(event, RealtimeAgentStartEvent):
                         agent_is_speaking = True
-                        logger.debug("Agent commence à parler (réponse %s)", response_id)
-
-                    # Marquer que l'agent parle
-                    if not agent_is_speaking:
-                        agent_is_speaking = True
-                        logger.debug("Agent commence à parler")
-
-                    # Ne pas envoyer l'audio si l'utilisateur a interrompu
-                    if audio_interrupted.is_set():
-                        logger.debug("Audio delta ignoré (utilisateur a interrompu)")
+                        # Don't change block_audio_send here - let RealtimeAgentEndEvent unblock it
+                        logger.debug("Agent commence à parler (block_audio_send=%s)", block_audio_send_ref[0])
                         continue
 
-                    for chunk in self._extract_audio_chunks(message):
+                    # Track when agent stops speaking - THIS is when we unblock audio
+                    if isinstance(event, RealtimeAgentEndEvent):
+                        agent_is_speaking = False
+                        # Only unblock audio if user is not currently speaking
+                        if not user_speech_detected:
+                            block_audio_send_ref[0] = False
+                            logger.debug("Agent arrête de parler - déblocage audio")
+                        else:
+                            logger.debug("Agent arrête de parler mais user parle encore - audio reste bloqué")
+
+                        # CHECK: If a tool call was detected but no proper confirmation was given
+                        if tool_call_detected and last_assistant_message_was_short:
+                            logger.warning("🚨 Tool call détecté mais pas de confirmation complète! Envoi d'un rappel...")
+                            try:
+                                # Send a conversation item to prompt the model for confirmation
+                                from agents.realtime.model_inputs import RealtimeModelSendRawMessage
+                                await session._model.send_event(
+                                    RealtimeModelSendRawMessage(
+                                        message={
+                                            "type": "conversation.item.create",
+                                            "item": {
+                                                "type": "message",
+                                                "role": "user",
+                                                "content": [{
+                                                    "type": "input_text",
+                                                    "text": "Confirme que l'action est terminée."
+                                                }]
+                                            }
+                                        }
+                                    )
+                                )
+                                # Trigger a response
+                                await session._model.send_event(
+                                    RealtimeModelSendRawMessage(
+                                        message={"type": "response.create"}
+                                    )
+                                )
+                                logger.info("✅ Rappel de confirmation envoyé")
+                                tool_call_detected = False  # Clear the flag
+                            except Exception as e:
+                                logger.error("Erreur lors de l'envoi du rappel de confirmation: %s", e)
+
+                        continue
+
+                    # Handle audio interruption - BLOCK AUDIO IMMEDIATELY!
+                    if isinstance(event, RealtimeAudioInterrupted):
+                        logger.info("🛑 Audio interrompu confirmé par OpenAI - blocage audio")
+                        block_audio_send_ref[0] = True
+                        # Try to cancel the current response generation
+                        # (may fail if response already completed, which is OK)
                         try:
-                            pcm = base64.b64decode(chunk)
-                        except ValueError:
-                            logger.debug("Segment audio Realtime invalide ignoré")
-                            continue
-                        if pcm:
-                            outbound_audio_bytes += len(pcm)
-                            await send_to_peer(pcm)
-                    if not should_continue():
-                        break
-                    continue
-
-                if message_type.endswith("transcript.delta"):
-                    response_id = self._extract_response_id(message)
-                    text = self._extract_transcript_text(message)
-                    if response_id and text:
-                        transcript_buffers.setdefault(response_id, []).append(text)
-                    if not should_continue():
-                        break
-                    continue
-
-                if message_type == "response.completed" or message_type == "response.done":
-                    # L'agent a fini de parler
-                    agent_is_speaking = False
-                    logger.debug("Agent a fini de parler")
-
-                    response = message.get("response")
-                    response_id = self._extract_response_id(message)
-                    combined_entry: dict[str, str] | None = None
-                    if response_id and response_id in transcript_buffers:
-                        combined_parts = transcript_buffers.pop(response_id)
-                        combined = "".join(combined_parts).strip()
-                        if combined:
-                            combined_entry = {
-                                "role": "assistant",
-                                "text": combined,
-                            }
-                    completed_entries = self._extract_completed_transcripts(response)
-                    if completed_entries:
-                        transcripts.extend(completed_entries)
-                        if (
-                            combined_entry
-                            and all(
-                                entry.get("text") != combined_entry["text"]
-                                for entry in completed_entries
+                            from agents.realtime.model_inputs import RealtimeModelSendRawMessage
+                            await session._model.send_event(
+                                RealtimeModelSendRawMessage(
+                                    message={"type": "response.cancel"}
+                                )
                             )
-                        ):
-                            transcripts.append(combined_entry)
-                    elif combined_entry:
-                        transcripts.append(combined_entry)
+                            logger.info("✅ Envoyé response.cancel")
+                        except Exception as e:
+                            # It's OK if there's no active response to cancel
+                            logger.debug("response.cancel ignoré: %s", e)
+                        continue
 
-                    if message_type == "response.completed":
-                        break
-                    continue
-            await request_stop()
+                    # Handle audio events (agent speaking) - only send if not blocked
+                    if isinstance(event, RealtimeAudio):
+                        if not block_audio_send_ref[0]:
+                            audio_event = event.audio
+                            pcm_data = audio_event.data
+                            if pcm_data:
+                                outbound_audio_bytes += len(pcm_data)
+                                # Send audio and wait until it's actually sent via RTP
+                                await send_to_peer(pcm_data)
+                                # Now update the playback tracker so OpenAI knows when audio was played
+                                # This is critical for proper interruption handling!
+                                playback_tracker.on_play_bytes(
+                                    event.item_id,
+                                    event.content_index,
+                                    pcm_data
+                                )
+                        # Audio blocked - user is interrupting (don't log to avoid spam)
+                        continue
+
+                    # Handle audio end
+                    if isinstance(event, RealtimeAudioEnd):
+                        logger.debug("Agent a fini de parler")
+                        continue
+
+                    # Handle history updates (contains transcripts)
+                    if isinstance(event, (RealtimeHistoryAdded, RealtimeHistoryUpdated)):
+                        history = getattr(event, "history", [event.item] if hasattr(event, "item") else [])
+                        for item in history:
+                            role = getattr(item, "role", None)
+
+                            # Debug: Log ALL history items to trace tool calls
+                            item_id = getattr(item, "id", None)
+
+                            # DEDUPLICATION: Skip items we've already processed (filters out replays)
+                            if item_id and item_id in processed_item_ids:
+                                continue  # Already processed this item
+
+                            # Mark this item as processed
+                            if item_id:
+                                processed_item_ids.add(item_id)
+
+                            item_type = getattr(item, "type", None)
+                            contents = getattr(item, "content", [])
+                            content_count = len(contents) if contents else 0
+                            logger.info("📋 History item: role=%s, type=%s, id=%s, content_count=%d",
+                                       role, item_type, item_id, content_count)
+
+                            # DETECT TOOL CALLS: assistant message with content_count=0 indicates a tool call
+                            if role == "assistant" and content_count == 0:
+                                tool_call_detected = True
+                                logger.info("🔧 Tool call détecté (assistant message avec content_count=0)")
+
+                            # Inspect content types for tool-related data
+                            if contents:
+                                for idx, content in enumerate(contents):
+                                    content_type = getattr(content, "type", None)
+                                    logger.info("  📄 Content[%d]: type=%s", idx, content_type)
+                                    # Log tool call details if present
+                                    if content_type in ("function_call", "tool_call", "function_call_output"):
+                                        logger.info("    🔧 Tool content: %s", content)
+
+                            # Only process user/assistant text for transcripts
+                            if role not in ("user", "assistant"):
+                                continue
+                            text_parts: list[str] = []
+                            for content in contents:
+                                text = getattr(content, "text", None) or getattr(content, "transcript", None)
+                                if isinstance(text, str) and text.strip():
+                                    text_parts.append(text.strip())
+
+                            if text_parts:
+                                combined_text = "\n".join(text_parts)
+                                transcripts.append({"role": role, "text": combined_text})
+                                # Log transcription to help debug tool usage
+                                logger.info("💬 %s: %s", role.upper(), combined_text[:200])
+
+                                # Track if assistant message is short (likely just a preamble)
+                                if role == "assistant":
+                                    # Short messages (< 30 chars) are likely preambles like "Je m'en occupe"
+                                    is_short = len(combined_text) < 30
+                                    last_assistant_message_was_short = is_short
+
+                                    # If we had a tool call and now get a proper response, clear the flag
+                                    if tool_call_detected and not is_short:
+                                        logger.info("✅ Confirmation détectée après tool call: %s", combined_text[:50])
+                                        tool_call_detected = False
+                                    elif tool_call_detected and is_short:
+                                        logger.warning("⚠️ Message court après tool call (probable préambule): %s", combined_text)
+                        continue
+
+                    # Handle tool calls (the SDK automatically executes these!)
+                    if isinstance(event, RealtimeToolStart):
+                        tool_name = getattr(event.tool, "name", None)
+                        logger.info("Exécution de l'outil MCP: %s", tool_name)
+                        continue
+
+                    if isinstance(event, RealtimeToolEnd):
+                        tool_name = getattr(event.tool, "name", None)
+                        output = event.output
+                        logger.info("Outil MCP terminé: %s, résultat: %s", tool_name, output)
+                        continue
+
+            except Exception as exc:
+                logger.exception("Erreur dans le flux d'événements SDK")
+                error = VoiceBridgeError(f"Erreur événements SDK: {exc}")
+            finally:
+                await request_stop()
 
         stats: VoiceBridgeStats | None = None
         try:
-            websocket = await self._websocket_connector(url, headers)
-            await send_json(
-                {
-                    "type": "session.update",
-                    "session": self._build_session_update(model, instructions, voice),
-                }
-            )
+            # Build model config for the SDK runner
+            # Note: turn_detection is already configured in client_secret (semantic_vad)
+            # Note: tools are already available via the runner's MCP server connections
+            # Note: Tool calls work with audio-only mode - they happen internally and don't require text modality
+            model_settings: dict[str, Any] = {
+                "model_name": model,
+                "modalities": ["audio"],  # For telephony, audio only (tool calls work internally)
+                "input_audio_format": "pcm16",
+                "output_audio_format": "pcm16",
+            }
+            if voice:
+                model_settings["voice"] = voice
+
+            model_config: dict[str, Any] = {
+                "api_key": client_secret,
+                "initial_model_settings": model_settings,
+                "playback_tracker": playback_tracker,  # Track audio playback for interruptions
+            }
+
+            # Create session using the SDK runner (this is what enables tool calls!)
+            logger.info("Démarrage session SDK avec runner")
+            session = await runner.run(model_config=model_config)
+            await session.__aenter__()
+            logger.info("Session SDK démarrée avec succès")
+
+            # Log available tools
+            try:
+                agent = session._current_agent
+                tools_list = await agent.get_all_tools(session._context_wrapper)
+                logger.info("Outils disponibles dans l'agent : %d outils", len(tools_list))
+                for tool in tools_list[:5]:  # Log first 5 tools
+                    tool_name = getattr(tool, 'name', '<unknown>')
+                    logger.info("  - Outil : %s", tool_name)
+            except Exception as e:
+                logger.warning("Impossible de lister les outils : %s", e)
 
             audio_task = asyncio.create_task(forward_audio())
-            realtime_task = asyncio.create_task(handle_realtime())
+            events_task = asyncio.create_task(handle_events())
             try:
-                await asyncio.gather(audio_task, realtime_task)
+                await asyncio.gather(audio_task, events_task)
             except Exception as exc:
                 await request_stop()
-                for task in (audio_task, realtime_task):
+                for task in (audio_task, events_task):
                     if not task.done():
                         task.cancel()
                 await asyncio.gather(
-                    audio_task, realtime_task, return_exceptions=True
+                    audio_task, events_task, return_exceptions=True
                 )
                 error = exc
         except Exception as exc:
             error = exc
             logger.error("Session voix Realtime interrompue : %s", exc)
         finally:
-            if websocket is not None:
+            if session is not None:
                 try:
-                    await websocket.close()
+                    await session.close()
                 except Exception:  # pragma: no cover - fermeture best effort
                     logger.debug(
-                        "Fermeture WebSocket Realtime en erreur",
+                        "Fermeture session SDK en erreur",
                         exc_info=True,
                     )
 
@@ -519,9 +764,13 @@ class TelephonyVoiceBridge:
             logger.exception("Hook de pont voix en erreur")
 
     def _build_session_update(
-        self, model: str, instructions: str, voice: str | None
+        self,
+        model: str,
+        instructions: str,
+        voice: str | None,
     ) -> dict[str, Any]:
         # Format API GA (non-beta)
+        # Note: tools et handoffs sont déjà configurés via client_secret
         payload: dict[str, Any] = {
             "type": "realtime",
             "model": model,
@@ -530,10 +779,7 @@ class TelephonyVoiceBridge:
                 "input": {
                     "format": {"type": "audio/pcm", "rate": 24000},
                     "turn_detection": {
-                        "type": "server_vad",
-                        "threshold": 0.5,
-                        "prefix_padding_ms": 300,
-                        "silence_duration_ms": 500,
+                        "type": "semantic_vad",  # VAD sémantique pour une meilleure détection de fin de phrase
                         "create_response": True,
                         "interrupt_response": True,
                     },
