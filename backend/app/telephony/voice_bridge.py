@@ -377,7 +377,7 @@ class TelephonyVoiceBridge:
                                     RealtimeModelSendRawMessage(
                                         message=RealtimeModelRawClientMessage(
                                             type="response.create",
-                                            other_data={"response": {"modalities": ["audio"]}},
+                                            other_data={},
                                         )
                                     )
                                 )
@@ -478,7 +478,7 @@ class TelephonyVoiceBridge:
                             RealtimeModelSendRawMessage(
                                 message=RealtimeModelRawClientMessage(
                                     type="response.create",
-                                    other_data={"response": {"modalities": ["audio"]}},
+                                    other_data={},
                                 )
                             )
                         )
@@ -596,7 +596,7 @@ class TelephonyVoiceBridge:
                                                 RealtimeModelSendRawMessage(
                                                     message=RealtimeModelRawClientMessage(
                                                         type="response.create",
-                                                        other_data={"response": {"modalities": ["audio"]}},
+                                                        other_data={},
                                                     )
                                                 )
                                             )
@@ -627,7 +627,7 @@ class TelephonyVoiceBridge:
                                                 RealtimeModelSendRawMessage(
                                                     message=RealtimeModelRawClientMessage(
                                                         type="response.create",
-                                                        other_data={"response": {"modalities": ["audio"]}},
+                                                        other_data={},
                                                     )
                                                 )
                                             )
@@ -976,6 +976,7 @@ class TelephonyVoiceBridge:
             "type": "realtime",
             "model": model,
             "instructions": instructions,
+            "output_modalities": ["audio"],  # CRITICAL: Force audio output for telephony
             "audio": {
                 "input": {
                     "format": {"type": "audio/pcm", "rate": 24000},
