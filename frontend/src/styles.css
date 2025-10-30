@@ -380,7 +380,8 @@ button {
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar {
   --chatkit-sidebar-padding-x: max(env(safe-area-inset-left), env(safe-area-inset-right), 0px);
-  --chatkit-sidebar-content-padding-x: clamp(12px, 3vw, 18px);
+  --chatkit-sidebar-content-padding-x: clamp(6px, 2vw, 12px);
+  --chatkit-sidebar-open-workflow-padding-x: clamp(6px, 1.6vw, 10px);
   padding-inline: var(--chatkit-sidebar-padding-x);
 }
 
@@ -649,20 +650,43 @@ button {
 }
 
 .chatkit-layout--desktop .chatkit-sidebar__workflow-list {
-  padding-inline: var(--chatkit-sidebar-content-padding-x);
+  padding-inline: 0;
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__workflow-button {
-  margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
-  padding-inline-start: var(--chatkit-sidebar-content-padding-x);
-  padding-inline-end: calc(var(--chatkit-sidebar-content-padding-x) + 3rem);
+  margin-inline: calc(
+    -1 * var(
+      --chatkit-sidebar-open-workflow-padding-x,
+      var(--chatkit-sidebar-content-padding-x)
+    )
+  );
+  padding-inline-start: var(
+    --chatkit-sidebar-open-workflow-padding-x,
+    var(--chatkit-sidebar-content-padding-x)
+  );
+  padding-inline-end: calc(
+    var(
+        --chatkit-sidebar-open-workflow-padding-x,
+        var(--chatkit-sidebar-content-padding-x)
+      ) +
+      2.5rem
+  );
   --chatkit-sidebar-workflow-highlight-gutter: calc(
-    var(--chatkit-sidebar-content-padding-x) + 3rem
+    var(
+        --chatkit-sidebar-open-workflow-padding-x,
+        var(--chatkit-sidebar-content-padding-x)
+      ) +
+      3rem
   );
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__workflow-button::after {
-  inset-inline-start: calc(-1 * var(--chatkit-sidebar-content-padding-x));
+  inset-inline-start: calc(
+    -1 * var(
+      --chatkit-sidebar-open-workflow-padding-x,
+      var(--chatkit-sidebar-content-padding-x)
+    )
+  );
 }
 
 .chatkit-sidebar__nav-list {
@@ -886,6 +910,13 @@ button {
   align-items: center;
   justify-content: flex-end;
   gap: 0.25rem;
+}
+
+.chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__workflow-actions {
+  right: var(
+    --chatkit-sidebar-open-workflow-padding-x,
+    var(--chatkit-sidebar-content-padding-x)
+  );
 }
 
 @media (max-width: 768px) {
