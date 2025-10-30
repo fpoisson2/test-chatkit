@@ -253,43 +253,39 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
 
         # Extraire l'URI SIP depuis l'en-tête To:
         # Format typique: "Display Name" <sip:user@domain> ou sip:user@domain
-        match = re.search(r"sips?:([^@>;]+@[^>;]+)", to_header, flags=re.IGNORECASE)
+        match = re.search(r"sips?:([^@>;]+)@", to_header, flags=re.IGNORECASE)
         if not match:
             logger.error("Format d'en-tête To: non reconnu: %s", to_header)
             raise TelephonyRouteSelectionError(
                 f"Format d'en-tête To: invalide: {to_header}"
             )
 
-        to_uri_part = match.group(1).lower()  # user@domain
+        to_username = match.group(1).lower()  # Juste le username (partie avant @)
 
-        # Comparer avec les URIs des comptes SIP enregistrés
+        # Comparer le username avec les comptes SIP enregistrés
         with SessionLocal() as session:
             accounts = session.scalars(
                 select(SipAccount).where(SipAccount.is_active == True)
             ).all()
 
             for account in accounts:
-                # Extraire user@domain du trunk_uri du compte
-                trunk_match = re.search(
-                    r"sips?:([^@>;]+@[^>;]+)", account.trunk_uri, flags=re.IGNORECASE
-                )
-                if trunk_match:
-                    trunk_uri_part = trunk_match.group(1).lower()
-                    if trunk_uri_part == to_uri_part:
-                        logger.info(
-                            "Appel SIP correspond au compte '%s' (ID=%d)",
-                            account.label,
-                            account.id,
-                        )
-                        return account.id
+                # Comparer avec le username du compte SIP
+                if account.username and account.username.lower() == to_username:
+                    logger.info(
+                        "Appel SIP correspond au compte '%s' (ID=%d) via username '%s'",
+                        account.label,
+                        account.id,
+                        account.username,
+                    )
+                    return account.id
 
         # Aucune correspondance trouvée - rejeter l'appel
         logger.error(
-            "Aucun compte SIP actif ne correspond à l'URI: %s",
-            to_uri_part,
+            "Aucun compte SIP actif ne correspond au username: %s",
+            to_username,
         )
         raise TelephonyRouteSelectionError(
-            f"Aucun compte SIP configuré pour l'URI {to_uri_part}"
+            f"Aucun compte SIP configuré pour le username {to_username}"
         )
 
     async def _close_dialog(session: SipCallSession) -> None:
