@@ -394,6 +394,10 @@ class TelephonyVoiceBridge:
 
                     event_type = type(event).__name__
 
+                    # Debug: log ALL events to trace MCP tool calls
+                    if 'tool' in event_type.lower() or 'function' in event_type.lower():
+                        logger.info("🔧 Event: %s - %s", event_type, event)
+
                     # Handle error events
                     if isinstance(event, RealtimeError):
                         error_code = getattr(event.error, 'code', None)
