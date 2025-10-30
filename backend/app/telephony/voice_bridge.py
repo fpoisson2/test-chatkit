@@ -567,11 +567,8 @@ class TelephonyVoiceBridge:
             }
 
             # Create session using the SDK runner (this is what enables tool calls!)
-            logger.info("Démarrage session SDK avec runner (async_tool_calls=True)")
-            session = await runner.run(
-                model_config=model_config,
-                async_tool_calls=True,  # Enable asynchronous tool execution
-            )
+            logger.info("Démarrage session SDK avec runner")
+            session = await runner.run(model_config=model_config)
             await session.__aenter__()
             logger.info("Session SDK démarrée avec succès")
 
