@@ -378,6 +378,12 @@ button {
   pointer-events: auto;
 }
 
+.chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar {
+  --chatkit-sidebar-padding-x: max(env(safe-area-inset-left), env(safe-area-inset-right), 0px);
+  --chatkit-sidebar-content-padding-x: clamp(12px, 3vw, 18px);
+  padding-inline: var(--chatkit-sidebar-padding-x);
+}
+
 .chatkit-layout--desktop .chatkit-sidebar--open {
   transform: none;
 }
