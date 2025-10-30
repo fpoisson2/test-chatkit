@@ -679,9 +679,17 @@ class TelephonyVoiceBridge:
             if speak_first:
                 logger.info("speak_first activé : envoi de response.create pour démarrer la conversation")
                 try:
-                    from agents.realtime.model_inputs import RealtimeModelCreateResponse
+                    from agents.realtime.model_inputs import (
+                        RealtimeModelRawClientMessage,
+                        RealtimeModelSendRawMessage,
+                    )
                     await session._model.send_event(
-                        RealtimeModelCreateResponse()
+                        RealtimeModelSendRawMessage(
+                            message=RealtimeModelRawClientMessage(
+                                type="response.create",
+                                other_data={},
+                            )
+                        )
                     )
                     logger.info("Événement response.create envoyé avec succès")
                 except Exception as e:
