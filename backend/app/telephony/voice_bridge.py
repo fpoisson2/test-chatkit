@@ -409,15 +409,26 @@ class TelephonyVoiceBridge:
 
                         # If still no raw_data, inspect the object
                         if not raw_data:
-                            # Log first event's attributes to understand structure
-                            attrs = {k: type(v).__name__ for k, v in vars(event).items() if not k.startswith('_')}
-                            logger.info(f"🔬 RealtimeRawModelEvent attributes: {attrs}")
-                            # Try to get the first non-private attribute that's a dict
-                            for k, v in vars(event).items():
-                                if not k.startswith('_') and isinstance(v, dict):
-                                    raw_data = v
-                                    logger.info(f"✅ Found raw_data in attribute '{k}': {list(raw_data.keys())[:5]}")
-                                    break
+                            # The `data` attribute is an object, let's inspect it
+                            data_obj = getattr(event, 'data', None)
+                            if data_obj:
+                                # Try to find a dict attribute in the data object
+                                for attr_name in ('event', 'raw_event', 'data', 'message', 'payload'):
+                                    raw_data = getattr(data_obj, attr_name, None)
+                                    if raw_data and isinstance(raw_data, dict):
+                                        logger.debug(f"✅ Found raw_data in data.{attr_name}")
+                                        break
+
+                                # If still not found, inspect the data object
+                                if not raw_data:
+                                    data_attrs = {k: type(v).__name__ for k, v in vars(data_obj).items() if not k.startswith('_')}
+                                    logger.debug(f"🔬 data object attributes: {data_attrs}")
+                                    # Try to get the first dict attribute
+                                    for k, v in vars(data_obj).items():
+                                        if not k.startswith('_') and isinstance(v, dict):
+                                            raw_data = v
+                                            logger.info(f"✅ Found raw_data in data.{k}: type={raw_data.get('type', 'NO TYPE')}")
+                                            break
 
                         if raw_data and isinstance(raw_data, dict):
                             event_subtype = raw_data.get('type', '')
