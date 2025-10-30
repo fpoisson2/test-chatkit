@@ -401,12 +401,83 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     setSidebarContent(null);
   }, []);
 
+  const shouldRenderInlineAppSwitcher =
+    isDesktopLayout && !isSidebarCollapsed && availableApplications.length > 0;
+
   const sidebarPortalValue = useMemo(
     () => ({
       setSidebarContent: handleSetSidebarContent,
       clearSidebarContent: handleClearSidebarContent,
     }),
     [handleClearSidebarContent, handleSetSidebarContent],
+  );
+
+  const renderAppSwitcher = useCallback(
+    (layout: "inline" | "stacked") => {
+      const isInline = layout === "inline";
+
+      if (availableApplications.length === 0) {
+        return null;
+      }
+
+      const containerClassName = [
+        "chatkit-sidebar__switcher",
+        isInline ? "chatkit-sidebar__switcher--inline" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      const navClassName = [
+        "chatkit-sidebar__app-switcher",
+        !isInline && isSidebarCollapsed ? "chatkit-sidebar__app-switcher--compact" : "",
+        isInline ? "chatkit-sidebar__app-switcher--inline" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+
+      return (
+        <div className={containerClassName}>
+          <span id={appSwitcherLabelId} className="visually-hidden">
+            {t("app.sidebar.switcherLabel")}
+          </span>
+          <nav className={navClassName} aria-labelledby={appSwitcherLabelId}>
+            {availableApplications.map((application) => {
+              const isActive = activeApplication === application.key;
+
+              return (
+                <button
+                  key={application.key}
+                  type="button"
+                  className={`chatkit-sidebar__app-switcher-button${
+                    isActive ? " chatkit-sidebar__app-switcher-button--active" : ""
+                  }`}
+                  onClick={() => handleApplicationNavigate(application)}
+                  tabIndex={sidebarTabIndex}
+                  aria-current={isActive ? "page" : undefined}
+                  aria-label={application.label}
+                >
+                  <span className="chatkit-sidebar__app-switcher-icon" aria-hidden="true">
+                    <SidebarIcon name={APPLICATION_ICONS[application.key]} />
+                  </span>
+                  <span className="chatkit-sidebar__app-switcher-label">
+                    {application.label}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      );
+    },
+    [
+      activeApplication,
+      appSwitcherLabelId,
+      availableApplications,
+      handleApplicationNavigate,
+      isSidebarCollapsed,
+      sidebarTabIndex,
+      t,
+    ],
   );
 
   return (
@@ -420,8 +491,20 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
           >
           <header className="chatkit-sidebar__header">
             <div className="chatkit-sidebar__topline">
-              <div className="chatkit-sidebar__brand">
-                <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
+              <div className="chatkit-sidebar__brand-group">
+                <div className="chatkit-sidebar__brand">
+                  <span className="chatkit-sidebar__brand-mark" aria-hidden="true">
+                    <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
+                  </span>
+                  <span className="chatkit-sidebar__brand-title">
+                    {t("app.sidebar.brandTitle")}
+                  </span>
+                </div>
+                {shouldRenderInlineAppSwitcher ? (
+                  <div className="chatkit-sidebar__brand-switcher">
+                    {renderAppSwitcher("inline")}
+                  </div>
+                ) : null}
               </div>
               <div className="chatkit-sidebar__actions">
                 {isSidebarOpen ? (
@@ -439,42 +522,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
                 ) : null}
               </div>
             </div>
-            {availableApplications.length > 0 ? (
-              <div className="chatkit-sidebar__switcher">
-                <span id={appSwitcherLabelId} className="visually-hidden">
-                  {t("app.sidebar.switcherLabel")}
-                </span>
-                <nav
-                  className={`chatkit-sidebar__app-switcher${
-                    isSidebarCollapsed ? " chatkit-sidebar__app-switcher--compact" : ""
-                  }`}
-                  aria-labelledby={appSwitcherLabelId}
-                >
-                  {availableApplications.map((application) => {
-                    const isActive = activeApplication === application.key;
-
-                    return (
-                      <button
-                        key={application.key}
-                        type="button"
-                        className={`chatkit-sidebar__app-switcher-button${
-                          isActive ? " chatkit-sidebar__app-switcher-button--active" : ""
-                        }`}
-                        onClick={() => handleApplicationNavigate(application)}
-                        tabIndex={sidebarTabIndex}
-                        aria-current={isActive ? "page" : undefined}
-                        aria-label={application.label}
-                      >
-                        <span className="chatkit-sidebar__app-switcher-icon" aria-hidden="true">
-                          <SidebarIcon name={APPLICATION_ICONS[application.key]} />
-                        </span>
-                        <span className="chatkit-sidebar__app-switcher-label">{application.label}</span>
-                      </button>
-                    );
-                  })}
-                </nav>
-              </div>
-            ) : null}
+            {!shouldRenderInlineAppSwitcher ? renderAppSwitcher("stacked") : null}
           </header>
           {(sidebarContent || navigationItems.length > 0) && (
             <div className="chatkit-sidebar__main">
