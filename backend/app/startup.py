@@ -1205,10 +1205,12 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                                         )
 
                                         # Créer la config du modèle (format dictionnaire comme voice_bridge.py)
-                                        from agents.realtime.model import RealtimePlaybackTracker
+                                        from app.telephony.voice_bridge import TelephonyPlaybackTracker
 
-                                        # Créer un playback tracker minimal pour l'initialisation
-                                        preinit_playback_tracker = RealtimePlaybackTracker()
+                                        # Créer un playback tracker avec gestion des interruptions (comme dans voice_bridge.py)
+                                        # Note: on ne peut pas utiliser le callback d'interruption ici car on n'a pas encore
+                                        # de référence au mécanisme de blocage audio
+                                        preinit_playback_tracker = TelephonyPlaybackTracker(on_interrupt_callback=None)
 
                                         model_settings: dict[str, Any] = {
                                             "model_name": voice_model,

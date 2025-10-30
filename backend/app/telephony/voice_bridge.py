@@ -83,6 +83,11 @@ class TelephonyPlaybackTracker(RealtimePlaybackTracker):
         self._audio_format = format
         logger.debug("TelephonyPlaybackTracker: audio format set to %s", format)
 
+    def set_interrupt_callback(self, callback: callable | None) -> None:
+        """Update the interrupt callback (useful when reusing preinit session)."""
+        self._on_interrupt_callback = callback
+        logger.debug("TelephonyPlaybackTracker: interrupt callback updated")
+
     def get_state(self) -> RealtimePlaybackState:
         """Called by OpenAI to get current playback state."""
         return {
@@ -807,6 +812,19 @@ class TelephonyVoiceBridge:
             if preinit_session is not None:
                 logger.info("Utilisation de la session pré-connectée (déjà démarrée pendant la sonnerie)")
                 session = preinit_session
+
+                # Récupérer le playback_tracker de la session pré-initialisée
+                # et mettre à jour son callback d'interruption
+                try:
+                    preinit_playback_tracker = session._model._playback_tracker
+                    if isinstance(preinit_playback_tracker, TelephonyPlaybackTracker):
+                        preinit_playback_tracker.set_interrupt_callback(on_playback_interrupted)
+                        playback_tracker = preinit_playback_tracker
+                        logger.info("✅ Playback tracker pré-initialisé réutilisé avec callback d'interruption mis à jour")
+                    else:
+                        logger.warning("Playback tracker pré-initialisé n'est pas un TelephonyPlaybackTracker, création d'un nouveau")
+                except (AttributeError, TypeError) as e:
+                    logger.warning("Impossible de récupérer le playback tracker pré-initialisé: %s", e)
             else:
                 logger.info("Démarrage session SDK avec runner")
                 session = await runner.run(model_config=model_config)
