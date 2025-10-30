@@ -184,16 +184,28 @@ def _merge_voice_settings(
                             provider_slug = params["model_provider_slug"]
                         if "tools" in params:
                             tools = _copy_sequence(params.get("tools"))
+                            logger.info(
+                                "Outils extraits du bloc %s : %d outils",
+                                step_slug,
+                                len(tools),
+                            )
                         if "handoffs" in params:
                             handoffs = _copy_sequence(params.get("handoffs"))
+                            logger.info(
+                                "Handoffs extraits du bloc %s : %d handoffs",
+                                step_slug,
+                                len(handoffs),
+                            )
                         logger.info(
                             "Paramètres voix extraits du bloc %s (kind=%s) : "
-                            "model=%s, voice=%s, provider=%s",
+                            "model=%s, voice=%s, provider=%s, tools=%d, handoffs=%d",
                             step_slug,
                             step_kind,
                             model,
                             voice,
                             provider_slug or provider_id or "<aucun>",
+                            len(tools),
+                            len(handoffs),
                         )
                     # Utiliser le premier bloc agent trouvé
                     break
