@@ -358,7 +358,7 @@ button {
   --chatkit-sidebar-padding-x: 24px;
   --chatkit-sidebar-content-padding-x: var(--chatkit-sidebar-padding-x);
   padding: 28px var(--chatkit-sidebar-padding-x);
-  overflow: hidden;
+  overflow: visible;
   transform: translateX(calc(-1 * var(--chatkit-sidebar-width)));
   transition: transform 0.95s cubic-bezier(0.16, 1, 0.3, 1);
   pointer-events: none;
@@ -369,11 +369,11 @@ button {
   position: absolute;
   top: 0;
   bottom: 0;
-  right: 0;
-  width: 6px;
+  right: calc(var(--chatkit-sidebar-content-padding-x) * -1);
+  width: 8px;
   border-radius: 999px;
   background: var(--sidebar-scrollbar-track);
-  opacity: 0.6;
+  opacity: 0.45;
   pointer-events: none;
 }
 
