@@ -2464,27 +2464,22 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             async def on_media_active_callback(active_call: Any, media_info: Any) -> None:
                 """Appelé quand le média devient actif (port audio créé)."""
                 if active_call == call:
-                    logger.info("🎵 Média actif détecté, attente de paquets audio du téléphone... (call_id=%s)", call_id)
-                    # Attendre de recevoir le premier paquet audio DU TÉLÉPHONE
-                    # Cela confirme que le flux bidirectionnel est vraiment établi
-                    # et que le téléphone est prêt à recevoir de l'audio
-                    await first_packet_event.wait()
-                    logger.info("✅ Premier paquet audio reçu - flux bidirectionnel confirmé (call_id=%s)", call_id)
+                    logger.info("🎵 Média actif détecté (call_id=%s)", call_id)
 
-                    # Attendre que le jitter buffer se remplisse suffisamment
-                    # Le jitter buffer est "reset" juste avant le premier paquet et a besoin
-                    # de temps pour accumuler quelques paquets avant d'être prêt à jouer l'audio
-                    # On attend ~100ms pour que 5 paquets soient accumulés (minimum pour démarrer)
-                    logger.info("⏱️ Attente 100ms pour remplissage initial du jitter buffer... (call_id=%s)", call_id)
-                    await asyncio.sleep(0.1)  # 100ms
+                    # Attendre que le jitter buffer soit initialisé
+                    # Le jitter buffer est "reset" au premier paquet
+                    # On attend 50ms pour qu'il soit prêt
+                    logger.info("⏱️ Attente 50ms pour initialisation jitter buffer... (call_id=%s)", call_id)
+                    await asyncio.sleep(0.05)  # 50ms
 
                     # Débloquer l'audio pour que les paquets OpenAI soient transmis immédiatement
                     logger.info("✅ Déblocage de l'envoi d'audio (call_id=%s)", call_id)
                     media_active_event.set()
 
-                    # Démarrer le voice bridge MAINTENANT que tout est prêt
+                    # Démarrer le voice bridge MAINTENANT
                     # La connexion OpenAI sera établie et speak_first sera traité automatiquement
-                    logger.info("🚀 Démarrage de la connexion OpenAI maintenant que l'audio est prêt (call_id=%s)", call_id)
+                    # Le RTP stream démarrera et consommera les paquets du téléphone
+                    logger.info("🚀 Démarrage de la connexion OpenAI (call_id=%s)", call_id)
                     voice_bridge_start_event.set()
 
             # Enregistrer le callback média avant de démarrer
