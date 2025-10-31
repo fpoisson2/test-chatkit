@@ -2454,7 +2454,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             # Créer l'audio bridge IMMÉDIATEMENT après le ringing
             # pour permettre à l'assistant de générer l'audio pendant la sonnerie
             logger.info("Création de l'audio bridge PJSUA AVANT la réponse (call_id=%s)", call_id)
-            rtp_stream, send_to_peer_raw, clear_queue = await create_pjsua_audio_bridge(call)
+            rtp_stream, send_to_peer_raw, clear_queue, first_packet_event = await create_pjsua_audio_bridge(call)
 
             # Créer un Event pour bloquer l'envoi d'audio jusqu'à ce que le média soit actif
             # Le média devient actif APRÈS le 200 OK + ACK, quand PJSUA crée le port audio
@@ -2464,14 +2464,20 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             async def on_media_active_callback(active_call: Any, media_info: Any) -> None:
                 """Appelé quand le média devient actif (port audio créé)."""
                 if active_call == call:
-                    logger.info("🎵 Média actif détecté, attente 300ms pour jitter buffer... (call_id=%s)", call_id)
-                    # Attendre que le jitter buffer du téléphone soit prêt
-                    # Sans ce délai, le jitter buffer peut rejeter les premiers paquets
-                    await asyncio.sleep(0.3)  # 300ms
+                    logger.info("🎵 Média actif détecté, attente de paquets audio du téléphone... (call_id=%s)", call_id)
+                    # Attendre de recevoir le premier paquet audio DU TÉLÉPHONE
+                    # Cela confirme que le flux bidirectionnel est vraiment établi
+                    # et que le téléphone est prêt à recevoir de l'audio
+                    await first_packet_event.wait()
+                    logger.info("✅ Premier paquet audio reçu - flux bidirectionnel confirmé (call_id=%s)", call_id)
+
+                    # Attendre encore un petit délai pour que le jitter buffer se stabilise
+                    # complètement (50ms supplémentaires)
+                    await asyncio.sleep(0.05)  # 50ms
 
                     # Si speak_first, envoyer response.create MAINTENANT
                     if speak_first:
-                        logger.info("📢 Envoi de response.create après stabilisation (call_id=%s)", call_id)
+                        logger.info("📢 Envoi de response.create après confirmation flux audio (call_id=%s)", call_id)
                         try:
                             from agents.realtime.model_inputs import (
                                 RealtimeModelRawClientMessage,
