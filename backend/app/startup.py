@@ -1071,10 +1071,12 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 ring_timeout_seconds,
             )
 
-        # Si ring_timeout > 0, pré-initialiser la session Realtime en parallèle
-        # pour qu'elle soit prête quand l'appel sera répondu
+        # Pré-initialiser la session Realtime en parallèle pendant que ça sonne
+        # pour qu'elle soit prête quand l'appel sera répondu. Auparavant cela
+        # n'était lancé que si un ring_timeout était configuré explicitement,
+        # ce qui retardait la génération audio pour les workflows sans délai.
         session_init_task = None
-        if session and ring_timeout_seconds > 0:
+        if session:
             telephony_meta = session.metadata.get("telephony") or {}
             voice_model = telephony_meta.get("voice_model")
             instructions = telephony_meta.get("voice_instructions")
@@ -1085,11 +1087,19 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
             voice_handoffs = telephony_meta.get("voice_handoffs") or []
             speak_first = telephony_meta.get("speak_first", False)
 
-            if voice_model and instructions:
+            preinit_already_available = bool(
+                telephony_meta.get("preinit_session_handle")
+                or telephony_meta.get("preinit_session")
+            )
+
+            if voice_model and instructions and not preinit_already_available:
                 logger.info(
-                    "Pré-initialisation de la session Realtime pendant le ring timeout "
-                    "(Call-ID=%s)",
+                    (
+                        "Pré-initialisation de la session Realtime pendant la sonnerie "
+                        "(Call-ID=%s, ring_timeout=%.2fs)"
+                    ),
                     call_id,
+                    ring_timeout_seconds,
                 )
 
                 async def _preinit_realtime_session():
@@ -1292,6 +1302,14 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
 
                 # Démarrer la pré-initialisation en arrière-plan
                 session_init_task = asyncio.create_task(_preinit_realtime_session())
+            elif preinit_already_available:
+                logger.info(
+                    (
+                        "Session Realtime déjà pré-initialisée pour Call-ID=%s, "
+                        "réutilisation"
+                    ),
+                    call_id,
+                )
 
         # Maintenant envoyer le 200 OK (avec le ring timeout)
         try:
