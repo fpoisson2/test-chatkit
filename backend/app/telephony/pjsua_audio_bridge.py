@@ -177,10 +177,12 @@ class PJSUAAudioBridge:
                 # Target: 60% de la plage (32767 * 0.6 = ~19660)
                 target_amplitude = int(32767 * 0.6)
                 gain = target_amplitude / max_amplitude
-                # Limiter le gain: min 1.0 (pas de réduction), max 10.0 (éviter saturation extrême)
-                gain = max(1.0, min(gain, 10.0))
+                # Limiter le gain: min 1.0 (pas de réduction), max 3.0 (léger boost)
+                # Si on doit amplifier plus que 3x, c'est probablement du bruit/silence
+                gain = max(1.0, min(gain, 3.0))
                 audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
-                logger.debug("🔊 Audio normalisé (max=%d, gain=%.1fx)", max_amplitude, gain)
+                logger.debug("🔊 Audio normalisé (max=%d, gain=%.1fx, amplitude finale=%d)",
+                           max_amplitude, gain, int(max_amplitude * gain))
         except audioop.error as e:
             logger.warning("Normalization error: %s", e)
 
