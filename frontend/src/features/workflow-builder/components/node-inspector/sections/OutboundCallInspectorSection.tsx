@@ -164,7 +164,7 @@ export const OutboundCallInspectorSection = ({
 
       {/* Attendre la fin de l'appel */}
       <label className={styles.nodeInspectorField}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div className={styles.nodeInspectorToggleRow}>
           <input
             type="checkbox"
             checked={waitForCompletion}
@@ -183,42 +183,40 @@ export const OutboundCallInspectorSection = ({
 
       {/* Info sur les résultats */}
       {waitForCompletion && (
-        <div
-          style={{
-            marginTop: "16px",
-            padding: "12px",
-            backgroundColor: "#f5f5f5",
-            borderRadius: "4px",
-            fontSize: "13px",
-          }}
-        >
-          <p style={{ fontWeight: "bold", marginBottom: "8px" }}>
-            Résultat disponible après l'appel:
-          </p>
-          <ul style={{ margin: 0, paddingLeft: "20px" }}>
-            <li>
-              <code>
+        <div className={styles.nodeInspectorInfoCard}>
+          <strong className={styles.nodeInspectorSectionLabel}>
+            Résultat disponible après l'appel :
+          </strong>
+          <ul className={styles.nodeInspectorList}>
+            <li className={styles.nodeInspectorListItem}>
+              <code className={styles.nodeInspectorCode}>
                 {"{"}
-                {"{"}outbound_call.call_status{"}"}
+                {"{"}outbound_call.call_status{""}"}
                 {"}"}
-              </code>{" "}
-              - Status: completed, no_answer, busy, failed
+              </code>
+              <span className={styles.nodeInspectorCodeNote}>
+                Status : completed, no_answer, busy, failed
+              </span>
             </li>
-            <li>
-              <code>
+            <li className={styles.nodeInspectorListItem}>
+              <code className={styles.nodeInspectorCode}>
                 {"{"}
-                {"{"}outbound_call.answered{"}"}
+                {"{"}outbound_call.answered{""}"}
                 {"}"}
-              </code>{" "}
-              - true si répondu, false sinon
+              </code>
+              <span className={styles.nodeInspectorCodeNote}>
+                true si répondu, false sinon
+              </span>
             </li>
-            <li>
-              <code>
+            <li className={styles.nodeInspectorListItem}>
+              <code className={styles.nodeInspectorCode}>
                 {"{"}
-                {"{"}outbound_call.duration_seconds{"}"}
+                {"{"}outbound_call.duration_seconds{""}"}
                 {"}"}
-              </code>{" "}
-              - Durée de l'appel
+              </code>
+              <span className={styles.nodeInspectorCodeNote}>
+                Durée de l'appel
+              </span>
             </li>
           </ul>
         </div>

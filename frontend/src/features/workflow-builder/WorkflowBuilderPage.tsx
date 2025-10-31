@@ -2576,6 +2576,24 @@ const WorkflowBuilderPage = () => {
     [updateNodeData],
   );
 
+  const handleOutboundCallParametersChange = useCallback(
+    (nodeId: string, parameters: Record<string, unknown>) => {
+      updateNodeData(nodeId, (data) => {
+        if (data.kind !== "outbound_call") {
+          return data;
+        }
+        const nextParameters = parameters;
+        return {
+          ...data,
+          parameters: nextParameters,
+          parametersText: stringifyAgentParameters(nextParameters),
+          parametersError: null,
+        } satisfies FlowNodeData;
+      });
+    },
+    [updateNodeData],
+  );
+
   const handleAgentMessageChange = useCallback(
     (nodeId: string, value: string) => {
       updateNodeData(nodeId, (data) => {
@@ -7417,6 +7435,7 @@ const WorkflowBuilderPage = () => {
             onTranscriptionLanguageChange={handleTranscriptionLanguageChange}
             onTranscriptionPromptChange={handleTranscriptionPromptChange}
             onVectorStoreNodeConfigChange={handleVectorStoreNodeConfigChange}
+            onParametersChange={handleOutboundCallParametersChange}
             onTransformExpressionsChange={handleTransformExpressionsChange}
             onStartAutoRunChange={handleStartAutoRunChange}
             onStartAutoRunMessageChange={handleStartAutoRunMessageChange}

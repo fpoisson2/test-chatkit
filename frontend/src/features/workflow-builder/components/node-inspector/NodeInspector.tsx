@@ -151,6 +151,10 @@ export type NodeInspectorProps = {
     nodeId: string,
     updates: Partial<VectorStoreNodeConfig>,
   ) => void;
+  onParametersChange: (
+    nodeId: string,
+    parameters: Record<string, unknown>,
+  ) => void;
   onTransformExpressionsChange: (
     nodeId: string,
     expressions: Record<string, unknown>,
@@ -242,6 +246,7 @@ const NodeInspector = ({
   onTranscriptionLanguageChange,
   onTranscriptionPromptChange,
   onVectorStoreNodeConfigChange,
+  onParametersChange,
   onTransformExpressionsChange,
   onStartAutoRunChange,
   onStartAutoRunMessageChange,
