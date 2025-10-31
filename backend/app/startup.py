@@ -2454,7 +2454,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             # Créer l'audio bridge IMMÉDIATEMENT après le ringing
             # pour permettre à l'assistant de générer l'audio pendant la sonnerie
             logger.info("Création de l'audio bridge PJSUA AVANT la réponse (call_id=%s)", call_id)
-            rtp_stream, send_to_peer_raw, clear_queue, first_packet_event, audio_bridge = await create_pjsua_audio_bridge(call)
+            rtp_stream, send_to_peer_raw, clear_queue, first_packet_event, pjsua_ready_event, audio_bridge = await create_pjsua_audio_bridge(call)
 
             # Reset l'event frame_requested pour cet appel (partagé entre tous les appels)
             if pjsua_adapter._frame_requested_event:
@@ -2664,6 +2664,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         rtp_stream=rtp_stream,
                         send_to_peer=send_to_peer,
                         clear_audio_queue=clear_queue,
+                        pjsua_ready_to_consume=pjsua_ready_event,  # Attendre que PJSUA soit prêt avant speak_first
                         api_base=realtime_api_base,
                         tools=telephony_tools,
                         handoffs=voice_handoffs,

@@ -277,6 +277,7 @@ class TelephonyVoiceBridge:
         rtp_stream: AsyncIterator[RtpPacket],
         send_to_peer: Callable[[bytes], Awaitable[None]],
         clear_audio_queue: Callable[[], int] | None = None,
+        pjsua_ready_to_consume: asyncio.Event | None = None,
         api_base: str | None = None,
         tools: list[Any] | None = None,
         handoffs: list[Any] | None = None,

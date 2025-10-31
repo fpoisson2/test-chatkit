@@ -224,24 +224,24 @@ class PJSUAAudioBridge:
 
 async def create_pjsua_audio_bridge(
     call: PJSUACall,
-) -> tuple[AsyncIterator[RtpPacket], Callable[[bytes], Awaitable[None]], Callable[[], int], asyncio.Event, "PJSUAAudioBridge"]:
+) -> tuple[AsyncIterator[RtpPacket], Callable[[bytes], Awaitable[None]], Callable[[], int], asyncio.Event, asyncio.Event, "PJSUAAudioBridge"]:
     """Create audio bridge components for a PJSUA call.
 
     This is a convenience function that creates a bridge and returns the
-    rtp_stream, send_to_peer, clear_queue, first_packet_received_event, and bridge instance for TelephonyVoiceBridge.run().
+    rtp_stream, send_to_peer, clear_queue, first_packet_received_event, pjsua_ready_event, and bridge instance for TelephonyVoiceBridge.run().
 
     Args:
         call: The PJSUA call to bridge
 
     Returns:
-        Tuple of (rtp_stream, send_to_peer, clear_queue, first_packet_received_event, bridge) for VoiceBridge.run()
+        Tuple of (rtp_stream, send_to_peer, clear_queue, first_packet_received_event, pjsua_ready_event, bridge) for VoiceBridge.run()
 
     Example:
         ```python
-        rtp_stream, send_to_peer, clear_queue, first_packet_event, bridge = await create_pjsua_audio_bridge(call)
+        rtp_stream, send_to_peer, clear_queue, first_packet_event, pjsua_ready_event, bridge = await create_pjsua_audio_bridge(call)
 
-        # Attendre le premier paquet pour confirmer que le flux est établi
-        await first_packet_event.wait()
+        # Attendre que PJSUA soit prêt à consommer l'audio avant speak_first
+        await pjsua_ready_event.wait()
 
         stats = await voice_bridge.run(
             runner=runner,
@@ -252,6 +252,7 @@ async def create_pjsua_audio_bridge(
             rtp_stream=rtp_stream,
             send_to_peer=send_to_peer,
             clear_audio_queue=clear_queue,
+            pjsua_ready_to_consume=pjsua_ready_event,
         )
 
         # Nettoyer quand l'appel se termine
@@ -259,7 +260,9 @@ async def create_pjsua_audio_bridge(
         ```
     """
     bridge = PJSUAAudioBridge(call)
-    return bridge.rtp_stream(), bridge.send_to_peer, bridge.clear_audio_queue, bridge.first_packet_received_event, bridge
+    # Récupérer l'event frame_requested de l'adaptateur pour savoir quand PJSUA est prêt à consommer
+    pjsua_ready_event = call.adapter._frame_requested_event
+    return bridge.rtp_stream(), bridge.send_to_peer, bridge.clear_audio_queue, bridge.first_packet_received_event, pjsua_ready_event, bridge
 
 
 __all__ = [

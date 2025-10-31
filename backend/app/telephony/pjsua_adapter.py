@@ -160,6 +160,9 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         self._audio_frame_count = 0
         self._silence_frame_count = 0
 
+        # Flag pour arrêter le traitement après la déconnexion de l'appel
+        self._active = True
+
         # Initialiser le port
         super().__init__()
 
@@ -179,6 +182,16 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         Ce callback doit fournir du PCM linéaire 16-bit, pas du µ-law.
         """
         if not PJSUA_AVAILABLE:
+            return
+
+        # Si le port a été désactivé (appel terminé), envoyer du silence sans incrémenter les compteurs
+        if not self._active:
+            expected_size = self.samples_per_frame * 2  # 320 bytes
+            frame.buf.clear()
+            for _ in range(expected_size):
+                frame.buf.append(0)
+            frame.size = expected_size
+            frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
             return
 
         self._frame_count += 1
@@ -304,6 +317,37 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
             logger.info("🗑️  Queue audio sortante vidée: %d frames supprimées", count)
 
         return count
+
+    def deactivate(self) -> None:
+        """Désactive le port audio et vide les queues (appelé quand l'appel se termine).
+
+        Cela empêche PJSUA de continuer à envoyer de l'audio depuis ce port même après
+        la déconnexion de l'appel, ce qui causait l'envoi continu de silence.
+        """
+        logger.info("🛑 Désactivation du port audio (arrêt du traitement des frames)")
+        self._active = False
+
+        # Vider les queues pour libérer la mémoire
+        incoming_cleared = 0
+        outgoing_cleared = 0
+
+        try:
+            while True:
+                self._incoming_audio_queue.get_nowait()
+                incoming_cleared += 1
+        except queue.Empty:
+            pass
+
+        try:
+            while True:
+                self._outgoing_audio_queue.get_nowait()
+                outgoing_cleared += 1
+        except queue.Empty:
+            pass
+
+        if incoming_cleared > 0 or outgoing_cleared > 0:
+            logger.info("🗑️  Queues audio vidées: %d frames entrantes, %d frames sortantes",
+                       incoming_cleared, outgoing_cleared)
 
 
 class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
@@ -604,7 +648,12 @@ class PJSUAAdapter:
             # PJSUA continue d'appeler onFrameRequested si on ne déconnecte pas
             if call._audio_port:
                 try:
-                    # Arrêter les transmissions audio
+                    # D'abord, désactiver le port pour arrêter le traitement des frames
+                    # Cela empêche l'envoi continu de silence après la fin de l'appel
+                    call._audio_port.deactivate()
+                    logger.info("✅ Port audio désactivé (call_id=%s)", call_info.id)
+
+                    # Puis arrêter les transmissions audio
                     call._audio_port.stopTransmit()
                     logger.info("✅ Port audio déconnecté (call_id=%s)", call_info.id)
                 except Exception as e:
