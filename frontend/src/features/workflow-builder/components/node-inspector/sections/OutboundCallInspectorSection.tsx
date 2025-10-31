@@ -184,35 +184,35 @@ export const OutboundCallInspectorSection = ({
       {/* Info sur les résultats */}
       {waitForCompletion && (
         <div
-          className={`${styles.nodeInspectorInfoCard} ${styles.nodeInspectorInfoCardHighlight}`}
+          style={{
+            marginTop: "16px",
+            padding: "12px",
+            backgroundColor: "#f5f5f5",
+            borderRadius: "4px",
+            fontSize: "13px",
+          }}
         >
-          <strong className={styles.nodeInspectorSectionLabel}>
-            Résultat disponible après l'appel :
-          </strong>
-          <ul className={styles.outboundCallResultList}>
-            <li className={styles.outboundCallResultListItem}>
-              <code className={styles.outboundCallResultCode}>
+          <p style={{ fontWeight: "bold", marginBottom: "8px" }}>
+            Résultat disponible après l'appel:
+          </p>
+          <ul style={{ margin: 0, paddingLeft: "20px" }}>
+            <li>
+              <code>
                 {`{{ outbound_call.call_status }}`}
-              </code>
-              <span className={styles.outboundCallResultDescription}>
-                Status : completed, no_answer, busy, failed
-              </span>
+              </code>{" "}
+              - Status: completed, no_answer, busy, failed
             </li>
-            <li className={styles.outboundCallResultListItem}>
-              <code className={styles.outboundCallResultCode}>
+            <li>
+              <code>
                 {`{{ outbound_call.answered }}`}
-              </code>
-              <span className={styles.outboundCallResultDescription}>
-                true si répondu, false sinon
-              </span>
+              </code>{" "}
+              - true si répondu, false sinon
             </li>
-            <li className={styles.outboundCallResultListItem}>
-              <code className={styles.outboundCallResultCode}>
+            <li>
+              <code>
                 {`{{ outbound_call.duration_seconds }}`}
-              </code>
-              <span className={styles.outboundCallResultDescription}>
-                Durée de l'appel
-              </span>
+              </code>{" "}
+              - Durée de l'appel
             </li>
           </ul>
         </div>
