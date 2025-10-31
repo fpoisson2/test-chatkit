@@ -164,7 +164,7 @@ export const OutboundCallInspectorSection = ({
 
       {/* Attendre la fin de l'appel */}
       <label className={styles.nodeInspectorField}>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div className={styles.nodeInspectorToggleRow}>
           <input
             type="checkbox"
             checked={waitForCompletion}
@@ -198,25 +198,19 @@ export const OutboundCallInspectorSection = ({
           <ul style={{ margin: 0, paddingLeft: "20px" }}>
             <li>
               <code>
-                {"{"}
-                {"{"}outbound_call.call_status{"}"}
-                {"}"}
+                {`{{ outbound_call.call_status }}`}
               </code>{" "}
               - Status: completed, no_answer, busy, failed
             </li>
             <li>
               <code>
-                {"{"}
-                {"{"}outbound_call.answered{"}"}
-                {"}"}
+                {`{{ outbound_call.answered }}`}
               </code>{" "}
               - true si répondu, false sinon
             </li>
             <li>
               <code>
-                {"{"}
-                {"{"}outbound_call.duration_seconds{"}"}
-                {"}"}
+                {`{{ outbound_call.duration_seconds }}`}
               </code>{" "}
               - Durée de l'appel
             </li>
