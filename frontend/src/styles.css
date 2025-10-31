@@ -1293,6 +1293,35 @@ button {
   color: var(--text-color);
 }
 
+@media (max-width: 1023px) {
+  .chatkit-sidebar__topline {
+    justify-content: center;
+    position: relative;
+    padding-right: 52px;
+  }
+
+  .chatkit-sidebar__brand {
+    justify-content: center;
+    text-align: center;
+  }
+
+  .chatkit-sidebar__brand-mark {
+    display: none;
+  }
+
+  .chatkit-sidebar__brand-title {
+    width: 100%;
+  }
+
+  .chatkit-sidebar__actions {
+    margin-left: 0;
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+}
+
 .chatkit-sidebar__app-switcher {
   display: inline-flex;
   align-items: stretch;
