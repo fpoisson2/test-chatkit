@@ -270,6 +270,18 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     return matchingApplication?.key ?? "chat";
   }, [availableApplications, location.pathname]);
 
+  const previousApplicationRef = useRef<ApplicationKey>(activeApplication);
+
+  useEffect(() => {
+    const previousApplication = previousApplicationRef.current;
+
+    if (!isDesktopLayout && previousApplication === "workflows" && activeApplication === "chat") {
+      openSidebar();
+    }
+
+    previousApplicationRef.current = activeApplication;
+  }, [activeApplication, isDesktopLayout, openSidebar]);
+
   const handleApplicationNavigate = useCallback(
     (application: ApplicationDescriptor) => {
       if (!isDesktopLayout) {
