@@ -974,7 +974,8 @@ class WorkflowService:
         Args:
             session: Session SQLAlchemy (optionnelle)
             sip_account_id: ID du compte SIP pour lequel trouver le workflow.
-                          Si None, cherche le workflow avec is_sip_workflow=true (comportement legacy).
+                Si None, cherche le workflow avec is_sip_workflow=true
+                (comportement legacy).
 
         Returns:
             La définition du workflow associée au compte SIP, ou None si aucune.
@@ -990,7 +991,7 @@ class WorkflowService:
                     select(WorkflowDefinition)
                     .where(
                         WorkflowDefinition.sip_account_id == sip_account_id,
-                        WorkflowDefinition.is_active == True,
+                        WorkflowDefinition.is_active.is_(True),
                     )
                 )
 
@@ -999,7 +1000,8 @@ class WorkflowService:
                     if self._needs_graph_backfill(definition):
                         workflow = definition.workflow
                         logger.info(
-                            "Legacy SIP workflow detected, backfilling default graph for slug %s",
+                            "Legacy SIP workflow detected, "
+                            "backfilling default graph for slug %s",
                             workflow.slug,
                         )
                         definition = self._backfill_legacy_definition(definition, db)
@@ -1027,14 +1029,20 @@ class WorkflowService:
                 for step in definition.steps:
                     if step.kind == "start" and step.parameters:
                         telephony = step.parameters.get("telephony", {})
-                        if isinstance(telephony, dict) and telephony.get("is_sip_workflow") is True:
+                        if (
+                            isinstance(telephony, dict)
+                            and telephony.get("is_sip_workflow") is True
+                        ):
                             definition = self._fully_load_definition(definition)
                             if self._needs_graph_backfill(definition):
                                 logger.info(
-                                    "Legacy SIP workflow detected, backfilling default graph for slug %s",
+                                    "Legacy SIP workflow detected, "
+                                    "backfilling default graph for slug %s",
                                     workflow.slug,
                                 )
-                                definition = self._backfill_legacy_definition(definition, db)
+                                definition = self._backfill_legacy_definition(
+                                    definition, db
+                                )
                                 self._set_active_definition(workflow, definition, db)
                                 db.commit()
                             return definition
@@ -2107,6 +2115,7 @@ class WorkflowService:
                 "start",
                 "agent",
                 "voice_agent",
+                "outbound_call",
                 "condition",
                 "state",
                 "transform",
