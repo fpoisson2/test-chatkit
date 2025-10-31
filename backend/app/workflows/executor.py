@@ -101,7 +101,7 @@ from ..image_utils import (
     save_agent_image_file,
 )
 from ..model_capabilities import ModelCapabilities, lookup_model_capabilities
-from ..models import WorkflowDefinition, WorkflowStep, WorkflowTransition
+from ..models import Workflow, WorkflowDefinition, WorkflowStep, WorkflowTransition
 from ..realtime_runner import close_voice_session, open_voice_session
 from ..token_sanitizer import sanitize_model_like
 from ..vector_store.ingestion import (
@@ -3345,6 +3345,15 @@ async def run_workflow(
                     steps=list(steps),
                 )
 
+            # Résoudre le workflow vocal vers sa définition active
+            if isinstance(voice_workflow_id, str):
+                if voice_workflow_id.isdigit():
+                    voice_workflow_id_value = int(voice_workflow_id)
+                else:
+                    voice_workflow_id_value = voice_workflow_id
+            else:
+                voice_workflow_id_value = voice_workflow_id
+
             session_factory = getattr(service, "_session_factory", None)
             if callable(session_factory):
                 database_session = session_factory()
@@ -3353,6 +3362,47 @@ async def run_workflow(
             close_session_immediately = True
 
             try:
+                resolved_voice_definition: WorkflowDefinition | None = None
+                if database_session:
+                    if isinstance(voice_workflow_id_value, int):
+                        resolved_voice_definition = database_session.get(
+                            WorkflowDefinition, voice_workflow_id_value
+                        )
+                        if resolved_voice_definition is None:
+                            workflow_entry = database_session.get(
+                                Workflow, voice_workflow_id_value
+                            )
+                            if (
+                                workflow_entry
+                                and workflow_entry.active_version_id is not None
+                            ):
+                                resolved_voice_definition = database_session.get(
+                                    WorkflowDefinition,
+                                    workflow_entry.active_version_id,
+                                )
+                    elif isinstance(voice_workflow_id_value, str):
+                        workflow_entry = (
+                            database_session.query(Workflow)
+                            .filter(Workflow.slug == voice_workflow_id_value)
+                            .first()
+                        )
+                        if (
+                            workflow_entry
+                            and workflow_entry.active_version_id is not None
+                        ):
+                            resolved_voice_definition = database_session.get(
+                                WorkflowDefinition,
+                                workflow_entry.active_version_id,
+                            )
+
+                if resolved_voice_definition is None:
+                    raise WorkflowExecutionError(
+                        "configuration",
+                        "Workflow vocal introuvable ou sans version active",
+                        step=current_node.slug,
+                        steps=list(steps),
+                    )
+
                 # Récupérer le compte SIP (ou utiliser le défaut)
                 if not sip_account_id and database_session:
                     default_account = database_session.query(SipAccount).filter_by(
@@ -3404,7 +3454,7 @@ async def run_workflow(
                     db=database_session,
                     to_number=to_number,
                     from_number=from_number,
-                    workflow_id=voice_workflow_id,
+                    workflow_id=resolved_voice_definition.id,
                     sip_account_id=sip_account_id,
                     metadata=metadata,
                 )
