@@ -856,10 +856,19 @@ class TelephonyVoiceBridge:
                 logger.info("Session SDK démarrée avec succès")
 
             # Si speak_first est activé et qu'on n'a pas déjà envoyé response.create pendant preinit,
-            # l'envoyer IMMÉDIATEMENT pour que l'assistant commence à générer l'audio tout de suite
-            # (pas besoin d'attendre le premier paquet RTP - cela crée une latence inutile)
+            # attendre que PJSUA soit prêt à consommer l'audio AVANT d'envoyer response.create
+            # Cela garantit que le premier "Allô!" sera bien consommé et entendu
             if speak_first and not preinit_response_create_sent:
-                logger.info("🚀 Envoi IMMÉDIAT de response.create pour speak_first (pas d'attente du premier paquet RTP)")
+                if pjsua_ready_to_consume is not None:
+                    logger.info("⏳ Attente que PJSUA soit prêt à consommer l'audio avant speak_first...")
+                    try:
+                        await asyncio.wait_for(pjsua_ready_to_consume.wait(), timeout=5.0)
+                        logger.info("✅ PJSUA prêt à consommer - envoi de response.create maintenant")
+                    except asyncio.TimeoutError:
+                        logger.warning("⚠️ Timeout en attendant PJSUA - envoi de response.create quand même")
+                else:
+                    logger.info("🚀 Envoi IMMÉDIAT de response.create pour speak_first (pas d'attente PJSUA)")
+
                 try:
                     from agents.realtime.model_inputs import (
                         RealtimeModelRawClientMessage,
@@ -874,9 +883,9 @@ class TelephonyVoiceBridge:
                         )
                     )
                     response_create_sent_immediately = True
-                    logger.info("✅ response.create envoyé immédiatement - l'assistant génère déjà l'audio")
+                    logger.info("✅ response.create envoyé - l'assistant génère l'audio")
                 except Exception as exc:
-                    logger.warning("Erreur lors de l'envoi immédiat de response.create: %s", exc)
+                    logger.warning("Erreur lors de l'envoi de response.create: %s", exc)
 
             # Log available tools
             try:
