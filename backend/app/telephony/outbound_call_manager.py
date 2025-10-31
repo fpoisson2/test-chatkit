@@ -241,9 +241,8 @@ class OutboundCallManager:
             session.status = "ringing"
             self._update_call_status(db, call_db_id, "ringing")
 
-            # Attendre que le média soit actif
-            # TODO: Implémenter une attente conditionnelle sur l'état du média
-            await asyncio.sleep(1)  # Attendre 1s pour que le média soit prêt
+            # Attendre que PJSUA signale que le média est prêt avant de lancer le bridge
+            await self._wait_for_pjsua_media_port(pjsua_call)
 
             # Créer l'audio bridge (8kHz ↔ 24kHz)
             (
@@ -290,6 +289,25 @@ class OutboundCallManager:
 
             session.mark_complete()
             self.active_calls.pop(session.call_id, None)
+
+    async def _wait_for_pjsua_media_port(
+        self,
+        call: PJSUACall,
+        *,
+        timeout: float = 10.0,
+    ) -> None:
+        """Attend que le port audio PJSUA soit prêt pour l'envoi et la réception."""
+
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+
+        while getattr(call, "_audio_port", None) is None or not getattr(call, "_media_active", False):
+            if loop.time() >= deadline:
+                raise TimeoutError("PJSUA media port not ready within timeout")
+
+            await asyncio.sleep(0.05)
+
+        logger.info("PJSUA media port ready for audio bridging")
 
     async def _run_voice_session_pjsua(
         self,
