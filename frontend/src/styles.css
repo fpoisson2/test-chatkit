@@ -291,12 +291,13 @@ button {
 }
 
 .chatkit-sidebar {
-  position: absolute;
+  position: fixed;
   inset: 0 auto 0 0;
   z-index: 2;
   width: var(--chatkit-sidebar-width);
   max-width: 100%;
-  min-height: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
   background: var(--sidebar-background);
   border-right: 1px solid var(--sidebar-border);
   box-shadow: 12px 0 32px rgba(15, 23, 42, 0.14);
@@ -306,6 +307,7 @@ button {
   --chatkit-sidebar-padding-x: 24px;
   --chatkit-sidebar-content-padding-x: var(--chatkit-sidebar-padding-x);
   padding: 28px var(--chatkit-sidebar-padding-x);
+  padding-bottom: max(28px, env(safe-area-inset-bottom));
   overflow: hidden;
   transform: translateX(calc(-1 * var(--chatkit-sidebar-width)));
   transition: transform 0.95s cubic-bezier(0.16, 1, 0.3, 1);
@@ -341,6 +343,7 @@ button {
   position: relative;
   inset: auto;
   height: 100%;
+  min-height: 100%;
   transform: none;
   box-shadow: none;
   pointer-events: auto;
