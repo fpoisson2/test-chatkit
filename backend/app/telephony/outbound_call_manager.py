@@ -422,7 +422,10 @@ class OutboundCallManager:
             )
 
             # Créer le voice bridge
-            voice_bridge = TelephonyVoiceBridge(hooks=hooks)
+            # Le pont audio PJSUA fournit déjà du PCM linéaire (voir create_pjsua_audio_bridge)
+            # et les appels entrants utilisent la même configuration. On aligne donc les appels
+            # sortants pour éviter que TelephonyVoiceBridge tente de décoder du µ-law.
+            voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
             session._voice_bridge = voice_bridge
 
             # Déterminer le base URL pour le provider
