@@ -45,7 +45,8 @@ type ChatWorkflowSidebarProps = {
 export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: ChatWorkflowSidebarProps) => {
   const { t } = useI18n();
   const navigate = useNavigate();
-  const { closeSidebar, isDesktopLayout, isSidebarCollapsed } = useAppLayout();
+  const { closeSidebar, isDesktopLayout, isSidebarCollapsed, prepareSidebarForWorkflowReturn } =
+    useAppLayout();
   const { setSidebarContent, setCollapsedSidebarContent, clearSidebarContent } = useSidebarPortal();
   const { token, user } = useAuth();
   const isAdmin = Boolean(user?.is_admin);
@@ -415,11 +416,12 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   }, [hostedWorkflows, mode, selectedHostedSlug, selectedWorkflowId, token, workflows]);
 
   const handleOpenBuilder = useCallback(() => {
+    prepareSidebarForWorkflowReturn();
     navigate("/workflows");
     if (!isDesktopLayout) {
       closeSidebar();
     }
-  }, [closeSidebar, isDesktopLayout, navigate]);
+  }, [closeSidebar, isDesktopLayout, navigate, prepareSidebarForWorkflowReturn]);
 
   const sidebarContent = useMemo(() => {
     const sectionId = "chat-sidebar-workflow";

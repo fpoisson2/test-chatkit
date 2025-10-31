@@ -148,6 +148,7 @@ const useSidebarInteractions = ({
 type AppLayoutContextValue = {
   openSidebar: () => void;
   closeSidebar: () => void;
+  prepareSidebarForWorkflowReturn: () => void;
   isDesktopLayout: boolean;
   isSidebarOpen: boolean;
   isSidebarCollapsed: boolean;
@@ -203,7 +204,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   });
   const keepSidebarOpenOnNavigationRef = useRef(false);
   const previousSidebarOpenRef = useRef(isSidebarOpen);
-  const shouldRestoreSidebarRef = useRef(false);
+  const shouldRestoreSidebarRef = useRef<boolean | null>(null);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
@@ -302,6 +303,14 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
 
   const previousApplicationRef = useRef<ApplicationKey>(activeApplication);
 
+  const prepareSidebarForWorkflowReturn = useCallback(() => {
+    if (isDesktopLayout) {
+      return;
+    }
+
+    shouldRestoreSidebarRef.current = isSidebarOpen;
+  }, [isDesktopLayout, isSidebarOpen]);
+
   useEffect(() => {
     const previousApplication = previousApplicationRef.current;
 
@@ -311,16 +320,18 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
         activeApplication === "workflows" &&
         location.pathname.startsWith("/workflows")
       ) {
-        shouldRestoreSidebarRef.current = previousSidebarOpenRef.current;
+        if (shouldRestoreSidebarRef.current === null) {
+          shouldRestoreSidebarRef.current = previousSidebarOpenRef.current;
+        }
       } else if (previousApplication === "workflows" && activeApplication === "chat") {
         if (shouldRestoreSidebarRef.current) {
           openSidebar();
         }
 
-        shouldRestoreSidebarRef.current = false;
+        shouldRestoreSidebarRef.current = null;
       }
     } else {
-      shouldRestoreSidebarRef.current = false;
+      shouldRestoreSidebarRef.current = null;
     }
 
     previousApplicationRef.current = activeApplication;
@@ -524,6 +535,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     () => ({
       openSidebar,
       closeSidebar,
+      prepareSidebarForWorkflowReturn,
       isDesktopLayout,
       isSidebarOpen,
       isSidebarCollapsed,
