@@ -2456,13 +2456,24 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             logger.info("Création de l'audio bridge PJSUA AVANT la réponse (call_id=%s)", call_id)
             rtp_stream, send_to_peer_raw, clear_queue = await create_pjsua_audio_bridge(call)
 
-            # Créer un Event pour bloquer l'envoi d'audio jusqu'au 200 OK
-            audio_send_ready = asyncio.Event()
+            # Créer un Event pour bloquer l'envoi d'audio jusqu'à ce que le média soit actif
+            # Le média devient actif APRÈS le 200 OK + ACK, quand PJSUA crée le port audio
+            media_active_event = asyncio.Event()
 
-            # Wrapper send_to_peer pour bloquer l'audio jusqu'au 200 OK
+            # Callback pour débloquer l'audio quand le média est actif
+            async def on_media_active_callback(active_call: Any, media_info: Any) -> None:
+                """Appelé quand le média devient actif (port audio créé)."""
+                if active_call == call:
+                    logger.info("🎵 Média actif détecté, déblocage de l'envoi d'audio (call_id=%s)", call_id)
+                    media_active_event.set()
+
+            # Enregistrer le callback média avant de démarrer
+            pjsua_adapter.set_media_active_callback(on_media_active_callback)
+
+            # Wrapper send_to_peer pour bloquer l'audio jusqu'à ce que le média soit actif
             async def send_to_peer_blocked(audio: bytes) -> None:
-                """Wrapper qui bloque l'envoi d'audio jusqu'à ce que le call soit répondu."""
-                await audio_send_ready.wait()
+                """Wrapper qui bloque l'envoi d'audio jusqu'à ce que le port audio existe."""
+                await media_active_event.wait()
                 await send_to_peer_raw(audio)
 
             send_to_peer = send_to_peer_blocked
@@ -2603,12 +2614,9 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             logger.info("📞 Réponse à l'appel PJSUA (call_id=%s)", call_id)
             await pjsua_adapter.answer_call(call, code=200)
 
-            # Attendre que le média soit actif
-            await asyncio.sleep(0.1)  # 100ms pour que le RTP se stabilise
-
-            # Débloquer l'envoi d'audio IMMÉDIATEMENT après le 200 OK
-            logger.info("✅ Déblocage de l'envoi d'audio vers le téléphone (call_id=%s)", call_id)
-            audio_send_ready.set()
+            # L'audio sera débloqué automatiquement par le callback on_media_active_callback
+            # quand PJSUA appellera onCallMediaState et créera le port audio
+            logger.info("⏳ Attente que le média devienne actif pour envoyer l'audio... (call_id=%s)", call_id)
 
             # Attendre la fin du voice bridge
             try:
