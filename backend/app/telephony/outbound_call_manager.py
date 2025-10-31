@@ -299,10 +299,20 @@ class OutboundCallManager:
 
             # Résoudre la configuration de démarrage
             from ..workflows.service import resolve_start_telephony_config
+            from ..settings import get_settings
 
-            route, instructions, voice_model, voice_name = resolve_start_telephony_config(
-                workflow
+            voice_config = resolve_start_telephony_config(workflow)
+            if not voice_config or not voice_config.default_route:
+                raise ValueError(
+                    f"Workflow {session.workflow_id} has no voice configuration"
+                )
+
+            route = voice_config.default_route
+            voice_model = route.overrides.model or get_settings().chatkit_realtime_model
+            instructions = (
+                route.overrides.instructions or get_settings().chatkit_realtime_instructions
             )
+            voice_name = route.overrides.voice or get_settings().chatkit_realtime_voice
 
             # Extraire les tools et handoffs du workflow (identique au code existant)
             voice_tools = []
