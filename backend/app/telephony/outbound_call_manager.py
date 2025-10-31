@@ -301,7 +301,7 @@ class OutboundCallManager:
             from ..workflows.service import resolve_start_telephony_config
 
             route, instructions, voice_model, voice_name = resolve_start_telephony_config(
-                workflow, db
+                workflow
             )
 
             # Extraire les tools et handoffs du workflow (identique au code existant)
