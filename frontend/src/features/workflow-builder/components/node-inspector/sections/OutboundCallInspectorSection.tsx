@@ -35,7 +35,7 @@ export const OutboundCallInspectorSection = ({
     if (!token) return;
 
     setLoading(true);
-    fetch("/api/admin/workflows", {
+    fetch("/api/workflows", {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => res.json())
