@@ -1,3 +1,5 @@
+# ruff: noqa: E501, I001, E712
+
 """Adaptateur PJSUA pour la téléphonie SIP/RTP.
 
 Ce module fournit une interface Python async pour PJSIP (via pjsua2),
@@ -16,8 +18,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import queue
-import struct
-import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -621,14 +621,14 @@ class PJSUAAdapter:
 
     def send_audio_to_call(self, call: PJSUACall, audio_data: bytes) -> None:
         """Envoie de l'audio vers un appel (PCM 8kHz, 16-bit, mono)."""
-        if call._audio_port:
+        if call._audio_port is not None:
             call._audio_port.send_audio(audio_data)
         else:
             logger.warning("Tentative d'envoi audio sur un appel sans port audio")
 
     async def receive_audio_from_call(self, call: PJSUACall) -> bytes | None:
         """Récupère l'audio reçu d'un appel (PCM 8kHz, 16-bit, mono)."""
-        if call._audio_port:
+        if call._audio_port is not None:
             return await call._audio_port.get_audio()
         return None
 
@@ -638,7 +638,7 @@ class PJSUAAdapter:
         Returns:
             Nombre de frames vidées
         """
-        if call._audio_port:
+        if call._audio_port is not None:
             return call._audio_port.clear_outgoing_audio_queue()
         return 0
 
