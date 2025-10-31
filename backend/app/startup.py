@@ -2464,7 +2464,11 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             async def on_media_active_callback(active_call: Any, media_info: Any) -> None:
                 """Appelé quand le média devient actif (port audio créé)."""
                 if active_call == call:
-                    logger.info("🎵 Média actif détecté, déblocage de l'envoi d'audio (call_id=%s)", call_id)
+                    logger.info("🎵 Média actif détecté, attente 200ms pour stabilisation RTP... (call_id=%s)", call_id)
+                    # Attendre un peu pour que le téléphone établisse complètement le flux RTP
+                    # Sans ce délai, les premiers paquets audio sont perdus
+                    await asyncio.sleep(0.2)  # 200ms
+                    logger.info("✅ Déblocage de l'envoi d'audio (call_id=%s)", call_id)
                     media_active_event.set()
 
             # Enregistrer le callback média avant de démarrer
