@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from ..models import OutboundCall, SipAccount, WorkflowDefinition
 from .rtp_server import RtpServer, RtpServerConfig
 from .voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
+from .sip_server import _merge_voice_settings
 from ..workflows.service import resolve_start_telephony_config
 from ..config import get_settings
 from ..realtime_runner import open_voice_session, close_voice_session
@@ -309,34 +310,35 @@ class OutboundCallManager:
             if not workflow:
                 raise ValueError(f"Workflow {session.workflow_id} not found")
 
-            # Résoudre la configuration de démarrage
-            from ..workflows.service import resolve_start_telephony_config
+            # Résoudre la configuration de démarrage et les paramètres voix
+            voice_config = resolve_start_telephony_config(workflow)
+            if not voice_config or not voice_config.default_route:
+                raise ValueError(
+                    f"Workflow {session.workflow_id} has no voice configuration"
+                )
 
-            route, instructions, voice_model, voice_name = resolve_start_telephony_config(
-                workflow, db
+            route = voice_config.default_route
+            (
+                voice_model,
+                instructions,
+                voice_name,
+                _prompt_variables,
+                voice_provider_id,
+                voice_provider_slug,
+                voice_tools,
+                voice_handoffs,
+                _ring_timeout_seconds,
+                _speak_first,
+            ) = _merge_voice_settings(
+                session=db,
+                overrides=getattr(route, "overrides", None),
+                settings=get_settings(),
+                workflow_definition=workflow,
             )
 
-            # Extraire les tools et handoffs du workflow (identique au code existant)
-            voice_tools = []
-            voice_handoffs = []
-
-            for step in workflow.steps:
-                if getattr(step, "kind", None) == "voice_agent":
-                    params = getattr(step, "parameters", None)
-                    if isinstance(params, dict):
-                        tools_payload = params.get("tools")
-                        if isinstance(tools_payload, list):
-                            voice_tools.extend(tools_payload)
-
-                        handoffs_payload = params.get("handoffs")
-                        if isinstance(handoffs_payload, list):
-                            voice_handoffs.extend(handoffs_payload)
-                    break
+            voice_provider_slug = voice_provider_slug or "openai"
 
             # Ouvrir la session vocale
-            voice_provider_slug = getattr(route, "provider_slug", None) or "openai"
-            voice_provider_id = getattr(route, "provider_id", None)
-
             session_handle = await open_voice_session(
                 user_id=f"outbound:{session.call_id}",
                 model=voice_model,
