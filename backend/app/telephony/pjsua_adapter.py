@@ -151,6 +151,11 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         self._incoming_audio_queue = queue.Queue(maxsize=100)  # Du téléphone
         self._outgoing_audio_queue = queue.Queue(maxsize=1000)  # Vers le téléphone
 
+        # Compteurs pour diagnostics
+        self._frame_count = 0
+        self._audio_frame_count = 0
+        self._silence_frame_count = 0
+
         # Initialiser le port
         super().__init__()
 
@@ -172,12 +177,21 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         if not PJSUA_AVAILABLE:
             return
 
+        self._frame_count += 1
         expected_size = self.samples_per_frame * 2  # 320 bytes pour 160 samples @ 16-bit
 
         try:
             # Récupérer l'audio de la queue (non-bloquant)
             audio_data = self._outgoing_audio_queue.get_nowait()
-            logger.debug("📢 onFrameRequested: audio trouvé dans queue (%d bytes)", len(audio_data))
+            self._audio_frame_count += 1
+
+            # Vérifier si c'est vraiment de l'audio (pas du silence)
+            is_silence = all(b == 0 for b in audio_data[:min(20, len(audio_data))])
+
+            if self._audio_frame_count <= 5 or (self._audio_frame_count <= 20 and not is_silence):
+                logger.info("📢 onFrameRequested #%d: audio trouvé (%d bytes) - %s",
+                           self._frame_count, len(audio_data),
+                           "SILENCE" if is_silence else f"AUDIO (premiers bytes: {list(audio_data[:10])})")
 
             # S'assurer que la taille est correcte
             if len(audio_data) < expected_size:
@@ -197,6 +211,12 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
         except queue.Empty:
             # Pas d'audio disponible, envoyer du silence PCM (0x00)
+            self._silence_frame_count += 1
+
+            if self._silence_frame_count <= 5 or self._silence_frame_count % 50 == 0:
+                logger.debug("🔇 onFrameRequested #%d: queue vide, envoi silence (total silence: %d)",
+                           self._frame_count, self._silence_frame_count)
+
             frame.buf.clear()
             for _ in range(expected_size):
                 frame.buf.append(0)
@@ -237,8 +257,17 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         """Envoie de l'audio vers le téléphone (appelé depuis l'async loop)."""
         try:
             self._outgoing_audio_queue.put_nowait(audio_data)
+
+            # Log des premières fois pour confirmer que l'audio arrive
+            queue_size = self._outgoing_audio_queue.qsize()
+            if self._audio_frame_count < 5:
+                # Vérifier si c'est du silence
+                is_silence = all(b == 0 for b in audio_data[:min(20, len(audio_data))])
+                logger.info("📥 send_audio: %d bytes ajoutés à queue (taille: %d) - %s",
+                           len(audio_data), queue_size,
+                           "SILENCE" if is_silence else f"AUDIO (premiers bytes: {list(audio_data[:10])})")
         except queue.Full:
-            logger.warning("Queue audio sortante pleine, frame ignorée")
+            logger.warning("⚠️ Queue audio sortante pleine, frame ignorée")
 
     async def get_audio(self) -> bytes | None:
         """Récupère l'audio reçu du téléphone (appelé depuis l'async loop)."""
@@ -326,11 +355,13 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
                         # Connecter : téléphone -> notre port (pour recevoir)
                         audio_media.startTransmit(self._audio_port)
+                        logger.info("✅ Connexion téléphone → port audio établie")
 
                         # Connecter : notre port -> téléphone (pour envoyer)
                         self._audio_port.startTransmit(audio_media)
+                        logger.info("✅ Connexion port audio → téléphone établie")
 
-                        logger.info("Port audio connecté (bidirectionnel)")
+                        logger.info("🎵 Port audio connecté (bidirectionnel) - audio_media info: %s", audio_media.getPortInfo())
 
                     # Notifier l'adaptateur que le média est prêt
                     if hasattr(self.adapter, '_on_media_active'):

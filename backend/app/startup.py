@@ -2539,7 +2539,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                             # Fermer la session vocale
                             try:
                                 if session_handle:
-                                    await close_voice_session(session_handle.session_id)
+                                    await close_voice_session(session_id=session_handle.session_id)
                                     logger.info("✅ Session vocale fermée (call_id=%s)", call_id)
                             except Exception as e:
                                 logger.warning("Erreur fermeture session vocale: %s", e)
