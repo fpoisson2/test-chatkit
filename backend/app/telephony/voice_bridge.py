@@ -300,6 +300,9 @@ class TelephonyVoiceBridge:
         session: Any | None = None
         stop_event = asyncio.Event()
 
+        # Track if we've sent response.create immediately (for speak_first optimization)
+        response_create_sent_immediately = False
+
         # Use a list to create a mutable reference for block_audio_send
         block_audio_send_ref = [False]
 
@@ -340,7 +343,7 @@ class TelephonyVoiceBridge:
                     logger.debug("Erreur lors de la fermeture anticipée de session: %s", e)
 
         async def forward_audio() -> None:
-            nonlocal inbound_audio_bytes
+            nonlocal inbound_audio_bytes, response_create_sent_immediately
             packet_count = 0
             bytes_sent = 0
             # Si on utilise une session pré-initialisée, turn_detection est déjà activé
@@ -364,11 +367,10 @@ class TelephonyVoiceBridge:
                     if packet_count == 1:
                         logger.info("Premier paquet audio reçu: %d bytes PCM", len(pcm))
 
-                        # Si speak_first est activé et qu'on n'a pas encore envoyé response.create,
-                        # l'envoyer immédiatement - le RTP server attendra 150ms avant de flusher le buffer
-                        # et OpenAI prendra 200-400ms pour générer l'audio, donc le téléphone sera prêt à temps
-                        if speak_first and not preinit_response_create_sent and not response_create_sent_on_ready:
-                            logger.info("📞 Premier paquet RTP reçu - envoi immédiat de response.create pour speak_first")
+                        # Si speak_first est activé et qu'on n'a pas encore envoyé response.create (immédiatement ou pendant preinit),
+                        # l'envoyer maintenant comme fallback (mais normalement c'est déjà fait immédiatement après le démarrage de la session)
+                        if speak_first and not preinit_response_create_sent and not response_create_sent_immediately and not response_create_sent_on_ready:
+                            logger.warning("⚠️ FALLBACK: Premier paquet RTP reçu - envoi de response.create (devrait être déjà fait immédiatement !)")
                             try:
                                 from agents.realtime.model_inputs import (
                                     RealtimeModelRawClientMessage,
@@ -383,7 +385,7 @@ class TelephonyVoiceBridge:
                                     )
                                 )
                                 response_create_sent_on_ready = True
-                                logger.info("✅ response.create envoyé - l'assistant va parler en premier")
+                                logger.info("✅ response.create envoyé en fallback")
                             except Exception as exc:
                                 logger.warning("Erreur lors de l'envoi de response.create: %s", exc)
 
@@ -882,8 +884,28 @@ class TelephonyVoiceBridge:
                 await session.__aenter__()
                 logger.info("Session SDK démarrée avec succès")
 
-            # Note: Si speak_first est activé, response.create sera envoyé dans forward_audio()
-            # quand le premier paquet RTP sera reçu (téléphone prêt à recevoir l'audio)
+            # Si speak_first est activé et qu'on n'a pas déjà envoyé response.create pendant preinit,
+            # l'envoyer IMMÉDIATEMENT pour que l'assistant commence à générer l'audio tout de suite
+            # (pas besoin d'attendre le premier paquet RTP - cela crée une latence inutile)
+            if speak_first and not preinit_response_create_sent:
+                logger.info("🚀 Envoi IMMÉDIAT de response.create pour speak_first (pas d'attente du premier paquet RTP)")
+                try:
+                    from agents.realtime.model_inputs import (
+                        RealtimeModelRawClientMessage,
+                        RealtimeModelSendRawMessage,
+                    )
+                    await session._model.send_event(
+                        RealtimeModelSendRawMessage(
+                            message=RealtimeModelRawClientMessage(
+                                type="response.create",
+                                other_data={},
+                            )
+                        )
+                    )
+                    response_create_sent_immediately = True
+                    logger.info("✅ response.create envoyé immédiatement - l'assistant génère déjà l'audio")
+                except Exception as exc:
+                    logger.warning("Erreur lors de l'envoi immédiat de response.create: %s", exc)
 
             # Log available tools
             try:

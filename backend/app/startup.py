@@ -2466,7 +2466,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
             # Attendre que le média soit actif
             # TODO: Implémenter une vraie attente conditionnelle
-            await asyncio.sleep(0.5)  # 500ms pour que le RTP se stabilise
+            await asyncio.sleep(0.1)  # 100ms pour que le RTP se stabilise (réduit de 500ms pour speak_first)
 
             # Créer l'audio bridge
             logger.info("Création de l'audio bridge PJSUA (call_id=%s)", call_id)
