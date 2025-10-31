@@ -2464,31 +2464,10 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             async def on_media_active_callback(active_call: Any, media_info: Any) -> None:
                 """Appelé quand le média devient actif (port audio créé)."""
                 if active_call == call:
-                    logger.info("🎵 Média actif détecté, attente 200ms pour stabilisation RTP... (call_id=%s)", call_id)
+                    logger.info("🎵 Média actif détecté, attente 100ms pour stabilisation RTP... (call_id=%s)", call_id)
                     # Attendre un peu pour que le téléphone établisse complètement le flux RTP
-                    await asyncio.sleep(0.2)  # 200ms
-
-                    # Si speak_first est activé, envoyer response.create MAINTENANT (pas pendant la sonnerie)
-                    if speak_first:
-                        logger.info("📢 Envoi de response.create APRÈS le 200 OK (call_id=%s)", call_id)
-                        try:
-                            from agents.realtime.model_inputs import (
-                                RealtimeModelRawClientMessage,
-                                RealtimeModelSendRawMessage,
-                            )
-                            # Envoyer via le runner
-                            await session_handle.runner._model.send_event(
-                                RealtimeModelSendRawMessage(
-                                    message=RealtimeModelRawClientMessage(
-                                        type="response.create",
-                                        other_data={},
-                                    )
-                                )
-                            )
-                            logger.info("✅ response.create envoyé - l'assistant va générer l'audio maintenant (call_id=%s)", call_id)
-                        except Exception as e:
-                            logger.warning("Erreur lors de l'envoi de response.create: %s", e)
-
+                    # 100ms devrait suffire car l'audio est déjà en cours de génération
+                    await asyncio.sleep(0.1)  # 100ms
                     logger.info("✅ Déblocage de l'envoi d'audio (call_id=%s)", call_id)
                     media_active_event.set()
 
