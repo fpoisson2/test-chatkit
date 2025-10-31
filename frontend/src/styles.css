@@ -369,8 +369,8 @@ button {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding: 28px var(--chatkit-sidebar-padding-x);
-  overflow-x: visible;
+  padding: max(env(safe-area-inset-top), 0px) var(--chatkit-sidebar-padding-x) 28px;
+  overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
@@ -426,7 +426,7 @@ button {
 }
 
 .chatkit-sidebar--collapsed .chatkit-sidebar__scroll-area {
-  padding: 28px var(--chatkit-sidebar-padding-x);
+  padding: max(env(safe-area-inset-top), 0px) var(--chatkit-sidebar-padding-x) 28px;
   gap: 20px;
 }
 
