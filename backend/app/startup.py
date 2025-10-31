@@ -2464,10 +2464,10 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             async def on_media_active_callback(active_call: Any, media_info: Any) -> None:
                 """Appelé quand le média devient actif (port audio créé)."""
                 if active_call == call:
-                    logger.info("🎵 Média actif détecté, attente 100ms pour stabilisation RTP... (call_id=%s)", call_id)
+                    logger.info("🎵 Média actif détecté, attente 50ms pour stabilisation RTP... (call_id=%s)", call_id)
                     # Attendre un peu pour que le téléphone établisse complètement le flux RTP
-                    # 100ms devrait suffire car l'audio est déjà en cours de génération
-                    await asyncio.sleep(0.1)  # 100ms
+                    # 50ms devrait suffire car l'audio est déjà pré-généré pendant 1 seconde
+                    await asyncio.sleep(0.05)  # 50ms
                     logger.info("✅ Déblocage de l'envoi d'audio (call_id=%s)", call_id)
                     media_active_event.set()
 
@@ -2605,10 +2605,10 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             voice_bridge_task = asyncio.create_task(run_voice_bridge())
 
             # Attendre le délai configuré avant de répondre (sonnerie)
-            # Si speak_first, envoyer response.create à la fin du ring pour que l'audio soit presque prêt
+            # Si speak_first, envoyer response.create 1 seconde avant la fin pour maximiser la pré-génération
             if ring_timeout_seconds > 0:
                 # Attendre presque tout le ring_timeout
-                wait_before_response_create = max(0, ring_timeout_seconds - 0.5)  # Envoyer 500ms avant la fin
+                wait_before_response_create = max(0, ring_timeout_seconds - 1.0)  # Envoyer 1 seconde avant la fin
                 if wait_before_response_create > 0:
                     logger.info(
                         "⏰ Attente de %.2f secondes (sonnerie) (call_id=%s)",
@@ -2617,9 +2617,9 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     )
                     await asyncio.sleep(wait_before_response_create)
 
-                # Si speak_first, envoyer response.create maintenant (500ms avant le 200 OK)
+                # Si speak_first, envoyer response.create maintenant (1 seconde avant le 200 OK)
                 if speak_first:
-                    logger.info("📢 Envoi de response.create 500ms AVANT le 200 OK pour pré-générer l'audio (call_id=%s)", call_id)
+                    logger.info("📢 Envoi de response.create 1 seconde AVANT le 200 OK pour pré-générer l'audio (call_id=%s)", call_id)
                     try:
                         from agents.realtime.model_inputs import (
                             RealtimeModelRawClientMessage,
@@ -2633,11 +2633,11 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                                 )
                             )
                         )
-                        logger.info("✅ response.create envoyé - l'audio sera presque prêt au 200 OK (call_id=%s)", call_id)
+                        logger.info("✅ response.create envoyé - l'audio sera prêt au 200 OK (call_id=%s)", call_id)
                     except Exception as e:
                         logger.warning("Erreur lors de l'envoi de response.create: %s", e)
 
-                # Attendre les derniers 500ms
+                # Attendre la dernière seconde
                 remaining = ring_timeout_seconds - wait_before_response_create
                 if remaining > 0:
                     await asyncio.sleep(remaining)
