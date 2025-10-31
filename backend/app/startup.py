@@ -2456,6 +2456,11 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             logger.info("Création de l'audio bridge PJSUA AVANT la réponse (call_id=%s)", call_id)
             rtp_stream, send_to_peer_raw, clear_queue, first_packet_event, audio_bridge = await create_pjsua_audio_bridge(call)
 
+            # Reset l'event frame_requested pour cet appel (partagé entre tous les appels)
+            if pjsua_adapter._frame_requested_event:
+                pjsua_adapter._frame_requested_event.clear()
+                logger.info("🔄 Event frame_requested réinitialisé pour le nouvel appel (call_id=%s)", call_id)
+
             # Créer un Event pour bloquer l'envoi d'audio jusqu'à ce que le média soit actif
             # Le média devient actif APRÈS le 200 OK + ACK, quand PJSUA crée le port audio
             media_active_event = asyncio.Event()
@@ -2471,6 +2476,14 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     # On attend 50ms pour qu'il soit prêt
                     logger.info("⏱️ Attente 50ms pour initialisation jitter buffer... (call_id=%s)", call_id)
                     await asyncio.sleep(0.05)  # 50ms
+
+                    # Attendre que PJSUA commence à consommer l'audio (onFrameRequested appelé)
+                    # C'est CRITIQUE: si on démarre OpenAI avant, il va envoyer de l'audio
+                    # alors que personne ne le consomme, et la queue va déborder
+                    if pjsua_adapter._frame_requested_event:
+                        logger.info("⏱️ Attente que PJSUA soit prêt à consommer l'audio... (call_id=%s)", call_id)
+                        await pjsua_adapter._frame_requested_event.wait()
+                        logger.info("✅ PJSUA prêt - onFrameRequested appelé (call_id=%s)", call_id)
 
                     # Débloquer l'audio pour que les paquets OpenAI soient transmis immédiatement
                     logger.info("✅ Déblocage de l'envoi d'audio (call_id=%s)", call_id)

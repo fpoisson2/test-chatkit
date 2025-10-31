@@ -181,6 +181,12 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
             return
 
         self._frame_count += 1
+
+        # Au premier appel, signaler que PJSUA est prêt à consommer l'audio
+        if self._frame_count == 1 and self.adapter._frame_requested_event and not self.adapter._frame_requested_event.is_set():
+            logger.info("🎬 Premier onFrameRequested - PJSUA est prêt à consommer l'audio")
+            self.adapter._frame_requested_event.set()
+
         expected_size = self.samples_per_frame * 2  # 320 bytes pour 160 samples @ 16-bit
 
         try:
