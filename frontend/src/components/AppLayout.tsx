@@ -567,116 +567,118 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
             aria-label={t("app.sidebar.ariaLabel")}
             aria-hidden={!isSidebarOpen && !isDesktopLayout}
           >
-          <header className="chatkit-sidebar__header">
-            <div className="chatkit-sidebar__topline">
-              <div className="chatkit-sidebar__brand">
-                <span className="chatkit-sidebar__brand-mark" aria-hidden="true">
-                  <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
-                </span>
-                <span className="chatkit-sidebar__brand-title">
-                  {t("app.sidebar.brandTitle")}
-                </span>
-              </div>
-              <div className="chatkit-sidebar__actions">
-                {isSidebarOpen ? (
-                  <button
-                    type="button"
-                    className="chatkit-sidebar__dismiss"
-                    onClick={closeSidebar}
-                    tabIndex={sidebarTabIndex}
-                    aria-label={t("app.sidebar.close")}
-                  >
-                    <span aria-hidden="true" className="chatkit-sidebar__dismiss-icon">
-                      <SidebarIcon name="close" />
+            <div className="chatkit-sidebar__scroll-area">
+              <header className="chatkit-sidebar__header">
+                <div className="chatkit-sidebar__topline">
+                  <div className="chatkit-sidebar__brand">
+                    <span className="chatkit-sidebar__brand-mark" aria-hidden="true">
+                      <SidebarIcon name="logo" className="chatkit-sidebar__logo" />
                     </span>
-                  </button>
-                ) : null}
-              </div>
-            </div>
-            {renderAppSwitcher()}
-          </header>
-          {(sidebarContent || collapsedSidebarContent || navigationItems.length > 0) && (
-            <div className="chatkit-sidebar__main">
-              {sidebarContent ? (
-                <div className="chatkit-sidebar__dynamic">{sidebarContent}</div>
-              ) : null}
-              {collapsedSidebarContent ? (
-                <div
-                  className={`chatkit-sidebar__collapsed-preview${
-                    isSidebarCollapsed ? " chatkit-sidebar__collapsed-preview--visible" : ""
-                  }`}
-                  aria-hidden={!isSidebarCollapsed}
-                >
-                  {collapsedSidebarContent}
-                </div>
-              ) : null}
-              {navigationItems.length > 0 && (
-                <nav className="chatkit-sidebar__nav" aria-label={t("app.sidebar.menu")}>
-                  <ul className="chatkit-sidebar__list">
-                    {navigationItems.map((item) => (
-                      <li
-                        key={item.key}
-                        className={`chatkit-sidebar__item${
-                          item.isActive ? " chatkit-sidebar__item--active" : ""
-                        }`}
+                    <span className="chatkit-sidebar__brand-title">
+                      {t("app.sidebar.brandTitle")}
+                    </span>
+                  </div>
+                  <div className="chatkit-sidebar__actions">
+                    {isSidebarOpen ? (
+                      <button
+                        type="button"
+                        className="chatkit-sidebar__dismiss"
+                        onClick={closeSidebar}
+                        tabIndex={sidebarTabIndex}
+                        aria-label={t("app.sidebar.close")}
                       >
-                        <button
-                          type="button"
-                          onClick={item.onClick}
-                          tabIndex={sidebarTabIndex}
-                          aria-label={item.label}
-                          aria-current={item.isActive ? "page" : undefined}
-                        >
-                          <SidebarIcon name={item.icon} className="chatkit-sidebar__icon" />
-                          <span className="chatkit-sidebar__label">{item.label}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </nav>
+                        <span aria-hidden="true" className="chatkit-sidebar__dismiss-icon">
+                          <SidebarIcon name="close" />
+                        </span>
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                {renderAppSwitcher()}
+              </header>
+              {(sidebarContent || collapsedSidebarContent || navigationItems.length > 0) && (
+                <div className="chatkit-sidebar__main">
+                  {sidebarContent ? (
+                    <div className="chatkit-sidebar__dynamic">{sidebarContent}</div>
+                  ) : null}
+                  {collapsedSidebarContent ? (
+                    <div
+                      className={`chatkit-sidebar__collapsed-preview${
+                        isSidebarCollapsed ? " chatkit-sidebar__collapsed-preview--visible" : ""
+                      }`}
+                      aria-hidden={!isSidebarCollapsed}
+                    >
+                      {collapsedSidebarContent}
+                    </div>
+                  ) : null}
+                  {navigationItems.length > 0 && (
+                    <nav className="chatkit-sidebar__nav" aria-label={t("app.sidebar.menu")}>
+                      <ul className="chatkit-sidebar__list">
+                        {navigationItems.map((item) => (
+                          <li
+                            key={item.key}
+                            className={`chatkit-sidebar__item${
+                              item.isActive ? " chatkit-sidebar__item--active" : ""
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              onClick={item.onClick}
+                              tabIndex={sidebarTabIndex}
+                              aria-label={item.label}
+                              aria-current={item.isActive ? "page" : undefined}
+                            >
+                              <SidebarIcon name={item.icon} className="chatkit-sidebar__icon" />
+                              <span className="chatkit-sidebar__label">{item.label}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </nav>
+                  )}
+                </div>
               )}
             </div>
-          )}
-          {isAuthenticated && (
-            <footer className="chatkit-sidebar__footer">
-              <button
-                type="button"
-                className={`chatkit-sidebar__footer-link${
-                  isDocsActive ? " chatkit-sidebar__footer-link--active" : ""
-                }`}
-                onClick={handleGoToDocs}
-                tabIndex={sidebarTabIndex}
-                aria-label={t("app.sidebar.docs")}
-                aria-current={isDocsActive ? "page" : undefined}
-              >
-                <SidebarIcon name="docs" className="chatkit-sidebar__icon" />
-                <span className="chatkit-sidebar__footer-link-label">{t("app.sidebar.docs")}</span>
-              </button>
-              <div
-                className={`chatkit-sidebar__profile${isProfileMenuOpen ? " chatkit-sidebar__profile--open" : ""}`}
-                ref={profileMenuRef}
-              >
+            {isAuthenticated && (
+              <footer className="chatkit-sidebar__footer">
                 <button
                   type="button"
-                  className="chatkit-sidebar__profile-trigger"
-                  onClick={handleToggleProfileMenu}
-                  aria-haspopup="menu"
-                  aria-expanded={isProfileMenuOpen}
+                  className={`chatkit-sidebar__footer-link${
+                    isDocsActive ? " chatkit-sidebar__footer-link--active" : ""
+                  }`}
+                  onClick={handleGoToDocs}
                   tabIndex={sidebarTabIndex}
+                  aria-label={t("app.sidebar.docs")}
+                  aria-current={isDocsActive ? "page" : undefined}
                 >
-                  <span className="chatkit-sidebar__profile-avatar" aria-hidden="true">
-                    {profileInitial}
-                  </span>
-                  <span className="chatkit-sidebar__profile-details">
-                    <span className="chatkit-sidebar__profile-name">{user.email}</span>
-                    <span className="chatkit-sidebar__profile-role">
-                      {user.is_admin
-                        ? t("app.sidebar.profile.role.admin")
-                        : t("app.sidebar.profile.role.user")}
-                    </span>
-                  </span>
-                  <span className="chatkit-sidebar__profile-caret" aria-hidden="true" />
+                  <SidebarIcon name="docs" className="chatkit-sidebar__icon" />
+                  <span className="chatkit-sidebar__footer-link-label">{t("app.sidebar.docs")}</span>
                 </button>
+                <div
+                  className={`chatkit-sidebar__profile${isProfileMenuOpen ? " chatkit-sidebar__profile--open" : ""}`}
+                  ref={profileMenuRef}
+                >
+                  <button
+                    type="button"
+                    className="chatkit-sidebar__profile-trigger"
+                    onClick={handleToggleProfileMenu}
+                    aria-haspopup="menu"
+                    aria-expanded={isProfileMenuOpen}
+                    tabIndex={sidebarTabIndex}
+                  >
+                    <span className="chatkit-sidebar__profile-avatar" aria-hidden="true">
+                      {profileInitial}
+                    </span>
+                    <span className="chatkit-sidebar__profile-details">
+                      <span className="chatkit-sidebar__profile-name">{user.email}</span>
+                      <span className="chatkit-sidebar__profile-role">
+                        {user.is_admin
+                          ? t("app.sidebar.profile.role.admin")
+                          : t("app.sidebar.profile.role.user")}
+                      </span>
+                    </span>
+                    <span className="chatkit-sidebar__profile-caret" aria-hidden="true" />
+                  </button>
                   <div
                     className="chatkit-sidebar__profile-menu"
                     role="menu"
@@ -719,22 +721,22 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
               </footer>
             )}
           </aside>
-        <button
-          type="button"
-          className={`chatkit-layout__scrim${isSidebarOpen ? " chatkit-layout__scrim--active" : ""}`}
-          aria-hidden={!isSidebarOpen || isDesktopLayout}
-          aria-label={t("app.sidebar.close")}
-          onPointerDown={handleScrimPointerDown}
-          onClick={() => {
-            if (!isDesktopLayout) {
-              closeSidebar();
-            }
-          }}
-          tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}
-        />
-        <div className="chatkit-layout__main" {...mainInteractionHandlers}>
-          {children ?? <Outlet />}
-        </div>
+          <button
+            type="button"
+            className={`chatkit-layout__scrim${isSidebarOpen ? " chatkit-layout__scrim--active" : ""}`}
+            aria-hidden={!isSidebarOpen || isDesktopLayout}
+            aria-label={t("app.sidebar.close")}
+            onPointerDown={handleScrimPointerDown}
+            onClick={() => {
+              if (!isDesktopLayout) {
+                closeSidebar();
+              }
+            }}
+            tabIndex={isSidebarOpen && !isDesktopLayout ? 0 : -1}
+          />
+          <div className="chatkit-layout__main" {...mainInteractionHandlers}>
+            {children ?? <Outlet />}
+          </div>
         </div>
       </AppLayoutContext.Provider>
     </SidebarPortalContext.Provider>
