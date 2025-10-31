@@ -328,7 +328,7 @@ class OutboundCallManager:
                 voice_tools,
                 voice_handoffs,
                 _ring_timeout_seconds,
-                _speak_first,
+                speak_first,
             ) = _merge_voice_settings(
                 session=db,
                 overrides=getattr(route, "overrides", None),
@@ -427,6 +427,7 @@ class OutboundCallManager:
                     api_base=realtime_api_base,
                     tools=voice_tools,
                     handoffs=voice_handoffs,
+                    speak_first=speak_first,
                 )
 
                 logger.info("PJSUA TelephonyVoiceBridge completed: %s", stats)
