@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import uuid
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from fastapi import FastAPI
@@ -64,9 +65,10 @@ from .telephony.sip_server import (
     resolve_workflow_for_phone_number,
 )
 from .telephony.voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
+
 # PJSUA imports
 try:
-    from .telephony.pjsua_adapter import PJSUAAdapter, PJSUA_AVAILABLE
+    from .telephony.pjsua_adapter import PJSUA_AVAILABLE, PJSUAAdapter
     from .telephony.pjsua_audio_bridge import create_pjsua_audio_bridge
 except ImportError:
     PJSUA_AVAILABLE = False
@@ -101,6 +103,50 @@ for noisy_logger in (
     if logger_instance.level == logging.NOTSET:
         logger_instance.setLevel(logging.INFO)
 settings = settings_proxy
+
+
+def _build_transfer_tool_config() -> dict[str, Any]:
+    """Return the standard transfer_call tool configuration."""
+
+    return {
+        "type": "function",
+        "name": "transfer_call",
+        "description": (
+            "Transfère l'appel en cours vers un autre numéro de téléphone. "
+            "Utilisez cette fonction lorsque l'appelant demande à être "
+            "transféré vers un service spécifique, un département, ou une personne."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "phone_number": {
+                    "type": "string",
+                    "description": (
+                        "Le numéro de téléphone vers lequel transférer l'appel. "
+                        "Format recommandé: E.164 (ex: +33123456789)"
+                    ),
+                },
+                "announcement": {
+                    "type": "string",
+                    "description": (
+                        "Message optionnel à annoncer à l'appelant avant le transfert"
+                    ),
+                },
+            },
+            "required": ["phone_number"],
+        },
+    }
+
+
+def _ensure_transfer_tool(tools: Sequence[Any] | None) -> list[Any]:
+    """Copy *tools* and ensure the transfer_call tool is present."""
+
+    copied_tools = [copy.deepcopy(tool) for tool in tools] if tools else []
+    for entry in copied_tools:
+        if isinstance(entry, Mapping) and entry.get("name") == "transfer_call":
+            return copied_tools
+    copied_tools.append(_build_transfer_tool_config())
+    return copied_tools
 
 
 def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistrationManager):
@@ -654,36 +700,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                 metadata_extras["thread_id"] = thread_identifier.strip()
 
             # Ajouter automatiquement le tool de transfert d'appel pour la téléphonie
-            telephony_tools = list(voice_tools) if voice_tools else []
-            transfer_tool_config = {
-                "type": "function",
-                "name": "transfer_call",
-                "description": (
-                    "Transfère l'appel en cours vers un autre numéro de téléphone. "
-                    "Utilisez cette fonction lorsque l'appelant demande à être "
-                    "transféré vers un service spécifique, un département, ou une personne."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "phone_number": {
-                            "type": "string",
-                            "description": (
-                                "Le numéro de téléphone vers lequel transférer l'appel. "
-                                "Format recommandé: E.164 (ex: +33123456789)"
-                            ),
-                        },
-                        "announcement": {
-                            "type": "string",
-                            "description": (
-                                "Message optionnel à annoncer à l'appelant avant le transfert"
-                            ),
-                        },
-                    },
-                    "required": ["phone_number"],
-                },
-            }
-            telephony_tools.append(transfer_tool_config)
+            telephony_tools = _ensure_transfer_tool(voice_tools)
             logger.info(
                 "Ajout du tool de transfert d'appel (total tools: %d)",
                 len(telephony_tools),
@@ -1144,36 +1161,7 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                             )
 
                         # Ajouter automatiquement le tool de transfert d'appel
-                        telephony_tools = list(voice_tools) if voice_tools else []
-                        transfer_tool_config = {
-                            "type": "function",
-                            "name": "transfer_call",
-                            "description": (
-                                "Transfère l'appel en cours vers un autre numéro de téléphone. "
-                                "Utilisez cette fonction lorsque l'appelant demande à être "
-                                "transféré vers un service spécifique, un département, ou une personne."
-                            ),
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "phone_number": {
-                                        "type": "string",
-                                        "description": (
-                                            "Le numéro de téléphone vers lequel transférer l'appel. "
-                                            "Format recommandé: E.164 (ex: +33123456789)"
-                                        ),
-                                    },
-                                    "announcement": {
-                                        "type": "string",
-                                        "description": (
-                                            "Message optionnel à annoncer à l'appelant avant le transfert"
-                                        ),
-                                    },
-                                },
-                                "required": ["phone_number"],
-                            },
-                        }
-                        telephony_tools.append(transfer_tool_config)
+                        telephony_tools = _ensure_transfer_tool(voice_tools)
 
                         metadata_extras: dict[str, Any] = {}
                         if thread_id:
@@ -1227,7 +1215,9 @@ def _build_invite_handler(manager: MultiSIPRegistrationManager | SIPRegistration
                                         )
 
                                         # Créer la config du modèle (format dictionnaire comme voice_bridge.py)
-                                        from app.telephony.voice_bridge import TelephonyPlaybackTracker
+                                        from app.telephony.voice_bridge import (
+                                            TelephonyPlaybackTracker,
+                                        )
 
                                         # Créer un playback tracker avec gestion des interruptions (comme dans voice_bridge.py)
                                         # Note: on ne peut pas utiliser le callback d'interruption ici car on n'a pas encore
@@ -2465,6 +2455,161 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                 speak_first = context.speak_first
                 ring_timeout_seconds = context.ring_timeout_seconds
 
+            session_secret_parser = SessionSecretParser()
+            preinit_state: dict[str, Any] = {}
+            preinit_task: asyncio.Task[None] | None = None
+
+            if voice_model and instructions:
+                logger.info(
+                    "Pré-initialisation de la session Realtime pendant la sonnerie (PJSUA, call_id=%s)",
+                    call_id,
+                )
+
+                async def _preinit_realtime_session() -> None:
+                    try:
+                        metadata_extras: dict[str, Any] = {}
+                        server = get_chatkit_server()
+                        store = getattr(server, "store", None)
+                        thread_id: str | None = None
+
+                        if store is not None:
+                            thread_id = str(uuid.uuid4())
+                            sip_metadata = {
+                                "sip_caller_number": incoming_number,
+                                "sip_original_number": incoming_number,
+                                "sip_call_id": call_id,
+                            }
+                            thread = ThreadMetadata(
+                                id=thread_id,
+                                created_at=datetime.datetime.now(datetime.UTC),
+                                metadata=sip_metadata,
+                            )
+                            chatkit_context = ChatKitRequestContext(
+                                user_id=f"sip:{call_id}",
+                                email=None,
+                                authorization=None,
+                                public_base_url=settings.backend_public_base_url,
+                                voice_model=voice_model,
+                                voice_instructions=instructions,
+                                voice_voice=voice_name,
+                                voice_prompt_variables=context.voice_prompt_variables,
+                            )
+                            await store.save_thread(thread, chatkit_context)
+                            preinit_state["thread_id"] = thread_id
+                            metadata_extras["thread_id"] = thread_id
+                            logger.info(
+                                "Thread pré-créé pendant la sonnerie (PJSUA, call_id=%s, thread_id=%s)",
+                                call_id,
+                                thread_id,
+                            )
+
+                        telephony_tools_preinit = _ensure_transfer_tool(voice_tools)
+
+                        session_handle = await open_voice_session(
+                            user_id=f"pjsua:{call_id}",
+                            model=voice_model,
+                            instructions=instructions,
+                            voice=voice_name,
+                            provider_id=voice_provider_id,
+                            provider_slug=voice_provider_slug,
+                            tools=telephony_tools_preinit or None,
+                            handoffs=voice_handoffs or None,
+                            realtime={},
+                            metadata=metadata_extras or None,
+                        )
+
+                        preinit_state["session_handle"] = session_handle
+
+                        secret_payload = session_handle.payload
+                        parsed_secret = session_secret_parser.parse(secret_payload)
+                        client_secret = parsed_secret.as_text()
+                        if client_secret:
+                            preinit_state["client_secret"] = client_secret
+                            preinit_state["client_secret_expires_at"] = (
+                                parsed_secret.expires_at_isoformat()
+                            )
+                            preinit_state["realtime_session_id"] = session_handle.session_id
+                            logger.info(
+                                "✅ Session Realtime pré-initialisée pendant la sonnerie (PJSUA, call_id=%s, session_id=%s)",
+                                call_id,
+                                session_handle.session_id,
+                            )
+
+                            if speak_first:
+                                try:
+                                    runner = session_handle.runner
+                                    if runner:
+                                        from app.telephony.voice_bridge import (
+                                            TelephonyPlaybackTracker,
+                                        )
+
+                                        preinit_playback_tracker = TelephonyPlaybackTracker(
+                                            on_interrupt_callback=None
+                                        )
+                                        model_settings: dict[str, Any] = {
+                                            "model_name": voice_model,
+                                            "modalities": ["audio"],
+                                            "input_audio_format": "pcm16",
+                                            "output_audio_format": "pcm16",
+                                            "input_audio_transcription": {"model": "whisper-1"},
+                                            "turn_detection": {
+                                                "type": "semantic_vad",
+                                                "create_response": True,
+                                                "interrupt_response": True,
+                                            },
+                                        }
+                                        if voice_name:
+                                            model_settings["voice"] = voice_name
+
+                                        model_config: dict[str, Any] = {
+                                            "api_key": client_secret,
+                                            "initial_model_settings": model_settings,
+                                            "playback_tracker": preinit_playback_tracker,
+                                        }
+
+                                        preinit_session = await runner.run(
+                                            model_config=model_config
+                                        )
+                                        await preinit_session.__aenter__()
+                                        preinit_state["preinit_session"] = preinit_session
+                                        logger.info(
+                                            "✅ Session websocket connectée pendant la sonnerie (PJSUA, call_id=%s)",
+                                            call_id,
+                                        )
+
+                                        from agents.realtime.model_inputs import (
+                                            RealtimeModelRawClientMessage,
+                                            RealtimeModelSendRawMessage,
+                                        )
+
+                                        await preinit_session._model.send_event(
+                                            RealtimeModelSendRawMessage(
+                                                message=RealtimeModelRawClientMessage(
+                                                    type="response.create",
+                                                    other_data={},
+                                                )
+                                            )
+                                        )
+                                        preinit_state["preinit_response_create_sent"] = True
+                                        logger.info(
+                                            "✅ response.create pré-envoyé pendant la sonnerie (PJSUA, call_id=%s)",
+                                            call_id,
+                                        )
+                                except Exception as exc:  # pragma: no cover - dépend réseau
+                                    logger.warning(
+                                        "Impossible de pré-générer l'audio pendant la sonnerie (PJSUA, call_id=%s): %s",
+                                        call_id,
+                                        exc,
+                                    )
+                    except Exception as exc:  # pragma: no cover - dépend réseau
+                        logger.exception(
+                            "Erreur lors de la pré-initialisation Realtime (PJSUA, call_id=%s)",
+                            call_id,
+                            exc_info=exc,
+                        )
+
+                preinit_task = asyncio.create_task(_preinit_realtime_session())
+
             # Envoyer 180 Ringing
             logger.info("Envoi 180 Ringing (call_id=%s)", call_id)
             await pjsua_adapter.answer_call(call, code=180)
@@ -2493,54 +2638,57 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             # Ouvrir la session vocale
             logger.info("Ouverture session vocale PJSUA (call_id=%s)", call_id)
 
-            # Ajouter le tool de transfert d'appel
-            telephony_tools = list(voice_tools) if voice_tools else []
-            transfer_tool_config = {
-                "type": "function",
-                "name": "transfer_call",
-                "description": (
-                    "Transfère l'appel en cours vers un autre numéro de téléphone. "
-                    "Utilisez cette fonction lorsque l'appelant demande à être "
-                    "transféré vers un service spécifique, un département, ou une personne."
-                ),
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "phone_number": {
-                            "type": "string",
-                            "description": (
-                                "Le numéro de téléphone vers lequel transférer l'appel. "
-                                "Format recommandé: E.164 (ex: +33123456789)"
-                            ),
-                        },
-                        "announcement": {
-                            "type": "string",
-                            "description": "Message optionnel à annoncer avant le transfert",
-                        },
-                    },
-                    "required": ["phone_number"],
-                },
-            }
-            telephony_tools.append(transfer_tool_config)
+            if preinit_task is not None:
+                try:
+                    await preinit_task
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    pass
 
-            session_handle = await open_voice_session(
-                user_id=f"pjsua:{call_id}",
-                model=voice_model,
-                instructions=instructions,
-                voice=voice_name,
-                provider_id=voice_provider_id,
-                provider_slug=voice_provider_slug,
-                tools=telephony_tools,
-                handoffs=voice_handoffs,
-                realtime={},
-                metadata={
-                    "pjsua_call_id": call_id,
-                    "incoming_number": incoming_number,
-                },
+            telephony_tools = _ensure_transfer_tool(voice_tools)
+
+            session_handle = preinit_state.get("session_handle")
+            preinit_session = preinit_state.get("preinit_session")
+            preinit_response_create_sent = preinit_state.get(
+                "preinit_response_create_sent", False
             )
 
-            # Récupérer le client secret
-            client_secret = session_handle.client_secret
+            if session_handle is None:
+                metadata_payload: dict[str, Any] = {
+                    "pjsua_call_id": call_id,
+                    "incoming_number": incoming_number,
+                }
+                if "thread_id" in preinit_state:
+                    metadata_payload["thread_id"] = preinit_state["thread_id"]
+
+                session_handle = await open_voice_session(
+                    user_id=f"pjsua:{call_id}",
+                    model=voice_model,
+                    instructions=instructions,
+                    voice=voice_name,
+                    provider_id=voice_provider_id,
+                    provider_slug=voice_provider_slug,
+                    tools=telephony_tools,
+                    handoffs=voice_handoffs,
+                    realtime={},
+                    metadata=metadata_payload,
+                )
+
+            client_secret = preinit_state.get("client_secret")
+            if not client_secret:
+                secret_payload = session_handle.payload
+                parsed_secret = session_secret_parser.parse(secret_payload)
+                client_secret = parsed_secret.as_text()
+                if client_secret:
+                    preinit_state["client_secret"] = client_secret
+                    preinit_state["client_secret_expires_at"] = (
+                        parsed_secret.expires_at_isoformat()
+                    )
+                    preinit_state["realtime_session_id"] = session_handle.session_id
+
+            if not client_secret:
+                client_secret = session_handle.client_secret
 
             if not client_secret:
                 raise ValueError(f"Client secret introuvable pour l'appel {call_id}")
@@ -2600,6 +2748,8 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     tools=telephony_tools,
                     handoffs=voice_handoffs,
                     speak_first=speak_first,
+                    preinit_response_create_sent=preinit_response_create_sent,
+                    preinit_session=preinit_session,
                 )
 
                 logger.info("TelephonyVoiceBridge PJSUA terminé: %s (call_id=%s)", stats, call_id)
