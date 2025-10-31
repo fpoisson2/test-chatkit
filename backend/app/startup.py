@@ -2696,8 +2696,20 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             # Attendre la fin du voice bridge
             try:
                 await voice_bridge_task
+                # Session vocale terminée - raccrocher l'appel de notre côté
+                logger.info("✅ Session vocale fermée (call_id=%s)", call_id)
+                try:
+                    await pjsua_adapter.hangup_call(call)
+                    logger.info("📞 Appel PJSUA raccroché (call_id=%s)", call_id)
+                except Exception as hangup_error:
+                    logger.warning("Erreur fermeture appel PJSUA: %s", hangup_error)
             except Exception as e:
                 logger.exception("Erreur d'attente du voice bridge (call_id=%s): %s", call_id, e)
+                # En cas d'erreur, aussi raccrocher
+                try:
+                    await pjsua_adapter.hangup_call(call)
+                except Exception:
+                    pass
 
         except Exception as e:
             logger.exception("Erreur traitement appel entrant PJSUA (call_id=%s): %s", call_id, e)
