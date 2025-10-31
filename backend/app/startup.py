@@ -2451,29 +2451,24 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             logger.info("Envoi 180 Ringing (call_id=%s)", call_id)
             await pjsua_adapter.answer_call(call, code=180)
 
-            # Attendre le délai configuré avant de répondre
-            if ring_timeout_seconds > 0:
-                logger.info(
-                    "Attente de %.2f secondes avant de répondre (call_id=%s)",
-                    ring_timeout_seconds,
-                    call_id,
-                )
-                await asyncio.sleep(ring_timeout_seconds)
+            # Créer l'audio bridge IMMÉDIATEMENT après le ringing
+            # pour permettre à l'assistant de générer l'audio pendant la sonnerie
+            logger.info("Création de l'audio bridge PJSUA AVANT la réponse (call_id=%s)", call_id)
+            rtp_stream, send_to_peer_raw, clear_queue = await create_pjsua_audio_bridge(call)
 
-            # Répondre à l'appel (200 OK)
-            logger.info("Réponse à l'appel PJSUA (call_id=%s)", call_id)
-            await pjsua_adapter.answer_call(call, code=200)
+            # Créer un Event pour bloquer l'envoi d'audio jusqu'au 200 OK
+            audio_send_ready = asyncio.Event()
 
-            # Attendre que le média soit actif
-            # TODO: Implémenter une vraie attente conditionnelle
-            await asyncio.sleep(0.1)  # 100ms pour que le RTP se stabilise (réduit de 500ms pour speak_first)
+            # Wrapper send_to_peer pour bloquer l'audio jusqu'au 200 OK
+            async def send_to_peer_blocked(audio: bytes) -> None:
+                """Wrapper qui bloque l'envoi d'audio jusqu'à ce que le call soit répondu."""
+                await audio_send_ready.wait()
+                await send_to_peer_raw(audio)
 
-            # Créer l'audio bridge
-            logger.info("Création de l'audio bridge PJSUA (call_id=%s)", call_id)
-            rtp_stream, send_to_peer, clear_queue = await create_pjsua_audio_bridge(call)
+            send_to_peer = send_to_peer_blocked
 
-            # Ouvrir la session vocale
-            logger.info("Ouverture session vocale PJSUA (call_id=%s)", call_id)
+            # Ouvrir la session vocale IMMÉDIATEMENT pour que l'assistant puisse générer l'audio
+            logger.info("Ouverture session vocale PJSUA AVANT la réponse (call_id=%s)", call_id)
 
             # Ajouter le tool de transfert d'appel
             telephony_tools = list(voice_tools) if voice_tools else []
@@ -2566,28 +2561,60 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             if voice_provider_slug == "openai":
                 realtime_api_base = os.environ.get("CHATKIT_API_BASE") or "https://api.openai.com"
 
-            # Exécuter le voice bridge
-            logger.info("Démarrage TelephonyVoiceBridge PJSUA (call_id=%s)", call_id)
-            try:
-                stats = await voice_bridge.run(
-                    runner=session_handle.runner,
-                    client_secret=client_secret,
-                    model=voice_model,
-                    instructions=instructions,
-                    voice=voice_name,
-                    rtp_stream=rtp_stream,
-                    send_to_peer=send_to_peer,
-                    clear_audio_queue=clear_queue,
-                    api_base=realtime_api_base,
-                    tools=telephony_tools,
-                    handoffs=voice_handoffs,
-                    speak_first=speak_first,
+            # Démarrer le voice bridge dans une tâche asyncio IMMÉDIATEMENT
+            # pour que l'assistant génère l'audio pendant la sonnerie
+            logger.info("Démarrage TelephonyVoiceBridge PJSUA AVANT la réponse (call_id=%s)", call_id)
+
+            async def run_voice_bridge():
+                """Tâche pour exécuter le voice bridge."""
+                try:
+                    stats = await voice_bridge.run(
+                        runner=session_handle.runner,
+                        client_secret=client_secret,
+                        model=voice_model,
+                        instructions=instructions,
+                        voice=voice_name,
+                        rtp_stream=rtp_stream,
+                        send_to_peer=send_to_peer,
+                        clear_audio_queue=clear_queue,
+                        api_base=realtime_api_base,
+                        tools=telephony_tools,
+                        handoffs=voice_handoffs,
+                        speak_first=speak_first,
+                    )
+                    logger.info("TelephonyVoiceBridge PJSUA terminé: %s (call_id=%s)", stats, call_id)
+                except Exception as e:
+                    logger.exception("Erreur dans VoiceBridge PJSUA (call_id=%s): %s", call_id, e)
+
+            # Démarrer la tâche voice bridge en arrière-plan
+            voice_bridge_task = asyncio.create_task(run_voice_bridge())
+
+            # Attendre le délai configuré avant de répondre
+            # Pendant ce temps, l'assistant génère déjà l'audio si speak_first=True
+            if ring_timeout_seconds > 0:
+                logger.info(
+                    "⏰ Attente de %.2f secondes avant de répondre (l'assistant génère l'audio pendant ce temps) (call_id=%s)",
+                    ring_timeout_seconds,
+                    call_id,
                 )
+                await asyncio.sleep(ring_timeout_seconds)
 
-                logger.info("TelephonyVoiceBridge PJSUA terminé: %s (call_id=%s)", stats, call_id)
+            # Répondre à l'appel (200 OK)
+            logger.info("📞 Réponse à l'appel PJSUA (call_id=%s)", call_id)
+            await pjsua_adapter.answer_call(call, code=200)
 
+            # Attendre que le média soit actif
+            await asyncio.sleep(0.1)  # 100ms pour que le RTP se stabilise
+
+            # Débloquer l'envoi d'audio IMMÉDIATEMENT après le 200 OK
+            logger.info("✅ Déblocage de l'envoi d'audio vers le téléphone (call_id=%s)", call_id)
+            audio_send_ready.set()
+
+            # Attendre la fin du voice bridge
+            try:
+                await voice_bridge_task
             except Exception as e:
-                logger.exception("Erreur dans VoiceBridge PJSUA (call_id=%s): %s", call_id, e)
+                logger.exception("Erreur d'attente du voice bridge (call_id=%s): %s", call_id, e)
 
         except Exception as e:
             logger.exception("Erreur traitement appel entrant PJSUA (call_id=%s): %s", call_id, e)
