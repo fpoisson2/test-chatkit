@@ -145,11 +145,10 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         self.bits_per_sample = 16
 
         # Files pour l'audio
-        # Note: OpenAI peut envoyer de gros chunks (jusqu'à 28800 bytes) qui sont divisés
-        # en frames de 320 bytes. Pour absorber les rafales sans perdre d'audio, on utilise
-        # une queue plus grande (1000 éléments = ~20 secondes de buffer)
+        # Buffer réduit pour minimiser la latence: 50 frames = 1 seconde @ 20ms/frame
+        # Un buffer trop grand (ex: 1000 = 20s) cause un lag énorme quand OpenAI envoie des rafales
         self._incoming_audio_queue = queue.Queue(maxsize=100)  # Du téléphone
-        self._outgoing_audio_queue = queue.Queue(maxsize=1000)  # Vers le téléphone
+        self._outgoing_audio_queue = queue.Queue(maxsize=50)  # Vers le téléphone - 1s buffer
 
         # Compteurs pour diagnostics
         self._frame_count = 0
