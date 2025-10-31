@@ -145,13 +145,14 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         self.bits_per_sample = 16
 
         # Files pour l'audio
-        # Buffer de 50 frames = 1 seconde @ 20ms/frame
+        # Buffer de 150 frames = 3 secondes @ 20ms/frame
         # Compromis latence/capacité:
-        # - OpenAI envoie 26400 bytes (550ms audio) → 27 chunks PJSUA
-        # - 2 paquets OpenAI = 54 chunks → besoin buffer >54 pour éviter drops
-        # - 50 frames permet ~2 paquets OpenAI avec latence max 1s (acceptable)
+        # - OpenAI envoie en burst: jusqu'à 19200 bytes (400ms audio) → 20 chunks PJSUA
+        # - Plusieurs bursts consécutifs peuvent arriver avant que PJSUA ne consomme
+        # - 150 frames permet ~7 paquets OpenAI en burst avec latence max 3s
+        # - Nécessaire car OpenAI envoie en rafales alors que PJSUA consomme à taux fixe
         self._incoming_audio_queue = queue.Queue(maxsize=100)  # Du téléphone
-        self._outgoing_audio_queue = queue.Queue(maxsize=50)  # Vers le téléphone - 1s max
+        self._outgoing_audio_queue = queue.Queue(maxsize=150)  # Vers le téléphone - 3s max
 
         # Compteurs pour diagnostics
         self._frame_count = 0
@@ -392,6 +393,9 @@ class PJSUAAdapter:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._running = False
 
+        # Event qui se déclenche quand PJSUA commence à consommer l'audio (onFrameRequested appelé)
+        self._frame_requested_event: asyncio.Event | None = None
+
         # Callbacks
         self._incoming_call_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
         self._call_state_callback: Callable[[PJSUACall, Any], Awaitable[None]] | None = None
@@ -408,6 +412,7 @@ class PJSUAAdapter:
             raise RuntimeError("pjsua2 n'est pas disponible")
 
         self._loop = asyncio.get_running_loop()
+        self._frame_requested_event = asyncio.Event()
 
         # Créer l'endpoint PJSUA
         self._ep = pj.Endpoint()
