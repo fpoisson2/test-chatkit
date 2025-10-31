@@ -169,6 +169,7 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
             return
 
         expected_size = self.samples_per_frame * 2  # 320 bytes pour 160 samples @ 16-bit
+        expected_ulaw_size = self.samples_per_frame  # 160 bytes pour 160 samples @ 8-bit µ-law
 
         try:
             # Récupérer l'audio de la queue (non-bloquant)
@@ -183,21 +184,25 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                 # Tronquer si trop long
                 audio_data = audio_data[:expected_size]
 
-            # Redimensionner le buffer et copier les données
+            # Convertir PCM linéaire 16-bit en µ-law 8-bit (requis pour PCMU codec)
+            import audioop
+            audio_ulaw = audioop.lin2ulaw(audio_data, 2)  # 2 = bytes per sample (16-bit)
+
+            # Redimensionner le buffer et copier les données µ-law
             frame.buf.clear()
-            for byte in audio_data:
+            for byte in audio_ulaw:
                 frame.buf.append(byte)
 
-            frame.size = len(audio_data)
+            frame.size = len(audio_ulaw)
             frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
         except queue.Empty:
-            # Pas d'audio disponible, envoyer du silence (normal si agent ne parle pas)
+            # Pas d'audio disponible, envoyer du silence µ-law (0x7F = silence en µ-law)
             frame.buf.clear()
-            for _ in range(expected_size):
-                frame.buf.append(0)
+            for _ in range(expected_ulaw_size):
+                frame.buf.append(0x7F)  # µ-law silence
 
-            frame.size = expected_size
+            frame.size = expected_ulaw_size
             frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
     def onFrameReceived(self, frame: pj.MediaFrame) -> None:
@@ -207,15 +212,21 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
 
         if frame.type == pj.PJMEDIA_FRAME_TYPE_AUDIO and frame.buf:
             try:
-                # Ajouter l'audio à la queue pour traitement async
-                audio_bytes = bytes(frame.buf[:frame.size])
-                self._incoming_audio_queue.put_nowait(audio_bytes)
+                # Récupérer l'audio µ-law du téléphone
+                audio_ulaw = bytes(frame.buf[:frame.size])
+
+                # Convertir µ-law 8-bit en PCM linéaire 16-bit (requis pour OpenAI)
+                import audioop
+                audio_pcm = audioop.ulaw2lin(audio_ulaw, 2)  # 2 = bytes per sample (16-bit)
+
+                # Ajouter l'audio PCM à la queue pour traitement async
+                self._incoming_audio_queue.put_nowait(audio_pcm)
 
                 # Notifier l'adaptateur qu'il y a de l'audio
                 if hasattr(self.adapter, '_on_audio_received'):
                     try:
                         asyncio.run_coroutine_threadsafe(
-                            self.adapter._on_audio_received(audio_bytes),
+                            self.adapter._on_audio_received(audio_pcm),
                             self.adapter._loop
                         )
                     except Exception as e:
