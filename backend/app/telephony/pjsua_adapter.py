@@ -256,13 +256,29 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         if not PJSUA_AVAILABLE:
             return
 
+        # Log pour diagnostiquer si ce callback est bien appelé
+        if not hasattr(self, '_frame_received_count'):
+            self._frame_received_count = 0
+        self._frame_received_count += 1
+
+        if self._frame_received_count <= 10:
+            logger.info("📥 onFrameReceived appelé #%d: type=%s, size=%d, buf_len=%d",
+                       self._frame_received_count, frame.type, frame.size, len(frame.buf) if frame.buf else 0)
+
         if frame.type == pj.PJMEDIA_FRAME_TYPE_AUDIO and frame.buf:
             try:
                 # Récupérer l'audio PCM déjà décodé par PJSUA
                 audio_pcm = bytes(frame.buf[:frame.size])
 
+                if self._frame_received_count <= 5:
+                    logger.info("✅ Audio PCM extrait: %d bytes, premiers bytes: %s",
+                               len(audio_pcm), list(audio_pcm[:10]) if len(audio_pcm) >= 10 else list(audio_pcm))
+
                 # Ajouter l'audio PCM à la queue pour traitement async
                 self._incoming_audio_queue.put_nowait(audio_pcm)
+
+                if self._frame_received_count <= 5:
+                    logger.info("✅ Audio ajouté à la queue (taille queue: %d)", self._incoming_audio_queue.qsize())
 
                 # Notifier l'adaptateur qu'il y a de l'audio
                 if hasattr(self.adapter, '_on_audio_received'):
@@ -275,6 +291,9 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                         logger.debug("Erreur notification audio reçu: %s", e)
             except queue.Full:
                 logger.warning("Queue audio entrante pleine, frame ignorée")
+        else:
+            if self._frame_received_count <= 10:
+                logger.warning("⚠️ Frame reçue mais type=%s ou buf vide", frame.type)
 
     def send_audio(self, audio_data: bytes) -> None:
         """Envoie de l'audio vers le téléphone (appelé depuis l'async loop)."""

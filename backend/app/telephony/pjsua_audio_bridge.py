@@ -64,6 +64,7 @@ class PJSUAAudioBridge:
         resampling_state = None
 
         packet_count = 0
+        none_count = 0
         try:
             while not self._stop_event.is_set():
                 # Get audio from PJSUA (8kHz PCM16 mono)
@@ -71,20 +72,24 @@ class PJSUAAudioBridge:
 
                 if audio_8khz is None:
                     # No audio available, wait a bit
+                    none_count += 1
+                    if none_count <= 10 or none_count % 100 == 0:
+                        logger.info("⏳ Attente audio: receive_audio_from_call retourne None (count=%d)", none_count)
                     await asyncio.sleep(0.01)  # 10ms
                     continue
 
                 if len(audio_8khz) == 0:
+                    logger.info("⚠️ Audio reçu mais len=0")
                     continue
 
                 # Signaler la réception du premier paquet pour confirmer que le flux est établi
                 if packet_count == 0:
-                    logger.info("📥 Premier paquet audio reçu du téléphone - flux bidirectionnel confirmé")
+                    logger.info("📥 Premier paquet audio reçu du téléphone - flux bidirectionnel confirmé (après %d None)", none_count)
                     self._first_packet_received.set()
 
                 # Log first few packets for diagnostics
                 if packet_count < 5:
-                    logger.debug("📥 RTP stream: reçu %d bytes @ 8kHz depuis PJSUA", len(audio_8khz))
+                    logger.info("📥 RTP stream: reçu %d bytes @ 8kHz depuis PJSUA", len(audio_8khz))
 
                 # Resample 8kHz → 24kHz
                 try:
@@ -98,7 +103,7 @@ class PJSUAAudioBridge:
                     )
 
                     if packet_count < 5:
-                        logger.debug("✅ Rééchantillonné à %d bytes @ 24kHz", len(audio_24khz))
+                        logger.info("✅ Rééchantillonné à %d bytes @ 24kHz", len(audio_24khz))
                 except audioop.error as e:
                     logger.warning("Resampling error (8kHz→24kHz): %s", e)
                     continue
@@ -115,7 +120,7 @@ class PJSUAAudioBridge:
                 )
 
                 if packet_count < 5:
-                    logger.debug("📤 Envoi RtpPacket à OpenAI: seq=%d, ts=%d, %d bytes",
+                    logger.info("📤 Envoi RtpPacket à OpenAI: seq=%d, ts=%d, %d bytes",
                                 self._sequence_number, self._timestamp, len(audio_24khz))
 
                 # Update RTP metadata
