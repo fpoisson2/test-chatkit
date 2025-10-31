@@ -164,12 +164,15 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
         self.createPort("chatkit_audio", port_info)
 
     def onFrameRequested(self, frame: pj.MediaFrame) -> None:
-        """Appelé par PJSUA pour obtenir de l'audio à envoyer au téléphone."""
+        """Appelé par PJSUA pour obtenir de l'audio à envoyer au téléphone.
+
+        Note: PJSUA gère automatiquement l'encodage du codec (PCM → PCMU).
+        Ce callback doit fournir du PCM linéaire 16-bit, pas du µ-law.
+        """
         if not PJSUA_AVAILABLE:
             return
 
         expected_size = self.samples_per_frame * 2  # 320 bytes pour 160 samples @ 16-bit
-        expected_ulaw_size = self.samples_per_frame  # 160 bytes pour 160 samples @ 8-bit µ-law
 
         try:
             # Récupérer l'audio de la queue (non-bloquant)
@@ -184,40 +187,36 @@ class AudioMediaPort(pj.AudioMediaPort if PJSUA_AVAILABLE else object):
                 # Tronquer si trop long
                 audio_data = audio_data[:expected_size]
 
-            # Convertir PCM linéaire 16-bit en µ-law 8-bit (requis pour PCMU codec)
-            import audioop
-            audio_ulaw = audioop.lin2ulaw(audio_data, 2)  # 2 = bytes per sample (16-bit)
-
-            # Redimensionner le buffer et copier les données µ-law
+            # Redimensionner le buffer et copier les données PCM
             frame.buf.clear()
-            for byte in audio_ulaw:
+            for byte in audio_data:
                 frame.buf.append(byte)
 
-            frame.size = len(audio_ulaw)
+            frame.size = len(audio_data)
             frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
         except queue.Empty:
-            # Pas d'audio disponible, envoyer du silence µ-law (0x7F = silence en µ-law)
+            # Pas d'audio disponible, envoyer du silence PCM (0x00)
             frame.buf.clear()
-            for _ in range(expected_ulaw_size):
-                frame.buf.append(0x7F)  # µ-law silence
+            for _ in range(expected_size):
+                frame.buf.append(0)
 
-            frame.size = expected_ulaw_size
+            frame.size = expected_size
             frame.type = pj.PJMEDIA_FRAME_TYPE_AUDIO
 
     def onFrameReceived(self, frame: pj.MediaFrame) -> None:
-        """Appelé par PJSUA quand de l'audio est reçu du téléphone."""
+        """Appelé par PJSUA quand de l'audio est reçu du téléphone.
+
+        Note: PJSUA gère automatiquement le décodage du codec (PCMU → PCM).
+        Ce callback reçoit déjà du PCM linéaire 16-bit décodé.
+        """
         if not PJSUA_AVAILABLE:
             return
 
         if frame.type == pj.PJMEDIA_FRAME_TYPE_AUDIO and frame.buf:
             try:
-                # Récupérer l'audio µ-law du téléphone
-                audio_ulaw = bytes(frame.buf[:frame.size])
-
-                # Convertir µ-law 8-bit en PCM linéaire 16-bit (requis pour OpenAI)
-                import audioop
-                audio_pcm = audioop.ulaw2lin(audio_ulaw, 2)  # 2 = bytes per sample (16-bit)
+                # Récupérer l'audio PCM déjà décodé par PJSUA
+                audio_pcm = bytes(frame.buf[:frame.size])
 
                 # Ajouter l'audio PCM à la queue pour traitement async
                 self._incoming_audio_queue.put_nowait(audio_pcm)
