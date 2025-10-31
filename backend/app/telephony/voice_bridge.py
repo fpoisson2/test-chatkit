@@ -345,13 +345,7 @@ class TelephonyVoiceBridge:
         async def forward_audio() -> None:
             nonlocal inbound_audio_bytes, response_create_sent_immediately
             packet_count = 0
-            bytes_sent = 0
-            # Si on utilise une session pré-initialisée, turn_detection est déjà activé
-            turn_detection_enabled = preinit_session is not None
-            if turn_detection_enabled:
-                logger.info("Turn detection déjà activé (session pré-initialisée)")
-            # At 24kHz PCM16: 100ms = 24000 samples/sec * 0.1 sec * 2 bytes/sample = 4800 bytes
-            MIN_AUDIO_BEFORE_VAD = 4800  # 100ms minimum before enabling VAD
+            # Note: turn_detection est déjà activé dans la configuration initiale de session (_build_session_update)
             # Track if we've sent response.create when phone became ready
             response_create_sent_on_ready = False
 
@@ -391,35 +385,11 @@ class TelephonyVoiceBridge:
 
                     # Always send audio with commit=False - let turn_detection handle commits
                     await session.send_audio(pcm, commit=False)
-                    bytes_sent += len(pcm)
 
-                    # After sending enough audio, enable turn_detection (if not already enabled)
-                    # Note: create_response=False car on gère manuellement via response.create
-                    if not turn_detection_enabled and bytes_sent >= MIN_AUDIO_BEFORE_VAD:
-                        logger.info(
-                            "Activation de turn_detection après %.1fms d'audio",
-                            bytes_sent / 2 / 24000 * 1000
-                        )
-                        try:
-                            from agents.realtime.model_inputs import RealtimeModelSendSessionUpdate
-                            await session._model.send_event(
-                                RealtimeModelSendSessionUpdate(
-                                    session_settings={
-                                        "input_audio_transcription": {
-                                            "model": "whisper-1",
-                                        },
-                                        "turn_detection": {
-                                            "type": "semantic_vad",
-                                            "create_response": True,  # OpenAI crée automatiquement une réponse quand l'utilisateur arrête de parler
-                                            "interrupt_response": True,
-                                        },
-                                    }
-                                )
-                            )
-                            turn_detection_enabled = True
-                            logger.info("Turn detection (semantic_vad) activé avec succès (avec create_response automatique)")
-                        except Exception as e:
-                            logger.warning("Impossible d'activer turn_detection: %s", e)
+                    # Note: turn_detection est déjà activé dans la configuration initiale de session
+                    # (voir _build_session_update), donc on n'a pas besoin de l'activer ici.
+                    # Tenter de le faire après le speak_first cause l'erreur:
+                    # "Cannot update a conversation's voice if assistant audio is present."
 
                     if not should_continue():
                         logger.info("forward_audio: arrêt demandé par should_continue()")
