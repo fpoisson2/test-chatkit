@@ -168,9 +168,17 @@ class PJSUAAudioBridge:
             logger.warning("Resampling error (24kHz→8kHz): %s", e)
             return
 
-        # Pas de normalisation audio - transmettre le signal brut d'OpenAI
-        # La normalisation causait potentiellement des artefacts ou du lag
-        pass
+        # Pas d'amplification - gain fixe de 1.0x
+        # Transmet l'audio brut d'OpenAI sans modification d'amplitude
+        try:
+            max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
+            if max_amplitude > 0:
+                gain = 1.0  # Pas d'amplification
+                audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
+                logger.debug("🔊 Audio transmis sans amplification (max=%d, gain=%.1fx)",
+                           max_amplitude, gain)
+        except audioop.error as e:
+            logger.warning("Audio processing error: %s", e)
 
         # Send to PJSUA in chunks of 320 bytes (20ms @ 8kHz, 16-bit, mono)
         # PJSUA expects 160 samples/frame × 2 bytes/sample = 320 bytes

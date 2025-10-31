@@ -600,6 +600,18 @@ class PJSUAAdapter:
         if call_info.state == pj.PJSIP_INV_STATE_DISCONNECTED:
             self._active_calls.pop(call_info.id, None)
 
+            # IMPORTANT: Nettoyer le port audio pour éviter les fuites
+            # PJSUA continue d'appeler onFrameRequested si on ne déconnecte pas
+            if call._audio_port:
+                try:
+                    # Arrêter les transmissions audio
+                    call._audio_port.stopTransmit()
+                    logger.info("✅ Port audio déconnecté (call_id=%s)", call_info.id)
+                except Exception as e:
+                    logger.warning("Erreur déconnexion port audio: %s", e)
+                finally:
+                    call._audio_port = None
+
         if self._call_state_callback:
             await self._call_state_callback(call, call_info)
 
