@@ -393,9 +393,11 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
         ci = self.getInfo()
 
         # Vérifier si le média est actif
+        media_is_active = False
         if ci.media:
             for mi in ci.media:
                 if mi.type == pj.PJMEDIA_TYPE_AUDIO and mi.status == pj.PJSUA_CALL_MEDIA_ACTIVE:
+                    media_is_active = True
                     self._media_active = True
                     logger.info("Média audio actif pour l'appel")
 
@@ -426,6 +428,20 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                             )
                         except Exception as e:
                             logger.exception("Erreur dans onCallMediaState callback: %s", e)
+
+        # IMPORTANT: Si le média n'est plus actif et qu'on a un port audio, le désactiver
+        # Cela évite les "ports zombies" qui continuent d'envoyer du silence après la fin de l'appel
+        if not media_is_active and self._audio_port is not None:
+            logger.warning("⚠️ Média désactivé mais port audio encore actif (call_id=%s) - nettoyage", ci.id)
+            try:
+                self._audio_port.deactivate()
+                logger.info("✅ Port audio zombie désactivé (call_id=%s)", ci.id)
+            except Exception as e:
+                logger.warning("Erreur désactivation port audio zombie: %s", e)
+            finally:
+                # Ne pas mettre à None ici car _on_call_state le fera
+                # self._audio_port = None
+                pass
 
 
 class PJSUAAdapter:
