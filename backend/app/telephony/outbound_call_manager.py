@@ -1,3 +1,5 @@
+# ruff: noqa: E501, I001
+
 """Gestionnaire des appels sortants avec implémentation SIP complète."""
 
 from __future__ import annotations
@@ -7,16 +9,16 @@ import logging
 import os
 import uuid
 import random
+from collections.abc import Callable
 from datetime import datetime, UTC
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from ..models import OutboundCall, SipAccount, WorkflowDefinition
-from ..database import SessionLocal
 from .rtp_server import RtpServer, RtpServerConfig
-from .voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks, VoiceBridgeMetricsRecorder
-from ..workflows.service import WorkflowService, resolve_start_telephony_config
+from .voice_bridge import TelephonyVoiceBridge, VoiceBridgeHooks
+from ..workflows.service import resolve_start_telephony_config
 from ..config import get_settings
 from ..realtime_runner import open_voice_session, close_voice_session
 
@@ -243,7 +245,11 @@ class OutboundCallManager:
             await asyncio.sleep(1)  # Attendre 1s pour que le média soit prêt
 
             # Créer l'audio bridge (8kHz ↔ 24kHz)
-            rtp_stream, send_to_peer = await create_pjsua_audio_bridge(pjsua_call)
+            (
+                rtp_stream,
+                send_to_peer,
+                clear_audio_queue,
+            ) = await create_pjsua_audio_bridge(pjsua_call)
 
             # Marquer l'appel comme connecté
             session.status = "answered"
@@ -255,7 +261,12 @@ class OutboundCallManager:
 
             # Démarrer la session vocale (similaire au code existant)
             await self._run_voice_session_pjsua(
-                db, session, call_db_id, rtp_stream, send_to_peer
+                db,
+                session,
+                call_db_id,
+                rtp_stream,
+                send_to_peer,
+                clear_audio_queue,
             )
 
         except Exception as e:
@@ -286,6 +297,7 @@ class OutboundCallManager:
         call_db_id: int,
         rtp_stream: Any,
         send_to_peer: Any,
+        clear_audio_queue: Callable[[], int],
     ) -> None:
         """Exécute la session vocale avec PJSUA audio bridge."""
         try:
@@ -355,8 +367,16 @@ class OutboundCallManager:
                 pass  # Géré dans le cleanup final
 
             async def clear_voice_state_hook() -> None:
-                # Pas de RTP server à arrêter avec PJSUA
-                pass
+                # Vide la file audio bridgée pour éviter les artefacts sur reprise
+                try:
+                    cleared = clear_audio_queue()
+                    logger.debug(
+                        "Cleared %d frames from PJSUA audio queue during cleanup", cleared
+                    )
+                except Exception as exc:  # pragma: no cover - garde-fou
+                    logger.debug(
+                        "Failed to clear PJSUA audio queue during cleanup: %s", exc
+                    )
 
             async def resume_workflow_hook(transcripts: list[dict[str, str]]) -> None:
                 logger.info("Voice session completed with %d transcripts", len(transcripts))
@@ -401,6 +421,7 @@ class OutboundCallManager:
                     voice=voice_name,
                     rtp_stream=rtp_stream,  # PJSUA audio bridge stream
                     send_to_peer=send_to_peer,  # PJSUA audio bridge callback
+                    clear_audio_queue=clear_audio_queue,
                     api_base=realtime_api_base,
                     tools=voice_tools,
                     handoffs=voice_handoffs,
