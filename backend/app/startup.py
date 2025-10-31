@@ -2473,10 +2473,10 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
                     # Attendre que le jitter buffer se remplisse suffisamment
                     # Le jitter buffer est "reset" juste avant le premier paquet et a besoin
-                    # de temps pour accumuler plusieurs paquets avant d'être prêt à jouer l'audio
-                    # On attend ~200-300ms pour que 10-15 paquets soient accumulés
-                    logger.info("⏱️ Attente 250ms pour remplissage du jitter buffer... (call_id=%s)", call_id)
-                    await asyncio.sleep(0.25)  # 250ms
+                    # de temps pour accumuler quelques paquets avant d'être prêt à jouer l'audio
+                    # On attend ~100ms pour que 5 paquets soient accumulés (minimum pour démarrer)
+                    logger.info("⏱️ Attente 100ms pour remplissage initial du jitter buffer... (call_id=%s)", call_id)
+                    await asyncio.sleep(0.1)  # 100ms
 
                     # Si speak_first, envoyer response.create MAINTENANT
                     if speak_first:
