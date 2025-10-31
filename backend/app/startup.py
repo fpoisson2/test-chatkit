@@ -2464,11 +2464,14 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             async def on_media_active_callback(active_call: Any, media_info: Any) -> None:
                 """Appelé quand le média devient actif (port audio créé)."""
                 if active_call == call:
-                    logger.info("🎵 Média actif détecté (call_id=%s)", call_id)
+                    logger.info("🎵 Média actif détecté, attente 300ms pour jitter buffer... (call_id=%s)", call_id)
+                    # Attendre que le jitter buffer du téléphone soit prêt
+                    # Sans ce délai, le jitter buffer peut rejeter les premiers paquets
+                    await asyncio.sleep(0.3)  # 300ms
 
-                    # Si speak_first, envoyer response.create MAINTENANT (pas avant, pas de blocage)
+                    # Si speak_first, envoyer response.create MAINTENANT
                     if speak_first:
-                        logger.info("📢 Envoi de response.create juste après média actif (call_id=%s)", call_id)
+                        logger.info("📢 Envoi de response.create après stabilisation (call_id=%s)", call_id)
                         try:
                             from agents.realtime.model_inputs import (
                                 RealtimeModelRawClientMessage,
@@ -2486,7 +2489,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         except Exception as e:
                             logger.warning("Erreur lors de l'envoi de response.create: %s", e)
 
-                    # Débloquer immédiatement - pas de délai artificiel
+                    # Débloquer immédiatement après l'envoi de response.create
                     logger.info("✅ Déblocage de l'envoi d'audio (call_id=%s)", call_id)
                     media_active_event.set()
 
