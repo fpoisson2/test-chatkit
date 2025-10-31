@@ -2478,9 +2478,15 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                     logger.info("⏱️ Attente 100ms pour remplissage initial du jitter buffer... (call_id=%s)", call_id)
                     await asyncio.sleep(0.1)  # 100ms
 
+                    # CRITIQUE: Débloquer l'audio AVANT d'envoyer response.create
+                    # Sinon l'audio généré par OpenAI s'accumule dans send_to_peer_blocked()
+                    # et est libéré d'un coup, créant un burst artificiel qui sature la queue
+                    logger.info("✅ Déblocage de l'envoi d'audio AVANT response.create (call_id=%s)", call_id)
+                    media_active_event.set()
+
                     # Si speak_first, envoyer response.create MAINTENANT
                     if speak_first:
-                        logger.info("📢 Envoi de response.create après confirmation flux audio (call_id=%s)", call_id)
+                        logger.info("📢 Envoi de response.create après déblocage audio (call_id=%s)", call_id)
                         try:
                             from agents.realtime.model_inputs import (
                                 RealtimeModelRawClientMessage,
@@ -2494,13 +2500,9 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                                     )
                                 )
                             )
-                            logger.info("✅ response.create envoyé - l'assistant génère l'audio maintenant (call_id=%s)", call_id)
+                            logger.info("✅ response.create envoyé - l'audio stream directement vers PJSUA (call_id=%s)", call_id)
                         except Exception as e:
                             logger.warning("Erreur lors de l'envoi de response.create: %s", e)
-
-                    # Débloquer immédiatement après l'envoi de response.create
-                    logger.info("✅ Déblocage de l'envoi d'audio (call_id=%s)", call_id)
-                    media_active_event.set()
 
             # Enregistrer le callback média avant de démarrer
             pjsua_adapter.set_media_active_callback(on_media_active_callback)
