@@ -2648,6 +2648,10 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             # Le voice bridge ne doit démarrer QU'APRÈS que le média soit actif et l'audio débloqué
             voice_bridge_start_event = asyncio.Event()
 
+            # Variables pour la session pré-initialisée (seront remplies pendant la sonnerie)
+            preinit_session = None
+            preinit_response_create_sent = False
+
             async def run_voice_bridge():
                 """Tâche pour exécuter le voice bridge."""
                 # Attendre que le média soit actif et l'audio débloqué
@@ -2681,9 +2685,6 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
 
             # PRÉ-INITIALISATION PENDANT LA SONNERIE pour réduire la latence
             # Profiter des 3 secondes de sonnerie pour créer la session OpenAI et générer le premier audio
-            preinit_session = None
-            preinit_response_create_sent = False
-
             if ring_timeout_seconds > 0:
                 logger.info(
                     "⏰ Sonnerie de %.2f secondes - pré-initialisation de la session OpenAI (call_id=%s)",
