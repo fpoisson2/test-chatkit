@@ -284,11 +284,7 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
         location.pathname.startsWith("/workflows")
       ) {
         shouldRestoreSidebarRef.current = previousSidebarOpenRef.current;
-      } else if (
-        previousApplication === "workflows" &&
-        activeApplication === "chat" &&
-        location.pathname === "/"
-      ) {
+      } else if (previousApplication === "workflows" && activeApplication === "chat") {
         if (shouldRestoreSidebarRef.current) {
           openSidebar();
         }
