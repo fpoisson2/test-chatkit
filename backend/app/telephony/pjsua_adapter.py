@@ -389,9 +389,11 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
         ci = self.getInfo()
         logger.info(
-            "État appel: %s (state=%s)",
-            ci.stateText,
+            "📞 onCallState - call_id=%s, state=%d (%s), remote=%s",
+            ci.id,
             ci.state,
+            ci.stateText,
+            ci.remoteUri,
         )
 
         # Notifier l'adaptateur du changement d'état
@@ -411,17 +413,21 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
         ci = self.getInfo()
 
+        logger.info("🎵 onCallMediaState appelé pour call_id=%s, state=%s", ci.id, ci.state)
+
         # Vérifier si le média est actif
         media_is_active = False
         if ci.media:
+            logger.info("📊 Nombre de médias: %d", len(ci.media))
             for mi in ci.media:
                 if mi.type == pj.PJMEDIA_TYPE_AUDIO and mi.status == pj.PJSUA_CALL_MEDIA_ACTIVE:
                     media_is_active = True
                     self._media_active = True
-                    logger.info("Média audio actif pour l'appel")
+                    logger.info("✅ Média audio actif pour call_id=%s, index=%d", ci.id, mi.index)
 
                     # Créer et connecter le port audio personnalisé
                     if self._audio_port is None:
+                        logger.info("🔧 Création du AudioMediaPort pour call_id=%s", ci.id)
                         self._audio_port = AudioMediaPort(self.adapter)
 
                         # Obtenir le média audio de l'appel
@@ -430,13 +436,16 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
                         # Connecter : téléphone -> notre port (pour recevoir)
                         audio_media.startTransmit(self._audio_port)
-                        logger.info("✅ Connexion téléphone → port audio établie")
+                        logger.info("✅ Connexion téléphone → port audio établie (call_id=%s)", ci.id)
 
                         # Connecter : notre port -> téléphone (pour envoyer)
                         self._audio_port.startTransmit(audio_media)
-                        logger.info("✅ Connexion port audio → téléphone établie")
+                        logger.info("✅ Connexion port audio → téléphone établie (call_id=%s)", ci.id)
 
-                        logger.info("🎵 Port audio connecté (bidirectionnel) - audio_media info: %s", audio_media.getPortInfo())
+                        port_info = audio_media.getPortInfo()
+                        logger.info("🎵 Port audio connecté bidirectionnellement (call_id=%s) - Port: name=%s, clockRate=%d, channelCount=%d, bitsPerSample=%d, frameTimeUsec=%d",
+                                   ci.id, port_info.name, port_info.clockRate, port_info.channelCount,
+                                   port_info.bitsPerSample, port_info.frameTimeUsec)
 
                     # Notifier l'adaptateur que le média est prêt
                     if hasattr(self.adapter, '_on_media_active'):
