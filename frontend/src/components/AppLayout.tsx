@@ -189,6 +189,8 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     return getDesktopLayoutPreference();
   });
   const keepSidebarOpenOnNavigationRef = useRef(false);
+  const previousSidebarOpenRef = useRef(isSidebarOpen);
+  const shouldRestoreSidebarRef = useRef(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const [sidebarContent, setSidebarContent] = useState<ReactNode | null>(null);
@@ -275,12 +277,34 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
   useEffect(() => {
     const previousApplication = previousApplicationRef.current;
 
-    if (!isDesktopLayout && previousApplication === "workflows" && activeApplication === "chat") {
-      openSidebar();
+    if (!isDesktopLayout) {
+      if (
+        previousApplication === "chat" &&
+        activeApplication === "workflows" &&
+        location.pathname.startsWith("/workflows")
+      ) {
+        shouldRestoreSidebarRef.current = previousSidebarOpenRef.current;
+      } else if (
+        previousApplication === "workflows" &&
+        activeApplication === "chat" &&
+        location.pathname === "/"
+      ) {
+        if (shouldRestoreSidebarRef.current) {
+          openSidebar();
+        }
+
+        shouldRestoreSidebarRef.current = false;
+      }
+    } else {
+      shouldRestoreSidebarRef.current = false;
     }
 
     previousApplicationRef.current = activeApplication;
-  }, [activeApplication, isDesktopLayout, openSidebar]);
+  }, [activeApplication, isDesktopLayout, location.pathname, openSidebar]);
+
+  useEffect(() => {
+    previousSidebarOpenRef.current = isSidebarOpen;
+  }, [isSidebarOpen]);
 
   const handleApplicationNavigate = useCallback(
     (application: ApplicationDescriptor) => {
