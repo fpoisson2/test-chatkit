@@ -299,7 +299,7 @@ class OutboundCallManager:
 
             # Résoudre la configuration de démarrage
             from ..workflows.service import resolve_start_telephony_config
-            from ..settings import get_settings
+            from ..config import get_settings
 
             voice_config = resolve_start_telephony_config(workflow)
             if not voice_config or not voice_config.default_route:
