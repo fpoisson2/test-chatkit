@@ -649,13 +649,19 @@ button {
 }
 
 .chatkit-sidebar__section-header--with-action .chatkit-sidebar__section-title {
-  padding-right: calc(3rem + max(env(safe-area-inset-right), 0px));
+  padding-right: calc(
+    var(--chatkit-sidebar-content-padding-x) +
+      3rem +
+      max(env(safe-area-inset-right), 0px)
+  );
 }
 
 .chatkit-sidebar__section-header--with-action .chatkit-sidebar__section-icon-button {
   position: absolute;
   top: 50%;
-  right: max(env(safe-area-inset-right), 0px);
+  right: calc(
+    var(--chatkit-sidebar-content-padding-x) + max(env(safe-area-inset-right), 0px)
+  );
   transform: translateY(-50%);
 }
 
