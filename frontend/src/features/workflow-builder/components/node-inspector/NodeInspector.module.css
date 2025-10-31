@@ -516,6 +516,16 @@
   font-size: 0.85rem;
 }
 
+.nodeInspectorInfoCardHighlight {
+  background: linear-gradient(
+    135deg,
+    rgba(37, 99, 235, 0.16),
+    rgba(14, 116, 144, 0.1)
+  );
+  border-color: rgba(37, 99, 235, 0.35);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
 .nodeInspectorInfoCardNote {
   color: var(--text-muted);
   font-style: italic;
@@ -592,6 +602,55 @@
   color: var(--text-muted);
   font-size: 0.75rem;
   margin-left: 0.25rem;
+}
+
+.outboundCallResultList {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.outboundCallResultListItem {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--color-text-strong);
+}
+
+.outboundCallResultCode {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  background-color: rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.outboundCallResultDescription {
+  color: var(--text-secondary, #475569);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 640px) {
+  .nodeInspectorInfoCardHighlight {
+    font-size: 0.95rem;
+  }
+
+  .outboundCallResultCode {
+    font-size: 0.9rem;
+    padding: 0.3rem 0.55rem;
+    word-break: break-word;
+  }
+
+  .outboundCallResultDescription {
+    font-size: 0.9rem;
+  }
 }
 
 .nodeInspectorInlineCode {
