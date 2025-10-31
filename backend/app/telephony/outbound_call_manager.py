@@ -301,11 +301,30 @@ class OutboundCallManager:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
 
-        while getattr(call, "_audio_port", None) is None or not getattr(call, "_media_active", False):
-            if loop.time() >= deadline:
-                raise TimeoutError("PJSUA media port not ready within timeout")
+        state_event = getattr(call, "_state_event", None)
+        if state_event is not None and not state_event.is_set():
+            remaining = max(0.0, deadline - loop.time())
+            try:
+                await asyncio.wait_for(state_event.wait(), timeout=remaining)
+            except asyncio.TimeoutError as exc:  # pragma: no cover - dépend temps réel
+                raise TimeoutError("PJSUA call was not confirmed before timeout") from exc
 
-            await asyncio.sleep(0.05)
+            if not getattr(call, "_is_confirmed", False):
+                raise TimeoutError("PJSUA call ended before confirmation")
+
+        media_event = getattr(call, "_media_ready_event", None)
+        if media_event is not None and not media_event.is_set():
+            remaining = max(0.0, deadline - loop.time())
+            try:
+                await asyncio.wait_for(media_event.wait(), timeout=remaining)
+            except asyncio.TimeoutError as exc:  # pragma: no cover - dépend temps réel
+                raise TimeoutError("PJSUA media port not ready within timeout") from exc
+
+        audio_port = getattr(call, "_audio_port", None)
+        media_active = getattr(call, "_media_active", False)
+
+        if audio_port is None or not media_active:
+            raise TimeoutError("PJSUA media became unavailable before bridging")
 
         logger.info("PJSUA media port ready for audio bridging")
 

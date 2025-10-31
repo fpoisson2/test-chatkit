@@ -269,6 +269,10 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
         self.adapter = adapter
         self._media_active = False
         self._audio_port: AudioMediaPort | None = None
+        self._media_ready_event: asyncio.Event | None = None
+        self._state_event: asyncio.Event | None = None
+        self._is_confirmed = False
+        self._is_disconnected = False
 
     def onCallState(self, prm: Any) -> None:
         """Appelé lors d'un changement d'état d'appel."""
@@ -282,6 +286,15 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
             ci.state,
         )
 
+        if ci.state == pj.PJSIP_INV_STATE_CONFIRMED:
+            self._is_confirmed = True
+        elif ci.state == pj.PJSIP_INV_STATE_DISCONNECTED:
+            self._is_disconnected = True
+            media_event = getattr(self, "_media_ready_event", None)
+            if media_event is not None and not media_event.is_set():
+                if self.adapter._loop is not None:
+                    self.adapter._loop.call_soon_threadsafe(media_event.set)
+
         # Notifier l'adaptateur du changement d'état
         if hasattr(self.adapter, '_on_call_state'):
             try:
@@ -291,6 +304,13 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                 )
             except Exception as e:
                 logger.exception("Erreur dans onCallState callback: %s", e)
+
+        # Débloquer les attentes sur l'état si nécessaire
+        event = getattr(self, "_state_event", None)
+        if event is not None and not event.is_set():
+            if ci.state in (pj.PJSIP_INV_STATE_CONFIRMED, pj.PJSIP_INV_STATE_DISCONNECTED):
+                if self.adapter._loop is not None:
+                    self.adapter._loop.call_soon_threadsafe(event.set)
 
     def onCallMediaState(self, prm: Any) -> None:
         """Appelé lors d'un changement d'état média."""
@@ -308,19 +328,28 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
 
                     # Créer et connecter le port audio personnalisé
                     if self._audio_port is None:
-                        self._audio_port = AudioMediaPort(self.adapter)
+                        try:
+                            self._audio_port = AudioMediaPort(self.adapter)
 
-                        # Obtenir le média audio de l'appel
-                        call_media = self.getMedia(mi.index)
-                        audio_media = pj.AudioMedia.typecastFromMedia(call_media)
+                            # Obtenir le média audio de l'appel
+                            call_media = self.getMedia(mi.index)
+                            audio_media = pj.AudioMedia.typecastFromMedia(call_media)
 
-                        # Connecter : téléphone -> notre port (pour recevoir)
-                        audio_media.startTransmit(self._audio_port)
+                            # Connecter : téléphone -> notre port (pour recevoir)
+                            audio_media.startTransmit(self._audio_port)
 
-                        # Connecter : notre port -> téléphone (pour envoyer)
-                        self._audio_port.startTransmit(audio_media)
+                            # Connecter : notre port -> téléphone (pour envoyer)
+                            self._audio_port.startTransmit(audio_media)
 
-                        logger.info("Port audio connecté (bidirectionnel)")
+                            logger.info("Port audio connecté (bidirectionnel)")
+                        except Exception as exc:  # pragma: no cover - dépend implémentation native
+                            logger.exception("Échec de la connexion du port audio: %s", exc)
+                            # Débloquer toute attente pour éviter les blocages
+                            media_event = getattr(self, "_media_ready_event", None)
+                            if media_event is not None and not media_event.is_set():
+                                if self.adapter._loop is not None:
+                                    self.adapter._loop.call_soon_threadsafe(media_event.set)
+                            continue
 
                     # Notifier l'adaptateur que le média est prêt
                     if hasattr(self.adapter, '_on_media_active'):
@@ -331,6 +360,11 @@ class PJSUACall(pj.Call if PJSUA_AVAILABLE else object):
                             )
                         except Exception as e:
                             logger.exception("Erreur dans onCallMediaState callback: %s", e)
+
+                    media_event = getattr(self, "_media_ready_event", None)
+                    if media_event is not None and not media_event.is_set():
+                        if self.adapter._loop is not None:
+                            self.adapter._loop.call_soon_threadsafe(media_event.set)
 
 
 class PJSUAAdapter:
@@ -536,6 +570,11 @@ class PJSUAAdapter:
         """Callback interne pour les appels entrants."""
         self._active_calls[call_info.id] = call
 
+        if call._state_event is None:
+            call._state_event = asyncio.Event()
+        if call._media_ready_event is None:
+            call._media_ready_event = asyncio.Event()
+
         if self._incoming_call_callback:
             await self._incoming_call_callback(call, call_info)
 
@@ -585,6 +624,8 @@ class PJSUAAdapter:
 
         # Créer un nouvel appel
         call = PJSUACall(self)
+        call._state_event = asyncio.Event()
+        call._media_ready_event = asyncio.Event()
 
         # Préparer les paramètres d'appel
         prm = pj.CallOpParam()
