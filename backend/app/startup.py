@@ -2464,11 +2464,31 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             async def on_media_active_callback(active_call: Any, media_info: Any) -> None:
                 """Appelé quand le média devient actif (port audio créé)."""
                 if active_call == call:
-                    logger.info("🎵 Média actif détecté, attente 500ms pour stabilisation RTP... (call_id=%s)", call_id)
+                    logger.info("🎵 Média actif détecté, attente 200ms pour stabilisation RTP... (call_id=%s)", call_id)
                     # Attendre un peu pour que le téléphone établisse complètement le flux RTP
-                    # Sans ce délai, les premiers paquets audio sont perdus
-                    # 500ms semble nécessaire pour que certains téléphones soient prêts
-                    await asyncio.sleep(0.5)  # 500ms
+                    await asyncio.sleep(0.2)  # 200ms
+
+                    # Si speak_first est activé, envoyer response.create MAINTENANT (pas pendant la sonnerie)
+                    if speak_first:
+                        logger.info("📢 Envoi de response.create APRÈS le 200 OK (call_id=%s)", call_id)
+                        try:
+                            from agents.realtime.model_inputs import (
+                                RealtimeModelRawClientMessage,
+                                RealtimeModelSendRawMessage,
+                            )
+                            # Envoyer via le runner
+                            await session_handle.runner._model.send_event(
+                                RealtimeModelSendRawMessage(
+                                    message=RealtimeModelRawClientMessage(
+                                        type="response.create",
+                                        other_data={},
+                                    )
+                                )
+                            )
+                            logger.info("✅ response.create envoyé - l'assistant va générer l'audio maintenant (call_id=%s)", call_id)
+                        except Exception as e:
+                            logger.warning("Erreur lors de l'envoi de response.create: %s", e)
+
                     logger.info("✅ Déblocage de l'envoi d'audio (call_id=%s)", call_id)
                     media_active_event.set()
 
@@ -2578,7 +2598,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                 realtime_api_base = os.environ.get("CHATKIT_API_BASE") or "https://api.openai.com"
 
             # Démarrer le voice bridge dans une tâche asyncio IMMÉDIATEMENT
-            # pour que l'assistant génère l'audio pendant la sonnerie
+            # MAIS sans speak_first pour éviter de générer l'audio pendant la sonnerie
             logger.info("Démarrage TelephonyVoiceBridge PJSUA AVANT la réponse (call_id=%s)", call_id)
 
             async def run_voice_bridge():
@@ -2596,7 +2616,7 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         api_base=realtime_api_base,
                         tools=telephony_tools,
                         handoffs=voice_handoffs,
-                        speak_first=speak_first,
+                        speak_first=False,  # NE PAS envoyer response.create immédiatement
                     )
                     logger.info("TelephonyVoiceBridge PJSUA terminé: %s (call_id=%s)", stats, call_id)
                 except Exception as e:
@@ -2605,11 +2625,10 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             # Démarrer la tâche voice bridge en arrière-plan
             voice_bridge_task = asyncio.create_task(run_voice_bridge())
 
-            # Attendre le délai configuré avant de répondre
-            # Pendant ce temps, l'assistant génère déjà l'audio si speak_first=True
+            # Attendre le délai configuré avant de répondre (sonnerie)
             if ring_timeout_seconds > 0:
                 logger.info(
-                    "⏰ Attente de %.2f secondes avant de répondre (l'assistant génère l'audio pendant ce temps) (call_id=%s)",
+                    "⏰ Attente de %.2f secondes avant de répondre (sonnerie) (call_id=%s)",
                     ring_timeout_seconds,
                     call_id,
                 )
