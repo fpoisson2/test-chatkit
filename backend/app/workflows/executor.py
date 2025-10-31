@@ -3348,20 +3348,47 @@ async def run_workflow(
             database_session = SessionLocal()
 
             try:
-                # Vérifier que le workflow vocal existe
-                from ..models import WorkflowDefinition
-                voice_workflow = database_session.query(WorkflowDefinition).filter_by(
+                # Vérifier que le workflow vocal existe et récupérer sa version active
+                from ..models import WorkflowDefinition, Workflow
+
+                # Le voice_workflow_id peut être soit un workflow.id, soit un workflow_definition.id
+                # On essaie d'abord comme workflow.id (cas le plus probable depuis le frontend)
+                workflow = database_session.query(Workflow).filter_by(
                     id=voice_workflow_id
                 ).first()
 
-                if not voice_workflow:
-                    raise WorkflowExecutionError(
-                        current_node.slug,
-                        title,
-                        Exception(f"Le workflow avec l'ID {voice_workflow_id} n'existe pas. Veuillez créer ou sélectionner un workflow valide."),
-                        list(steps),
-                    )
+                if workflow and workflow.active_version_id:
+                    # On a trouvé un workflow parent, utiliser sa version active
+                    voice_workflow_definition_id = workflow.active_version_id
+                elif workflow:
+                    # Workflow existe mais pas de version active, chercher une version active
+                    active_def = database_session.query(WorkflowDefinition).filter_by(
+                        workflow_id=workflow.id,
+                        is_active=True
+                    ).first()
+                    if not active_def:
+                        raise WorkflowExecutionError(
+                            current_node.slug,
+                            title,
+                            Exception(f"Le workflow '{workflow.display_name}' (ID: {voice_workflow_id}) n'a pas de version active. Veuillez activer une version."),
+                            list(steps),
+                        )
+                    voice_workflow_definition_id = active_def.id
+                else:
+                    # Peut-être que c'est directement un workflow_definition.id
+                    voice_workflow_def = database_session.query(WorkflowDefinition).filter_by(
+                        id=voice_workflow_id
+                    ).first()
+                    if not voice_workflow_def:
+                        raise WorkflowExecutionError(
+                            current_node.slug,
+                            title,
+                            Exception(f"Le workflow avec l'ID {voice_workflow_id} n'existe pas. Veuillez créer ou sélectionner un workflow valide."),
+                            list(steps),
+                        )
+                    voice_workflow_definition_id = voice_workflow_def.id
 
+                # Utiliser voice_workflow_definition_id pour l'appel sortant
                 # Note: On accepte n'importe quel type de workflow tant qu'il existe
                 # La validation du contenu (présence d'un bloc vocal) sera faite à l'exécution
 
@@ -3402,17 +3429,17 @@ async def run_workflow(
                 outbound_manager = get_outbound_call_manager()
                 if not database_session:
                     raise WorkflowExecutionError(
-                        "configuration",
-                        "Session de base de données non disponible",
-                        step=current_node.slug,
-                        steps=list(steps),
+                        current_node.slug,
+                        title,
+                        Exception("Session de base de données non disponible"),
+                        list(steps),
                     )
 
                 call_session = await outbound_manager.initiate_call(
                     db=database_session,
                     to_number=to_number,
                     from_number=from_number,
-                    workflow_id=voice_workflow_id,
+                    workflow_id=voice_workflow_definition_id,
                     sip_account_id=sip_account_id,
                     metadata=metadata,
                 )
