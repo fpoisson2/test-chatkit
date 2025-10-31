@@ -2464,10 +2464,29 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             async def on_media_active_callback(active_call: Any, media_info: Any) -> None:
                 """Appelé quand le média devient actif (port audio créé)."""
                 if active_call == call:
-                    logger.info("🎵 Média actif détecté, attente 50ms pour stabilisation RTP... (call_id=%s)", call_id)
-                    # Attendre un peu pour que le téléphone établisse complètement le flux RTP
-                    # 50ms devrait suffire car l'audio est déjà pré-généré pendant 1 seconde
-                    await asyncio.sleep(0.05)  # 50ms
+                    logger.info("🎵 Média actif détecté (call_id=%s)", call_id)
+
+                    # Si speak_first, envoyer response.create MAINTENANT (pas avant, pas de blocage)
+                    if speak_first:
+                        logger.info("📢 Envoi de response.create juste après média actif (call_id=%s)", call_id)
+                        try:
+                            from agents.realtime.model_inputs import (
+                                RealtimeModelRawClientMessage,
+                                RealtimeModelSendRawMessage,
+                            )
+                            await session_handle.runner._model.send_event(
+                                RealtimeModelSendRawMessage(
+                                    message=RealtimeModelRawClientMessage(
+                                        type="response.create",
+                                        other_data={},
+                                    )
+                                )
+                            )
+                            logger.info("✅ response.create envoyé - l'assistant génère l'audio maintenant (call_id=%s)", call_id)
+                        except Exception as e:
+                            logger.warning("Erreur lors de l'envoi de response.create: %s", e)
+
+                    # Débloquer immédiatement - pas de délai artificiel
                     logger.info("✅ Déblocage de l'envoi d'audio (call_id=%s)", call_id)
                     media_active_event.set()
 
@@ -2605,42 +2624,13 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             voice_bridge_task = asyncio.create_task(run_voice_bridge())
 
             # Attendre le délai configuré avant de répondre (sonnerie)
-            # Si speak_first, envoyer response.create 1 seconde avant la fin pour maximiser la pré-génération
             if ring_timeout_seconds > 0:
-                # Attendre presque tout le ring_timeout
-                wait_before_response_create = max(0, ring_timeout_seconds - 1.0)  # Envoyer 1 seconde avant la fin
-                if wait_before_response_create > 0:
-                    logger.info(
-                        "⏰ Attente de %.2f secondes (sonnerie) (call_id=%s)",
-                        wait_before_response_create,
-                        call_id,
-                    )
-                    await asyncio.sleep(wait_before_response_create)
-
-                # Si speak_first, envoyer response.create maintenant (1 seconde avant le 200 OK)
-                if speak_first:
-                    logger.info("📢 Envoi de response.create 1 seconde AVANT le 200 OK pour pré-générer l'audio (call_id=%s)", call_id)
-                    try:
-                        from agents.realtime.model_inputs import (
-                            RealtimeModelRawClientMessage,
-                            RealtimeModelSendRawMessage,
-                        )
-                        await session_handle.runner._model.send_event(
-                            RealtimeModelSendRawMessage(
-                                message=RealtimeModelRawClientMessage(
-                                    type="response.create",
-                                    other_data={},
-                                )
-                            )
-                        )
-                        logger.info("✅ response.create envoyé - l'audio sera prêt au 200 OK (call_id=%s)", call_id)
-                    except Exception as e:
-                        logger.warning("Erreur lors de l'envoi de response.create: %s", e)
-
-                # Attendre la dernière seconde
-                remaining = ring_timeout_seconds - wait_before_response_create
-                if remaining > 0:
-                    await asyncio.sleep(remaining)
+                logger.info(
+                    "⏰ Attente de %.2f secondes (sonnerie) (call_id=%s)",
+                    ring_timeout_seconds,
+                    call_id,
+                )
+                await asyncio.sleep(ring_timeout_seconds)
 
             # Répondre à l'appel (200 OK)
             logger.info("📞 Réponse à l'appel PJSUA (call_id=%s)", call_id)
