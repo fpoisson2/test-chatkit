@@ -190,9 +190,7 @@ export const OutboundCallInspectorSection = ({
           <ul className={styles.nodeInspectorList}>
             <li className={styles.nodeInspectorListItem}>
               <code className={styles.nodeInspectorCode}>
-                {"{"}
-                {"{"}outbound_call.call_status{""}"}
-                {"}"}
+                {`{{ outbound_call.call_status }}`}
               </code>
               <span className={styles.nodeInspectorCodeNote}>
                 Status : completed, no_answer, busy, failed
@@ -200,9 +198,7 @@ export const OutboundCallInspectorSection = ({
             </li>
             <li className={styles.nodeInspectorListItem}>
               <code className={styles.nodeInspectorCode}>
-                {"{"}
-                {"{"}outbound_call.answered{""}"}
-                {"}"}
+                {`{{ outbound_call.answered }}`}
               </code>
               <span className={styles.nodeInspectorCodeNote}>
                 true si répondu, false sinon
@@ -210,9 +206,7 @@ export const OutboundCallInspectorSection = ({
             </li>
             <li className={styles.nodeInspectorListItem}>
               <code className={styles.nodeInspectorCode}>
-                {"{"}
-                {"{"}outbound_call.duration_seconds{""}"}
-                {"}"}
+                {`{{ outbound_call.duration_seconds }}`}
               </code>
               <span className={styles.nodeInspectorCodeNote}>
                 Durée de l'appel
