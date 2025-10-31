@@ -45,7 +45,7 @@ class PJSUAAudioBridge:
         self._timestamp = 0
 
         # Audio buffer for outgoing audio (from VoiceBridge to phone)
-        self._outgoing_audio_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=100)
+        self._outgoing_audio_queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=1000)
 
         # Event qui se déclenche quand on reçoit le premier paquet audio du téléphone
         # Cela confirme que le flux audio bidirectionnel est établi
@@ -177,9 +177,11 @@ class PJSUAAudioBridge:
                 # Target: 60% de la plage (32767 * 0.6 = ~19660)
                 target_amplitude = int(32767 * 0.6)
                 gain = target_amplitude / max_amplitude
-                # Limiter le gain: min 1.0 (pas de réduction), max 3.0 (léger boost)
-                # Si on doit amplifier plus que 3x, c'est probablement du bruit/silence
-                gain = max(1.0, min(gain, 3.0))
+                # Limiter le gain: min 1.0 (pas de réduction), max 100.0
+                # OpenAI génère parfois des signaux très faibles (max=20-50)
+                # qui nécessitent des gains de 50-1000x pour être audibles
+                # Cap à 100x pour éviter saturation extrême du bruit
+                gain = max(1.0, min(gain, 100.0))
                 audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
                 logger.debug("🔊 Audio normalisé (max=%d, gain=%.1fx, amplitude finale=%d)",
                            max_amplitude, gain, int(max_amplitude * gain))
