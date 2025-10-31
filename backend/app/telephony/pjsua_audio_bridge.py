@@ -205,21 +205,21 @@ class PJSUAAudioBridge:
 
 async def create_pjsua_audio_bridge(
     call: PJSUACall,
-) -> tuple[AsyncIterator[RtpPacket], Callable[[bytes], Awaitable[None]], Callable[[], int], asyncio.Event]:
+) -> tuple[AsyncIterator[RtpPacket], Callable[[bytes], Awaitable[None]], Callable[[], int], asyncio.Event, "PJSUAAudioBridge"]:
     """Create audio bridge components for a PJSUA call.
 
     This is a convenience function that creates a bridge and returns the
-    rtp_stream, send_to_peer, clear_queue, and first_packet_received_event for TelephonyVoiceBridge.run().
+    rtp_stream, send_to_peer, clear_queue, first_packet_received_event, and bridge instance for TelephonyVoiceBridge.run().
 
     Args:
         call: The PJSUA call to bridge
 
     Returns:
-        Tuple of (rtp_stream, send_to_peer, clear_queue, first_packet_received_event) for VoiceBridge.run()
+        Tuple of (rtp_stream, send_to_peer, clear_queue, first_packet_received_event, bridge) for VoiceBridge.run()
 
     Example:
         ```python
-        rtp_stream, send_to_peer, clear_queue, first_packet_event = await create_pjsua_audio_bridge(call)
+        rtp_stream, send_to_peer, clear_queue, first_packet_event, bridge = await create_pjsua_audio_bridge(call)
 
         # Attendre le premier paquet pour confirmer que le flux est établi
         await first_packet_event.wait()
@@ -234,10 +234,13 @@ async def create_pjsua_audio_bridge(
             send_to_peer=send_to_peer,
             clear_audio_queue=clear_queue,
         )
+
+        # Nettoyer quand l'appel se termine
+        bridge.stop()
         ```
     """
     bridge = PJSUAAudioBridge(call)
-    return bridge.rtp_stream(), bridge.send_to_peer, bridge.clear_audio_queue, bridge.first_packet_received_event
+    return bridge.rtp_stream(), bridge.send_to_peer, bridge.clear_audio_queue, bridge.first_packet_received_event, bridge
 
 
 __all__ = [
