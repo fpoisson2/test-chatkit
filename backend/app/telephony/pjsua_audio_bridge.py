@@ -168,15 +168,22 @@ class PJSUAAudioBridge:
             logger.warning("Resampling error (24kHz→8kHz): %s", e)
             return
 
-        # Pas d'amplification - gain fixe de 1.0x
-        # Transmet l'audio brut d'OpenAI sans modification d'amplitude
+        # Amplification dynamique pour garantir une amplitude minimale audible
+        # OpenAI envoie parfois un audio très faible (amplitude ~7) qui est inaudible
         try:
             max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
             if max_amplitude > 0:
-                gain = 1.0  # Pas d'amplification
-                audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
-                logger.debug("🔊 Audio transmis sans amplification (max=%d, gain=%.1fx)",
-                           max_amplitude, gain)
+                # Garantir une amplitude minimale de 2000 (audible au téléphone)
+                min_target_amplitude = 2000
+                if max_amplitude < min_target_amplitude:
+                    gain = min(min_target_amplitude / max_amplitude, 10.0)  # Max 10x pour éviter distorsion
+                    audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
+                    logger.info("🔊 Audio amplifié (max=%d → %d, gain=%.1fx)",
+                               max_amplitude, int(max_amplitude * gain), gain)
+                else:
+                    gain = 1.0  # Pas d'amplification nécessaire
+                    logger.debug("🔊 Audio transmis sans amplification (max=%d, gain=%.1fx)",
+                               max_amplitude, gain)
         except audioop.error as e:
             logger.warning("Audio processing error: %s", e)
 

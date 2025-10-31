@@ -304,9 +304,7 @@ class TelephonyVoiceBridge:
         response_create_sent_immediately = False
 
         # Use a list to create a mutable reference for block_audio_send
-        # Start with audio blocked until first OpenAI audio arrives (prevents silence before greeting)
-        block_audio_send_ref = [True]
-        first_audio_received = [False]
+        block_audio_send_ref = [False]
 
         def on_playback_interrupted():
             """Called when SDK detects audio interruption."""
@@ -686,13 +684,6 @@ class TelephonyVoiceBridge:
 
                         audio_event = event.audio
                         pcm_data = audio_event.data
-
-                        # Débloquer l'audio au premier paquet reçu d'OpenAI (évite silence avant le greeting)
-                        if not first_audio_received[0] and pcm_data:
-                            first_audio_received[0] = True
-                            block_audio_send_ref[0] = False
-                            logger.info("✅ Premier audio OpenAI reçu - déblocage de l'audio sortant")
-
                         logger.debug("🎵 RealtimeAudio reçu: %d bytes, bloqué=%s", len(pcm_data) if pcm_data else 0, block_audio_send_ref[0])
 
                         if not block_audio_send_ref[0]:
