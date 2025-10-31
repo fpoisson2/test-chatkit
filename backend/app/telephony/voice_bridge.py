@@ -1,15 +1,16 @@
+# ruff: noqa: E501, I001
+
 """Pont entre la téléphonie SIP et les sessions Realtime."""
 
 from __future__ import annotations
 
 import asyncio
 import audioop
-import base64
 import json
 import logging
-import struct
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 from urllib.parse import quote
@@ -29,7 +30,6 @@ from agents.realtime.events import (
 from agents.realtime.model import RealtimePlaybackTracker, RealtimePlaybackState
 
 from ..config import Settings, get_settings
-from .call_transfer import transfer_call
 
 logger = logging.getLogger("chatkit.telephony.voice_bridge")
 
@@ -299,6 +299,7 @@ class TelephonyVoiceBridge:
         error: Exception | None = None
         session: Any | None = None
         stop_event = asyncio.Event()
+        response_create_sent = bool(preinit_response_create_sent)
 
         # Use a list to create a mutable reference for block_audio_send
         block_audio_send_ref = [False]
@@ -340,7 +341,7 @@ class TelephonyVoiceBridge:
                     logger.debug("Erreur lors de la fermeture anticipée de session: %s", e)
 
         async def forward_audio() -> None:
-            nonlocal inbound_audio_bytes
+            nonlocal inbound_audio_bytes, response_create_sent
             packet_count = 0
             bytes_sent = 0
             # Si on utilise une session pré-initialisée, turn_detection est déjà activé
@@ -367,7 +368,7 @@ class TelephonyVoiceBridge:
                         # Si speak_first est activé et qu'on n'a pas encore envoyé response.create,
                         # l'envoyer immédiatement - le RTP server attendra 150ms avant de flusher le buffer
                         # et OpenAI prendra 200-400ms pour générer l'audio, donc le téléphone sera prêt à temps
-                        if speak_first and not preinit_response_create_sent and not response_create_sent_on_ready:
+                        if speak_first and not response_create_sent and not response_create_sent_on_ready:
                             logger.info("📞 Premier paquet RTP reçu - envoi immédiat de response.create pour speak_first")
                             try:
                                 from agents.realtime.model_inputs import (
@@ -383,6 +384,7 @@ class TelephonyVoiceBridge:
                                     )
                                 )
                                 response_create_sent_on_ready = True
+                                response_create_sent = True
                                 logger.info("✅ response.create envoyé - l'assistant va parler en premier")
                             except Exception as exc:
                                 logger.warning("Erreur lors de l'envoi de response.create: %s", exc)
@@ -428,7 +430,6 @@ class TelephonyVoiceBridge:
                 logger.debug("Fin du flux audio RTP, attente de la fermeture de session")
                 await request_stop()
 
-        transcript_buffers: dict[str, list[str]] = {}
         last_response_id: str | None = None
         agent_is_speaking = False  # Track if agent is currently speaking
         user_speech_detected = False  # Track if we detected user speech
@@ -736,7 +737,7 @@ class TelephonyVoiceBridge:
                         continue
 
                     # Handle history updates (contains transcripts)
-                    if isinstance(event, (RealtimeHistoryAdded, RealtimeHistoryUpdated)):
+                    if isinstance(event, RealtimeHistoryAdded | RealtimeHistoryUpdated):
                         history = getattr(event, "history", [event.item] if hasattr(event, "item") else [])
                         for idx, item in enumerate(history):
                             role = getattr(item, "role", None)
@@ -882,8 +883,8 @@ class TelephonyVoiceBridge:
                 await session.__aenter__()
                 logger.info("Session SDK démarrée avec succès")
 
-            # Note: Si speak_first est activé, response.create sera envoyé dans forward_audio()
-            # quand le premier paquet RTP sera reçu (téléphone prêt à recevoir l'audio)
+            # Note: Si speak_first est activé, nous envoyons response.create soit de manière proactive
+            # (voir trigger_initial_response) soit au moment de la première audio entrante.
 
             # Log available tools
             try:
@@ -895,6 +896,42 @@ class TelephonyVoiceBridge:
                     logger.info("  - Outil : %s", tool_name)
             except Exception as e:
                 logger.warning("Impossible de lister les outils : %s", e)
+
+            speak_first_task: asyncio.Task | None = None
+
+            if speak_first and not response_create_sent:
+
+                async def trigger_initial_response() -> None:
+                    nonlocal response_create_sent
+                    await asyncio.sleep(0.2)
+                    if response_create_sent:
+                        return
+                    logger.info(
+                        "🗣️ speak_first actif - envoi proactif de response.create (sans audio entrant)"
+                    )
+                    try:
+                        from agents.realtime.model_inputs import (
+                            RealtimeModelRawClientMessage,
+                            RealtimeModelSendRawMessage,
+                        )
+
+                        await session._model.send_event(
+                            RealtimeModelSendRawMessage(
+                                message=RealtimeModelRawClientMessage(
+                                    type="response.create",
+                                    other_data={},
+                                )
+                            )
+                        )
+                        response_create_sent = True
+                        logger.info("✅ response.create envoyé avant audio entrant (speak_first)")
+                    except Exception as exc:  # pragma: no cover - garde-fou réseau
+                        logger.warning(
+                            "Erreur lors de l'envoi proactif de response.create (speak_first): %s",
+                            exc,
+                        )
+
+                speak_first_task = asyncio.create_task(trigger_initial_response())
 
             audio_task = asyncio.create_task(forward_audio())
             events_task = asyncio.create_task(handle_events())
@@ -913,6 +950,10 @@ class TelephonyVoiceBridge:
             error = exc
             logger.error("Session voix Realtime interrompue : %s", exc)
         finally:
+            if speak_first_task is not None:
+                speak_first_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await speak_first_task
             if session is not None and not session_closing[0]:
                 try:
                     session_closing[0] = True
