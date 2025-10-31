@@ -1142,7 +1142,9 @@ button {
   }
 
   .chatkit-sidebar__workflow-actions {
-    right: calc(max(env(safe-area-inset-right), 0px) - var(--chatkit-sidebar-content-padding-x));
+    right: calc(
+      var(--chatkit-sidebar-content-padding-x) + max(env(safe-area-inset-right), 0px)
+    );
   }
 }
 
