@@ -3344,40 +3344,43 @@ async def run_workflow(
                     steps=list(steps),
                 )
 
-            # Récupérer le compte SIP (ou utiliser le défaut)
-            if not sip_account_id and database_session:
-                default_account = database_session.query(SipAccount).filter_by(
-                    is_default=True, is_active=True
-                ).first()
-                if default_account:
-                    sip_account_id = default_account.id
-
-            if not sip_account_id:
-                raise WorkflowExecutionError(
-                    "configuration",
-                    "Aucun compte SIP configuré pour les appels sortants",
-                    step=current_node.slug,
-                    steps=list(steps),
-                )
-
-            # Récupérer from_number depuis le compte SIP
-            if database_session:
-                sip_account = database_session.query(SipAccount).filter_by(
-                    id=sip_account_id
-                ).first()
-                from_number = sip_account.contact_host if sip_account else "unknown"
-            else:
-                from_number = "unknown"
-
-            # Préparer les métadonnées
-            metadata = {
-                "triggered_by_workflow_id": workflow_definition.id if workflow_definition else None,
-                "triggered_by_session_id": agent_context.thread.id if agent_context else None,
-                "trigger_node_slug": current_node.slug,
-                "trigger_context": params.get("metadata", {}),
-            }
+            # Créer une session de base de données pour ce bloc
+            database_session = SessionLocal()
 
             try:
+                # Récupérer le compte SIP (ou utiliser le défaut)
+                if not sip_account_id and database_session:
+                    default_account = database_session.query(SipAccount).filter_by(
+                        is_default=True, is_active=True
+                    ).first()
+                    if default_account:
+                        sip_account_id = default_account.id
+
+                if not sip_account_id:
+                    raise WorkflowExecutionError(
+                        "configuration",
+                        "Aucun compte SIP configuré pour les appels sortants",
+                        step=current_node.slug,
+                        steps=list(steps),
+                    )
+
+                # Récupérer from_number depuis le compte SIP
+                if database_session:
+                    sip_account = database_session.query(SipAccount).filter_by(
+                        id=sip_account_id
+                    ).first()
+                    from_number = sip_account.contact_host if sip_account else "unknown"
+                else:
+                    from_number = "unknown"
+
+                # Préparer les métadonnées
+                metadata = {
+                    "triggered_by_workflow_id": workflow_definition.id if workflow_definition else None,
+                    "triggered_by_session_id": agent_context.thread.id if agent_context else None,
+                    "trigger_node_slug": current_node.slug,
+                    "trigger_context": params.get("metadata", {}),
+                }
+
                 # Initier l'appel
                 outbound_manager = get_outbound_call_manager()
                 if not database_session:
@@ -3452,6 +3455,9 @@ async def run_workflow(
                     exc,
                 )
                 raise_step_error(current_node.slug, title, exc)
+            finally:
+                # Fermer la session de base de données
+                database_session.close()
 
             transition = _next_edge(current_slug)
             if transition is None:
