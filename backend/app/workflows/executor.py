@@ -3348,6 +3348,28 @@ async def run_workflow(
             database_session = SessionLocal()
 
             try:
+                # Vérifier que le workflow vocal existe
+                from ..models import WorkflowDefinition
+                voice_workflow = database_session.query(WorkflowDefinition).filter_by(
+                    id=voice_workflow_id
+                ).first()
+
+                if not voice_workflow:
+                    raise WorkflowExecutionError(
+                        "configuration",
+                        f"Le workflow vocal avec l'ID {voice_workflow_id} n'existe pas. Veuillez créer ou sélectionner un workflow vocal valide.",
+                        step=current_node.slug,
+                        steps=list(steps),
+                    )
+
+                if voice_workflow.workflow_type != "voice":
+                    raise WorkflowExecutionError(
+                        "configuration",
+                        f"Le workflow {voice_workflow_id} ({voice_workflow.name}) n'est pas un workflow vocal (type: {voice_workflow.workflow_type}). Veuillez sélectionner un workflow de type 'voice'.",
+                        step=current_node.slug,
+                        steps=list(steps),
+                    )
+
                 # Récupérer le compte SIP (ou utiliser le défaut)
                 if not sip_account_id and database_session:
                     default_account = database_session.query(SipAccount).filter_by(
