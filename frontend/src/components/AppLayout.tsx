@@ -8,8 +8,10 @@ import {
   useRef,
   useState,
   type HTMLAttributes,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type TouchEvent as ReactTouchEvent,
 } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -113,12 +115,17 @@ const buildNavigationItems = ({
   ];
 };
 
+type SidebarInteractionEvent =
+  | ReactPointerEvent<HTMLDivElement>
+  | ReactMouseEvent<HTMLDivElement>
+  | ReactTouchEvent<HTMLDivElement>;
+
 const useSidebarInteractions = ({
   isDesktopLayout,
   onInteract,
 }: {
   isDesktopLayout: boolean;
-  onInteract: () => void;
+  onInteract: (event: SidebarInteractionEvent) => void;
 }) =>
   useMemo<Partial<HTMLAttributes<HTMLDivElement>>>(() => {
     if (isDesktopLayout) {
@@ -126,9 +133,15 @@ const useSidebarInteractions = ({
     }
 
     return {
-      onClick: onInteract,
-      onPointerDown: onInteract,
-      onTouchStart: onInteract,
+      onClick: (event: ReactMouseEvent<HTMLDivElement>) => {
+        onInteract(event);
+      },
+      onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => {
+        onInteract(event);
+      },
+      onTouchStart: (event: ReactTouchEvent<HTMLDivElement>) => {
+        onInteract(event);
+      },
     };
   }, [isDesktopLayout, onInteract]);
 
@@ -228,11 +241,26 @@ export const AppLayout = ({ children }: { children?: ReactNode }) => {
     setIsSidebarOpen(false);
   }, []);
 
-  const handleMainInteraction = useCallback(() => {
-    if (!isDesktopLayout && isSidebarOpen) {
-      closeSidebar();
-    }
-  }, [closeSidebar, isDesktopLayout, isSidebarOpen]);
+  const handleMainInteraction = useCallback(
+    (event: SidebarInteractionEvent) => {
+      if (isDesktopLayout || !isSidebarOpen) {
+        return;
+      }
+
+      const target = event.target;
+
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      const interactiveElement = target.closest("a[href]");
+
+      if (interactiveElement) {
+        closeSidebar();
+      }
+    },
+    [closeSidebar, isDesktopLayout, isSidebarOpen],
+  );
 
   const mainInteractionHandlers = useSidebarInteractions({
     isDesktopLayout,
