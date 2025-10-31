@@ -243,7 +243,7 @@ class OutboundCallManager:
             await asyncio.sleep(1)  # Attendre 1s pour que le média soit prêt
 
             # Créer l'audio bridge (8kHz ↔ 24kHz)
-            rtp_stream, send_to_peer = await create_pjsua_audio_bridge(pjsua_call)
+            rtp_stream, send_to_peer, clear_queue, first_packet_event, pjsua_ready_event, bridge = await create_pjsua_audio_bridge(pjsua_call)
 
             # Marquer l'appel comme connecté
             session.status = "answered"
