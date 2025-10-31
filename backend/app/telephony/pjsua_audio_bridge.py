@@ -168,6 +168,16 @@ class PJSUAAudioBridge:
             logger.warning("Resampling error (24kHz→8kHz): %s", e)
             return
 
+        # AMPLIFY audio because OpenAI sends very low amplitude audio
+        # that gets treated as silence by PJSUA/PCMU codec
+        # Gain factor of 8.0 (increase volume by 8x)
+        try:
+            audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, 8.0)
+            logger.debug("🔊 Audio amplifié (gain=8.0x)")
+        except audioop.error as e:
+            logger.warning("Amplification error: %s", e)
+            return
+
         # Send to PJSUA in chunks of 320 bytes (20ms @ 8kHz, 16-bit, mono)
         # PJSUA expects 160 samples/frame × 2 bytes/sample = 320 bytes
         chunk_size = 320
