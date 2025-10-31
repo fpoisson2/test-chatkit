@@ -170,10 +170,10 @@ class PJSUAAudioBridge:
 
         # AMPLIFY audio because OpenAI sends very low amplitude audio
         # that gets treated as silence by PJSUA/PCMU codec
-        # Gain factor of 3.0 (increase volume by 3x) - conservative to avoid clipping
+        # Gain factor of 5.0 - balance between avoiding silence and preventing saturation
         try:
-            audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, 3.0)
-            logger.debug("🔊 Audio amplifié (gain=3.0x)")
+            audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, 5.0)
+            logger.debug("🔊 Audio amplifié (gain=5.0x)")
         except audioop.error as e:
             logger.warning("Amplification error: %s", e)
             return
