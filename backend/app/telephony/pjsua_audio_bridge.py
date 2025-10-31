@@ -168,25 +168,9 @@ class PJSUAAudioBridge:
             logger.warning("Resampling error (24kHz→8kHz): %s", e)
             return
 
-        # NORMALIZE audio amplitude: OpenAI génère parfois de l'audio très faible
-        # qui est traité comme du silence par PCMU. On détecte le pic et amplifie
-        # pour utiliser ~60% de la plage dynamique sans saturation.
-        try:
-            max_amplitude = audioop.max(audio_8khz, self.BYTES_PER_SAMPLE)
-            if max_amplitude > 0:
-                # Target: 60% de la plage (32767 * 0.6 = ~19660)
-                target_amplitude = int(32767 * 0.6)
-                gain = target_amplitude / max_amplitude
-                # Limiter le gain: min 1.0 (pas de réduction), max 100.0
-                # OpenAI génère parfois des signaux très faibles (max=20-50)
-                # qui nécessitent des gains de 50-1000x pour être audibles
-                # Cap à 100x pour éviter saturation extrême du bruit
-                gain = max(1.0, min(gain, 100.0))
-                audio_8khz = audioop.mul(audio_8khz, self.BYTES_PER_SAMPLE, gain)
-                logger.debug("🔊 Audio normalisé (max=%d, gain=%.1fx, amplitude finale=%d)",
-                           max_amplitude, gain, int(max_amplitude * gain))
-        except audioop.error as e:
-            logger.warning("Normalization error: %s", e)
+        # Pas de normalisation audio - transmettre le signal brut d'OpenAI
+        # La normalisation causait potentiellement des artefacts ou du lag
+        pass
 
         # Send to PJSUA in chunks of 320 bytes (20ms @ 8kHz, 16-bit, mono)
         # PJSUA expects 160 samples/frame × 2 bytes/sample = 320 bytes
