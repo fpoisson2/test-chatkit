@@ -2669,6 +2669,8 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
                         tools=telephony_tools,
                         handoffs=voice_handoffs,
                         speak_first=speak_first,  # speak_first sera traité par VoiceBridge au bon moment
+                        preinit_session=preinit_session,  # Session pré-initialisée pendant la sonnerie
+                        preinit_response_create_sent=preinit_response_create_sent,  # response.create déjà envoyé pendant sonnerie
                     )
                     logger.info("TelephonyVoiceBridge PJSUA terminé: %s (call_id=%s)", stats, call_id)
                 except Exception as e:
@@ -2677,14 +2679,76 @@ def _build_pjsua_incoming_call_handler(app: FastAPI) -> Any:
             # Créer la tâche mais elle attendra l'event avant de démarrer
             voice_bridge_task = asyncio.create_task(run_voice_bridge())
 
-            # Attendre le délai configuré avant de répondre (sonnerie)
+            # PRÉ-INITIALISATION PENDANT LA SONNERIE pour réduire la latence
+            # Profiter des 3 secondes de sonnerie pour créer la session OpenAI et générer le premier audio
+            preinit_session = None
+            preinit_response_create_sent = False
+
             if ring_timeout_seconds > 0:
                 logger.info(
-                    "⏰ Attente de %.2f secondes (sonnerie) (call_id=%s)",
+                    "⏰ Sonnerie de %.2f secondes - pré-initialisation de la session OpenAI (call_id=%s)",
                     ring_timeout_seconds,
                     call_id,
                 )
-                await asyncio.sleep(ring_timeout_seconds)
+
+                try:
+                    # Créer la session OpenAI PENDANT la sonnerie pour gagner du temps
+                    from agents.realtime.model_inputs import (
+                        RealtimeModelRawClientMessage,
+                        RealtimeModelSendRawMessage,
+                    )
+
+                    logger.info("🚀 Création session OpenAI pendant la sonnerie (call_id=%s)", call_id)
+
+                    # Build model config
+                    model_settings: dict[str, Any] = {
+                        "model_name": voice_model,
+                        "modalities": ["audio"],
+                        "output_modalities": ["audio"],
+                        "input_audio_format": "pcm16",
+                        "output_audio_format": "pcm16",
+                    }
+                    if voice_name:
+                        model_settings["voice"] = voice_name
+
+                    # Create playback tracker for preinit session
+                    from chatkit.telephony.voice_bridge import TelephonyPlaybackTracker
+                    preinit_playback_tracker = TelephonyPlaybackTracker(on_interrupt_callback=None)
+
+                    model_config: dict[str, Any] = {
+                        "api_key": client_secret,
+                        "initial_model_settings": model_settings,
+                        "playback_tracker": preinit_playback_tracker,
+                    }
+
+                    # Démarrer la session OpenAI
+                    preinit_session = await session_handle.runner.run(model_config=model_config)
+                    await preinit_session.__aenter__()
+                    logger.info("✅ Session OpenAI pré-initialisée (call_id=%s)", call_id)
+
+                    # Si speak_first, générer le premier audio MAINTENANT pendant la sonnerie
+                    if speak_first:
+                        logger.info("🎙️ Génération du premier 'Allô!' pendant la sonnerie (call_id=%s)", call_id)
+                        await preinit_session._model.send_event(
+                            RealtimeModelSendRawMessage(
+                                message=RealtimeModelRawClientMessage(
+                                    type="response.create",
+                                    other_data={},
+                                )
+                            )
+                        )
+                        preinit_response_create_sent = True
+                        logger.info("✅ Génération audio démarrée - sera prêt quand l'appel sera répondu (call_id=%s)", call_id)
+
+                    # Attendre le reste du temps de sonnerie
+                    await asyncio.sleep(ring_timeout_seconds)
+
+                except Exception as e:
+                    logger.warning("⚠️ Erreur pendant pré-initialisation: %s - continuera sans preinit (call_id=%s)", e, call_id)
+                    preinit_session = None
+                    preinit_response_create_sent = False
+                    # Attendre quand même le temps de sonnerie
+                    await asyncio.sleep(ring_timeout_seconds)
 
             # Répondre à l'appel (200 OK)
             logger.info("📞 Réponse à l'appel PJSUA (call_id=%s)", call_id)
