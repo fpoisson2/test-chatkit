@@ -326,11 +326,35 @@ class OutboundCallManager:
             logger.info("✅ Audio bridge créé, attente du média actif (call_id=%s)", session.call_id)
 
             # Attendre que le média soit actif (max 10 secondes pour les appels sortants)
+            # OU que l'appel soit déconnecté (cleanup_done)
             logger.info("⏱️ Attente activation du média pour appel sortant... (call_id=%s)", session.call_id)
             try:
-                await asyncio.wait_for(media_active_event.wait(), timeout=10.0)
+                # Attendre soit media_active_event soit cleanup_done (appel terminé)
+                done, pending = await asyncio.wait(
+                    [
+                        asyncio.create_task(media_active_event.wait()),
+                        asyncio.create_task(cleanup_done.wait())
+                    ],
+                    timeout=10.0,
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+
+                # Annuler les tâches en attente
+                for task in pending:
+                    task.cancel()
+
+                # Si l'appel a été déconnecté (cleanup_done), arrêter ici
+                if cleanup_done.is_set():
+                    logger.warning("❌ Appel déconnecté avant que le média soit actif (call_id=%s)", session.call_id)
+                    return
+
                 logger.info("✅ Média actif confirmé (call_id=%s)", session.call_id)
             except asyncio.TimeoutError:
+                # Vérifier si l'appel est toujours connecté
+                if cleanup_done.is_set():
+                    logger.warning("❌ Appel déconnecté pendant l'attente du média (call_id=%s)", session.call_id)
+                    return
+
                 logger.warning("⚠️ Timeout attente média actif - on continue quand même (call_id=%s)", session.call_id)
                 session.status = "answered"
                 self._update_call_status(
