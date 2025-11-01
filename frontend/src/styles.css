@@ -808,15 +808,13 @@ button {
 }
 
 .chatkit-sidebar__workflow-group--pinned {
-  margin-bottom: 1.5rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid var(--sidebar-border);
+  margin-bottom: 1.25rem;
 }
 
 .chatkit-sidebar__workflow-group-title {
   margin: 0 0 0.35rem;
   margin-inline: calc(-1 * var(--chatkit-sidebar-content-padding-x));
-  padding: 0.25rem var(--chatkit-sidebar-content-padding-x) 0.15rem;
+  padding: 0.1rem var(--chatkit-sidebar-content-padding-x) 0.15rem;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -934,7 +932,7 @@ button {
   justify-content: flex-start;
   border: none;
   background: transparent;
-  padding: 12px var(--chatkit-sidebar-content-padding-x);
+  padding: 9px var(--chatkit-sidebar-content-padding-x);
   padding-right: calc(var(--chatkit-sidebar-content-padding-x) + 2.5rem);
   border-radius: 0;
   font: inherit;
@@ -1119,8 +1117,7 @@ button {
 }
 
 .chatkit-sidebar__workflow-compact-group--pinned {
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--sidebar-border);
+  padding-bottom: 0.5rem;
 }
 
 .chatkit-sidebar__workflow-compact-group-title {
@@ -1152,8 +1149,8 @@ button {
 }
 
 .chatkit-sidebar__workflow-compact-button {
-  width: clamp(34px, 3.6vw, 42px);
-  height: clamp(34px, 3.6vw, 42px);
+  width: clamp(32px, 3.2vw, 40px);
+  height: clamp(32px, 3.2vw, 40px);
   border-radius: 999px;
   border: 1px solid var(--sidebar-border);
   background: color-mix(in srgb, var(--sidebar-background) 88%, transparent);
