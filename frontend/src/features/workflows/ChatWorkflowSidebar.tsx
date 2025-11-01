@@ -9,11 +9,17 @@ import type { HostedWorkflowMetadata } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
 import type { HostedFlowMode } from "../../hooks/useHostedFlow";
 import {
+  buildWorkflowOrderingTimestamps,
   clearWorkflowSidebarCache,
   getWorkflowInitials,
+  orderWorkflowEntries,
+  recordWorkflowLastUsedAt,
   readStoredWorkflowSelection,
+  readStoredWorkflowLastUsedMap,
   readWorkflowSidebarCache,
+  type StoredWorkflowLastUsedAt,
   updateStoredWorkflowSelection,
+  WORKFLOW_SELECTION_CHANGED_EVENT,
   writeStoredWorkflowSelection,
   writeWorkflowSidebarCache,
 } from "./utils";
@@ -65,12 +71,69 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const [loading, setLoading] = useState(() => !cachedState);
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [lastUsedAt, setLastUsedAt] = useState<StoredWorkflowLastUsedAt>(() =>
+    buildWorkflowOrderingTimestamps(
+      cachedState?.workflows ?? [],
+      cachedState?.hostedWorkflows ?? [],
+      readStoredWorkflowLastUsedMap(),
+    ),
+  );
+  const workflowsRef = useRef(workflows);
+  const hostedWorkflowsRef = useRef(hostedWorkflows);
   const hostedInitialAnnouncedRef = useRef(false);
   const onWorkflowActivatedRef = useRef(onWorkflowActivated);
+  const workflowCollatorRef = useRef<Intl.Collator | null>(null);
 
   useEffect(() => {
     onWorkflowActivatedRef.current = onWorkflowActivated;
   }, [onWorkflowActivated]);
+
+  useEffect(() => {
+    if (typeof Intl === "undefined" || typeof Intl.Collator !== "function") {
+      return;
+    }
+
+    if (!workflowCollatorRef.current) {
+      workflowCollatorRef.current = new Intl.Collator(undefined, {
+        sensitivity: "base",
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleSelectionChange = () => {
+      setLastUsedAt(
+        buildWorkflowOrderingTimestamps(
+          workflowsRef.current,
+          hostedWorkflowsRef.current,
+          readStoredWorkflowLastUsedMap(),
+        ),
+      );
+    };
+
+    window.addEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
+    return () => {
+      window.removeEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    workflowsRef.current = workflows;
+  }, [workflows]);
+
+  useEffect(() => {
+    hostedWorkflowsRef.current = hostedWorkflows;
+  }, [hostedWorkflows]);
+
+  useEffect(() => {
+    setLastUsedAt(
+      buildWorkflowOrderingTimestamps(workflows, hostedWorkflows, readStoredWorkflowLastUsedMap()),
+    );
+  }, [hostedWorkflows, workflows]);
 
   const loadWorkflows = useCallback(async () => {
     if (!token) {
@@ -80,6 +143,13 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       setHostedWorkflows([]);
       setSelectedHostedSlug(null);
       setSelectedWorkflowId(null);
+      setLastUsedAt(
+        buildWorkflowOrderingTimestamps(
+          [],
+          [],
+          readStoredWorkflowLastUsedMap(),
+        ),
+      );
       setError(null);
       setLoading(false);
       hostedInitialAnnouncedRef.current = false;
@@ -185,8 +255,17 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           mode: resolvedMode,
           localWorkflowId: resolvedLocalId,
           hostedSlug: preservedHostedSlug,
+          lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
         };
       });
+
+      setLastUsedAt(
+        buildWorkflowOrderingTimestamps(
+          items,
+          hostedList,
+          readStoredWorkflowLastUsedMap(),
+        ),
+      );
 
       if (resolvedMode === "local") {
         onWorkflowActivatedRef.current(
@@ -300,6 +379,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           mode: "local",
           localWorkflowId: updated.id,
           hostedSlug: previous?.hostedSlug ?? null,
+          lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
         }));
         if (mode !== "local") {
           setMode("local");
@@ -311,6 +391,11 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         if (!isDesktopLayout) {
           closeSidebar();
         }
+        const updatedLastUsed = recordWorkflowLastUsedAt({
+          kind: "local",
+          workflow: updated,
+        });
+        setLastUsedAt(updatedLastUsed);
       } catch (err) {
         let message = err instanceof Error ? err.message : "Impossible de sélectionner le workflow.";
         if (isApiError(err) && err.status === 400) {
@@ -353,11 +438,17 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         mode: "hosted",
         localWorkflowId: previous?.localWorkflowId ?? selectedWorkflowId ?? null,
         hostedSlug: option.slug,
+        lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
       }));
       onWorkflowActivatedRef.current(
         { kind: "hosted", slug: option.slug, option },
         { reason: "user" },
       );
+      const updatedLastUsed = recordWorkflowLastUsedAt({
+        kind: "hosted",
+        workflow: option,
+      });
+      setLastUsedAt(updatedLastUsed);
       if (!isDesktopLayout) {
         closeSidebar();
       }
@@ -365,19 +456,37 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     [closeSidebar, hostedWorkflows, isDesktopLayout, mode, selectedWorkflowId, setMode],
   );
 
+  const sortedWorkflowEntries = useMemo(() => {
+    const collator =
+      workflowCollatorRef.current ?? new Intl.Collator(undefined, { sensitivity: "base" });
+    return orderWorkflowEntries(
+      [
+        ...hostedWorkflows.map((workflow) => ({ kind: "hosted" as const, workflow })),
+        ...workflows.map((workflow) => ({ kind: "local" as const, workflow })),
+      ],
+      lastUsedAt,
+      { collator },
+    );
+  }, [hostedWorkflows, lastUsedAt, workflows]);
+
   const compactWorkflows = useMemo(
     () =>
-      [
-        ...hostedWorkflows.map((option) => ({
-          key: `hosted:${option.slug}`,
-          label: option.label,
-          onClick: () => void handleHostedWorkflowClick(option.slug),
-          disabled: !option.available,
-          isActive: mode === "hosted" && selectedHostedSlug === option.slug,
-          initials: getWorkflowInitials(option.label),
-          kind: "hosted" as const,
-        })),
-        ...workflows.map((workflow) => ({
+      sortedWorkflowEntries.map((entry) => {
+        if (entry.kind === "hosted") {
+          const option = entry.workflow;
+          return {
+            key: `hosted:${option.slug}`,
+            label: option.label,
+            onClick: () => void handleHostedWorkflowClick(option.slug),
+            disabled: !option.available,
+            isActive: mode === "hosted" && selectedHostedSlug === option.slug,
+            initials: getWorkflowInitials(option.label),
+            kind: "hosted" as const,
+          };
+        }
+
+        const workflow = entry.workflow;
+        return {
           key: `local:${workflow.id}`,
           label: workflow.display_name,
           onClick: () => void handleWorkflowClick(workflow.id),
@@ -385,18 +494,26 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           isActive: mode === "local" && workflow.id === selectedWorkflowId,
           initials: getWorkflowInitials(workflow.display_name),
           kind: "local" as const,
-        })),
-      ],
+        };
+      }),
     [
       handleHostedWorkflowClick,
       handleWorkflowClick,
-      hostedWorkflows,
       mode,
       selectedHostedSlug,
       selectedWorkflowId,
-      t,
-      workflows,
+      sortedWorkflowEntries,
     ],
+  );
+
+  const combinedEntries = useMemo(
+    () =>
+      sortedWorkflowEntries.map((entry) =>
+        entry.kind === "hosted"
+          ? ({ kind: "hosted" as const, option: entry.workflow })
+          : ({ kind: "local" as const, workflow: entry.workflow })
+      ),
+    [sortedWorkflowEntries],
   );
 
   useEffect(() => {
@@ -480,11 +597,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       );
     }
 
-    const combinedEntries = [
-      ...hostedWorkflows.map((option) => ({ kind: "hosted" as const, option })),
-      ...workflows.map((workflow) => ({ kind: "local" as const, workflow })),
-    ];
-
     return (
       <section className="chatkit-sidebar__section" aria-labelledby={`${sectionId}-title`}>
         <div className="chatkit-sidebar__section-header">
@@ -558,6 +670,7 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       </section>
     );
   }, [
+    combinedEntries,
     error,
     handleOpenBuilder,
     handleHostedWorkflowClick,

@@ -32,10 +32,15 @@ import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
 import {
+  buildWorkflowOrderingTimestamps,
   getWorkflowInitials,
+  orderWorkflowEntries,
   readStoredWorkflowSelection,
+  readStoredWorkflowLastUsedMap,
   readWorkflowSidebarCache,
+  type StoredWorkflowLastUsedAt,
   updateStoredWorkflowSelection,
+  WORKFLOW_SELECTION_CHANGED_EVENT,
   writeWorkflowSidebarCache,
 } from "../workflows/utils";
 import {
@@ -457,6 +462,16 @@ const WorkflowBuilderPage = () => {
   const [hostedWorkflows, setHostedWorkflows] = useState<HostedWorkflowMetadata[]>(
     () => initialSidebarCache?.hostedWorkflows ?? [],
   );
+  const [lastUsedAt, setLastUsedAt] = useState<StoredWorkflowLastUsedAt>(() =>
+    buildWorkflowOrderingTimestamps(
+      initialSidebarCache?.workflows ?? [],
+      initialSidebarCache?.hostedWorkflows ?? [],
+      readStoredWorkflowLastUsedMap(),
+    ),
+  );
+  const workflowsRef = useRef(workflows);
+  const hostedWorkflowsRef = useRef(hostedWorkflows);
+  const workflowSortCollatorRef = useRef<Intl.Collator | null>(null);
   const [hostedLoading, setHostedLoading] = useState(false);
   const [hostedError, setHostedError] = useState<string | null>(null);
   const [versions, setVersions] = useState<WorkflowVersionSummary[]>([]);
@@ -528,6 +543,53 @@ const WorkflowBuilderPage = () => {
   const blockLibraryScrollRef = useRef<HTMLDivElement | null>(null);
   const blockLibraryItemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blockLibraryAnimationFrameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (typeof Intl === "undefined" || typeof Intl.Collator !== "function") {
+      return;
+    }
+
+    if (!workflowSortCollatorRef.current) {
+      workflowSortCollatorRef.current = new Intl.Collator(undefined, {
+        sensitivity: "base",
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleSelectionChange = () => {
+      setLastUsedAt(
+        buildWorkflowOrderingTimestamps(
+          workflowsRef.current,
+          hostedWorkflowsRef.current,
+          readStoredWorkflowLastUsedMap(),
+        ),
+      );
+    };
+
+    window.addEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
+    return () => {
+      window.removeEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    workflowsRef.current = workflows;
+  }, [workflows]);
+
+  useEffect(() => {
+    hostedWorkflowsRef.current = hostedWorkflows;
+  }, [hostedWorkflows]);
+
+  useEffect(() => {
+    setLastUsedAt(
+      buildWorkflowOrderingTimestamps(workflows, hostedWorkflows, readStoredWorkflowLastUsedMap()),
+    );
+  }, [hostedWorkflows, workflows]);
 
   const isMobileLayout = useMediaQuery("(max-width: 768px)");
   const deviceType: DeviceType = isMobileLayout ? "mobile" : "desktop";
@@ -906,19 +968,29 @@ const WorkflowBuilderPage = () => {
   useEffect(() => {
     updateStoredWorkflowSelection((previous) => {
       if (selectedWorkflowId == null) {
-        if (!previous) {
-          return null;
-        }
-        if (previous.mode === "hosted") {
+        if (!previous || previous.mode === "hosted" || previous.localWorkflowId == null) {
           return previous;
         }
+
         return { ...previous, localWorkflowId: null };
+      }
+
+      const preservedHostedSlug = previous?.hostedSlug ?? null;
+
+      if (
+        previous &&
+        previous.mode === "local" &&
+        previous.localWorkflowId === selectedWorkflowId &&
+        previous.hostedSlug === preservedHostedSlug
+      ) {
+        return previous;
       }
 
       return {
         mode: "local",
         localWorkflowId: selectedWorkflowId,
-        hostedSlug: previous?.hostedSlug ?? null,
+        hostedSlug: preservedHostedSlug,
+        lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
       };
     });
   }, [selectedWorkflowId]);
@@ -6744,10 +6816,20 @@ const WorkflowBuilderPage = () => {
     const sectionId = "workflow-builder-sidebar";
     const warningStyle: CSSProperties = { color: "#b45309", fontWeight: 600 };
     const managedHosted = hostedWorkflows.filter((workflow) => workflow.managed);
-    const combinedEntries = [
-      ...managedHosted.map((hosted) => ({ kind: "hosted" as const, hosted })),
-      ...workflows.map((workflow) => ({ kind: "local" as const, workflow })),
-    ];
+    const collator =
+      workflowSortCollatorRef.current ?? new Intl.Collator(undefined, { sensitivity: "base" });
+    const combinedEntries = orderWorkflowEntries(
+      [
+        ...managedHosted.map((hosted) => ({ kind: "hosted" as const, workflow: hosted })),
+        ...workflows.map((workflow) => ({ kind: "local" as const, workflow })),
+      ],
+      lastUsedAt,
+      { collator },
+    ).map((entry) =>
+      entry.kind === "hosted"
+        ? ({ kind: "hosted" as const, hosted: entry.workflow })
+        : ({ kind: "local" as const, workflow: entry.workflow })
+    );
 
     const renderWorkflowList = () => {
       if (loading && combinedEntries.length === 0) {
@@ -7065,6 +7147,7 @@ const WorkflowBuilderPage = () => {
     setWorkflowMenuPlacement,
     t,
     workflowMenuPlacement,
+    lastUsedAt,
     workflows,
   ]);
 
@@ -7074,17 +7157,32 @@ const WorkflowBuilderPage = () => {
     }
 
     const managedHosted = hostedWorkflows.filter((workflow) => workflow.managed);
-    const entries = [
-      ...managedHosted.map((workflow) => ({
-        key: `hosted:${workflow.slug}`,
-        label: workflow.label,
-        onClick: undefined as (() => void) | undefined,
-        disabled: true,
-        isActive: false,
-        initials: getWorkflowInitials(workflow.label),
-        kind: "hosted" as const,
-      })),
-      ...workflows.map((workflow) => ({
+    const collator =
+      workflowSortCollatorRef.current ?? new Intl.Collator(undefined, { sensitivity: "base" });
+    const orderedEntries = orderWorkflowEntries(
+      [
+        ...managedHosted.map((workflow) => ({ kind: "hosted" as const, workflow })),
+        ...workflows.map((workflow) => ({ kind: "local" as const, workflow })),
+      ],
+      lastUsedAt,
+      { collator },
+    );
+    const entries = orderedEntries.map((entry) => {
+      if (entry.kind === "hosted") {
+        const workflow = entry.workflow;
+        return {
+          key: `hosted:${workflow.slug}`,
+          label: workflow.label,
+          onClick: undefined as (() => void) | undefined,
+          disabled: true,
+          isActive: false,
+          initials: getWorkflowInitials(workflow.label),
+          kind: "hosted" as const,
+        };
+      }
+
+      const workflow = entry.workflow;
+      return {
         key: `local:${workflow.id}`,
         label: workflow.display_name,
         onClick: () => handleSelectWorkflow(workflow.id),
@@ -7092,8 +7190,8 @@ const WorkflowBuilderPage = () => {
         isActive: workflow.id === selectedWorkflowId,
         initials: getWorkflowInitials(workflow.display_name),
         kind: "local" as const,
-      })),
-    ];
+      };
+    });
 
     if (entries.length === 0) {
       return null;
@@ -7135,6 +7233,7 @@ const WorkflowBuilderPage = () => {
     handleSelectWorkflow,
     hostedWorkflows,
     isSidebarCollapsed,
+    lastUsedAt,
     loadError,
     loading,
     selectedWorkflowId,
