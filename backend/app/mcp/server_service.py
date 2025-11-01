@@ -245,6 +245,11 @@ class McpServerService:
         provided = field in fields
         value = getattr(payload, field, None)
         if not provided:
+            logger.debug(
+                "Champ '%s' absent de model_fields_set (%s), ignoré",
+                field,
+                sorted(fields) if fields else "vide",
+            )
             return None
 
         if value is None:
@@ -270,6 +275,12 @@ class McpServerService:
         hint = mask_secret(candidate)
         setattr(server, f"{field}_encrypted", encrypted)
         setattr(server, f"{field}_hint", hint)
+        logger.debug(
+            "Champ '%s' chiffré et sauvegardé (longueur originale: %d, hint: %s)",
+            field,
+            len(candidate),
+            hint,
+        )
         return candidate
 
     def _normalize_transport(self, value: str | None) -> str:

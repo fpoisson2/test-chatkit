@@ -1120,6 +1120,18 @@ def _resolve_mcp_configuration(
     raw_authorization = merged_config.get("authorization")
     if raw_authorization is None and resolved_server is not None:
         raw_authorization = decrypt_secret(resolved_server.authorization_encrypted)
+        if raw_authorization:
+            logger.debug(
+                "Authorization récupérée depuis la BDD pour server_id=%d (longueur: %d)",
+                resolved_server.id,
+                len(raw_authorization),
+            )
+        else:
+            logger.warning(
+                "Aucune authorization trouvée dans la BDD pour server_id=%d (authorization_encrypted=%s)",
+                resolved_server.id,
+                "présent" if resolved_server.authorization_encrypted else "absent",
+            )
 
     authorization_token: str | None = None
     if raw_authorization is not None:
