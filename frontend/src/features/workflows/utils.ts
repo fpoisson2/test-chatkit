@@ -307,6 +307,59 @@ export const orderWorkflowEntries = <T extends WorkflowSortEntry>(
 export const readStoredWorkflowLastUsedMap = (): StoredWorkflowLastUsedAt =>
   cloneLastUsedAt(readStoredWorkflowSelection()?.lastUsedAt ?? null);
 
+const parseIsoTimestamp = (value: string | null | undefined): number | null => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+export const getWorkflowProductionOrderTimestamp = (
+  workflow: WorkflowSummary,
+): number | null => {
+  const updatedAt = parseIsoTimestamp(workflow.updated_at);
+  if (updatedAt != null) {
+    return updatedAt;
+  }
+
+  return parseIsoTimestamp(workflow.created_at);
+};
+
+export const buildWorkflowOrderingTimestamps = (
+  workflows: readonly WorkflowSummary[],
+  hostedWorkflows: readonly HostedWorkflowMetadata[],
+  base: StoredWorkflowLastUsedAt = createEmptyLastUsedAt(),
+): StoredWorkflowLastUsedAt => {
+  const fallback = cloneLastUsedAt(base);
+  const localEntries: Record<string, number> = {};
+
+  for (const workflow of workflows) {
+    const key = String(workflow.id);
+    const deploymentTimestamp = getWorkflowProductionOrderTimestamp(workflow);
+    if (deploymentTimestamp != null) {
+      localEntries[key] = deploymentTimestamp;
+      continue;
+    }
+
+    const stored = fallback.local[key];
+    if (typeof stored === "number") {
+      localEntries[key] = stored;
+    }
+  }
+
+  const hostedEntries: Record<string, number> = {};
+  for (const entry of hostedWorkflows) {
+    const stored = fallback.hosted[entry.slug];
+    if (typeof stored === "number") {
+      hostedEntries[entry.slug] = stored;
+    }
+  }
+
+  return { local: localEntries, hosted: hostedEntries };
+};
+
 export const readStoredWorkflowLastUsedAt = (
   entry: WorkflowSortEntry,
 ): number | null =>

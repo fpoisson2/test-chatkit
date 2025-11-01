@@ -32,6 +32,7 @@ import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
 import { useAppLayout, useSidebarPortal } from "../../components/AppLayout";
 import {
+  buildWorkflowOrderingTimestamps,
   getWorkflowInitials,
   orderWorkflowEntries,
   readStoredWorkflowSelection,
@@ -461,9 +462,15 @@ const WorkflowBuilderPage = () => {
   const [hostedWorkflows, setHostedWorkflows] = useState<HostedWorkflowMetadata[]>(
     () => initialSidebarCache?.hostedWorkflows ?? [],
   );
-  const [lastUsedAt, setLastUsedAt] = useState<StoredWorkflowLastUsedAt>(
-    () => readStoredWorkflowLastUsedMap(),
+  const [lastUsedAt, setLastUsedAt] = useState<StoredWorkflowLastUsedAt>(() =>
+    buildWorkflowOrderingTimestamps(
+      initialSidebarCache?.workflows ?? [],
+      initialSidebarCache?.hostedWorkflows ?? [],
+      readStoredWorkflowLastUsedMap(),
+    ),
   );
+  const workflowsRef = useRef(workflows);
+  const hostedWorkflowsRef = useRef(hostedWorkflows);
   const workflowSortCollatorRef = useRef<Intl.Collator | null>(null);
   const [hostedLoading, setHostedLoading] = useState(false);
   const [hostedError, setHostedError] = useState<string | null>(null);
@@ -555,7 +562,13 @@ const WorkflowBuilderPage = () => {
     }
 
     const handleSelectionChange = () => {
-      setLastUsedAt(readStoredWorkflowLastUsedMap());
+      setLastUsedAt(
+        buildWorkflowOrderingTimestamps(
+          workflowsRef.current,
+          hostedWorkflowsRef.current,
+          readStoredWorkflowLastUsedMap(),
+        ),
+      );
     };
 
     window.addEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
@@ -565,7 +578,17 @@ const WorkflowBuilderPage = () => {
   }, []);
 
   useEffect(() => {
-    setLastUsedAt(readStoredWorkflowLastUsedMap());
+    workflowsRef.current = workflows;
+  }, [workflows]);
+
+  useEffect(() => {
+    hostedWorkflowsRef.current = hostedWorkflows;
+  }, [hostedWorkflows]);
+
+  useEffect(() => {
+    setLastUsedAt(
+      buildWorkflowOrderingTimestamps(workflows, hostedWorkflows, readStoredWorkflowLastUsedMap()),
+    );
   }, [hostedWorkflows, workflows]);
 
   const isMobileLayout = useMediaQuery("(max-width: 768px)");

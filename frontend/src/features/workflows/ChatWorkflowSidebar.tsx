@@ -9,6 +9,7 @@ import type { HostedWorkflowMetadata } from "../../utils/backend";
 import type { WorkflowSummary } from "../../types/workflows";
 import type { HostedFlowMode } from "../../hooks/useHostedFlow";
 import {
+  buildWorkflowOrderingTimestamps,
   clearWorkflowSidebarCache,
   getWorkflowInitials,
   orderWorkflowEntries,
@@ -70,9 +71,15 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const [loading, setLoading] = useState(() => !cachedState);
   const [error, setError] = useState<string | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [lastUsedAt, setLastUsedAt] = useState<StoredWorkflowLastUsedAt>(
-    () => readStoredWorkflowLastUsedMap(),
+  const [lastUsedAt, setLastUsedAt] = useState<StoredWorkflowLastUsedAt>(() =>
+    buildWorkflowOrderingTimestamps(
+      cachedState?.workflows ?? [],
+      cachedState?.hostedWorkflows ?? [],
+      readStoredWorkflowLastUsedMap(),
+    ),
   );
+  const workflowsRef = useRef(workflows);
+  const hostedWorkflowsRef = useRef(hostedWorkflows);
   const hostedInitialAnnouncedRef = useRef(false);
   const onWorkflowActivatedRef = useRef(onWorkflowActivated);
   const workflowCollatorRef = useRef<Intl.Collator | null>(null);
@@ -99,7 +106,13 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     }
 
     const handleSelectionChange = () => {
-      setLastUsedAt(readStoredWorkflowLastUsedMap());
+      setLastUsedAt(
+        buildWorkflowOrderingTimestamps(
+          workflowsRef.current,
+          hostedWorkflowsRef.current,
+          readStoredWorkflowLastUsedMap(),
+        ),
+      );
     };
 
     window.addEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
@@ -107,6 +120,20 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       window.removeEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
     };
   }, []);
+
+  useEffect(() => {
+    workflowsRef.current = workflows;
+  }, [workflows]);
+
+  useEffect(() => {
+    hostedWorkflowsRef.current = hostedWorkflows;
+  }, [hostedWorkflows]);
+
+  useEffect(() => {
+    setLastUsedAt(
+      buildWorkflowOrderingTimestamps(workflows, hostedWorkflows, readStoredWorkflowLastUsedMap()),
+    );
+  }, [hostedWorkflows, workflows]);
 
   const loadWorkflows = useCallback(async () => {
     if (!token) {
@@ -116,7 +143,13 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
       setHostedWorkflows([]);
       setSelectedHostedSlug(null);
       setSelectedWorkflowId(null);
-      setLastUsedAt(readStoredWorkflowLastUsedMap());
+      setLastUsedAt(
+        buildWorkflowOrderingTimestamps(
+          [],
+          [],
+          readStoredWorkflowLastUsedMap(),
+        ),
+      );
       setError(null);
       setLoading(false);
       hostedInitialAnnouncedRef.current = false;
@@ -226,7 +259,13 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
         };
       });
 
-      setLastUsedAt(readStoredWorkflowLastUsedMap());
+      setLastUsedAt(
+        buildWorkflowOrderingTimestamps(
+          items,
+          hostedList,
+          readStoredWorkflowLastUsedMap(),
+        ),
+      );
 
       if (resolvedMode === "local") {
         onWorkflowActivatedRef.current(

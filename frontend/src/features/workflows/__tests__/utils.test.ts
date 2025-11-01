@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  buildWorkflowOrderingTimestamps,
   WORKFLOW_SELECTION_STORAGE_KEY,
   compareWorkflowSortMetadata,
+  getWorkflowProductionOrderTimestamp,
   getWorkflowSortMetadata,
   orderWorkflowEntries,
   readStoredWorkflowSelection,
@@ -208,6 +210,50 @@ describe("workflow storage helpers", () => {
   });
 });
 
+describe("workflow ordering timestamps", () => {
+  it("derives production ordering timestamps from workflow metadata", () => {
+    const workflow = createWorkflowSummary(1, "Alpha", {
+      updated_at: "2024-05-02T10:00:00Z",
+      created_at: "2024-05-01T10:00:00Z",
+    });
+
+    expect(getWorkflowProductionOrderTimestamp(workflow)).toBe(
+      Date.parse("2024-05-02T10:00:00Z"),
+    );
+  });
+
+  it("falls back to creation date when update timestamp is missing", () => {
+    const workflow = createWorkflowSummary(2, "Beta", {
+      updated_at: "invalid",
+      created_at: "2024-04-01T12:00:00Z",
+    });
+
+    expect(getWorkflowProductionOrderTimestamp(workflow)).toBe(
+      Date.parse("2024-04-01T12:00:00Z"),
+    );
+  });
+
+  it("builds ordering maps combining workflow and hosted metadata", () => {
+    const workflows = [
+      createWorkflowSummary(1, "Alpha", { updated_at: "2024-05-01T00:00:00Z" }),
+      createWorkflowSummary(2, "Beta", { updated_at: "invalid", created_at: "2024-04-01T00:00:00Z" }),
+    ];
+    const hosted = [createHostedWorkflow("assistant", "Assistant")];
+    const base: StoredWorkflowLastUsedAt = {
+      local: { "2": 1234, "3": 5555 },
+      hosted: { assistant: 9_999, helper: 1_111 },
+    };
+
+    const ordering = buildWorkflowOrderingTimestamps(workflows, hosted, base);
+
+    expect(ordering.local).toEqual({
+      "1": Date.parse("2024-05-01T00:00:00Z"),
+      "2": Date.parse("2024-04-01T00:00:00Z"),
+    });
+    expect(ordering.hosted).toEqual({ assistant: 9_999 });
+  });
+});
+
 describe("workflow sorting", () => {
   it("orders workflows by pinned status, recency, then label", () => {
     const pinnedLocal = createWorkflowSummary(2, "Beta", { pinned: true } as unknown as WorkflowSummary);
@@ -246,6 +292,34 @@ describe("workflow sorting", () => {
       `hosted:${hosted.slug}`,
       `local:${fallbackLocal.id}`,
     ]);
+  });
+
+  it("orders local workflows using production deployment recency", () => {
+    const recentProduction = createWorkflowSummary(1, "Alpha", {
+      updated_at: "2024-05-02T00:00:00Z",
+    });
+    const olderProduction = createWorkflowSummary(2, "Beta", {
+      updated_at: "2024-05-01T00:00:00Z",
+    });
+
+    const ordering = buildWorkflowOrderingTimestamps(
+      [recentProduction, olderProduction],
+      [],
+      {
+        local: { "1": 1, "2": 9_999 },
+        hosted: {},
+      },
+    );
+
+    const ordered = orderWorkflowEntries(
+      [
+        { kind: "local", workflow: olderProduction },
+        { kind: "local", workflow: recentProduction },
+      ],
+      ordering,
+    );
+
+    expect(ordered.map((entry) => entry.workflow.id)).toEqual([1, 2]);
   });
 
   it("builds consistent sort metadata for workflows", () => {
