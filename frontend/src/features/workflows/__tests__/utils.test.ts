@@ -8,6 +8,7 @@ import {
   getWorkflowSortMetadata,
   orderWorkflowEntries,
   readStoredWorkflowSelection,
+  readStoredWorkflowPinnedLookup,
   recordWorkflowLastUsedAt,
   updateStoredWorkflowSelection,
   writeStoredWorkflowSelection,
@@ -174,6 +175,7 @@ describe("workflow storage helpers", () => {
       localWorkflowId: 7,
       hostedSlug: null,
       lastUsedAt: lastUsed,
+      pinned: { local: [], hosted: [] },
     });
 
     updateStoredWorkflowSelection((previous) => {
@@ -207,6 +209,7 @@ describe("workflow storage helpers", () => {
     const selection = readStoredWorkflowSelection();
     expect(selection).not.toBeNull();
     expect(selection?.lastUsedAt).toEqual({ hosted: {}, local: {} });
+    expect(selection?.pinned).toEqual({ hosted: [], local: [] });
   });
 });
 
@@ -251,6 +254,56 @@ describe("workflow ordering timestamps", () => {
       "2": Date.parse("2024-04-01T00:00:00Z"),
     });
     expect(ordering.hosted).toEqual({ assistant: 9_999 });
+  });
+});
+
+describe("pinned workflows", () => {
+  it("prioritizes pinned entries in ordering", () => {
+    const localAlpha = createWorkflowSummary(1, "Alpha");
+    const localBeta = createWorkflowSummary(2, "Beta");
+    const hosted = createHostedWorkflow("assistant", "Assistant");
+
+    writeStoredWorkflowSelection({
+      mode: "local",
+      localWorkflowId: 1,
+      hostedSlug: null,
+      lastUsedAt: { local: {}, hosted: {} },
+      pinned: { local: [2], hosted: [hosted.slug] },
+    });
+
+    const ordered = orderWorkflowEntries(
+      [
+        { kind: "local", workflow: localAlpha },
+        { kind: "local", workflow: localBeta },
+        { kind: "hosted", workflow: hosted },
+      ],
+      { local: {}, hosted: {} },
+      { pinnedLookup: readStoredWorkflowPinnedLookup() },
+    );
+
+    const keys = ordered.map((entry) =>
+      entry.kind === "local" ? `local:${entry.workflow.id}` : `hosted:${entry.workflow.slug}`,
+    );
+    expect(new Set(keys.slice(0, 2))).toEqual(
+      new Set([`local:${localBeta.id}`, `hosted:${hosted.slug}`]),
+    );
+    expect(keys[2]).toBe(`local:${localAlpha.id}`);
+  });
+
+  it("exposes pinned values as sets", () => {
+    writeStoredWorkflowSelection({
+      mode: "local",
+      localWorkflowId: null,
+      hostedSlug: null,
+      lastUsedAt: { local: {}, hosted: {} },
+      pinned: { local: [3, 3], hosted: ["workflow", ""] },
+    });
+
+    const lookup = readStoredWorkflowPinnedLookup();
+    expect(lookup.local.has(3)).toBe(true);
+    expect(lookup.local.size).toBe(1);
+    expect(lookup.hosted.has("workflow")).toBe(true);
+    expect(lookup.hosted.size).toBe(1);
   });
 });
 
