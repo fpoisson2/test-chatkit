@@ -883,11 +883,9 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
 
     return (
       <section className="chatkit-sidebar__section" aria-labelledby={`${sectionId}-title`}>
-        <div className="chatkit-sidebar__section-header">
-          <h2 id={`${sectionId}-title`} className="chatkit-sidebar__section-title">
-            Workflow
-          </h2>
-        </div>
+        <h2 id={`${sectionId}-title`} className="visually-hidden">
+          {t("workflows.defaultSectionTitle")}
+        </h2>
         {pinnedCombinedEntries.length > 0 ? (
           <div
             className="chatkit-sidebar__workflow-group chatkit-sidebar__workflow-group--pinned"
@@ -902,9 +900,17 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           </div>
         ) : null}
         {regularCombinedEntries.length > 0 ? (
-          <ul className="chatkit-sidebar__workflow-list" data-workflow-group="default">
-            {regularCombinedEntries.map((entry) => renderEntry(entry))}
-          </ul>
+          <div
+            className="chatkit-sidebar__workflow-group"
+            data-workflow-group="default"
+          >
+            <h3 className="chatkit-sidebar__workflow-group-title">
+              {t("workflows.defaultSectionTitle")}
+            </h3>
+            <ul className="chatkit-sidebar__workflow-list chatkit-sidebar__workflow-list--grouped">
+              {regularCombinedEntries.map((entry) => renderEntry(entry))}
+            </ul>
+          </div>
         ) : null}
         {!hasLocalWorkflows && isAdmin ? (
           <button
@@ -993,12 +999,17 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
           </div>
         ) : null}
         {regularCompactEntries.length > 0 ? (
-          <ul
-            className="chatkit-sidebar__workflow-compact-list"
+          <div
+            className="chatkit-sidebar__workflow-compact-group"
             data-workflow-group="default"
           >
-            {regularCompactEntries.map((entry) => renderCompactEntry(entry))}
-          </ul>
+            <h3 className="chatkit-sidebar__workflow-compact-group-title">
+              {t("workflows.defaultSectionTitle")}
+            </h3>
+            <ul className="chatkit-sidebar__workflow-compact-list">
+              {regularCompactEntries.map((entry) => renderCompactEntry(entry))}
+            </ul>
+          </div>
         ) : null}
       </div>
     );

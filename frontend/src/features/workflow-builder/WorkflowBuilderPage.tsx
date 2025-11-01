@@ -7285,9 +7285,17 @@ const WorkflowBuilderPage = () => {
             </div>
           ) : null}
           {regularEntries.length > 0 ? (
-            <ul className="chatkit-sidebar__workflow-list" data-workflow-group="default">
-              {regularEntries.map((entry) => renderEntry(entry))}
-            </ul>
+            <div
+              className="chatkit-sidebar__workflow-group"
+              data-workflow-group="default"
+            >
+              <h3 className="chatkit-sidebar__workflow-group-title">
+                {t("workflows.defaultSectionTitle")}
+              </h3>
+              <ul className="chatkit-sidebar__workflow-list chatkit-sidebar__workflow-list--grouped">
+                {regularEntries.map((entry) => renderEntry(entry))}
+              </ul>
+            </div>
           ) : null}
         </>
       );
@@ -7296,8 +7304,8 @@ const WorkflowBuilderPage = () => {
     return (
       <section className="chatkit-sidebar__section" aria-labelledby={`${sectionId}-title`}>
         <div className="chatkit-sidebar__section-header chatkit-sidebar__section-header--with-action">
-          <h2 id={`${sectionId}-title`} className="chatkit-sidebar__section-title">
-            Workflow
+          <h2 id={`${sectionId}-title`} className="visually-hidden">
+            {t("workflows.defaultSectionTitle")}
           </h2>
           <button
             type="button"
@@ -7472,9 +7480,17 @@ const WorkflowBuilderPage = () => {
           </div>
         ) : null}
         {regularEntries.length > 0 ? (
-          <ul className="chatkit-sidebar__workflow-compact-list" data-workflow-group="default">
-            {regularEntries.map((workflow) => renderShortcut(workflow))}
-          </ul>
+          <div
+            className="chatkit-sidebar__workflow-compact-group"
+            data-workflow-group="default"
+          >
+            <h3 className="chatkit-sidebar__workflow-compact-group-title">
+              {t("workflows.defaultSectionTitle")}
+            </h3>
+            <ul className="chatkit-sidebar__workflow-compact-list">
+              {regularEntries.map((workflow) => renderShortcut(workflow))}
+            </ul>
+          </div>
         ) : null}
       </div>
     );
