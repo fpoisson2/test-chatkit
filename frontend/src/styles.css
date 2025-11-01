@@ -1197,6 +1197,29 @@ button {
   opacity: 0.6;
 }
 
+.chatkit-sidebar__workflow-pin-button {
+  font-size: 1.1rem;
+}
+
+.chatkit-sidebar__workflow-pin-button svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.chatkit-sidebar__workflow-pin-button[aria-pressed="true"] {
+  color: #f59e0b;
+}
+
+.chatkit-sidebar__workflow-pin-button[aria-pressed="true"] .chatkit-sidebar__workflow-pin-icon {
+  fill: currentColor;
+}
+
+.chatkit-sidebar__workflow-pin-button[aria-pressed="true"]:hover,
+.chatkit-sidebar__workflow-pin-button[aria-pressed="true"]:focus-visible {
+  background: rgba(249, 115, 22, 0.2);
+  color: #f59e0b;
+}
+
 .chatkit-sidebar__workflow-actions[data-variant="overlay"] .chatkit-sidebar__workflow-action-button {
   color: #f8fafc;
 }

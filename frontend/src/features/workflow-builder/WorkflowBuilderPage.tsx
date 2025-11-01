@@ -26,7 +26,7 @@ import ReactFlow, {
 
 import "reactflow/dist/style.css";
 
-import { ChevronDown, Copy, PenSquare, Redo2, Trash2, Undo2 } from "lucide-react";
+import { ChevronDown, Copy, PenSquare, Redo2, Star, Trash2, Undo2 } from "lucide-react";
 
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
@@ -38,6 +38,10 @@ import {
   readStoredWorkflowSelection,
   readStoredWorkflowLastUsedMap,
   readWorkflowSidebarCache,
+  readStoredWorkflowPinnedLookup,
+  createEmptyStoredWorkflowPinned,
+  type StoredWorkflowPinned,
+  type StoredWorkflowPinnedLookup,
   type StoredWorkflowLastUsedAt,
   updateStoredWorkflowSelection,
   WORKFLOW_SELECTION_CHANGED_EVENT,
@@ -469,6 +473,9 @@ const WorkflowBuilderPage = () => {
       readStoredWorkflowLastUsedMap(),
     ),
   );
+  const [pinnedLookup, setPinnedLookup] = useState<StoredWorkflowPinnedLookup>(() =>
+    readStoredWorkflowPinnedLookup(),
+  );
   const workflowsRef = useRef(workflows);
   const hostedWorkflowsRef = useRef(hostedWorkflows);
   const workflowSortCollatorRef = useRef<Intl.Collator | null>(null);
@@ -489,6 +496,60 @@ const WorkflowBuilderPage = () => {
       setHasPendingChanges(value);
     },
     [],
+  );
+  const persistPinnedLookup = useCallback(
+    (next: StoredWorkflowPinnedLookup) => {
+      const pinnedForStorage: StoredWorkflowPinned = {
+        local: Array.from(next.local),
+        hosted: Array.from(next.hosted),
+      };
+      updateStoredWorkflowSelection((previous) => ({
+        mode: previous?.mode ?? (selectedWorkflowId != null ? "local" : "hosted"),
+        localWorkflowId: previous?.localWorkflowId ?? selectedWorkflowId ?? null,
+        hostedSlug: previous?.hostedSlug ?? null,
+        lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
+        pinned: pinnedForStorage,
+      }));
+    },
+    [selectedWorkflowId],
+  );
+
+  const toggleLocalPin = useCallback(
+    (workflowId: number) => {
+      setPinnedLookup((current) => {
+        const next: StoredWorkflowPinnedLookup = {
+          local: new Set(current.local),
+          hosted: new Set(current.hosted),
+        };
+        if (next.local.has(workflowId)) {
+          next.local.delete(workflowId);
+        } else {
+          next.local.add(workflowId);
+        }
+        persistPinnedLookup(next);
+        return next;
+      });
+    },
+    [persistPinnedLookup],
+  );
+
+  const toggleHostedPin = useCallback(
+    (slug: string) => {
+      setPinnedLookup((current) => {
+        const next: StoredWorkflowPinnedLookup = {
+          local: new Set(current.local),
+          hosted: new Set(current.hosted),
+        };
+        if (next.hosted.has(slug)) {
+          next.hosted.delete(slug);
+        } else {
+          next.hosted.add(slug);
+        }
+        persistPinnedLookup(next);
+        return next;
+      });
+    },
+    [persistPinnedLookup],
   );
   const [vectorStores, setVectorStores] = useState<VectorStoreSummary[]>([]);
   const [vectorStoresLoading, setVectorStoresLoading] = useState(false);
@@ -569,6 +630,7 @@ const WorkflowBuilderPage = () => {
           readStoredWorkflowLastUsedMap(),
         ),
       );
+      setPinnedLookup(readStoredWorkflowPinnedLookup());
     };
 
     window.addEventListener(WORKFLOW_SELECTION_CHANGED_EVENT, handleSelectionChange);
@@ -966,6 +1028,29 @@ const WorkflowBuilderPage = () => {
   }, [selectedWorkflowId]);
 
   useEffect(() => {
+    setPinnedLookup((current) => {
+      const availableLocalIds = new Set(workflows.map((workflow) => workflow.id));
+      const availableHostedSlugs = new Set(
+        hostedWorkflows.filter((workflow) => workflow.managed).map((workflow) => workflow.slug),
+      );
+
+      const nextLocal = Array.from(current.local).filter((id) => availableLocalIds.has(id));
+      const nextHosted = Array.from(current.hosted).filter((slug) => availableHostedSlugs.has(slug));
+
+      if (nextLocal.length === current.local.size && nextHosted.length === current.hosted.size) {
+        return current;
+      }
+
+      const next: StoredWorkflowPinnedLookup = {
+        local: new Set(nextLocal),
+        hosted: new Set(nextHosted),
+      };
+      persistPinnedLookup(next);
+      return next;
+    });
+  }, [hostedWorkflows, persistPinnedLookup, workflows]);
+
+  useEffect(() => {
     updateStoredWorkflowSelection((previous) => {
       if (selectedWorkflowId == null) {
         if (!previous || previous.mode === "hosted" || previous.localWorkflowId == null) {
@@ -991,6 +1076,7 @@ const WorkflowBuilderPage = () => {
         localWorkflowId: selectedWorkflowId,
         hostedSlug: preservedHostedSlug,
         lastUsedAt: previous?.lastUsedAt ?? readStoredWorkflowLastUsedMap(),
+        pinned: previous?.pinned ?? createEmptyStoredWorkflowPinned(),
       };
     });
   }, [selectedWorkflowId]);
@@ -6824,7 +6910,7 @@ const WorkflowBuilderPage = () => {
         ...workflows.map((workflow) => ({ kind: "local" as const, workflow })),
       ],
       lastUsedAt,
-      { collator },
+      { collator, pinnedLookup },
     ).map((entry) =>
       entry.kind === "hosted"
         ? ({ kind: "hosted" as const, hosted: entry.workflow })
@@ -6875,19 +6961,23 @@ const WorkflowBuilderPage = () => {
           ) : null}
           <ul className="chatkit-sidebar__workflow-list">
             {combinedEntries.map((entry) => {
-              if (entry.kind === "hosted") {
-                const { hosted } = entry;
-                const menuKey = `hosted:${hosted.slug}`;
-                const isMenuOpen = openWorkflowMenuId === menuKey;
-                const menuId = `workflow-actions-${hosted.slug}`;
-                const placement =
-                  isMobileLayout && isMenuOpen ? workflowMenuPlacement : "down";
-                const menuStyle = getActionMenuStyle(isMobileLayout, placement);
-                return (
-                  <li
-                    key={`hosted:${hosted.slug}`}
-                    className="chatkit-sidebar__workflow-list-item"
-                    data-hosted-workflow=""
+            if (entry.kind === "hosted") {
+              const { hosted } = entry;
+              const menuKey = `hosted:${hosted.slug}`;
+              const isMenuOpen = openWorkflowMenuId === menuKey;
+              const menuId = `workflow-actions-${hosted.slug}`;
+              const placement =
+                isMobileLayout && isMenuOpen ? workflowMenuPlacement : "down";
+              const menuStyle = getActionMenuStyle(isMobileLayout, placement);
+              const isPinned = pinnedLookup.hosted.has(hosted.slug);
+              const pinLabel = isPinned
+                ? t("workflows.unpinAction", { label: hosted.label })
+                : t("workflows.pinAction", { label: hosted.label });
+              return (
+                <li
+                  key={`hosted:${hosted.slug}`}
+                  className="chatkit-sidebar__workflow-list-item"
+                  data-hosted-workflow=""
                   >
                     <button
                       type="button"
@@ -6902,6 +6992,25 @@ const WorkflowBuilderPage = () => {
                       </span>
                     </button>
                     <div className="chatkit-sidebar__workflow-actions" data-workflow-menu-container="">
+                      <button
+                        type="button"
+                        className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button"
+                        aria-pressed={isPinned}
+                        aria-label={pinLabel}
+                        title={pinLabel}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleHostedPin(hosted.slug);
+                        }}
+                      >
+                        <Star
+                          aria-hidden="true"
+                          className="chatkit-sidebar__workflow-pin-icon"
+                          size={18}
+                          strokeWidth={isPinned ? 1.75 : 2}
+                          fill={isPinned ? "currentColor" : "none"}
+                        />
+                      </button>
                       <button
                         type="button"
                         className="chatkit-sidebar__workflow-action-button"
@@ -6988,6 +7097,10 @@ const WorkflowBuilderPage = () => {
               const placement =
                 isMobileLayout && isMenuOpen ? workflowMenuPlacement : "down";
               const menuStyle = getActionMenuStyle(isMobileLayout, placement);
+              const isPinned = pinnedLookup.local.has(workflow.id);
+              const pinLabel = isPinned
+                ? t("workflows.unpinAction", { label: workflow.display_name })
+                : t("workflows.pinAction", { label: workflow.display_name });
               return (
                 <li key={`local:${workflow.id}`} className="chatkit-sidebar__workflow-list-item">
                   <button
@@ -7002,6 +7115,25 @@ const WorkflowBuilderPage = () => {
                     </span>
                   </button>
                   <div className="chatkit-sidebar__workflow-actions" data-workflow-menu-container="">
+                    <button
+                      type="button"
+                      className="chatkit-sidebar__workflow-action-button chatkit-sidebar__workflow-pin-button"
+                      aria-pressed={isPinned}
+                      aria-label={pinLabel}
+                      title={pinLabel}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleLocalPin(workflow.id);
+                      }}
+                    >
+                      <Star
+                        aria-hidden="true"
+                        className="chatkit-sidebar__workflow-pin-icon"
+                        size={18}
+                        strokeWidth={isPinned ? 1.75 : 2}
+                        fill={isPinned ? "currentColor" : "none"}
+                      />
+                    </button>
                     <button
                       type="button"
                       className="chatkit-sidebar__workflow-action-button"
@@ -7141,6 +7273,7 @@ const WorkflowBuilderPage = () => {
     isMobileLayout,
     loadError,
     loading,
+    pinnedLookup,
     openWorkflowMenuId,
     selectedWorkflow,
     selectedWorkflowId,
@@ -7165,7 +7298,7 @@ const WorkflowBuilderPage = () => {
         ...workflows.map((workflow) => ({ kind: "local" as const, workflow })),
       ],
       lastUsedAt,
-      { collator },
+      { collator, pinnedLookup },
     );
     const entries = orderedEntries.map((entry) => {
       if (entry.kind === "hosted") {
@@ -7236,6 +7369,7 @@ const WorkflowBuilderPage = () => {
     lastUsedAt,
     loadError,
     loading,
+    pinnedLookup,
     selectedWorkflowId,
     t,
     workflows,

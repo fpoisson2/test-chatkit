@@ -22,11 +22,22 @@ export const getWorkflowInitials = (label: string) => {
   return (words[0]?.charAt(0) ?? "").concat(words[1]?.charAt(0) ?? "").toUpperCase();
 };
 
+export type StoredWorkflowPinned = {
+  local: number[];
+  hosted: string[];
+};
+
+export type StoredWorkflowPinnedLookup = {
+  local: Set<number>;
+  hosted: Set<string>;
+};
+
 export type StoredWorkflowSelection = {
   mode: "local" | "hosted";
   localWorkflowId: number | null;
   hostedSlug: string | null;
   lastUsedAt: StoredWorkflowLastUsedAt;
+  pinned: StoredWorkflowPinned;
 };
 
 export type WorkflowSidebarCache = {
@@ -70,6 +81,119 @@ const cloneLastUsedAt = (value: StoredWorkflowLastUsedAt | null | undefined): St
     hosted: { ...value.hosted },
   };
 };
+
+const createEmptyPinnedSet = (): StoredWorkflowPinned => ({
+  local: [],
+  hosted: [],
+});
+
+const normalizePinnedNumber = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isInteger(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
+};
+
+const normalizePinnedString = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+};
+
+const deduplicate = <T>(values: readonly T[]): T[] => {
+  const result: T[] = [];
+  const seen = new Set<T>();
+
+  for (const value of values) {
+    if (seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    result.push(value);
+  }
+
+  return result;
+};
+
+const clonePinnedSet = (value: StoredWorkflowPinned | null | undefined): StoredWorkflowPinned => {
+  if (!value) {
+    return createEmptyPinnedSet();
+  }
+
+  const local = deduplicate(
+    (Array.isArray(value.local) ? value.local : []).map((entry) => normalizePinnedNumber(entry)).filter(
+      (entry): entry is number => entry !== null,
+    ),
+  );
+  const hosted = deduplicate(
+    (Array.isArray(value.hosted) ? value.hosted : []).map((entry) => normalizePinnedString(entry)).filter(
+      (entry): entry is string => entry !== null,
+    ),
+  );
+
+  return { local, hosted };
+};
+
+const createPinnedLookup = (pinned: StoredWorkflowPinned): StoredWorkflowPinnedLookup => ({
+  local: new Set(pinned.local),
+  hosted: new Set(pinned.hosted),
+});
+
+const parsePinnedLocal = (value: unknown): number[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return deduplicate(
+    value
+      .map((entry) => normalizePinnedNumber(entry))
+      .filter((entry): entry is number => entry !== null),
+  );
+};
+
+const parsePinnedHosted = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return deduplicate(
+    value
+      .map((entry) => normalizePinnedString(entry))
+      .filter((entry): entry is string => entry !== null),
+  );
+};
+
+const parsePinnedSet = (value: unknown): StoredWorkflowPinned => {
+  if (!value || typeof value !== "object") {
+    return createEmptyPinnedSet();
+  }
+
+  const record = value as Partial<StoredWorkflowPinned> & {
+    local?: unknown;
+    hosted?: unknown;
+  };
+
+  return {
+    local: parsePinnedLocal(record.local),
+    hosted: parsePinnedHosted(record.hosted),
+  };
+};
+
+export const readStoredWorkflowPinnedLookup = (): StoredWorkflowPinnedLookup =>
+  createPinnedLookup(readStoredWorkflowSelection()?.pinned ?? createEmptyPinnedSet());
+
+export const createEmptyStoredWorkflowPinned = (): StoredWorkflowPinned => createEmptyPinnedSet();
 
 const readSessionStorageItem = (key: string): string | null => {
   if (typeof window === "undefined") {
@@ -164,6 +288,7 @@ const parseStoredSelection = (value: string | null): StoredWorkflowSelection | n
         localWorkflowId: parsed.localWorkflowId ?? null,
         hostedSlug: parsed.hostedSlug ?? null,
         lastUsedAt: parseLastUsedAt(parsed.lastUsedAt),
+        pinned: parsePinnedSet(parsed.pinned),
       } satisfies StoredWorkflowSelection;
     }
   } catch (error) {
@@ -190,7 +315,7 @@ const dispatchWorkflowSelectionChanged = () => {
 export const readStoredWorkflowSelection = (): StoredWorkflowSelection | null =>
   parseStoredSelection(readSessionStorageItem(WORKFLOW_SELECTION_STORAGE_KEY));
 
-const ensureLastUsedAt = (
+const normalizeStoredSelection = (
   selection: StoredWorkflowSelection | null,
   previous?: StoredWorkflowSelection | null,
 ): StoredWorkflowSelection | null => {
@@ -199,9 +324,11 @@ const ensureLastUsedAt = (
   }
 
   const lastUsedAt = cloneLastUsedAt(selection.lastUsedAt ?? previous?.lastUsedAt);
+  const pinned = clonePinnedSet(selection.pinned ?? previous?.pinned);
   return {
     ...selection,
     lastUsedAt,
+    pinned,
   } satisfies StoredWorkflowSelection;
 };
 
@@ -212,7 +339,7 @@ export const writeStoredWorkflowSelection = (selection: StoredWorkflowSelection 
     return;
   }
 
-  const normalized = ensureLastUsedAt(selection);
+  const normalized = normalizeStoredSelection(selection);
   writeSessionStorageItem(
     WORKFLOW_SELECTION_STORAGE_KEY,
     normalized ? JSON.stringify(normalized) : null,
@@ -224,7 +351,7 @@ export const updateStoredWorkflowSelection = (
   updater: (previous: StoredWorkflowSelection | null) => StoredWorkflowSelection | null,
 ) => {
   const previous = readStoredWorkflowSelection();
-  const next = ensureLastUsedAt(updater(previous), previous);
+  const next = normalizeStoredSelection(updater(previous), previous);
   writeStoredWorkflowSelection(next);
 };
 
@@ -247,11 +374,24 @@ const resolvePinnedStatus = (
 export const getWorkflowSortMetadata = (
   entry: WorkflowSortEntry,
   lastUsedAt: StoredWorkflowLastUsedAt,
+  pinnedLookup?: StoredWorkflowPinnedLookup,
 ): WorkflowSortMetadata => {
+  const isStoredPinned = () => {
+    if (!pinnedLookup) {
+      return false;
+    }
+
+    if (entry.kind === "local") {
+      return pinnedLookup.local.has(entry.workflow.id);
+    }
+
+    return pinnedLookup.hosted.has(entry.workflow.slug);
+  };
+
   if (entry.kind === "local") {
     const key = String(entry.workflow.id);
     return {
-      pinned: resolvePinnedStatus(entry.workflow),
+      pinned: resolvePinnedStatus(entry.workflow) || isStoredPinned(),
       lastUsedAt: lastUsedAt.local[key] ?? null,
       label: entry.workflow.display_name,
     };
@@ -259,13 +399,19 @@ export const getWorkflowSortMetadata = (
 
   const key = entry.workflow.slug;
   return {
-    pinned: resolvePinnedStatus(entry.workflow),
+    pinned: resolvePinnedStatus(entry.workflow) || isStoredPinned(),
     lastUsedAt: lastUsedAt.hosted[key] ?? null,
     label: entry.workflow.label,
   };
 };
 
 const defaultWorkflowCollator = new Intl.Collator(undefined, { sensitivity: "base" });
+
+type OrderWorkflowEntriesOptions = {
+  collator?: Intl.Collator;
+  pinned?: StoredWorkflowPinned;
+  pinnedLookup?: StoredWorkflowPinnedLookup;
+};
 
 export const compareWorkflowSortMetadata = (
   a: WorkflowSortMetadata,
@@ -292,13 +438,16 @@ export const compareWorkflowSortMetadata = (
 export const orderWorkflowEntries = <T extends WorkflowSortEntry>(
   entries: readonly T[],
   lastUsedAt: StoredWorkflowLastUsedAt,
-  options?: { collator?: Intl.Collator },
+  options?: OrderWorkflowEntriesOptions,
 ): T[] => {
   const collator = options?.collator ?? defaultWorkflowCollator;
+  const pinnedLookup =
+    options?.pinnedLookup ??
+    (options?.pinned ? createPinnedLookup(options.pinned) : undefined);
   return [...entries].sort((left, right) =>
     compareWorkflowSortMetadata(
-      getWorkflowSortMetadata(left, lastUsedAt),
-      getWorkflowSortMetadata(right, lastUsedAt),
+      getWorkflowSortMetadata(left, lastUsedAt, pinnedLookup),
+      getWorkflowSortMetadata(right, lastUsedAt, pinnedLookup),
       collator,
     ),
   );
@@ -377,6 +526,7 @@ export const recordWorkflowLastUsedAt = (
         localWorkflowId: entry.kind === "local" ? entry.workflow.id : null,
         hostedSlug: entry.kind === "hosted" ? entry.workflow.slug : null,
         lastUsedAt: createEmptyLastUsedAt(),
+        pinned: createEmptyPinnedSet(),
       };
 
     const nextLastUsedAt = cloneLastUsedAt(base.lastUsedAt);
@@ -390,6 +540,7 @@ export const recordWorkflowLastUsedAt = (
     return {
       ...base,
       lastUsedAt: nextLastUsedAt,
+      pinned: clonePinnedSet(base.pinned),
     } satisfies StoredWorkflowSelection;
   });
 
