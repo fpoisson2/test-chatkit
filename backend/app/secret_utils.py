@@ -59,15 +59,30 @@ def decrypt_secret(value: str | None) -> str | None:
     return decrypted.decode("utf-8")
 
 
-def mask_secret(value: str) -> str:
-    """Produce a masked representation of a secret for display purposes."""
+def mask_secret(value: str, max_length: int = 128) -> str:
+    """Produce a masked representation of a secret for display purposes.
+
+    Args:
+        value: The secret value to mask
+        max_length: Maximum length of the masked output (default: 128)
+
+    Returns:
+        A masked string showing bullets and the last 4 characters
+    """
 
     trimmed = value.strip()
     if not trimmed:
         return ""
     if len(trimmed) <= 4:
-        return "•" * len(trimmed)
-    return "•" * (len(trimmed) - 4) + trimmed[-4:]
+        return "•" * min(len(trimmed), max_length)
+
+    # Show last 4 characters, and fill the rest with bullets up to max_length
+    suffix = trimmed[-4:]
+    max_bullets = max_length - len(suffix)
+    # Use reasonable number of bullets (min of actual length - 4, or max allowed)
+    num_bullets = min(len(trimmed) - 4, max_bullets)
+
+    return "•" * num_bullets + suffix
 
 
 __all__ = [
