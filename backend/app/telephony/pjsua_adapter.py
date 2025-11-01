@@ -703,16 +703,15 @@ class PJSUAAdapter:
             # PJSUA continue d'appeler onFrameRequested si on ne déconnecte pas
             if call._audio_port:
                 try:
-                    # D'abord, désactiver le port pour arrêter le traitement des frames
+                    # Désactiver le port pour arrêter le traitement des frames
                     # Cela empêche l'envoi continu de silence après la fin de l'appel
                     call._audio_port.deactivate()
                     logger.info("✅ Port audio désactivé (call_id=%s)", call_info.id)
 
-                    # Puis arrêter les transmissions audio
-                    call._audio_port.stopTransmit()
-                    logger.info("✅ Port audio déconnecté (call_id=%s)", call_info.id)
+                    # Note: stopTransmit() nécessiterait l'audio_media comme argument
+                    # et de toute façon le port sera détruit, donc pas nécessaire
                 except Exception as e:
-                    logger.warning("Erreur déconnexion port audio: %s", e)
+                    logger.warning("Erreur désactivation port audio: %s", e)
                 finally:
                     call._audio_port = None
 

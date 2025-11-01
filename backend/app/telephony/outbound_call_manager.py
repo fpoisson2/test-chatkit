@@ -245,6 +245,9 @@ class OutboundCallManager:
             # Créer l'audio bridge (8kHz ↔ 24kHz)
             rtp_stream, send_to_peer, clear_queue, first_packet_event, pjsua_ready_event, bridge = await create_pjsua_audio_bridge(pjsua_call)
 
+            # Stocker le bridge dans la session pour le cleanup
+            session._audio_bridge = bridge
+
             # Marquer l'appel comme connecté
             session.status = "answered"
             self._update_call_status(
@@ -270,6 +273,15 @@ class OutboundCallManager:
             )
         finally:
             # Nettoyer
+            # 1. Arrêter l'audio bridge d'abord
+            if hasattr(session, '_audio_bridge') and session._audio_bridge:
+                try:
+                    logger.info("Stopping audio bridge for call %s", session.call_id)
+                    session._audio_bridge.stop()
+                except Exception as e:
+                    logger.warning("Error stopping audio bridge: %s", e)
+
+            # 2. Raccrocher l'appel PJSUA
             if session._pjsua_call:
                 try:
                     await self._pjsua_adapter.hangup_call(session._pjsua_call)
