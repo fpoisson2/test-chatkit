@@ -547,7 +547,7 @@ class OutboundCallManager:
             )
 
             # Créer le voice bridge
-            voice_bridge = TelephonyVoiceBridge(hooks=hooks)
+            voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
             session._voice_bridge = voice_bridge
 
             # Déterminer le base URL pour le provider
@@ -926,8 +926,8 @@ class OutboundCallManager:
                     resume_workflow=resume_workflow_hook,
                 )
 
-                # Créer le voice bridge
-                voice_bridge = TelephonyVoiceBridge(hooks=hooks)
+            # Créer le voice bridge
+            voice_bridge = TelephonyVoiceBridge(hooks=hooks, input_codec="pcm")
                 session._voice_bridge = voice_bridge
 
                 # Callback pour envoyer l'audio au peer
