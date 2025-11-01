@@ -14,11 +14,18 @@ vi.mock("react-router-dom", () => ({
 }));
 
 let latestSidebarContent: ReactNode | null = null;
+let latestCollapsedSidebarContent: ReactNode | null = null;
 const setSidebarContentMock = vi.fn((content: ReactNode | null) => {
   latestSidebarContent = content;
 });
 const clearSidebarContentMock = vi.fn(() => {
   latestSidebarContent = null;
+});
+const setCollapsedSidebarContentMock = vi.fn((content: ReactNode | null) => {
+  latestCollapsedSidebarContent = content;
+});
+const clearCollapsedSidebarContentMock = vi.fn(() => {
+  latestCollapsedSidebarContent = null;
 });
 
 vi.mock("../../../components/AppLayout", () => ({
@@ -29,9 +36,9 @@ vi.mock("../../../components/AppLayout", () => ({
   }),
   useSidebarPortal: () => ({
     setSidebarContent: setSidebarContentMock,
-    setCollapsedSidebarContent: vi.fn(),
+    setCollapsedSidebarContent: setCollapsedSidebarContentMock,
     clearSidebarContent: clearSidebarContentMock,
-    clearCollapsedSidebarContent: vi.fn(),
+    clearCollapsedSidebarContent: clearCollapsedSidebarContentMock,
   }),
 }));
 
@@ -60,6 +67,15 @@ const renderSidebarHost = async () => {
   return render(<I18nProvider>{latestSidebarContent}</I18nProvider>);
 };
 
+const renderCollapsedSidebarHost = async () => {
+  await waitFor(() => {
+    expect(setCollapsedSidebarContentMock).toHaveBeenCalled();
+    expect(latestCollapsedSidebarContent).not.toBeNull();
+  });
+
+  return render(<I18nProvider>{latestCollapsedSidebarContent}</I18nProvider>);
+};
+
 const createWorkflow = (id: number, name: string): WorkflowSummary => ({
   id,
   slug: `workflow-${id}`,
@@ -85,8 +101,11 @@ const createHosted = (slug: string, label: string): HostedWorkflowMetadata => ({
 describe("ChatWorkflowSidebar pinning", () => {
   beforeEach(() => {
     latestSidebarContent = null;
+    latestCollapsedSidebarContent = null;
     setSidebarContentMock.mockClear();
     clearSidebarContentMock.mockClear();
+    setCollapsedSidebarContentMock.mockClear();
+    clearCollapsedSidebarContentMock.mockClear();
     window.sessionStorage.clear();
     authState.token = "token";
     Object.defineProperty(window, "localStorage", {
@@ -117,6 +136,7 @@ describe("ChatWorkflowSidebar pinning", () => {
     // @ts-expect-error test cleanup
     delete window.localStorage;
     latestSidebarContent = null;
+    latestCollapsedSidebarContent = null;
   });
 
   it("pins workflows and persists the preference", async () => {
@@ -157,6 +177,30 @@ describe("ChatWorkflowSidebar pinning", () => {
       "true",
     );
 
+    const collapsedHost = await renderCollapsedSidebarHost();
+    await waitFor(() => {
+      collapsedHost.rerender(<I18nProvider>{latestCollapsedSidebarContent}</I18nProvider>);
+      expect(collapsedHost.getAllByRole("list").length).toBeGreaterThan(0);
+    });
+
+    const collapsedPinnedHeading = within(collapsedHost.container).getByRole("heading", {
+      name: "Pinned workflows",
+    });
+    const collapsedPinnedGroup = collapsedPinnedHeading.closest('[data-workflow-group="pinned"]');
+    expect(collapsedPinnedGroup).not.toBeNull();
+    const collapsedPinnedList = within(collapsedPinnedGroup as HTMLElement).getByRole("list");
+    expect(within(collapsedPinnedList).getByText("Beta")).toBeInTheDocument();
+    const collapsedDefaultList = collapsedHost.container.querySelector(
+      '[data-workflow-group="default"]',
+    );
+    expect(collapsedDefaultList).not.toBeNull();
+    expect(within(collapsedDefaultList as HTMLElement).getByText("Alpha")).toBeInTheDocument();
+    expect(within(collapsedDefaultList as HTMLElement).queryByText("Beta")).toBeNull();
+
+    collapsedHost.unmount();
+    setCollapsedSidebarContentMock.mockClear();
+    latestCollapsedSidebarContent = null;
+
     unmountSidebar();
     sidebarHost.unmount();
     setSidebarContentMock.mockClear();
@@ -185,6 +229,32 @@ describe("ChatWorkflowSidebar pinning", () => {
       "aria-pressed",
       "true",
     );
+
+    const rerenderedCollapsedHost = await renderCollapsedSidebarHost();
+    await waitFor(() => {
+      rerenderedCollapsedHost.rerender(
+        <I18nProvider>{latestCollapsedSidebarContent}</I18nProvider>,
+      );
+      expect(rerenderedCollapsedHost.getAllByRole("list").length).toBeGreaterThan(0);
+    });
+
+    const rerenderedCollapsedHeading = within(rerenderedCollapsedHost.container).getByRole(
+      "heading",
+      {
+        name: "Pinned workflows",
+      },
+    );
+    const rerenderedCollapsedGroup = rerenderedCollapsedHeading.closest(
+      '[data-workflow-group="pinned"]',
+    );
+    expect(rerenderedCollapsedGroup).not.toBeNull();
+    const rerenderedCollapsedList = within(rerenderedCollapsedGroup as HTMLElement).getByRole(
+      "list",
+    );
+    expect(within(rerenderedCollapsedList).getByText("Beta")).toBeInTheDocument();
+    rerenderedCollapsedHost.unmount();
+    setCollapsedSidebarContentMock.mockClear();
+    latestCollapsedSidebarContent = null;
 
     rerendered.unmount();
     rerenderedHost.unmount();

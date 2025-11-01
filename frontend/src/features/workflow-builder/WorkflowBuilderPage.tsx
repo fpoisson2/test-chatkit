@@ -7344,17 +7344,30 @@ const WorkflowBuilderPage = () => {
       lastUsedAt,
       { collator, pinnedLookup },
     );
-    const entries = orderedEntries.map((entry) => {
+
+    type ShortcutEntry = {
+      key: string;
+      label: string;
+      onClick: (() => void) | undefined;
+      disabled: boolean;
+      isActive: boolean;
+      initials: string;
+      kind: "hosted" | "local";
+      isPinned: boolean;
+    };
+
+    const entries: ShortcutEntry[] = orderedEntries.map((entry) => {
       if (entry.kind === "hosted") {
         const workflow = entry.workflow;
         return {
           key: `hosted:${workflow.slug}`,
           label: workflow.label,
-          onClick: undefined as (() => void) | undefined,
+          onClick: undefined,
           disabled: true,
           isActive: false,
           initials: getWorkflowInitials(workflow.label),
           kind: "hosted" as const,
+          isPinned: isWorkflowPinned(entry, pinnedLookup),
         };
       }
 
@@ -7367,6 +7380,7 @@ const WorkflowBuilderPage = () => {
         isActive: workflow.id === selectedWorkflowId,
         initials: getWorkflowInitials(workflow.display_name),
         kind: "local" as const,
+        isPinned: isWorkflowPinned(entry, pinnedLookup),
       };
     });
 
@@ -7374,37 +7388,59 @@ const WorkflowBuilderPage = () => {
       return null;
     }
 
+    const pinnedEntries = entries.filter((entry) => entry.isPinned);
+    const regularEntries = entries.filter((entry) => !entry.isPinned);
+
+    const renderShortcut = (workflow: ShortcutEntry) => (
+      <li key={workflow.key} className="chatkit-sidebar__workflow-compact-item">
+        <button
+          type="button"
+          className={`chatkit-sidebar__workflow-compact-button${
+            workflow.isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
+          }${workflow.kind === "hosted" ? " chatkit-sidebar__workflow-compact-button--hosted" : ""}`}
+          onClick={workflow.onClick}
+          disabled={workflow.disabled}
+          aria-current={workflow.isActive ? "true" : undefined}
+          title={workflow.label}
+          tabIndex={isSidebarCollapsed ? 0 : -1}
+          aria-label={
+            workflow.kind === "hosted"
+              ? t("workflows.hostedCompactLabel", { label: workflow.label })
+              : workflow.label
+          }
+        >
+          <span aria-hidden="true" className="chatkit-sidebar__workflow-compact-initial">
+            {workflow.initials}
+          </span>
+          <span className="visually-hidden">
+            {workflow.label}
+            {workflow.kind === "hosted" ? ` (${t("workflows.hostedBadge")})` : ""}
+          </span>
+        </button>
+      </li>
+    );
+
     return (
-      <ul className="chatkit-sidebar__workflow-compact-list" role="list">
-        {entries.map((workflow) => (
-          <li key={workflow.key} className="chatkit-sidebar__workflow-compact-item">
-            <button
-              type="button"
-              className={`chatkit-sidebar__workflow-compact-button${
-                workflow.isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
-              }${workflow.kind === "hosted" ? " chatkit-sidebar__workflow-compact-button--hosted" : ""}`}
-              onClick={workflow.onClick}
-              disabled={workflow.disabled}
-              aria-current={workflow.isActive ? "true" : undefined}
-              title={workflow.label}
-              tabIndex={isSidebarCollapsed ? 0 : -1}
-              aria-label={
-                workflow.kind === "hosted"
-                  ? t("workflows.hostedCompactLabel", { label: workflow.label })
-                  : workflow.label
-              }
-            >
-              <span aria-hidden="true" className="chatkit-sidebar__workflow-compact-initial">
-                {workflow.initials}
-              </span>
-              <span className="visually-hidden">
-                {workflow.label}
-                {workflow.kind === "hosted" ? ` (${t("workflows.hostedBadge")})` : ""}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      <div className="chatkit-sidebar__workflow-compact-groups">
+        {pinnedEntries.length > 0 ? (
+          <div
+            className="chatkit-sidebar__workflow-compact-group chatkit-sidebar__workflow-compact-group--pinned"
+            data-workflow-group="pinned"
+          >
+            <h3 className="chatkit-sidebar__workflow-compact-group-title">
+              {t("workflows.pinnedSectionTitle")}
+            </h3>
+            <ul className="chatkit-sidebar__workflow-compact-list chatkit-sidebar__workflow-compact-list--grouped">
+              {pinnedEntries.map((workflow) => renderShortcut(workflow))}
+            </ul>
+          </div>
+        ) : null}
+        {regularEntries.length > 0 ? (
+          <ul className="chatkit-sidebar__workflow-compact-list" data-workflow-group="default">
+            {regularEntries.map((workflow) => renderShortcut(workflow))}
+          </ul>
+        ) : null}
+      </div>
     );
   }, [
     handleSelectWorkflow,

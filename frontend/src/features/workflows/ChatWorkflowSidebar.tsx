@@ -585,43 +585,6 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
     );
   }, [hostedWorkflows, lastUsedAt, pinnedLookup, workflows]);
 
-  const compactWorkflows = useMemo(
-    () =>
-      sortedWorkflowEntries.map((entry) => {
-        if (entry.kind === "hosted") {
-          const option = entry.workflow;
-          return {
-            key: `hosted:${option.slug}`,
-            label: option.label,
-            onClick: () => void handleHostedWorkflowClick(option.slug),
-            disabled: !option.available,
-            isActive: mode === "hosted" && selectedHostedSlug === option.slug,
-            initials: getWorkflowInitials(option.label),
-            kind: "hosted" as const,
-          };
-        }
-
-        const workflow = entry.workflow;
-        return {
-          key: `local:${workflow.id}`,
-          label: workflow.display_name,
-          onClick: () => void handleWorkflowClick(workflow.id),
-          disabled: workflow.active_version_id === null,
-          isActive: mode === "local" && workflow.id === selectedWorkflowId,
-          initials: getWorkflowInitials(workflow.display_name),
-          kind: "local" as const,
-        };
-      }),
-    [
-      handleHostedWorkflowClick,
-      handleWorkflowClick,
-      mode,
-      selectedHostedSlug,
-      selectedWorkflowId,
-      sortedWorkflowEntries,
-    ],
-  );
-
   type CombinedEntry =
     | { kind: "hosted"; option: HostedWorkflowMetadata; isPinned: boolean }
     | { kind: "local"; workflow: WorkflowSummary; isPinned: boolean };
@@ -652,6 +615,66 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   const regularCombinedEntries = useMemo(
     () => combinedEntries.filter((entry) => !entry.isPinned),
     [combinedEntries],
+  );
+
+  type CompactEntry = {
+    key: string;
+    label: string;
+    onClick: () => void;
+    disabled: boolean;
+    isActive: boolean;
+    initials: string;
+    kind: "hosted" | "local";
+    isPinned: boolean;
+  };
+
+  const compactEntries: CompactEntry[] = useMemo(
+    () =>
+      combinedEntries.map((entry) => {
+        if (entry.kind === "hosted") {
+          const option = entry.option;
+          return {
+            key: `hosted:${option.slug}`,
+            label: option.label,
+            onClick: () => void handleHostedWorkflowClick(option.slug),
+            disabled: !option.available,
+            isActive: mode === "hosted" && selectedHostedSlug === option.slug,
+            initials: getWorkflowInitials(option.label),
+            kind: "hosted" as const,
+            isPinned: entry.isPinned,
+          };
+        }
+
+        const workflow = entry.workflow;
+        return {
+          key: `local:${workflow.id}`,
+          label: workflow.display_name,
+          onClick: () => void handleWorkflowClick(workflow.id),
+          disabled: workflow.active_version_id === null,
+          isActive: mode === "local" && workflow.id === selectedWorkflowId,
+          initials: getWorkflowInitials(workflow.display_name),
+          kind: "local" as const,
+          isPinned: entry.isPinned,
+        };
+      }),
+    [
+      combinedEntries,
+      handleHostedWorkflowClick,
+      handleWorkflowClick,
+      mode,
+      selectedHostedSlug,
+      selectedWorkflowId,
+    ],
+  );
+
+  const pinnedCompactEntries = useMemo(
+    () => compactEntries.filter((entry) => entry.isPinned),
+    [compactEntries],
+  );
+
+  const regularCompactEntries = useMemo(
+    () => compactEntries.filter((entry) => !entry.isPinned),
+    [compactEntries],
   );
 
   useEffect(() => {
@@ -896,42 +919,73 @@ export const ChatWorkflowSidebar = ({ mode, setMode, onWorkflowActivated }: Chat
   ]);
 
   const collapsedSidebarContent = useMemo(() => {
-    if (!user || error || loading || compactWorkflows.length === 0) {
+    if (!user || error || loading || compactEntries.length === 0) {
       return null;
     }
 
-    return (
-      <ul className="chatkit-sidebar__workflow-compact-list" role="list">
-        {compactWorkflows.map((workflow) => (
-          <li key={workflow.key} className="chatkit-sidebar__workflow-compact-item">
-            <button
-              type="button"
-              className={`chatkit-sidebar__workflow-compact-button${
-                workflow.isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
-              }${workflow.kind === "hosted" ? " chatkit-sidebar__workflow-compact-button--hosted" : ""}`}
-              onClick={workflow.onClick}
-              disabled={workflow.disabled}
-              aria-current={workflow.isActive ? "true" : undefined}
-              tabIndex={isSidebarCollapsed ? 0 : -1}
-              aria-label={
-                workflow.kind === "hosted"
-                  ? t("workflows.hostedCompactLabel", { label: workflow.label })
-                  : workflow.label
-              }
-            >
-              <span aria-hidden="true" className="chatkit-sidebar__workflow-compact-initial">
-                {workflow.initials}
-              </span>
-              <span className="visually-hidden">
-                {workflow.label}
-                {workflow.kind === "hosted" ? ` (${t("workflows.hostedBadge")})` : ""}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
+    const renderCompactEntry = (entry: CompactEntry) => (
+      <li key={entry.key} className="chatkit-sidebar__workflow-compact-item">
+        <button
+          type="button"
+          className={`chatkit-sidebar__workflow-compact-button${
+            entry.isActive ? " chatkit-sidebar__workflow-compact-button--active" : ""
+          }${entry.kind === "hosted" ? " chatkit-sidebar__workflow-compact-button--hosted" : ""}`}
+          onClick={entry.onClick}
+          disabled={entry.disabled}
+          aria-current={entry.isActive ? "true" : undefined}
+          tabIndex={isSidebarCollapsed ? 0 : -1}
+          aria-label={
+            entry.kind === "hosted"
+              ? t("workflows.hostedCompactLabel", { label: entry.label })
+              : entry.label
+          }
+        >
+          <span aria-hidden="true" className="chatkit-sidebar__workflow-compact-initial">
+            {entry.initials}
+          </span>
+          <span className="visually-hidden">
+            {entry.label}
+            {entry.kind === "hosted" ? ` (${t("workflows.hostedBadge")})` : ""}
+          </span>
+        </button>
+      </li>
     );
-  }, [compactWorkflows, error, isSidebarCollapsed, loading, t, user]);
+
+    return (
+      <div className="chatkit-sidebar__workflow-compact-groups">
+        {pinnedCompactEntries.length > 0 ? (
+          <div
+            className="chatkit-sidebar__workflow-compact-group chatkit-sidebar__workflow-compact-group--pinned"
+            data-workflow-group="pinned"
+          >
+            <h3 className="chatkit-sidebar__workflow-compact-group-title">
+              {t("workflows.pinnedSectionTitle")}
+            </h3>
+            <ul className="chatkit-sidebar__workflow-compact-list chatkit-sidebar__workflow-compact-list--grouped">
+              {pinnedCompactEntries.map((entry) => renderCompactEntry(entry))}
+            </ul>
+          </div>
+        ) : null}
+        {regularCompactEntries.length > 0 ? (
+          <ul
+            className="chatkit-sidebar__workflow-compact-list"
+            data-workflow-group="default"
+          >
+            {regularCompactEntries.map((entry) => renderCompactEntry(entry))}
+          </ul>
+        ) : null}
+      </div>
+    );
+  }, [
+    compactEntries,
+    error,
+    isSidebarCollapsed,
+    loading,
+    pinnedCompactEntries,
+    regularCompactEntries,
+    t,
+    user,
+  ]);
 
   useEffect(() => {
     setSidebarContent(sidebarContent);

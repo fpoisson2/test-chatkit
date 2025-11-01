@@ -1057,6 +1057,32 @@ button {
 }
 
 
+.chatkit-sidebar__workflow-compact-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.chatkit-sidebar__workflow-compact-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.chatkit-sidebar__workflow-compact-group--pinned {
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+.chatkit-sidebar__workflow-compact-group-title {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #b45309;
+}
+
 .chatkit-sidebar__workflow-compact-list {
   list-style: none;
   margin: 0;
@@ -1066,6 +1092,10 @@ button {
   align-items: center;
   gap: 10px;
   width: 100%;
+}
+
+.chatkit-sidebar__workflow-compact-list--grouped {
+  margin: 0;
 }
 
 .chatkit-sidebar__workflow-compact-item {
