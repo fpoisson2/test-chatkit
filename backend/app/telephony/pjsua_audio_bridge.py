@@ -51,15 +51,26 @@ class PJSUAAudioBridge:
         # Cela confirme que le flux audio bidirectionnel est établi
         self._first_packet_received = asyncio.Event()
 
-    async def rtp_stream(self) -> AsyncIterator[RtpPacket]:
+    async def rtp_stream(self, media_active_event: asyncio.Event | None = None) -> AsyncIterator[RtpPacket]:
         """Generate RTP packets from PJSUA audio (8kHz → 24kHz).
 
         This is consumed by TelephonyVoiceBridge.run(rtp_stream=...).
         Reads 8kHz PCM from PJSUA, resamples to 24kHz, and yields RtpPacket.
 
+        Args:
+            media_active_event: Event to wait for before starting to yield packets.
+                               This prevents capturing noise before media is ready.
+
         Yields:
             RtpPacket with 24kHz PCM16 audio
         """
+        # CRITIQUE: Attendre que le média soit actif avant de commencer à yield
+        # Sinon on capture du bruit du jitter buffer non initialisé
+        if media_active_event is not None:
+            logger.info("⏳ RTP stream: attente que le média soit actif avant de commencer...")
+            await media_active_event.wait()
+            logger.info("✅ RTP stream: média actif, démarrage de la capture audio")
+
         logger.info("Starting RTP stream from PJSUA (8kHz → 24kHz)")
         resampling_state = None
 
@@ -234,6 +245,7 @@ class PJSUAAudioBridge:
 
 async def create_pjsua_audio_bridge(
     call: PJSUACall,
+    media_active_event: asyncio.Event | None = None,
 ) -> tuple[AsyncIterator[RtpPacket], Callable[[bytes], Awaitable[None]], Callable[[], int], asyncio.Event, asyncio.Event, "PJSUAAudioBridge"]:
     """Create audio bridge components for a PJSUA call.
 
@@ -242,13 +254,16 @@ async def create_pjsua_audio_bridge(
 
     Args:
         call: The PJSUA call to bridge
+        media_active_event: Optional event that the RTP stream will wait for before yielding packets.
+                           This prevents capturing noise before media is ready.
 
     Returns:
         Tuple of (rtp_stream, send_to_peer, clear_queue, first_packet_received_event, pjsua_ready_event, bridge) for VoiceBridge.run()
 
     Example:
         ```python
-        rtp_stream, send_to_peer, clear_queue, first_packet_event, pjsua_ready_event, bridge = await create_pjsua_audio_bridge(call)
+        media_active = asyncio.Event()
+        rtp_stream, send_to_peer, clear_queue, first_packet_event, pjsua_ready_event, bridge = await create_pjsua_audio_bridge(call, media_active)
 
         # Attendre que PJSUA soit prêt à consommer l'audio avant speak_first
         await pjsua_ready_event.wait()
@@ -272,7 +287,7 @@ async def create_pjsua_audio_bridge(
     bridge = PJSUAAudioBridge(call)
     # Récupérer l'event frame_requested de l'adaptateur pour savoir quand PJSUA est prêt à consommer
     pjsua_ready_event = call.adapter._frame_requested_event
-    return bridge.rtp_stream(), bridge.send_to_peer, bridge.clear_audio_queue, bridge.first_packet_received_event, pjsua_ready_event, bridge
+    return bridge.rtp_stream(media_active_event), bridge.send_to_peer, bridge.clear_audio_queue, bridge.first_packet_received_event, pjsua_ready_event, bridge
 
 
 __all__ = [

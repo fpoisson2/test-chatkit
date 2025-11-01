@@ -238,10 +238,15 @@ class OutboundCallManager:
             session.status = "ringing"
             self._update_call_status(db, call_db_id, "ringing")
 
+            # Créer un Event pour attendre que le média soit actif
+            # Cet event sera passé au RTP stream pour éviter de capturer du bruit avant que le média soit prêt
+            media_active_event = asyncio.Event()
+
             # Créer l'audio bridge IMMÉDIATEMENT (avant même le média actif)
             # pour permettre la préparation de l'audio pendant la négociation
+            # IMPORTANT: Le RTP stream attendra media_active_event avant de yield des paquets
             logger.info("Création de l'audio bridge PJSUA pour appel sortant (call_id=%s)", session.call_id)
-            rtp_stream, send_to_peer, clear_queue, first_packet_event, pjsua_ready_event, bridge = await create_pjsua_audio_bridge(pjsua_call)
+            rtp_stream, send_to_peer, clear_queue, first_packet_event, pjsua_ready_event, bridge = await create_pjsua_audio_bridge(pjsua_call, media_active_event)
 
             # Stocker le bridge dans la session ET dans le call PJSUA pour le cleanup
             session._audio_bridge = bridge
@@ -251,9 +256,6 @@ class OutboundCallManager:
             if self._pjsua_adapter._frame_requested_event:
                 self._pjsua_adapter._frame_requested_event.clear()
                 logger.info("🔄 Event frame_requested réinitialisé pour l'appel sortant (call_id=%s)", session.call_id)
-
-            # Créer un Event pour attendre que le média soit actif
-            media_active_event = asyncio.Event()
 
             # Callback pour débloquer l'audio quand le média est actif
             async def on_media_active_callback_outbound(active_call: Any, media_info: Any) -> None:
@@ -283,6 +285,41 @@ class OutboundCallManager:
             # Enregistrer le callback média
             self._pjsua_adapter.set_media_active_callback(on_media_active_callback_outbound)
 
+            # Callback pour nettoyer les ressources quand l'appel se termine
+            cleanup_done = asyncio.Event()
+
+            # Sauvegarder le callback précédent s'il existe
+            previous_call_state_callback = getattr(self._pjsua_adapter, '_call_state_callback', None)
+
+            async def on_call_state_callback_outbound(active_call: Any, call_info: Any) -> None:
+                """Appelé quand l'état de l'appel change."""
+                # D'abord, appeler le callback précédent s'il existe
+                if previous_call_state_callback:
+                    try:
+                        await previous_call_state_callback(active_call, call_info)
+                    except Exception as e:
+                        logger.warning("Erreur dans callback précédent: %s", e)
+
+                # Ensuite, gérer notre propre nettoyage
+                if active_call == pjsua_call:
+                    # Si l'appel est déconnecté, nettoyer les ressources
+                    if call_info.state == 6:  # PJSUA_CALL_STATE_DISCONNECTED
+                        if not cleanup_done.is_set():
+                            logger.info("📞 Appel sortant déconnecté - nettoyage des ressources (call_id=%s)", session.call_id)
+
+                            # Arrêter le bridge audio
+                            if session._audio_bridge:
+                                try:
+                                    session._audio_bridge.stop()
+                                    logger.info("✅ Bridge audio arrêté (call_id=%s)", session.call_id)
+                                except Exception as e:
+                                    logger.warning("Erreur arrêt bridge audio: %s", e)
+
+                            cleanup_done.set()
+
+            # Enregistrer le callback de changement d'état
+            self._pjsua_adapter.set_call_state_callback(on_call_state_callback_outbound)
+
             # Attendre que le média soit actif (max 5 secondes)
             logger.info("⏱️ Attente activation du média pour appel sortant... (call_id=%s)", session.call_id)
             try:
@@ -295,9 +332,16 @@ class OutboundCallManager:
                     db, call_db_id, "answered", answered_at=datetime.now(UTC)
                 )
 
+            # Wrapper send_to_peer pour bloquer l'audio jusqu'à ce que le média soit actif
+            # CRITIQUE: Sans ce wrapper, OpenAI envoie de l'audio avant que le port soit prêt
+            async def send_to_peer_blocked(audio: bytes) -> None:
+                """Wrapper qui bloque l'envoi d'audio jusqu'à ce que le port audio existe."""
+                await media_active_event.wait()
+                await send_to_peer(audio)
+
             # Démarrer la session vocale (similaire au code existant)
             await self._run_voice_session_pjsua(
-                db, session, call_db_id, rtp_stream, send_to_peer
+                db, session, call_db_id, rtp_stream, send_to_peer_blocked, clear_queue, pjsua_ready_event
             )
 
         except Exception as e:
@@ -337,6 +381,8 @@ class OutboundCallManager:
         call_db_id: int,
         rtp_stream: Any,
         send_to_peer: Any,
+        clear_queue: Any,
+        pjsua_ready_event: asyncio.Event,
     ) -> None:
         """Exécute la session vocale avec PJSUA audio bridge."""
         try:
@@ -490,7 +536,9 @@ class OutboundCallManager:
                     instructions=instructions,
                     voice=voice_name,
                     rtp_stream=rtp_stream,  # PJSUA audio bridge stream
-                    send_to_peer=send_to_peer,  # PJSUA audio bridge callback
+                    send_to_peer=send_to_peer,  # PJSUA audio bridge callback (wrapped pour bloquer)
+                    clear_audio_queue=clear_queue,  # Permet d'interrompre l'audio
+                    pjsua_ready_to_consume=pjsua_ready_event,  # Attend que PJSUA soit prêt avant speak_first
                     api_base=realtime_api_base,
                     tools=voice_tools,
                     handoffs=voice_handoffs,
