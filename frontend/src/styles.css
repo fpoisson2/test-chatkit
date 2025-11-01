@@ -645,24 +645,11 @@ button {
 }
 
 .chatkit-sidebar__section-header--with-action {
-  position: relative;
-}
-
-.chatkit-sidebar__section-header--with-action .chatkit-sidebar__section-title {
+  justify-content: flex-end;
+  min-height: 2.25rem;
   padding-right: calc(
-    var(--chatkit-sidebar-content-padding-x) +
-      3rem +
-      max(env(safe-area-inset-right), 0px)
-  );
-}
-
-.chatkit-sidebar__section-header--with-action .chatkit-sidebar__section-icon-button {
-  position: absolute;
-  top: 50%;
-  right: calc(
     var(--chatkit-sidebar-content-padding-x) + max(env(safe-area-inset-right), 0px)
   );
-  transform: translateY(-50%);
 }
 
 .chatkit-sidebar__section-title {
@@ -778,15 +765,6 @@ button {
   opacity: 0.55;
   cursor: not-allowed;
   transform: none;
-}
-
-.chatkit-sidebar__section-header--with-action .chatkit-sidebar__section-icon-button:hover,
-.chatkit-sidebar__section-header--with-action .chatkit-sidebar__section-icon-button:focus-visible {
-  transform: translateY(calc(-50% - 1px));
-}
-
-.chatkit-sidebar__section-header--with-action .chatkit-sidebar__section-icon-button:disabled {
-  transform: translateY(-50%);
 }
 
 .chatkit-layout--desktop.chatkit-layout--sidebar-open .chatkit-sidebar__section-button {
