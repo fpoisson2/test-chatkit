@@ -26,7 +26,7 @@ import ReactFlow, {
 
 import "reactflow/dist/style.css";
 
-import { Copy, PenSquare, Redo2, Trash2, Undo2 } from "lucide-react";
+import { ChevronDown, Copy, PenSquare, Redo2, Trash2, Undo2 } from "lucide-react";
 
 import { useAuth } from "../../auth";
 import { useI18n } from "../../i18n";
@@ -838,6 +838,7 @@ const WorkflowBuilderPage = () => {
   const isAuthenticated = Boolean(user);
   const isAdmin = Boolean(user?.is_admin);
   const blockLibraryId = "workflow-builder-block-library";
+  const blockLibraryContentId = "workflow-builder-block-library-content";
   const propertiesPanelId = "workflow-builder-properties-panel";
   const propertiesPanelTitleId = `${propertiesPanelId}-title`;
   const mobileActionsDialogId = "workflow-builder-mobile-actions";
@@ -7227,49 +7228,75 @@ const WorkflowBuilderPage = () => {
     const primaryTextColor = "var(--text-color)";
     return (
       <div className={styles.blockLibraryDesktopContent}>
-        <div className={styles.blockLibraryDesktopHeader}>Bibliothèque de blocs</div>
+        <div className={styles.blockLibraryDesktopHeader}>
+          <span>Bibliothèque de blocs</span>
+          <button
+            type="button"
+            ref={blockLibraryToggleRef}
+            className={styles.blockLibraryDesktopToggle}
+            onClick={toggleBlockLibrary}
+            aria-controls={blockLibraryContentId}
+            aria-expanded={isBlockLibraryOpen}
+          >
+            <span className={styles.srOnly}>
+              {isBlockLibraryOpen
+                ? "Masquer la bibliothèque de blocs"
+                : "Afficher la bibliothèque de blocs"}
+            </span>
+            <ChevronDown
+              aria-hidden="true"
+              className={styles.blockLibraryDesktopToggleIcon}
+              data-expanded={isBlockLibraryOpen ? "true" : "false"}
+              size={18}
+            />
+          </button>
+        </div>
         <div
+          id={blockLibraryContentId}
           className={styles.blockLibraryDesktopScroller}
           role="list"
           aria-label="Blocs disponibles"
+          hidden={!isBlockLibraryOpen}
         >
-          {blockLibraryItems.map((item) => {
-            const disabled = loading || !selectedWorkflowId;
-            return (
-              <div
-                key={item.key}
-                className={styles.blockLibraryDesktopItem}
-                role="listitem"
-              >
-                <button
-                  type="button"
-                  onClick={() => item.onClick()}
-                  disabled={disabled}
-                  style={getBlockLibraryButtonStyle(disabled)}
-                >
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: "2.35rem",
-                      height: "2.35rem",
-                      borderRadius: "0.75rem",
-                      background: item.color,
-                      color: "#fff",
-                      display: "grid",
-                      placeItems: "center",
-                      fontWeight: 700,
-                      fontSize: "1.05rem",
-                    }}
+          {isBlockLibraryOpen
+            ? blockLibraryItems.map((item) => {
+                const disabled = loading || !selectedWorkflowId;
+                return (
+                  <div
+                    key={item.key}
+                    className={styles.blockLibraryDesktopItem}
+                    role="listitem"
                   >
-                    {item.shortLabel}
-                  </span>
-                  <div style={{ textAlign: "left", color: primaryTextColor }}>
-                    <strong style={{ fontSize: "1rem" }}>{item.label}</strong>
+                    <button
+                      type="button"
+                      onClick={() => item.onClick()}
+                      disabled={disabled}
+                      style={getBlockLibraryButtonStyle(disabled)}
+                    >
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: "2.35rem",
+                          height: "2.35rem",
+                          borderRadius: "0.75rem",
+                          background: item.color,
+                          color: "#fff",
+                          display: "grid",
+                          placeItems: "center",
+                          fontWeight: 700,
+                          fontSize: "1.05rem",
+                        }}
+                      >
+                        {item.shortLabel}
+                      </span>
+                      <div style={{ textAlign: "left", color: primaryTextColor }}>
+                        <strong style={{ fontSize: "1rem" }}>{item.label}</strong>
+                      </div>
+                    </button>
                   </div>
-                </button>
-              </div>
-            );
-          })}
+                );
+              })
+            : null}
         </div>
       </div>
     );
