@@ -636,20 +636,30 @@ button {
   color: var(--text-color);
 }
 
+.chatkit-sidebar__section--with-floating-action {
+  position: relative;
+}
+
+.chatkit-sidebar__section-floating-action {
+  position: absolute;
+  top: 0.05rem;
+  right: calc(var(--chatkit-sidebar-content-padding-x) + max(env(safe-area-inset-right), 0px));
+  display: flex;
+  align-items: center;
+  height: 2rem;
+  z-index: 1;
+}
+
+.chatkit-sidebar__section-floating-action .chatkit-sidebar__section-icon-button {
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+}
+
 .chatkit-sidebar__section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   width: 100%;
-}
-
-.chatkit-sidebar__section-header--with-action {
-  justify-content: flex-end;
-  min-height: 2.25rem;
-  padding-right: calc(
-    var(--chatkit-sidebar-content-padding-x) + max(env(safe-area-inset-right), 0px)
-  );
 }
 
 .chatkit-sidebar__section-title {
@@ -742,13 +752,13 @@ button {
   border: none;
   background: rgba(148, 163, 184, 0.22);
   color: var(--text-color);
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2rem;
+  height: 2rem;
   border-radius: 0.75rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.35rem;
+  font-size: 1.2rem;
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
@@ -798,6 +808,12 @@ button {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+.chatkit-sidebar__section--with-floating-action
+  .chatkit-sidebar__workflow-group:first-of-type
+  .chatkit-sidebar__workflow-group-title {
+  padding-right: calc(var(--chatkit-sidebar-content-padding-x) + 2.75rem);
 }
 
 .chatkit-sidebar__workflow-list--grouped {

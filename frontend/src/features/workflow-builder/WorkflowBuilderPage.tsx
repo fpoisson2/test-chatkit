@@ -7302,11 +7302,14 @@ const WorkflowBuilderPage = () => {
     };
 
     return (
-      <section className="chatkit-sidebar__section" aria-labelledby={`${sectionId}-title`}>
-        <div className="chatkit-sidebar__section-header chatkit-sidebar__section-header--with-action">
-          <h2 id={`${sectionId}-title`} className="visually-hidden">
-            {t("workflows.defaultSectionTitle")}
-          </h2>
+      <section
+        className="chatkit-sidebar__section chatkit-sidebar__section--with-floating-action"
+        aria-labelledby={`${sectionId}-title`}
+      >
+        <h2 id={`${sectionId}-title`} className="visually-hidden">
+          {t("workflows.defaultSectionTitle")}
+        </h2>
+        <div className="chatkit-sidebar__section-floating-action">
           <button
             type="button"
             className="chatkit-sidebar__section-icon-button"
