@@ -7225,50 +7225,49 @@ const WorkflowBuilderPage = () => {
     }
 
     const primaryTextColor = "var(--text-color)";
-    const secondaryTextColor = "var(--text-muted)";
     return (
-      <div>
+      <div className={styles.blockLibraryDesktopContent}>
+        <div className={styles.blockLibraryDesktopHeader}>Bibliothèque de blocs</div>
         <div
-          style={{
-            marginBottom: "0.5rem",
-            fontSize: "0.85rem",
-            fontWeight: 600,
-            color: secondaryTextColor,
-          }}
+          className={styles.blockLibraryDesktopScroller}
+          role="list"
+          aria-label="Blocs disponibles"
         >
-          Bibliothèque de blocs
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
           {blockLibraryItems.map((item) => {
             const disabled = loading || !selectedWorkflowId;
             return (
-              <button
+              <div
                 key={item.key}
-                type="button"
-                onClick={() => item.onClick()}
-                disabled={disabled}
-                style={getBlockLibraryButtonStyle(disabled)}
+                className={styles.blockLibraryDesktopItem}
+                role="listitem"
               >
-                <span
-                  aria-hidden="true"
-                  style={{
-                    width: "2.35rem",
-                    height: "2.35rem",
-                    borderRadius: "0.75rem",
-                    background: item.color,
-                    color: "#fff",
-                    display: "grid",
-                    placeItems: "center",
-                    fontWeight: 700,
-                    fontSize: "1.05rem",
-                  }}
+                <button
+                  type="button"
+                  onClick={() => item.onClick()}
+                  disabled={disabled}
+                  style={getBlockLibraryButtonStyle(disabled)}
                 >
-                  {item.shortLabel}
-                </span>
-                <div style={{ textAlign: "left", color: primaryTextColor }}>
-                  <strong style={{ fontSize: "1rem" }}>{item.label}</strong>
-                </div>
-              </button>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: "2.35rem",
+                      height: "2.35rem",
+                      borderRadius: "0.75rem",
+                      background: item.color,
+                      color: "#fff",
+                      display: "grid",
+                      placeItems: "center",
+                      fontWeight: 700,
+                      fontSize: "1.05rem",
+                    }}
+                  >
+                    {item.shortLabel}
+                  </span>
+                  <div style={{ textAlign: "left", color: primaryTextColor }}>
+                    <strong style={{ fontSize: "1rem" }}>{item.label}</strong>
+                  </div>
+                </button>
+              </div>
             );
           })}
         </div>

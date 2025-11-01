@@ -14,6 +14,7 @@
   flex-direction: column;
   gap: 0.75rem;
   z-index: 20;
+  min-height: 0;
 }
 
 .blockLibraryContent {
@@ -22,6 +23,50 @@
   flex-direction: column;
   gap: 0.85rem;
   padding: 0.5rem 0;
+}
+
+.blockLibraryDesktopContent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.blockLibraryDesktopHeader {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.blockLibraryDesktopScroller {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.25rem;
+  margin-right: -0.25rem;
+  scrollbar-width: thin;
+  min-height: 0;
+}
+
+.blockLibraryDesktopScroller::-webkit-scrollbar {
+  width: 6px;
+}
+
+.blockLibraryDesktopScroller::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.08);
+  border-radius: 9999px;
+}
+
+.blockLibraryDesktopScroller::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.25);
+  border-radius: 9999px;
+}
+
+.blockLibraryDesktopItem {
+  flex: 0 0 auto;
 }
 
 .blockLibraryScroller {
