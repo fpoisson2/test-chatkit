@@ -250,6 +250,8 @@ const fr: TranslationDictionary = {
     "Personnalisez le message de bienvenue et les instructions affichés avant le premier échange.",
   "admin.appearance.start.greetingLabel": "Message de bienvenue",
   "admin.appearance.start.promptLabel": "Phrase d'accroche",
+  "admin.appearance.start.promptHint":
+    "Saisissez une accroche par ligne. Ajoutez « Titre | Suggestion » pour personnaliser l'intitulé.",
   "admin.appearance.start.placeholderLabel": "Texte d'aide du champ de saisie",
   "admin.appearance.start.disclaimerLabel": "Avertissement",
   "admin.appearance.actions.save": "Enregistrer l'apparence",
@@ -889,6 +891,8 @@ const en: TranslationDictionary = {
     "Customize the greeting and guidance displayed before the first exchange.",
   "admin.appearance.start.greetingLabel": "Welcome message",
   "admin.appearance.start.promptLabel": "Call to action",
+  "admin.appearance.start.promptHint":
+    "Enter one call to action per line. Use 'Title | Prompt' to customize the visible label.",
   "admin.appearance.start.placeholderLabel": "Composer placeholder",
   "admin.appearance.start.disclaimerLabel": "Disclaimer",
   "admin.appearance.actions.save": "Save appearance",

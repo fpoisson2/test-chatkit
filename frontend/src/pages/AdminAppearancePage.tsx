@@ -434,9 +434,9 @@ export const AdminAppearancePage = () => {
                 <span className="input-label">
                   {t("admin.appearance.start.greetingLabel")}
                 </span>
-                <input
-                  className="input"
-                  type="text"
+                <textarea
+                  className="textarea"
+                  rows={2}
                   value={formState.startGreeting}
                   onChange={(event) =>
                     setFormState((current) => ({
@@ -451,9 +451,9 @@ export const AdminAppearancePage = () => {
                 <span className="input-label">
                   {t("admin.appearance.start.promptLabel")}
                 </span>
-                <input
-                  className="input"
-                  type="text"
+                <textarea
+                  className="textarea"
+                  rows={4}
                   value={formState.startPrompt}
                   onChange={(event) =>
                     setFormState((current) => ({
@@ -465,6 +465,9 @@ export const AdminAppearancePage = () => {
                 />
               </label>
             </div>
+            <p className="admin-form__hint">
+              {t("admin.appearance.start.promptHint")}
+            </p>
             <div className="admin-form__row">
               <label className="input-field">
                 <span className="input-label">

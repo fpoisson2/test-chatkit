@@ -221,11 +221,28 @@ const parseStartScreenPrompts = (
     .split(/\r?\n/)
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0)
-    .map((entry, index) => ({
-      label: entry,
-      prompt: entry,
-      icon: index === 0 ? "sparkle" : undefined,
-    }));
+    .map((entry, index) => {
+      const separatorIndex = entry.indexOf("|");
+
+      let label = entry;
+      let prompt = entry;
+
+      if (separatorIndex !== -1) {
+        const rawLabel = entry.slice(0, separatorIndex).trim();
+        const rawPrompt = entry.slice(separatorIndex + 1).trim();
+
+        if (rawLabel || rawPrompt) {
+          label = rawLabel || rawPrompt;
+          prompt = rawPrompt || rawLabel || entry;
+        }
+      }
+
+      return {
+        label,
+        prompt,
+        ...(index === 0 ? { icon: "sparkle" as const } : {}),
+      };
+    });
 };
 
 export function MyChat() {
