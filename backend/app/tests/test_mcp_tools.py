@@ -81,7 +81,10 @@ def test_build_mcp_tool_constructs_server(monkeypatch: pytest.MonkeyPatch) -> No
     assert isinstance(server, _StubServer)
     params = created["params"]
     assert params["url"] == "https://example.com/mcp"
-    assert params["headers"]["Authorization"] == "Bearer token"
+    headers = params["headers"]
+    assert headers["Authorization"] == "Bearer token"
+    assert headers["Accept"] == "text/event-stream"
+    assert headers["Cache-Control"] == "no-cache"
     assert params["timeout"] == 12
     assert params["sse_read_timeout"] == 34
     assert created["cache_tools_list"] is True
@@ -110,7 +113,10 @@ def test_build_mcp_tool_adds_bearer_prefix(monkeypatch: pytest.MonkeyPatch) -> N
 
     assert isinstance(server, _StubServer)
     params = captured["params"]
-    assert params["headers"]["Authorization"] == "Bearer token-value"
+    headers = params["headers"]
+    assert headers["Authorization"] == "Bearer token-value"
+    assert headers["Accept"] == "text/event-stream"
+    assert headers["Cache-Control"] == "no-cache"
 
 
 def test_build_mcp_tool_supports_legacy_payload(
@@ -137,7 +143,10 @@ def test_build_mcp_tool_supports_legacy_payload(
     assert isinstance(server, _StubServer)
     params = captured["params"]
     assert params["url"] == "https://legacy.example/mcp"
-    assert params["headers"]["Authorization"] == "Bearer legacy-token"
+    headers = params["headers"]
+    assert headers["Authorization"] == "Bearer legacy-token"
+    assert headers["Accept"] == "text/event-stream"
+    assert headers["Cache-Control"] == "no-cache"
 
 
 def test_build_mcp_tool_rejects_empty_bearer(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -196,6 +205,8 @@ def test_build_mcp_tool_supports_server_id(monkeypatch: pytest.MonkeyPatch) -> N
     headers = params.get("headers")
     assert isinstance(headers, dict)
     assert headers.get("Authorization") == "Bearer stored-token"
+    assert headers.get("Accept") == "text/event-stream"
+    assert headers.get("Cache-Control") == "no-cache"
 
     context = tool_factory_module.get_mcp_runtime_context(server)
     assert context is not None

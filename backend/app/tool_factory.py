@@ -1122,13 +1122,15 @@ def _resolve_mcp_configuration(
         raw_authorization = decrypt_secret(resolved_server.authorization_encrypted)
         if raw_authorization:
             logger.debug(
-                "Authorization récupérée depuis la BDD pour server_id=%d (longueur: %d)",
+                "Authorization récupérée depuis la BDD pour server_id=%d "
+                "(longueur: %d)",
                 resolved_server.id,
                 len(raw_authorization),
             )
         else:
             logger.warning(
-                "Aucune authorization trouvée dans la BDD pour server_id=%d (authorization_encrypted=%s)",
+                "Aucune authorization trouvée dans la BDD pour server_id=%d "
+                "(authorization_encrypted=%s)",
                 resolved_server.id,
                 "présent" if resolved_server.authorization_encrypted else "absent",
             )
@@ -1259,8 +1261,17 @@ def build_mcp_tool(payload: Any) -> MCPServerSse:
 
     params: dict[str, Any] = {"url": normalized_config["url"]}
     headers = normalized_config.get("headers")
+    normalized_headers: dict[str, str] | None = None
     if isinstance(headers, Mapping) and headers:
-        params["headers"] = dict(headers)
+        normalized_headers = {str(key): str(value) for key, value in headers.items()}
+    if normalized_headers is None:
+        normalized_headers = {}
+
+    normalized_headers.setdefault("Accept", "text/event-stream")
+    normalized_headers.setdefault("Cache-Control", "no-cache")
+
+    if normalized_headers:
+        params["headers"] = normalized_headers
 
     timeout = normalized_config.get("timeout")
     if isinstance(timeout, int | float):
