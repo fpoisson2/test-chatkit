@@ -76,6 +76,57 @@ const extractToolNames = (server: McpServerSummary): string[] => {
   return rawNames.filter((name): name is string => typeof name === "string" && !!name);
 };
 
+const extractStringFromTokenPayload = (
+  payload: unknown,
+  candidateKeys: string[],
+): string | null => {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const normalizedKeys = candidateKeys.map((key) => key.toLowerCase());
+  const visited = new Set<object>();
+  const stack: unknown[] = [payload];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || typeof current !== "object") {
+      continue;
+    }
+    if (visited.has(current as object)) {
+      continue;
+    }
+    visited.add(current as object);
+
+    if (Array.isArray(current)) {
+      for (const item of current) {
+        if (item && typeof item === "object") {
+          stack.push(item);
+        }
+      }
+      continue;
+    }
+
+    const record = current as Record<string, unknown>;
+    for (const [key, value] of Object.entries(record)) {
+      if (normalizedKeys.includes(key.toLowerCase()) && typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed) {
+          return trimmed;
+        }
+      }
+    }
+
+    for (const value of Object.values(record)) {
+      if (value && typeof value === "object") {
+        stack.push(value);
+      }
+    }
+  }
+
+  return null;
+};
+
 const buildPayloadFromForm = (
   form: McpServerFormState,
   current: McpServerSummary | null,
@@ -313,16 +364,18 @@ export const AdminMcpServersPage = () => {
         };
       }
 
-      const accessTokenRaw = tokenPayload.access_token;
-      const refreshTokenRaw = tokenPayload.refresh_token;
-      const tokenTypeRaw = tokenPayload.token_type;
-
       const accessToken =
-        typeof accessTokenRaw === "string" ? accessTokenRaw.trim() : "";
+        extractStringFromTokenPayload(tokenPayload, ["access_token", "accesstoken", "access-token"]) || "";
       const refreshToken =
-        typeof refreshTokenRaw === "string" ? refreshTokenRaw.trim() : "";
+        extractStringFromTokenPayload(tokenPayload, ["refresh_token", "refreshtoken", "refresh-token"]) || "";
       const tokenType =
-        typeof tokenTypeRaw === "string" ? tokenTypeRaw.trim() : "";
+        extractStringFromTokenPayload(tokenPayload, ["token_type", "tokentype", "type"]) || "";
+      const explicitAuthorization =
+        extractStringFromTokenPayload(tokenPayload, [
+          "authorization",
+          "authorization_header",
+          "authorizationheader",
+        ]) || "";
 
       const shouldRefreshTools =
         plan?.refreshToolsOnSuccess === undefined
@@ -338,9 +391,21 @@ export const AdminMcpServersPage = () => {
 
       if (accessToken) {
         payload.access_token = accessToken;
-        payload.authorization = tokenType
-          ? `${tokenType} ${accessToken}`.trim()
-          : `Bearer ${accessToken}`;
+      }
+
+      const resolvedAuthorization = (() => {
+        if (explicitAuthorization) {
+          return explicitAuthorization;
+        }
+        if (!accessToken) {
+          return "";
+        }
+        const scheme = tokenType || "Bearer";
+        return `${scheme} ${accessToken}`.trim();
+      })();
+
+      if (resolvedAuthorization) {
+        payload.authorization = resolvedAuthorization;
       }
 
       if (refreshToken) {
