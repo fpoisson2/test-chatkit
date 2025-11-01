@@ -195,32 +195,107 @@ export const readStoredWorkflowPinnedLookup = (): StoredWorkflowPinnedLookup =>
 
 export const createEmptyStoredWorkflowPinned = (): StoredWorkflowPinned => createEmptyPinnedSet();
 
-const readSessionStorageItem = (key: string): string | null => {
+const readSelectionStorageItem = (key: string): string | null => {
   if (typeof window === "undefined") {
     return null;
   }
 
-  try {
-    return window.sessionStorage.getItem(key);
-  } catch (error) {
-    console.warn("Unable to read session storage", error);
+  const { localStorage, sessionStorage } = window as Window & {
+    localStorage?: Storage;
+    sessionStorage?: Storage;
+  };
+
+  const safeRead = (storage: Storage | undefined): string | null => {
+    if (!storage) {
+      return null;
+    }
+
+    try {
+      return storage.getItem(key);
+    } catch (error) {
+      console.warn("Unable to read workflow selection storage", error);
+      return null;
+    }
+  };
+
+  const localValue = safeRead(localStorage);
+  if (localValue !== null) {
+    return localValue;
+  }
+
+  const sessionValue = safeRead(sessionStorage);
+  if (sessionValue === null) {
     return null;
   }
+
+  if (localStorage) {
+    try {
+      localStorage.setItem(key, sessionValue);
+    } catch (error) {
+      console.warn("Unable to migrate workflow selection storage", error);
+    }
+  }
+
+  if (sessionStorage) {
+    try {
+      sessionStorage.removeItem(key);
+    } catch (error) {
+      console.warn("Unable to clear legacy workflow selection storage", error);
+    }
+  }
+
+  return sessionValue;
 };
 
-const writeSessionStorageItem = (key: string, value: string | null) => {
+const writeSelectionStorageItem = (key: string, value: string | null) => {
   if (typeof window === "undefined") {
     return;
   }
 
-  try {
-    if (value === null) {
-      window.sessionStorage.removeItem(key);
-    } else {
-      window.sessionStorage.setItem(key, value);
+  const { localStorage, sessionStorage } = window as Window & {
+    localStorage?: Storage;
+    sessionStorage?: Storage;
+  };
+
+  const safeRemove = (storage: Storage | undefined) => {
+    if (!storage) {
+      return;
     }
-  } catch (error) {
-    console.warn("Unable to write session storage", error);
+
+    try {
+      storage.removeItem(key);
+    } catch (error) {
+      console.warn("Unable to clear workflow selection storage", error);
+    }
+  };
+
+  if (value === null) {
+    safeRemove(localStorage);
+    safeRemove(sessionStorage);
+    return;
+  }
+
+  let stored = false;
+  if (localStorage) {
+    try {
+      localStorage.setItem(key, value);
+      stored = true;
+    } catch (error) {
+      console.warn("Unable to write workflow selection storage", error);
+    }
+  }
+
+  if (!stored && sessionStorage) {
+    try {
+      sessionStorage.setItem(key, value);
+      stored = true;
+    } catch (error) {
+      console.warn("Unable to write workflow selection storage fallback", error);
+    }
+  }
+
+  if (stored && sessionStorage) {
+    safeRemove(sessionStorage);
   }
 };
 
@@ -313,7 +388,7 @@ const dispatchWorkflowSelectionChanged = () => {
 };
 
 export const readStoredWorkflowSelection = (): StoredWorkflowSelection | null =>
-  parseStoredSelection(readSessionStorageItem(WORKFLOW_SELECTION_STORAGE_KEY));
+  parseStoredSelection(readSelectionStorageItem(WORKFLOW_SELECTION_STORAGE_KEY));
 
 const normalizeStoredSelection = (
   selection: StoredWorkflowSelection | null,
@@ -334,13 +409,13 @@ const normalizeStoredSelection = (
 
 export const writeStoredWorkflowSelection = (selection: StoredWorkflowSelection | null) => {
   if (!selection) {
-    writeSessionStorageItem(WORKFLOW_SELECTION_STORAGE_KEY, null);
+    writeSelectionStorageItem(WORKFLOW_SELECTION_STORAGE_KEY, null);
     dispatchWorkflowSelectionChanged();
     return;
   }
 
   const normalized = normalizeStoredSelection(selection);
-  writeSessionStorageItem(
+  writeSelectionStorageItem(
     WORKFLOW_SELECTION_STORAGE_KEY,
     normalized ? JSON.stringify(normalized) : null,
   );

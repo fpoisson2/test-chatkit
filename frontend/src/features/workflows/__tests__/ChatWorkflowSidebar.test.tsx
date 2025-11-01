@@ -107,13 +107,24 @@ describe("ChatWorkflowSidebar pinning", () => {
     setCollapsedSidebarContentMock.mockClear();
     clearCollapsedSidebarContentMock.mockClear();
     window.sessionStorage.clear();
+    const localEntries = new Map<string, string>();
     authState.token = "token";
     Object.defineProperty(window, "localStorage", {
       value: {
-        getItem: vi.fn(),
-        setItem: vi.fn(),
-        removeItem: vi.fn(),
-        clear: vi.fn(),
+        getItem: vi.fn((key: string) => localEntries.get(key) ?? null),
+        setItem: vi.fn((key: string, value: string) => {
+          localEntries.set(key, value);
+        }),
+        removeItem: vi.fn((key: string) => {
+          localEntries.delete(key);
+        }),
+        clear: vi.fn(() => {
+          localEntries.clear();
+        }),
+        key: vi.fn((index: number) => Array.from(localEntries.keys())[index] ?? null),
+        get length() {
+          return localEntries.size;
+        },
       },
       configurable: true,
     });
@@ -132,6 +143,7 @@ describe("ChatWorkflowSidebar pinning", () => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
     window.sessionStorage.clear();
+    window.localStorage.clear();
     // Reset localStorage stub
     // @ts-expect-error test cleanup
     delete window.localStorage;
@@ -161,7 +173,7 @@ describe("ChatWorkflowSidebar pinning", () => {
     await user.click(screen.getByRole("button", { name: "Pin Beta" }));
 
     await waitFor(() => {
-      const stored = window.sessionStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY);
+      const stored = window.localStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY);
       expect(stored).toContain("\"local\":[2]");
     });
 
@@ -269,7 +281,7 @@ describe("ChatWorkflowSidebar pinning", () => {
       lastUsedAt: { local: {}, hosted: {} },
       pinned: { local: [2], hosted: [] },
     };
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       WORKFLOW_SELECTION_STORAGE_KEY,
       JSON.stringify(storedSelection),
     );
@@ -281,7 +293,7 @@ describe("ChatWorkflowSidebar pinning", () => {
     );
 
     // Ensure the stored selection remains untouched while the token is missing
-    expect(window.sessionStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY)).toBe(
+    expect(window.localStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY)).toBe(
       JSON.stringify(storedSelection),
     );
 
@@ -309,7 +321,7 @@ describe("ChatWorkflowSidebar pinning", () => {
       "true",
     );
 
-    expect(window.sessionStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY)).toContain("\"local\":[2]");
+    expect(window.localStorage.getItem(WORKFLOW_SELECTION_STORAGE_KEY)).toContain("\"local\":[2]");
 
     sidebarHost.unmount();
     rendered.unmount();

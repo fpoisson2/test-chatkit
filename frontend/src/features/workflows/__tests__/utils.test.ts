@@ -19,6 +19,7 @@ import type { HostedWorkflowMetadata } from "../../../utils/backend";
 import type { WorkflowSummary } from "../../../types/workflows";
 
 type WindowWithStubs = Window & {
+  localStorage: Storage;
   sessionStorage: Storage;
   addEventListener: Window["addEventListener"];
   removeEventListener: Window["removeEventListener"];
@@ -60,23 +61,29 @@ const createHostedWorkflow = (
 let windowStub: WindowWithStubs;
 
 beforeEach(() => {
-  const storage = new Map<string, string>();
+  const localStorageEntries = new Map<string, string>();
+  const sessionStorageEntries = new Map<string, string>();
   const listeners = new Map<string, Set<(event: Event) => void>>();
 
-  const sessionStorage = {
-    getItem: vi.fn((key: string) => storage.get(key) ?? null),
+  const createStorage = (entries: Map<string, string>): Storage => ({
+    getItem: vi.fn((key: string) => entries.get(key) ?? null),
     setItem: vi.fn((key: string, value: string) => {
-      storage.set(key, value);
+      entries.set(key, value);
     }),
     removeItem: vi.fn((key: string) => {
-      storage.delete(key);
+      entries.delete(key);
     }),
     clear: vi.fn(() => {
-      storage.clear();
+      entries.clear();
     }),
-    key: vi.fn(),
-    length: 0,
-  } satisfies Storage;
+    key: vi.fn((index: number) => Array.from(entries.keys())[index] ?? null),
+    get length() {
+      return entries.size;
+    },
+  }) as Storage;
+
+  const localStorage = createStorage(localStorageEntries);
+  const sessionStorage = createStorage(sessionStorageEntries);
 
   const addEventListener = vi.fn((type: string, handler: EventListenerOrEventListenerObject) => {
     const set = listeners.get(type) ?? new Set<(event: Event) => void>();
@@ -112,6 +119,7 @@ beforeEach(() => {
   });
 
   windowStub = {
+    localStorage,
     sessionStorage,
     addEventListener,
     removeEventListener,
@@ -210,6 +218,13 @@ describe("workflow storage helpers", () => {
     expect(selection).not.toBeNull();
     expect(selection?.lastUsedAt).toEqual({ hosted: {}, local: {} });
     expect(selection?.pinned).toEqual({ hosted: [], local: [] });
+    expect(windowStub.localStorage.setItem).toHaveBeenCalledWith(
+      WORKFLOW_SELECTION_STORAGE_KEY,
+      JSON.stringify(legacyPayload),
+    );
+    expect(windowStub.sessionStorage.removeItem).toHaveBeenCalledWith(
+      WORKFLOW_SELECTION_STORAGE_KEY,
+    );
   });
 });
 
